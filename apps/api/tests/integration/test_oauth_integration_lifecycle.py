@@ -25,7 +25,7 @@ Mocking boundaries:
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, call, patch
 
 import pytest
 
@@ -127,6 +127,7 @@ class _FakeUserIntegrationRepo:
         *,
         status: UserIntegrationStatus,
         expired_reason: str | None = None,
+        connected_account_id: str | None = None,
     ) -> bool:
         key = (user_id, integration_id)
         existing = self.docs.get(key)
@@ -137,6 +138,10 @@ class _FakeUserIntegrationRepo:
             "status": status,
             "created_at": existing.created_at if existing else now,
         }
+        if connected_account_id is not None:
+            fields["connected_account_id"] = connected_account_id
+        elif existing is not None:
+            fields["connected_account_id"] = existing.connected_account_id
         if existing is not None and existing.connected_at is not None:
             fields["connected_at"] = existing.connected_at
         if existing is not None and status != "connected":
@@ -429,7 +434,11 @@ class TestComposioIntegrationConnection:
 
         mock_composio = AsyncMock()
         mock_composio.connect_account = AsyncMock(
-            return_value={"redirect_url": "https://accounts.google.com/o/oauth2/auth?client_id=xxx"}
+            return_value={
+                "status": "pending",
+                "redirect_url": "https://accounts.google.com/o/oauth2/auth?client_id=xxx",
+                "connection_id": "ca_initiated",
+            }
         )
 
         with (
@@ -464,7 +473,11 @@ class TestComposioIntegrationConnection:
 
         mock_composio = AsyncMock()
         mock_composio.connect_account = AsyncMock(
-            return_value={"redirect_url": "https://oauth.example.com/auth"}
+            return_value={
+                "status": "pending",
+                "redirect_url": "https://oauth.example.com/auth",
+                "connection_id": "ca_initiated",
+            }
         )
 
         mock_create_state = AsyncMock(return_value="state_abc123")
@@ -502,7 +515,11 @@ class TestComposioIntegrationConnection:
 
         mock_composio = AsyncMock()
         mock_composio.connect_account = AsyncMock(
-            return_value={"redirect_url": "https://oauth.example.com/auth"}
+            return_value={
+                "status": "pending",
+                "redirect_url": "https://oauth.example.com/auth",
+                "connection_id": "ca_initiated",
+            }
         )
 
         mock_update_status = AsyncMock(return_value=True)
@@ -529,7 +546,12 @@ class TestComposioIntegrationConnection:
                 redirect_path="/integrations",
             )
 
-            mock_update_status.assert_called_once_with(USER_ID, "gmail", "created")
+            # `created` before the redirect (so an abandoned connect still leaves a
+            # record), then again with the id Composio minted at initiate time.
+            assert mock_update_status.await_args_list == [
+                call(USER_ID, "gmail", "created"),
+                call(USER_ID, "gmail", "created", connected_account_id="ca_initiated"),
+            ]
 
 
 # ---------------------------------------------------------------------------

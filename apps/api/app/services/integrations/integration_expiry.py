@@ -49,6 +49,7 @@ async def expire_user_integration(
     reason: str | None,
     trigger: ExpiryTrigger,
     notify: bool,
+    connected_account_id: str | None = None,
 ) -> bool:
     """Mark a user's integration connection dead and stop the rest of GAIA treating it as usable.
 
@@ -70,6 +71,7 @@ async def expire_user_integration(
         reason=reason,
         trigger=trigger,
         notify=notify,
+        connected_account_id=connected_account_id,
     )
 
     record = await user_integration_repository.get_for_user(user_id, integration_id)
@@ -86,7 +88,11 @@ async def expire_user_integration(
     # USER_INTEGRATION_CACHE_PATTERNS set (oauth_status + tools:user:* +
     # tool_namespaces), so the next status read recomputes from Mongo.
     await update_user_integration_status(
-        user_id, integration_id, INTEGRATION_STATUS_EXPIRED, expired_reason=reason
+        user_id,
+        integration_id,
+        INTEGRATION_STATUS_EXPIRED,
+        expired_reason=reason,
+        connected_account_id=connected_account_id,
     )
     invalidate_connected_account_cache(user_id, toolkit)
     schedule_user_integrations_sync(user_id)

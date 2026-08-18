@@ -50,10 +50,13 @@ class UserIntegrationsRepository(
         *,
         status: UserIntegrationStatus,
         expired_reason: str | None = None,
+        connected_account_id: str | None = None,
     ) -> bool:
         """Upsert the user's connection status. ``connected_at`` is stamped on the
         connected transition and ``expired_at``/``expired_reason`` on the expired one;
-        ``created_at`` only on insert. Reconnecting clears the expiry stamps so an
+        ``created_at`` only on insert. ``connected_account_id`` is written whenever
+        the caller learns it and never cleared — the id of the account that died is
+        what lets us address it after the fact. Reconnecting clears the expiry stamps so an
         `expired` record never reads as connected-but-broken. Always succeeds (the
         upsert matches or inserts), matching the old modified/upserted/matched check."""
         set_fields: dict[str, object] = {
@@ -61,6 +64,8 @@ class UserIntegrationsRepository(
             "user_id": user_id,
             "integration_id": integration_id,
         }
+        if connected_account_id is not None:
+            set_fields["connected_account_id"] = connected_account_id
         if status == "connected":
             set_fields["connected_at"] = datetime.now(UTC)
             set_fields["expired_at"] = None

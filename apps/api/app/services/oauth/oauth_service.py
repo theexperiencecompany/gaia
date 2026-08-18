@@ -326,6 +326,7 @@ async def handle_oauth_connection(
     user_id: str,
     integration_config: OAuthIntegration,
     background_tasks: BackgroundTasks,
+    connected_account_id: str | None = None,
 ) -> None:
     """
     Handle successful OAuth connection: setup triggers, update bio status, queue processing.
@@ -334,6 +335,7 @@ async def handle_oauth_connection(
         user_id: The user ID
         integration_config: The integration configuration object
         background_tasks: FastAPI background tasks
+        connected_account_id: Composio's nanoid for the account that just authorized
     """
     log.set(auth={"user_id": user_id, "provider": integration_config.id})
     log.set_ns(
@@ -455,7 +457,10 @@ async def handle_oauth_connection(
     # set (OAUTH_STATUS + tools:user:* + tool_namespaces), so no manual delete here.
     try:
         await update_user_integration_status(
-            user_id, integration_config.id, INTEGRATION_STATUS_CONNECTED
+            user_id,
+            integration_config.id,
+            INTEGRATION_STATUS_CONNECTED,
+            connected_account_id=connected_account_id,
         )
         log.info(f"{LogTag.OAUTH} Updated user_integrations status for", id=integration_config.id)
         # Runs after the status write above, and as a background task, so the

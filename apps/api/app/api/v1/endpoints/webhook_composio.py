@@ -41,16 +41,19 @@ router = APIRouter()
 # Background tasks are cancelled after this many seconds to prevent indefinite hangs.
 _WEBHOOK_TASK_TIMEOUT: float = 120.0
 
-# Connection statuses that mean the account cannot execute tools. Composio treats
-# FAILED/EXPIRED/REVOKED as terminal and excludes INACTIVE because it can recover
-# to ACTIVE — but an INACTIVE account still cannot run anything, so showing it as
-# usable is the worse error and a reconnect is harmless.
+# Statuses where the user's grant is genuinely dead and only they can fix it —
+# the SDK's own terminal set (``_TERMINAL_CONNECTION_STATES``).
+#
+# INACTIVE is deliberately NOT here. It is what ``PATCH /connected_accounts/
+# {nanoId}/status`` writes ("enable or disable a connected account"), i.e. someone
+# turned the account off on purpose, and the SDK excludes it from the terminal set
+# for the same reason. Telling that user "GAIA lost access, reconnect" would be
+# wrong — reconnecting is not the fix — and pausing their workflows on it is worse.
 _DEAD_CONNECTION_STATUSES = frozenset(
     {
         ConnectionStatusEnum.EXPIRED.value,
         ConnectionStatusEnum.REVOKED.value,
         ConnectionStatusEnum.FAILED.value,
-        ConnectionStatusEnum.INACTIVE.value,
     }
 )
 
@@ -89,7 +92,9 @@ async def _process_webhook_event(handler: TriggerHandler, event_data: ComposioWe
         )
 
 
-async def _expire_connection(user_id: str, integration_id: str, reason: str | None) -> None:
+async def _expire_connection(
+    user_id: str, integration_id: str, reason: str | None, connected_account_id: str
+) -> None:
     """Background task: run the expiry transition under the shared webhook timeout."""
     try:
         await asyncio.wait_for(
@@ -99,6 +104,7 @@ async def _expire_connection(user_id: str, integration_id: str, reason: str | No
                 reason=reason,
                 trigger="webhook",
                 notify=True,
+                connected_account_id=connected_account_id,
             ),
             timeout=_WEBHOOK_TASK_TIMEOUT,
         )
@@ -170,7 +176,7 @@ def _handle_connection_event(body: dict[str, Any]) -> ComposioWebhookAckResponse
 
     spawn_logged_task(
         "composio_connection_expiry",
-        _expire_connection(data.user_id, integration.id, data.status_reason),
+        _expire_connection(data.user_id, integration.id, data.status_reason, data.id),
         user={"id": data.user_id},
         webhook={"event_type": event.type, "integration_id": integration.id},
     )

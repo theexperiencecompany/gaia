@@ -807,7 +807,7 @@ class TestHandleOAuthConnection:
         )
 
         mock_update_user_integration_status.assert_awaited_once_with(
-            "user123", "notion", "connected"
+            "user123", "notion", "connected", connected_account_id=None
         )
 
     async def test_sets_up_triggers_when_present(

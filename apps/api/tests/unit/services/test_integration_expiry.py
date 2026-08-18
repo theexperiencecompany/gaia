@@ -100,11 +100,16 @@ class TestSideEffects:
                 reason="refresh_token_revoked",
                 trigger="webhook",
                 notify=False,
+                connected_account_id="ca_probe",
             )
 
         assert changed is True
         s.mocks["status"].assert_awaited_once_with(
-            USER_ID, INTEGRATION_ID, "expired", expired_reason="refresh_token_revoked"
+            USER_ID,
+            INTEGRATION_ID,
+            "expired",
+            expired_reason="refresh_token_revoked",
+            connected_account_id="ca_probe",
         )
         # The in-process proxy map holds the now-revoked connected_account_id.
         s.mocks["proxy"].assert_called_once_with(USER_ID, "NOTION")

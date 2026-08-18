@@ -600,6 +600,7 @@ async def composio_callback(
             user_id=str(user_id),
             integration_config=integration_config,
             background_tasks=background_tasks,
+            connected_account_id=connectedAccountId,
         )
         log.audit(
             "integration connected",

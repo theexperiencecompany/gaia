@@ -198,6 +198,10 @@ class UserIntegrationDocument(UserScopedDocument):
     connected_at: datetime | None = None
     expired_at: datetime | None = None
     expired_reason: str | None = None
+    # Composio's connected-account nanoid (``ca_...``). Recorded so a dead or
+    # stale account can be addressed directly — revoked, deleted, or inspected —
+    # without listing every account for the user first.
+    connected_account_id: str | None = None
 
 
 class UserIntegrationUpdate(BaseModel):
@@ -209,6 +213,7 @@ class UserIntegrationUpdate(BaseModel):
     connected_at: datetime | None = None
     expired_at: datetime | None = None
     expired_reason: str | None = None
+    connected_account_id: str | None = None
 
 
 class AddUserIntegrationRequest(BaseModel):

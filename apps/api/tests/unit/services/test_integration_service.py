@@ -17,7 +17,7 @@ Covers:
 
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -623,7 +623,11 @@ class TestUpdateUserIntegrationStatus:
 
         assert result is True
         mock_repo.set_status.assert_awaited_once_with(
-            USER_ID, INTEGRATION_ID, status="connected", expired_reason=None
+            USER_ID,
+            INTEGRATION_ID,
+            status="connected",
+            expired_reason=None,
+            connected_account_id=None,
         )
         mock_sched.assert_called_once_with(USER_ID)
 
@@ -638,9 +642,32 @@ class TestUpdateUserIntegrationStatus:
 
         assert result is True
         mock_repo.set_status.assert_awaited_once_with(
-            USER_ID, INTEGRATION_ID, status="created", expired_reason=None
+            USER_ID,
+            INTEGRATION_ID,
+            status="created",
+            expired_reason=None,
+            connected_account_id=None,
         )
         mock_sched.assert_not_called()
+
+    @patch("app.services.integrations.user_integration_status.schedule_user_integrations_sync")
+    @patch("app.services.integrations.user_integration_status.user_integration_repository")
+    async def test_the_connected_account_id_is_recorded_whenever_known(self, mock_repo, mock_sched):
+        # Composio addresses an account by its nanoid; without it a dead account
+        # can only be found by listing every account the user has.
+        mock_repo.set_status = AsyncMock(return_value=True)
+
+        await update_user_integration_status.__wrapped__(
+            USER_ID, INTEGRATION_ID, "connected", connected_account_id="ca_abc123"
+        )
+
+        mock_repo.set_status.assert_awaited_once_with(
+            USER_ID,
+            INTEGRATION_ID,
+            status="connected",
+            expired_reason=None,
+            connected_account_id="ca_abc123",
+        )
 
     @patch("app.services.integrations.user_integration_status.schedule_user_integrations_sync")
     @patch("app.services.integrations.user_integration_status.user_integration_repository")
@@ -655,7 +682,11 @@ class TestUpdateUserIntegrationStatus:
 
         assert result is True
         mock_repo.set_status.assert_awaited_once_with(
-            USER_ID, INTEGRATION_ID, status="expired", expired_reason="refresh_token_revoked"
+            USER_ID,
+            INTEGRATION_ID,
+            status="expired",
+            expired_reason="refresh_token_revoked",
+            connected_account_id=None,
         )
         mock_sched.assert_not_called()
 
@@ -2014,7 +2045,13 @@ class TestConnectComposioIntegration:
     )
     async def test_connect_success(self, mock_get_composio, mock_create_state, mock_update_status):
         mock_service = AsyncMock()
-        mock_service.connect_account.return_value = {"redirect_url": "https://composio.dev/auth"}
+        # connect_account always returns connection_id — Composio mints the
+        # connected account at initiate time and GAIA records it.
+        mock_service.connect_account.return_value = {
+            "status": "pending",
+            "redirect_url": "https://composio.dev/auth",
+            "connection_id": "ca_initiated",
+        }
         mock_get_composio.return_value = mock_service
         mock_create_state.return_value = "state-token"
 
@@ -2028,7 +2065,12 @@ class TestConnectComposioIntegration:
 
         assert result.status == "redirect"
         assert result.redirect_url == "https://composio.dev/auth"
-        mock_update_status.assert_awaited_once_with(USER_ID, "slack", "created")
+        # Two writes: `created` before the redirect, so an abandoned connect still
+        # leaves a record, then the connected-account id once Composio mints it.
+        assert mock_update_status.await_args_list == [
+            call(USER_ID, "slack", "created"),
+            call(USER_ID, "slack", "created", connected_account_id="ca_initiated"),
+        ]
 
 
 class TestConnectSelfIntegration:

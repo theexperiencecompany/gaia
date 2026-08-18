@@ -400,6 +400,7 @@ class TestComposioConnectionEvents:
             reason="refresh_token_revoked",
             trigger="webhook",
             notify=True,
+            connected_account_id="ca_xxxxxxxxxxxx",
         )
 
     async def test_the_toolkit_slug_resolves_the_integration_when_the_auth_config_does_not(
@@ -442,7 +443,7 @@ class TestComposioConnectionEvents:
         assert response.json()["message"] == "Unknown integration ignored"
         expire.assert_not_awaited()
 
-    @pytest.mark.parametrize("status", ["EXPIRED", "REVOKED", "FAILED", "INACTIVE"])
+    @pytest.mark.parametrize("status", ["EXPIRED", "REVOKED", "FAILED"])
     async def test_every_unusable_status_expires_the_integration(self, real_redis, status):
         integration = MagicMock()
         integration.id = "notion"
@@ -464,8 +465,10 @@ class TestComposioConnectionEvents:
         assert response.status_code == 200
         expire.assert_awaited_once()
 
-    @pytest.mark.parametrize("status", ["ACTIVE", "INITIALIZING", "INITIATED"])
-    async def test_a_live_status_causes_no_expiry(self, real_redis, status):
+    @pytest.mark.parametrize("status", ["ACTIVE", "INITIALIZING", "INITIATED", "INACTIVE"])
+    async def test_a_status_the_user_cannot_fix_causes_no_expiry(self, real_redis, status):
+        # INACTIVE is a deliberate disable (PATCH .../status), not a dead grant —
+        # a reconnect would not fix it, so it must not expire or pause anything.
         integration = MagicMock()
         integration.id = "notion"
 
