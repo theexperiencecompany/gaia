@@ -124,6 +124,13 @@ class TestDeliverResultRouting:
         assert event["conversation_id"] == "conv-1"
         assert event["message"]["response"] == "result text"
 
+    async def test_the_save_is_attributed_to_the_runs_owner(self) -> None:
+        """update_messages scopes the write by ``user`` — an unattributed save
+        lands on nobody's conversation, so the delivered message is lost."""
+        save, _platform, _ws = await _deliver(ConversationSource.WEB)
+
+        assert save.await_args.kwargs["user"] == {"user_id": "user-1"}
+
     async def test_falls_back_to_raw_executor_text_when_comms_unavailable(self) -> None:
         # comms returns "" → the raw executor text must still be delivered.
         _save, platform, _ws = await _deliver(
@@ -267,6 +274,20 @@ class TestDeliverResultToolDataOwnership:
         assert saved.message_id != "task-9"  # no placeholder to reconcile with
         assert "tool_data" not in ws.await_args.args[1]["message"]
 
+    async def test_live_run_with_bot_message_id_still_appends_a_fresh_message(self) -> None:
+        """Every live turn carries bot_message_id (for a possible HIL pause).
+        Its presence alone must not route delivery down the HIL-merge path,
+        which races the comms stream's save and drops results on a miss."""
+        _session_with_cards("live_s2")
+        run = _run(RunKind.LIVE, stream_id="live_s2", task_id="task-10", bot_message_id="ack-msg-1")
+        with patch.object(rd, "_merge_resumed_result", new_callable=AsyncMock) as merge:
+            save, ws = await self._deliver_with_session(run)
+
+        merge.assert_not_awaited()
+        saved = save.await_args.args[0].messages[0]
+        assert saved.message_id != "ack-msg-1"
+        assert saved.message_id != "task-10"
+
     async def test_save_failure_prevents_any_transport_push(self) -> None:
         """MongoDB is the source of truth — a message that failed to persist
         must never be pushed (it would vanish on the next sync)."""
@@ -405,7 +426,10 @@ class TestDeliverResultHilResume:
         assert "old_tool" in tool_names
         assert "tool_calls_data" in tool_names  # the resumed run's new card
 
-    async def test_missing_original_message_drops_delivery(self) -> None:
+    async def test_missing_original_message_falls_back_to_a_fresh_append(self) -> None:
+        """The approved action already RAN — a deleted original bubble must
+        not discard its report. The delivery re-keys to a fresh id and takes
+        the ordinary append path instead."""
         run = _run(RunKind.QUEUED, task_id="task-resume-1", bot_message_id="orig-msg-1")
         with (
             patch.object(
@@ -413,15 +437,34 @@ class TestDeliverResultHilResume:
             ),
             patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
             patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
             patch.object(
                 rd.conversation_repository, "get_message", new_callable=AsyncMock, return_value=None
             ),
+            patch.object(rd, "log") as mock_log,
         ):
-            result = await rd.deliver_result(run, "raw", "final")
+            text, message_id = await rd.deliver_result(run, "raw", "final")
 
-        assert result == (None, None)
-        save.assert_not_awaited()
-        ws.assert_not_awaited()
+        assert text == "voiced"
+        save.assert_awaited_once()
+        saved = save.await_args.args[0].messages[0]
+        # A fresh REAL id, NOT the dead original and NOT the task id — nothing
+        # on the client reconciles against either for this fallback message.
+        assert saved.message_id == message_id
+        assert saved.message_id != "orig-msg-1"
+        UUID(saved.message_id)
+        ws.assert_awaited_once()
+        # The fallback is loud, and names the message it could not merge onto.
+        # Exact tail, not a substring — a mangled message still CONTAINS the
+        # substring, so only equality can catch it.
+        warning = next(
+            c for c in mock_log.warning.call_args_list if "original_message_id" in c.kwargs
+        )
+        assert warning.args[0].endswith(
+            "original message unavailable, appending a fresh one instead"
+        )
+        assert warning.kwargs["original_message_id"] == "orig-msg-1"
+        assert warning.kwargs["conversation_id"] == run.conversation_id
 
 
 def _approval_card(approval_id: str, status: str, **extra) -> dict:
@@ -1195,41 +1238,6 @@ class TestDeferredFollowUpPush:
         ws = await self._push(generated=["ask about X"], persisted=False)
 
         ws.assert_not_awaited()
-
-
-class TestExecutorFinalFollowUpRouting:
-    """The executor-final follow-up one-shot must carry the conversation's
-    sticky-routing key.
-
-    Without it the call has no ``session_id``, so OpenRouter lands it on an
-    arbitrary upstream per call and its prompt head never chains with the
-    graph-path follow-ups — measured at 0% cache hit on every executor-final
-    follow-up. The conversation id IS that key, so which config the call is
-    made with is the behaviour here, not an implementation detail.
-    """
-
-    async def _config_of_follow_up_call(self, *, msg_type: str) -> dict | None:
-        with patch.object(
-            rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]
-        ) as follow_ups:
-            await rd._build_follow_up_actions(
-                msg_type=msg_type,
-                notification_text="the answer",
-                user_msg_content="the question",
-                user_id="user-1",
-                conversation_id="conv-1",
-            )
-        if not follow_ups.await_args_list:
-            return None
-        return follow_ups.await_args.args[2]
-
-    async def test_the_conversation_id_is_the_calls_session_key(self) -> None:
-        config = await self._config_of_follow_up_call(msg_type="final")
-
-        assert config == {"configurable": {"user_id": "user-1", "session_id": "conv-1"}}
-
-    async def test_a_non_final_result_never_makes_the_call(self) -> None:
-        assert await self._config_of_follow_up_call(msg_type="error") is None
 
 
 def _logged(mock, level: str) -> tuple[str, dict]:

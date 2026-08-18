@@ -45,8 +45,12 @@ NON_IDENTITY_CASES: list[tuple[str, dict[str, Any], dict[str, Any]]] = [
     ("key present only on the right", {"a": 1}, {"b": "x"}),
     ("left value is None", {"a": None}, {"a": "x"}),
     ("right value is None", {"a": "x"}, {"a": None}),
+    (
+        "a None value does not stop the keys after it",
+        {"a": "x", "b": "y"},
+        {"a": None, "b": "z"},
+    ),
     ("both values None", {"a": None}, {"a": None}),
-    ("a None right value skips only its key", {"a": "x", "b": "y"}, {"a": None, "b": "z"}),
     ("ordinary strings concatenate", {"finish_reason": "stop"}, {"finish_reason": "stop"}),
     ("lc_-prefixed index is idempotent", {"index": "lc_1"}, {"index": "lc_1"}),
     ("plain index string concatenates", {"index": "0"}, {"index": "1"}),
@@ -114,6 +118,21 @@ class TestAIMessageChunkMerge:
         merged = first + second
         assert merged.response_metadata["model_name"] == "deepseek/deepseek-v4-flash-0731"
 
+    def test_the_model_name_stays_a_valid_pricing_key_across_a_whole_stream(self) -> None:
+        # Two chunks was the reported shape, but nothing caps it at two, and the
+        # consequence scales: every extra stamp appends another copy, and any
+        # doubled id misses the pricing catalog and bills at DEFAULT_PRICING.
+        model = "deepseek/deepseek-v4-flash-0731"
+        chunks = [
+            AIMessageChunk(content="", response_metadata={"model_name": model}) for _ in range(5)
+        ]
+
+        merged = chunks[0]
+        for chunk in chunks[1:]:
+            merged = merged + chunk
+
+        assert merged.response_metadata["model_name"] == model
+
 
 class TestApply:
     def test_merge_module_is_rebound_to_the_wrapper(self) -> None:
@@ -133,14 +152,17 @@ class TestApply:
 
         assert ai.merge_dicts is patch_module.merge_dicts
 
-    def test_apply_leaves_the_merge_utils_module_merging_idempotently(self) -> None:
-        """`_merge` is its own reference — anything reaching merge_dicts through it
-        must get the patched behaviour too, not just the message modules."""
+    def test_apply_is_idempotent_and_rebinds_the_defining_module_too(self) -> None:
+        # `_merge` is where every not-yet-imported consumer will look the name
+        # up, so it is the one target the rebind-targets tuple does not cover
+        # and the only one no other test re-checks after apply() runs.
+        patch_module.apply()
         patch_module.apply()
 
-        assert merge_module.merge_dicts({"model_name": "m"}, {"model_name": "m"}) == {
-            "model_name": "m"
-        }
+        assert merge_module.merge_dicts is patch_module.merge_dicts
+        assert [m.merge_dicts for m in patch_module._REBIND_TARGETS] == [
+            patch_module.merge_dicts
+        ] * len(patch_module._REBIND_TARGETS)
 
 
 class TestUpstreamParity:
@@ -191,13 +213,16 @@ class TestMergeBranches:
     def test_a_none_on_the_right_never_clobbers_the_left_value(self) -> None:
         assert patch_module.merge_dicts({"a": "x"}, {"a": None}) == {"a": "x"}
 
-    def test_a_none_on_the_right_does_not_abandon_the_rest_of_the_dict(self) -> None:
-        # A None value is skipped, not a stop signal: keys after it in the same
-        # right-hand dict still merge.
-        assert patch_module.merge_dicts({"a": "x", "b": "y"}, {"a": None, "b": "z"}) == {
-            "a": "x",
-            "b": "yz",
-        }
+    def test_a_none_value_skips_only_its_own_key_not_the_rest_of_the_dict(self) -> None:
+        # A chunk's response_metadata routinely carries a None alongside real
+        # values (finish_reason arrives before usage does). Abandoning the whole
+        # right-hand dict at the first None would drop every field after it.
+        merged = patch_module.merge_dicts(
+            {"finish_reason": "stop", "model_name": "openrouter/x", "tokens": 3},
+            {"finish_reason": None, "model_name": "openrouter/x", "tokens": 4},
+        )
+
+        assert merged == {"finish_reason": "stop", "model_name": "openrouter/x", "tokens": 7}
 
     def test_mismatched_types_are_refused(self) -> None:
         with pytest.raises(TypeError, match="but with a different type"):

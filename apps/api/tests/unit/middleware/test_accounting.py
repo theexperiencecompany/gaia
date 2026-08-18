@@ -176,10 +176,13 @@ async def test_successive_calls_add_up_within_one_wide_event_scope() -> None:
     # rollup reads token totals from UsageMetadataCallback instead of from here.
     mw = LLMAccountingMiddleware(agent_name="a")
     for step in (1, 2, 3):
-        model = await _call(mw, _ai(input_tokens=100, output_tokens=20, cached=40))
+        model = await _call(mw, _ai(input_tokens=100, output_tokens=20, cached=40, reasoning=5))
         assert model["input_tokens"] == 100 * step
         assert model["output_tokens"] == 20 * step
         assert model["cached_tokens"] == 40 * step
+        # Reasoning tokens are billed as output; a total that fails to accumulate
+        # under-reports what thinking cost across the run.
+        assert model["reasoning_tokens"] == 5 * step
         assert model["tokens_used"] == 120 * step
         assert model["cost_usd"] == pytest.approx(0.14 * step)
         assert model["cache_hit_rate"] == 0.4

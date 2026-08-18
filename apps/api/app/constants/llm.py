@@ -56,9 +56,10 @@ RECURSION_WRAPUP_THRESHOLD_STEPS = 6
 # Harness-owned completion: when the executor tries to end with a plain-text
 # message while work is demonstrably unfinished, the loop injects up to this many
 # "verify or continue" nudges instead of ending. "Unfinished" means a tracked todo
-# is still pending, or fewer than COMPLETION_MIN_TOOL_CALLS tools were executed on
-# a delegated task — the "one lookup then assert a conclusion" failure a good model
-# would keep digging past. Both counts are scoped to the CURRENT delegation
+# is still pending, or no real tool ran on the delegated task (discovery calls
+# like retrieve_tools and errored calls don't count). A raw count floor sat here
+# once and told one-call tasks ("send the email") the work may not have
+# happened, goading a duplicate send. Both counts are scoped to the CURRENT delegation
 # (middleware.completion.current_delegation), not the executor thread, which
 # outlives it: counting the thread let each delegation inherit the previous one's
 # tools and nudges, so the guard fired once per conversation and never again.
@@ -66,7 +67,8 @@ RECURSION_WRAPUP_THRESHOLD_STEPS = 6
 # delegation. Only the executor opts in (require_finish_to_end); comms may always
 # end in plain text.
 MAX_COMPLETION_NUDGES = 1
-COMPLETION_MIN_TOOL_CALLS = 2
+# Tool results that prove no work happened: discovery-only or failed calls.
+COMPLETION_NON_WORK_TOOLS = frozenset({"retrieve_tools"})
 COMPLETION_NUDGE_MESSAGE = (
     "[System: before you finish — every part of the task must actually be done "
     "and confirmed with tools, not assumed. If anything is still pending, not yet "

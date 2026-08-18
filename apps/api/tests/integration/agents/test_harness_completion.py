@@ -84,7 +84,7 @@ class TestHarnessCompletion:
         assert "Final result" in final.content
 
     async def test_no_nudge_when_enough_tools_used(self):
-        """Enough tool calls (>= COMPLETION_MIN_TOOL_CALLS) + no pending todos →
+        """Real completed tool work + no pending todos →
         normal completion, no nudge tax."""
         c1 = {"name": "lookup", "args": {"query": "a"}, "id": "c1", "type": "tool_call"}
         c2 = {"name": "lookup", "args": {"query": "b"}, "id": "c2", "type": "tool_call"}
@@ -99,15 +99,15 @@ class TestHarnessCompletion:
         assert _nudges(result["messages"]) == [], "a thorough run must not be nudged"
         assert result["messages"][-1].content == "Done."
 
-    async def test_single_lookup_then_stop_is_nudged(self):
-        """The headline 'one lookup then assert a conclusion' failure: a single
-        tool call then a plain-text stop is treated as too shallow and nudged."""
-        c1 = {"name": "lookup", "args": {"query": "x"}, "id": "c1", "type": "tool_call"}
-        # After one lookup the model quits; after the nudge it does two more calls
-        # and finishes.
+    async def test_stopping_with_no_real_work_is_nudged(self):
+        """A plain-text stop with NO completed tool call is the 'assert a
+        conclusion from thin air' failure. One successful call is deliberately
+        NOT nudged anymore: for a one-call task the old floor's "do it now"
+        goaded a duplicate send."""
+        # The model quits immediately; after the nudge it works and finishes.
         c2 = {"name": "lookup", "args": {"query": "y"}, "id": "c2", "type": "tool_call"}
         c3 = {"name": "lookup", "args": {"query": "z"}, "id": "c3", "type": "tool_call"}
-        llm = create_fake_llm_with_tool_calls([c1, "All set.", c2, c3, "Done thoroughly."])
+        llm = create_fake_llm_with_tool_calls(["All set.", c2, c3, "Done thoroughly."])
         graph = _compile(llm, require_finish_to_end=True)
 
         result = await graph.ainvoke(

@@ -24,7 +24,6 @@ from app.agents.middleware.completion import (
     work_looks_unfinished,
 )
 from app.constants.llm import (
-    COMPLETION_MIN_TOOL_CALLS,
     COMPLETION_NUDGE_MESSAGE,
     COMPLETION_PROMISE_MARKERS,
 )
@@ -255,7 +254,7 @@ class TestWorkLooksUnfinished:
     @pytest.mark.parametrize("status", ["pending", "in_progress"])
     def test_an_open_todo_blocks_the_stop(self, status: str) -> None:
         state = make_state(
-            messages=[_task(), *_worked(COMPLETION_MIN_TOOL_CALLS), AIMessage(content="all done")],
+            messages=[_task(), *_worked(2), AIMessage(content="all done")],
             todos=[{"status": status}],
         )
 
@@ -263,7 +262,7 @@ class TestWorkLooksUnfinished:
 
     def test_completed_todos_do_not_block(self) -> None:
         state = make_state(
-            messages=[_task(), *_worked(COMPLETION_MIN_TOOL_CALLS), AIMessage(content="all done")],
+            messages=[_task(), *_worked(2), AIMessage(content="all done")],
             todos=[{"status": "completed"}],
         )
 
@@ -273,7 +272,7 @@ class TestWorkLooksUnfinished:
         state = make_state(
             messages=[
                 _task(),
-                *_worked(COMPLETION_MIN_TOOL_CALLS),
+                *_worked(2),
                 AIMessage(content="hang tight"),
             ],
             todos=[],
@@ -281,23 +280,50 @@ class TestWorkLooksUnfinished:
 
         assert work_looks_unfinished(state) is True
 
-    @pytest.mark.parametrize(
-        ("tool_calls", "unfinished"),
-        [
-            (COMPLETION_MIN_TOOL_CALLS - 1, True),
-            (COMPLETION_MIN_TOOL_CALLS, False),
-            (COMPLETION_MIN_TOOL_CALLS + 1, False),
-        ],
-    )
-    def test_the_tool_call_floor_is_inclusive(self, tool_calls: int, unfinished: bool) -> None:
-        """At the floor is enough; one below is not. An off-by-one here either taxes
-        a finished run with a pointless extra loop or lets a one-lookup answer end."""
+    def test_one_successful_real_call_is_finished_work(self) -> None:
+        """A one-call task ("send the email") is done after its one call. A raw
+        count floor here told the model the send may not have happened — and
+        "do it now" can goad a duplicate send."""
         state = make_state(
-            messages=[_task(), *_worked(tool_calls), AIMessage(content="here is the answer")],
+            messages=[_task(), *_worked(1), AIMessage(content="sent")],
             todos=[],
         )
 
-        assert work_looks_unfinished(state) is unfinished
+        assert work_looks_unfinished(state) is False
+
+    def test_discovery_alone_is_not_work(self) -> None:
+        state = make_state(
+            messages=[
+                _task(),
+                AIMessage(content=""),
+                ToolMessage(content="[tools]", tool_call_id="c1", name="retrieve_tools"),
+                AIMessage(content="here is the answer"),
+            ],
+            todos=[],
+        )
+
+        assert work_looks_unfinished(state) is True
+
+    def test_an_errored_call_is_not_work(self) -> None:
+        state = make_state(
+            messages=[
+                _task(),
+                AIMessage(content=""),
+                ToolMessage(content="boom", tool_call_id="c1", status="error"),
+                AIMessage(content="done"),
+            ],
+            todos=[],
+        )
+
+        assert work_looks_unfinished(state) is True
+
+    def test_no_tool_calls_at_all_is_unfinished(self) -> None:
+        state = make_state(
+            messages=[_task(), AIMessage(content="here is the answer")],
+            todos=[],
+        )
+
+        assert work_looks_unfinished(state) is True
 
     def test_a_thread_with_no_work_at_all_is_unfinished(self) -> None:
         state = make_state(messages=[_task(), AIMessage(content="I think it is 42.")], todos=[])
@@ -311,7 +337,7 @@ class TestWorkLooksUnfinished:
         state = make_state(
             messages=[
                 _task("first task"),
-                *_worked(COMPLETION_MIN_TOOL_CALLS + 3),
+                *_worked(5),
                 AIMessage(content="finished one"),
                 _task("second task"),
                 AIMessage(content="I think it is 42."),
@@ -322,9 +348,7 @@ class TestWorkLooksUnfinished:
         assert work_looks_unfinished(state) is True
 
     def test_missing_todos_channel_is_treated_as_no_todos(self) -> None:
-        state = make_state(
-            messages=[_task(), *_worked(COMPLETION_MIN_TOOL_CALLS), AIMessage(content="done")]
-        )
+        state = make_state(messages=[_task(), *_worked(2), AIMessage(content="done")])
         state.pop("todos", None)
 
         assert work_looks_unfinished(state) is False
@@ -333,7 +357,7 @@ class TestWorkLooksUnfinished:
         """The channel is not schema-enforced; a stray string must not crash the
         guard or read as an open item."""
         state = make_state(
-            messages=[_task(), *_worked(COMPLETION_MIN_TOOL_CALLS), AIMessage(content="done")],
+            messages=[_task(), *_worked(2), AIMessage(content="done")],
             todos=["pending", None],
         )
 

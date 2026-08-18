@@ -51,6 +51,7 @@ from app.constants.llm import (
     AUX_MODEL_NAME,
     DEFAULT_GEMINI_MODEL_NAME,
     DEFAULT_MODEL_NAME,
+    OPENROUTER_MAX_OUTPUT_TOKENS,
     STICKY_FLIP_RETRY_MIN_INPUT,
 )
 from app.constants.log_tags import LogTag
@@ -486,6 +487,10 @@ class TestGetDefaultLlm:
         # would arrive as one lump instead of streaming like the primary.
         assert kwargs["streaming"] is True
         assert kwargs["stream_usage"] is True
+        # get_default_llm feeds the agent-graph fallback (create_agent) and the
+        # summarization/compaction middleware — both legitimately need the full
+        # reservation, not the helper cap.
+        assert kwargs["max_tokens"] == OPENROUTER_MAX_OUTPUT_TOKENS
 
     @patch("app.agents.llm.client.ChatOpenRouter")
     @patch("app.agents.llm.client.settings")
@@ -585,6 +590,23 @@ class TestAinvokeLlm:
         with pytest.raises(ValueError):
             await ainvoke_llm(primary, [HumanMessage(content="hi")], fallback=fallback)
         fallback.ainvoke.assert_not_called()
+
+    async def test_attaches_usage_handler_by_default(self) -> None:
+        primary = self._runnable(result=AIMessage(content="ok"))
+        await ainvoke_llm(primary, [HumanMessage(content="hi")], config=RunnableConfig())
+        assert primary.ainvoke.call_args.kwargs["config"]["callbacks"]
+
+    async def test_graph_calls_skip_auxiliary_metering(self) -> None:
+        # The agent graph is metered by LLMAccountingMiddleware; attaching the
+        # usage handler here too booked every graph call a second time.
+        primary = self._runnable(result=AIMessage(content="ok"))
+        await ainvoke_llm(
+            primary,
+            [HumanMessage(content="hi")],
+            config=RunnableConfig(),
+            meter_auxiliary=False,
+        )
+        assert "callbacks" not in primary.ainvoke.call_args.kwargs["config"]
 
 
 class TestFallbackHandover:
@@ -1580,6 +1602,11 @@ class TestStampFallback:
         result = object()
 
         assert _stamp_fallback(result) is result
+
+
+# ---------------------------------------------------------------------------
+# _record_auxiliary_usage
+# ---------------------------------------------------------------------------
 
 
 class TestProviderModelFieldId:

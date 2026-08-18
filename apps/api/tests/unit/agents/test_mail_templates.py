@@ -17,6 +17,7 @@ from app.agents.templates.mail_templates import (
     thread_template,
 )
 from app.models.composio_schemas.gmail import GmailMessagePart
+from shared.py.wide_events import log
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -827,29 +828,50 @@ class TestUndecodablePartIsSkippedNotFatal:
 
 
 class TestDecodePartPayload:
-    """The single place a malformed MIME part becomes a skipped part instead of a
-    failed fetch: what it hands back, and the warning it leaves behind."""
+    """The single decode seam both content extractors share.
 
-    def test_a_well_formed_part_yields_its_decoded_bytes(self):
-        part = email.message_from_string(
-            "Content-Type: text/plain\nContent-Transfer-Encoding: base64\n\n"
-            + base64.b64encode(b"hello there").decode()
-        )
+    Exercised directly because through the extractors a wrong return is
+    indistinguishable from a missing part: both surface as empty content.
+    """
 
-        assert _decode_part_payload(part) == b"hello there"
-
-    def test_a_malformed_part_is_skipped_and_its_cause_named_in_the_log(self):
-        """An empty part claiming base64 is the shape that crashes the stdlib. The
-        skip is silent to the caller, so the warning is the only trace of why a
-        message came back short — it has to name the failure."""
+    def test_a_transfer_encoded_part_is_returned_decoded(self):
+        # The wire form and the decoded bytes differ on purpose — a decode that
+        # silently returned the raw base64 text would hand the model gibberish
+        # and still read as "content was extracted".
         part = email.message.Message()
         part["Content-Transfer-Encoding"] = "base64"
+        part.set_payload(base64.b64encode(b"Hello payload").decode())
 
-        with patch("app.agents.templates.mail_templates.log") as mock_log:
-            assert _decode_part_payload(part) is None
+        assert _decode_part_payload(part) == b"Hello payload"
 
-        assert (
-            mock_log.warning.call_args.args[0]
-            == "Skipping malformed MIME part during content extraction"
-        )
-        assert mock_log.warning.call_args.kwargs == {"error_type": "UnboundLocalError"}
+    def test_a_part_with_no_transfer_encoding_is_still_returned_as_bytes(self):
+        # Callers branch on bytes vs str; a part with no encoding header takes
+        # the same bytes path, so the str branch is dead for real Gmail parts.
+        part = email.message.Message()
+        part.set_payload("Plain body")
+
+        assert _decode_part_payload(part) == b"Plain body"
+
+    def test_a_malformed_part_is_skipped_and_the_failure_is_named(self):
+        # An empty part claiming base64 makes the stdlib raise UnboundLocalError.
+        # The warning is the only trace the message came back short, so the
+        # exception type has to reach it — "something failed" is not a diagnosis.
+        part = email.message.Message()
+        part["Content-Transfer-Encoding"] = "base64"
+        log.reset()
+
+        assert _decode_part_payload(part) is None
+
+        warnings = log.get()["warnings"]
+        assert len(warnings) == 1
+        assert warnings[0]["msg"] == "Skipping malformed MIME part during content extraction"
+        assert warnings[0]["error_type"] == "UnboundLocalError"
+
+    def test_a_healthy_part_is_decoded_without_warning(self):
+        part = email.message.Message()
+        part.set_payload("Plain body")
+        log.reset()
+
+        _decode_part_payload(part)
+
+        assert "warnings" not in log.get()

@@ -356,6 +356,7 @@ class TestCallAgent:
             patches["build_state"],
             patch(
                 "app.agents.core.agent.build_agent_config",
+                new_callable=AsyncMock,
                 return_value={
                     "configurable": {
                         "thread_id": "conv-1",
@@ -392,6 +393,7 @@ class TestCallAgent:
             patches["build_state"],
             patch(
                 "app.agents.core.agent.build_agent_config",
+                new_callable=AsyncMock,
                 return_value={
                     "configurable": {
                         "thread_id": "conv-1",
@@ -748,6 +750,11 @@ class TestTheLaneTheRunResolves:
             patches["construct"],
             patches["get_graph"],
             patches["build_state"],
+            # dev_option is None only in production: with ENV unpinned this passes
+            # in CI (no .env) and fails on every developer machine, where
+            # apps/api/.env sets ENV=development and the dev selector resolves an
+            # option. Pinned the same way TestTheDevModelSelector pins it.
+            patch.object(agent_module.settings, "ENV", "production"),
             patch(
                 "app.agents.core.agent.build_agent_config",
                 new_callable=AsyncMock,

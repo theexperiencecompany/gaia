@@ -22,6 +22,17 @@ FAKE_USER_ID = "507f1f77bcf86cd799439011"
 MODULE = "app.agents.tools.skill_tools"
 
 
+#: What a step's blank-value rejection must say. Asserted verbatim: the field
+#: name alone is in the error whatever the validator raises, so a looser match
+#: passes even when the message stops telling the model what went wrong.
+_BLANK_STEP_MSG = "Value error, must not be blank"
+
+
+def _blank_step_errors(exc: ValidationError) -> list[tuple[tuple[Any, ...], str]]:
+    """``exc``'s value_error entries as (location, message) pairs, in order."""
+    return [(e["loc"], e["msg"]) for e in exc.errors() if e["type"] == "value_error"]
+
+
 def _cfg(user_id: str = FAKE_USER_ID) -> dict[str, Any]:
     return {"metadata": {"user_id": user_id}}
 
@@ -439,11 +450,6 @@ def _learned_spec(**overrides: Any) -> dict[str, Any]:
     return spec
 
 
-def _field_errors(error: ValidationError) -> list[tuple[str, str]]:
-    """(field, message) pairs, so a rejection is asserted by its exact wording."""
-    return [(str(entry["loc"][-1]), entry["msg"]) for entry in error.errors()]
-
-
 @pytest.mark.unit
 class TestLearnedSkillSpecValidation:
     def test_empty_steps_rejected(self) -> None:
@@ -451,16 +457,34 @@ class TestLearnedSkillSpecValidation:
             LearnedSkillSpec(**_learned_spec(steps=[]))
 
     def test_blank_goal_rejected(self) -> None:
-        with pytest.raises(ValidationError) as err:
+        with pytest.raises(ValidationError) as exc:
             LearnedSkillSpec(**_learned_spec(steps=[{"goal": "  ", "tool": "gmail_search"}]))
 
-        assert _field_errors(err.value) == [("goal", "Value error, must not be blank")]
+        assert _blank_step_errors(exc.value) == [(("steps", 0, "goal"), _BLANK_STEP_MSG)]
 
     def test_blank_tool_rejected(self) -> None:
-        with pytest.raises(ValidationError) as err:
+        with pytest.raises(ValidationError) as exc:
             LearnedSkillSpec(**_learned_spec(steps=[{"goal": "Do it", "tool": "   "}]))
 
-        assert _field_errors(err.value) == [("tool", "Value error, must not be blank")]
+        assert _blank_step_errors(exc.value) == [(("steps", 0, "tool"), _BLANK_STEP_MSG)]
+
+    def test_blank_goal_and_tool_are_each_reported(self) -> None:
+        with pytest.raises(ValidationError) as exc:
+            LearnedSkillSpec(**_learned_spec(steps=[{"goal": "", "tool": "\t"}]))
+
+        assert _blank_step_errors(exc.value) == [
+            (("steps", 0, "goal"), _BLANK_STEP_MSG),
+            (("steps", 0, "tool"), _BLANK_STEP_MSG),
+        ]
+
+    def test_whitespace_padded_values_are_accepted_verbatim(self) -> None:
+        # The validator rejects blanks; it must not silently strip a real value.
+        spec = LearnedSkillSpec(
+            **_learned_spec(steps=[{"goal": " Do it ", "tool": " gmail_search "}])
+        )
+
+        assert spec.steps[0].goal == " Do it "
+        assert spec.steps[0].tool == " gmail_search "
 
 
 @pytest.mark.unit
