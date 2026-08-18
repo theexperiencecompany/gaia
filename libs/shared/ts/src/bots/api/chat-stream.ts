@@ -350,8 +350,14 @@ async function streamChatOnce(
             if (isRetryable && !fullText) {
               // No content received yet — store for re-throw so streamChat can retry
               streamError = err;
+            } else if (fullText) {
+              // The connection died, but the answer is already assembled here.
+              // Deliver it exactly as the `end` handler does — replacing real
+              // content with an error card loses a reply the user had earned,
+              // and on a non-streaming platform (Discord/WhatsApp render only
+              // at onDone) it means they see nothing at all.
+              await onDone(fullText, conversationId);
             } else {
-              // Has partial content or non-retryable — surface to user
               await onError(new Error(toStreamErrorMessage(err.message)));
             }
           }
