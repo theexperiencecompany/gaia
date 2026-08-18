@@ -1,140 +1,236 @@
-"""The rate-limit card payload, and the tool decorator that streams it.
+"""The rate-limit card: how a blocked call is described to the frontend.
 
-``build_rate_limit_card`` is the one shape three emitters share (this decorator,
-the LLM budget wall, the free memory cap) and the frontend's ``RateLimitCard``
-parses. Nothing else executes it: every other test of this module goes through
-a tool that never hits its limit, so a silently reshaped payload would reach the
-frontend as a card that renders empty.
+``build_rate_limit_card`` is the one payload shape every limit surface renders
+(the tool decorator here, the LLM budget wall, the free memory cap), and
+``with_rate_limiting`` is the caller that fills it in from a 429 the tiered
+limiter raised. Both are asserted directly — the decorator's consumers only
+ever exercise the pass-through path, so nothing else runs this code.
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.runnables import RunnableConfig
 import pytest
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
-from app.decorators.rate_limiting import (
-    LangChainRateLimitException,
-    build_rate_limit_card,
-    with_rate_limiting,
-)
+from app.decorators import rate_limiting as rl
 from app.models.payment_models import PlanType
+
+RESET_AT = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
 
 
 class TestBuildRateLimitCard:
-    def test_the_frame_names_the_card_the_frontend_looks_up(self) -> None:
-        """``tool_name`` is the renderer key — a different string renders nothing."""
-        card = build_rate_limit_card(
-            feature="mail_send",
+    """The stream-card payload the frontend's RateLimitCard renders."""
+
+    def test_the_card_is_a_system_rate_limit_tool_payload(self) -> None:
+        card = rl.build_rate_limit_card(
+            feature="generate_image",
             plan_required="pro",
-            reset_time="2026-01-01T00:00:00+00:00",
+            reset_time="2026-03-01T12:00:00+00:00",
             current_plan="free",
         )
 
         assert card["tool_data"]["tool_name"] == "rate_limit_data"
         assert card["tool_data"]["tool_category"] == "system"
         assert card["tool_data"]["data"] == {
-            "feature": "mail_send",
+            "feature": "generate_image",
             "plan_required": "pro",
-            "reset_time": "2026-01-01T00:00:00+00:00",
+            "reset_time": "2026-03-01T12:00:00+00:00",
             "current_plan": "free",
         }
 
-    def test_the_frame_is_timestamped_in_utc_iso(self) -> None:
-        """The chat transcript orders entries by this stamp."""
-        card = build_rate_limit_card(
-            feature="mail_send", plan_required=None, reset_time=None, current_plan="free"
-        )
-
-        stamped = datetime.fromisoformat(card["tool_data"]["timestamp"])
-        assert stamped.tzinfo is not None
-        assert (datetime.now(UTC) - stamped).total_seconds() < 60
-
-    def test_a_message_is_carried_only_when_one_was_given(self) -> None:
-        """An always-present ``message: None`` would render an empty line under
-        every card; the frontend falls back to its own copy when the key is
-        absent."""
-        without = build_rate_limit_card(
-            feature="mail_send", plan_required=None, reset_time=None, current_plan="free"
-        )
-        with_message = build_rate_limit_card(
-            feature="mail_send",
+    def test_the_card_is_stamped_with_a_utc_timestamp(self) -> None:
+        card = rl.build_rate_limit_card(
+            feature="generate_image",
             plan_required=None,
             reset_time=None,
             current_plan="free",
-            message="Daily budget spent",
         )
 
-        assert "message" not in without["tool_data"]["data"]
-        assert with_message["tool_data"]["data"]["message"] == "Daily budget spent"
+        stamped = datetime.fromisoformat(card["tool_data"]["timestamp"])
+        assert stamped.utcoffset() is not None  # never a naive local time
+        assert stamped.utcoffset().total_seconds() == 0
+
+    def test_an_explicit_message_travels_with_the_card(self) -> None:
+        card = rl.build_rate_limit_card(
+            feature="memory",
+            plan_required="pro",
+            reset_time=None,
+            current_plan="free",
+            message="You have reached the free memory cap.",
+        )
+
+        assert card["tool_data"]["data"]["message"] == "You have reached the free memory cap."
+
+    def test_no_message_means_no_message_key(self) -> None:
+        """The frontend renders its own default copy — an empty string would
+        override it with a blank line."""
+        card = rl.build_rate_limit_card(
+            feature="memory",
+            plan_required=None,
+            reset_time=None,
+            current_plan="free",
+        )
+
+        assert "message" not in card["tool_data"]["data"]
 
 
-@pytest.fixture
-def limited_tool(monkeypatch: pytest.MonkeyPatch) -> Any:
-    """A decorated tool whose limiter always refuses, on a paid-plan user."""
-    monkeypatch.setattr(
-        "app.decorators.rate_limiting.payment_service.get_cached_plan_type",
-        AsyncMock(return_value=PlanType.PRO),
-    )
-    monkeypatch.setattr(
-        "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
-        AsyncMock(
-            side_effect=RateLimitExceededException(
-                feature="mail_send",
-                plan_required="pro",
-                reset_time=datetime(2026, 1, 1, tzinfo=UTC),
-            )
+async def _limited_tool(config: dict[str, Any] | None = None) -> dict[str, Any]:
+    """A rate-limited tool body; never reached once the limiter raises."""
+    return {"ran": True}
+
+
+async def _call_blocked_tool(
+    exceeded: RateLimitExceededException,
+    *,
+    plan: PlanType = PlanType.FREE,
+    writer: MagicMock | None = None,
+    stream_writer_error: Exception | None = None,
+) -> None:
+    """Drive the decorated tool with the limiter refusing the call."""
+    decorated = rl.with_rate_limiting(feature_key="generate_image")(_limited_tool)
+    get_writer = MagicMock(side_effect=stream_writer_error, return_value=writer or MagicMock())
+    with (
+        patch(
+            "app.decorators.rate_limiting.payment_service.get_cached_plan_type",
+            new=AsyncMock(return_value=plan),
         ),
-    )
-
-    @with_rate_limiting("mail_send")
-    async def send_mail(*, config: RunnableConfig) -> str:
-        raise AssertionError("the tool body must not run once the limit binds")
-
-    return send_mail
-
-
-_CALLER = RunnableConfig(metadata={"user_id": "u-1"})
+        patch(
+            "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
+            new=AsyncMock(side_effect=exceeded),
+        ),
+        patch.object(rl, "get_stream_writer", new=get_writer),
+    ):
+        await decorated(config={"metadata": {"user_id": "user-1"}})
 
 
-class TestRateLimitedToolStreamsTheCard:
-    async def test_the_refusal_is_streamed_as_a_card_before_it_is_raised(
-        self, limited_tool: Any, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """The exception reaches the agent, not the user; this card is the only
-        thing the user sees, so it carries the plan and the reset time."""
+class TestBlockedToolStreamsItsCard:
+    """A tool refused by the tiered limiter emits the inline card, then raises."""
+
+    async def test_the_card_describes_the_blocked_feature_and_the_users_plan(self) -> None:
         writer = MagicMock()
-        monkeypatch.setattr(
-            "app.decorators.rate_limiting.get_stream_writer", MagicMock(return_value=writer)
-        )
 
-        with pytest.raises(LangChainRateLimitException):
-            await limited_tool(config=_CALLER)
+        with pytest.raises(rl.LangChainRateLimitException):
+            await _call_blocked_tool(
+                RateLimitExceededException(
+                    feature="generate_image",
+                    plan_required="pro",
+                    reset_time=RESET_AT,
+                ),
+                plan=PlanType.PRO,
+                writer=writer,
+            )
 
-        streamed = writer.call_args.args[0]["tool_data"]["data"]
-        assert streamed == {
-            "feature": "mail_send",
+        card = writer.call_args.args[0]
+        assert card["tool_data"]["data"] == {
+            "feature": "generate_image",
             "plan_required": "pro",
-            "reset_time": "2026-01-01T00:00:00+00:00",
-            "current_plan": PlanType.PRO.value,
+            "reset_time": RESET_AT.isoformat(),
+            "current_plan": "pro",
         }
 
-    async def test_the_refusal_still_raises_outside_a_streaming_context(
-        self, limited_tool: Any, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Workflows and background tasks have no stream writer. The card is
-        decoration; swallowing the refusal with it would let the call through."""
-        monkeypatch.setattr(
-            "app.decorators.rate_limiting.get_stream_writer",
-            MagicMock(side_effect=RuntimeError("not in a streaming context")),
-        )
+    async def test_a_plain_count_limit_offers_no_upgrade(self) -> None:
+        """Nothing to upsell when the feature is in the plan and only the
+        count ran out — an invented plan_required would pitch a pointless
+        upgrade."""
+        writer = MagicMock()
 
-        with pytest.raises(LangChainRateLimitException) as raised:
-            await limited_tool(config=_CALLER)
+        with pytest.raises(rl.LangChainRateLimitException):
+            await _call_blocked_tool(
+                RateLimitExceededException(feature="generate_image", reset_time=RESET_AT),
+                writer=writer,
+            )
 
-        assert raised.value.feature == "mail_send"
-        assert raised.value.reset_time == "2026-01-01T00:00:00+00:00"
+        card = writer.call_args.args[0]
+        assert card["tool_data"]["data"]["plan_required"] is None
+        assert card["tool_data"]["data"]["current_plan"] == "free"
+
+    async def test_the_raised_exception_carries_the_limit_details(self) -> None:
+        with pytest.raises(rl.LangChainRateLimitException) as raised:
+            await _call_blocked_tool(
+                RateLimitExceededException(
+                    feature="generate_image",
+                    plan_required="pro",
+                    reset_time=RESET_AT,
+                )
+            )
+
+        assert raised.value.feature == "generate_image"
+        assert raised.value.reset_time == RESET_AT.isoformat()
+        assert raised.value.detail["plan_required"] == "pro"
+
+    async def test_no_streaming_context_still_blocks_the_call(self) -> None:
+        """The card is decoration; outside a LangGraph run there is no writer
+        and the refusal must still reach the agent."""
+        with pytest.raises(rl.LangChainRateLimitException):
+            await _call_blocked_tool(
+                RateLimitExceededException(feature="generate_image", reset_time=RESET_AT),
+                stream_writer_error=RuntimeError("not in a streaming context"),
+            )
+
+
+class TestAllowedCallRecordsTheContext:
+    """The passing path stashes the plan for the response metadata. Plans
+    normally arrive as a PlanType, but the fallback branch stringifies
+    whatever else the cache hands back — and it must stringify THAT value,
+    not a placeholder."""
+
+    @staticmethod
+    async def _run_allowed(plan: object) -> dict[str, object]:
+        decorated = rl.with_rate_limiting(feature_key="generate_image")(_limited_tool)
+        with (
+            patch(
+                "app.decorators.rate_limiting.payment_service.get_cached_plan_type",
+                new=AsyncMock(return_value=plan),
+            ),
+            patch(
+                "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
+                new=AsyncMock(
+                    return_value={"day": SimpleNamespace(used=1, limit=5, reset_time=RESET_AT)}
+                ),
+            ),
+        ):
+            await decorated(config={"metadata": {"user_id": "user-1"}})
+        return rl.rate_limit_context.get()
+
+    async def test_a_non_enum_plan_is_stringified_into_the_context(self) -> None:
+        context = await self._run_allowed("legacy_plan")
+
+        assert context["user_plan"] == "legacy_plan"
+        assert context["feature_key"] == "generate_image"
+
+    async def test_an_enum_plan_records_its_value(self) -> None:
+        context = await self._run_allowed(PlanType.PRO)
+
+        assert context["user_plan"] == PlanType.PRO.value
+
+
+class TestPlanLabel:
+    """One helper feeds both the passing context and the refusal card."""
+
+    def test_an_enum_plan_uses_its_wire_value(self) -> None:
+        assert rl.plan_label(PlanType.PRO) == PlanType.PRO.value
+
+    def test_anything_else_stringifies_itself(self) -> None:
+        assert rl.plan_label("legacy_plan") == "legacy_plan"
+        assert rl.plan_label(None) == "None"
+
+
+class TestBlockedCallLabelsANonEnumPlan:
+    async def test_the_card_carries_the_stringified_plan(self) -> None:
+        writer = MagicMock()
+
+        with pytest.raises(rl.LangChainRateLimitException):
+            await _call_blocked_tool(
+                RateLimitExceededException(
+                    feature="generate_image",
+                    plan_required="pro",
+                    reset_time=RESET_AT,
+                ),
+                plan="legacy_plan",  # type: ignore[arg-type]
+                writer=writer,
+            )
+
+        assert writer.call_args.args[0]["tool_data"]["data"]["current_plan"] == "legacy_plan"
