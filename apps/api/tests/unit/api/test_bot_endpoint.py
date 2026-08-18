@@ -406,7 +406,6 @@ class TestGetSettings:
         assert response.status_code == 200
         assert response.json()["account_created_at"] == "2024-01-02T03:04:05+00:00"
 
-    @pytest.mark.regression
     @patch(
         "app.api.v1.endpoints.bot.get_user_integration_records",
         new_callable=AsyncMock,
