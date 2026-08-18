@@ -30,6 +30,7 @@ from langgraph.store.base import (
     tokenize_path,
 )
 
+from app.constants.chroma import MAX_CONCURRENT_CHROMA_WRITES
 from app.constants.log_tags import LogTag
 from app.db.chroma.noop_embedding import NoOpEmbeddingFunction
 from shared.py.wide_events import VectorContext, log
@@ -37,11 +38,6 @@ from shared.py.wide_events import VectorContext, log
 # A filter value (or the item value it's compared against) is an arbitrary
 # JSON-like scalar/container pulled out of a MongoDB-style query filter dict.
 FilterValue = str | int | float | bool | None | dict[str, Any] | list[Any]
-
-# Caps concurrent ChromaDB HTTP connections during a put batch to avoid
-# exhausting OS file descriptors (ENFILE 24) when a large batch fans out
-# all sockets at once.
-MAX_CONCURRENT_CHROMA_WRITES = 10
 
 
 class ChromaStore(BaseStore):
