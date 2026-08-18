@@ -231,7 +231,7 @@
     {
       "path": "apps/api/tests/unit/agents/test_agent_core.py",
       "kind": "type-ignore",
-      "count": 3,
+      "count": 1,
       "hash": "3282346397b46c5e38bc509ac229743252203150edebfc2766f2c480907ba628"
     },
     {
