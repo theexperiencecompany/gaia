@@ -225,3 +225,66 @@ class TestLookupDefaultEquivalence:
         result = _classify(workdir)
 
         assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+
+class TestPopThroughCastWithEarlyExit:
+    """The real stream_utils shape: pop's default flows through a cast, the
+    truthiness test is `if not x: return`, and REAL reads follow the guard."""
+
+    _BODY = (
+        '    x = cast(T, d.pop("k", {}))\n'
+        "    if not x:\n"
+        "        return None\n"
+        "    return list(x.items())"
+    )
+
+    def _write_real_module(self, workdir: Path) -> None:
+        (workdir / MODULE_REL).write_text(f"def probe(d):\n{self._BODY}\n")
+
+    def test_the_default_is_equivalent_despite_cast_and_later_reads(self, workdir: Path) -> None:
+        self._write_real_module(workdir)
+        _write_mutants(
+            workdir,
+            self._BODY,
+            self._BODY.replace('d.pop("k", {})', 'd.pop("k", None)'),
+        )
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+
+    def test_a_read_before_the_guard_is_still_reported(self, workdir: Path) -> None:
+        body = (
+            '    x = cast(T, d.pop("k", {}))\n'
+            "    n = len(x)\n"
+            "    if not x:\n"
+            "        return None\n"
+            "    return n"
+        )
+        (workdir / MODULE_REL).write_text(f"def probe(d):\n{body}\n")
+        _write_mutants(workdir, body, body.replace('d.pop("k", {})', 'd.pop("k", None)'))
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+
+class TestContainerFunctionWithNestedDefs:
+    """A mutated CONTAINER function (tool registrars) holds nested defs; the
+    block split must not truncate its body at the first one — the header alone
+    compares equal to every mutant, and 788 real survivors on one module were
+    once stamped provably equivalent that way."""
+
+    _ORIG = '    x = d.get("k")\n    def inner():\n        return 1\n    return (x, inner())'
+
+    def test_a_change_beyond_the_nested_def_is_reported(self, workdir: Path) -> None:
+        _write_mutants(
+            workdir,
+            self._ORIG,
+            self._ORIG.replace('d.get("k")', 'd.get("XXkXX")'),
+        )
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+        assert result.returncode == 1
