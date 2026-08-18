@@ -146,6 +146,12 @@ export interface CommunityIntegration {
 export interface IntegrationStatusRecord {
   integrationId: string;
   connected: boolean;
+  /**
+   * The raw backend status. `connected` alone cannot tell a never-connected
+   * integration from one whose grant died, so any surface rendering a CTA reads
+   * this (via `integrationConnectionState`) instead of saying "Connect" for both.
+   */
+  status: IntegrationStatusValue;
   lastConnected?: string;
   error?: string;
   metadata?: Record<string, unknown>;
@@ -166,6 +172,8 @@ export interface MyIntegrationItem {
   source: "platform" | "custom";
   managedBy: IntegrationManagedBy;
   status: IntegrationStatusValue;
+  /** ISO timestamp of when the upstream grant died. Only set when `status` is `expired`. */
+  expiredAt?: string | null;
   requiresAuth: boolean;
   authType?: IntegrationAuthType | null;
   isFeatured: boolean;

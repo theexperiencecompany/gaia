@@ -77,6 +77,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
       description: item.description,
       category: item.category as Integration["category"],
       status: item.status,
+      expiredAt: item.expiredAt ?? undefined,
       managedBy: item.managedBy,
       source: item.source,
       requiresAuth: item.requiresAuth,
@@ -122,6 +123,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
       return {
         integrationId: item.id,
         connected: item.status === "connected",
+        status: item.status,
       };
     },
     [myIntegrationsData],

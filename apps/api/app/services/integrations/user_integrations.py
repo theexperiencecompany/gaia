@@ -79,6 +79,7 @@ async def get_user_integrations(user_id: str) -> UserIntegrationsListResponse:
                 status=ui.status,
                 created_at=ui.created_at,
                 connected_at=ui.connected_at,
+                expired_at=ui.expired_at,
                 integration=integration,
             )
         )

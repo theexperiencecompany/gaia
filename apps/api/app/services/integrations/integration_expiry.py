@@ -123,21 +123,51 @@ async def expire_user_integration(
             integration_id,
             integration.name if integration else integration_id,
             paused_workflows,
+            reason,
         )
 
     return True
 
 
-def _expiry_body(integration_name: str, paused_workflows: Sequence[str]) -> str:
-    """Say what actually stopped working, not just that something broke."""
-    lost = f"GAIA lost access to your {integration_name} account and can no longer use it."
+# Composio never enumerates `status_reason`: the pinned SDK types it as a bare
+# `Optional[str]` on both the webhook payload (`composio.core.models.webhook_events`)
+# and the REST response. `refresh_token_revoked` is the only value we have observed,
+# so this matches meaningful tokens rather than a guessed enum \u2014 grow it as new
+# values show up in the `integration_expiry.reason` wide-event field.
+_EXPIRY_CAUSE_BY_TOKEN: tuple[tuple[str, str], ...] = (
+    ("revoked", "Your {integration} account revoked GAIA's access."),
+    ("expired", "The sign-in for your {integration} account expired."),
+)
+
+
+def _expiry_cause(integration_name: str, reason: str | None) -> str | None:
+    """Human copy for why the connection died, or None when the reason is unrecognised.
+
+    Only a single machine token is ever interpreted: the tool-execution path passes
+    a raw Composio error sentence as the reason, and developer text must never reach
+    user-facing copy.
+    """
+    token = (reason or "").strip().lower()
+    if len(token.split()) != 1:
+        return None
+    for marker, template in _EXPIRY_CAUSE_BY_TOKEN:
+        if marker in token:
+            return template.format(integration=integration_name)
+    return None
+
+
+def _expiry_body(integration_name: str, paused_workflows: Sequence[str], reason: str | None) -> str:
+    """Say what actually stopped working \u2014 and why, when the reason is one we recognise."""
+    lead = _expiry_cause(integration_name, reason) or (
+        f"GAIA lost access to your {integration_name} account and can no longer use it."
+    )
     if not paused_workflows:
-        return f"{lost} Reconnect to pick up where you left off."
+        return f"{lead} Reconnect to pick up where you left off."
     if len(paused_workflows) == 1:
         return (
-            f"{lost} Your \u201c{paused_workflows[0]}\u201d workflow is paused until you reconnect."
+            f"{lead} Your \u201c{paused_workflows[0]}\u201d workflow is paused until you reconnect."
         )
-    return f"{lost} {len(paused_workflows)} workflows are paused until you reconnect."
+    return f"{lead} {len(paused_workflows)} workflows are paused until you reconnect."
 
 
 async def _announce_expiry(
@@ -145,6 +175,7 @@ async def _announce_expiry(
     integration_id: str,
     integration_name: str,
     paused_workflows: Sequence[str],
+    reason: str | None,
 ) -> None:
     """Flip an open integrations page live, then leave a persistent Reconnect nudge."""
     await websocket_manager.broadcast_to_user(
@@ -163,7 +194,7 @@ async def _announce_expiry(
             channels=[ChannelConfig(channel_type=CHANNEL_TYPE_INAPP)],
             content=NotificationContent(
                 title=f"{integration_name} disconnected",
-                body=_expiry_body(integration_name, paused_workflows),
+                body=_expiry_body(integration_name, paused_workflows, reason),
                 actions=[
                     NotificationAction(
                         type=ActionType.REDIRECT,

@@ -361,6 +361,7 @@ class UserIntegrationResponse(BaseModel):
     status: UserIntegrationStatus
     created_at: datetime
     connected_at: datetime | None = None
+    expired_at: datetime | None = None
 
     # Hydrated integration details
     integration: IntegrationResponse

@@ -137,6 +137,8 @@ class MyIntegrationItem(CamelModel, CloneCountMixin):
     source: Literal["platform", "custom"]
     managed_by: Literal["self", "composio", "mcp", "internal"]
     status: Literal["connected", "created", "expired", "not_connected"]
+    # When the upstream grant died, so the UI can say how long it has been broken.
+    expired_at: datetime | None = None
     requires_auth: bool = False
     auth_type: Literal["none", "oauth", "bearer"] | None = None
     is_featured: bool = False

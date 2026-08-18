@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.models.integration_models import UserIntegrationDocument
-from app.services.integrations.integration_expiry import expire_user_integration
+from app.services.integrations.integration_expiry import _expiry_body, expire_user_integration
 
 MODULE = "app.services.integrations.integration_expiry"
 
@@ -246,3 +246,77 @@ class TestPausedWorkflowsChangeTheAnnouncement:
 
         body = s.mocks["notify"].create_notification.await_args.args[0].content.body
         assert "workflow" not in body.lower()
+
+
+GENERIC_LEAD = "GAIA lost access to your Notion account and can no longer use it."
+
+
+class TestTheBodySaysWhyTheConnectionDied:
+    """`expired_reason` is stored for every expiry; the user only ever sees it when
+    it is a reason we can state in plain language. Composio publishes no enum for
+    it, and the tool-execution path puts a raw error sentence in the same field."""
+
+    def test_a_revoked_reason_names_the_cause_instead_of_the_generic_lead(self) -> None:
+        body = _expiry_body("Notion", (), "refresh_token_revoked")
+
+        assert (
+            body
+            == "Your Notion account revoked GAIA's access. Reconnect to pick up where you left off."
+        )
+
+    def test_an_expired_reason_blames_the_sign_in(self) -> None:
+        body = _expiry_body("Notion", (), "token_expired")
+
+        assert (
+            body
+            == "The sign-in for your Notion account expired. Reconnect to pick up where you left off."
+        )
+
+    def test_a_reason_we_do_not_recognise_falls_back_to_the_generic_lead(self) -> None:
+        body = _expiry_body("Notion", (), "auth_config_disabled")
+
+        assert body.startswith(GENERIC_LEAD)
+        assert "auth_config_disabled" not in body
+
+    def test_no_reason_at_all_keeps_the_generic_lead(self) -> None:
+        assert _expiry_body("Notion", (), None).startswith(GENERIC_LEAD)
+
+    def test_a_raw_composio_tool_error_is_developer_text_and_never_reaches_the_body(self) -> None:
+        # The tool-execution path passes Composio's error string as the reason, so
+        # the cause lookup must refuse prose — including prose that happens to
+        # contain a token it would otherwise recognise.
+        raw = "Composio error 1810: connected account was revoked for user 507f1f77bcf86cd799439011"
+
+        body = _expiry_body("Notion", (), raw)
+
+        assert body.startswith(GENERIC_LEAD)
+        assert "1810" not in body
+        assert "507f1f77bcf86cd799439011" not in body
+
+    def test_the_cause_is_stated_alongside_a_single_named_paused_workflow(self) -> None:
+        body = _expiry_body("Notion", ["Morning digest"], "refresh_token_revoked")
+
+        assert body == (
+            "Your Notion account revoked GAIA's access. "
+            "Your “Morning digest” workflow is paused until you reconnect."
+        )
+
+    def test_the_cause_is_stated_alongside_a_count_of_paused_workflows(self) -> None:
+        body = _expiry_body("Notion", ["Morning digest", "Invoice filing"], "refresh_token_revoked")
+
+        assert body == (
+            "Your Notion account revoked GAIA's access. 2 workflows are paused until you reconnect."
+        )
+
+    async def test_the_notification_the_user_receives_carries_the_cause(self) -> None:
+        with _Seams(record=_record("connected")) as s:
+            await expire_user_integration(
+                USER_ID,
+                INTEGRATION_ID,
+                reason="refresh_token_revoked",
+                trigger="webhook",
+                notify=True,
+            )
+
+        body = s.mocks["notify"].create_notification.await_args.args[0].content.body
+        assert body.startswith("Your Notion account revoked GAIA's access.")

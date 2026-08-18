@@ -708,7 +708,13 @@ def _async_find_cursor(docs: list[dict]) -> MagicMock:
     return cursor
 
 
-def _ui_doc(integration_id: str, *, status: str = "connected", connected: bool = True):
+def _ui_doc(
+    integration_id: str,
+    *,
+    status: str = "connected",
+    connected: bool = True,
+    expired_at: datetime | None = None,
+):
     now = datetime.now(UTC)
     return UserIntegrationDocument(
         user_id=USER_ID,
@@ -716,6 +722,7 @@ def _ui_doc(integration_id: str, *, status: str = "connected", connected: bool =
         status=status,
         created_at=now,
         connected_at=now if connected else None,
+        expired_at=expired_at,
     )
 
 
@@ -737,6 +744,40 @@ class TestGetUserIntegrations:
         assert result.integrations[0].integration_id == "github"
         assert result.integrations[0].status == "connected"
         assert result.integrations[0].integration.name == "GitHub"
+
+    @patch("app.services.integrations.user_integrations.user_repository")
+    @patch("app.services.integrations.user_integrations.integration_repository")
+    @patch("app.services.integrations.user_integrations.user_integration_repository")
+    async def test_expired_at_is_carried_from_the_stored_document(
+        self, mock_repo, mock_int_repo, mock_users_col
+    ):
+        """Dropping expired_at here is what leaves the UI unable to say how long
+        a connection has been dead."""
+        died = datetime(2026, 8, 15, 9, 0, tzinfo=UTC)
+        mock_repo.list_for_user_newest_first = AsyncMock(
+            return_value=[_ui_doc("github", status="expired", connected=False, expired_at=died)]
+        )
+        mock_int_repo.find_by_ids = AsyncMock(return_value=[])
+        mock_users_col.find_by_ids = AsyncMock(return_value=[])
+
+        result = await get_user_integrations(USER_ID)
+
+        assert result.integrations[0].status == "expired"
+        assert result.integrations[0].expired_at == died
+
+    @patch("app.services.integrations.user_integrations.user_repository")
+    @patch("app.services.integrations.user_integrations.integration_repository")
+    @patch("app.services.integrations.user_integrations.user_integration_repository")
+    async def test_expired_at_is_none_for_a_healthy_integration(
+        self, mock_repo, mock_int_repo, mock_users_col
+    ):
+        mock_repo.list_for_user_newest_first = AsyncMock(return_value=[_ui_doc("github")])
+        mock_int_repo.find_by_ids = AsyncMock(return_value=[])
+        mock_users_col.find_by_ids = AsyncMock(return_value=[])
+
+        result = await get_user_integrations(USER_ID)
+
+        assert result.integrations[0].expired_at is None
 
     @patch("app.services.integrations.user_integrations.user_repository")
     @patch("app.services.integrations.user_integrations.integration_repository")
