@@ -114,6 +114,7 @@ scrape_configs:
           - http://slack-bot:3201/health
           - http://telegram-bot:3202/health
           - http://whatsapp-bot:3203/health
+          - http://imessage-bot:3204/health
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
