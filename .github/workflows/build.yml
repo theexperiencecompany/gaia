@@ -421,7 +421,7 @@ jobs:
     if: always() && needs.deployment-plan.outputs.backend_orphaned == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # continue-on-error on the send step only: the alert content is fully
       # logged by the script either way, and a webhook hiccup must not turn
       # an otherwise-green run red — the run didn't get worse because Discord
