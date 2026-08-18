@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import FAQAccordion from "@/components/seo/FAQAccordion";
+import { SlackIcon } from "@/components/shared/SlackIcon";
 import ChatDemo from "@/features/landing/components/demo/founders-demo/ChatDemo";
 import {
   BRIEFING_MESSAGES,
@@ -15,17 +16,6 @@ import SlackDemo from "@/features/landing/components/demo/founders-demo/SlackDem
 import WorkflowsDemo from "@/features/landing/components/demo/founders-demo/WorkflowsDemo";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { FOUNDERS_FAQS } from "@/features/landing/data/personaFaqs";
-
-const SlackIcon = () => (
-  <Image
-    src="/images/icons/slack.svg"
-    width={14}
-    height={14}
-    alt="Slack"
-    unoptimized
-    className="opacity-70"
-  />
-);
 
 export default function FoundersClient() {
   return (

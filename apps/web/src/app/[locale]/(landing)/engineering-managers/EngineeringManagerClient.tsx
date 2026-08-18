@@ -2,8 +2,8 @@
 
 import { Chip } from "@heroui/chip";
 import * as m from "motion/react-m";
-import Image from "next/image";
 import FAQAccordion from "@/components/seo/FAQAccordion";
+import { SlackIcon } from "@/components/shared/SlackIcon";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import { EMSlackDemo } from "@/features/landing/components/demo/em-demo/EMSlackDemo";
 import { EMWorkflowsDemo } from "@/features/landing/components/demo/em-demo/EMWorkflowsDemo";
@@ -20,17 +20,6 @@ import GetStartedButton from "@/features/landing/components/shared/GetStartedBut
 import { EM_FAQS } from "@/features/landing/data/personaFaqs";
 
 const ease = [0.22, 1, 0.36, 1] as const;
-
-const SlackIcon = () => (
-  <Image
-    src="/images/icons/slack.svg"
-    width={14}
-    height={14}
-    alt="Slack"
-    unoptimized
-    className="opacity-70"
-  />
-);
 
 export default function EngineeringManagerClient() {
   return (
