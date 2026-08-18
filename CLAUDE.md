@@ -7,6 +7,7 @@ GAIA is a proactive personal AI assistant — full-stack Nx monorepo with a Next
 - Use best practices and write clean, idiomatic code every time. No shortcuts, no half-measures.
 - **Never ship workarounds, patches, or band-aid fixes. Always choose the cleanest, most correct approach — every single time.** When you find a bug, fix it at the root, not at the symptom. If two code paths diverge and one is broken, unify them rather than patching the broken one in place. Surgical-but-duplicative is not "safer" — it is how the bug got there. Surface the tradeoff, then take the clean path.
 - Do not override or work around the architecture. Never disable lint rules, add blanket `# noqa` / `// biome-ignore` / `# type: ignore`, or bypass CI to force something through. Linting, type-checking, and CI are guardrails that exist for a reason. Fix the cause, not the symptom.
+- **React Doctor warnings are issues too.** A warning is a finding, not a suggestion — triage every diagnostic by its proof class and fix the root cause. Never dismiss a warning as "only a warning," and never disable, ignore, or relax a rule to make the report look cleaner. The only reasons a finding may stay are a proven false positive or an authorized, evidenced waiver.
 - Match the conventions of the surrounding code. Prefer the existing pattern over inventing a new one.
 - **Fail loud — never swallow errors or add silent fallbacks.** No `try: ... except: return None`, no broad `except` that hides the failure, no default value slipped in to make a symptom disappear. A masked error is a bug that resurfaces somewhere worse, later. Let errors propagate to where they can be handled meaningfully; only catch what you can genuinely recover from.
 - **No fake, stub, or placeholder implementations.** Don't write code that *looks* done but isn't — hardcoded "sample" responses, mock data left in a real path, `# TODO: implement` stubs that return a fake success, functions that pretend to work. If something genuinely can't be finished now, say so explicitly instead of shipping a hollow shell.
@@ -337,6 +338,12 @@ nx lint api
 # Frontend
 nx run-many -t type-check --projects=web,desktop
 nx run-many -t lint --projects=web,desktop
+```
+
+React Doctor findings on the web app are issues to fix — warnings included, not just errors. Run the scanner on changed code before finishing web work:
+
+```bash
+cd apps/web && npx react-doctor@latest --scope changed --verbose
 ```
 
 ## Environment Variables
