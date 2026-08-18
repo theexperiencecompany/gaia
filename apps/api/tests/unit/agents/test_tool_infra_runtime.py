@@ -1,5 +1,6 @@
 """Infra tests for tool runtime configuration and spawned subagent tool wiring."""
 
+import json
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -11,8 +12,13 @@ import pytest
 from app.agents.core.subagents.base_subagent import SubAgentFactory
 from app.agents.core.subagents.spawn_agent import _build_spawn_graph
 from app.agents.middleware.subagent import SubagentMiddleware
+from app.agents.tools.core import retrieval as retrieval_module
 from app.agents.tools.core.registry import ToolRegistry
-from app.agents.tools.core.retrieval import get_retrieve_tools_function
+from app.agents.tools.core.retrieval import (
+    _render_discovery_response,
+    _split_subagent_entry,
+    get_retrieve_tools_function,
+)
 from app.agents.tools.core.tool_runtime_config import (
     ToolRuntimeConfig,
     build_child_tool_runtime_config,
@@ -174,6 +180,15 @@ class _RetrieveRegistry:
             return SimpleNamespace(is_delegated=True)
         return SimpleNamespace(is_delegated=False)
 
+    def get_tool_meta(self, tool_name: str):
+        """Read by the JSON-bucketed discovery response for a tool's description.
+
+        None is a real registry answer (an unindexed name), and the entry
+        builder has to stay correct for it, so returning it here keeps the fake
+        honest rather than inventing metadata the tests never assert on.
+        """
+        return
+
 
 async def _run_provider_subagent_factory(
     *,
@@ -222,7 +237,7 @@ async def _run_provider_subagent_factory(
         ),
         patch(
             "app.agents.core.subagents.base_subagent.get_checkpointer_manager",
-            new=AsyncMock(return_value=SimpleNamespace(get_checkpointer=lambda: object())),
+            new=AsyncMock(return_value=SimpleNamespace(get_checkpointer=object)),
         ),
     ):
         await SubAgentFactory.create_provider_subagent(
@@ -298,7 +313,7 @@ async def _spawn_graph_agent_kwargs(
         patch("app.agents.core.subagents.spawn_agent.get_tools_store", new=AsyncMock()),
         patch(
             "app.agents.core.subagents.spawn_agent.get_checkpointer_manager",
-            new=AsyncMock(return_value=SimpleNamespace(get_checkpointer=lambda: MagicMock())),
+            new=AsyncMock(return_value=SimpleNamespace(get_checkpointer=MagicMock)),
         ),
         patch("app.agents.core.subagents.spawn_agent.create_agent", new=_fake_create_agent),
     ):
@@ -589,7 +604,7 @@ async def test_base_subagent_wiring_uses_shared_tool_runtime_helpers():
         ),
         patch(
             "app.agents.core.subagents.base_subagent.get_checkpointer_manager",
-            new=AsyncMock(return_value=SimpleNamespace(get_checkpointer=lambda: object())),
+            new=AsyncMock(return_value=SimpleNamespace(get_checkpointer=object)),
         ),
     ):
         await SubAgentFactory.create_provider_subagent(
@@ -641,3 +656,454 @@ async def test_base_subagent_direct_mode_propagates_child_direct_runtime():
     assert mw._tool_runtime_config.enable_retrieve_tools is False
     assert "normal_tool" in mw._tool_runtime_config.initial_tool_names
     assert "read" in mw._tool_runtime_config.initial_tool_names
+
+
+# ---------------------------------------------------------------------------
+# _render_discovery_response — what a discovery search tells the model it may do
+# ---------------------------------------------------------------------------
+
+
+class _DiscoveryRegistry:
+    """Registry double shaped like the two methods the renderer actually calls."""
+
+    def __init__(self, categories: dict[str, str], destructive: set[str] | None = None):
+        self._categories = categories
+        self._destructive = destructive or set()
+
+    def get_category_of_tool(self, tool_name: str) -> str:
+        return self._categories.get(tool_name, "unknown")
+
+    def get_tool_meta(self, tool_name: str):
+        if tool_name not in self._categories:
+            return None
+        return SimpleNamespace(destructive=tool_name in self._destructive)
+
+
+def _render_text(
+    final_tools: list[str],
+    *,
+    categories: dict[str, str] | None = None,
+    destructive: set[str] | None = None,
+    connected: dict[str, str | None] | None = None,
+    internal: set[str] | None = None,
+    query: str | None = None,
+    total_candidates: int = 5,
+    limit: int = 10,
+) -> str:
+    """The raw string the model receives, formatting and all."""
+    return _render_discovery_response(
+        final_tools,
+        _DiscoveryRegistry(categories or {}, destructive),
+        connected or {},
+        internal or set(),
+        query,
+        total_candidates,
+        limit,
+    )
+
+
+def _render(
+    final_tools: list[str],
+    *,
+    categories: dict[str, str] | None = None,
+    destructive: set[str] | None = None,
+    connected: dict[str, str | None] | None = None,
+    internal: set[str] | None = None,
+    query: str | None = None,
+    total_candidates: int = 5,
+    limit: int = 10,
+) -> dict[str, Any]:
+    return json.loads(
+        _render_text(
+            final_tools,
+            categories=categories,
+            destructive=destructive,
+            connected=connected,
+            internal=internal,
+            query=query,
+            total_candidates=total_candidates,
+            limit=limit,
+        )
+    )
+
+
+class TestSplitSubagentEntry:
+    def test_an_id_with_a_display_name(self) -> None:
+        assert _split_subagent_entry("subagent:gmail (Gmail)") == ("gmail", "Gmail")
+
+    def test_a_bare_id_has_no_name(self) -> None:
+        assert _split_subagent_entry("subagent:gmail") == ("gmail", None)
+
+    def test_a_name_containing_a_bracket_keeps_its_tail(self) -> None:
+        assert _split_subagent_entry("subagent:x (A (B))") == ("x", "A (B)")
+
+    def test_an_unclosed_bracket_is_not_treated_as_a_name(self) -> None:
+        """Both halves of the guard are load-bearing: an opening bracket alone
+        would otherwise split a malformed id and hand back a truncated name."""
+        assert _split_subagent_entry("subagent:foo (bar") == ("foo (bar", None)
+
+
+class TestDiscoveryResponseIsIndentedJson:
+    """Every other test here parses the payload, which throws the formatting away.
+
+    The model receives the STRING, so the indentation is part of what discovery
+    delivers, and nothing was asserting it.
+    """
+
+    def test_the_model_receives_indented_json_not_one_compact_line(self) -> None:
+        text = _render_text(["send_email"], categories={"send_email": "gmail"})
+        assert len(text.splitlines()) > 1
+
+    def test_nesting_is_indented_by_two_spaces(self) -> None:
+        text = _render_text(["send_email"], categories={"send_email": "gmail"})
+        indents = {len(ln) - len(ln.lstrip(" ")) for ln in text.splitlines() if ln.startswith(" ")}
+        assert indents, "nothing is indented — the payload came out compact"
+        assert min(indents) == 2
+
+
+class TestDiscoveryAvailabilityBuckets:
+    """Availability is the axis that decides what the model may do next: bind it,
+    hand off to it, or ask the user to connect it first."""
+
+    def test_a_builtin_subagent_is_never_reported_as_needing_a_connection(self) -> None:
+        """The bug this argument exists for — without internal_subagents every
+        built-in was listed as needing a connection it has none of."""
+        payload = _render(
+            ["subagent:gaia_knowledge_guide (Guide)"], internal={"gaia_knowledge_guide"}
+        )
+
+        assert payload["subagents_builtin"] == [{"id": "gaia_knowledge_guide", "name": "Guide"}]
+        assert payload["subagents_needing_connection"] == []
+        assert payload["subagents_connected"] == []
+
+    def test_a_connected_integration_subagent_is_ready_to_hand_off_to(self) -> None:
+        payload = _render(["subagent:gmail (Gmail)"], connected={"gmail": "me@example.com"})
+
+        assert payload["subagents_connected"] == [{"id": "gmail", "name": "Gmail"}]
+        assert payload["subagents_needing_connection"] == []
+
+    def test_an_unconnected_integration_subagent_needs_connecting(self) -> None:
+        payload = _render(["subagent:slack (Slack)"])
+
+        assert payload["subagents_needing_connection"] == [{"id": "slack", "name": "Slack"}]
+        assert payload["subagents_connected"] == []
+        assert payload["subagents_builtin"] == []
+
+    def test_a_builtin_wins_over_a_connection_record(self) -> None:
+        """Built-in and connected are not mutually exclusive in the inputs; a
+        built-in must not also be advertised as an integration."""
+        payload = _render(
+            ["subagent:gmail (Gmail)"], connected={"gmail": "me@example.com"}, internal={"gmail"}
+        )
+
+        assert payload["subagents_builtin"] == [{"id": "gmail", "name": "Gmail"}]
+        assert payload["subagents_connected"] == []
+
+    def test_a_nameless_subagent_carries_only_its_id(self) -> None:
+        payload = _render(["subagent:gmail"], internal={"gmail"})
+
+        assert payload["subagents_builtin"] == [{"id": "gmail"}]
+
+    def test_tools_and_subagents_go_to_different_buckets(self) -> None:
+        payload = _render(
+            ["web_search_tool", "subagent:gmail (Gmail)"],
+            categories={"web_search_tool": "search"},
+            internal={"gmail"},
+        )
+
+        assert [t["name"] for t in payload["tools_to_bind"]] == ["web_search_tool"]
+        assert payload["subagents_builtin"] == [{"id": "gmail", "name": "Gmail"}]
+
+
+class TestDiscoveryToolEntries:
+    def test_a_connected_integration_tool_is_sourced_by_its_display_name(self) -> None:
+        payload = _render(
+            ["GMAIL_SEND"],
+            categories={"GMAIL_SEND": "gmail"},
+            connected={"gmail": "me@example.com"},
+        )
+
+        assert payload["tools_to_bind"] == [{"name": "GMAIL_SEND", "source": "me@example.com"}]
+
+    def test_a_connected_integration_with_no_display_name_falls_back_to_the_category(self) -> None:
+        payload = _render(
+            ["GMAIL_SEND"], categories={"GMAIL_SEND": "gmail"}, connected={"gmail": None}
+        )
+
+        assert payload["tools_to_bind"] == [{"name": "GMAIL_SEND", "source": "gmail"}]
+
+    def test_a_first_party_tool_is_sourced_to_gaia(self) -> None:
+        payload = _render(["web_search_tool"], categories={"web_search_tool": "search"})
+
+        assert payload["tools_to_bind"] == [{"name": "web_search_tool", "source": "gaia"}]
+
+    def test_a_destructive_tool_is_flagged_for_approval(self) -> None:
+        payload = _render(
+            ["GMAIL_SEND"], categories={"GMAIL_SEND": "gmail"}, destructive={"GMAIL_SEND"}
+        )
+
+        assert payload["tools_to_bind"][0]["needs_approval"] is True
+
+    def test_a_safe_tool_carries_no_approval_flag(self) -> None:
+        """The key's presence is the signal, so an explicit False would read as
+        'approval considered and required' to a client checking for the key."""
+        payload = _render(["web_search_tool"], categories={"web_search_tool": "search"})
+
+        assert "needs_approval" not in payload["tools_to_bind"][0]
+
+
+class TestDiscoveryZeroMatchSignal:
+    """Built-in subagents are injected unconditionally, so a search that matched
+    nothing still returns entries. Reporting that as a find is what sent the
+    model re-querying the same dead index."""
+
+    def test_a_zero_match_search_says_so_even_though_builtins_are_listed(self) -> None:
+        payload = _render(
+            ["subagent:gaia_knowledge_guide (Guide)"],
+            internal={"gaia_knowledge_guide"},
+            total_candidates=0,
+        )
+
+        assert payload["search_matched_nothing"] is True
+        assert payload["subagents_builtin"] != []
+        assert "matched NOTHING" in payload["next"]
+        assert "Never repeat the same query" in payload["next"]
+
+    def test_a_search_with_hits_carries_no_zero_match_flag(self) -> None:
+        payload = _render(
+            ["web_search_tool"], categories={"web_search_tool": "search"}, total_candidates=1
+        )
+
+        assert "search_matched_nothing" not in payload
+        assert "handoff(subagent_id=" in payload["next"]
+
+    def test_the_two_next_instructions_are_different(self) -> None:
+        empty = _render([], total_candidates=0)["next"]
+        hits = _render(["x"], total_candidates=1)["next"]
+
+        assert empty != hits
+
+    def test_the_zero_match_instruction_survives_verbatim(self) -> None:
+        """This block is the contract with the model, not commentary: each
+        clause closes one of the loops a dead search sent it into (re-query the
+        same words, guess a tool name, keep going instead of telling the user)."""
+        assert _render([], total_candidates=0)["next"] == (
+            "The search matched NOTHING; anything listed above is a built-in that is "
+            "always offered, not a hit. Retry ONCE with a broader query naming the "
+            "action ('send email', not a product name). If you already know the exact "
+            "tool name, skip search and call retrieve_tools(exact_tool_names=[...]). "
+            "Otherwise tell the user the capability is unavailable. Never repeat the "
+            "same query."
+        )
+
+    def test_the_found_instruction_survives_verbatim(self) -> None:
+        """Two of these clauses exist because the model got them wrong: binding
+        a subagent, and offering an unconnected integration as if it worked."""
+        assert _render(["x"], total_candidates=1)["next"] == (
+            "Bind with retrieve_tools(exact_tool_names=[...]) then call the tool. "
+            'Subagents are NOT bindable — use handoff(subagent_id="<id>", task="..."). '
+            "Anything under subagents_needing_connection is unusable until the user "
+            "connects it, so ask them first."
+        )
+
+
+class TestDiscoveryTruncationAndQuery:
+    def test_more_candidates_than_the_limit_reports_the_shortfall(self) -> None:
+        payload = _render(["a", "b"], categories={"a": "s", "b": "s"}, total_candidates=9, limit=2)
+
+        assert payload["truncated"] == {"shown": 2, "total": 9}
+
+    def test_a_full_result_set_is_not_marked_truncated(self) -> None:
+        payload = _render(["a"], categories={"a": "s"}, total_candidates=2, limit=2)
+
+        assert "truncated" not in payload
+
+    def test_the_query_is_echoed_back_when_there_was_one(self) -> None:
+        assert _render(["a"], categories={"a": "s"}, query="send email")["query"] == "send email"
+
+    def test_an_exact_name_lookup_echoes_no_query(self) -> None:
+        assert "query" not in _render(["a"], categories={"a": "s"}, query=None)
+
+
+# ---------------------------------------------------------------------------
+# The bind response — what exact_tool_names tells the model it just got
+# ---------------------------------------------------------------------------
+
+
+async def _bind(names: list[str], registry_tools: list[str]):
+    retrieve_tools = get_retrieve_tools_function(tool_space="general", include_subagents=False)
+    with patch(
+        "app.agents.tools.core.retrieval.get_tool_registry",
+        new=AsyncMock(return_value=_RetrieveRegistry(registry_tools)),
+    ):
+        return await retrieve_tools(
+            store=MagicMock(),
+            config={"configurable": {"user_id": "u1"}},
+            exact_tool_names=names,
+        )
+
+
+@pytest.mark.asyncio
+async def test_binding_announces_what_the_model_may_now_call():
+    result = await _bind(["normal_tool"], ["normal_tool"])
+
+    assert result["response_text"] == "Bound 1 tools — call them directly:\n  - normal_tool"
+
+
+@pytest.mark.asyncio
+async def test_a_hyphenated_alias_binds_its_canonical_tool():
+    """Models routinely emit a hyphenated spelling. Dropping it would report the
+    tool as missing while it sits in the registry under an underscore."""
+    result = await _bind(["normal-tool"], ["normal_tool"])
+
+    assert result["tools_to_bind"] == ["normal_tool"]
+
+
+@pytest.mark.asyncio
+async def test_a_resolved_alias_is_named_back_so_the_model_stops_using_it():
+    """Binding silently would leave the model calling the alias every turn and
+    relying on the same rescue each time."""
+    result = await _bind(["normal-tool"], ["normal_tool"])
+
+    assert (
+        "Resolved to their canonical names — use these from now on: normal-tool -> normal_tool"
+        in result["response_text"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_name_that_needed_no_resolving_is_not_reported_as_renamed():
+    result = await _bind(["normal_tool"], ["normal_tool"])
+
+    assert "Resolved to their canonical names" not in result["response_text"]
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_name_is_named_back_with_a_do_not_retry():
+    """An empty answer reads the same as 'the search found nothing', so the
+    model retypes the name until it runs out of steps."""
+    result = await _bind(["no_such_tool_xyz"], ["normal_tool"])
+
+    assert result["tools_to_bind"] == []
+    assert result["response_text"] == (
+        "Not found, nothing bound: no_such_tool_xyz. Do not retry these names; "
+        "run retrieve_tools(query=...) to find what actually exists."
+    )
+
+
+@pytest.mark.asyncio
+async def test_one_bad_name_does_not_poison_the_batch():
+    result = await _bind(["normal_tool", "no_such_tool_xyz"], ["normal_tool"])
+
+    assert result["tools_to_bind"] == ["normal_tool"]
+    assert "Bound 1 tools" in result["response_text"]
+    assert "Not found, nothing bound: no_such_tool_xyz" in result["response_text"]
+
+
+@pytest.mark.asyncio
+async def test_several_unknown_names_are_listed_separately():
+    result = await _bind(["nope_one", "nope_two"], ["normal_tool"])
+
+    assert "Not found, nothing bound: nope_one, nope_two." in result["response_text"]
+
+
+@pytest.mark.asyncio
+async def test_several_resolved_aliases_are_listed_separately():
+    result = await _bind(["normal-tool", "vfs-read"], ["normal_tool", "vfs_read"])
+
+    assert (
+        "use these from now on: normal-tool -> normal_tool, vfs-read -> vfs_read"
+        in result["response_text"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_query_that_matches_nothing_says_so_and_echoes_the_query():
+    """The zero-hit path is the one that degrades silently: built-ins are always
+    injected, so without this signal an empty index looks like a result set."""
+    retrieve_tools = get_retrieve_tools_function(tool_space="general", include_subagents=False)
+    with (
+        patch(
+            "app.agents.tools.core.retrieval.get_tool_registry",
+            new=AsyncMock(return_value=_RetrieveRegistry(["normal_tool"])),
+        ),
+        patch(
+            "app.agents.tools.core.retrieval.get_user_available_tool_namespaces",
+            new=AsyncMock(return_value={"general"}),
+        ),
+    ):
+        result = await retrieve_tools(
+            store=_FakeStore({}),
+            config={"configurable": {"user_id": "u1"}},
+            query="send a carrier pigeon",
+            exact_tool_names=[],
+        )
+
+    payload = json.loads(result["response_text"])
+    assert payload["search_matched_nothing"] is True
+    assert payload["query"] == "send a carrier pigeon"
+
+
+def _zero_hit_warnings(log) -> list[dict[str, Any]]:
+    """Kwargs of the 'namespace has no indexed docs' warnings only.
+
+    Retrieval warns about several unrelated things in one call (an MCP lookup
+    that failed, for one), so a bare log.warning.called cannot tell them apart.
+    """
+    return [
+        call.kwargs
+        for call in log.warning.call_args_list
+        if "tool_space" in call.kwargs and "user_id" in call.kwargs
+    ]
+
+
+async def _query(store, *, tool_space: str = "general"):
+    """Drive a query-mode retrieval and capture what it logged."""
+    retrieve_tools = get_retrieve_tools_function(tool_space=tool_space, include_subagents=False)
+    with (
+        patch(
+            "app.agents.tools.core.retrieval.get_tool_registry",
+            new=AsyncMock(return_value=_RetrieveRegistry(["normal_tool"])),
+        ),
+        patch(
+            "app.agents.tools.core.retrieval.get_user_available_tool_namespaces",
+            new=AsyncMock(return_value={"general"}),
+        ),
+        patch.object(retrieval_module, "log") as log,
+    ):
+        result = await retrieve_tools(
+            store=store,
+            config={"configurable": {"user_id": "u1"}},
+            query="anything",
+            exact_tool_names=[],
+        )
+    return result, log
+
+
+@pytest.mark.asyncio
+async def test_a_dead_index_warns_operators_even_in_the_general_namespace():
+    """This dropped its `and tool_space != "general"` guard. General is the
+    namespace every executor searches, so an index that wrote no docs there was
+    the outage the warning exists for — and the one case it stayed silent for."""
+    _result, log = await _query(_FakeStore({}))
+
+    dead_index = _zero_hit_warnings(log)
+    assert dead_index, "a namespace with zero indexed docs reported nothing"
+    assert dead_index[0]["tool_space"] == "general"
+    assert dead_index[0]["user_id"] == "u1"
+
+
+@pytest.mark.asyncio
+async def test_a_namespace_with_hits_is_not_reported_as_dead():
+    """Control: warning unconditionally would satisfy the test above."""
+    store = _FakeStore(
+        {
+            ("general",): [
+                SimpleNamespace(key="normal_tool", score=0.9, namespace=("general",), value={})
+            ]
+        }
+    )
+
+    _result, log = await _query(store)
+
+    assert _zero_hit_warnings(log) == []

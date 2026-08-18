@@ -15,7 +15,7 @@ from langchain_text_splitters import MarkdownTextSplitter
 from llama_cloud_services import LlamaParse
 from llama_cloud_services.parse.utils import ResultType
 
-from app.agents.llm.client import ainvoke_llm, get_default_llm, metered_config, with_llm_retry
+from app.agents.llm.client import ainvoke_llm, get_helper_llm, metered_config, with_llm_retry
 from app.agents.llm.vision import describe_image
 from app.agents.prompts.image_prompts import DOCUMENT_IMAGE_SUMMARY_PROMPT
 from app.config.settings import settings
@@ -70,7 +70,7 @@ class DocumentProcessor:
         """
         self._parser: LlamaParse | None = None
         self.user_id = user_id
-        self.llm = get_default_llm()
+        self.llm = get_helper_llm()
 
     @property
     def parser(self) -> LlamaParse:

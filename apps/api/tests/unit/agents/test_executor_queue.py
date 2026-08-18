@@ -15,10 +15,12 @@ from app.agents.core.background import executor_queue as eq, session as sess
 from app.agents.core.background.executor_queue import (
     LockState,
     build_lock_value,
+    build_run_item,
     enqueue_task,
     get_lock_state,
     parse_lock_value,
     pop_next_queued_run,
+    prepare_run_from_item,
     reclaim_stranded_task,
     release_lock_if_owned,
     safe_configurable,
@@ -265,6 +267,96 @@ class TestEnqueueTask:
             redis.client.expire.assert_awaited_once_with(
                 "executor:queue:conv-1", EXECUTOR_QUEUE_TTL
             )
+
+
+class TestBuildRunItem:
+    """``build_run_item`` is the single serialized shape written by both the
+    plain queue enqueue and the HIL pause store — fields must default so a
+    plain queue item never accidentally carries resume-only identity."""
+
+    def test_omits_bot_message_id_by_default(self) -> None:
+        item = build_run_item(
+            task="do it",
+            task_id="task-1",
+            configurable={"user_id": "u1"},
+            conversation_id="conv-1",
+            user_message_id="msg-1",
+        )
+        assert item["bot_message_id"] is None
+
+    def test_carries_bot_message_id_when_a_pause_supplies_it(self) -> None:
+        item = build_run_item(
+            task="do it",
+            task_id="task-1",
+            configurable={"user_id": "u1"},
+            conversation_id="conv-1",
+            user_message_id="msg-1",
+            bot_message_id="orig-msg-1",
+        )
+        assert item["bot_message_id"] == "orig-msg-1"
+
+
+class TestPrepareRunFromItemResumeIdentity:
+    """A HIL resume re-dispatches through the same ``prepare_run_from_item``
+    the queue pop uses — the resumed run must inherit the original bot
+    message id from the stored item so its result can reconcile onto it."""
+
+    async def test_bot_message_id_threads_into_the_resumed_run(self) -> None:
+        item = build_run_item(
+            task="continue the task",
+            task_id="task-1",
+            configurable={"user_id": "u1"},
+            conversation_id="conv-1",
+            user_message_id="msg-1",
+            bot_message_id="orig-msg-1",
+        )
+        with (
+            patch.object(eq, "redis_cache") as redis,
+            patch.object(eq, "StreamManager") as sm,
+            patch.object(eq, "websocket_manager") as ws,
+        ):
+            redis.client.set = AsyncMock()
+            sm.start_stream = AsyncMock()
+            ws.broadcast_to_user = AsyncMock()
+
+            prepared = await prepare_run_from_item("conv-1", item)
+
+        assert prepared is not None
+        assert prepared.run.bot_message_id == "orig-msg-1"
+        assert prepared.run.kind is RunKind.QUEUED  # shares the queue's re-dispatch path
+
+        # The client folds the new stream into the ORIGINAL turn's message
+        # instead of opening a second placeholder, so the id has to reach the
+        # browser on the stream_started event too — not just the run object.
+        event = ws.broadcast_to_user.await_args.args[1]
+        assert event["bot_message_id"] == "orig-msg-1"
+
+    async def test_plain_queued_item_has_no_bot_message_id(self) -> None:
+        item = build_run_item(
+            task="do it",
+            task_id="task-1",
+            configurable={"user_id": "u1"},
+            conversation_id="conv-1",
+            user_message_id="msg-1",
+        )
+        with (
+            patch.object(eq, "redis_cache") as redis,
+            patch.object(eq, "StreamManager") as sm,
+            patch.object(eq, "websocket_manager") as ws,
+        ):
+            redis.client.set = AsyncMock()
+            sm.start_stream = AsyncMock()
+            ws.broadcast_to_user = AsyncMock()
+
+            prepared = await prepare_run_from_item("conv-1", item)
+
+        assert prepared is not None
+        assert prepared.run.bot_message_id is None
+
+        # Present and null rather than absent: the client branches on the key,
+        # so a plain queued run must say "open a fresh placeholder" explicitly.
+        event = ws.broadcast_to_user.await_args.args[1]
+        assert event["bot_message_id"] is None
 
 
 class TestSafeConfigurable:

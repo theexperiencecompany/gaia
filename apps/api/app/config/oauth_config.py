@@ -1985,16 +1985,9 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             use_cases="product analytics, user behavior analysis, A/B testing, feature flag management, session replay analysis",
             system_prompt=POSTHOG_AGENT_SYSTEM_PROMPT,
             use_direct_tools=False,
-            auto_bind_tools=[
-                "query-run",
-                "query-generate-hogql-from-question",
-                "insight-create-from-query",
-                "insight-get",
-                "insights-get-all",
-                "create-feature-flag",
-                "feature-flag-get-all",
-                "experiment-create",
-            ],
+            # PostHog's MCP runs in CLI mode: one `exec` tool wraps every
+            # PostHog tool, reached via search/info/schema/call subcommands.
+            auto_bind_tools=["exec"],
             memory_prompt=POSTHOG_MEMORY_PROMPT,
         ),
         content=POSTHOG_CONTENT,

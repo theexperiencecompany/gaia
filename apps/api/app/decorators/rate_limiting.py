@@ -45,6 +45,40 @@ def plan_label(user_plan: object) -> str:
     return user_plan.value if hasattr(user_plan, "value") else str(user_plan)
 
 
+def build_rate_limit_card(
+    *,
+    feature: str,
+    plan_required: str | None,
+    reset_time: str | None,
+    current_plan: str,
+    message: str | None = None,
+) -> dict[str, Any]:
+    """Build the ``rate_limit_data`` stream-card payload the frontend's RateLimitCard renders.
+
+    Shared by every caller that surfaces a rate/budget/cap limit inline in chat:
+    :func:`with_rate_limiting` below, the LLM-call budget wall
+    (``app.agents.middleware.accounting._emit_budget_stop_card``), and the free
+    memory cap (``app.agents.tools.memory_tools._stream_memory_limit_card``).
+    ``message`` is omitted from the payload when not given.
+    """
+    data: dict[str, Any] = {
+        "feature": feature,
+        "plan_required": plan_required,
+        "reset_time": reset_time,
+        "current_plan": current_plan,
+    }
+    if message is not None:
+        data["message"] = message
+    return {
+        "tool_data": {
+            "tool_name": "rate_limit_data",
+            "tool_category": "system",
+            "data": data,
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
+    }
+
+
 def with_rate_limiting(
     feature_key: str | None = None,
     count_tokens: bool = False,
@@ -168,19 +202,12 @@ def with_rate_limiting(
                         try:
                             writer = get_stream_writer()
                             writer(
-                                {
-                                    "tool_data": {
-                                        "tool_name": "rate_limit_data",
-                                        "tool_category": "system",
-                                        "data": {
-                                            "feature": actual_feature_key,
-                                            "plan_required": detail_dict.get("plan_required"),
-                                            "reset_time": reset_time,
-                                            "current_plan": plan_label(user_plan),
-                                        },
-                                        "timestamp": datetime.now(UTC).isoformat(),
-                                    }
-                                }
+                                build_rate_limit_card(
+                                    feature=actual_feature_key,
+                                    plan_required=detail_dict.get("plan_required"),
+                                    reset_time=reset_time,
+                                    current_plan=plan_label(user_plan),
+                                )
                             )
                         except Exception as stream_error:
                             # Usually just "not in a streaming context" (workflows,

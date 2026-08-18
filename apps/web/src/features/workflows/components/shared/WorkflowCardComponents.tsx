@@ -305,6 +305,27 @@ export function missingIntegrationsMessage(
   return `Connect ${names} to enable this workflow.`;
 }
 
+/**
+ * The status a workflow with unconnected integrations has instead of
+ * activated/deactivated: it cannot run either way until they are connected.
+ * Shaped like the activation chip it stands in for, and shared with the modal
+ * header so the card and the modal can never disagree about the same workflow.
+ */
+export function NeedsSetupChip({ size = "sm" }: { size?: "sm" | "md" | "lg" }) {
+  return (
+    <Chip
+      color="warning"
+      variant="flat"
+      size={size}
+      radius="sm"
+      className="cursor-default"
+      startContent={<Alert01Icon width={13} height={13} />}
+    >
+      Needs setup
+    </Chip>
+  );
+}
+
 export function MissingIntegrationsWarning({
   missingIntegrations,
 }: Readonly<MissingIntegrationsWarningProps>) {
@@ -318,9 +339,7 @@ export function MissingIntegrationsWarning({
       closeDelay={0}
       classNames={{ content: "bg-zinc-800 text-xs max-w-56 text-center" }}
     >
-      <div className="flex h-6 w-6 cursor-default items-center justify-center rounded-full border border-yellow-500/30 bg-yellow-500/10">
-        <Alert01Icon width={13} height={13} className="text-yellow-400" />
-      </div>
+      <NeedsSetupChip />
     </Tooltip>
   );
 }

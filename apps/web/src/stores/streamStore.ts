@@ -75,6 +75,8 @@ interface StreamActions {
     toolInfo?: ToolInfo,
   ) => void;
   resetSessionLoadingText: (key: string) => void;
+  /** The user decided this conversation's open approval gate. */
+  clearAwaitingApproval: (key: string) => void;
   setAuxLoading: (active: boolean, text?: string, toolInfo?: ToolInfo) => void;
   /** Overwrite a session from an external snapshot (desktop popup mirror). */
   mirrorSession: (key: string, session: TurnUiState | null) => void;
@@ -208,6 +210,30 @@ export const useStreamStore = create<StreamStore>()(
           },
           false,
           "resetSessionLoadingText",
+        ),
+
+      clearAwaitingApproval: (key) =>
+        set(
+          (state) => {
+            const existing = state.sessions[key];
+            if (!existing?.awaitingApproval) return state;
+            return {
+              sessions: {
+                ...state.sessions,
+                [key]: {
+                  ...existing,
+                  awaitingApproval: false,
+                  loadingText: "Resuming",
+                  // Clears with the text: it prefixes the label with the gated
+                  // tool's integration ("Posthog: Resuming"), and that tool is
+                  // done.
+                  toolInfo: undefined,
+                },
+              },
+            };
+          },
+          false,
+          "clearAwaitingApproval",
         ),
 
       setAuxLoading: (active, text, toolInfo) =>

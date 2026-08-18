@@ -5,7 +5,7 @@ Contains helper functions for tool selection formatting and type definitions.
 """
 
 from collections.abc import Sequence
-from typing import Annotated, TypedDict, cast
+from typing import Annotated, NotRequired, TypedDict, cast
 
 from langchain_core.messages import (
     AnyMessage,
@@ -129,15 +129,12 @@ def pop_pruned_tombstones(state: State) -> list[RemoveMessage]:
 
 
 class RetrieveToolsResult(TypedDict):
-    """Result from retrieve_tools function.
-
-    Attributes:
-        tools_to_bind: List of tool IDs to bind to the model
-        response: List of tool IDs to show in the response message
-    """
+    """Result from retrieve_tools function."""
 
     tools_to_bind: list[str]
     response: list[str]
+    # Rendered block shown to the model instead of the bare name list.
+    response_text: NotRequired[str]
 
 
 def dedupe_str_list(items: Sequence[str]) -> list[str]:
@@ -164,7 +161,9 @@ def dedupe_tool_bindings(tools: Sequence[BaseTool]) -> list[BaseTool]:
 
 
 def format_selected_tools(
-    selected_tools: dict, tool_registry: dict[str, BaseTool]
+    selected_tools: dict,
+    tool_registry: dict[str, BaseTool],
+    response_texts: dict[str, str] | None = None,
 ) -> tuple[list[ToolMessage], list[str]]:
     """Format selected tools, gracefully handling tools not in registry.
 
@@ -173,6 +172,7 @@ def format_selected_tools(
     Args:
         selected_tools: Dict mapping tool_call_id to list of tool IDs
         tool_registry: Dict mapping tool ID to tool instance
+        response_texts: Pre-rendered block per tool_call_id, used verbatim when present
 
     Returns:
         Tuple of (tool_messages, tool_ids) where tool_messages show available tools
@@ -182,6 +182,10 @@ def format_selected_tools(
     tool_ids = []
 
     for tool_call_id, batch in selected_tools.items():
+        if response_texts and (rendered := response_texts.get(tool_call_id)):
+            tool_messages.append(ToolMessage(rendered, tool_call_id=tool_call_id))
+            tool_ids.extend(batch)
+            continue
         tool_names = []
         for result in batch:
             # Handle tools that exist in registry

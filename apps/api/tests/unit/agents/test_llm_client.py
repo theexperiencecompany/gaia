@@ -7,16 +7,18 @@ Covers:
 - _create_configurable_llm: primary-only vs. primary+alternatives
 - get_default_llm: the default model for auxiliary tasks
 - ainvoke_llm: the single invoke primitive — retry, fallback to default, fail-loud
+- _record_auxiliary_usage: what auxiliary (non-graph) spend gets booked as
 - chatbot: default-model one-shot path, error handling
 """
 
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
+from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig, RunnableLambda
 from langchain_openrouter import ChatOpenRouter
-from pydantic import SecretStr
+from pydantic import BaseModel, SecretStr
 import pytest
 
 from app.agents.llm import client as client_module
@@ -31,15 +33,22 @@ from app.agents.llm.client import (
     _get_available_providers,
     _get_ordered_providers,
     _openrouter_wire_configurables,
+    _record_auxiliary_usage,
     ainvoke_llm,
+    ainvoke_structured,
     get_default_llm,
     init_llm,
     register_llm_providers,
 )
 from app.agents.llm.exceptions import LLM_FALLBACK_EXCEPTIONS, LLMNotConfiguredError
 from app.agents.llm.types import LLMProviderName
-from app.constants.llm import DEFAULT_GEMINI_MODEL_NAME, DEFAULT_MODEL_NAME
+from app.constants.llm import (
+    DEFAULT_GEMINI_MODEL_NAME,
+    DEFAULT_MODEL_NAME,
+    OPENROUTER_MAX_OUTPUT_TOKENS,
+)
 from app.core.lazy_loader import ProviderRegistry
+from shared.py.wide_events import log
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -106,7 +115,6 @@ class TestGetAvailableProviders:
 
         assert list(result.keys()) == ["gemini"]
 
-    @pytest.mark.regression
     def test_unregistered_provider_is_skipped_not_fatal(self) -> None:
         """custom_llm is registered only when ENV=development, so in production
         the registry has no such key. Against the REAL registry (which raises
@@ -471,6 +479,10 @@ class TestGetDefaultLlm:
         # would arrive as one lump instead of streaming like the primary.
         assert kwargs["streaming"] is True
         assert kwargs["stream_usage"] is True
+        # get_default_llm feeds the agent-graph fallback (create_agent) and the
+        # summarization/compaction middleware — both legitimately need the full
+        # reservation, not the helper cap.
+        assert kwargs["max_tokens"] == OPENROUTER_MAX_OUTPUT_TOKENS
 
     @patch("app.agents.llm.client.ChatOpenRouter")
     @patch("app.agents.llm.client.settings")
@@ -571,6 +583,23 @@ class TestAinvokeLlm:
             await ainvoke_llm(primary, [HumanMessage(content="hi")], fallback=fallback)
         fallback.ainvoke.assert_not_called()
 
+    async def test_attaches_usage_handler_by_default(self) -> None:
+        primary = self._runnable(result=AIMessage(content="ok"))
+        await ainvoke_llm(primary, [HumanMessage(content="hi")], config=RunnableConfig())
+        assert primary.ainvoke.call_args.kwargs["config"]["callbacks"]
+
+    async def test_graph_calls_skip_auxiliary_metering(self) -> None:
+        # The agent graph is metered by LLMAccountingMiddleware; attaching the
+        # usage handler here too booked every graph call a second time.
+        primary = self._runnable(result=AIMessage(content="ok"))
+        await ainvoke_llm(
+            primary,
+            [HumanMessage(content="hi")],
+            config=RunnableConfig(),
+            meter_auxiliary=False,
+        )
+        assert "callbacks" not in primary.ainvoke.call_args.kwargs["config"]
+
 
 # ---------------------------------------------------------------------------
 # register_llm_providers
@@ -667,7 +696,7 @@ class TestConstants:
 
 class TestChatbot:
     @patch("app.agents.llm.chatbot.ainvoke_llm")
-    @patch("app.agents.llm.chatbot.get_default_llm")
+    @patch("app.agents.llm.chatbot.get_helper_llm")
     async def test_chatbot_default_path(
         self, mock_get_default: MagicMock, mock_ainvoke: AsyncMock
     ) -> None:
@@ -683,32 +712,33 @@ class TestChatbot:
         assert result["messages"][0].content == "default response"
 
     @patch("app.agents.llm.chatbot.log")
-    @patch("app.agents.llm.chatbot.get_default_llm")
-    async def test_chatbot_no_provider_returns_fallback_message(
+    @patch("app.agents.llm.chatbot.get_helper_llm")
+    async def test_chatbot_no_provider_logs_and_raises(
         self, mock_get_default: MagicMock, mock_log: MagicMock
     ) -> None:
         mock_get_default.side_effect = LLMNotConfiguredError("no providers")
 
-        result = await chatbot([HumanMessage(content="hello")])
+        with pytest.raises(LLMNotConfiguredError):
+            await chatbot([HumanMessage(content="hello")])
 
-        assert isinstance(result["messages"][0], AIMessage)
-        assert "trouble processing" in result["messages"][0].content
+        mock_log.error.assert_called_once()
 
     @patch("app.agents.llm.chatbot.log")
     @patch("app.agents.llm.chatbot.ainvoke_llm")
-    @patch("app.agents.llm.chatbot.get_default_llm")
-    async def test_chatbot_provider_error_returns_fallback_message(
+    @patch("app.agents.llm.chatbot.get_helper_llm")
+    async def test_chatbot_provider_error_logs_and_raises(
         self, mock_get_default: MagicMock, mock_ainvoke: AsyncMock, mock_log: MagicMock
     ) -> None:
         mock_get_default.return_value = MagicMock()
         mock_ainvoke.side_effect = ConnectionError("provider down")
 
-        result = await chatbot([HumanMessage(content="hello")])
+        with pytest.raises(ConnectionError, match="provider down"):
+            await chatbot([HumanMessage(content="hello")])
 
-        assert "trouble processing" in result["messages"][0].content
+        mock_log.error.assert_called_once()
 
     @patch("app.agents.llm.chatbot.ainvoke_llm")
-    @patch("app.agents.llm.chatbot.get_default_llm")
+    @patch("app.agents.llm.chatbot.get_helper_llm")
     async def test_chatbot_programming_bug_propagates(
         self, mock_get_default: MagicMock, mock_ainvoke: AsyncMock
     ) -> None:
@@ -719,6 +749,251 @@ class TestChatbot:
 
         with pytest.raises(RuntimeError, match="event loop is closed"):
             await chatbot([HumanMessage(content="hello")])
+
+
+# ---------------------------------------------------------------------------
+# _record_auxiliary_usage
+# ---------------------------------------------------------------------------
+
+
+class TestRecordAuxiliaryUsage:
+    """What one-shot helper spend gets booked as.
+
+    ``ainvoke_structured`` runs outside the agent graph, so
+    ``LLMAccountingMiddleware`` never sees it — this is the only place auxiliary
+    COGS is recorded. ``record_llm_call`` is the persistence seam and is the only
+    thing mocked; the real ``UsageMetadataCallbackHandler`` carries the usage.
+    """
+
+    @staticmethod
+    def _handler(**usage_by_model: dict[str, Any]) -> UsageMetadataCallbackHandler:
+        handler = UsageMetadataCallbackHandler()
+        handler.usage_metadata = dict(usage_by_model)
+        return handler
+
+    async def test_books_reasoning_tokens_from_the_output_details(self) -> None:
+        """Reasoning tokens are billed and priced separately, so losing them
+        under-reports the cost of every reasoning-model helper call."""
+        handler = self._handler(
+            gemini={
+                "input_tokens": 100,
+                "output_tokens": 20,
+                "output_token_details": {"reasoning": 77},
+            }
+        )
+
+        with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.5)) as rec:
+            await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
+
+        assert rec.call_args.kwargs["reasoning_tokens"] == 77
+
+    async def test_reasoning_defaults_to_zero_without_output_details(self) -> None:
+        """A non-reasoning model sends no ``output_token_details`` at all; that
+        must book zero rather than a placeholder."""
+        handler = self._handler(gemini={"input_tokens": 100, "output_tokens": 20})
+
+        with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.5)) as rec:
+            await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
+
+        assert rec.call_args.kwargs["reasoning_tokens"] == 0
+
+    async def test_an_explicit_zero_reasoning_count_stays_zero(self) -> None:
+        handler = self._handler(
+            gemini={
+                "input_tokens": 100,
+                "output_tokens": 20,
+                "output_token_details": {"reasoning": 0},
+            }
+        )
+
+        with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.5)) as rec:
+            await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
+
+        assert rec.call_args.kwargs["reasoning_tokens"] == 0
+
+    async def test_books_the_whole_token_breakdown_and_never_the_budget(self) -> None:
+        """``charge_to_budget=False`` is the load-bearing part: background work
+        GAIA does on the user's behalf must not eat their chat allowance."""
+        handler = self._handler(
+            gemini={
+                "input_tokens": 100,
+                "output_tokens": 20,
+                "input_token_details": {"cache_read": 40},
+                "output_token_details": {"reasoning": 7},
+            }
+        )
+
+        with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.5)) as rec:
+            await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
+
+        assert rec.call_args.kwargs == {
+            "user_id": "user-1",
+            "model_name": "gemini",
+            "input_tokens": 100,
+            "output_tokens": 20,
+            "cached_tokens": 40,
+            "reasoning_tokens": 7,
+            "charge_to_budget": False,
+        }
+
+    async def test_a_call_that_burned_no_tokens_is_not_booked(self) -> None:
+        handler = self._handler(gemini={"input_tokens": 0, "output_tokens": 0})
+
+        with patch("app.agents.llm.client.record_llm_call", new=AsyncMock()) as rec:
+            await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
+
+        rec.assert_not_called()
+
+    async def test_every_model_in_one_run_is_booked(self) -> None:
+        """A retry that fell back to another provider leaves two models on the
+        handler; booking only the first under-reports the run."""
+        handler = self._handler(
+            gemini={"input_tokens": 10, "output_tokens": 1},
+            openrouter={
+                "input_tokens": 20,
+                "output_tokens": 2,
+                "output_token_details": {"reasoning": 5},
+            },
+        )
+
+        with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.1)) as rec:
+            await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
+
+        booked = {c.kwargs["model_name"]: c.kwargs["reasoning_tokens"] for c in rec.call_args_list}
+        assert booked == {"gemini": 0, "openrouter": 5}
+
+    async def test_spend_without_a_user_id_is_still_booked(self) -> None:
+        """A threading gap must not silently drop the COGS — it is warned about
+        and recorded against no user, never skipped."""
+        handler = self._handler(gemini={"input_tokens": 100, "output_tokens": 20})
+
+        with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.5)) as rec:
+            await _record_auxiliary_usage(handler, "memory_extraction", None)
+
+        assert rec.call_args.kwargs["user_id"] is None
+
+
+class TestAuxiliaryMeteringWiring:
+    """The plumbing between ``ainvoke_llm`` and the metering call: which config
+    the provider is handed, and what reaches ``_record_auxiliary_usage``."""
+
+    @staticmethod
+    def _reporting_runnable(usage: dict[str, Any]) -> NonCallableMagicMock:
+        """A runnable that reports token usage the way a real provider does —
+        through the ``UsageMetadataCallbackHandler`` attached to its config."""
+
+        async def _ainvoke(_messages: Any, config: RunnableConfig | None = None) -> AIMessage:
+            for handler in (config or {}).get("callbacks") or []:
+                if isinstance(handler, UsageMetadataCallbackHandler):
+                    handler.usage_metadata = {"gemini": usage}
+            return AIMessage(content="ok")
+
+        runnable = NonCallableMagicMock()
+        runnable.with_retry = MagicMock(return_value=runnable)
+        runnable.ainvoke = AsyncMock(side_effect=_ainvoke)
+        return runnable
+
+    async def test_the_config_user_id_is_who_the_spend_is_booked_against(self) -> None:
+        """``configurable.user_id`` is the only thread between the caller and the
+        COGS row; dropping it books every helper call against nobody."""
+        primary = self._reporting_runnable({"input_tokens": 10, "output_tokens": 2})
+
+        with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.1)) as rec:
+            await ainvoke_llm(
+                primary,
+                [HumanMessage(content="hi")],
+                config=RunnableConfig(configurable={"user_id": "user-9"}),
+                label="memory_extraction",
+            )
+
+        assert rec.call_args.kwargs["user_id"] == "user-9"
+
+    async def test_unattributed_spend_is_warned_about_with_its_label(self) -> None:
+        """The warning is the only trail back to which helper leaked its user_id,
+        so the label has to be on the recorded event, not just in the message."""
+        log.reset()
+        primary = self._reporting_runnable({"input_tokens": 10, "output_tokens": 2})
+
+        with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.1)):
+            await ainvoke_llm(
+                primary,
+                [HumanMessage(content="hi")],
+                config=RunnableConfig(),
+                label="memory_extraction",
+            )
+
+        warned = [w for w in log.get().get("warnings", []) if w.get("llm")]
+        assert [w["llm"]["label"] for w in warned] == ["memory_extraction"]
+
+    async def test_skipping_metering_still_forwards_the_caller_config(self) -> None:
+        """``meter_auxiliary=False`` only means "attach no handler". Replacing the
+        caller's config with a fresh one strips ``configurable`` — the graph's
+        thread id, user id and run metadata all travel in there."""
+        primary = self._reporting_runnable({"input_tokens": 10, "output_tokens": 2})
+
+        await ainvoke_llm(
+            primary,
+            [HumanMessage(content="hi")],
+            config=RunnableConfig(configurable={"user_id": "user-9"}),
+            meter_auxiliary=False,
+        )
+
+        forwarded = primary.ainvoke.call_args.kwargs["config"]
+        assert forwarded["configurable"] == {"user_id": "user-9"}
+
+
+class TestAinvokeStructured:
+    """The one canonical one-shot structured call.
+
+    It runs on ``get_helper_llm``, not ``get_default_llm``: structured output is
+    always a small JSON blob, so reserving the full output budget for it wastes
+    the reservation on every helper call in the app.
+    """
+
+    class _Schema(BaseModel):
+        answer: str
+
+    async def test_runs_on_the_capped_helper_model_with_the_requested_schema(self) -> None:
+        structured = MagicMock(name="structured_runnable")
+        helper = MagicMock()
+        helper.with_structured_output = MagicMock(return_value=structured)
+
+        with (
+            patch("app.agents.llm.client.get_helper_llm", return_value=helper) as mock_helper,
+            patch(
+                "app.agents.llm.client.ainvoke_llm",
+                new=AsyncMock(return_value=self._Schema(answer="42")),
+            ) as mock_invoke,
+        ):
+            result = await ainvoke_structured(
+                self._Schema, "what is the answer?", label="the_judge", temperature=0.3
+            )
+
+        assert mock_helper.call_args.kwargs["temperature"] == 0.3
+        assert helper.with_structured_output.call_args.args[0] is self._Schema
+        assert mock_invoke.call_args.args[0] is structured
+        assert result.answer == "42"
+
+    async def test_the_label_and_config_reach_the_invoke(self) -> None:
+        """``label`` names the call in the COGS event and ``config`` carries the
+        user the spend is attributed to; losing either drops the attribution."""
+        helper = MagicMock()
+        helper.with_structured_output = MagicMock(return_value=MagicMock())
+        config = RunnableConfig(configurable={"user_id": "user-3"})
+
+        with (
+            patch("app.agents.llm.client.get_helper_llm", return_value=helper),
+            patch(
+                "app.agents.llm.client.ainvoke_llm",
+                new=AsyncMock(return_value=self._Schema(answer="ok")),
+            ) as mock_invoke,
+        ):
+            await ainvoke_structured(
+                self._Schema, "prompt", label="memory_extraction", config=config
+            )
+
+        assert mock_invoke.call_args.kwargs["label"] == "memory_extraction"
+        assert mock_invoke.call_args.kwargs["config"] is config
 
 
 class TestProviderModelFieldId:

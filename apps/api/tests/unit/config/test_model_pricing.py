@@ -17,6 +17,17 @@ from app.config.model_pricing import (
     calculate_token_cost,
     get_model_pricing,
 )
+from shared.py.wide_events import log
+
+# `log.reset()` between tests -- the fallback-logging tests below assert on
+# `log.get()["errors"]`, which otherwise accumulates across the module.
+pytestmark = pytest.mark.usefixtures("_fresh_wide_event")
+
+
+@pytest.fixture
+def _fresh_wide_event() -> None:
+    log.reset()
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -116,6 +127,28 @@ class TestGetModelPricing:
         result = await get_model_pricing("unknown-model")
 
         assert result == DEFAULT_PRICING
+
+    @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
+    async def test_model_not_found_logs_the_mispricing(self, mock_get_model: AsyncMock) -> None:
+        # DEFAULT_PRICING is ~11x the real rate for our default model, so a model id
+        # silently missing from the catalog must never fall back without a trace.
+        mock_get_model.return_value = None
+
+        await get_model_pricing("unknown-model")
+
+        errors = log.get()["errors"]
+        assert any(
+            "missing from pricing catalog" in e["msg"] and e.get("model_name") == "unknown-model"
+            for e in errors
+        )
+
+    @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
+    async def test_known_model_does_not_log_an_error(self, mock_get_model: AsyncMock) -> None:
+        mock_get_model.return_value = _make_model()
+
+        await get_model_pricing("gpt-4o")
+
+        assert "errors" not in log.get()
 
     @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
     async def test_model_missing_input_pricing_returns_default(

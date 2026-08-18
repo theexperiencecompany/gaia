@@ -12,7 +12,7 @@ import time
 from typing import Any, ClassVar, cast
 from unittest.mock import AsyncMock, patch
 
-from langchain.agents.middleware.types import AgentState
+from langchain.agents.middleware.types import AgentState, ModelRequest, ModelResponse
 from langchain_core.messages import AIMessage, HumanMessage
 import pytest
 
@@ -23,9 +23,25 @@ from app.agents.middleware.accounting import (
     _extract_usage,
     _latest_ai_message,
 )
-from app.constants.llm import AGENT_RECURSION_LIMIT, RECURSION_HWM_FRACTION
+from app.config.rate_limits import (
+    PRIMARY_METERED_FEATURE,
+    RateLimitPeriod,
+    get_daily_cost_budget_usd,
+    get_reset_time,
+)
+from app.constants.llm import (
+    AGENT_RECURSION_LIMIT,
+    BUDGET_WRAPUP_REMAINING_FRACTION,
+    RECURSION_HWM_FRACTION,
+)
 from app.constants.log_tags import LogTag
+from app.models.payment_models import PlanType
 from app.services import llm_metering
+from app.services.cost_budget import (
+    BUDGET_WRAPUP_NOTICE,
+    BudgetCheck,
+    is_budget_wrapup_threshold,
+)
 from shared.py.wide_events import log
 
 CONFIG: dict[str, Any] = {
@@ -48,6 +64,7 @@ def _ai(
     input_tokens: int = 100,
     output_tokens: int = 20,
     cached: int = 0,
+    reasoning: int = 0,
     **kwargs: Any,
 ) -> AIMessage:
     return AIMessage(
@@ -57,6 +74,7 @@ def _ai(
             "output_tokens": output_tokens,
             "total_tokens": input_tokens + output_tokens,
             "input_token_details": {"cache_read": cached},
+            "output_token_details": {"reasoning": reasoning},
         },
         **kwargs,
     )
@@ -103,6 +121,7 @@ def test_canonical_usage_metadata_is_read_verbatim() -> None:
         "input_tokens": 100,
         "output_tokens": 20,
         "cached_tokens": 40,
+        "reasoning_tokens": 0,
     }
 
 
@@ -111,6 +130,7 @@ def test_message_without_any_usage_reports_zeros() -> None:
         "input_tokens": 0,
         "output_tokens": 0,
         "cached_tokens": 0,
+        "reasoning_tokens": 0,
     }
 
 
@@ -129,6 +149,7 @@ def test_provider_native_response_metadata_is_used_when_usage_metadata_is_absent
         "input_tokens": 500,
         "output_tokens": 70,
         "cached_tokens": 200,
+        "reasoning_tokens": 0,
     }
 
 
@@ -141,7 +162,29 @@ def test_langchain_normalised_keys_in_response_metadata_are_accepted() -> None:
         "input_tokens": 11,
         "output_tokens": 3,
         "cached_tokens": 0,
+        "reasoning_tokens": 0,
     }
+
+
+def test_reasoning_tokens_are_read_from_output_token_details() -> None:
+    message = AIMessage(
+        content="x",
+        usage_metadata={
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "total_tokens": 150,
+            "output_token_details": {"reasoning": 30},
+        },
+    )
+    assert _extract_usage(message)["reasoning_tokens"] == 30
+
+
+def test_missing_output_token_details_does_not_raise() -> None:
+    message = AIMessage(
+        content="x",
+        usage_metadata={"input_tokens": 5, "output_tokens": 1, "total_tokens": 6},
+    )
+    assert _extract_usage(message)["reasoning_tokens"] == 0
 
 
 def test_output_tokens_fall_back_even_when_input_tokens_are_present() -> None:
@@ -249,10 +292,13 @@ async def test_successive_calls_add_up_within_one_wide_event_scope() -> None:
     # rollup reads token totals from UsageMetadataCallback instead of from here.
     mw = LLMAccountingMiddleware(agent_name="a")
     for step in (1, 2, 3):
-        model = await _call(mw, _ai(input_tokens=100, output_tokens=20, cached=40))
+        model = await _call(mw, _ai(input_tokens=100, output_tokens=20, cached=40, reasoning=5))
         assert model["input_tokens"] == 100 * step
         assert model["output_tokens"] == 20 * step
         assert model["cached_tokens"] == 40 * step
+        # Reasoning tokens are billed as output; a total that fails to accumulate
+        # under-reports what thinking cost across the run.
+        assert model["reasoning_tokens"] == 5 * step
         assert model["tokens_used"] == 120 * step
         assert model["cost_usd"] == pytest.approx(0.14 * step)
         assert model["cache_hit_rate"] == 0.4
@@ -427,6 +473,222 @@ def test_thread_id_is_unknown_without_any_identifier() -> None:
     assert mw._thread_id({"configurable": None}) == "unknown"
 
 
+# --- budget wall / wrap-up notice --------------------------------------------- #
+
+
+def _model_request(messages: list[Any] | None = None) -> ModelRequest:
+    return ModelRequest(model=cast(Any, None), messages=messages or [HumanMessage(content="hi")])
+
+
+def _recording_handler() -> tuple[list[ModelRequest], Any]:
+    captured: list[ModelRequest] = []
+
+    async def handler(request: ModelRequest) -> ModelResponse:
+        captured.append(request)
+        return ModelResponse(result=[AIMessage(content="ok")])
+
+    return captured, handler
+
+
+def _has_wrapup_notice(request: ModelRequest) -> bool:
+    return any(
+        isinstance(m, HumanMessage) and m.content == BUDGET_WRAPUP_NOTICE for m in request.messages
+    )
+
+
+async def test_the_budget_is_checked_against_the_caller_not_a_blank_context() -> None:
+    # The wall is only a wall if it looks up the right person's spend — a check
+    # made against an empty context passes for everybody, forever.
+    spy = AsyncMock(return_value=BudgetCheck(None, None, None))
+    config = {"configurable": {**CONFIG["configurable"], "root_request_id": "req-7"}}
+    mw = LLMAccountingMiddleware(agent_name="a")
+    _, handler = _recording_handler()
+
+    with (
+        patch.object(accounting, "_current_config", lambda: config),
+        patch.object(accounting, "get_budget_stop_reason", spy),
+    ):
+        await mw.awrap_model_call(_model_request(), handler)
+
+    spy.assert_awaited_once_with("user-1", None, "req-7")
+
+
+async def test_a_failed_budget_check_fails_open_and_lets_the_turn_run() -> None:
+    """Redis being down must cost us money, not the user their turn.
+
+    The alternative — a check that raises — takes down every model call on
+    every path at once, which is the outage the fail-open exists to prevent.
+    """
+    mw = LLMAccountingMiddleware(agent_name="a")
+    captured, handler = _recording_handler()
+
+    with (
+        patch.object(accounting, "_current_config", lambda: CONFIG),
+        patch.object(
+            accounting,
+            "get_budget_stop_reason",
+            AsyncMock(side_effect=RuntimeError("redis unreachable")),
+        ),
+    ):
+        response = await mw.awrap_model_call(_model_request(), handler)
+
+    assert response.result == [AIMessage(content="ok")]
+    assert len(captured) == 1
+    assert not _has_wrapup_notice(captured[0])  # no spend is known, so nothing to warn about
+
+    failures = [w for w in log.get()["warnings"] if "failing open" in str(w["msg"])]
+    assert len(failures) == 1
+    assert failures[0]["error_type"] == "RuntimeError"
+    assert failures[0]["error"] == "redis unreachable"
+
+
+async def test_budget_wrapup_notice_injected_once_when_spend_crosses_threshold() -> None:
+    budget = get_daily_cost_budget_usd(PlanType.FREE)
+    spent = budget * (1 - BUDGET_WRAPUP_REMAINING_FRACTION)  # exactly at the threshold
+    check = BudgetCheck(None, spent, PlanType.FREE)
+    mw = LLMAccountingMiddleware(agent_name="a")
+    captured, handler = _recording_handler()
+
+    with (
+        patch.object(accounting, "_current_config", lambda: CONFIG),
+        patch.object(accounting, "get_budget_stop_reason", AsyncMock(return_value=check)),
+    ):
+        await mw.awrap_model_call(_model_request(), handler)
+        await mw.awrap_model_call(_model_request(), handler)
+
+    assert len(captured) == 2
+    assert _has_wrapup_notice(captured[0])
+    assert not _has_wrapup_notice(captured[1])  # already emitted for this thread
+
+    notices = [w for w in log.get().get("warnings", []) if w.get("msg") == "budget_wrapup_notice"]
+    assert len(notices) == 1
+    assert notices[0]["spent"] == spent
+    assert notices[0]["budget"] == budget
+    assert notices[0]["thread_id"] == "conv-1"
+    # event_name is what the dashboards group on, and the agent/user are how a
+    # spend spike is traced back to who caused it.
+    assert notices[0]["event_name"] == "budget_wrapup_notice"
+    assert notices[0]["agent_name"] == "a"
+    assert notices[0]["user_id"] == "user-1"
+
+
+async def test_budget_wrapup_notice_not_injected_below_threshold() -> None:
+    budget = get_daily_cost_budget_usd(PlanType.FREE)
+    spent = budget * (1 - BUDGET_WRAPUP_REMAINING_FRACTION) - 0.0001  # just under
+    check = BudgetCheck(None, spent, PlanType.FREE)
+    mw = LLMAccountingMiddleware(agent_name="a")
+    captured, handler = _recording_handler()
+
+    with (
+        patch.object(accounting, "_current_config", lambda: CONFIG),
+        patch.object(accounting, "get_budget_stop_reason", AsyncMock(return_value=check)),
+    ):
+        await mw.awrap_model_call(_model_request(), handler)
+
+    assert len(captured) == 1
+    assert not _has_wrapup_notice(captured[0])
+    assert "warnings" not in log.get() or not any(
+        w.get("msg") == "budget_wrapup_notice" for w in log.get()["warnings"]
+    )
+
+
+async def test_hard_wall_stop_short_circuits_and_skips_the_wrapup_notice() -> None:
+    # Spend is already past the hard wall (far above the wrap-up threshold too) —
+    # the stop text must win and the handler must never run.
+    check = BudgetCheck("You've reached today's usage limit.", 999.0, PlanType.FREE)
+    mw = LLMAccountingMiddleware(agent_name="a")
+    handler = AsyncMock()
+
+    with (
+        patch.object(accounting, "_current_config", lambda: CONFIG),
+        patch.object(accounting, "get_budget_stop_reason", AsyncMock(return_value=check)),
+    ):
+        response = await mw.awrap_model_call(_model_request(), handler)
+
+    handler.assert_not_called()
+    assert response.result == [AIMessage(content="You've reached today's usage limit.")]
+    assert not any(w.get("msg") == "budget_wrapup_notice" for w in log.get().get("warnings", []))
+
+
+async def _stop_card_frames(plan_type: PlanType) -> list[Any]:
+    """Drive a budget-stopped model call and return everything it streamed."""
+    frames: list[Any] = []
+    check = BudgetCheck("You've reached today's usage limit.", 999.0, plan_type)
+    mw = LLMAccountingMiddleware(agent_name="a")
+
+    with (
+        patch.object(accounting, "_current_config", lambda: CONFIG),
+        patch.object(accounting, "get_budget_stop_reason", AsyncMock(return_value=check)),
+        patch.object(accounting, "get_stream_writer", lambda: frames.append),
+    ):
+        await mw.awrap_model_call(_model_request(), AsyncMock())
+
+    return frames
+
+
+async def test_a_stopped_free_run_streams_the_upgrade_card() -> None:
+    """The card IS the stop for a chat user — the bare text renders as nothing.
+
+    Asserted as the whole payload: every field drives what RateLimitCard shows
+    (which limit, which plan, when it lifts, what to do), and a card missing
+    one of them still renders, just uselessly.
+    """
+    frames = await _stop_card_frames(PlanType.FREE)
+
+    assert len(frames) == 1
+    assert frames[0]["tool_data"]["tool_name"] == "rate_limit_data"
+    assert frames[0]["tool_data"]["tool_category"] == "system"
+    assert frames[0]["tool_data"]["data"] == {
+        "feature": PRIMARY_METERED_FEATURE,
+        "plan_required": "pro",
+        "reset_time": get_reset_time(RateLimitPeriod.DAY).isoformat(),
+        "current_plan": PlanType.FREE.value,
+        "message": "You've reached today's usage limit.",
+    }
+
+
+async def test_a_stopped_paid_run_is_not_upsold_a_plan_it_already_has() -> None:
+    frames = await _stop_card_frames(PlanType.PRO)
+
+    assert len(frames) == 1
+    assert frames[0]["tool_data"]["data"]["plan_required"] is None
+    assert frames[0]["tool_data"]["data"]["current_plan"] == PlanType.PRO.value
+
+
+async def test_a_run_with_no_stream_writer_still_stops() -> None:
+    # Workflows, bots and voice have no writer at all; the card is a chat-only
+    # nicety and its absence must never take the budget wall down with it.
+    check = BudgetCheck("You've reached today's usage limit.", 999.0, PlanType.FREE)
+    mw = LLMAccountingMiddleware(agent_name="a")
+
+    def _no_writer() -> Any:
+        raise RuntimeError("not in a stream context")
+
+    with (
+        patch.object(accounting, "_current_config", lambda: CONFIG),
+        patch.object(accounting, "get_budget_stop_reason", AsyncMock(return_value=check)),
+        patch.object(accounting, "get_stream_writer", _no_writer),
+    ):
+        response = await mw.awrap_model_call(_model_request(), AsyncMock())
+
+    assert response.result == [AIMessage(content="You've reached today's usage limit.")]
+
+
+def test_a_plan_with_no_configured_budget_never_reaches_the_wrapup_threshold() -> None:
+    # Both shipped plans carry a non-zero budget, so this guard is only
+    # reachable through the config seam — but without it a budget of 0 makes
+    # `spent >= 0` true from the very first request, and every run would be
+    # told to wrap up before it had done anything.
+    #
+    # Lives here rather than beside is_budget_wrapup_threshold's own tests
+    # because the mutation gate mutates cost_budget.py against THIS file:
+    # scripts/ci/mutation-matrix.py picks the alphabetically first test file
+    # that references the module, and middleware/ sorts before services/.
+    with patch("app.services.cost_budget.get_daily_cost_budget_usd", return_value=0.0):
+        assert is_budget_wrapup_threshold(0.0, PlanType.FREE) is False
+        assert is_budget_wrapup_threshold(5.0, PlanType.FREE) is False
+
+
 # --- recursion high-water mark ------------------------------------------------ #
 
 
@@ -569,6 +831,7 @@ async def test_the_llm_call_event_carries_the_per_step_attribution() -> None:
         "input_tokens": 100,
         "cached_tokens": 40,
         "output_tokens": 20,
+        "reasoning_tokens": 0,
         "cost_usd": pytest.approx(0.14),
         "step_index": 1,
     }

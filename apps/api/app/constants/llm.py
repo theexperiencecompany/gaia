@@ -1,5 +1,6 @@
 from typing import Any
 
+from app.agents.llm.types import LLMProviderName
 from app.models.models_models import DevModelOption
 
 # The ``configurable`` keys LangChain's own field resolution reads. Written at
@@ -51,6 +52,62 @@ RECURSION_HWM_FRACTION = 0.80
 # injects a wrap-up notice so the model finishes with a summary instead of
 # dying mid-exploration on GraphRecursionError.
 RECURSION_WRAPUP_THRESHOLD_STEPS = 6
+
+# Harness-owned completion: when the executor tries to end with a plain-text
+# message while work is demonstrably unfinished, the loop injects up to this many
+# "verify or continue" nudges instead of ending. "Unfinished" means a tracked todo
+# is still pending, or no real tool ran on the delegated task (discovery calls
+# like retrieve_tools and errored calls don't count). A raw count floor sat here
+# once and told one-call tasks ("send the email") the work may not have
+# happened, goading a duplicate send. Both counts are scoped to the CURRENT delegation
+# (middleware.completion.current_delegation), not the executor thread, which
+# outlives it: counting the thread let each delegation inherit the previous one's
+# tools and nudges, so the guard fired once per conversation and never again.
+# Bounded so a genuinely quick task costs at most this many extra steps per
+# delegation. Only the executor opts in (require_finish_to_end); comms may always
+# end in plain text.
+MAX_COMPLETION_NUDGES = 1
+# Tool results that prove no work happened: discovery-only or failed calls.
+COMPLETION_NON_WORK_TOOLS = frozenset({"retrieve_tools"})
+COMPLETION_NUDGE_MESSAGE = (
+    "[System: before you finish — every part of the task must actually be done "
+    "and confirmed with tools, not assumed. If anything is still pending, not yet "
+    "verified, or an action you described but did not take, do it now. Nothing "
+    "runs after your reply ends, so never tell the user you are still working or "
+    "that more results are coming ('hang tight', 'still digging'): either do the "
+    "work now with tools, or state plainly what you got and what failed. If you "
+    "are genuinely finished, reply with your complete final result.]"
+)
+# A plain-text stop that PROMISES future work is never a valid ending: the run
+# is over the moment the reply ends, so "hang tight" is a lie to the user.
+# Lowercase substrings, matched against the final reply. Kept deliberately
+# specific — a false positive only costs one bounded nudge, but each entry
+# should still be an unambiguous forward commitment.
+COMPLETION_PROMISE_MARKERS: tuple[str, ...] = (
+    "hang tight",
+    "still digging",
+    "still working on",
+    "still fetching",
+    "still searching",
+    "still looking",
+    "keep digging",
+    "keep looking",
+    "give me a moment",
+    "give me a sec",
+    "one moment while",
+    "bear with me",
+    "stay tuned",
+    "i'll get back to you",
+    "will get back to you",
+    "i'll keep you posted",
+    "keep you posted",
+    "i'll follow up",
+    "will follow up shortly",
+    "check back soon",
+    "coming right up",
+    "working on it now",
+    "in the background",
+)
 
 # Per-tool-call execution timeout. A hung integration call previously hung the
 # entire run forever (no timeout existed at any dispatch layer). Orchestration
@@ -156,6 +213,17 @@ OPENROUTER_MODEL_CATALOG_RETRY_SECONDS = 300
 # window), so 64k of output leaves ample headroom for the prompt.
 OPENROUTER_MAX_OUTPUT_TOKENS = 64_000
 
+# Output cap for one-shot helper calls (conversation naming, memory extraction,
+# structured JSON blobs, onboarding copy, moderation, category inference) — every
+# get_default_llm() consumer EXCEPT the agent-graph fallback and the
+# summarization/compaction middleware, which legitimately produce long output and
+# keep OPENROUTER_MAX_OUTPUT_TOKENS. OpenRouter reserves credit against `max_tokens`
+# per call, so a helper emitting a 200-token title was demanding the full 64k
+# reservation and 402ing on a low balance even though it had credit for its real
+# (tiny) output. 8k is ~10x the largest observed helper output while cutting the
+# reservation 8x.
+HELPER_MAX_OUTPUT_TOKENS = 8_000
+
 # Default reasoning effort for OpenRouter thinking models (executor + subagents),
 # passed to ChatOpenRouter's native `reasoning` field.
 OPENROUTER_REASONING: dict[str, Any] = {"effort": "medium"}
@@ -195,25 +263,25 @@ OPENROUTER_APP_CATEGORIES = ["personal-agent", "general-chat"]
 # ignore OpenRouter `model_kwargs`/`reasoning`. This menu is NEVER used in production.
 DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
     "minimax-m3": {
-        "provider": "openrouter",
+        "provider": LLMProviderName.OPENROUTER,
         "model": "minimax/minimax-m3",
         "model_kwargs": {"provider": {"only": ["minimax"]}},
         "reasoning": True,
     },
     "glm-5.2": {
-        "provider": "openrouter",
+        "provider": LLMProviderName.OPENROUTER,
         "model": "z-ai/glm-5.2",
         "model_kwargs": {"provider": {"only": ["z-ai"]}},
         "reasoning": True,
     },
     "gemini-3.5-flash": {
-        "provider": "openrouter",
+        "provider": LLMProviderName.OPENROUTER,
         "model": "google/gemini-3.5-flash",
         "model_kwargs": None,
         "reasoning": False,
     },
     "deepseek-v4": {
-        "provider": "openrouter",
+        "provider": LLMProviderName.OPENROUTER,
         "model": "deepseek/deepseek-v4-pro",
         "model_kwargs": None,
         "reasoning": False,
@@ -222,7 +290,7 @@ DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
         # Pinned snapshot — same id also served by the cheap OpenRouter-compatible
         # lanes (e.g. Nous Research), so the custom endpoint below can run the
         # identical model for A/B-ing routes.
-        "provider": "openrouter",
+        "provider": LLMProviderName.OPENROUTER,
         "model": "deepseek/deepseek-v4-flash-0731",
         "model_kwargs": None,
         "reasoning": False,
@@ -230,13 +298,13 @@ DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
     "custom": {
         # The env-defined endpoint (DEV_LLM_* settings). `model` None = don't pin
         # one here; the client's own default (DEV_LLM_MODEL) serves the request.
-        "provider": "custom",
+        "provider": LLMProviderName.CUSTOM,
         "model": None,
         "model_kwargs": None,
         "reasoning": False,
     },
     "gemini-3.1-flash-lite": {
-        "provider": "gemini",
+        "provider": LLMProviderName.GEMINI,
         "model": "gemini-3.1-flash-lite",
         "model_kwargs": None,
         "reasoning": False,
@@ -265,6 +333,12 @@ PRO_PER_REQUEST_TOKEN_CEILING = 5_000_000  # TUNE
 FREE_DAILY_COST_BUDGET_USD = 0.05  # TUNE
 PRO_DAILY_COST_BUDGET_USD = 5.00  # TUNE — abuse guard, not a usage limit
 
+# When remaining daily budget headroom drops to this fraction of the full budget
+# (0.2 = 20% left, i.e. 80% spent), the accounting middleware injects a one-time
+# wrap-up notice telling the agent to stop gathering and answer with what it has —
+# before is_daily_budget_exhausted binds and kills the run mid-flight with no answer.
+BUDGET_WRAPUP_REMAINING_FRACTION = 0.2
+
 # Rolling monthly USD cost budget for pro: the ECONOMIC guard. Set ~1x the
 # subscription price so the worst-case whale is break-even. On exhaustion pro
 # is NOT blocked — model routing degrades to the free-tier model for the rest
@@ -289,6 +363,14 @@ LOOP_GUARD_WARN_IDENTICAL = 2
 LOOP_GUARD_WARN_SAME_TOOL = 3
 LOOP_GUARD_STOP_IDENTICAL = 5
 LOOP_GUARD_STOP_SAME_TOOL = 8
+# "Repeat" counts CONSECUTIVE identical calls (same tool + same args) regardless
+# of success or failure — the signature of a redundant duplicate handoff or a
+# wasteful re-run of the exact same search. A successful call whose result won't
+# change is as much a loop as a failing one; the failure counters above only see
+# status="error". Warn appends an in-band note; stop (hard_stop runs only) blocks
+# the redundant call before it executes.
+LOOP_GUARD_WARN_REPEAT = 3
+LOOP_GUARD_STOP_REPEAT = 6
 # The middleware is a per-process singleton, so failure counters are keyed by the
 # run's thread_id and bounded to the most recent N runs (LRU) to keep memory flat.
 LOOP_GUARD_MAX_TRACKED_RUNS = 512

@@ -638,6 +638,24 @@ def merge_approvals(payloads: list[dict[str, Any]]) -> dict[str, Any]:
     return {**payloads[0], "approval_ids": ids}
 
 
+def compose_executor_brief(
+    task: str,
+    acceptance_criteria: list[str],
+    *,
+    verbatim_request: str | None = None,
+) -> str:
+    """Fold the definition-of-done (and verbatim request) into the executor brief."""
+    criteria = [c.strip() for c in acceptance_criteria if c and c.strip()]
+    parts: list[str] = []
+    if verbatim_request:
+        parts.append(f"Original request (verbatim):\n{verbatim_request.strip()}")
+    parts.append(task)
+    if criteria:
+        lines = "\n".join(f"- {c}" for c in criteria)
+        parts.append(f"Definition of done (every item must be true before you finish):\n{lines}")
+    return "\n\n".join(parts)
+
+
 async def prepare_executor_execution(
     task: str,
     configurable: AgentConfigurable,

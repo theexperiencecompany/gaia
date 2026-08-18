@@ -14,6 +14,7 @@ import pytest
 from redis.exceptions import DataError
 
 from app.agents.llm import lane as lane_module
+from app.agents.llm.client import PROVIDER_MODELS
 from app.agents.llm.lane import (
     AgentRole,
     ModelLane,
@@ -472,9 +473,47 @@ class TestDevOverride:
         assert resolved.provider_pin == option["model_kwargs"]
         assert resolved.max_input_tokens == DEFAULT_MAX_TOKENS
 
-    async def test_the_custom_endpoint_pins_no_model_so_the_client_default_serves_it(
-        self,
+    async def test_the_custom_endpoint_resolves_the_model_the_client_would_have_used(
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """DEV_MODEL_OPTIONS["custom"] carries no model. Leaving the lane's model
+        None priced the call as "unknown", which falls through to DEFAULT_PRICING
+        (~11x our default model's real rate) and undercharges the budget. The
+        client binds PROVIDER_MODELS[CUSTOM] (resolved once at import from
+        DEV_LLM_MODEL) whenever the lane pins no model, so resolving that same
+        name here does not change which model runs — it makes it visible."""
+        monkeypatch.setitem(PROVIDER_MODELS, LLMProviderName.CUSTOM, "nous/deepseek-v4-cheap")
+        option = dev_option_for("custom", use_defaults=False)
+        assert option is not None
+
+        resolved, _ = await resolve_lane(USER, AgentRole.COMMS, dev_option=option)
+
+        assert resolved.provider == LLMProviderName.CUSTOM
+        assert resolved.model == "nous/deepseek-v4-cheap"
+
+    async def test_an_unconfigured_custom_endpoint_pins_no_model_at_all(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """DEV_LLM_MODEL unset makes PROVIDER_MODELS[CUSTOM] the empty string, so
+        the name is genuinely unknown ahead of the call. None is still right: a
+        placeholder would price the call against a model that does not exist, and
+        the client fails on its own unconfigured endpoint instead."""
+        monkeypatch.setitem(PROVIDER_MODELS, LLMProviderName.CUSTOM, "")
+        option = dev_option_for("custom", use_defaults=False)
+        assert option is not None
+
+        resolved, _ = await resolve_lane(USER, AgentRole.COMMS, dev_option=option)
+
+        assert resolved.provider == LLMProviderName.CUSTOM
+        assert resolved.model is None
+
+    async def test_a_lane_missing_from_the_client_map_entirely_pins_no_model(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The sibling above configures the lane to an empty string. Absent from
+        PROVIDER_MODELS altogether there is no resolved name at all, and the
+        fallback has to stay falsy rather than inventing one."""
+        monkeypatch.delitem(PROVIDER_MODELS, LLMProviderName.CUSTOM, raising=False)
         option = dev_option_for("custom", use_defaults=False)
         assert option is not None
 
@@ -514,8 +553,10 @@ class TestDevOverride:
             dev_option_for(None, use_defaults=True)
 
         assert log.warning.call_args.args == (
-            f"{LogTag.AGENT} DEV_DEFAULT_MODEL is not a DEV_MODEL_OPTIONS key; "
-            "keeping the plan-resolved lane",
+            (
+                f"{LogTag.AGENT} DEV_DEFAULT_MODEL is not a DEV_MODEL_OPTIONS key; "
+                "keeping the plan-resolved lane"
+            ),
         )
         assert log.warning.call_args.kwargs == {"dev_default": "not-a-real-id"}
 

@@ -571,6 +571,17 @@ def _format_partial_result(messages: list[dict[str, Any]], *, reason: str) -> di
         "truncated": True,
         "partial": True,
         "error": reason,
+        # Weak models read a partial result, promise the user "still digging",
+        # and end the turn — no work can happen after a turn ends. Spell out the
+        # only honest moves.
+        "note": (
+            "This fetch FAILED partway; the messages above are all that could be "
+            "retrieved. Retrying the same call will hit the same error. Do NOT "
+            "tell the user you are still fetching or that more results are "
+            "coming. Either narrow the query (shorter date range, a filter) and "
+            "call again NOW, or answer with what you have and state plainly that "
+            "the rest failed and why."
+        ),
         "messages": messages,
     }
 

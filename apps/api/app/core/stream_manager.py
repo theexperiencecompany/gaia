@@ -349,6 +349,13 @@ class StreamManager:
                 )
 
     @classmethod
+    async def has_events(cls, stream_id: str) -> bool:
+        """Whether the stream's replayable event log still exists (pre-TTL)."""
+        if not redis_cache.redis:
+            return False
+        return bool(await redis_cache.redis.exists(f"{STREAM_EVENTS_PREFIX}{stream_id}"))
+
+    @classmethod
     async def _publish(cls, stream_id: str, message: str) -> None:
         """Append a message to the stream's replayable event log.
 

@@ -140,6 +140,7 @@ class ModelContext(TypedDict, total=False):
     # `usage_metadata.input_token_details.cache_read` and
     # `cached_content_token_count`.
     cached_tokens: int
+    reasoning_tokens: int  # subset of output_tokens spent on hidden thinking, when reported
     cache_hit_rate: float  # cached_tokens / max(input_tokens, 1)
     credits_charged: float
     step_index: int  # monotonic step counter within a single agent run

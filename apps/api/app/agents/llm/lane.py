@@ -18,7 +18,7 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Any
 
-from app.agents.llm.client import next_fallback_provider
+from app.agents.llm.client import PROVIDER_MODELS, next_fallback_provider
 from app.agents.llm.types import LLMProviderName
 from app.config.rate_limits import RateLimitPeriod, get_reset_time, get_time_window_key
 from app.config.settings import settings
@@ -205,13 +205,22 @@ def _dev_lane(option: DevModelOption, role: AgentRole) -> ModelLane:
     """A lane pinned from the DEV-ONLY model menu.
 
     An entry may carry no model (the env-defined "custom" endpoint), in which
-    case the client's own ``DEV_LLM_MODEL`` serves the request. Non-reasoning
-    models get no reasoning config at all rather than an inherited one, so a
-    prior OpenRouter pin cannot leak onto a Gemini-routed model.
+    case the lane resolves the SAME name the client would have used on its own —
+    ``PROVIDER_MODELS[provider]``, read once at import from ``DEV_LLM_MODEL``. It
+    changes nothing about which model runs, and it is what keeps the name visible
+    to accounting: a lane with no model prices the call as "unknown", which falls
+    through to DEFAULT_PRICING (~11x our default model's real rate) and
+    undercharges the budget. Left ``None`` only when the lane genuinely has no
+    resolved name — the custom endpoint is unconfigured — since pinning a
+    placeholder would price the call against a model that does not exist.
+
+    Non-reasoning models get no reasoning config at all rather than an inherited
+    one, so a prior OpenRouter pin cannot leak onto a Gemini-routed model.
     """
+    provider = LLMProviderName(option["provider"])
     return ModelLane(
-        provider=LLMProviderName(option["provider"]),
-        model=option["model"] or None,
+        provider=provider,
+        model=option["model"] or PROVIDER_MODELS.get(provider) or None,
         reasoning=_reasoning_for(role, paid=True) if option["reasoning"] else None,
         provider_pin=option["model_kwargs"],
         max_input_tokens=DEFAULT_MAX_TOKENS,

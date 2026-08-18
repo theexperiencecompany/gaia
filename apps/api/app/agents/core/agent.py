@@ -238,6 +238,11 @@ async def call_agent(
         if user_message_id:
             configurable["user_message_id"] = user_message_id
 
+        # Add bot_message_id so a HIL pause on this turn's executor can later
+        # resume onto this SAME message instead of minting a rival one.
+        if bot_message_id:
+            configurable["bot_message_id"] = bot_message_id
+
         stream = execute_graph_streaming(graph, initial_state, config)
         if not user_id:
             return stream

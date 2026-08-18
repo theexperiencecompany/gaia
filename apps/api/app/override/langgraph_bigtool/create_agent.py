@@ -56,9 +56,18 @@ from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
 
 from app.agents.llm.client import ainvoke_llm, invoke_llm
 from app.agents.llm.lane import ModelLane
+from app.agents.middleware.completion import (
+    completion_nudges_spent,
+    work_looks_unfinished,
+)
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.constants.general import FINISH_TASK_NAME, NEW_MESSAGE_BREAKER
-from app.constants.llm import LANE_FIELD_ID, RECURSION_WRAPUP_THRESHOLD_STEPS
+from app.constants.llm import (
+    COMPLETION_NUDGE_MESSAGE,
+    LANE_FIELD_ID,
+    MAX_COMPLETION_NUDGES,
+    RECURSION_WRAPUP_THRESHOLD_STEPS,
+)
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.override.langgraph_bigtool.dynamic_tool_node import (
     DynamicToolNode,
@@ -135,6 +144,7 @@ def create_agent(
     middleware: Sequence["AgentMiddleware"] | None = None,
     pre_model_hooks: list[HookType] | None = None,
     end_graph_hooks: list[HookType] | None = None,
+    require_finish_to_end: bool = False,
 ) -> StateGraph:
     """Create an agent with a registry of tools.
 
@@ -296,12 +306,15 @@ def create_agent(
         tools_to_bind = build_tools_to_bind(state)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
         prepared = _prepare_fallback(llm, tools_to_bind, model_configurations)
+        # LLMAccountingMiddleware already charges this call; auxiliary metering
+        # here would book it a second time.
         invoke_fn = functools.partial(
             ainvoke_llm,
             llm_with_tools,
             fallback=prepared[0] if prepared else None,
             config=config,
             label=agent_name,
+            meter_auxiliary=False,
             fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
         )
 
@@ -369,6 +382,7 @@ def create_agent(
 
         selected_tools = {}
         response_tools = {}
+        response_texts: dict[str, str] = {}
         for tool_call in tool_calls:
             kwargs = {**tool_call["args"]}
             if store_arg:
@@ -390,6 +404,9 @@ def create_agent(
                 response = [
                     tool_id for tool_id in result.get("response", []) if isinstance(tool_id, str)
                 ]
+                rendered = result.get("response_text")
+                if isinstance(rendered, str) and rendered:
+                    response_texts[tool_call["id"]] = rendered
             else:
                 tools_to_bind = [
                     tool_id
@@ -405,7 +422,7 @@ def create_agent(
             selected_tools[tool_call["id"]] = dedupe_str_list(filtered_bind)
             response_tools[tool_call["id"]] = dedupe_str_list(response)
 
-        tool_messages, _ = format_selected_tools(response_tools, tool_registry)  # type: ignore[arg-type]
+        tool_messages, _ = format_selected_tools(response_tools, tool_registry, response_texts)  # type: ignore[arg-type]
         _, bind_ids = format_selected_tools(selected_tools, tool_registry)  # type: ignore[arg-type]
         return {"messages": tool_messages, "selected_tool_ids": bind_ids}  # type: ignore[return-value]
 
@@ -418,6 +435,7 @@ def create_agent(
 
         selected_tools = {}
         response_tools = {}
+        response_texts: dict[str, str] = {}
         for tool_call in tool_calls:
             kwargs = {**tool_call["args"]}
             if store_arg:
@@ -439,6 +457,9 @@ def create_agent(
                 response = [
                     tool_id for tool_id in result.get("response", []) if isinstance(tool_id, str)
                 ]
+                rendered = result.get("response_text")
+                if isinstance(rendered, str) and rendered:
+                    response_texts[tool_call["id"]] = rendered
             else:
                 tools_to_bind = [
                     tool_id
@@ -454,7 +475,7 @@ def create_agent(
             selected_tools[tool_call["id"]] = dedupe_str_list(filtered_bind)
             response_tools[tool_call["id"]] = dedupe_str_list(response)
 
-        tool_messages, _ = format_selected_tools(response_tools, tool_registry)  # type: ignore[arg-type]
+        tool_messages, _ = format_selected_tools(response_tools, tool_registry, response_texts)  # type: ignore[arg-type]
         _, bind_ids = format_selected_tools(selected_tools, tool_registry)  # type: ignore[arg-type]
         return {"messages": tool_messages, "selected_tool_ids": bind_ids}  # type: ignore[return-value]
 
@@ -567,6 +588,17 @@ def create_agent(
         messages = state["messages"]
         last_message = messages[-1]
         if not isinstance(last_message, AIMessage) or not last_message.tool_calls:
+            # The model is trying to end by replying in plain text. For the
+            # executor (require_finish_to_end), don't take that at face value
+            # when work is demonstrably unfinished — nudge once and loop instead
+            # of ending early. Bounded by MAX_COMPLETION_NUDGES so a genuinely
+            # tool-free answer can't loop. Comms never opts in and ends normally.
+            if (
+                require_finish_to_end
+                and completion_nudges_spent(state) < MAX_COMPLETION_NUDGES
+                and work_looks_unfinished(state)
+            ):
+                return "nudge_continue"
             return "end_graph_hooks" if end_graph_hooks else END
         bound_names = _get_bound_tool_names(state)
         canonical_to_bound = canonical_tool_name_map(bound_names)
@@ -617,6 +649,12 @@ def create_agent(
     async def afinish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State:
         """Async twin of ``finish_task_node`` for the async graph path."""
         return finish_task_node(tool_calls, store=store)
+
+    def nudge_continue_node(state: State) -> State:
+        # The message IS the tally: completion_nudges_spent counts these back out
+        # of the current delegation, so there is no counter to keep in sync.
+        del state
+        return State(messages=[HumanMessage(content=COMPLETION_NUDGE_MESSAGE)])
 
     builder = StateGraph(State, context_schema=context_schema)
 
@@ -673,6 +711,16 @@ def create_agent(
     path_map = ["tools", FINISH_TASK_NAME, "reject_unbound_tools", END]
     if not disable_retrieve_tools:
         path_map.insert(0, "select_tools")
+    if require_finish_to_end:
+        builder.add_node(
+            "nudge_continue",
+            # Sync-only: the node ignores state and just emits the nudge, and
+            # RunnableCallable runs a sync func on ainvoke when no async twin
+            # is given — the twin was a pass-through with nothing to add.
+            RunnableCallable(nudge_continue_node),
+        )
+        builder.add_edge("nudge_continue", "agent")
+        path_map.append("nudge_continue")
     if end_graph_hooks:
         builder.add_node(
             "end_graph_hooks",

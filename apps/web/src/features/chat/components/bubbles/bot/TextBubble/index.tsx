@@ -33,6 +33,7 @@ import TodoProgressSection from "../TodoProgressSection";
 import UnifiedToolThread from "../UnifiedToolThread";
 import { getTypedData, renderTool, type ToolDataUnion } from "./ToolRenderers";
 import { useSubagentSynthesis } from "./useSubagentSynthesis";
+import { useToolRenderAudit } from "./useToolRenderAudit";
 
 // OpenUI components use bg-zinc-800 (same as the bubble) and must render
 // OUTSIDE the imessage-bubble — see bubbles/bot/CLAUDE.md.
@@ -392,6 +393,9 @@ export default function TextBubble({
   // and the remaining tool_data entries that render via TOOL_RENDERERS.
   const { timeline, processedTools } = useSubagentSynthesis(tool_data);
 
+  // Dev-only: record what this bubble did with each tool_data entry.
+  useToolRenderAudit(message_id, tool_data);
+
   // Tool calls currently blocked on a HIL approval, keyed by the shared
   // tool_call_id. Lets the tool row/subagent show "Waiting for approval"
   // instead of a generic spinner while the approval card handles the decision.
@@ -407,6 +411,20 @@ export default function TextBubble({
     return ids;
   }, [tool_data]);
 
+  // Settled decisions, keyed the same way — the tool's own row in the thread
+  // carries the outcome as a chip instead of a separate receipts block.
+  const approvalStatusByToolCallId = React.useMemo(() => {
+    const statuses = new Map<string, ApprovalRequestData["status"]>();
+    tool_data?.forEach((entry) => {
+      if (entry.tool_name !== APPROVAL_REQUEST_TOOL_NAME) return;
+      const data = entry.data as ApprovalRequestData | null;
+      if (data?.tool_call_id && data.status !== "pending") {
+        statuses.set(data.tool_call_id, data.status);
+      }
+    });
+    return statuses;
+  }, [tool_data]);
+
   return (
     <ApprovalResolveProvider value={resolveApproval}>
       {parsedContent.thinking && (
@@ -419,6 +437,7 @@ export default function TextBubble({
           timeline={timeline}
           isStreaming={!!loading}
           pendingApprovalToolCallIds={pendingApprovalToolCallIds}
+          approvalStatusByToolCallId={approvalStatusByToolCallId}
         />
       )}
 

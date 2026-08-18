@@ -58,7 +58,12 @@ async def get_model_pricing(model_name: str) -> ModelPricing:
                     cached_input_cost_per_1k=float(cached_input_cost),
                 )
 
-        # Fallback to default pricing
+        # Fallback to default pricing. DEFAULT_PRICING is ~11x DeepSeek's real rate,
+        # so a model id silently missing from the catalog must never pass quietly.
+        log.error(
+            f"{LogTag.AGENT} model missing from pricing catalog — priced at DEFAULT_PRICING",
+            model_name=model_name,
+        )
         return DEFAULT_PRICING
 
     except Exception as e:
