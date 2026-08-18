@@ -12,6 +12,7 @@ Never blocks or raises into the caller: losing a marketing email must not
 affect the 429 itself.
 """
 
+from contextvars import ContextVar
 from enum import StrEnum
 
 from app.models.payment_models import PlanType
@@ -29,6 +30,39 @@ class LimitHitOrigin(StrEnum):
 
     INTERACTIVE = "interactive"
     BACKGROUND = "background"
+
+
+#: The origin of the work running right now. Set once at a run's boundary
+#: (see ``limit_origin``) and read by every limit seam, because the seam that
+#: trips is usually several frames below the code that knows why it is running:
+#: an agent tool inside a background workflow used to report the run as
+#: interactive and mail the user "you hit your limit" for work they never
+#: started. INTERACTIVE is the right default — a request with nobody marking it
+#: is a user standing there.
+_run_origin: ContextVar[LimitHitOrigin] = ContextVar(
+    "limit_hit_origin", default=LimitHitOrigin.INTERACTIVE
+)
+
+
+def current_limit_origin() -> LimitHitOrigin:
+    """Whether the work running right now was started by the user or by GAIA."""
+    return _run_origin.get()
+
+
+def mark_run_origin(origin: LimitHitOrigin) -> None:
+    """Declare what kind of work the CURRENT task is doing.
+
+    Covers everything the task reaches afterwards — the agent, its tools, and
+    any task spawned from here, since a task copies the context it is created
+    in. Scoped to the task rather than a block: arq runs each job as its own
+    task (``loop.create_task(function.coroutine(...))``), so a job cannot leak
+    its origin into the next one, and marking a whole run needs no ``with``
+    around its body — indentation that would otherwise drag every wrapped line
+    into the diff.
+
+    Tests share one task, so the suite resets it between cases.
+    """
+    _run_origin.set(origin)
 
 
 def schedule_limit_upsell(

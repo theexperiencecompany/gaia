@@ -46,7 +46,7 @@ from app.models.workflow_models import (
     Workflow,
 )
 from app.services.analytics_service import AnalyticsEvents, capture_event
-from app.services.limit_upsell import LimitHitOrigin
+from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
 from app.services.notification_service import notification_service
 from app.services.user_service import get_user_by_id
 from app.services.workflow.conversation_service import (
@@ -456,6 +456,20 @@ async def _record_execution_failure(
     await _notify_workflow_failed(error, workflow)
 
 
+def _origin_for(trigger_type: str) -> LimitHitOrigin:
+    """A manual fire is the user standing there; a schedule or webhook is not.
+
+    Picks which email a limit hit sends, so getting it wrong tells a user who
+    clicked Run that their workflows are paused, or tells a user who did nothing
+    that *they* hit *their* limit.
+    """
+    return (
+        LimitHitOrigin.INTERACTIVE
+        if trigger_type == TriggerType.MANUAL.value
+        else LimitHitOrigin.BACKGROUND
+    )
+
+
 async def execute_workflow_by_id(
     ctx: dict[str, Any], workflow_id: str, context: dict[str, Any] | None = None
 ) -> str:
@@ -492,6 +506,9 @@ async def execute_workflow_by_id(
                 if context and "trigger_data" in context
                 else TriggerType.MANUAL.value
             )
+        # Everything below runs as this kind of work: the budget wall, the run's
+        # own tiered limit, and every rate-limited tool the agent reaches.
+        mark_run_origin(_origin_for(trigger_type))
         log.set(
             workflow=WorkflowContext(
                 id=workflow_id,
@@ -540,7 +557,6 @@ async def execute_workflow_by_id(
         await enforce_daily_cost_budget(
             workflow.user_id,
             feature_key="trigger_workflow_executions",
-            origin=LimitHitOrigin.BACKGROUND,
         )
 
         # Create execution record at start
@@ -620,7 +636,10 @@ async def execute_workflow_by_id(
         return "Error executing workflow %s: %s" % (workflow_id, str(e))
 
 
-@tiered_rate_limit("trigger_workflow_executions", origin=LimitHitOrigin.BACKGROUND)
+# No static origin: this decorator is evaluated at import, long before the
+# trigger is known. The seam reads the run's origin instead, which
+# execute_workflow_by_id sets from trigger_type.
+@tiered_rate_limit("trigger_workflow_executions")
 async def execute_workflow_as_chat(
     workflow: Workflow, user: AuthenticatedUser, context: dict[str, Any]
 ) -> str:

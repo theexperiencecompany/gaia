@@ -13,7 +13,12 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.models.payment_models import PlanType
-from app.services.limit_upsell import LimitHitOrigin, schedule_limit_upsell
+from app.services.limit_upsell import (
+    LimitHitOrigin,
+    current_limit_origin,
+    mark_run_origin,
+    schedule_limit_upsell,
+)
 
 MODULE = "app.services.limit_upsell"
 
@@ -83,9 +88,36 @@ class TestOriginRouting:
 
 
 class TestScheduleGate:
+    def test_free_plan_schedules(self) -> None:
+        """The gate's other side: a FREE hit is the case that must reach the seam."""
+        with patch(f"{MODULE}.spawn_background_task") as spawn:
+            schedule_limit_upsell(
+                "user-1", "chat_messages", PlanType.FREE, LimitHitOrigin.BACKGROUND
+            )
+        spawn.assert_called_once()
+        # Close the spawned coroutine so it is not reported as never awaited.
+        spawn.call_args.args[0].close()
+
     def test_paid_plan_schedules_nothing(self) -> None:
         with patch(f"{MODULE}.spawn_background_task") as spawn:
             schedule_limit_upsell(
                 "user-1", "chat_messages", PlanType.PRO, LimitHitOrigin.INTERACTIVE
             )
         spawn.assert_not_called()
+
+
+class TestTheRunOriginMarker:
+    """``mark_run_origin`` decides which email a limit hit sends, so an unmarked
+    run must read as the user standing there, not as background work."""
+
+    def test_a_marked_run_reports_its_origin(self) -> None:
+        mark_run_origin(LimitHitOrigin.BACKGROUND)
+        assert current_limit_origin() is LimitHitOrigin.BACKGROUND
+
+    def test_an_unmarked_run_is_treated_as_interactive(self) -> None:
+        assert current_limit_origin() is LimitHitOrigin.INTERACTIVE
+
+    def test_a_later_mark_replaces_an_earlier_one(self) -> None:
+        mark_run_origin(LimitHitOrigin.BACKGROUND)
+        mark_run_origin(LimitHitOrigin.INTERACTIVE)
+        assert current_limit_origin() is LimitHitOrigin.INTERACTIVE

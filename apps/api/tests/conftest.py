@@ -119,6 +119,7 @@ from app.models.payment_models import (
     SubscriptionStatus,
     UserSubscriptionStatus,
 )
+from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
 
 # ---------------------------------------------------------------------------
 # Infrastructure mock strategy
@@ -628,3 +629,15 @@ def posthog_provider() -> Iterator[Callable[..., None]]:
 
     yield install
     init_posthog()
+
+
+@pytest.fixture(autouse=True)
+def _reset_limit_origin() -> Iterator[None]:
+    """Keep a run's limit origin from leaking between tests.
+
+    arq gives each job its own task, so a job cannot leak into the next one.
+    Tests share one, so a case that marks a background run would otherwise make
+    later cases mail the wrong email.
+    """
+    yield
+    mark_run_origin(LimitHitOrigin.INTERACTIVE)

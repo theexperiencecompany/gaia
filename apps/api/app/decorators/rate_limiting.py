@@ -29,7 +29,7 @@ from app.models.usage_models import UsageInfo
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.cost_budget import get_cost, is_daily_budget_exhausted
-from app.services.limit_upsell import LimitHitOrigin, schedule_limit_upsell
+from app.services.limit_upsell import LimitHitOrigin, current_limit_origin, schedule_limit_upsell
 from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import log
 
@@ -285,7 +285,7 @@ def with_rate_limiting(
 
 
 async def enforce_tiered_limit(
-    user_id: str, feature_key: str, *, origin: LimitHitOrigin = LimitHitOrigin.INTERACTIVE
+    user_id: str, feature_key: str, *, origin: LimitHitOrigin | None = None
 ) -> None:
     """Charge ``feature_key`` against ``user_id``'s plan quota.
 
@@ -296,6 +296,7 @@ async def enforce_tiered_limit(
     before this existed it went entirely unmetered — no plan quota, and no
     ``usage_daily`` row, since ``record_activity`` fires from the limiter.
     """
+    origin = origin or current_limit_origin()
     subscription = await payment_service.get_user_subscription_status(user_id)
     user_plan = subscription.plan_type or PlanType.FREE
     try:
@@ -320,7 +321,7 @@ async def enforce_tiered_limit(
 def tiered_rate_limit(
     feature_key: str,
     *,
-    origin: LimitHitOrigin = LimitHitOrigin.INTERACTIVE,
+    origin: LimitHitOrigin | None = None,
 ) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
     """Rate limiting decorator for API endpoints."""
 
@@ -401,7 +402,7 @@ async def enforce_rate_limit(user_id: str, feature_key: str) -> dict[str, UsageI
 
 
 async def enforce_daily_cost_budget(
-    user_id: str, feature_key: str, *, origin: LimitHitOrigin = LimitHitOrigin.INTERACTIVE
+    user_id: str, feature_key: str, *, origin: LimitHitOrigin | None = None
 ) -> None:
     """Block when the user's rolling daily USD cost budget is exhausted.
 
@@ -414,6 +415,7 @@ async def enforce_daily_cost_budget(
     ``feature_key`` names the surface being blocked (e.g. ``chat_messages``,
     ``trigger_workflow_executions``) for the 429 payload and reset copy.
     """
+    origin = origin or current_limit_origin()
     plan_type = await payment_service.get_cached_plan_type(user_id)
     # The tier this request was priced against, on the wide event — this gate is
     # the one place on the chat path that resolves the plan before any work runs.

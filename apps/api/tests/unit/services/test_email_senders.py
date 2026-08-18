@@ -18,6 +18,7 @@ from app.services.email import (
     send_welcome_email,
 )
 from app.services.email.senders import (
+    LIMIT_EMAIL_WINDOW,
     send_limit_reached_email,
     send_workflows_paused_email,
 )
@@ -197,8 +198,8 @@ class TestSendWorkflowsPausedEmail:
         with (
             patch(f"{SENDERS}.user_repository.get", new_callable=AsyncMock) as get,
             patch(
-                f"{SENDERS}.user_repository.record_limit_email_sent", new_callable=AsyncMock
-            ) as record,
+                f"{SENDERS}.user_repository.claim_limit_email_slot", new_callable=AsyncMock
+            ) as claim,
         ):
             get.return_value = _limit_email_user()
             sent = await send_workflows_paused_email("user-1")
@@ -218,11 +219,18 @@ class TestSendWorkflowsPausedEmail:
         assert message.subject == "GAIA is taking a break until tomorrow"
         assert message.html == "<h1>Paused</h1>"
         assert message.reply_to == CONTACT_EMAIL
-        record.assert_awaited_once_with("user-1")
+        claim.assert_awaited_once()
 
     @patch(f"{SENDERS}.send_email")
     async def test_weekly_dedupe_blocks_send(self, mock_send):
-        with patch(f"{SENDERS}.user_repository.get", new_callable=AsyncMock) as get:
+        with (
+            patch(f"{SENDERS}.user_repository.get", new_callable=AsyncMock) as get,
+            patch(
+                f"{SENDERS}.user_repository.claim_limit_email_slot",
+                new_callable=AsyncMock,
+                return_value=None,  # the window is already held
+            ),
+        ):
             get.return_value = _limit_email_user(datetime.now(UTC) - timedelta(days=2))
             sent = await send_workflows_paused_email("user-1")
 
@@ -232,7 +240,14 @@ class TestSendWorkflowsPausedEmail:
     @patch(f"{SENDERS}.send_email")
     async def test_dedupe_is_shared_with_upsell_email(self, mock_send):
         """One limit email of either kind per week: a recent send blocks both."""
-        with patch(f"{SENDERS}.user_repository.get", new_callable=AsyncMock) as get:
+        with (
+            patch(f"{SENDERS}.user_repository.get", new_callable=AsyncMock) as get,
+            patch(
+                f"{SENDERS}.user_repository.claim_limit_email_slot",
+                new_callable=AsyncMock,
+                return_value=None,  # the window is already held
+            ),
+        ):
             get.return_value = _limit_email_user(datetime.now(UTC) - timedelta(days=2))
             sent = await send_limit_reached_email("user-1", "chat_messages")
 
@@ -252,8 +267,8 @@ class TestSendLimitReachedEmail:
         with (
             patch(f"{SENDERS}.user_repository.get", new_callable=AsyncMock) as get,
             patch(
-                f"{SENDERS}.user_repository.record_limit_email_sent", new_callable=AsyncMock
-            ) as record,
+                f"{SENDERS}.user_repository.claim_limit_email_slot", new_callable=AsyncMock
+            ) as claim,
         ):
             get.return_value = _limit_email_user()
             sent = await send_limit_reached_email("user-1", "chat_messages")
@@ -274,4 +289,106 @@ class TestSendLimitReachedEmail:
         assert message.subject == "You hit your GAIA limit today — here's what Pro unlocks"
         assert message.html == "<h1>Upsell</h1>"
         assert message.reply_to == CONTACT_EMAIL
-        record.assert_awaited_once_with("user-1")
+        claim.assert_awaited_once()
+
+
+class TestTheWeeklyWindowIsClaimedNotJustRead:
+    """The dedupe has to survive two limit hits landing at once.
+
+    Reading eligibility and stamping it after the send straddled a network
+    send, so both callers passed the check and the user got two emails in a
+    week the copy promises will have one.
+    """
+
+    @patch(f"{SENDERS}.send_email")
+    @patch(f"{SENDERS}.render_email_template", return_value="<h1>Upsell</h1>")
+    async def test_the_loser_of_a_concurrent_claim_sends_nothing(
+        self, _mock_render, mock_send
+    ) -> None:
+        # One winner, one loser — what the conditional update returns to two
+        # callers racing for the same weekly slot.
+        with (
+            patch(f"{SENDERS}.user_repository.get", new_callable=AsyncMock) as get,
+            patch(
+                f"{SENDERS}.user_repository.claim_limit_email_slot",
+                new_callable=AsyncMock,
+                side_effect=[_limit_email_user(), None],
+            ),
+        ):
+            get.return_value = _limit_email_user()
+            first = await send_limit_reached_email("user-1", "chat_messages")
+            second = await send_limit_reached_email("user-1", "chat_messages")
+
+        assert (first, second) == (True, False)
+        assert mock_send.call_count == 1
+
+    @patch(f"{SENDERS}.send_email")
+    @patch(f"{SENDERS}.render_email_template", return_value="<h1>Upsell</h1>")
+    async def test_the_claim_names_the_user_and_a_window_that_has_passed(
+        self, _mock_render, _mock_send
+    ) -> None:
+        """The claim's arguments ARE the dedupe. A stale_before in the future
+        makes every user look eligible and mails them daily; the wrong id
+        claims someone else's window."""
+        with (
+            patch(f"{SENDERS}.user_repository.get", new_callable=AsyncMock) as get,
+            patch(
+                f"{SENDERS}.user_repository.claim_limit_email_slot",
+                new_callable=AsyncMock,
+                return_value=_limit_email_user(),
+            ) as claim,
+        ):
+            get.return_value = _limit_email_user()
+            before = datetime.now(UTC)
+            await send_limit_reached_email("user-1", "chat_messages")
+
+        assert claim.await_args.args == ("user-1",)
+        stale_before = claim.await_args.kwargs["stale_before"]
+        # Exactly one window in the PAST, not the future.
+        assert before - LIMIT_EMAIL_WINDOW - timedelta(seconds=5) <= stale_before
+        assert stale_before <= datetime.now(UTC) - LIMIT_EMAIL_WINDOW
+
+    @patch(f"{SENDERS}.render_email_template", return_value="<h1>Paused</h1>")
+    async def test_the_paused_email_also_hands_its_slot_back(self, _mock_render) -> None:
+        """Both senders share the window, so both must release it on failure."""
+        previously = datetime.now(UTC) - timedelta(days=30)
+        with (
+            patch(f"{SENDERS}.user_repository.get", new_callable=AsyncMock) as get,
+            patch(
+                f"{SENDERS}.user_repository.claim_limit_email_slot",
+                new_callable=AsyncMock,
+                return_value=_limit_email_user(previously),
+            ),
+            patch(
+                f"{SENDERS}.user_repository.release_limit_email_slot", new_callable=AsyncMock
+            ) as release,
+            patch(f"{SENDERS}.send_email", side_effect=RuntimeError("smtp down")),
+        ):
+            get.return_value = _limit_email_user(previously)
+            with pytest.raises(RuntimeError):
+                await send_workflows_paused_email("user-1")
+
+        release.assert_awaited_once_with("user-1", previously)
+
+    @patch(f"{SENDERS}.render_email_template", return_value="<h1>Upsell</h1>")
+    async def test_a_failed_send_hands_the_slot_back(self, _mock_render) -> None:
+        """Otherwise a failed send burns the whole week: the marker claims an
+        email went out when none did, and the user hears nothing for 7 days."""
+        previously = datetime.now(UTC) - timedelta(days=30)
+        with (
+            patch(f"{SENDERS}.user_repository.get", new_callable=AsyncMock) as get,
+            patch(
+                f"{SENDERS}.user_repository.claim_limit_email_slot",
+                new_callable=AsyncMock,
+                return_value=_limit_email_user(previously),
+            ),
+            patch(
+                f"{SENDERS}.user_repository.release_limit_email_slot", new_callable=AsyncMock
+            ) as release,
+            patch(f"{SENDERS}.send_email", side_effect=RuntimeError("smtp down")),
+        ):
+            get.return_value = _limit_email_user(previously)
+            with pytest.raises(RuntimeError):
+                await send_limit_reached_email("user-1", "chat_messages")
+
+        release.assert_awaited_once_with("user-1", previously)
