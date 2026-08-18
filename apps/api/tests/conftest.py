@@ -119,7 +119,7 @@ from app.models.payment_models import (
     SubscriptionStatus,
     UserSubscriptionStatus,
 )
-from app.services.limit_upsell import reset_run_origin
+from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
 
 # ---------------------------------------------------------------------------
 # Infrastructure mock strategy
@@ -640,4 +640,4 @@ def _reset_limit_origin() -> Iterator[None]:
     later cases mail the wrong email.
     """
     yield
-    reset_run_origin()
+    mark_run_origin(LimitHitOrigin.INTERACTIVE)

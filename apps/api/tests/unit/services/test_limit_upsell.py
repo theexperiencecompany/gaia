@@ -12,14 +12,11 @@ from dataclasses import dataclass
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from app.models.payment_models import PlanType
 from app.services.limit_upsell import (
     LimitHitOrigin,
     current_limit_origin,
     mark_run_origin,
-    reset_run_origin,
     schedule_limit_upsell,
 )
 
@@ -120,7 +117,7 @@ class TestTheRunOriginMarker:
     def test_an_unmarked_run_is_treated_as_interactive(self) -> None:
         assert current_limit_origin() is LimitHitOrigin.INTERACTIVE
 
-    def test_the_reset_puts_the_default_back(self) -> None:
+    def test_a_later_mark_replaces_an_earlier_one(self) -> None:
         mark_run_origin(LimitHitOrigin.BACKGROUND)
-        reset_run_origin()
+        mark_run_origin(LimitHitOrigin.INTERACTIVE)
         assert current_limit_origin() is LimitHitOrigin.INTERACTIVE

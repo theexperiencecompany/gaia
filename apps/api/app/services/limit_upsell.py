@@ -60,14 +60,9 @@ def mark_run_origin(origin: LimitHitOrigin) -> None:
     around its body — indentation that would otherwise drag every wrapped line
     into the diff.
 
-    Tests share one task, so ``reset_run_origin`` puts the default back.
+    Tests share one task, so the suite resets it between cases.
     """
     _run_origin.set(origin)
-
-
-def reset_run_origin() -> None:
-    """Restore the default origin (test teardown; a job never needs this)."""
-    _run_origin.set(LimitHitOrigin.INTERACTIVE)
 
 
 def schedule_limit_upsell(
