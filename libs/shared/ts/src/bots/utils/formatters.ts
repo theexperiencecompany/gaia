@@ -591,7 +591,11 @@ export function formatBotError(error: unknown): string {
   if (
     message.includes("Connection interrupted") ||
     message.includes("ECONNRESET") ||
-    message.includes("socket hang up")
+    message.includes("socket hang up") ||
+    // Node's premature-close error, raised verbatim as `aborted` when a proxy
+    // hangs up mid-response. Without this it lands in the unhandled bucket
+    // below and shows up as a spurious `unhandled_bot_error`.
+    message === "aborted"
   ) {
     return "🔌 Connection interrupted. Please try again.";
   }

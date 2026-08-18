@@ -14,7 +14,7 @@ from app.constants.auth import AUDIT_ACTOR_BOT_API, AUDIT_ACTOR_UNAUTHENTICATED
 from app.constants.cache import PLATFORM_LINK_TOKEN_PREFIX, PLATFORM_LINK_TOKEN_TTL
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
-from app.core.stream_manager import stream_manager
+from app.core.stream_manager import stream_manager, with_heartbeat
 from app.db.redis import redis_cache
 from app.decorators import enforce_daily_cost_budget, enforce_tiered_limit, tiered_rate_limit
 from app.models.bot_models import (
@@ -500,7 +500,11 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
                 )
                 yield f"data: {json.dumps({'error': 'Stream error occurred'})}\n\n"
 
-    return StreamingResponse(stream_from_redis(), media_type="text/event-stream")
+    # The translator above drops every web-only frame, so the socket can go
+    # quiet for minutes while the turn is busy. with_heartbeat guarantees a
+    # byte on the wire regardless, so no proxy in the path can mistake a
+    # working stream for a dead one.
+    return StreamingResponse(with_heartbeat(stream_from_redis()), media_type="text/event-stream")
 
 
 @router.post(
