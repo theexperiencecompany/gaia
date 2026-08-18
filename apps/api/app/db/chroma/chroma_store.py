@@ -98,40 +98,27 @@ class ChromaStore(BaseStore):
         them explicitly to ``collection.upsert()``.
         """
         if self._collection_cache is None:
-            collections = await self.client.list_collections()
-            collection_names = [col.name for col in collections]
-
-            if self.collection_name not in collection_names:
-                log.set(
-                    vector=VectorContext(
-                        operation="create_collection",
-                        collection=self.collection_name,
-                    )
+            log.set(
+                vector=VectorContext(
+                    operation="get_or_create_collection",
+                    collection=self.collection_name,
                 )
-                log.info(
-                    f"{LogTag.CHROMA} Creating ChromaDB collection",
-                    collection_name=self.collection_name,
-                )
-                self._collection_cache = await self.client.create_collection(
+            )
+            try:
+                self._collection_cache = await self.client.get_or_create_collection(
                     name=self.collection_name,
                     metadata={"hnsw:space": "cosine"},
                     embedding_function=NoOpEmbeddingFunction(),
                 )
-            else:
-                try:
-                    self._collection_cache = await self.client.get_collection(
-                        name=self.collection_name,
-                        embedding_function=NoOpEmbeddingFunction(),
-                    )
-                except ValueError:
-                    # ChromaDB 1.x rejects a new embedding function when one is
-                    # already persisted in the collection config.  Since
-                    # ChromaStore manages embeddings itself (passes them
-                    # explicitly to upsert), we can safely get the collection
-                    # without overriding the embedding function.
-                    self._collection_cache = await self.client.get_collection(
-                        name=self.collection_name,
-                    )
+            except ValueError:
+                # ChromaDB 1.x rejects a new embedding function when one is
+                # already persisted in the collection config.  Since
+                # ChromaStore manages embeddings itself (passes them
+                # explicitly to upsert), we can safely resolve the collection
+                # without overriding the embedding function.
+                self._collection_cache = await self.client.get_or_create_collection(
+                    name=self.collection_name,
+                )
 
         return self._collection_cache
 
