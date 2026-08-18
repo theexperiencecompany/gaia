@@ -112,7 +112,7 @@ jobs:
             api=true
           fi
 
-          if echo "$AFFECTED" | grep -qx "bot-discord" || echo "$AFFECTED" | grep -qx "bot-slack" || echo "$AFFECTED" | grep -qx "bot-telegram" || echo "$AFFECTED" | grep -qx "bot-whatsapp"; then
+          if echo "$AFFECTED" | grep -qx "bot-discord" || echo "$AFFECTED" | grep -qx "bot-slack" || echo "$AFFECTED" | grep -qx "bot-telegram" || echo "$AFFECTED" | grep -qx "bot-whatsapp" || echo "$AFFECTED" | grep -qx "bot-imessage"; then
             bots=true
           fi
 
@@ -134,7 +134,8 @@ jobs:
                if image_missing "ghcr.io/theexperiencecompany/gaia-bot-discord:latest" || \
                   image_missing "ghcr.io/theexperiencecompany/gaia-bot-slack:latest" || \
                   image_missing "ghcr.io/theexperiencecompany/gaia-bot-telegram:latest" || \
-                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-whatsapp:latest"; then
+                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-whatsapp:latest" || \
+                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-imessage:latest"; then
                 echo "⚠️ Bot image(s) missing from GHCR — forcing build"
                 bots=true
               fi
@@ -175,7 +176,7 @@ jobs:
         id: ensure-bot-images
         if: steps.affected.outputs.bots == 'true'
         run: |
-          for bot in discord slack telegram whatsapp; do
+          for bot in discord slack telegram whatsapp imessage; do
             img="ghcr.io/theexperiencecompany/gaia-bot-${bot}:latest"
             if docker image inspect "$img" &>/dev/null; then
               echo "Pushing $img..."
