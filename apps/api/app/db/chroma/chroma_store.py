@@ -5,7 +5,7 @@ using ChromaDB for vector storage and retrieval.
 """
 
 import asyncio
-from collections.abc import Iterable
+from collections.abc import Coroutine, Iterable
 from datetime import UTC, datetime
 import pickle  # nosec B403 - Used for internal trusted data serialization only
 from typing import Any, cast
@@ -30,8 +30,10 @@ from langgraph.store.base import (
     tokenize_path,
 )
 
+from app.constants.chroma import MAX_CONCURRENT_CHROMA_WRITES
 from app.constants.log_tags import LogTag
 from app.db.chroma.noop_embedding import NoOpEmbeddingFunction
+from app.utils.concurrency import loop_bound_semaphore
 from shared.py.wide_events import VectorContext, log
 
 # A filter value (or the item value it's compared against) is an arbitrary
@@ -506,7 +508,7 @@ class ChromaStore(BaseStore):
         collection: AsyncCollection,
     ) -> None:
         """Apply put operations to ChromaDB in parallel."""
-        tasks = []
+        tasks: list[Coroutine[Any, Any, None]] = []
         doc_ids: list[str] = []
 
         for (namespace, key), op in put_ops.items():
@@ -521,11 +523,23 @@ class ChromaStore(BaseStore):
         if not tasks:
             return
 
+        # Process-wide, not per-call: concurrent _apply_put_ops calls (e.g. the
+        # startup catalog warmup fanning out over every provider toolkit) share
+        # this one semaphore, so the fd cap holds across callers, not just
+        # within a single batch.
+        sem = loop_bound_semaphore("chroma_put_batch", MAX_CONCURRENT_CHROMA_WRITES)
+
+        async def _guarded(coro: Coroutine[Any, Any, None]) -> None:
+            async with sem:
+                await coro
+
         # return_exceptions=True keeps one bad doc from killing the batch, but
         # silently swallows every failure. Surface them so we don't end up with
         # an indexing pass that "succeeded" yet wrote zero rows (the PostHog
         # case — 336 tools "indexed", 0 in ChromaDB, no errors anywhere).
-        results: list[BaseException | None] = await asyncio.gather(*tasks, return_exceptions=True)
+        results: list[BaseException | None] = await asyncio.gather(
+            *[_guarded(t) for t in tasks], return_exceptions=True
+        )
         failures: list[tuple[str, BaseException]] = [
             (d, r) for d, r in zip(doc_ids, results) if isinstance(r, BaseException)
         ]
