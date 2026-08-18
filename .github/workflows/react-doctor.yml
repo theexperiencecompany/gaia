@@ -35,25 +35,16 @@ jobs:
           fetch-depth: 0
 
       - uses: millionco/react-doctor@v2
-        # Advisory by default: React Doctor reports findings on every PR — a
-        # sticky summary comment, inline review comments, and a commit status
-        # with the health score — but never fails the check (no `blocking`
-        # input), so it won't red-X a teammate's PR on day one.
-        #
         # Scoped to the web app only (the rest of the monorepo is out of
         # scope) and pinned to react-doctor@0.9.12 to keep CI on the exact
-        # CLI version local runs were verified against. The final commit in
-        # this PR flips `blocking` to error now that the web baseline is
-        # clean.
+        # CLI version local runs were verified against. The first commit of
+        # this PR landed the check advisory (no blocking); with the web
+        # baseline clean it now blocks on new error-severity findings.
         with:
           directory: apps/web
           version: "0.9.12"
-        # Gate level (fail the check): "none" (advisory, the default) |
-        # "warning" | "error". When ready, uncomment:
-        #   blocking: error
-        # Other options:
-        #   scope: full              # On PRs, scan the whole project instead of just changed files
-        #   comment: false           # Disable the sticky PR summary comment
-        #   review-comments: false   # Disable inline review comments on changed lines
-        #   commit-status: false     # Disable the commit status (score + counts, links to the run)
-        #   project: "web,admin"     # In a monorepo, scan specific workspace project(s)
+          # Fail the check on new error-severity findings introduced by the
+          # PR. The web baseline is clean (verified 45/100 with no regressions
+          # across the fix commits above), so this gate only blocks real
+          # regressions.
+          blocking: error
