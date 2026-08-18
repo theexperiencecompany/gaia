@@ -44,8 +44,8 @@ from app.models.stream_events import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_event
-from app.services.chat.artifact_forwarder import forward_artifact_events
 from app.services.browser.resolution import resolve_handoff_from_message
+from app.services.chat.artifact_forwarder import forward_artifact_events
 from app.services.chat.chunks import process_data_chunk
 from app.services.chat.persistence import (
     initialize_new_conversation,
