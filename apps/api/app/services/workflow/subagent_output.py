@@ -17,7 +17,6 @@ from pydantic import BaseModel, Field
 
 from app.constants.log_tags import LogTag
 from app.models.workflow_models import TriggerType
-from app.utils.json_helpers import text_bag
 from shared.py.wide_events import log
 
 # The assistant speaks "scheduled"; every other layer (TriggerConfig, the REST
@@ -166,11 +165,10 @@ def _result_from_payload(data: dict[str, object], response: str) -> ParseResult 
             log.info(f"{LogTag.WORKFLOW} Successfully parsed clarifying response")
             return ParseResult(mode="clarifying", message=clarifying.message, raw_response=response)
         except Exception:
-            return ParseResult(
-                mode="clarifying",
-                message=text_bag(data, "message", response),
-                raw_response=response,
-            )
+            # model_validate on a type=="clarifying" payload fails exactly when
+            # data["message"] is absent or not a str — so the bag read here
+            # could only ever return its fallback. Say so directly.
+            return ParseResult(mode="clarifying", message=response, raw_response=response)
 
     return None
 

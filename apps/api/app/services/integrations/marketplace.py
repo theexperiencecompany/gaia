@@ -133,7 +133,10 @@ async def get_integration_details(integration_id: str) -> IntegrationResponse | 
         return None
 
     # Creator lives only on custom integration docs; platform entries have none.
-    creator_doc: dict[str, object] | None = None
+    # pragma: no mutate — any falsy stand-in here is equivalent: the value is
+    # only ever truthiness-tested (`if creator_doc:` in _assemble), and the
+    # classifier cannot prove that across the function boundary.
+    creator_doc: dict[str, object] | None = None  # pragma: no mutate
     created_by = text_opt_bag(resolved.custom_doc, "created_by") if resolved.custom_doc else None
     if created_by:
         try:

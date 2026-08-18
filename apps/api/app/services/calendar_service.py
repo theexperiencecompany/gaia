@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from typing import cast
 
 from fastapi import HTTPException
 
@@ -329,7 +330,14 @@ async def get_calendar_events(
             else:
                 events = (
                     await fetch_calendar_events(
-                        cal.id, user_id, None, time_min, time_max, max_results or 20
+                        cal.id,
+                        user_id,
+                        None,
+                        time_min,
+                        time_max,
+                        # Truthy by construction: this is fetch_every_page's else
+                        # branch, and falsy max_results forces fetch_every_page.
+                        cast(int, max_results),
                     )
                 ).items
 
