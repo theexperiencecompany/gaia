@@ -1380,3 +1380,68 @@ class TestDeletedConversationIsNotAnError:
         _msg, kwargs = _logged(log, "error")
         assert kwargs["error"] == "connection reset"
         assert not log.info.called
+
+
+class TestBuildFollowUpActions:
+    """The executor-final follow-up one-shot: what it is asked, and under which
+    routing key. Every caller mocks ``generate_follow_up_actions``, so nothing
+    else asserts the arguments it is handed."""
+
+    async def _build(
+        self,
+        *,
+        msg_type: str = "final",
+        notification_text: str = "Archived 3 emails.",
+        user_msg_content: str = "clean my inbox",
+        user_id: str = "user-1",
+        conversation_id: str | None = "conv-1",
+    ) -> AsyncMock:
+        with patch.object(
+            rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=["a"]
+        ) as gen:
+            self.result = await rd._build_follow_up_actions(
+                msg_type=msg_type,
+                notification_text=notification_text,
+                user_msg_content=user_msg_content,
+                user_id=user_id,
+                conversation_id=conversation_id,
+            )
+        return gen
+
+    async def test_the_sticky_routing_key_is_the_conversation(self) -> None:
+        """session_id is what chains these with the graph-path follow-ups; without
+        it every call lands on a random upstream and never hits the cache."""
+        gen = await self._build()
+
+        assert gen.call_args.args[2] == {
+            "configurable": {"user_id": "user-1", "session_id": "conv-1"}
+        }
+
+    async def test_a_conversationless_run_still_names_its_user(self) -> None:
+        gen = await self._build(conversation_id=None)
+
+        assert gen.call_args.args[2] == {"configurable": {"user_id": "user-1", "session_id": None}}
+
+    async def test_the_prompt_pairs_the_request_with_the_answer(self) -> None:
+        gen = await self._build()
+
+        assert gen.call_args.args[0] == (
+            "User request: clean my inbox\n\nAssistant response: Archived 3 emails."
+        )
+
+    async def test_without_a_user_message_the_answer_stands_alone(self) -> None:
+        gen = await self._build(user_msg_content="")
+
+        assert gen.call_args.args[0] == "Archived 3 emails."
+
+    async def test_the_spend_is_attributed_to_the_run_owner(self) -> None:
+        gen = await self._build()
+
+        assert gen.call_args.args[1] == "user-1"
+
+    async def test_a_non_final_result_asks_for_nothing(self) -> None:
+        """An error or intermediate ack gets no suggestions, and costs no call."""
+        gen = await self._build(msg_type="error")
+
+        assert self.result == []
+        gen.assert_not_awaited()
