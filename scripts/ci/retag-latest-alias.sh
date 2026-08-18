@@ -82,7 +82,7 @@ case "$MODE" in
       # re-point that repo's :latest at it. Deduped: gaia-backend and
       # arq_worker share the gaia repo.
       refs=$(for svc in $(docker --context "$DOCKER_CONTEXT" stack services "$STACK" --format '{{.Name}}' \
-          | grep -E 'gaia-backend|arq_worker|voice-agent-worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot'); do
+          | grep -E 'gaia-backend|arq_worker|voice-agent-worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot|imessage-bot'); do
           docker --context "$DOCKER_CONTEXT" service inspect "$svc" \
             --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'
         done | sort -u)
