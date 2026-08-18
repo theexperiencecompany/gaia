@@ -8,7 +8,7 @@ Provides:
 - Reusable fake user and auth fixtures
 """
 
-from collections.abc import AsyncGenerator, Iterator
+from collections.abc import AsyncGenerator, Callable, Iterator
 import contextlib
 from contextlib import asynccontextmanager
 import importlib
@@ -87,6 +87,8 @@ _early_infisical_patch.start()
 # app.db.repositories.base -> app.db.redis -> app.config.settings, which
 # instantiates settings at import time. Without ENV set first, that resolves to
 # ProductionSettings and fails validation (CI has no production keys).
+from app.config.posthog import init_posthog
+from app.core.lazy_loader import MissingKeyStrategy, providers
 from app.models.payment_models import (
     PlanType,
     SubscriptionStatus,
@@ -577,3 +579,27 @@ def route_enqueue_via_pool():
                 patch(f"{module}.enqueue_worker_job", side_effect=_forward, create=True)
             )
         yield
+
+
+@pytest.fixture
+def posthog_provider() -> Iterator[Callable[..., None]]:
+    """Install a controllable "posthog" provider under the real registry.
+
+    The env fence blanks ``POSTHOG_PROJECT_TOKEN``, so the production provider
+    is unavailable for the whole suite. Tests go through the real registry
+    rather than patching ``providers`` because the provider NAME is part of
+    what they pin: a lookup under any other key finds nothing, and the code
+    under test then silently attributes nobody. Production's provider is
+    re-registered on teardown.
+    """
+
+    def install(*, available: bool, client: object | None) -> None:
+        providers.register(
+            name="posthog",
+            loader_func=lambda: client,
+            required_keys=[] if available else [""],
+            strategy=MissingKeyStrategy.SILENT,
+        )
+
+    yield install
+    init_posthog()

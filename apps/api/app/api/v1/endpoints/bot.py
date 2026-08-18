@@ -288,7 +288,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
 
     user_id = _resolve_user_id(user)
     user["user_id"] = user_id  # Ensure user_id is always set in the dict
-    log.set(user={"id": user_id}, platform=body.platform, outcome="success")
+    log.set(user={"id": user_id}, outcome="success")
     # Linking is Pro-gated for premium platforms; re-check on every turn so a
     # user who downgrades after linking is refused here, not silently served.
     if await platform_requires_upgrade(user_id, body.platform):

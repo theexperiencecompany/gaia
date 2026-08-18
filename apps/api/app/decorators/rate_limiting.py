@@ -40,6 +40,11 @@ rate_limit_context: ContextVar[dict[str, Any] | None] = ContextVar(
 )
 
 
+def plan_label(user_plan: object) -> str:
+    """The plan's wire value — PlanType members carry one, anything else stringifies."""
+    return user_plan.value if hasattr(user_plan, "value") else str(user_plan)
+
+
 def with_rate_limiting(
     feature_key: str | None = None,
     count_tokens: bool = False,
@@ -114,11 +119,7 @@ def with_rate_limiting(
                             {
                                 "feature_key": actual_feature_key,
                                 "usage_info": usage_info,
-                                "user_plan": (
-                                    user_plan.value
-                                    if hasattr(user_plan, "value")
-                                    else str(user_plan)
-                                ),
+                                "user_plan": plan_label(user_plan),
                             }
                         )
 
@@ -145,7 +146,7 @@ def with_rate_limiting(
                             capture_event(
                                 user_id,
                                 AnalyticsEvents.RATE_LIMIT_HIT,
-                                {"feature": actual_feature_key, "plan": user_plan.value},
+                                {"feature": actual_feature_key, "plan": plan_label(user_plan)},
                             )
                         detail_dict = {}
                         reset_time = None
@@ -175,11 +176,7 @@ def with_rate_limiting(
                                             "feature": actual_feature_key,
                                             "plan_required": detail_dict.get("plan_required"),
                                             "reset_time": reset_time,
-                                            "current_plan": (
-                                                user_plan.value
-                                                if hasattr(user_plan, "value")
-                                                else str(user_plan)
-                                            ),
+                                            "current_plan": plan_label(user_plan),
                                         },
                                         "timestamp": datetime.now(UTC).isoformat(),
                                     }

@@ -20,8 +20,6 @@ from app.api.v1.middleware.auth import (
     WorkOSAuthMiddleware,
     get_current_user,
 )
-from app.config.posthog import init_posthog
-from app.core.lazy_loader import MissingKeyStrategy, providers
 from app.models.user_models import UserDocument
 
 
@@ -361,30 +359,6 @@ REQUEST_PATH = "/api/v1/notes"
 
 async def _noop_asgi(scope, receive, send) -> None:  # pragma: no cover - never called
     """BaseHTTPMiddleware requires an inner app; ``dispatch`` is driven directly."""
-
-
-def _install_posthog_provider(*, available: bool, client: object | None) -> None:
-    """Re-register the "posthog" provider under the real registry.
-
-    The session conftest registers the production provider with a blanked
-    token, so ``is_available("posthog")`` is False for the whole suite. These
-    tests go through the real ``providers`` registry rather than patching it,
-    because the provider NAME is part of what they pin: a lookup under any
-    other key finds nothing and the middleware silently identifies nobody.
-    """
-    providers.register(
-        name="posthog",
-        loader_func=lambda: client,
-        required_keys=[] if available else [""],
-        strategy=MissingKeyStrategy.SILENT,
-    )
-
-
-@pytest.fixture
-def posthog_provider():
-    """Install a controllable "posthog" provider; restore production's after."""
-    yield _install_posthog_provider
-    init_posthog()
 
 
 def _authenticated_request(user: dict | None) -> Request:

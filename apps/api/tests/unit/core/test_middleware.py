@@ -90,7 +90,6 @@ class TestPostHogContextDoesNotSwallowExceptions:
         return app
 
     def test_the_handlers_own_exception_is_what_propagates(self) -> None:
-
         with patch("app.api.v1.middleware.auth.providers") as providers:
             providers.is_available.return_value = True
             providers.get.return_value = MagicMock()

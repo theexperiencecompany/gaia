@@ -9,6 +9,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.config.rate_limits import derive_pro_benefits, get_feature_info
+from app.config.settings import settings
+from app.constants.email import CONTACT_EMAIL, FOUNDER_SENDER
 from app.services.email import (
     add_marketing_contact,
     send_inactive_user_email,
@@ -201,9 +204,20 @@ class TestSendWorkflowsPausedEmail:
             sent = await send_workflows_paused_email("user-1")
 
         assert sent is True
+        get.assert_awaited_once_with("user-1")
         assert mock_render.call_args[0][0] == "workflows_paused.html"
+        assert mock_render.call_args[1] == {
+            "user_name": "Alice",
+            "workflows_url": f"{settings.FRONTEND_URL}/workflows",
+            "pricing_url": f"{settings.FRONTEND_URL}/pricing",
+            "contact_email": CONTACT_EMAIL,
+        }
         message = mock_send.call_args[0][0]
+        assert message.sender == FOUNDER_SENDER
         assert message.to == ["user@example.com"]
+        assert message.subject == "GAIA is taking a break until tomorrow"
+        assert message.html == "<h1>Paused</h1>"
+        assert message.reply_to == CONTACT_EMAIL
         record.assert_awaited_once_with("user-1")
 
     @patch(f"{SENDERS}.send_email")
@@ -224,3 +238,40 @@ class TestSendWorkflowsPausedEmail:
 
         assert sent is False
         mock_send.assert_not_called()
+
+
+# ===========================================================================
+# Async: send_limit_reached_email
+# ===========================================================================
+
+
+class TestSendLimitReachedEmail:
+    @patch(f"{SENDERS}.send_email")
+    @patch(f"{SENDERS}.render_email_template", return_value="<h1>Upsell</h1>")
+    async def test_sends_and_records(self, mock_render, mock_send):
+        with (
+            patch(f"{SENDERS}.user_repository.get", new_callable=AsyncMock) as get,
+            patch(
+                f"{SENDERS}.user_repository.record_limit_email_sent", new_callable=AsyncMock
+            ) as record,
+        ):
+            get.return_value = _limit_email_user()
+            sent = await send_limit_reached_email("user-1", "chat_messages")
+
+        assert sent is True
+        get.assert_awaited_once_with("user-1")
+        assert mock_render.call_args[0][0] == "limit_reached.html"
+        assert mock_render.call_args[1] == {
+            "user_name": "Alice",
+            "hit_feature_title": get_feature_info("chat_messages").title,
+            "benefits": derive_pro_benefits("chat_messages"),
+            "pricing_url": f"{settings.FRONTEND_URL}/pricing",
+            "contact_email": CONTACT_EMAIL,
+        }
+        message = mock_send.call_args[0][0]
+        assert message.sender == FOUNDER_SENDER
+        assert message.to == ["user@example.com"]
+        assert message.subject == "You hit your GAIA limit today — here's what Pro unlocks"
+        assert message.html == "<h1>Upsell</h1>"
+        assert message.reply_to == CONTACT_EMAIL
+        record.assert_awaited_once_with("user-1")

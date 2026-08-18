@@ -63,7 +63,7 @@ class PostHogRequestContextMiddleware(BaseHTTPMiddleware):
         # Nothing is lost by disabling it — unhandled_exception_handler captures
         # the exception explicitly, with the user attached, so autocapture here
         # would only double-count what that handler already records.
-        with new_context(capture_exceptions=False):
+        with new_context(capture_exceptions=False):  # pragma: no mutate — None is falsy too
             identify_context(str(user_id))
             return await call_next(request)
 

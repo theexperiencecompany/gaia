@@ -24,6 +24,7 @@ Key production modules under test
 
 from __future__ import annotations
 
+import asyncio
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -113,35 +114,46 @@ class _AsyncEphemeralWrapper:
 
     ChromaStore requires an AsyncClientAPI; this wrapper satisfies that contract
     without needing a real async HTTP server.
+
+    Every method yields to the loop first. A real async client suspends on its
+    network round-trip, so concurrent callers interleave between calls; without
+    the yield this wrapper runs each call to completion atomically and hides
+    every ordering bug the real client would expose.
     """
 
     def __init__(self):
         self._sync = chromadb.EphemeralClient()
 
     async def list_collections(self):
+        await asyncio.sleep(0)
         return self._sync.list_collections()
 
     async def create_collection(self, name, metadata=None, **kwargs):
+        await asyncio.sleep(0)
         kwargs.setdefault("embedding_function", _NOOP_EF)
         col = self._sync.create_collection(name, metadata=metadata, **kwargs)
         return _AsyncCollectionWrapper(col)
 
     async def get_collection(self, name, **kwargs):
+        await asyncio.sleep(0)
         kwargs.setdefault("embedding_function", _NOOP_EF)
         col = self._sync.get_collection(name, **kwargs)
         return _AsyncCollectionWrapper(col)
 
     async def get_or_create_collection(self, name, metadata=None, **kwargs):
+        await asyncio.sleep(0)
         kwargs.setdefault("embedding_function", _NOOP_EF)
         col = self._sync.get_or_create_collection(name, metadata=metadata, **kwargs)
         return _AsyncCollectionWrapper(col)
 
     async def delete_collection(self, name):
+        await asyncio.sleep(0)
         return self._sync.delete_collection(name)
 
     async def reset(
         self,
     ):  # NOSONAR — async wrapper required for consistent async interface
+        await asyncio.sleep(0)
         return self._sync.reset()
 
 
@@ -499,6 +511,31 @@ class TestChromaStoreSearch:
 # ---------------------------------------------------------------------------
 # Tool diff helpers (pure logic, no ChromaDB needed)
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestChromaStoreCollectionResolution:
+    """Regression: _get_collection resolving a not-yet-created collection."""
+
+    @pytest.mark.regression
+    async def test_concurrent_first_resolution_does_not_race_on_create(
+        self, ephemeral_client, collection_prefix: str
+    ):
+        """Two stores resolving the same new collection must both succeed.
+
+        _get_collection used to list-then-create, so two callers racing on a
+        fresh collection both saw it missing and both issued create — the
+        loser got "Collection already exists". The startup catalog warmup
+        fans out exactly this way.
+        """
+        name = f"{collection_prefix}race"
+        stores = [
+            ChromaStore(client=ephemeral_client, collection_name=name, index=None) for _ in range(2)
+        ]
+
+        collections = await asyncio.gather(*(s._get_collection() for s in stores))
+
+        assert [c.name for c in collections] == [name, name]
 
 
 @pytest.mark.integration
