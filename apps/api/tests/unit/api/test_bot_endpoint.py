@@ -830,6 +830,9 @@ class TestBotChatStreamBody:
 
             response = await client.post(f"{BOT_BASE}/chat-stream", json=_CHAT_BODY("discord"))
             assert response.status_code == 200
+            # Not decoration: a bot client parses this stream as SSE and will
+            # not read a body served under any other media type.
+            assert response.headers["content-type"].startswith("text/event-stream")
             return (await response.aread()).decode()
 
     async def test_a_silent_stretch_of_web_only_frames_still_reaches_the_socket(
