@@ -39,6 +39,11 @@ rate_limit_context: ContextVar[dict[str, Any] | None] = ContextVar(
 )
 
 
+def plan_label(user_plan: object) -> str:
+    """The plan's wire value — PlanType members carry one, anything else stringifies."""
+    return user_plan.value if hasattr(user_plan, "value") else str(user_plan)
+
+
 def build_rate_limit_card(
     *,
     feature: str,
@@ -147,11 +152,7 @@ def with_rate_limiting(
                             {
                                 "feature_key": actual_feature_key,
                                 "usage_info": usage_info,
-                                "user_plan": (
-                                    user_plan.value
-                                    if hasattr(user_plan, "value")
-                                    else str(user_plan)
-                                ),
+                                "user_plan": plan_label(user_plan),
                             }
                         )
 
@@ -194,11 +195,7 @@ def with_rate_limiting(
                                     feature=actual_feature_key,
                                     plan_required=detail_dict.get("plan_required"),
                                     reset_time=reset_time,
-                                    current_plan=(
-                                        user_plan.value
-                                        if hasattr(user_plan, "value")
-                                        else str(user_plan)
-                                    ),
+                                    current_plan=plan_label(user_plan),
                                 )
                             )
                         except Exception as stream_error:

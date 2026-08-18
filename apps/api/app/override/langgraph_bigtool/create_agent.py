@@ -656,9 +656,6 @@ def create_agent(
         del state
         return State(messages=[HumanMessage(content=COMPLETION_NUDGE_MESSAGE)])
 
-    async def anudge_continue_node(state: State) -> State:
-        return nudge_continue_node(state)
-
     builder = StateGraph(State, context_schema=context_schema)
 
     if not disable_retrieve_tools:
@@ -717,7 +714,10 @@ def create_agent(
     if require_finish_to_end:
         builder.add_node(
             "nudge_continue",
-            RunnableCallable(nudge_continue_node, anudge_continue_node),
+            # Sync-only: the node ignores state and just emits the nudge, and
+            # RunnableCallable runs a sync func on ainvoke when no async twin
+            # is given — the twin was a pass-through with nothing to add.
+            RunnableCallable(nudge_continue_node),
         )
         builder.add_edge("nudge_continue", "agent")
         path_map.append("nudge_continue")

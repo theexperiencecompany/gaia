@@ -9,6 +9,7 @@ ever exercise the pass-through path, so nothing else runs this code.
 
 from datetime import UTC, datetime
 from typing import Any
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -168,3 +169,68 @@ class TestBlockedToolStreamsItsCard:
                 RateLimitExceededException(feature="generate_image", reset_time=RESET_AT),
                 stream_writer_error=RuntimeError("not in a streaming context"),
             )
+
+
+class TestAllowedCallRecordsTheContext:
+    """The passing path stashes the plan for the response metadata. Plans
+    normally arrive as a PlanType, but the fallback branch stringifies
+    whatever else the cache hands back — and it must stringify THAT value,
+    not a placeholder."""
+
+    @staticmethod
+    async def _run_allowed(plan: object) -> dict[str, object]:
+        decorated = rl.with_rate_limiting(feature_key="generate_image")(_limited_tool)
+        with (
+            patch(
+                "app.decorators.rate_limiting.payment_service.get_cached_plan_type",
+                new=AsyncMock(return_value=plan),
+            ),
+            patch(
+                "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
+                new=AsyncMock(
+                    return_value={"day": SimpleNamespace(used=1, limit=5, reset_time=RESET_AT)}
+                ),
+            ),
+        ):
+            await decorated(config={"metadata": {"user_id": "user-1"}})
+        return rl.rate_limit_context.get()
+
+    async def test_a_non_enum_plan_is_stringified_into_the_context(self) -> None:
+        context = await self._run_allowed("legacy_plan")
+
+        assert context["user_plan"] == "legacy_plan"
+        assert context["feature_key"] == "generate_image"
+
+    async def test_an_enum_plan_records_its_value(self) -> None:
+        context = await self._run_allowed(PlanType.PRO)
+
+        assert context["user_plan"] == PlanType.PRO.value
+
+
+class TestPlanLabel:
+    """One helper feeds both the passing context and the refusal card."""
+
+    def test_an_enum_plan_uses_its_wire_value(self) -> None:
+        assert rl.plan_label(PlanType.PRO) == PlanType.PRO.value
+
+    def test_anything_else_stringifies_itself(self) -> None:
+        assert rl.plan_label("legacy_plan") == "legacy_plan"
+        assert rl.plan_label(None) == "None"
+
+
+class TestBlockedCallLabelsANonEnumPlan:
+    async def test_the_card_carries_the_stringified_plan(self) -> None:
+        writer = MagicMock()
+
+        with pytest.raises(rl.LangChainRateLimitException):
+            await _call_blocked_tool(
+                RateLimitExceededException(
+                    feature="generate_image",
+                    plan_required="pro",
+                    reset_time=RESET_AT,
+                ),
+                plan="legacy_plan",  # type: ignore[arg-type]
+                writer=writer,
+            )
+
+        assert writer.call_args.args[0]["tool_data"]["data"]["current_plan"] == "legacy_plan"

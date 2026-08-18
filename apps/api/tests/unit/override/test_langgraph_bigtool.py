@@ -82,6 +82,27 @@ class TestCreateAgent:
 
         assert isinstance(builder, StateGraph)
 
+    def test_the_runtime_context_schema_reaches_the_graph(self) -> None:
+        """Runtime context (the per-run config the tiers read) only arrives if
+        the schema is declared on the StateGraph — dropped, every node sees an
+        empty context and nothing raises to say so."""
+        from dataclasses import dataclass
+
+        from app.override.langgraph_bigtool.create_agent import create_agent
+
+        @dataclass
+        class _Ctx:
+            tenant: str
+
+        builder = create_agent(
+            _make_llm(),
+            _make_tool_registry(dummy_tool_a),
+            disable_retrieve_tools=True,
+            context_schema=_Ctx,
+        )
+
+        assert builder.context_schema is _Ctx
+
     def test_with_retrieve_tools_coroutine(self) -> None:
         from app.override.langgraph_bigtool.create_agent import create_agent
 
