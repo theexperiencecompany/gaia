@@ -73,7 +73,7 @@
     "@heroui/tabs": "2.2.27",
     "@heroui/theme": "2.4.26",
     "@heroui/tooltip": "2.2.27",
-    "@heroui/user": "2.2.25",
+    "@heroui/user": "2.2.26",
     "@hookform/resolvers": "^5.4.0",
     "@livekit/components-react": "^2.9.23",
     "@mcp-ui/client": "^6.1.1",
