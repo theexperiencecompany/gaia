@@ -485,8 +485,15 @@ export class TelegramAdapter extends BaseBotAdapter {
   /**
    * Edits a message as Telegram HTML. A "message is not modified" error (thrown
    * when the new text equals the current text) is ignored; any other failure
-   * retries as stripped plain text, and a final failure is reported via
-   * `onError`. Centralises the fallback every Telegram edit path needs.
+   * retries as stripped plain text. Centralises the fallback every Telegram
+   * edit path needs.
+   *
+   * A failure of that retry is reported via `onError` **and rethrown**. It used
+   * to be swallowed, which made a rejected edit — an expired message, or text
+   * the API refused — look like a successful delivery to the caller: the stream
+   * logged `chat_stream_completed` while the user was still looking at stale
+   * text. Callers that can recover (the shared streamer resends as a new
+   * message) need the throw to know they must.
    */
   private async editHtml(
     edit: (text: string, opts?: { parse_mode: "HTML" }) => Promise<unknown>,
@@ -503,6 +510,7 @@ export class TelegramAdapter extends BaseBotAdapter {
         await edit(htmlToPlainText(html));
       } catch (err) {
         onError(err);
+        throw err;
       }
     }
   }
@@ -674,20 +682,25 @@ export class TelegramAdapter extends BaseBotAdapter {
         },
         async (errMsg: string) => {
           clearTyping();
-          await this.editHtml(
-            (t, opts) =>
-              ctx.api.editMessageText(chatId, currentMessageId, t, opts),
-            errMsg,
-            (e) =>
-              this.adapterLogger.error(
-                "edit_message_text_failed",
-                {
-                  channel_hash: hashLogIdentifier(chatId),
-                  message_id: currentMessageId,
-                },
-                e,
-              ),
-          );
+          try {
+            await this.editHtml(
+              (t, opts) =>
+                ctx.api.editMessageText(chatId, currentMessageId, t, opts),
+              errMsg,
+              (e) =>
+                this.adapterLogger.error(
+                  "edit_message_text_failed",
+                  {
+                    channel_hash: hashLogIdentifier(chatId),
+                    message_id: currentMessageId,
+                  },
+                  e,
+                ),
+            );
+          } catch {
+            // This is already the error path — the failure is logged by the
+            // onError callback above, and there is no further fallback to try.
+          }
         },
         STREAMING_DEFAULTS.telegram,
         await this.analyticsFor(userId),

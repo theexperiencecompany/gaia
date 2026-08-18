@@ -32,6 +32,7 @@ export {
   handleWorkflowGet,
   handleWorkflowList,
 } from "./commands";
+export { sendChunked } from "./delivery";
 export { fetchBytesCapped, readResponseBytesCapped } from "./fetch-bytes";
 export {
   buildAuthLinkMessage,
@@ -98,7 +99,6 @@ export {
   isTableSeparator,
   PLATFORM_LIMITS,
   parseTextArgs,
-  truncateResponse,
 } from "./text";
 export type {
   BotWideEventFields,
