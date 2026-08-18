@@ -24,6 +24,7 @@ Key production modules under test
 
 from __future__ import annotations
 
+import asyncio
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -32,6 +33,7 @@ import chromadb
 from langgraph.store.base import GetOp, PutOp, SearchOp
 import pytest
 
+from app.constants.chroma import MAX_CONCURRENT_CHROMA_WRITES
 from app.db.chroma.chroma_store import ChromaStore
 from app.db.chroma.chroma_tools_store import (
     _build_put_operations,
@@ -494,6 +496,58 @@ class TestChromaStoreSearch:
         # The failed item should be absent.
         bad_results = await chroma_store.abatch([GetOp(namespace=ns, key=fail_key)])
         assert bad_results[0] is None
+
+    @pytest.mark.regression
+    async def test_concurrent_apply_put_ops_share_one_semaphore(self, chroma_store):
+        """Two concurrent _apply_put_ops calls must share one process-wide
+        semaphore (loop_bound_semaphore), not each get their own local one —
+        otherwise the fd cap doubles for every concurrent caller (e.g. the
+        startup catalog warmup fanning out over every provider toolkit).
+        """
+        batch_size = MAX_CONCURRENT_CHROMA_WRITES
+        in_flight = 0
+        max_in_flight = 0
+        lock = asyncio.Lock()
+
+        original_upsert_item = type(chroma_store)._upsert_item
+
+        async def tracked_upsert(self_arg, doc_id, op, collection):
+            nonlocal in_flight, max_in_flight
+            async with lock:
+                in_flight += 1
+                max_in_flight = max(max_in_flight, in_flight)
+            try:
+                await asyncio.sleep(0.02)
+                return await original_upsert_item(self_arg, doc_id, op, collection)
+            finally:
+                async with lock:
+                    in_flight -= 1
+
+        ops_a = [
+            PutOp(
+                namespace=("sem_a",),
+                key=f"tool_{i}",
+                value={"description": "x", "tool_hash": f"a{i}"},
+            )
+            for i in range(batch_size)
+        ]
+        ops_b = [
+            PutOp(
+                namespace=("sem_b",),
+                key=f"tool_{i}",
+                value={"description": "x", "tool_hash": f"b{i}"},
+            )
+            for i in range(batch_size)
+        ]
+
+        with patch.object(type(chroma_store), "_upsert_item", tracked_upsert):
+            await asyncio.gather(chroma_store.abatch(ops_a), chroma_store.abatch(ops_b))
+
+        assert max_in_flight <= MAX_CONCURRENT_CHROMA_WRITES, (
+            f"saw {max_in_flight} concurrent writes across two batches, expected at "
+            f"most {MAX_CONCURRENT_CHROMA_WRITES} — the semaphore isn't shared across "
+            "concurrent _apply_put_ops calls"
+        )
 
 
 # ---------------------------------------------------------------------------
