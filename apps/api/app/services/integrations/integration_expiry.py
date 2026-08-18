@@ -32,6 +32,7 @@ from app.services.composio.proxy_client import invalidate_connected_account_cach
 from app.services.integrations.user_integration_status import update_user_integration_status
 from app.services.integrations_fs import schedule_user_integrations_sync
 from app.services.notification_service import notification_service
+from app.services.workflow.integration_pause import pause_workflows_for_expired_integration
 from shared.py.wide_events import log
 
 # Which detection path drove this transition — carried into the wide event so a
@@ -90,7 +91,9 @@ async def expire_user_integration(
     invalidate_connected_account_cache(user_id, toolkit)
     schedule_user_integrations_sync(user_id)
 
-    log.set_ns("integration_expiry", outcome="expired")
+    paused_workflows = await pause_workflows_for_expired_integration(user_id, integration_id)
+
+    log.set_ns("integration_expiry", outcome="expired", paused_workflows=len(paused_workflows))
     log.warning(
         f"{LogTag.INTEGRATION} Integration connection expired",
         user_id=user_id,
@@ -99,17 +102,38 @@ async def expire_user_integration(
         previous_status=record.status,
         reason=reason,
         trigger=trigger,
+        paused_workflows=len(paused_workflows),
     )
 
-    if notify:
+    if notify or paused_workflows:
         await _announce_expiry(
-            user_id, integration_id, integration.name if integration else integration_id
+            user_id,
+            integration_id,
+            integration.name if integration else integration_id,
+            paused_workflows,
         )
 
     return True
 
 
-async def _announce_expiry(user_id: str, integration_id: str, integration_name: str) -> None:
+def _expiry_body(integration_name: str, paused_workflows: list[str]) -> str:
+    """Say what actually stopped working, not just that something broke."""
+    lost = f"GAIA lost access to your {integration_name} account and can no longer use it."
+    if not paused_workflows:
+        return f"{lost} Reconnect to pick up where you left off."
+    if len(paused_workflows) == 1:
+        return (
+            f"{lost} Your \u201c{paused_workflows[0]}\u201d workflow is paused until you reconnect."
+        )
+    return f"{lost} {len(paused_workflows)} workflows are paused until you reconnect."
+
+
+async def _announce_expiry(
+    user_id: str,
+    integration_id: str,
+    integration_name: str,
+    paused_workflows: list[str],
+) -> None:
     """Flip an open integrations page live, then leave a persistent Reconnect nudge."""
     await websocket_manager.broadcast_to_user(
         user_id=user_id,
@@ -127,10 +151,7 @@ async def _announce_expiry(user_id: str, integration_id: str, integration_name: 
             channels=[ChannelConfig(channel_type=CHANNEL_TYPE_INAPP)],
             content=NotificationContent(
                 title=f"{integration_name} disconnected",
-                body=(
-                    f"GAIA lost access to your {integration_name} account and can no longer use it. "
-                    f"Reconnect to pick up where you left off."
-                ),
+                body=_expiry_body(integration_name, paused_workflows),
                 actions=[
                     NotificationAction(
                         type=ActionType.REDIRECT,
@@ -146,6 +167,9 @@ async def _announce_expiry(user_id: str, integration_id: str, integration_name: 
                     )
                 ],
             ),
-            metadata={"integration_id": integration_id},
+            metadata={
+                "integration_id": integration_id,
+                "paused_workflows": len(paused_workflows),
+            },
         )
     )

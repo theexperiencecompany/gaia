@@ -44,6 +44,11 @@ class _Seams:
             "vfs": patch(f"{MODULE}.schedule_user_integrations_sync"),
             "ws": patch(f"{MODULE}.websocket_manager"),
             "notify": patch(f"{MODULE}.notification_service"),
+            "pause": patch(
+                f"{MODULE}.pause_workflows_for_expired_integration",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
         }
         self.mocks = {name: p.start() for name, p in self._patches.items()}
         self.mocks["repo"].get_for_user = AsyncMock(return_value=self._record)
@@ -105,6 +110,8 @@ class TestSideEffects:
         s.mocks["proxy"].assert_called_once_with(USER_ID, "NOTION")
         # The workspace VFS must stop advertising the toolkit to the agent.
         s.mocks["vfs"].assert_called_once_with(USER_ID)
+        # An armed workflow needing a dead integration must stop firing.
+        s.mocks["pause"].assert_awaited_once_with(USER_ID, INTEGRATION_ID)
 
     async def test_notify_false_makes_no_noise_on_the_tool_execution_path(self) -> None:
         with _Seams(record=_record("connected")) as s:
@@ -144,9 +151,46 @@ class TestUserFacingAnnouncement:
         request = s.mocks["notify"].create_notification.await_args.args[0]
         assert request.user_id == USER_ID
         assert request.source.value == "integration_expired"
-        assert request.metadata == {"integration_id": INTEGRATION_ID}
+        assert request.metadata == {"integration_id": INTEGRATION_ID, "paused_workflows": 0}
 
         (action,) = request.content.actions
         assert action.type.value == "redirect"
         assert action.label == "Reconnect"
         assert action.config.redirect.url == f"/integrations?id={INTEGRATION_ID}"
+
+
+class TestPausedWorkflowsChangeTheAnnouncement:
+    @pytest.mark.regression
+    async def test_a_run_that_paused_workflows_announces_even_under_notify_false(self) -> None:
+        # notify=False is the tool-execution path, where the connect card already
+        # covers the reconnect ask — but it says nothing about workflows being
+        # disabled, so silently stopping them would be the worse surprise.
+        with _Seams(record=_record("connected")) as s:
+            s.mocks["pause"].return_value = ["Morning digest", "Invoice filing"]
+            await expire_user_integration(
+                USER_ID, INTEGRATION_ID, reason="revoked", trigger="tool_execution", notify=False
+            )
+
+        s.mocks["notify"].create_notification.assert_awaited_once()
+        request = s.mocks["notify"].create_notification.await_args.args[0]
+        assert "2 workflows are paused" in request.content.body
+        assert request.metadata["paused_workflows"] == 2
+
+    async def test_a_single_paused_workflow_is_named(self) -> None:
+        with _Seams(record=_record("connected")) as s:
+            s.mocks["pause"].return_value = ["Morning digest"]
+            await expire_user_integration(
+                USER_ID, INTEGRATION_ID, reason="revoked", trigger="webhook", notify=True
+            )
+
+        body = s.mocks["notify"].create_notification.await_args.args[0].content.body
+        assert "Morning digest" in body
+
+    async def test_no_paused_workflows_keeps_the_plain_reconnect_copy(self) -> None:
+        with _Seams(record=_record("connected")) as s:
+            await expire_user_integration(
+                USER_ID, INTEGRATION_ID, reason="revoked", trigger="webhook", notify=True
+            )
+
+        body = s.mocks["notify"].create_notification.await_args.args[0].content.body
+        assert "workflow" not in body.lower()
