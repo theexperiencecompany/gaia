@@ -131,7 +131,7 @@ Separate sink from the wide events above, and a separate purpose: Loki answers *
 
 ## Conventions
 
-- ESM only (`"type": "module"`). Build is `tsup` with `noExternal: [/.*/]` — bundles every dep into `dist/index.js` so the Docker image ships only `dist/` + `package.json` (no `node_modules`). A `banner` shims `require()` for CJS deps. All bots share one `BOT_NAME`-parameterized `apps/bots/Dockerfile`.
+- ESM only (`"type": "module"`). Build is `tsup` with `noExternal: [/.*/]` — bundles every dep into `dist/index.js` so the Docker image ships only `dist/` + `package.json` (no `node_modules`). The one exception is iMessage: Photon's gRPC transport calls `import.meta.resolve()` on `nice-grpc`, `nice-grpc-common` and `@grpc/grpc-js` at runtime, so the Dockerfile stages just those three into the runner and fails the build if any is missing. A `banner` shims `require()` for CJS deps. All bots share one `BOT_NAME`-parameterized `apps/bots/Dockerfile`.
 - Before adding a type, check `libs/shared/ts/src/bots/types/index.ts` — `BotCommand`, `RichMessage`, `RichMessageTarget`, `SentMessage`, `PlatformName`, etc. live there.
 - `SentMessage` is `{ id: string; edit: (text) => Promise<void> }`. On platforms without edit support, `edit` sends a new message guarded by a sent-once flag.
 - Tests use Vitest (not Jest), run sequentially (shared module-level mocks), all platform SDKs and `@gaia/shared` mocked with `vi.mock()`. `vitest.config.ts` aliases `@gaia/shared` to source, so no shared-lib build is needed. Real shared logic is tested in `__tests__/shared/`.
