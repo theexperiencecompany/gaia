@@ -312,7 +312,7 @@ jobs:
             # Python typing is already enforced by the dedicated python-mypy lane.
             pnpm exec nx affected -t type-check --base=origin/$GITHUB_BASE_REF --exclude=api,voice-agent
           else
-            pnpm exec nx run-many -t type-check --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp
+            pnpm exec nx run-many -t type-check --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage
           fi
           echo "::endgroup::"
           echo "TypeScript: OK (all affected workspaces pass strict tsc)"
