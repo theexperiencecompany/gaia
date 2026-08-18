@@ -28,7 +28,7 @@
       "path": "apps/api/app/agents/llm/client.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "0167da5205224a486b2b1009cea542e660bf90d484ef3e5959cdd85aedef268d"
+      "hash": "9b7a79f23e8bb4e5913df8133844f004804785a631b7579aad2f2f968092eacf"
     },
     {
       "path": "apps/api/app/agents/middleware/runtime_adapter.py",
@@ -70,13 +70,13 @@
       "path": "apps/api/app/config/settings.py",
       "kind": "type-ignore",
       "count": 8,
-      "hash": "f454fc05942d83e118a544aa3e000460ac231aac9d33cb47110730cdcd4f441c"
+      "hash": "a3691e26ee8615a053aa3fa8d054e62a4c71ebf8a141f8ab229779d01f6d6b84"
     },
     {
       "path": "apps/api/app/core/app_factory.py",
       "kind": "noqa",
       "count": 1,
-      "hash": "bef75b2778c5fc1ef4e22d8a10cb160b9bd5224d8f6817e1c987474e271b4660"
+      "hash": "77f7923e0952cf52bba99c03a46cc29e44dfe1fb9724330da625d47663ac5de9"
     },
     {
       "path": "apps/api/app/db/chroma/chroma_store.py",
@@ -100,7 +100,7 @@
       "path": "apps/api/app/override/langgraph_bigtool/create_agent.py",
       "kind": "type-ignore",
       "count": 16,
-      "hash": "b4442f1df5bb6d7209a59313dda25639bbb30e5faef4d7c2f86c58613a391800"
+      "hash": "1aeddb2e8805b4e775f8003f716c21d40d97b8954bad5bd55988bf766862bba5"
     },
     {
       "path": "apps/api/app/override/langgraph_bigtool/hooks.py",
@@ -232,7 +232,7 @@
       "path": "apps/api/tests/unit/agents/test_agent_core.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "7e8b8d140c52a57fc8d904844bb3a0c49b88f04c9eac74d70c60a045edd0ed10"
+      "hash": "821b7bc0f35049c620381af62cec9ce49d766692f81c9c618f1c847c906cfbfc"
     },
     {
       "path": "apps/api/tests/unit/agents/test_handoff_tools.py",
@@ -244,13 +244,13 @@
       "path": "apps/api/tests/unit/agents/test_llm_client.py",
       "kind": "type-ignore",
       "count": 2,
-      "hash": "b4331251a80887dac644475a6c945bc615870e4147704a02c7f6bc7b4110ad9d"
+      "hash": "857c29206c88f49ee8a68ffeb065fd74ee6d200500c1f98d60a327fac98db9bf"
     },
     {
       "path": "apps/api/tests/unit/agents/test_middleware_executor.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "607b8ed155c7bd324656ad7744ba0921b8e23152210890410eb4f1e5dd1680b2"
+      "hash": "f7d8f327578575ff8f0e3b96e8028c8b8e9b62c8cfbda09578edc0f5dcee62ef"
     },
     {
       "path": "apps/api/tests/unit/agents/test_offload.py",
@@ -280,19 +280,19 @@
       "path": "apps/api/tests/unit/api/test_integrations_config_endpoint.py",
       "kind": "type-ignore",
       "count": 2,
-      "hash": "402ac04116d33b7565e9fad400e34a1dc9df2104cbbc22caa69c98ebc02e855e"
+      "hash": "ad585672b9db7cfa08708a6c4bb8f8645caeeaed7ebe3fcfa6e0466af09f7716"
     },
     {
       "path": "apps/api/tests/unit/api/test_search_endpoint.py",
       "kind": "type-ignore",
       "count": 4,
-      "hash": "ec48fb17d39b58263feee587f684899d0f8e29bce485b83793143cb94832a810"
+      "hash": "170aed8c7962044df8f8d5fbf4072cea7de2a02be88193ee63849e6e105fc492"
     },
     {
       "path": "apps/api/tests/unit/api/test_tiered_rate_limiter.py",
       "kind": "type-ignore",
       "count": 15,
-      "hash": "282adefdb3418c5bc2a0c33d7341ebbd9acdd6f05567c3a6f58ba43d386d90c9"
+      "hash": "45e9d45a6ac11a1470ce98fcaedc3b776c801e56171329b1895196d562bfcd8f"
     },
     {
       "path": "apps/api/tests/unit/config/test_rate_limits.py",
@@ -352,7 +352,7 @@
       "path": "apps/api/tests/unit/override/test_langgraph_bigtool.py",
       "kind": "type-ignore",
       "count": 21,
-      "hash": "399ce690efc97a3dc046e9a2e035b7c58d5e267e8aa067cfa477a739604fe249"
+      "hash": "184e20050097c8b2447f49e626fb71db079500b31ac0313122e8ed4d46f167d5"
     },
     {
       "path": "apps/api/tests/unit/patches/test_composio_langchain_patch.py",
@@ -388,7 +388,7 @@
       "path": "apps/api/tests/unit/services/test_trigger_service.py",
       "kind": "type-ignore",
       "count": 2,
-      "hash": "84df79e69abc2bd2dc165c5480a90be661dad8ae8ef8bff8d8de8aa6b074029f"
+      "hash": "9c763b120bfbc77973ca709cfb86c4fb130e518b18d3c8c283f3d8049f8aa805"
     },
     {
       "path": "apps/api/tests/unit/tools/test_integration_tool_standalone.py",
@@ -412,7 +412,7 @@
       "path": "apps/api/tests/unit/tools/test_skill_tools.py",
       "kind": "type-ignore",
       "count": 29,
-      "hash": "877844eecee456a17c200ee7c645d0c5dfd19192bcc12a361b2ef3452d49bffa"
+      "hash": "8f1f5c54745467e3ddb7d9ccc987767dc98fb92c0d1d5dd132594242dad31806"
     },
     {
       "path": "apps/api/tests/unit/tools/test_workflow_tool.py",
@@ -550,7 +550,7 @@
       "path": "apps/bots/__tests__/discord/adapter.test.ts",
       "kind": "biome-ignore",
       "count": 4,
-      "hash": "6a29104bc4dc8dab7f926693d63ed252dfc781814b8417cbae7efc5efecbef3e"
+      "hash": "c5935842cac060358c503dda30497089676a1b06027842d20da2f326125f970c"
     },
     {
       "path": "apps/mobile/src/config/openui/components/analytics.tsx",
@@ -610,7 +610,7 @@
       "path": "apps/voice-agent/src/agent.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "d768b456e1fff448150888f3337d104d4260da3f862f7652d2735f0c99f23f84"
+      "hash": "7741501741414d7e676bcf45b7a488d18f5d0d8995743455ac1b3e2090b2da0f"
     },
     {
       "path": "apps/voice-agent/src/llm.py",

@@ -238,8 +238,8 @@ async def manage_skill(
             return f"Skill '{skill_name}' {'disabled' if success else 'was already disabled'}."
 
         if action == "uninstall":
-            success = await uninstall_skill_full(user_id, skill.id)
-            if success:
+            uninstalled = await uninstall_skill_full(user_id, skill.id)
+            if uninstalled:
                 return f"Skill '{skill_name}' uninstalled and files removed."
             return f"Failed to uninstall skill '{skill_name}'."
 

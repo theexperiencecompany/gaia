@@ -83,9 +83,9 @@ services:
     volumes:
       # JuiceFS via the official juicedata/juicefs volume plugin (Swarm-native).
       # The plugin holds the FUSE privilege; this container stays unprivileged
-      # (no /dev/fuse, no SYS_ADMIN). Volume `gaia_jfs` is pre-created per node.
+      # (no /dev/fuse, no SYS_ADMIN). Volume `gaia_jfs_v2` is pre-created per node.
       - type: volume
-        source: gaia_jfs
+        source: gaia_jfs_v2
         target: /mnt/jfs
         volume:
           nocopy: true
@@ -163,9 +163,9 @@ services:
     volumes:
       # JuiceFS via the official juicedata/juicefs volume plugin (Swarm-native).
       # The plugin holds the FUSE privilege; this container stays unprivileged
-      # (no /dev/fuse, no SYS_ADMIN). Volume `gaia_jfs` is pre-created per node.
+      # (no /dev/fuse, no SYS_ADMIN). Volume `gaia_jfs_v2` is pre-created per node.
       - type: volume
-        source: gaia_jfs
+        source: gaia_jfs_v2
         target: /mnt/jfs
         volume:
           nocopy: true
@@ -631,7 +631,7 @@ services:
   # ---------------------------------------------------------------------------
   # Holds the whole directory tree, filenames and inode→chunk mapping. R2 stores
   # only anonymous blocks, so losing this loses the filesystem — hence
-  # noeviction, appendfsync always, and the hourly dump on the gaia_jfs volume.
+  # noeviction, appendfsync always, and the hourly dump on the gaia_jfs_v2 volume.
   # Internet-reachable because E2B sandboxes mount JuiceFS directly
   # (apps/api/scripts/mount_juicefs.sh); AUTH password + firewall allowlist on
   # 6380 are the access control.
@@ -1215,26 +1215,29 @@ volumes:
   prometheus_data:
   promtail_positions:
   # AOF survives a crash, not the loss of this node — that's what --backup-meta
-  # on gaia_jfs below covers.
+  # on gaia_jfs_v2 below covers.
   jfs_meta_data:
   # JuiceFS volume backed by the juicedata/juicefs plugin. Pre-create per node:
   #   docker volume create -d juicedata/juicefs -o name=gaia-0 \
   #     -o metaurl='rediss://:PASSWORD@jfs-meta.heygaia.io:6380/0' \
   #     -o access-key=... -o secret-key=... \
-  #     -o mountFlags="--backup-meta 1h --cache-size 4096 --max-uploads 20 --prefetch 8 --buffer-size 600" \
-  #     gaia_jfs
-  # (no -o mountFlags --cache-dir: that path doesn't exist in the plugin → mount EOF)
+  #     -o backup-meta=1h -o cache-size=4096 \
+  #     -o max-uploads=20 -o prefetch=8 -o buffer-size=600 \
+  #     gaia_jfs_v2
+  # One -o per flag: the released plugin has no `mountFlags` key. No -o cache-dir
+  # (absent from the plugin rootfs → mount EOF) and no -o all-squash (squashes
+  # the plugin's own root `touch .juicefs` readiness probe to uid 1000, which
+  # then can't write it → `exec: already started` and a failed Mount over a live
+  # daemon). Verify with `stat -c %i /mnt/jfs` == 1 before repointing the mounts.
   #
   # metaurl is baked in here, NOT read from JUICEFS_META_URL_TEMPLATE. Changing
-  # the metadata engine in Infisical moves the API and sandboxes but leaves this
-  # mount on the old engine — the volume must be dropped and recreated per node:
-  #   docker service scale gaia-prod_gaia-backend=0 gaia-prod_arq_worker=0
-  #   docker volume rm gaia_jfs && docker volume create ... (as above)
+  # the metadata engine in Infisical leaves this mount on the old one — create a
+  # new volume, verify it, repoint. Don't rm the live one to reuse its name.
   #
   # --backup-meta belongs here, not in scripts/docker-entrypoint.sh: the plugin
   # mounts /mnt/jfs first, so the entrypoint's own mount short-circuits on
   # `mountpoint -q` and its flags never apply in prod. Dumps land under `meta/`.
-  gaia_jfs:
+  gaia_jfs_v2:
     external: true
 
 networks:

@@ -95,7 +95,7 @@ async def store_user_info(
             )
             try:
                 track_login(
-                    user_id=email,
+                    user_id=existing_user.id,
                     email=email,
                     name=name,
                     login_method=LOGIN_METHOD_WORKOS,
@@ -117,10 +117,10 @@ async def store_user_info(
     if not external_side_effects:
         return created.id, True
 
-    # Track signup event in PostHog (using email as distinct_id for consistency with frontend)
+    # Track signup with the stable Mongo user id as the PostHog distinct id.
     try:
         track_signup(
-            user_id=email,  # PostHog distinct_id - use email for cross-platform consistency
+            user_id=created.id,
             email=email,
             name=name,
             signup_method=LOGIN_METHOD_WORKOS,

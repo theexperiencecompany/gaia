@@ -42,6 +42,7 @@ from app.models.user_models import (
     OnboardingStatusResponse,
     UserDocument,
 )
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.composio.composio_service import get_composio_service
 from app.services.onboarding.clarify_service import generate_clarify_questions
 from app.services.onboarding.onboarding_service import (
@@ -112,6 +113,9 @@ async def complete_user_onboarding(
             onboarding_data,
             background_tasks,
         )
+        # No completion event here: this only QUEUES the pipeline. The worker
+        # emits it once the phase actually reaches PERSONALIZATION_COMPLETE,
+        # so a pipeline that fails afterwards is not counted as a completion.
         return OnboardingResponse(
             success=True, message="Onboarding completed successfully", user=updated_user
         )
@@ -270,6 +274,7 @@ async def update_onboarding_phase(
             log.warning(f"{LogTag.ONBOARDING} No document found for user", user_id=user_id)
             raise HTTPException(status_code=404, detail="User not found")
 
+        capture_context_event(AnalyticsEvents.ONBOARDING_STEP_COMPLETED, {"phase": phase})
         log.set_ns("onboarding", phase_updated=True)
 
         try:
@@ -328,6 +333,17 @@ async def update_user_preferences(
 
     try:
         updated_user = await update_onboarding_preferences(user["user_id"], preferences)
+        # PATCH semantics: only the fields the caller actually sent were written,
+        # so `fields` is what changed — not the whole preferences object.
+        capture_context_event(
+            AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
+            {
+                "setting": "onboarding_preferences",
+                "fields": sorted(preferences.model_fields_set),
+                "response_style": preferences.response_style,
+                "has_custom_instructions": bool(preferences.custom_instructions),
+            },
+        )
 
         return OnboardingResponse(
             success=True,

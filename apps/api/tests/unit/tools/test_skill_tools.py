@@ -336,10 +336,11 @@ class TestManageSkill:
         )
         assert "disabled" in result
 
-    @patch(f"{MODULE}.uninstall_skill_full", new_callable=AsyncMock, return_value=True)
+    @patch(f"{MODULE}.uninstall_skill_full", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_skill_by_name", new_callable=AsyncMock)
     async def test_uninstall(self, mock_get: AsyncMock, mock_uninstall: AsyncMock) -> None:
         mock_get.return_value = _skill_record()
+        mock_uninstall.return_value = _skill_record()
 
         from app.agents.tools.skill_tools import manage_skill
 
@@ -347,8 +348,12 @@ class TestManageSkill:
             config=_cfg(), skill_name="pdf-processing", action="uninstall"
         )
         assert "uninstalled" in result
+        # Which user and which skill is the whole payload of a destructive
+        # call: a dropped or None argument deletes nothing, or the wrong
+        # thing, while the tool still reports success.
+        mock_uninstall.assert_awaited_once_with(FAKE_USER_ID, "skill-1")
 
-    @patch(f"{MODULE}.uninstall_skill_full", new_callable=AsyncMock, return_value=False)
+    @patch(f"{MODULE}.uninstall_skill_full", new_callable=AsyncMock, return_value=None)
     @patch(f"{MODULE}.get_skill_by_name", new_callable=AsyncMock)
     async def test_uninstall_failed(self, mock_get: AsyncMock, mock_uninstall: AsyncMock) -> None:
         mock_get.return_value = _skill_record()

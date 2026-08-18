@@ -57,6 +57,7 @@ from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS, HIL_RESUME_CONFIG_KEY
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
 from app.models.agent_models import AgentConfigurable
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.hil.approvals_store import (
     list_parked_subagents_for_conversation,
     set_resume_item,
@@ -110,6 +111,18 @@ async def run_executor_background(
         result_text = ""
         result_type = "final"
 
+        # One lifecycle event per run segment; a resumed run re-enters here.
+        executor_user_id = run.user.get("user_id", "")
+        run_props = {
+            "agent": "executor",
+            "mode": "background",
+            "conversation_id": run.conversation_id,
+        }
+        if run.task_id:
+            run_props["task_id"] = run.task_id
+        if executor_user_id:
+            capture_event(executor_user_id, AnalyticsEvents.AGENT_RUN_STARTED, run_props)
+
         try:
             result = await _execute_executor(task, configurable, run.stream_id, resume)
             result_text, result_type = result.text, result.type
@@ -128,6 +141,11 @@ async def run_executor_background(
                 task_id=run.task_id,
                 stream_id=run.stream_id,
             )
+            if executor_user_id:
+                if result_type == "final":
+                    capture_event(executor_user_id, AnalyticsEvents.AGENT_RUN_COMPLETED, run_props)
+                elif result_type == "error":
+                    capture_event(executor_user_id, AnalyticsEvents.AGENT_RUN_FAILED, run_props)
         finally:
             await _finalize_executor_run(run, task, result_text, result_type)
             if resume is not None:

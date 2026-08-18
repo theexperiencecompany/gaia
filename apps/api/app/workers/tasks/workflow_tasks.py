@@ -18,6 +18,7 @@ from app.api.v1.middleware.tiered_rate_limiter import (
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import get_websocket_manager
 from app.db.repositories.todos import todo_repository
+from app.db.repositories.users import user_repository
 from app.decorators import enforce_daily_cost_budget, tiered_rate_limit
 from app.models.chat_models import MessageModel
 from app.models.message_models import (
@@ -44,6 +45,8 @@ from app.models.workflow_models import (
     TriggerType,
     Workflow,
 )
+from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.limit_upsell import LimitHitOrigin
 from app.services.notification_service import notification_service
 from app.services.user_service import get_user_by_id
 from app.services.workflow.conversation_service import (
@@ -132,6 +135,16 @@ async def process_workflow_generation_task(
                         steps_count=len(workflow.steps),
                         trigger_type=TriggerType.MANUAL.value,
                     )
+                )
+
+                capture_event(
+                    user_id,
+                    AnalyticsEvents.WORKFLOW_CREATED,
+                    {
+                        "workflow_id": workflow.id,
+                        "steps_count": len(workflow.steps),
+                        "is_todo_workflow": True,
+                    },
                 )
 
                 try:
@@ -229,6 +242,12 @@ async def process_workflow_generation_task(
             )
 
         raise
+
+
+async def _completed_onboarding(user_id: str) -> bool:
+    """Whether the user submitted the onboarding wizard (``onboarding.completed``)."""
+    user = await user_repository.get(user_id)
+    return bool(user and (user.onboarding or {}).get("completed"))
 
 
 async def _rearm_if_scheduled(
@@ -462,8 +481,17 @@ async def execute_workflow_by_id(
         if not workflow:
             return f"Workflow {workflow_id} not found"
 
-        # Determine trigger type from context
-        trigger_type = context.get("trigger_type", "manual") if context else "manual"
+        # Determine trigger type from context. An explicit trigger_type always
+        # wins; only an ABSENT one falls back — to "integration" when the
+        # context carries a webhook payload (trigger fires queued before the
+        # trigger service stamped trigger_type), else to "manual".
+        trigger_type = context.get("trigger_type") if context else None
+        if trigger_type is None:
+            trigger_type = (
+                TriggerType.INTEGRATION.value
+                if context and "trigger_data" in context
+                else TriggerType.MANUAL.value
+            )
         log.set(
             workflow=WorkflowContext(
                 id=workflow_id,
@@ -488,12 +516,32 @@ async def execute_workflow_by_id(
 
         _log_schedule_drift(workflow, workflow_id, actual_fire_utc)
 
+        # System-initiated runs (schedule and trigger fires) don't run for a
+        # user who never finished the onboarding wizard: their auto-created
+        # workflows would drain the daily budget for someone who hasn't
+        # started using GAIA, then aim "you hit your limit" messaging at them.
+        # Re-arm quietly so a recurring workflow resumes if they finish later.
+        if trigger_type != TriggerType.MANUAL.value and not await _completed_onboarding(
+            workflow.user_id
+        ):
+            log.info(
+                f"{LogTag.WORKER} Workflow skipped — user has not completed onboarding",
+                workflow_id=workflow_id,
+                user_id=workflow.user_id,
+            )
+            await _rearm_quietly(scheduler, workflow, context, workflow_id)
+            return f"Workflow {workflow_id} skipped — user has not completed onboarding"
+
         # Cost wall BEFORE any execution record or LLM work: when the user's
         # daily budget is spent the run is skipped cleanly (no confusing
         # "failed" row) and the except branch below sends the budget-specific
         # notification + re-arms the next occurrence, so a recurring workflow
         # resumes after the budget resets.
-        await enforce_daily_cost_budget(workflow.user_id, feature_key="trigger_workflow_executions")
+        await enforce_daily_cost_budget(
+            workflow.user_id,
+            feature_key="trigger_workflow_executions",
+            origin=LimitHitOrigin.BACKGROUND,
+        )
 
         # Create execution record at start
         execution = await create_execution(
@@ -523,6 +571,18 @@ async def execute_workflow_by_id(
             summary="Workflow executed",
             conversation_id=conversation_id,
         )
+
+        # Analytics: the run-now endpoint already captures manual executions at
+        # queue time (workflows.py); background-origin runs — scheduler,
+        # tracked-todo, and integration triggers — only flow through this task,
+        # so their completion is captured here. `trigger_type` already folds
+        # unstamped integration fires in (see the derivation above).
+        if trigger_type != TriggerType.MANUAL.value:
+            capture_event(
+                workflow.user_id,
+                AnalyticsEvents.WORKFLOW_EXECUTED,
+                {"workflow_id": workflow_id, "trigger_type": trigger_type},
+            )
 
         # Arm the next occurrence (scheduled recurring workflows only). A re-arm
         # failure must not turn a successful execution into a reported failure.
@@ -560,7 +620,7 @@ async def execute_workflow_by_id(
         return "Error executing workflow %s: %s" % (workflow_id, str(e))
 
 
-@tiered_rate_limit("trigger_workflow_executions")
+@tiered_rate_limit("trigger_workflow_executions", origin=LimitHitOrigin.BACKGROUND)
 async def execute_workflow_as_chat(
     workflow: Workflow, user: AuthenticatedUser, context: dict[str, Any]
 ) -> str:

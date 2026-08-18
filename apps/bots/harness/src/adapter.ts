@@ -269,7 +269,7 @@ export class HarnessAdapter extends BaseBotAdapter {
       onAuthError,
       onGenericError,
       this.emulation.streaming,
-      this.analytics,
+      await this.analyticsFor(userId),
     );
 
     this.transcript.record({ type: "typing", state: "stop" });

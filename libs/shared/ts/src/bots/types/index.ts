@@ -87,8 +87,22 @@ export interface AuthStatus {
   authenticated: boolean;
   /** The platform name. */
   platform: string;
-  /** The user ID on the platform. */
-  platformUserId: string;
+  /**
+   * The user ID on the platform.
+   *
+   * snake_case because these fields are the API's wire shape verbatim —
+   * `BotAuthStatusResponse` declares no alias generator and `checkAuthStatus`
+   * returns the parsed body untouched. This field was previously typed
+   * `platformUserId`, which is `undefined` at runtime; nothing read it, so the
+   * lie went unnoticed.
+   */
+  platform_user_id: string;
+  /**
+   * Stable GAIA user id when linked, absent otherwise. Bots use it as their
+   * PostHog distinct_id so bot events land on the same profile as the user's
+   * web and API events.
+   */
+  user_id?: string;
 }
 
 export interface BotWorkflow {

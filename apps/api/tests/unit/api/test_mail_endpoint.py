@@ -24,8 +24,24 @@ from app.models.mail_models import (
     GmailMessagesResponse,
     GmailToolResult,
 )
+from app.services.analytics_service import AnalyticsEvents
 
 MAIL_BASE = "/api/v1"
+ANALYTICS_PATCH = "app.api.v1.endpoints.mail.capture_context_event"
+
+
+@pytest.fixture(autouse=True)
+def _noop_analytics():
+    """Neutralize capture_context_event for every test in this module.
+
+    The test app runs a no-op lifespan, so the PostHog provider is never
+    registered; a bare capture_context_event call would raise KeyError on the
+    missing provider. Tests that assert on captures patch the call site again
+    and assert on their own mock.
+    """
+    with patch(ANALYTICS_PATCH):
+        yield
+
 
 # All tests in this module need the integration check to pass.
 pytestmark = [
@@ -252,6 +268,143 @@ class TestSendEmailJson:
         data = response.json()
         assert data["message_id"] == "sent-001"
         assert data["status"] == "Email sent successfully"
+
+
+class TestMailAnalytics:
+    """Analytics captures on mail endpoints."""
+
+    @patch(
+        "app.api.v1.endpoints.mail.send_email",
+        new_callable=AsyncMock,
+    )
+    async def test_send_json_captures_email_sent(self, mock_send: AsyncMock, client: AsyncClient):
+        mock_send.return_value = GmailToolResult.model_validate(
+            {"data": {"id": "sent-001"}, "error": None, "successful": True}
+        )
+        with patch(ANALYTICS_PATCH) as mock_capture:
+            response = await client.post(
+                f"{MAIL_BASE}/gmail/send-json",
+                json={
+                    "to": ["recipient@example.com"],
+                    "subject": "Hello",
+                    "body": "Test email body",
+                },
+            )
+
+        assert response.status_code == 200
+        mock_capture.assert_called_once_with(AnalyticsEvents.EMAIL_SENT, {"recipient_count": 1})
+
+    @patch(
+        "app.api.v1.endpoints.mail.send_email",
+        new_callable=AsyncMock,
+    )
+    async def test_send_with_thread_captures_email_replied(
+        self, mock_send: AsyncMock, client: AsyncClient
+    ):
+        mock_send.return_value = GmailToolResult.model_validate(
+            {"data": {"id": "sent-002"}, "error": None, "successful": True}
+        )
+        with patch(ANALYTICS_PATCH) as mock_capture:
+            response = await client.post(
+                f"{MAIL_BASE}/gmail/send",
+                data={
+                    "to": "recipient@example.com",
+                    "subject": "Hello",
+                    "body": "Test email body",
+                    "thread_id": "thread-1",
+                },
+            )
+
+        assert response.status_code == 200
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.EMAIL_REPLIED,
+            {"has_attachments": False, "attachment_count": 0},
+        )
+
+    @patch(
+        "app.api.v1.endpoints.mail.send_email",
+        new_callable=AsyncMock,
+    )
+    async def test_send_without_thread_captures_email_sent(
+        self, mock_send: AsyncMock, client: AsyncClient
+    ):
+        """No thread id -> the capture names EMAIL_SENT, not EMAIL_REPLIED."""
+        mock_send.return_value = GmailToolResult.model_validate(
+            {"data": {"id": "sent-003"}, "error": None, "successful": True}
+        )
+        with patch(ANALYTICS_PATCH) as mock_capture:
+            response = await client.post(
+                f"{MAIL_BASE}/gmail/send",
+                data={
+                    "to": "recipient@example.com",
+                    "subject": "Hello",
+                    "body": "Test email body",
+                },
+            )
+
+        assert response.status_code == 200
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.EMAIL_SENT,
+            {"has_attachments": False, "attachment_count": 0},
+        )
+
+    @patch(
+        "app.api.v1.endpoints.mail.send_email",
+        new_callable=AsyncMock,
+    )
+    async def test_send_with_attachments_captures_attachment_count(
+        self, mock_send: AsyncMock, client: AsyncClient
+    ):
+        """Attachments are reported truthfully in the capture payload."""
+        mock_send.return_value = GmailToolResult.model_validate(
+            {"data": {"id": "sent-004"}, "error": None, "successful": True}
+        )
+        with patch(ANALYTICS_PATCH) as mock_capture:
+            response = await client.post(
+                f"{MAIL_BASE}/gmail/send",
+                data={
+                    "to": "recipient@example.com",
+                    "subject": "Hello",
+                    "body": "Test email body",
+                },
+                files={
+                    "attachments": (
+                        "note.txt",
+                        b"hello",
+                        "text/plain",
+                    )
+                },
+            )
+
+        assert response.status_code == 200
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.EMAIL_SENT,
+            {"has_attachments": True, "attachment_count": 1},
+        )
+
+    @patch(
+        "app.api.v1.endpoints.mail.ainvoke_structured",
+        new_callable=AsyncMock,
+    )
+    async def test_ai_compose_captures_email_composed(
+        self, mock_invoke: AsyncMock, client: AsyncClient
+    ):
+        mock_invoke.return_value = {"subject": "Hi", "body": "Hello there"}
+        with (
+            patch(
+                "app.api.v1.endpoints.mail.search_notes_by_similarity",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch(ANALYTICS_PATCH) as mock_capture,
+        ):
+            response = await client.post(
+                f"{MAIL_BASE}/mail/ai/compose",
+                json={"prompt": "Write a follow up"},
+            )
+
+        assert response.status_code == 200
+        mock_capture.assert_called_once_with(AnalyticsEvents.EMAIL_COMPOSED)
 
     @patch(
         "app.api.v1.endpoints.mail.send_email",
@@ -807,7 +960,9 @@ class TestSendDraft:
         mock_send.return_value = GmailToolResult.model_validate(
             {"successful": True, "id": "sent-001", "threadId": "thread-001"}
         )
-        response = await client.post(f"{MAIL_BASE}/gmail/drafts/draft-001/send")
+        with patch(ANALYTICS_PATCH) as mock_capture:
+            response = await client.post(f"{MAIL_BASE}/gmail/drafts/draft-001/send")
+        mock_capture.assert_called_once_with(AnalyticsEvents.EMAIL_SENT)
         assert response.status_code == 200
         data = response.json()
         assert data["successful"] is True

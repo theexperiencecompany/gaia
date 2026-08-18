@@ -196,7 +196,6 @@ const MainChat = React.memo(function MainChat() {
     fileUploadRef,
     appendToInputRef,
     hasMessages,
-    conversationId: convoIdParam,
     // Warm the session token on hover so clicking starts ~instantly. Gated
     // on subscription — /token is plan-limited and free users get the modal.
     onVoiceModeHover: () => {
