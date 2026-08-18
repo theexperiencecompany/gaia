@@ -12,8 +12,16 @@ from dataclasses import dataclass
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from app.models.payment_models import PlanType
-from app.services.limit_upsell import LimitHitOrigin, schedule_limit_upsell
+from app.services.limit_upsell import (
+    LimitHitOrigin,
+    current_limit_origin,
+    mark_run_origin,
+    reset_run_origin,
+    schedule_limit_upsell,
+)
 
 MODULE = "app.services.limit_upsell"
 
@@ -99,3 +107,20 @@ class TestScheduleGate:
                 "user-1", "chat_messages", PlanType.PRO, LimitHitOrigin.INTERACTIVE
             )
         spawn.assert_not_called()
+
+
+class TestTheRunOriginMarker:
+    """``mark_run_origin`` decides which email a limit hit sends, so an unmarked
+    run must read as the user standing there, not as background work."""
+
+    def test_a_marked_run_reports_its_origin(self) -> None:
+        mark_run_origin(LimitHitOrigin.BACKGROUND)
+        assert current_limit_origin() is LimitHitOrigin.BACKGROUND
+
+    def test_an_unmarked_run_is_treated_as_interactive(self) -> None:
+        assert current_limit_origin() is LimitHitOrigin.INTERACTIVE
+
+    def test_the_reset_puts_the_default_back(self) -> None:
+        mark_run_origin(LimitHitOrigin.BACKGROUND)
+        reset_run_origin()
+        assert current_limit_origin() is LimitHitOrigin.INTERACTIVE

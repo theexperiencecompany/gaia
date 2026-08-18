@@ -12,8 +12,6 @@ Never blocks or raises into the caller: losing a marketing email must not
 affect the 429 itself.
 """
 
-from collections.abc import Iterator
-from contextlib import contextmanager
 from contextvars import ContextVar
 from enum import StrEnum
 
@@ -51,19 +49,25 @@ def current_limit_origin() -> LimitHitOrigin:
     return _run_origin.get()
 
 
-@contextmanager
-def limit_origin(origin: LimitHitOrigin) -> Iterator[None]:
-    """Mark everything running inside this block with ``origin``.
+def mark_run_origin(origin: LimitHitOrigin) -> None:
+    """Declare what kind of work the CURRENT task is doing.
 
-    Covers the whole run, including code the caller never sees — the agent, its
-    tools and any task spawned from here, since a task copies the context it was
-    created in.
+    Covers everything the task reaches afterwards — the agent, its tools, and
+    any task spawned from here, since a task copies the context it is created
+    in. Scoped to the task rather than a block: arq runs each job as its own
+    task (``loop.create_task(function.coroutine(...))``), so a job cannot leak
+    its origin into the next one, and marking a whole run needs no ``with``
+    around its body — indentation that would otherwise drag every wrapped line
+    into the diff.
+
+    Tests share one task, so ``reset_run_origin`` puts the default back.
     """
-    token = _run_origin.set(origin)
-    try:
-        yield
-    finally:
-        _run_origin.reset(token)
+    _run_origin.set(origin)
+
+
+def reset_run_origin() -> None:
+    """Restore the default origin (test teardown; a job never needs this)."""
+    _run_origin.set(LimitHitOrigin.INTERACTIVE)
 
 
 def schedule_limit_upsell(

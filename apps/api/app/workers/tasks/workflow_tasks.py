@@ -46,7 +46,7 @@ from app.models.workflow_models import (
     Workflow,
 )
 from app.services.analytics_service import AnalyticsEvents, capture_event
-from app.services.limit_upsell import LimitHitOrigin, limit_origin
+from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
 from app.services.notification_service import notification_service
 from app.services.user_service import get_user_by_id
 from app.services.workflow.conversation_service import (
@@ -506,6 +506,9 @@ async def execute_workflow_by_id(
                 if context and "trigger_data" in context
                 else TriggerType.MANUAL.value
             )
+        # Everything below runs as this kind of work: the budget wall, the run's
+        # own tiered limit, and every rate-limited tool the agent reaches.
+        mark_run_origin(_origin_for(trigger_type))
         log.set(
             workflow=WorkflowContext(
                 id=workflow_id,
@@ -551,11 +554,10 @@ async def execute_workflow_by_id(
         # "failed" row) and the except branch below sends the budget-specific
         # notification + re-arms the next occurrence, so a recurring workflow
         # resumes after the budget resets.
-        with limit_origin(_origin_for(trigger_type)):
-            await enforce_daily_cost_budget(
-                workflow.user_id,
-                feature_key="trigger_workflow_executions",
-            )
+        await enforce_daily_cost_budget(
+            workflow.user_id,
+            feature_key="trigger_workflow_executions",
+        )
 
         # Create execution record at start
         execution = await create_execution(
@@ -569,14 +571,9 @@ async def execute_workflow_by_id(
         # steps and its result is delivered as the completion notification
         # from the background delivery path (gated by workflow_id), so there
         # is no separate notification call here.
-        # Wraps the whole turn, not just the entry: the run's own tiered limit
-        # AND every rate-limited tool the agent reaches read the origin from
-        # here. A tool tripping inside a scheduled run used to mail the user
-        # "you hit your limit" for work they never started.
-        with limit_origin(_origin_for(trigger_type)):
-            conversation_id = await execute_workflow_as_chat(
-                workflow, {"user_id": workflow.user_id}, context or {}
-            )
+        conversation_id = await execute_workflow_as_chat(
+            workflow, {"user_id": workflow.user_id}, context or {}
+        )
 
         # Track successful execution
         await WorkflowService.increment_execution_count(
