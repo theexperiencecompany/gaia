@@ -33,6 +33,7 @@ from langgraph.store.base import (
 from app.constants.chroma import MAX_CONCURRENT_CHROMA_WRITES
 from app.constants.log_tags import LogTag
 from app.db.chroma.noop_embedding import NoOpEmbeddingFunction
+from app.utils.concurrency import loop_bound_semaphore
 from shared.py.wide_events import VectorContext, log
 
 # A filter value (or the item value it's compared against) is an arbitrary
@@ -535,7 +536,11 @@ class ChromaStore(BaseStore):
         if not tasks:
             return
 
-        sem = asyncio.Semaphore(MAX_CONCURRENT_CHROMA_WRITES)
+        # Process-wide, not per-call: concurrent _apply_put_ops calls (e.g. the
+        # startup catalog warmup fanning out over every provider toolkit) share
+        # this one semaphore, so the fd cap holds across callers, not just
+        # within a single batch.
+        sem = loop_bound_semaphore("chroma_put_batch", MAX_CONCURRENT_CHROMA_WRITES)
 
         async def _guarded(coro: Coroutine[Any, Any, None]) -> None:
             async with sem:
