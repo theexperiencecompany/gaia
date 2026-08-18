@@ -125,3 +125,31 @@ async def test_search_canvas_context_excludes_completed_when_requested() -> None
     args, kwargs = collection.asimilarity_search_with_score.await_args
     assert kwargs["k"] == 3
     assert kwargs["filter"] == {"$and": [{"user_id": "user-1"}, {"completed": False}]}
+
+
+async def test_search_canvas_context_includes_completed_by_default() -> None:
+    """The include_completed branch filters on the user alone — no completion clause."""
+    collection = AsyncMock()
+    doc = MagicMock()
+    doc.metadata = {"todo_id": "todo-2", "title": "Done", "completed": True}
+    doc.page_content = "finished canvas"
+    collection.asimilarity_search_with_score.return_value = [(doc, 0.42)]
+    with patch(
+        "app.utils.canvas_vector_utils.ChromaClient.get_langchain_client",
+        new_callable=AsyncMock,
+        return_value=collection,
+    ):
+        matches = await search_canvas_context("query", "user-1", top_k=5)
+
+    assert matches == [
+        {
+            "todo_id": "todo-2",
+            "title": "Done",
+            "score": 0.42,
+            "snippet": "finished canvas",
+            "completed": True,
+        }
+    ]
+    args, kwargs = collection.asimilarity_search_with_score.await_args
+    assert kwargs["k"] == 5
+    assert kwargs["filter"] == {"user_id": "user-1"}

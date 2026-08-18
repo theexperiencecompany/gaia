@@ -74,6 +74,27 @@ class TestUpdateUserProfile:
         update_arg = mock_update.call_args.args[1]
         assert update_arg.model_dump(exclude_unset=True) == {"name": "Alice Updated"}
 
+    async def test_response_carries_the_stored_email(self, mock_repo, sample_user):
+        mock_get, mock_update = mock_repo
+        mock_get.return_value = sample_user
+        mock_update.return_value = sample_user
+
+        result = await update_user_profile(sample_user.id, name="Alice Updated")
+
+        assert result.email == "alice@example.com"
+
+    async def test_missing_name_and_email_become_empty_strings(self, mock_repo):
+        """``UserUpdateResponse`` requires ``str``; a legacy row may have neither."""
+        mock_get, mock_update = mock_repo
+        bare_user = UserDocument(id=str(ObjectId()))
+        mock_get.return_value = bare_user
+
+        result = await update_user_profile(bare_user.id)
+
+        assert result.name == ""
+        assert result.email == ""
+        mock_update.assert_not_awaited()
+
     async def test_raises_404_when_user_not_found(self, mock_repo):
         mock_get, _ = mock_repo
         mock_get.return_value = None

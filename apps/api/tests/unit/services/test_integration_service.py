@@ -34,6 +34,7 @@ from app.models.integration_models import (
 )
 from app.models.mcp_config import ComposioConfig, MCPConfig, SubAgentConfig
 from app.models.oauth_models import OAuthIntegration
+from app.models.user_models import UserDocument
 from app.schemas.integrations.responses import (
     CommunityIntegrationItem,
     IntegrationSuccessResponse,
@@ -683,6 +684,49 @@ class TestGetUserIntegrations:
         assert result.integrations[0].integration_id == "github"
         assert result.integrations[0].status == "connected"
         assert result.integrations[0].integration.name == "GitHub"
+
+    @patch("app.services.integrations.user_integrations.user_repository")
+    @patch("app.services.integrations.user_integrations.integration_repository")
+    @patch("app.services.integrations.user_integrations.user_integration_repository")
+    async def test_prefetched_docs_supply_stored_tools_and_creator(
+        self, mock_repo, mock_int_repo, mock_users_col
+    ):
+        """The batch path's whole point: the prefetched integration docs and the
+        prefetched creator map must actually reach the hydrated response.
+
+        Two shapes cover both overlays — a platform entry whose stored doc
+        carries the MCP tool list (the catalog entry has none), and a custom
+        entry whose ``created_by`` joins to the prefetched creator."""
+        stored_platform_doc = Integration.model_validate(
+            {
+                **_make_custom_doc(integration_id="github", name="GitHub"),
+                "created_by": None,
+                "tools": [{"name": "gh_search", "description": "Search repositories"}],
+            }
+        )
+        custom_doc = Integration.model_validate(_make_custom_doc(created_by=USER_ID_2))
+        mock_repo.list_for_user_newest_first = AsyncMock(
+            return_value=[_ui_doc("github"), _ui_doc(CUSTOM_INTEGRATION_ID)]
+        )
+        mock_int_repo.find_by_ids = AsyncMock(return_value=[stored_platform_doc, custom_doc])
+        mock_users_col.find_by_ids = AsyncMock(
+            return_value=[
+                UserDocument(id=USER_ID_2, name="Other User", picture="https://img.com/o.jpg")
+            ]
+        )
+
+        result = await get_user_integrations(USER_ID)
+
+        assert mock_users_col.find_by_ids.await_args.args[0] == [USER_ID_2]
+        platform, custom = result.integrations
+        assert platform.integration.tools == [
+            IntegrationTool(name="gh_search", description="Search repositories")
+        ]
+        assert platform.integration.creator is None
+        assert custom.integration.creator == {
+            "name": "Other User",
+            "picture": "https://img.com/o.jpg",
+        }
 
     @patch("app.services.integrations.user_integrations.user_repository")
     @patch("app.services.integrations.user_integrations.integration_repository")

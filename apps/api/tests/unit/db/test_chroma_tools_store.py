@@ -26,8 +26,28 @@ from app.models.subagent_models import Subagent
 # ---------------------------------------------------------------------------
 
 
+class _InspectableTool:
+    name = "inspectable_tool"
+    description = "A source-backed tool"
+
+
+#: ``inspect.getsource(_InspectableTool)`` verbatim, after the helper's strip.
+_INSPECTABLE_SOURCE = (
+    "class _InspectableTool:\n"
+    '    name = "inspectable_tool"\n'
+    '    description = "A source-backed tool"'
+)
+
+
 @pytest.mark.asyncio
 class TestComputeToolHash:
+    async def test_hash_reads_source_off_the_tool_it_is_given(self):
+        """The unpatched source branch: the hash must depend on the argument."""
+        result = _compute_tool_hash(_InspectableTool)
+
+        expected_content = f"A source-backed tool::{_INSPECTABLE_SOURCE}"
+        assert result == hashlib.sha256(expected_content.encode()).hexdigest()
+
     async def test_hash_uses_description_and_source(self):
         tool = SimpleNamespace(name="my_tool", description="A tool")
         with patch(
@@ -313,6 +333,15 @@ class TestExecuteBatchOperations:
         ops = [MagicMock(spec=PutOp) for _ in range(120)]
         await _execute_batch_operations(store, ops, batch_size=50)
         assert store.abatch.await_count == 3  # 50 + 50 + 20
+
+    async def test_default_batch_size_is_fifty(self):
+        """51 ops split 50 + 1 — pins the default, which callers rely on."""
+        store = AsyncMock()
+        ops = [MagicMock(spec=PutOp) for _ in range(51)]
+
+        await _execute_batch_operations(store, ops)
+
+        assert [len(call.args[0]) for call in store.abatch.await_args_list] == [50, 1]
 
 
 # ---------------------------------------------------------------------------

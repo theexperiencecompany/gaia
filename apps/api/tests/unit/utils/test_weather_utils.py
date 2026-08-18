@@ -771,7 +771,7 @@ class TestUserWeather:
                 "app.utils.weather_utils.prepare_weather_data",
                 new_callable=AsyncMock,
                 return_value=weather_data,
-            ),
+            ) as mock_prepare,
             patch(
                 "app.utils.weather_utils.set_cache",
                 new_callable=AsyncMock,
@@ -780,6 +780,9 @@ class TestUserWeather:
             result = await user_weather(location_name="Paris")
 
         assert result == weather_data
+        # The geocoded coordinates must reach the fetch — a wrong read here
+        # silently returns the weather at (0, 0), in the Gulf of Guinea.
+        assert mock_prepare.await_args.args == (48.8566, 2.3522, location_data, FAKE_API_KEY)
         mock_set_cache.assert_awaited_once()
         cache_call_args = mock_set_cache.call_args
         assert cache_call_args.args[0] == "weather:location:paris"
