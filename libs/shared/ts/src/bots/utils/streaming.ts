@@ -18,7 +18,7 @@
  *   await handleStreamingChat(gaia, request, editMessage, onAuth, onErr,
  *     STREAMING_DEFAULTS.discord);
  */
-import type { Analytics } from "../../analytics";
+import type { AnalyticsContext } from "../../analytics";
 import { BOT_EVENTS } from "../../analytics/events/bots";
 import type { ApprovalRequestData } from "../../chat";
 import {
@@ -361,7 +361,7 @@ export async function handleStreamingChat(
   onAuthError: (authUrl: string) => Promise<void>,
   onGenericError: (formattedError: string) => Promise<void>,
   options: StreamingOptions,
-  analytics?: Analytics,
+  analytics?: AnalyticsContext,
 ): Promise<void> {
   // Latency + high-cardinality observability for the chat pipeline. user_hash
   // is the HMAC-hashed id (no PII). ttfb_ms = time to first streamed chunk.
@@ -406,11 +406,10 @@ async function runStreamingChat(
   onAuthError: (authUrl: string) => Promise<void>,
   onGenericError: (formattedError: string) => Promise<void>,
   options: StreamingOptions,
-  analytics: Analytics | undefined,
+  analytics: AnalyticsContext | undefined,
   userHash: string | undefined,
   channelHash: string | undefined,
 ): Promise<void> {
-  const distinctId = `${request.platform}:${request.platformUserId}`;
   const startMs = Date.now();
   let responseLength = 0;
   let hadError = false;
@@ -418,13 +417,13 @@ async function runStreamingChat(
   let chunkCount = 0;
   let conversationId = "";
 
-  analytics?.capture(distinctId, BOT_EVENTS.MESSAGE_RECEIVED, {
+  analytics?.client.capture(analytics.distinctId, BOT_EVENTS.MESSAGE_RECEIVED, {
     interaction_type: "chat",
     channel_id: request.channelId,
     message_length: request.message.length,
   });
 
-  analytics?.capture(distinctId, BOT_EVENTS.CHAT_STARTED, {
+  analytics?.client.capture(analytics.distinctId, BOT_EVENTS.CHAT_STARTED, {
     channel_id: request.channelId,
     message_length: request.message.length,
     streaming_enabled: options.streaming,
@@ -454,7 +453,7 @@ async function runStreamingChat(
     });
     // Do not ship the raw error string — it can contain paths, request IDs,
     // or upstream-echoed tokens. `context` is enough to bucket failures.
-    analytics?.capture(distinctId, BOT_EVENTS.ERROR, {
+    analytics?.client.capture(analytics.distinctId, BOT_EVENTS.ERROR, {
       context: "chat:streaming",
       channel_id: request.channelId,
       duration_ms: Date.now() - startMs,
@@ -524,12 +523,16 @@ async function runStreamingChat(
       conversation_id: conversationId || undefined,
     });
     if (!hadError) {
-      analytics?.capture(distinctId, BOT_EVENTS.CHAT_COMPLETED, {
-        channel_id: request.channelId,
-        duration_ms: Date.now() - startMs,
-        response_length: responseLength,
-        streaming_enabled: options.streaming,
-      });
+      analytics?.client.capture(
+        analytics.distinctId,
+        BOT_EVENTS.CHAT_COMPLETED,
+        {
+          channel_id: request.channelId,
+          duration_ms: Date.now() - startMs,
+          response_length: responseLength,
+          streaming_enabled: options.streaming,
+        },
+      );
     }
   }
 }
