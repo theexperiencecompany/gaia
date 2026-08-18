@@ -16,6 +16,7 @@ from app.constants.email import (
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
 from app.models.support_models import SupportEmailNotification, SupportRequestType
+from app.models.user_models import UserDocument
 from app.services.email.models import EmailMessage
 from app.services.email.providers import get_email_provider
 from app.services.email.providers.base import MarketingContactsProvider
@@ -277,6 +278,32 @@ async def send_badge_earned_email(
     log.info(f"{LogTag.MAIL} Badge earned email sent", tier=tier)
 
 
+async def _limit_email_recipient(user_id: str) -> UserDocument | None:
+    """The user a limit email may go to, or None (missing/no email/weekly dedupe).
+
+    Both limit emails — the interactive upsell and the background
+    workflows-paused note — share this one weekly window via
+    ``last_limit_email_sent``, so a user never gets more than one limit email
+    of any kind in a 7-day span.
+    """
+    user = await user_repository.get(user_id)
+    if user is None or not user.email:
+        log.warning(
+            f"{LogTag.MAIL} Limit email skipped — user not found or no email",
+            user={"id": user_id},
+        )
+        return None
+
+    now = datetime.now(UTC)
+    last_sent = user.last_limit_email_sent
+    if last_sent and last_sent.tzinfo is None:
+        last_sent = last_sent.replace(tzinfo=UTC)
+    # One nudge per week: a daily 429 toast is expected UX; a daily email is spam.
+    if last_sent and (now - last_sent).days < 7:
+        return None
+    return user
+
+
 async def send_limit_reached_email(
     user_id: str,
     hit_feature: str,
@@ -288,20 +315,8 @@ async def send_limit_reached_email(
     plan doesn't deliver. Returns True if sent, False if skipped (dedupe or
     missing user/email).
     """
-    user = await user_repository.get(user_id)
-    if user is None or not user.email:
-        log.warning(
-            f"{LogTag.MAIL} Limit email skipped — user not found or no email",
-            user={"id": user_id},
-        )
-        return False
-
-    now = datetime.now(UTC)
-    last_sent = user.last_limit_email_sent
-    if last_sent and last_sent.tzinfo is None:
-        last_sent = last_sent.replace(tzinfo=UTC)
-    # One nudge per week: a daily 429 toast is expected UX; a daily email is spam.
-    if last_sent and (now - last_sent).days < 7:
+    user = await _limit_email_recipient(user_id)
+    if user is None:
         return False
 
     feature_title = get_feature_info(hit_feature).title
@@ -325,4 +340,39 @@ async def send_limit_reached_email(
     )
     await user_repository.record_limit_email_sent(user_id)
     log.info(f"{LogTag.MAIL} Limit-reached upsell email sent", user={"id": user_id})
+    return True
+
+
+async def send_workflows_paused_email(user_id: str) -> bool:
+    """Tell a FREE user their background workflows are taking a break today.
+
+    Sent when a workflow run — not a user action — hits the daily usage wall,
+    so the copy explains what happened to the work GAIA does for them in the
+    background instead of claiming they personally hit a limit. Shares the
+    weekly dedupe window with the interactive upsell email. Returns True if
+    sent, False if skipped (dedupe or missing user/email).
+    """
+    user = await _limit_email_recipient(user_id)
+    if user is None:
+        return False
+
+    html_content = render_email_template(
+        "workflows_paused.html",
+        user_name=user.name,
+        workflows_url=f"{settings.FRONTEND_URL}/workflows",
+        pricing_url=f"{settings.FRONTEND_URL}/pricing",
+        contact_email=CONTACT_EMAIL,
+    )
+
+    await send_email(
+        EmailMessage(
+            sender=FOUNDER_SENDER,
+            to=[user.email],
+            subject="GAIA is taking a break until tomorrow",
+            html=html_content,
+            reply_to=CONTACT_EMAIL,
+        )
+    )
+    await user_repository.record_limit_email_sent(user_id)
+    log.info(f"{LogTag.MAIL} Workflows-paused email sent", user={"id": user_id})
     return True

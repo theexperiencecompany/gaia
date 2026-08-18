@@ -31,13 +31,17 @@ export function useHilPreferences() {
 
   const modeMutation = useMutation({
     mutationFn: (mode: HilMode) => approvalsApi.putHilPreferences({ mode }),
-    onSuccess: (data) => qc.setQueryData(HIL_PREFS_KEY, data),
+    onSuccess: (data) => {
+      qc.setQueryData(HIL_PREFS_KEY, data);
+    },
   });
 
   const overrideMutation = useMutation({
     mutationFn: ({ name, ask }: { name: string; ask: boolean | null }) =>
       approvalsApi.setToolOverride(name, ask),
-    onSuccess: (data) => qc.setQueryData(HIL_PREFS_KEY, data),
+    onSuccess: (data) => {
+      qc.setQueryData(HIL_PREFS_KEY, data);
+    },
     // The mutation is fire-and-forget from every call site (`.mutate()`), so
     // this is the single place a failed per-tool save can surface to the user.
     onError: () => toast.error("Failed to update tool approval"),

@@ -102,7 +102,7 @@ export function recoverFromChunkError(error: unknown): ChunkRecoveryResult {
   markRecoveryAttempt(now);
   // Best-effort: PostHog flushes queued events via `sendBeacon` on unload, so
   // this reload signal survives the reload when PostHog is already initialized.
-  trackEvent(ANALYTICS_EVENTS.ERROR_OCCURRED, {
+  trackEvent(ANALYTICS_EVENTS.API_CHUNK_RECOVERED, {
     error_type: "chunk_load",
     recovery_action: "reload",
   });

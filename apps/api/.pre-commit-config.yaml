@@ -48,7 +48,10 @@ repos:
       - id: gaia-ignore-ratchet
         name: Ruff ignore-list ratchet (ignore / per-file-ignores may only shrink)
         language: system
-        entry: python3 tools/lints/check_ignore_ratchet.py
+        # The api sub-config runs with cwd=apps/api, but the script lives at
+        # the repo root, and it needs Python >= 3.11 for tomllib — neither the
+        # relative path nor the system python3 works here.
+        entry: ../../.venv/bin/python ../../tools/lints/check_ignore_ratchet.py
         files: ^(pyproject\.toml|tools/lints/(check_ignore_ratchet\.py|ignore_ratchet_baseline\.txt))$
         pass_filenames: false
         priority: 0

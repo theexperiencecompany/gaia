@@ -33,12 +33,13 @@
  * @module
  */
 
-import { Analytics, BOT_EVENTS } from "../../analytics";
+import { Analytics, type AnalyticsContext, BOT_EVENTS } from "../../analytics";
 import { GaiaClient } from "../api";
 import { loadConfig } from "../config";
 import type { OutboundAttachment } from "../consumer/envelope";
 import { OutboundConsumer } from "../consumer/outbound-consumer";
 import type {
+  AuthStatus,
   BotCommand,
   BotConfig,
   CommandContext,
@@ -104,6 +105,16 @@ export abstract class BaseBotAdapter {
 
   /** Server-side PostHog analytics. No-op when POSTHOG_API_KEY is absent. */
   protected analytics: Analytics = new Analytics(undefined);
+
+  /**
+   * Resolved PostHog distinct_id per platform user, for the life of the process.
+   *
+   * A cache, not a source of truth: the link state lives in MongoDB behind
+   * `checkAuthStatus`. It exists because the id is needed on every event and an
+   * HTTP round trip per capture would put the analytics path in the latency
+   * budget of every message.
+   */
+  private readonly distinctIdCache = new Map<string, string>();
 
   /** Shared structured logger for adapter lifecycle and command execution. */
   protected logger: BotLogger = createBotLogger("shared", "base-adapter");
@@ -343,6 +354,19 @@ export abstract class BaseBotAdapter {
         bytes: artifact.data.length,
         limit,
       });
+      // A generated artifact the user never receives. Captured, not just
+      // logged: this is a product failure with a per-platform size cause, and
+      // its rate is the signal for raising a limit or chunking the output.
+      this.analytics.capture(
+        await this.resolveDistinctId(destinationId),
+        BOT_EVENTS.FILE_DELIVERED,
+        {
+          success: false,
+          reason: "too_large",
+          bytes: artifact.data.length,
+          limit,
+        },
+      );
       await this.deliverOutbound(
         destinationId,
         renderForPlatform(
@@ -368,6 +392,15 @@ export abstract class BaseBotAdapter {
     wideLog.warning("outbound_file_fallback_text", {
       attachment_filename: attachment.filename,
     });
+    // The base implementation IS the "this platform can't send files" path —
+    // platforms that can (WhatsApp) override the whole method and capture their
+    // own success. Reaching here always means the user got text instead of the
+    // artifact they asked for.
+    this.analytics.capture(
+      await this.resolveDistinctId(destinationId),
+      BOT_EVENTS.FILE_DELIVERED,
+      { success: false, reason: "platform_unsupported" },
+    );
     await this.deliverOutbound(
       destinationId,
       `I created *${attachment.filename}*, but I can't send files on ${this.platform} yet.`,
@@ -396,7 +429,7 @@ export abstract class BaseBotAdapter {
     args: Record<string, string | number | boolean | undefined> = {},
     rawText?: string,
   ): Promise<void> {
-    const distinctId = `${this.platform}:${target.userId}`;
+    const distinctId = await this.resolveDistinctId(target.userId);
     const userHash = hashLogIdentifier(target.userId);
     const channelHash = hashLogIdentifier(target.channelId);
 
@@ -419,14 +452,11 @@ export abstract class BaseBotAdapter {
           command: name,
           has_args: Object.keys(args).length > 0,
           has_raw_text: !!rawText,
-          channel_id: target.channelId,
         });
 
         if (name === "auth") {
           wideLog.audit("auth_link_requested", { user_hash: userHash });
-          this.analytics.capture(distinctId, BOT_EVENTS.AUTH_INITIATED, {
-            channel_id: target.channelId,
-          });
+          this.analytics.capture(distinctId, BOT_EVENTS.AUTH_INITIATED, {});
         }
 
         const command = this.commands.get(name);
@@ -455,7 +485,6 @@ export abstract class BaseBotAdapter {
             command: name,
             duration_ms: Date.now() - startMs,
             success: true,
-            channel_id: target.channelId,
           });
         } catch (error) {
           const durationMs = Date.now() - startMs;
@@ -478,12 +507,10 @@ export abstract class BaseBotAdapter {
             duration_ms: durationMs,
             success: false,
             error_type: errorType,
-            channel_id: target.channelId,
           });
           this.analytics.capture(distinctId, BOT_EVENTS.ERROR, {
             context: `command:${name}`,
             error_type: errorType,
-            channel_id: target.channelId,
           });
           const errMsg = formatBotError(error);
           try {
@@ -522,6 +549,60 @@ export abstract class BaseBotAdapter {
 
   /** Unlinked users greeted this process, deduped so the welcome does not repeat on every message. */
   private readonly welcomedUsers = new Set<string>();
+
+  /**
+   * The PostHog distinct_id for a platform user: their stable GAIA user id once
+   * the account is linked, otherwise `"<platform>:<platformUserId>"`.
+   *
+   * Keying on the GAIA id is what lets a person's bot activity land on the same
+   * profile as their web and API activity — the backend already attributes bot
+   * chat turns that way (`bot.py::chat`), so without this the same turn produced
+   * two people. An unlinked user genuinely has no GAIA identity yet, so the
+   * platform id stands in until they link; {@link alias} then folds that history
+   * into the real profile.
+   *
+   * A failed lookup degrades to the platform id rather than dropping the event:
+   * an event on the anonymous profile is recoverable, a missing one is not.
+   */
+  protected async resolveDistinctId(platformUserId: string): Promise<string> {
+    const cached = this.distinctIdCache.get(platformUserId);
+    if (cached) return cached;
+
+    const platformDistinctId = `${this.platform}:${platformUserId}`;
+    let status: AuthStatus;
+    try {
+      status = await this.gaia.checkAuthStatus(this.platform, platformUserId);
+    } catch (error) {
+      this.logger.error(
+        "analytics_identity_resolve_failed",
+        { user_hash: hashLogIdentifier(platformUserId) },
+        error,
+      );
+      return platformDistinctId;
+    }
+
+    if (!status.user_id) return platformDistinctId;
+
+    // First resolution for this user in this process: stitch whatever they did
+    // before linking onto the GAIA profile. Cached below, so it fires once per
+    // process rather than per message.
+    this.analytics.alias(platformDistinctId, status.user_id);
+    this.distinctIdCache.set(platformUserId, status.user_id);
+    return status.user_id;
+  }
+
+  /**
+   * The analytics client bound to this user's resolved identity, for handing to
+   * shared helpers like {@link handleStreamingChat}.
+   */
+  protected async analyticsFor(
+    platformUserId: string,
+  ): Promise<AnalyticsContext> {
+    return {
+      client: this.analytics,
+      distinctId: await this.resolveDistinctId(platformUserId),
+    };
+  }
 
   /**
    * Welcome gate shared by adapters that greet a user on first contact (Discord
@@ -613,13 +694,29 @@ export abstract class BaseBotAdapter {
         media_kind: media.kind,
         is_voice_note: media.isVoiceNote,
       },
-      () =>
-        processBotMedia(
+      async () => {
+        // Every inbound attachment on every platform funnels through here, so
+        // this is the one place the upload can be counted. `outcome` separates
+        // an attachment GAIA actually ingested ("chat") from one it turned away
+        // as unsupported or oversize ("reply") — the rejection rate is the
+        // number worth watching. No filename: it is user content.
+        const outcome = await processBotMedia(
           this.gaia,
           media,
           download,
           this.buildContext(userId, channelId),
-        ),
+        );
+        this.analytics.capture(
+          await this.resolveDistinctId(userId),
+          BOT_EVENTS.FILE_UPLOADED,
+          {
+            media_kind: media.kind,
+            is_voice_note: Boolean(media.isVoiceNote),
+            outcome: outcome.action === "chat" ? "ingested" : "rejected",
+          },
+        );
+        return outcome;
+      },
     );
   }
 }

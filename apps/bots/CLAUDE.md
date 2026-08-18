@@ -100,6 +100,16 @@ A field named like an envelope key (`platform`, `service`, `component`, `message
 
 **The bots surface is gated at 100/100.** `node scripts/ci/evlog-map-bots.mjs` (the TypeScript counterpart of `tools/evlog_map`) discovers every entry point above, scores it on boundary/context/audit/error-handling, and CI runs it as `--min-score 100 --min-entries 23` — the score gate blocks under-instrumented handlers, the entry-count gate blocks a refactor that makes the scanner stop finding them (an empty map scores a perfect 100). Run it locally before pushing. If a check genuinely does not apply, waive it with `// evlog-map-disable-next-line <check-id> -- <reason>`; the `--` reason is mandatory, and waivers are counted in every report.
 
+## Analytics (PostHog)
+
+Separate sink from the wide events above, and a separate purpose: Loki answers *what happened in this session*, PostHog answers *how much do people use this*. Naming and the no-PII rule are in the root `CLAUDE.md`.
+
+- **Client**: `Analytics` (`libs/shared/ts/src/analytics/`), created in `boot()` from `POSTHOG_API_KEY`; a no-op when the key is absent, so a bare local checkout needs no setup. Import it via the subpath — `@gaia/shared/analytics`, never the root barrel, which deliberately does not re-export it (posthog-node pulls in Node-only modules Metro cannot resolve for React Native).
+- **Event names**: `BOT_EVENTS` in `analytics/events/bots.ts`. Add there, never inline.
+- **distinct_id is never the platform id if the account is linked.** Call `this.resolveDistinctId(platformUserId)`, or `this.analyticsFor(platformUserId)` when handing an identity to a shared helper like `handleStreamingChat`. It returns the stable GAIA user id from `checkAuthStatus`, caches it per process, and emits a one-time `alias` so pre-link history merges into the real profile. Only an unlinked user falls back to `"<platform>:<platformUserId>"`.
+- **Do not capture a bot chat turn's submission** — `apps/api/app/api/v1/endpoints/bot.py` already captures `chat:message_submitted` for it against the same id. Duplicating it double-counts every message.
+- Capture at the shared chokepoints, not per adapter: `dispatchCommand`, `resolveIncomingMedia` and `handleStreamingChat` each cover all four platforms, so one call there instruments everything and cannot drift between bots.
+
 ## Platform gotchas
 
 | | Discord | Slack | Telegram | WhatsApp |

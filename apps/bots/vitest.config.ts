@@ -17,6 +17,13 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      // Longest prefix first: Vitest matches these in order, so a bare
+      // "@gaia/shared" entry above would swallow the subpath and resolve it to
+      // "src/index.ts/analytics".
+      "@gaia/shared/analytics": path.resolve(
+        __dirname,
+        "../../libs/shared/ts/src/analytics/index.ts",
+      ),
       "@gaia/shared": path.resolve(
         __dirname,
         "../../libs/shared/ts/src/index.ts",

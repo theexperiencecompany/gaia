@@ -8,7 +8,7 @@ Provides:
 - Reusable fake user and auth fixtures
 """
 
-from collections.abc import AsyncGenerator, Iterator
+from collections.abc import AsyncGenerator, Callable, Iterator
 import contextlib
 from contextlib import asynccontextmanager
 import importlib
@@ -84,6 +84,13 @@ os.environ["LANGFUSE_HOST"] = ""
 # chroma_store came back "suspicious" and the module could never be graded.
 os.environ["ANONYMIZED_TELEMETRY"] = "False"
 
+# Same reasoning for PostHog: analytics capture must never reach a live
+# project from the suite. Forced off (not setdefault) BEFORE the settings
+# import below — the provider's required_keys are bound at decoration time
+# from the settings singleton, so a developer's .env token must not leak in.
+os.environ["POSTHOG_PROJECT_TOKEN"] = ""
+os.environ["POSTHOG_HOST"] = ""
+
 # Arm the Infisical fence BEFORE any app import: settings.py calls get_settings()
 # at import time (via the module-level `settings` singleton), and the import
 # chain below (payment_models -> ... -> app.config.settings) would dial the real
@@ -98,6 +105,8 @@ _early_infisical_patch.start()
 # app.db.repositories.base -> app.db.redis -> app.config.settings, which
 # instantiates settings at import time. Without ENV set first, that resolves to
 # ProductionSettings and fails validation (CI has no production keys).
+from app.config.posthog import init_posthog
+from app.core.lazy_loader import MissingKeyStrategy, providers
 from app.models.payment_models import (
     PlanType,
     SubscriptionStatus,
@@ -181,6 +190,19 @@ assert isinstance(_settings_module.inject_infisical_secrets, MagicMock), (
 assert isinstance(_secrets_module.inject_infisical_secrets, MagicMock), (
     "hermetic fence broken: secrets.inject_infisical_secrets is not mocked"
 )
+
+# Register the PostHog provider the way production startup does
+# (unified_startup -> provider_registration -> init_posthog). The test app's
+# lifespan is a no-op, so without this the provider is never registered and
+# every capture_context_event/capture_event call raises KeyError from
+# providers.get("posthog") — turning instrumented endpoints into 500s. With
+# POSTHOG_PROJECT_TOKEN blanked above, the SILENT-strategy loader resolves to
+# None: capture calls no-op (log.debug + return) instead of raising. Tests
+# that assert specific capture behavior patch the endpoint's own binding, so
+# they are unaffected. importlib (not a top-level import) for the same reason
+# as the settings imports above.
+_posthog_module = importlib.import_module("app.config.posthog")
+_posthog_module.init_posthog()
 
 # ---------------------------------------------------------------------------
 # Hermetic environment fence
@@ -575,3 +597,27 @@ def route_enqueue_via_pool():
                 patch(f"{module}.enqueue_worker_job", side_effect=_forward, create=True)
             )
         yield
+
+
+@pytest.fixture
+def posthog_provider() -> Iterator[Callable[..., None]]:
+    """Install a controllable "posthog" provider under the real registry.
+
+    The env fence blanks ``POSTHOG_PROJECT_TOKEN``, so the production provider
+    is unavailable for the whole suite. Tests go through the real registry
+    rather than patching ``providers`` because the provider NAME is part of
+    what they pin: a lookup under any other key finds nothing, and the code
+    under test then silently attributes nobody. Production's provider is
+    re-registered on teardown.
+    """
+
+    def install(*, available: bool, client: object | None) -> None:
+        providers.register(
+            name="posthog",
+            loader_func=lambda: client,
+            required_keys=[] if available else [""],
+            strategy=MissingKeyStrategy.SILENT,
+        )
+
+    yield install
+    init_posthog()

@@ -550,7 +550,7 @@ export default function WorkflowModal({
     const createdWorkflow = result.workflow;
     trackEvent(ANALYTICS_EVENTS.WORKFLOWS_CREATED, {
       workflow_id: createdWorkflow.id,
-      workflow_title: createdWorkflow.title,
+      // workflow_title is user-authored free text — never sent to PostHog.
       step_count: createdWorkflow.steps?.length || 0,
       trigger_type: data.trigger_config.type,
       has_schedule: data.trigger_config.type === "schedule",
@@ -760,7 +760,6 @@ export default function WorkflowModal({
     try {
       trackEvent(ANALYTICS_EVENTS.WORKFLOWS_DELETED, {
         workflow_id: existingWorkflow.id,
-        workflow_title: existingWorkflow.title,
         step_count: existingWorkflow.steps?.length || 0,
         is_public: existingWorkflow.is_public,
       });
@@ -834,8 +833,9 @@ export default function WorkflowModal({
 
     trackEvent(ANALYTICS_EVENTS.WORKFLOWS_STEPS_REGENERATED, {
       workflow_id: currentWorkflow.id,
-      workflow_title: currentWorkflow.title,
-      instruction,
+      // The instruction is user-authored free text (often contains the goal
+      // or context of the workflow) — never send it to PostHog, only its length.
+      instruction_length: instruction.length,
       force_different_tools: forceDifferentTools,
       previous_step_count: currentWorkflow.steps?.length || 0,
     });
@@ -888,14 +888,12 @@ export default function WorkflowModal({
       if (currentWorkflow.is_public) {
         trackEvent(ANALYTICS_EVENTS.WORKFLOWS_UNPUBLISHED, {
           workflow_id: currentWorkflow.id,
-          workflow_title: currentWorkflow.title,
         });
         await workflowApi.unpublishWorkflow(currentWorkflow.id);
         setCurrentWorkflow({ ...currentWorkflow, is_public: false });
       } else {
         trackEvent(ANALYTICS_EVENTS.WORKFLOWS_PUBLISHED, {
           workflow_id: currentWorkflow.id,
-          workflow_title: currentWorkflow.title,
           step_count: currentWorkflow.steps?.length || 0,
         });
         const result = await workflowApi.publishWorkflow(currentWorkflow.id);
@@ -941,7 +939,6 @@ export default function WorkflowModal({
     try {
       trackEvent(ANALYTICS_EVENTS.WORKFLOWS_EXECUTED, {
         workflow_id: existingWorkflow.id,
-        workflow_title: existingWorkflow.title,
         step_count: currentWorkflow.steps.length,
         trigger_type: existingWorkflow.trigger_config.type,
       });

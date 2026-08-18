@@ -30,6 +30,7 @@ from app.schemas.usage import (
     UsageActivityResponse,
     UsageSummary,
 )
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.cost_budget import get_budget_status
 from app.services.payments.payment_service import payment_service
 from app.services.usage_activity import get_activity
@@ -59,6 +60,12 @@ async def get_usage_summary(user_id: str = Depends(get_user_id)) -> UsageSummary
 
         log.set(period="realtime", result_count=len(features_formatted))
         log.set(outcome="success")
+        capture_context_event(
+            AnalyticsEvents.USAGE_QUERIED,
+            # plan_type is always a PlanType enum here (subscription.plan_type
+            # defaults to PlanType.FREE) — the hasattr fallback was dead code.
+            {"plan_type": user_plan.value},
+        )
         return UsageSummary(
             user_id=user_id,
             plan_type=user_plan.value if hasattr(user_plan, "value") else str(user_plan),

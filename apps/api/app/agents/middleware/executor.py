@@ -40,6 +40,7 @@ from app.agents.middleware.runtime_adapter import (
 from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentMiddlewareStack
 from app.override.langgraph_bigtool.utils import State, messages_delta_reducer
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from shared.py.wide_events import log
 
 # The handler chains built below. LangChain's hooks accept a wider return union
@@ -381,6 +382,9 @@ class MiddlewareExecutor:
             result with a graph update (e.g. workspace compaction).
         """
         tool_name = tool_call.get("name", "unknown")
+        # Attribute the capture by the run's user; personless runs are skipped.
+        configurable = config.get("configurable") or {}
+        tool_user_id = configurable.get("user_id") if isinstance(configurable, dict) else None
         runtime = self._create_tool_runtime(config, store, tool_name)
         request = create_tool_call_request(tool_call, tool, state, runtime)
 
@@ -394,6 +398,12 @@ class MiddlewareExecutor:
             """Innermost handler - actually calls the tool."""
             nonlocal tool_result
             tool_result = await invoke_fn(req.tool_call)
+            if tool_user_id:
+                capture_event(
+                    tool_user_id,
+                    AnalyticsEvents.TOOL_USED,
+                    {"tool_name": tool_name},
+                )
             return tool_result
 
         # Wrap with middleware (reverse order so first middleware is outermost)

@@ -42,6 +42,7 @@ from app.models.stream_events import (
     MainResponseCompleteFrame,
 )
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.chat.artifact_forwarder import forward_artifact_events
 from app.services.chat.chunks import process_data_chunk
 from app.services.chat.persistence import (
@@ -256,6 +257,27 @@ async def _run_chat_stream(
         )
         await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
         await stream_manager.complete_stream(stream_id)
+
+        # The turn reached a terminal state: capture the milestone. Cancelled
+        # turns finish the same happy path (the driver ends the stream with a
+        # `cancelled` nostream marker), so branch on the flag the loop recorded.
+        if user_id:
+            event_props: dict[str, Any] = {
+                "conversation_id": conversation_id,
+                "voice_mode": body.voice_mode,
+                "is_new_conversation": is_new_conversation,
+            }
+            if source:
+                event_props["source"] = source
+            capture_event(
+                user_id,
+                (
+                    AnalyticsEvents.CHAT_MESSAGE_CANCELLED
+                    if state.is_cancelled
+                    else AnalyticsEvents.CHAT_MESSAGE_COMPLETED
+                ),
+                event_props,
+            )
 
     except Exception as e:  # surface to client + flag the stream
         # Persist the SAME user-facing text we stream (friendly for a recursion

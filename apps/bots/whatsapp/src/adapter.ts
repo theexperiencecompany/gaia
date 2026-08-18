@@ -45,6 +45,7 @@ import {
   wideLog,
   withWideEvent,
 } from "@gaia/shared";
+import { BOT_EVENTS } from "@gaia/shared/analytics";
 import { WhatsAppClient } from "@kapso/whatsapp-cloud-api";
 import {
   NOTIFICATION_TEMPLATE_LANGUAGE,
@@ -671,7 +672,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           await this.sendWhatsAppText(waId, errMsg);
         },
         STREAMING_DEFAULTS.whatsapp,
-        this.analytics,
+        await this.analyticsFor(waId),
       );
     } catch (err) {
       this.adapterLogger.error("streaming_failed", {
@@ -1014,5 +1015,20 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         document: { id: uploaded.id, filename: attachment.filename, caption },
       });
     }
+    // The one platform that can actually deliver an artifact — captured after
+    // the send resolves, so a Kapso failure throws before it and is never
+    // recorded as a success. The base class captures the failure paths.
+    this.analytics.capture(
+      await this.resolveDistinctId(destinationId),
+      BOT_EVENTS.FILE_DELIVERED,
+      {
+        success: true,
+        delivery_kind:
+          mime.startsWith("image/") && data.length <= WHATSAPP_IMAGE_MAX_BYTES
+            ? "image"
+            : "document",
+        bytes: data.length,
+      },
+    );
   }
 }

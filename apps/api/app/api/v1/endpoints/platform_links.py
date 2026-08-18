@@ -17,6 +17,7 @@ from app.models.platform_models import (
     LinkPlatformResponse,
 )
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.oauth.oauth_state_service import create_oauth_state
 from app.services.outbound_delivery import notify_account_linked
 from app.services.photon.photon_client import redirect_deep_link, register_shared_user
@@ -150,6 +151,10 @@ async def link_platform(
         if result.is_new_link:
             await notify_account_linked(platform, user_id)
         log.set(outcome="success")
+        capture_context_event(
+            AnalyticsEvents.INTEGRATION_CONNECTED,
+            {"integration_id": platform, "is_new_link": bool(result.is_new_link)},
+        )
         # is_new_link is an internal signal for the greeting above, not part of
         # the payload the client reads — build the response field by field.
         return LinkPlatformResponse(
@@ -209,6 +214,10 @@ async def disconnect_platform(
         provider=platform,
     )
     log.set(outcome="success")
+    capture_context_event(
+        AnalyticsEvents.INTEGRATION_DISCONNECTED,
+        {"integration_id": platform},
+    )
 
     if platform_user_id:
         cache_key = f"bot_user:{platform}:{platform_user_id}"

@@ -227,5 +227,19 @@ Issues = "https://github.com/theexperiencecompany/gaia/issues"
 #   other C extensions) cannot be re-imported in the same process.
 source_paths = ["app"]
 also_copy = ["app", "tests", "scripts"]
+# The diff-driven scoping in scripts/test/mutation.sh stamps
+# `# pragma: no mutate` onto every unchanged line; mutmut's AST visitor only
+# honors that comment on simple statement lines and standalone comments, so
+# interior lines of multi-line statements still got mutated. The pattern
+# matcher keys on line CONTENT, which catches every stamped line — this is
+# what actually makes the scoping work (unchanged lines produce no mutants).
+do_not_mutate_patterns = ["# pragma: no mutate"]
+# Per-mutant timeout = timeout_constant + timeout_multiplier * stats_time.
+# The default constant (1s) is sized for fast local machines; on the 2-core
+# CI runner each mutant pays ~25-30s of fresh-process startup (python + app
+# import + collection) that the stats phase does not capture, so the default
+# timeout races the startup and every mutant reads as a timeout. The constant
+# buys that startup headroom.
+timeout_constant = 60.0
 pytest_add_cli_args_test_selection = []
 pytest_add_cli_args = ["-p", "no:xdist", "-o", 'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout=300']

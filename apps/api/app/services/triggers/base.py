@@ -15,7 +15,7 @@ from composio_client import APIStatusError
 
 from app.constants.log_tags import LogTag
 from app.models.trigger_config import TriggerOption, TriggerOptionGroup
-from app.models.workflow_models import TriggerConfig, Workflow
+from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow.queue_service import WorkflowQueueService
@@ -412,8 +412,14 @@ class TriggerHandler(ABC):
                     trigger_id=trigger_id,
                 )
                 return False
-            # Enrich context with tracked todos for signal matching
-            context: dict[str, Any] = {"trigger_data": data}
+            # Enrich context with tracked todos for signal matching. The
+            # trigger_type stamp is what lets the worker tell this run apart
+            # from a user's manual "run now" (unstamped, it defaulted to
+            # "manual" and was mislabeled in analytics and origin handling).
+            context: dict[str, Any] = {
+                "trigger_data": data,
+                "trigger_type": TriggerType.INTEGRATION.value,
+            }
             if workflow.user_id not in signal_context_by_user:
                 try:
                     signal_context_by_user[

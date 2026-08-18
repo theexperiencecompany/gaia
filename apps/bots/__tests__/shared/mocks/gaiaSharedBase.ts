@@ -52,6 +52,19 @@ export function makeGaiaSharedMock(
     commands = new Map();
     analytics = undefined;
 
+    /** Mirrors the real base class: identity-bound analytics for shared helpers. */
+    protected async analyticsFor(platformUserId: string) {
+      return {
+        client: this.analytics,
+        distinctId: await this.resolveDistinctId(platformUserId),
+      };
+    }
+
+    /** Unlinked-user path — adapter tests assert routing, not identity. */
+    protected async resolveDistinctId(platformUserId: string): Promise<string> {
+      return `${this.platform}:${platformUserId}`;
+    }
+
     protected async dispatchCommand(
       name: string,
       target: {

@@ -37,6 +37,21 @@ const withBundleAnalyzer = bundleAnalyzer({
 // to Next's built-in image optimizer, otherwise every image 404s off-edge.
 const useCloudflareImageLoader = process.env.IMAGE_LOADER === "cloudflare";
 
+// PostHog is proxied through /ingest so ingestion stays first-party and
+// survives ad blockers. The destinations follow NEXT_PUBLIC_POSTHOG_HOST
+// rather than being pinned to the US cloud, so an EU or self-hosted
+// deployment ingests into its own region instead of shipping data across a
+// data-residency boundary. PostHog Cloud serves the SDK bundles from a
+// sibling `<region>-assets` host; a self-hosted instance serves them from the
+// same origin, which is what the unmatched case falls through to.
+const posthogHost = (
+  process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com"
+).replace(/\/+$/, "");
+const posthogAssetsHost = posthogHost.replace(
+  /^(https?:\/\/)(us|eu)\.i\.posthog\.com$/,
+  "$1$2-assets.i.posthog.com",
+);
+
 const nextConfig = {
   // Next's dev-server dedup locks on distDir, refusing a second `next dev` for
   // the same directory. A dedicated dist dir (agents driving the app while a
@@ -300,15 +315,19 @@ const nextConfig = {
       },
       {
         source: "/ingest/static/:path*",
-        destination: "https://us-assets.i.posthog.com/static/:path*",
+        destination: `${posthogAssetsHost}/static/:path*`,
+      },
+      {
+        source: "/ingest/array/:path*",
+        destination: `${posthogAssetsHost}/array/:path*`,
       },
       {
         source: "/ingest/:path*",
-        destination: "https://us.i.posthog.com/:path*",
+        destination: `${posthogHost}/:path*`,
       },
       {
         source: "/ingest/flags",
-        destination: "https://us.i.posthog.com/flags",
+        destination: `${posthogHost}/flags`,
       },
     ];
   },

@@ -34,7 +34,6 @@ import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { useDeleteConversation } from "@/hooks/useDeleteConversation";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { db } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
 
@@ -71,11 +70,6 @@ export default function ChatOptionsDropdown({
 
       // Update IndexedDB atomically - event will update Zustand store
       await db.updateConversationFields(chatId, {
-        starred: newStarredValue,
-      });
-
-      trackEvent(ANALYTICS_EVENTS.CHAT_CONVERSATION_STARRED, {
-        conversation_id: chatId,
         starred: newStarredValue,
       });
     } catch (error) {
@@ -126,10 +120,6 @@ export default function ChatOptionsDropdown({
         description: newName,
       });
 
-      trackEvent(ANALYTICS_EVENTS.CHAT_CONVERSATION_RENAMED, {
-        conversation_id: chatId,
-      });
-
       closeEditModal();
     } catch (error) {
       console.error("Failed to update chat name", error);
@@ -151,9 +141,6 @@ export default function ChatOptionsDropdown({
     try {
       router.push("/c");
       await deleteConversation(chatId);
-      trackEvent(ANALYTICS_EVENTS.CHAT_CONVERSATION_DELETED, {
-        conversation_id: chatId,
-      });
     } catch (error) {
       console.error("Failed to delete chat", error);
     }

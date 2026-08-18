@@ -41,6 +41,7 @@ from app.models.agent_models import (
 )
 from app.models.message_models import MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.wide_events import log
 
@@ -211,6 +212,7 @@ async def call_agent(
 
     Returns an AsyncGenerator that yields SSE-formatted streaming data.
     """
+    user_id = user.get("user_id")
     try:
         langfuse_trace_id = trace_id_for_message(bot_message_id) if bot_message_id else None
 
@@ -241,7 +243,35 @@ async def call_agent(
         if bot_message_id:
             configurable["bot_message_id"] = bot_message_id
 
-        return execute_graph_streaming(graph, initial_state, config)
+        stream = execute_graph_streaming(graph, initial_state, config)
+        if not user_id:
+            return stream
+
+        capture_event(
+            user_id,
+            AnalyticsEvents.AGENT_RUN_STARTED,
+            {"agent": "comms", "mode": "interactive", "conversation_id": conversation_id},
+        )
+
+        async def _tracked_stream() -> AsyncGenerator[str, None]:
+            """Yield the comms SSE stream, capturing the run's terminal outcome."""
+            try:
+                async for chunk in stream:
+                    yield chunk
+            except Exception:
+                capture_event(
+                    user_id,
+                    AnalyticsEvents.AGENT_RUN_FAILED,
+                    {"agent": "comms", "mode": "interactive", "conversation_id": conversation_id},
+                )
+                raise
+            capture_event(
+                user_id,
+                AnalyticsEvents.AGENT_RUN_COMPLETED,
+                {"agent": "comms", "mode": "interactive", "conversation_id": conversation_id},
+            )
+
+        return _tracked_stream()
 
     except Exception as exc:
         log.error(
@@ -249,6 +279,12 @@ async def call_agent(
             error_type=type(exc).__name__,
             error=str(exc),
         )
+        if user_id:
+            capture_event(
+                user_id,
+                AnalyticsEvents.AGENT_RUN_FAILED,
+                {"agent": "comms", "mode": "interactive", "conversation_id": conversation_id},
+            )
         error_message = f"Error when calling agent: {exc!s}"
 
         async def error_generator() -> AsyncGenerator[str, None]:
@@ -280,6 +316,7 @@ async def call_agent_silent(
     tool calls identically to live chat.
     """
     stream_id = str(uuid4())
+    user_id = user.get("user_id")
     try:
         graph, initial_state, config = await _core_agent_logic(
             request,
@@ -298,6 +335,13 @@ async def call_agent_silent(
         # executor's tool events are captured.
         cast(AgentConfigurable, config["configurable"])["stream_id"] = stream_id
         register_executor_capture(stream_id)
+
+        if user_id:
+            capture_event(
+                user_id,
+                AnalyticsEvents.AGENT_RUN_STARTED,
+                {"agent": "comms", "mode": "background", "conversation_id": conversation_id},
+            )
 
         complete_message, tool_data = await execute_graph_silent(graph, initial_state, config)
 
@@ -323,7 +367,27 @@ async def call_agent_silent(
                 token_total=total_input + total_output,
             )
 
+        if user_id:
+            capture_event(
+                user_id,
+                AnalyticsEvents.AGENT_RUN_COMPLETED,
+                {"agent": "comms", "mode": "background", "conversation_id": conversation_id},
+            )
+
         return complete_message, tool_data
 
+    except Exception as exc:
+        log.error(
+            f"{LogTag.AGENT} Error when calling silent agent",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        if user_id:
+            capture_event(
+                user_id,
+                AnalyticsEvents.AGENT_RUN_FAILED,
+                {"agent": "comms", "mode": "background", "conversation_id": conversation_id},
+            )
+        raise
     finally:
         teardown_executor_capture(stream_id)

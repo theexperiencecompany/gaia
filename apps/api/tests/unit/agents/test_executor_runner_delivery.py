@@ -17,7 +17,7 @@ from uuid import UUID
 from fastapi import HTTPException
 import pytest
 
-from app.agents.core.background import result_delivery as rd, session as sess
+from app.agents.core.background import executor_runner as er, result_delivery as rd, session as sess
 from app.agents.core.background.session import (
     ExecutorRun,
     RunKind,
@@ -26,6 +26,7 @@ from app.agents.core.background.session import (
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.models.chat_models import ConversationSource, MessageModel
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
+from app.services.analytics_service import AnalyticsEvents
 
 
 @pytest.fixture(autouse=True)
@@ -320,6 +321,105 @@ class TestDeliverResultToolDataOwnership:
             await rd.deliver_result(run, "traceback...", "error")
 
         follow_ups.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# run_executor_background lifecycle analytics
+# ---------------------------------------------------------------------------
+
+
+class TestRunLifecycleAnalytics:
+    """AGENT_RUN_STARTED/COMPLETED/FAILED around the executor run boundary."""
+
+    async def _run_lifecycle(
+        self,
+        result_text: str,
+        result_type: str,
+        *,
+        task_id: str | None = "task-1",
+        user_id: str | None = "user-1",
+    ):
+        from app.agents.core.background.executor_runner import _ExecutorResult
+
+        run = ExecutorRun(
+            stream_id="stream-1",
+            conversation_id="conv-1",
+            # user_id=None models a run whose user dict carries no id at all.
+            user={} if user_id is None else {"user_id": user_id},
+            kind=RunKind.LIVE,
+            task_id=task_id,
+            user_message_id=None,
+        )
+        with (
+            patch("app.agents.core.background.executor_runner.capture_event") as mock_capture,
+            patch.object(
+                er,
+                "_execute_executor",
+                new_callable=AsyncMock,
+                return_value=_ExecutorResult(result_text, result_type),
+            ),
+            patch.object(er, "_finalize_executor_run", new_callable=AsyncMock),
+        ):
+            await er.run_executor_background(run, "do things", {"user_id": user_id})
+        return mock_capture
+
+    async def test_started_and_completed_on_final(self) -> None:
+        mock_capture = await self._run_lifecycle("done", "final")
+
+        events = [c.args[1] for c in mock_capture.call_args_list]
+        assert events == [
+            AnalyticsEvents.AGENT_RUN_STARTED,
+            AnalyticsEvents.AGENT_RUN_COMPLETED,
+        ]
+        expected_props = {
+            "agent": "executor",
+            "mode": "background",
+            "conversation_id": "conv-1",
+            "task_id": "task-1",
+        }
+        assert mock_capture.call_args_list[0].args[0] == "user-1"
+        assert mock_capture.call_args_list[0].args[2] == expected_props
+        # The TERMINAL event needs the same scrutiny as the opening one: it was
+        # asserted only by name, so its user id and payload could both go null
+        # without a test noticing.
+        assert mock_capture.call_args_list[1].args[0] == "user-1"
+        assert mock_capture.call_args_list[1].args[2] == expected_props
+
+    async def test_failed_on_error_result(self) -> None:
+        mock_capture = await self._run_lifecycle("it broke", "error")
+
+        events = [c.args[1] for c in mock_capture.call_args_list]
+        assert events == [AnalyticsEvents.AGENT_RUN_STARTED, AnalyticsEvents.AGENT_RUN_FAILED]
+        assert mock_capture.call_args_list[1].args[0] == "user-1"
+        assert mock_capture.call_args_list[1].args[2] == {
+            "agent": "executor",
+            "mode": "background",
+            "conversation_id": "conv-1",
+            "task_id": "task-1",
+        }
+
+    async def test_a_run_with_no_user_id_captures_nothing(self) -> None:
+        """`run.user` with no id must produce no events at all.
+
+        The guard is `if executor_user_id:` over a `""` default — swap that
+        default for any truthy string and every user-less run starts emitting
+        events attributed to a garbage id.
+        """
+        mock_capture = await self._run_lifecycle("done", "final", user_id=None)
+
+        mock_capture.assert_not_called()
+
+    async def test_paused_run_has_no_terminal_event(self) -> None:
+        """A HIL pause is not a terminal outcome — the resume re-enters and
+        captures its own STARTED."""
+        mock_capture = await self._run_lifecycle("", "paused")
+
+        events = [c.args[1] for c in mock_capture.call_args_list]
+        assert events == [AnalyticsEvents.AGENT_RUN_STARTED]
+
+    async def test_no_user_id_skips_events(self) -> None:
+        mock_capture = await self._run_lifecycle("done", "final", user_id="")
+        mock_capture.assert_not_called()
 
 
 class TestDeliverResultHilResume:
