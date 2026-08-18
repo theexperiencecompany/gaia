@@ -45,6 +45,13 @@ def _raises(exc: Exception) -> Any:
     return execute_tool
 
 
+def _returns(result: dict[str, Any]) -> Any:
+    def execute_tool(_tool: str, _kwargs: dict[str, Any]) -> dict[str, Any]:
+        return result
+
+    return execute_tool
+
+
 def _action_func(provider: LangchainProvider, execute_tool: Any, toolkit: str = "GMAIL") -> Any:
     return provider._wrap_action(
         tool="GMAIL_FETCH_MESSAGES",
@@ -178,6 +185,36 @@ class TestDeadAccountReconciles:
         dispatch.assert_not_called()
         emit.assert_not_called()
         assert result == {"successful": False, "error": "no account", "data": None}
+
+
+class TestNonRaisingDeadAccountResult:
+    """Composio also reports a dead account without raising, as a
+    `{"successful": False, "error": ...}` payload. That string match is far
+    looser than the structured 404, so it only logs — driving the expiry
+    transition off it would mark healthy integrations dead."""
+
+    def test_it_logs_a_warning_and_passes_the_failure_through_untouched(self) -> None:
+        provider = LangchainProvider()
+        failure = {
+            "successful": False,
+            "error": "Composio error 1810: no active connected account for GMAIL",
+            "data": None,
+        }
+        action_func = _action_func(provider, _returns(failure))
+
+        with (
+            patch.object(provider, "_dispatch") as dispatch,
+            patch(f"{MODULE}.emit_integration_connection_required") as emit,
+            patch(f"{MODULE}.log") as mock_log,
+        ):
+            result = action_func(__runnable_config__={"metadata": {"user_id": "user-1"}})
+
+        dispatch.assert_not_called()
+        emit.assert_not_called()
+        assert result == failure
+
+        mock_log.warning.assert_called_once()
+        assert "dead connected account" in mock_log.warning.call_args.args[0]
 
 
 class TestExpiryDispatchNeedsALoop:

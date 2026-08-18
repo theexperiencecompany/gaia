@@ -546,3 +546,62 @@ class TestComposioConnectionEvents:
 
         assert response.status_code == 401
         expire.assert_not_awaited()
+
+    async def test_the_endpoint_does_not_check_the_user_exists_before_dispatching(self, real_redis):
+        # Whether GAIA knows this user is the transition's business, not the
+        # webhook's — `expire_user_integration` already no-ops on a user with no
+        # record (unit X1). Re-checking here would duplicate that guard and give
+        # Composio a second way to be told "unknown", so the endpoint just acks
+        # and hands the id straight through.
+        stranger_id = "507f1f77bcf86cd799439099"
+        integration = MagicMock()
+        integration.id = "notion"
+
+        with (
+            patch.object(_endpoint(), "get_integration_by_config", return_value=integration),
+            patch.object(_endpoint(), "expire_user_integration", new_callable=AsyncMock) as expire,
+        ):
+            response = await self._post(
+                real_redis,
+                _make_connection_payload(user_id=stranger_id),
+                webhook_id="conn-stranger-001",
+            )
+            for _ in range(100):
+                if expire.await_count:
+                    break
+                await asyncio.sleep(0)
+
+        assert response.status_code == 200
+        assert response.json()["message"] == "Connection event accepted"
+        expire.assert_awaited_once()
+        assert expire.await_args.args[0] == stranger_id
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("raw_body", "webhook_id"),
+        [(b"[]", "conn-nonobject-array"), (b'"nope"', "conn-nonobject-string")],
+    )
+    async def test_a_json_body_that_is_not_an_object_is_acked_not_raised(
+        self, real_redis, raw_body, webhook_id
+    ):
+        # A non-dict body fails the connection-event type guard and falls through
+        # to the trigger path, where `body.get("data")` has nothing to call. A 500
+        # here is the worst outcome available: Composio redelivers it forever.
+        timestamp = "2025-01-01T00:00:00Z"
+        signature = _sign_composio(webhook_id, timestamp, raw_body, "test-secret")
+        await real_redis.delete(f"webhook:composio:{webhook_id}")
+
+        async with _make_composio_client() as client:
+            with patch("app.config.settings.settings.COMPOSIO_WEBHOOK_SECRET", "test-secret"):
+                response = await client.post(
+                    "/api/v1/webhook/composio",
+                    content=raw_body,
+                    headers={
+                        "content-type": "application/json",
+                        "webhook-id": webhook_id,
+                        "webhook-timestamp": timestamp,
+                        "webhook-signature": signature,
+                    },
+                )
+
+        assert response.status_code < 500, "A malformed body must be acked or refused, never 500'd"

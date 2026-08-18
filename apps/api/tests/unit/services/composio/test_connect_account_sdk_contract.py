@@ -8,11 +8,24 @@ when Composio moves the contract.
 `link()` replaced `initiate()`: the legacy `POST /api/v3/connected_accounts`
 behind initiate() is retired for Composio-managed OAuth (cutover 2026-07-03),
 after which the SDK raises ComposioLegacyConnectedAccountsEndpointRetiredError.
+
+The same reasoning covers the other half of the connection lifecycle: the status
+values and the event name the expiry webhook gates on are Composio's vocabulary,
+not ours, so they are pinned here against the installed SDK too.
 """
 
 import inspect
 
-from composio.core.models.connected_accounts import ConnectedAccounts, ConnectionRequest
+from composio.core.models.connected_accounts import (
+    _TERMINAL_CONNECTION_STATES,
+    ConnectedAccounts,
+    ConnectionRequest,
+)
+from composio.core.models.webhook_events import (
+    ConnectionStatusEnum,
+    WebhookEventType,
+    is_connection_expired_event,
+)
 
 
 class TestConnectAccountSdkContract:
@@ -46,3 +59,51 @@ class TestConnectAccountSdkContract:
         # what GAIA persists as `connected_account_id`.
         assert request.id == "ca_test"
         assert request.redirect_url == "https://connect.composio.dev/x"
+
+
+class TestDeadConnectionStatusContract:
+    """`webhook_composio._DEAD_CONNECTION_STATUSES` expires an integration on
+    EXPIRED/REVOKED/FAILED. If Composio renames one of those, the webhook stops
+    matching and silently never expires anything — the failure mode is silence,
+    so only a binding against the real enum catches it."""
+
+    def test_the_statuses_the_webhook_gates_on_still_exist(self) -> None:
+        assert ConnectionStatusEnum.EXPIRED.value == "EXPIRED"
+        assert ConnectionStatusEnum.REVOKED.value == "REVOKED"
+        assert ConnectionStatusEnum.FAILED.value == "FAILED"
+
+    def test_inactive_is_still_a_recoverable_state_and_not_terminal(self) -> None:
+        # INACTIVE is excluded from the gate on purpose — it can recover to
+        # ACTIVE, so expiring on it would nag a user whose account is fine.
+        assert ConnectionStatusEnum.INACTIVE.value == "INACTIVE"
+        assert ConnectionStatusEnum.INACTIVE.value not in _TERMINAL_CONNECTION_STATES
+
+        # Our gate is a copy of the SDK's own notion of terminal; if Composio
+        # adds or reclassifies one, that is a decision we have to make too.
+        assert frozenset({"EXPIRED", "REVOKED", "FAILED"}) == _TERMINAL_CONNECTION_STATES
+
+
+class TestConnectionExpiredEventContract:
+    """The endpoint routes on `is_connection_expired_event(body)` before building
+    any model, so a renamed event name would fall through to the trigger path
+    instead of erroring."""
+
+    def test_the_type_guard_accepts_the_expiry_delivery_and_rejects_a_trigger(self) -> None:
+        expired = {
+            "id": "msg_847cdfcd",
+            "type": "composio.connected_account.expired",
+            "timestamp": "2026-08-10T05:44:33Z",
+            "data": {"id": "ca_x", "user_id": "u1", "status": "EXPIRED"},
+        }
+        trigger = {
+            "id": "msg_deadbeef",
+            "type": "composio.trigger.message",
+            "timestamp": "2026-08-10T05:44:33Z",
+            "data": {"trigger_nano_id": "ti_x", "user_id": "u1"},
+        }
+
+        assert is_connection_expired_event(expired) is True
+        assert is_connection_expired_event(trigger) is False
+
+    def test_the_event_name_literal_is_unchanged(self) -> None:
+        assert WebhookEventType.CONNECTION_EXPIRED.value == "composio.connected_account.expired"

@@ -18,13 +18,15 @@ MODULE = "app.services.integrations.integration_expiry"
 
 USER_ID = "507f1f77bcf86cd799439011"
 INTEGRATION_ID = "notion"
+# A custom MCP server the user added: a uuid4, so the OAuth catalog has no entry.
+CUSTOM_MCP_ID = "2b0f0f9e-3f1e-4a63-9c31-1d2f7a5b8e40"
 
 
-def _record(status: str) -> UserIntegrationDocument:
+def _record(status: str, integration_id: str = INTEGRATION_ID) -> UserIntegrationDocument:
     return UserIntegrationDocument(
         id="rec-1",
         user_id=USER_ID,
-        integration_id=INTEGRATION_ID,
+        integration_id=integration_id,
         status=status,
         created_at=datetime.now(UTC),
     )
@@ -118,6 +120,27 @@ class TestSideEffects:
         # An armed workflow needing a dead integration must stop firing.
         s.mocks["pause"].assert_awaited_once_with(USER_ID, INTEGRATION_ID)
 
+    async def test_an_integration_outside_the_oauth_catalog_still_transitions(self) -> None:
+        # A custom MCP server has no catalog entry, so there is no Composio
+        # toolkit to bust and no display name — neither may block the write that
+        # stops the rest of GAIA treating the connection as usable.
+        with _Seams(record=_record("connected", CUSTOM_MCP_ID)) as s:
+            changed = await expire_user_integration(
+                USER_ID, CUSTOM_MCP_ID, reason="revoked", trigger="webhook", notify=True
+            )
+
+        assert changed is True
+        s.mocks["status"].assert_awaited_once_with(
+            USER_ID,
+            CUSTOM_MCP_ID,
+            "expired",
+            expired_reason="revoked",
+            connected_account_id=None,
+        )
+        s.mocks["proxy"].assert_called_once_with(USER_ID, None)
+        request = s.mocks["notify"].create_notification.await_args.args[0]
+        assert request.content.title == f"{CUSTOM_MCP_ID} disconnected"
+
     async def test_notify_false_makes_no_noise_on_the_tool_execution_path(self) -> None:
         with _Seams(record=_record("connected")) as s:
             await expire_user_integration(
@@ -162,6 +185,27 @@ class TestUserFacingAnnouncement:
         assert action.type.value == "redirect"
         assert action.label == "Reconnect"
         assert action.config.redirect.url == f"/integrations?id={INTEGRATION_ID}"
+
+    async def test_a_failed_notification_surfaces_and_leaves_the_transition_applied(self) -> None:
+        # The announcement is the last step, so the status write and the cache
+        # busts have already landed when it fails. Swallowing here would hide a
+        # broken notification path behind a state change that really happened;
+        # letting it out puts the failure on the caller's wide event (the webhook
+        # runs this under spawn_logged_task) with the record left expired, which
+        # a redelivery then treats as an idempotent no-op.
+        with _Seams(record=_record("connected")) as s:
+            s.mocks["notify"].create_notification.side_effect = RuntimeError("mongo down")
+
+            with pytest.raises(RuntimeError, match="mongo down"):
+                await expire_user_integration(
+                    USER_ID, INTEGRATION_ID, reason="revoked", trigger="webhook", notify=True
+                )
+
+        s.mocks["status"].assert_awaited_once()
+        s.mocks["proxy"].assert_called_once_with(USER_ID, "NOTION")
+        s.mocks["vfs"].assert_called_once_with(USER_ID)
+        s.mocks["pause"].assert_awaited_once_with(USER_ID, INTEGRATION_ID)
+        s.mocks["ws"].broadcast_to_user.assert_awaited_once()
 
 
 class TestPausedWorkflowsChangeTheAnnouncement:

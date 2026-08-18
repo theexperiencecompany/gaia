@@ -13,6 +13,7 @@ Tests exercise the real service logic from:
 - app.services.integrations.integration_resolver (resolve from platform/custom)
 - app.config.oauth_config (integration definitions, scopes)
 - app.services.oauth.oauth_service (status checks, connection handling)
+- app.services.workflow.integration_resume (workflow resume on reconnect)
 
 Mocking boundaries:
 - Redis (oauth state storage)
@@ -25,7 +26,7 @@ Mocking boundaries:
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -60,6 +61,9 @@ from app.services.oauth.oauth_state_service import (
     create_oauth_state,
     is_safe_redirect_path,
     validate_and_consume_oauth_state,
+)
+from app.services.workflow.integration_resume import (
+    resume_workflows_for_reconnected_integration,
 )
 
 # ---------------------------------------------------------------------------
@@ -407,6 +411,28 @@ class TestUserIntegrationStatusTracking:
         doc = repo.stored[0]
         assert doc.status == "connected"
         assert doc.connected_at is not None
+
+    async def test_callback_for_a_never_added_integration_creates_it_connected(self) -> None:
+        """A callback can be the first write for an integration — nothing pre-creates it.
+
+        Composio can hand back an account for an integration the user never
+        explicitly added, so the connected transition has to insert, not just update.
+        """
+        repo = _FakeUserIntegrationRepo()
+
+        with _patched_repo(repo):
+            result = await update_user_integration_status(
+                USER_ID, "gmail", "connected", connected_account_id="ca_new"
+            )
+
+        assert result is True
+        assert len(repo.stored) == 1
+        doc = repo.stored[0]
+        assert doc.status == "connected"
+        assert doc.connected_at is not None
+        assert doc.connected_account_id == "ca_new"
+        assert doc.expired_at is None
+        assert doc.expired_reason is None
 
     async def test_upsert_is_idempotent(self) -> None:
         """Calling upsert twice with same status does not create duplicates."""
@@ -856,6 +882,48 @@ class TestReconnectionFlow:
             assert reconnected.status == "connected"
             assert reconnected.expired_at is None
             assert reconnected.expired_reason is None
+
+
+# ---------------------------------------------------------------------------
+# Tests — Workflow Resume On Reconnect
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestWorkflowResumeOnReconnect:
+    """resume_workflows_for_reconnected_integration: which paused workflows come back."""
+
+    async def test_reconnect_leaves_workflows_waiting_on_another_integration_paused(
+        self,
+    ) -> None:
+        """Reconnecting Gmail resumes only the Gmail workflow, not the whole paused batch.
+
+        Every paused workflow carries the same INTEGRATION_EXPIRED reason, so the
+        per-workflow requirement check is the only thing keeping a Notion workflow
+        from being re-armed against a still-dead integration.
+        """
+        notion_workflow = MagicMock(id="wf-notion")
+        gmail_workflow = MagicMock(id="wf-gmail")
+
+        with (
+            patch("app.services.workflow.integration_resume.workflow_repository") as repo,
+            patch(
+                "app.services.workflow.integration_resume.compute_required_integrations"
+            ) as required,
+            patch("app.services.workflow.integration_resume.WorkflowService") as service,
+        ):
+            # Notion first: a resume that stopped at the first non-match would
+            # never reach the Gmail workflow behind it.
+            repo.find_paused_for_reason = AsyncMock(return_value=[notion_workflow, gmail_workflow])
+            required.side_effect = lambda steps, trigger: (
+                {"gmail"} if steps is gmail_workflow.steps else {"notion"}
+            )
+            service.activate_workflow = AsyncMock()
+
+            resumed = await resume_workflows_for_reconnected_integration(USER_ID, "gmail")
+
+        assert resumed == 1
+        service.activate_workflow.assert_awaited_once_with("wf-gmail", USER_ID)
 
 
 # ---------------------------------------------------------------------------

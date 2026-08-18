@@ -19,10 +19,11 @@ RESUME = "app.services.workflow.integration_resume"
 USER_ID = "507f1f77bcf86cd799439011"
 
 
-def _workflow(workflow_id: str, title: str) -> MagicMock:
+def _workflow(workflow_id: str, title: str, *, activated: bool = True) -> MagicMock:
     w = MagicMock()
     w.id = workflow_id
     w.title = title
+    w.activated = activated
     return w
 
 
@@ -64,6 +65,30 @@ class TestPause:
 
         # A half-applied expiry beats none: the second workflow still stopped.
         assert paused == ["Second"]
+
+    async def test_a_second_expiry_event_does_not_re_pause_or_re_count_a_workflow(self) -> None:
+        # Composio can send several dead-status events for one account. The
+        # returned titles drive the notification copy ("2 workflows are paused"),
+        # so a workflow the first event already stopped must not be counted
+        # again — the activated-only query is what keeps that true.
+        owned = [
+            _workflow("wf-1", "Morning digest"),
+            _workflow("wf-2", "Invoice filing", activated=False),
+        ]
+
+        with (
+            patch(f"{PAUSE}.workflow_repository") as repo,
+            patch(f"{PAUSE}.compute_required_integrations", return_value={"gmail"}),
+        ):
+            repo.find_activated_for_user = AsyncMock(return_value=[w for w in owned if w.activated])
+            repo.deactivate = AsyncMock()
+
+            paused = await pause_workflows_for_expired_integration(USER_ID, "gmail")
+
+        assert paused == ["Morning digest"]
+        repo.deactivate.assert_awaited_once_with(
+            "wf-1", USER_ID, reason=DeactivationReason.INTEGRATION_EXPIRED
+        )
 
     async def test_nothing_to_pause_is_not_an_error(self) -> None:
         with (

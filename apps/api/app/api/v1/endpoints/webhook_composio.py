@@ -215,6 +215,17 @@ async def webhook_composio(request: Request) -> ComposioWebhookAckResponse:
         # handler re-validates the payload itself rather than trusting that shape.
         return _handle_connection_event(cast(dict[str, Any], body))
 
+    if not isinstance(body, dict):
+        # Composio only ever sends an object, so this is a malformed delivery.
+        # Ack anyway: the dedupe key above is already claimed, so raising here
+        # would have Composio redeliver a body it can never parse — and that
+        # redelivery would then be swallowed as a duplicate.
+        log.error(
+            f"{LogTag.COMPOSIO} Webhook body is not a JSON object — dropped",
+            body_type=type(body).__name__,
+        )
+        return ComposioWebhookAckResponse(message="Webhook body not understood")
+
     data = body.get("data")
 
     event_data = ComposioWebhookEvent(
