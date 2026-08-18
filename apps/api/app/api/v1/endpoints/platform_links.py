@@ -328,8 +328,9 @@ async def initiate_platform_connect(
         log.set(outcome="success", auth_type="manual")  # pragma: no mutate
         return InitiatePlatformConnectResponse(
             auth_type="manual",
-            instructions="Open the link on your iPhone or Mac, then text /auth to your GAIA iMessage number to link your account.",
+            instructions="Text /auth to your GAIA iMessage number from the phone you just registered.",
             action_link=redirect_deep_link(photon_user.id),
+            contact_number=photon_user.assignedPhoneNumber,
         )
 
     raise HTTPException(status_code=501, detail=f"{platform} OAuth not configured")

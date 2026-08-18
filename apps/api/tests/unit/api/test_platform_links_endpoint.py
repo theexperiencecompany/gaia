@@ -456,7 +456,9 @@ class TestImessagePremiumGate:
 
     @pytest.mark.asyncio
     async def test_pro_user_connect_returns_photon_deep_link(self, client: AsyncClient) -> None:
-        photon_user = PhotonUser(id="pu_123", phoneNumber="+15551234567")
+        photon_user = PhotonUser(
+            id="pu_123", phoneNumber="+15551234567", assignedPhoneNumber="+14155955082"
+        )
         with (
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
             patch(
@@ -480,15 +482,41 @@ class TestImessagePremiumGate:
         assert body["auth_type"] == "manual"
         assert body["auth_url"] is None
         assert body["instructions"] == (
-            "Open the link on your iPhone or Mac, then text /auth to your GAIA iMessage "
-            "number to link your account."
+            "Text /auth to your GAIA iMessage number from the phone you just registered."
         )
         assert body["action_link"] == "https://spectrum.photon.codes/users/pu_123/redirect"
         mock_register.assert_awaited_once_with("+15551234567")
 
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_pro_user_connect_returns_the_number_to_text(self, client: AsyncClient) -> None:
+        """The deep link is an Apple-only `sms:` URL — a desktop browser opens it to a
+        blank tab. The number the user has to text must reach the client as data."""
+        photon_user = PhotonUser(
+            id="pu_123", phoneNumber="+15551234567", assignedPhoneNumber="+14155955082"
+        )
+        with (
+            patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
+            patch(
+                "app.api.v1.endpoints.platform_links.register_shared_user",
+                new_callable=AsyncMock,
+                return_value=photon_user,
+            ),
+            patch(
+                "app.api.v1.endpoints.platform_links.register_pending_imessage_number",
+                new_callable=AsyncMock,
+            ),
+        ):
+            resp = await client.post(f"{BASE}/imessage/connect", json={"phone": "+15551234567"})
+
+        assert resp.status_code == 200
+        assert resp.json()["contact_number"] == "+14155955082"
+
     @pytest.mark.asyncio
     async def test_pro_user_connect_charges_registration_quota(self, client: AsyncClient) -> None:
-        photon_user = PhotonUser(id="pu_123", phoneNumber="+15551234567")
+        photon_user = PhotonUser(
+            id="pu_123", phoneNumber="+15551234567", assignedPhoneNumber="+14155955082"
+        )
         with (
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
             patch(
@@ -535,7 +563,9 @@ class TestImessagePremiumGate:
         self, client: AsyncClient
     ) -> None:
         """Unrecorded, an abandoned registration holds its pool seat forever."""
-        photon_user = PhotonUser(id="pu_123", phoneNumber="+15551234567")
+        photon_user = PhotonUser(
+            id="pu_123", phoneNumber="+15551234567", assignedPhoneNumber="+14155955082"
+        )
         with (
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
             patch("app.api.v1.endpoints.platform_links.enforce_rate_limit", new_callable=AsyncMock),

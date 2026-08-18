@@ -30,6 +30,8 @@ PYDANTIC_DOC_URL = "https://errors.pydantic.dev"
 
 PHONE = "+9779743679108"
 USERS_URL = "https://spectrum.photon.codes/projects/pid/users/"
+# The pool line Photon assigns the user — the number they text, not their own.
+POOL_NUMBER = "+14155955082"
 
 PHOTON_USER_PAYLOAD = {
     "succeed": True,
@@ -38,7 +40,7 @@ PHOTON_USER_PAYLOAD = {
         "projectId": "d5b07b02-0000-4000-8000-000000000000",
         "type": "shared",
         "phoneNumber": PHONE,
-        "assignedPhoneNumber": "+14155955082",
+        "assignedPhoneNumber": POOL_NUMBER,
         "createdAt": "2026-08-14T19:19:47.168Z",
     },
 }
@@ -50,7 +52,7 @@ def _listed_user(user_id: str, phone_number: str, user_type: str = "shared") -> 
         "projectId": "d5b07b02-0000-4000-8000-000000000000",
         "type": user_type,
         "phoneNumber": phone_number,
-        "assignedPhoneNumber": "+14155955082",
+        "assignedPhoneNumber": POOL_NUMBER,
         "createdAt": "2026-08-14T19:19:47.168Z",
     }
 
@@ -104,6 +106,7 @@ class TestRegisterSharedUser:
         assert user == PhotonUser(
             id="63506fde-32a7-4da9-bfe1-a88f6c25d52a",
             phoneNumber=PHONE,
+            assignedPhoneNumber=POOL_NUMBER,
         )
         assert [(r.method, str(r.url)) for r in seen] == [("POST", USERS_URL)]
         assert json.loads(seen[0].content) == {"type": "shared", "phoneNumber": PHONE}
