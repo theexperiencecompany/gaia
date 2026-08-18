@@ -475,6 +475,45 @@ class TestGetPersonalization:
         assert response.status_code == 200
         assert response.json()["writing_style"] is None
 
+    async def test_get_personalization_writing_style_example_maps_each_block_by_key(
+        self, client: AsyncClient
+    ):
+        """Every line of the sample email must come from its own key of the
+        stored example. The three surrounding blocks are read by name, so a
+        mutant that reads the wrong key, passes the wrong bag, or drops an
+        argument would blank a line or swap greeting for sign-off in the reveal
+        card. Values are deliberately distinct so any swap is visible."""
+        user_doc = _make_user_doc(
+            onboarding={
+                "phase": "personalization_complete",
+                "writing_style": {
+                    "summary": "Warm and direct",
+                    "example": {
+                        "greeting": "Hey Sam,",
+                        "body": ["Thanks for the quick turnaround."],
+                        "signoff": "Cheers,",
+                        "name": "Alex",
+                    },
+                },
+            }
+        )
+        mock_composio = MagicMock()
+        mock_composio.check_connection_status = AsyncMock(return_value={"gmail": False})
+        with (
+            patch(_GET_USER, new_callable=AsyncMock, return_value=user_doc),
+            patch(_COUNT_BEFORE, new_callable=AsyncMock, return_value=0),
+            patch(_COMPOSIO_SERVICE, return_value=mock_composio),
+        ):
+            response = await client.get(PERSONALIZATION_URL)
+
+        assert response.status_code == 200
+        assert response.json()["writing_style"]["example"] == {
+            "greeting": "Hey Sam,",
+            "body": ["Thanks for the quick turnaround."],
+            "signoff": "Cheers,",
+            "name": "Alex",
+        }
+
     async def test_get_personalization_social_profiles_map_platform_and_url_by_key(
         self, client: AsyncClient
     ):

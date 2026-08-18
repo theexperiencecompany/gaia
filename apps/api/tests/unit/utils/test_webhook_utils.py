@@ -48,6 +48,10 @@ async def test_a_missing_secret_fails_loud_not_open() -> None:
             await verify_composio_webhook_signature(_request(b"{}", secret=None))
 
     assert excinfo.value.status_code == 500
+    # Exact text, not a substring: this 500 is the only thing that tells the
+    # operator WHICH secret is missing, and a mangled or blank detail leaves
+    # them with an unexplained 500 on the webhook endpoint.
+    assert excinfo.value.detail == "COMPOSIO_WEBHOOK_SECRET is not configured"
 
 
 async def test_a_wrong_signature_is_rejected() -> None:

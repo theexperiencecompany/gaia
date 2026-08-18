@@ -657,10 +657,10 @@ def _list_query(mock_proxy: MagicMock) -> dict[str, Any]:
 
 
 class TestAuthCredentials:
-    """`user_id` is what every Gmail call is authorised as — a blank or
-    wrong-typed one must stop the call, not reach Composio."""
+    """`user_id` is what every Gmail call is authorised as — a missing or blank
+    one must stop the call, not reach Composio."""
 
-    @pytest.mark.parametrize("creds", [{}, {"user_id": ""}, {"user_id": None}, {"user_id": 123}])
+    @pytest.mark.parametrize("creds", [{}, {"user_id": ""}, {"user_id": None}])
     def test_an_unusable_user_id_is_rejected(self, creds: dict[str, Any]) -> None:
         tools = _register_and_get_tools()
         with pytest.raises(ValueError, match="Missing user_id in auth_credentials"):

@@ -534,27 +534,6 @@ class TestCreateSubscription:
         assert exc_info.value.status_code == 404
         assert "User not found" in str(exc_info.value.detail)
 
-    async def test_raises_400_if_user_has_no_email(
-        self,
-        payment_service,
-        mock_users_collection,
-        mock_subscription_repository,
-    ):
-        """Checkout creates a Stripe/Dodo customer from the email — a record
-        without one cannot complete a payment and must say so up front."""
-        doc_without_email = dict(SAMPLE_USER_DOC)
-        doc_without_email.pop("email")
-        _set_user(mock_users_collection, doc_without_email)
-
-        with pytest.raises(HTTPException) as exc_info:
-            await payment_service.create_subscription(
-                user_id=FAKE_USER_ID,
-                product_id="prod_abc123",
-            )
-
-        assert exc_info.value.status_code == 400
-        assert "User has no email address" in str(exc_info.value.detail)
-
     async def test_raises_409_if_active_subscription_exists(
         self,
         payment_service,

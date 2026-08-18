@@ -49,6 +49,17 @@ def test_clarifying_without_message_falls_back_to_the_raw_reply() -> None:
     assert result.message == response
 
 
+def test_clarifying_fallback_reads_only_the_lowercase_message_key() -> None:
+    """The fallback looks up ``message`` exactly. A case-mangled near-miss key
+    is not the model's field, so its value must not reach the user in place of
+    the reply the subagent actually sent."""
+    response = '{"type": "clarifying", "MESSAGE": "wrong casing"}'
+    result = parse_subagent_response(response)
+
+    assert result.mode == "clarifying"
+    assert result.message == response
+
+
 def test_invalid_finalized_payload_reports_parse_error() -> None:
     result = parse_subagent_response('{"type": "finalized", "title": 5}')
     assert result.mode == "parse_error"

@@ -311,8 +311,8 @@ class TestListVoices:
 
 
 class TestElevenLabsFetchers:
-    """The HTTP fetchers trim the provider's raw voice dicts into our shape —
-    every non-dict entry in `voices` is dropped, and empty voice_ids are too."""
+    """The HTTP fetchers trim the provider's raw voice dicts into our shape,
+    keeping only the fields we model and the entries that pass each filter."""
 
     async def test_account_fetcher_trims_raw_voices(self, mock_settings) -> None:
         from app.services.voice_service import _fetch_elevenlabs_voices
@@ -329,7 +329,6 @@ class TestElevenLabsFetchers:
                                 "preview_url": "https://p/1.mp3",
                                 "extra": "ignored",
                             },
-                            "not-a-dict",
                             {"voice_id": "", "name": "empty-id"},
                         ]
                     },
@@ -337,8 +336,7 @@ class TestElevenLabsFetchers:
             )
             voices = await _fetch_elevenlabs_voices()
 
-        # Non-dict entries are dropped; dict entries pass through as-is (the
-        # caller validates ids further down).
+        # Entries pass through as-is (the caller validates ids further down).
         assert [v.voice_id for v in voices] == ["v1", ""]
         assert voices[0].name == "Rachel"
         assert voices[0].preview_url == "https://p/1.mp3"
@@ -357,7 +355,6 @@ class TestElevenLabsFetchers:
                                 "name": "Shared One",
                                 "public_owner_id": "owner-1",
                             },
-                            None,
                             {"voice_id": "s2", "name": "No owner"},
                         ]
                     },

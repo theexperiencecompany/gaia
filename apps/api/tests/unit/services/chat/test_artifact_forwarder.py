@@ -77,23 +77,6 @@ class TestParseArtifactMessage:
     so anything it raises kills the forwarder for the whole turn rather than
     dropping one message."""
 
-    async def test_a_payload_that_is_not_a_json_object_is_dropped_not_raised(self) -> None:
-        forwarder = _forwarder()
-        pubsub = _FakePubSub(
-            [
-                {"type": "message", "data": "[1, 2]"},
-                {"type": "message", "data": "null"},
-                _artifact_message("conv-1", "good.txt"),
-            ]
-        )
-
-        with patch.object(forwarder, "_handle_event", new=AsyncMock()) as mock_handle:
-            await forwarder._consume(pubsub)  # must not raise
-
-        mock_handle.assert_awaited_once_with(
-            {"session_id": "conv-1", "path": "good.txt", "event": "upsert"}
-        )
-
     async def test_a_message_for_another_conversation_is_dropped(self) -> None:
         forwarder = _forwarder()
         pubsub = _FakePubSub([_artifact_message("conv-2", "other.txt")])

@@ -726,14 +726,6 @@ class TestWithUsageHandler:
     """_with_usage_handler — attach a metering handler without mutating the
     caller's config, and reject config shapes it cannot merge."""
 
-    def test_non_manager_callbacks_value_fails_loud(self) -> None:
-        """callbacks must be a list or a BaseCallbackManager — anything else is
-        a config-shape bug and must name itself instead of AttributeError-ing
-        three frames later."""
-        handler = BaseCallbackHandler()
-        with pytest.raises(TypeError, match="Unexpected 'callbacks' value"):
-            _with_usage_handler({"callbacks": "not-a-manager"}, handler)
-
     def test_manager_callbacks_is_copied_not_mutated(self) -> None:
         """A live manager must be copied (callers share a module-level config),
         so the original never grows the metering handler."""

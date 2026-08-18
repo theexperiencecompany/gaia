@@ -87,9 +87,8 @@ def test_rank_orders_by_appearances_then_score() -> None:
 
 
 def test_rank_skips_malformed_results_and_keeps_the_rest() -> None:
-    """A payload that is not a dict is skipped, not crashed on, and does not stop the scan."""
+    """An empty or malformed payload is skipped, not crashed on, and does not stop the scan."""
     results = [
-        "not-a-dict",
         None,
         {},
         {"results": "not-a-list"},

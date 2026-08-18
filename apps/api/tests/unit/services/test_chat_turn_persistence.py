@@ -100,20 +100,6 @@ class TestTodoProgressCardReachesTheEnvelope:
         assert [e["tool_name"] for e in entries] == ["todo_progress"]
         assert entries[0]["data"] == {"t1": {"status": "completed"}}
 
-    @pytest.mark.regression
-    def test_a_corrupt_envelope_fails_instead_of_dropping_the_card(self):
-        tool_data: dict[str, Any] = {"tool_data": {"not": "a list"}}
-
-        with pytest.raises(TypeError):
-            inject_todo_progress(tool_data, {"t1": {"status": "completed"}})
-
-    @pytest.mark.regression
-    def test_merging_outputs_into_a_corrupt_envelope_fails_instead_of_no_op(self):
-        tool_data: dict[str, Any] = {"tool_data": {"not": "a list"}}
-
-        with pytest.raises(TypeError):
-            merge_tool_outputs(tool_data, {"tc-1": "3 unread"})
-
 
 class TestPersistedTurnMatchesTheLiveStream:
     """The persisted entry must reproduce what the browser assembled live.

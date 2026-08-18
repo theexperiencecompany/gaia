@@ -293,9 +293,13 @@ class TestInitPostgresqlEngine:
         ):
             mock_settings.POSTGRES_URL = None
 
-            with pytest.raises(RuntimeError, match="POSTGRES_URL is not configured"):
+            with pytest.raises(RuntimeError) as excinfo:
                 await _get_original_init_fn()()
 
+        # Exact text, not `match=`: that is a substring search, so a mangled
+        # message still passes it — and this string is the whole diagnostic a
+        # startup failure hands the operator.
+        assert str(excinfo.value) == "POSTGRES_URL is not configured"
         mock_create.assert_not_called()
 
     async def test_creates_tables_on_init(self) -> None:
