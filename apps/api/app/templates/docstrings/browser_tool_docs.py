@@ -33,7 +33,10 @@ blocks automated logins, so the browser is the wrong tool for reading mail.
 Args:
     task (str): A clear, self-contained description of what to accomplish in the
         browser, including the target site and any specifics the user gave
-        (dates, names, quantities, preferences). Do not include secrets.
+        (dates, names, quantities, preferences). Keep it to the GOAL in one or two
+        sentences — do not write step-by-step instructions, and do not invent
+        requirements the user did not ask for (saving files, reporting byte sizes,
+        etc.). Screenshots are shown to the user automatically. Do not include secrets.
     start_url (str, optional): A URL to open first, if the user named a site.
 
 Returns:

@@ -10,4 +10,4 @@ from app.config.settings import settings
 if __name__ == "__main__":
     # Binds all interfaces by design: the host runs in its own container on the
     # internal overlay network and its port is never published to the outside.
-    uvicorn.run(app, host="0.0.0.0", port=settings.BROWSER_HOST_PORT, log_config=None)  # noqa: S104
+    uvicorn.run(app, host="0.0.0.0", port=settings.BROWSER_HOST_PORT, log_config=None)  # noqa: S104  # nosec B104 — internal overlay only, port never published
