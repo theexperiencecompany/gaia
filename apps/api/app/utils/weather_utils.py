@@ -1,6 +1,8 @@
 import asyncio
 from collections import defaultdict
+from collections.abc import Mapping
 import datetime
+from typing import TypedDict
 
 import httpx
 
@@ -8,14 +10,50 @@ from app.config.settings import settings
 from app.constants.cache import ONE_HOUR_TTL
 from app.constants.log_tags import LogTag
 from app.db.redis import get_cache, set_cache
-from app.utils.json_helpers import dict_bag, float_bag, int_bag, list_bag, text_bag
+from app.utils.json_helpers import dict_bag, int_bag, list_bag, text_bag
 from shared.py.wide_events import log
 
 http_async_client = httpx.AsyncClient()
 
 
+class GeocodedLocation(TypedDict):
+    """What ``geocode_location`` resolves a place name to (Nominatim's first hit)."""
+
+    lat: float
+    lon: float
+    display_name: str | None
+    city: str | None
+    country: str | None
+    region: str | None
+
+
+class LocationData(TypedDict):
+    """The coordinates + cache key ``user_weather`` needs to fetch a forecast."""
+
+    lat: float
+    lon: float
+    city: str | None
+    country: str | None
+    region: str | None
+    cache_key: str
+
+
+def _required_number(bag: Mapping[str, object], key: str, source: str) -> float:
+    """The number under ``key``, or a loud failure naming ``source``.
+
+    Coordinates and temperatures have no sensible default: substituting 0 for a
+    missing latitude reports the weather off the coast of Africa, and 0 for a
+    missing temperature reports a freezing day. A payload without them is a
+    payload whose shape changed, which is an error, not a zero.
+    """
+    value = bag.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{source} has no numeric {key!r} (got {value!r})")
+    return float(value)
+
+
 async def prepare_weather_data(
-    lat: float, lon: float, location_info: dict[str, object], api_key: str
+    lat: float, lon: float, location_info: Mapping[str, object], api_key: str
 ) -> dict[str, object]:
     """
     Fetch and prepare weather data for a location.
@@ -111,7 +149,7 @@ async def fetch_weather_data(
 
 async def get_location_data(
     ip_address: str | None = None, location_name: str | None = None
-) -> dict[str, object]:
+) -> LocationData:
     """
     Get location data either from a location name (via geocoding) or an IP address.
 
@@ -122,7 +160,6 @@ async def get_location_data(
     Returns:
         Dict[str, Any]: Location data including coordinates and metadata
     """
-    cache_key = None
     if location_name:
         # Create a cache key for this location
         cache_key = f"weather:location:{location_name.lower().replace(' ', '_')}"
@@ -132,13 +169,14 @@ async def get_location_data(
         lon = location_data["lon"]
 
         # Location details for the response
-        city = location_data.get("city")
-        country = location_data.get("country")
-        region = location_data.get("region")
+        city = location_data["city"]
+        country = location_data["country"]
+        region = location_data["region"]
 
         # If city is None but we have a display name, try to extract city from it
-        if not city and location_data.get("display_name"):
-            parts = text_bag(location_data, "display_name").split(", ")
+        display_name = location_data["display_name"]
+        if not city and display_name:
+            parts = display_name.split(", ")
             city = parts[0] if parts else location_name
     else:
         # Create a cache key for the IP address
@@ -152,8 +190,8 @@ async def get_location_data(
         if geolocation.get("status") != "success":
             raise Exception("Failed to get location from IP address")
 
-        lat = geolocation.get("lat")
-        lon = geolocation.get("lon")
+        lat = _required_number(geolocation, "lat", "ip-api.com geolocation")
+        lon = _required_number(geolocation, "lon", "ip-api.com geolocation")
         city = geolocation.get("city")
         country = geolocation.get("country")
         region = geolocation.get("regionName")
@@ -192,7 +230,7 @@ async def user_weather(location_name: str | None = None) -> dict[str, object] | 
 
         try:
             location_data = await get_location_data(location_name=location_name)
-            cache_key = text_bag(location_data, "cache_key")
+            cache_key = location_data["cache_key"]
 
             cached_weather = await get_cache(cache_key)
             if isinstance(cached_weather, dict):
@@ -203,8 +241,8 @@ async def user_weather(location_name: str | None = None) -> dict[str, object] | 
                 return cached_weather
 
             weather = await prepare_weather_data(
-                float_bag(location_data, "lat"),
-                float_bag(location_data, "lon"),
+                location_data["lat"],
+                location_data["lon"],
                 location_data,
                 api_key,
             )
@@ -265,7 +303,10 @@ def process_forecast_data(forecast_data: dict[str, object]) -> list[dict[str, ob
     # Every key exists because an item was appended to it, so `items` is never empty.
     for date, items in daily_data.items():
         # Calculate min and max temperatures for the day
-        temps = [float_bag(dict_bag(item, "main"), "temp") for item in items]
+        temps = [
+            _required_number(dict_bag(item, "main"), "temp", "OpenWeatherMap forecast item")
+            for item in items
+        ]
         min_temp = min(temps)
         max_temp = max(temps)
 
@@ -294,7 +335,10 @@ def process_forecast_data(forecast_data: dict[str, object]) -> list[dict[str, ob
         timestamp = int_bag(items[0], "dt")
 
         # Calculate average humidity
-        humidity = sum(int_bag(dict_bag(item, "main"), "humidity") for item in items) / len(items)
+        humidity = sum(
+            _required_number(dict_bag(item, "main"), "humidity", "OpenWeatherMap forecast item")
+            for item in items
+        ) / len(items)
 
         # Create the daily summary
         daily_summary = {
@@ -318,7 +362,7 @@ def process_forecast_data(forecast_data: dict[str, object]) -> list[dict[str, ob
     return daily_forecasts
 
 
-async def geocode_location(location_name: str) -> dict[str, object]:
+async def geocode_location(location_name: str) -> GeocodedLocation:
     """
     Geocode a location name to latitude and longitude using OpenStreetMap Nominatim API.
 

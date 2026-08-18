@@ -79,7 +79,6 @@ from app.override.langgraph_bigtool.utils import (
     format_selected_tools,
     pop_pruned_tombstones,
 )
-from app.utils.json_helpers import dict_bag
 from app.utils.mcp_utils import canonical_tool_name_map
 from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
@@ -365,7 +364,7 @@ def create_agent(  # type: ignore[explicit-any]
         return result  # type: ignore[return-value]
 
     def select_tools(
-        tool_calls: list[dict[str, object]], config: RunnableConfig, *, store: BaseStore
+        tool_calls: list[ToolCall], config: RunnableConfig, *, store: BaseStore
     ) -> State:
         if retrieve_tools is None:
             raise RuntimeError("retrieve_tools is disabled and select_tools should not be called")
@@ -373,7 +372,7 @@ def create_agent(  # type: ignore[explicit-any]
         selected_tools = {}
         response_tools = {}
         for tool_call in tool_calls:
-            kwargs = {**dict_bag(tool_call, "args")}
+            kwargs = {**tool_call["args"]}
             if store_arg:
                 kwargs[store_arg] = store
             if config:
@@ -413,7 +412,7 @@ def create_agent(  # type: ignore[explicit-any]
         return {"messages": tool_messages, "selected_tool_ids": bind_ids}  # type: ignore[return-value]
 
     async def aselect_tools(
-        tool_calls: list[dict[str, object]], config: RunnableConfig, *, store: BaseStore
+        tool_calls: list[ToolCall], config: RunnableConfig, *, store: BaseStore
     ) -> State:
         """Async twin of ``select_tools`` — resolve retrieve_tools calls into bindings."""
         if retrieve_tools is None:
@@ -422,7 +421,7 @@ def create_agent(  # type: ignore[explicit-any]
         selected_tools = {}
         response_tools = {}
         for tool_call in tool_calls:
-            kwargs = {**dict_bag(tool_call, "args")}
+            kwargs = {**tool_call["args"]}
             if store_arg:
                 kwargs[store_arg] = store
             if config:

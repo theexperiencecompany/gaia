@@ -46,7 +46,7 @@ from app.services.storage._vfs_common import (
     write_rw_body,
     write_rw_if_changed,
 )
-from app.utils.json_helpers import dict_bag, text_bag, text_opt_bag
+from app.utils.json_helpers import text_bag, text_opt_bag
 
 # --- Path constants ---------------------------------------------------------
 
@@ -109,7 +109,7 @@ def _glyph(meta: dict[str, object]) -> str:
 
 
 def _folder_name(doc: UserTodoProjection) -> str:
-    return common_folder_name(text_bag(doc, "id"), text_opt_bag(dict_bag(doc, "meta"), "title"))
+    return common_folder_name(doc["id"], text_opt_bag(doc["meta"], "title"))
 
 
 def _index_line(doc: UserTodoProjection) -> str:

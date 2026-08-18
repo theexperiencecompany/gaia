@@ -89,7 +89,13 @@ def with_rate_limiting(
                 }
 
             if context and context.get("user_id"):
-                user_id = text_bag(context, "user_id")
+                user_id = context["user_id"]
+                if not isinstance(user_id, str):
+                    # Never default this: every quota below is keyed on it, so a
+                    # coerced "" would charge one shared bucket for everybody.
+                    raise TypeError(
+                        f"Rate limiting requires a string user_id, got {type(user_id).__name__}"
+                    )
                 initiator = context.get("initiator", "frontend")
 
                 # Skip rate limiting for system operations if configured
@@ -215,10 +221,12 @@ def with_rate_limiting(
                 if rl_context:
                     # Convert UsageInfo objects to dicts for JSON serialization
                     usage_info_dict: dict[str, object] = {}
-                    usage_info_bag = dict_bag(rl_context, "usage_info")
-                    for period, period_usage in usage_info_bag.items():
-                        if not isinstance(period_usage, UsageInfo):
-                            continue
+                    # Written ~100 lines above from check_and_increment's
+                    # dict[str, UsageInfo]; read like its siblings below, so a
+                    # bag that lost the key fails here instead of reporting the
+                    # user's quota as empty.
+                    period_usages = cast(dict[str, UsageInfo], rl_context["usage_info"])
+                    for period, period_usage in period_usages.items():
                         usage_info_dict[period] = {
                             "used": period_usage.used,
                             "limit": period_usage.limit,

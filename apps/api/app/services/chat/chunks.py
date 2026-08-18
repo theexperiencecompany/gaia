@@ -26,7 +26,6 @@ from typing import cast
 from app.core.stream_manager import stream_manager
 from app.models.chat_models import ToolDataEntry, tool_fields
 from app.models.stream_events import TodoProgressFrame
-from app.utils.json_helpers import dict_bag
 from app.utils.stream_publishers import (
     accumulate_todo_progress,
     publish_other_data,
@@ -90,7 +89,7 @@ async def process_data_chunk(
     if chunk_json and "todo_progress" in chunk_json:
         await stream_manager.publish_chunk(
             stream_id,
-            f"data: {json.dumps(TodoProgressFrame(todo_progress=dict_bag(chunk_json, 'todo_progress')).model_dump())}\n\n",
+            f"data: {json.dumps(TodoProgressFrame(todo_progress=cast(dict[str, object], chunk_json['todo_progress'])).model_dump())}\n\n",
         )
 
     response_text = extract_response_text(chunk)

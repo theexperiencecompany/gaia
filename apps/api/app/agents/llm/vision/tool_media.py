@@ -24,8 +24,28 @@ from app.constants.media import (
     TOOL_MEDIA_DESCRIBE_PROMPT,
 )
 from app.utils.json_helpers import text_bag
-from app.utils.multimodal import extract_text_content, media_blocks
+from app.utils.multimodal import ContentBlock, extract_text_content, media_blocks
 from shared.py.wide_events import log
+
+
+async def _describe_block(block: ContentBlock, prompt: str) -> str | None:
+    """Describe one media block, or None when it carries no inline base64 image.
+
+    ``media_blocks`` admits every shape LangChain calls a data block — url,
+    file_id, the v0 ``source_type``/``data`` pair — while every GAIA producer
+    emits the inline ``base64``/``mime_type`` block from ``image_content_block``.
+    A foreign shape is skipped and logged rather than sent to the vision model
+    as an empty image, which would spend a call to learn nothing.
+    """
+    image_b64 = block.get("base64")
+    mime_type = block.get("mime_type")
+    if not isinstance(image_b64, str) or not isinstance(mime_type, str):
+        log.warning(
+            f"{LogTag.TOOL} Media block carries no inline base64 image; not described",
+            tool_media={"block_type": text_bag(block, "type")},
+        )
+        return None
+    return await describe_image(image_b64, mime_type, prompt=prompt, label="tool_media_vision")
 
 
 async def describe_tool_media(
@@ -52,17 +72,7 @@ async def describe_tool_media(
         context=extract_text_content(message.content) or "(none)",
     )
     # Bounded by MAX_MEDIA_BLOCKS_PER_TOOL_RESULT at every producer.
-    described = await asyncio.gather(
-        *(
-            describe_image(
-                text_bag(block, "base64"),
-                text_bag(block, "mime_type"),
-                prompt=prompt,
-                label="tool_media_vision",
-            )
-            for block in blocks
-        )
-    )
+    described = await asyncio.gather(*(_describe_block(block, prompt) for block in blocks))
     log.info(
         f"{LogTag.TOOL} Described tool media for a text-only lane",
         tool_media={

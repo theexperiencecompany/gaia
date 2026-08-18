@@ -121,18 +121,23 @@ async def start_pairing(
     )
 
 
-async def lookup_pending_by_user_code(user_code: str) -> dict[str, object] | None:
-    """Resolve a browser-typed ``user_code`` to its pending pairing record."""
+async def lookup_pending_by_user_code(user_code: str) -> tuple[str, dict[str, object]] | None:
+    """Resolve a browser-typed ``user_code`` to its ``(device_code, pending record)``.
+
+    ``device_code`` is returned alongside the record rather than merged into it:
+    it is the Redis key the approval writes the refresh token back to, so it has
+    to reach the caller as a checked ``str``, not as one more untyped bag entry.
+    """
     mapping = await get_cache(_user_code_key(user_code.strip().upper()))
     if not isinstance(mapping, dict):
         return None
     device_code = mapping.get("device_code")
-    if not device_code:
+    if not isinstance(device_code, str) or not device_code:
         return None
     record = await get_cache(_pairing_key(device_code))
     if not isinstance(record, dict) or record.get("status") != "pending":
         return None
-    return {"device_code": device_code, **record}
+    return device_code, record
 
 
 async def approve_pairing(user_id: str, user_code: str) -> tuple[str, str]:
@@ -146,11 +151,11 @@ async def approve_pairing(user_id: str, user_code: str) -> tuple[str, str]:
     capture-before-return pattern).
     """
     normalized = user_code.strip().upper()
-    pending = await lookup_pending_by_user_code(normalized)
-    if not pending:
+    found = await lookup_pending_by_user_code(normalized)
+    if not found:
         raise PairingError("Pairing code is invalid or expired")
 
-    device_code = text_bag(pending, "device_code")
+    device_code, pending = found
     device_id = str(uuid.uuid4())
     name = text_bag(pending, "name") or "Device"
     refresh_token = generate_refresh_token()
@@ -169,7 +174,6 @@ async def approve_pairing(user_id: str, user_code: str) -> tuple[str, str]:
         await session.commit()
 
     record = {**pending}
-    record.pop("device_code", None)
     record["status"] = "approved"
     record["device_id"] = device_id
     record["refresh_token"] = refresh_token

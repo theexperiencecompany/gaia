@@ -70,6 +70,8 @@ def register_reddit_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # 
                 if not isinstance(c, dict):
                     continue
                 child_data = dict_bag(c, "data")
+                if not child_data:
+                    continue
                 subreddits.append(
                     {
                         "name": child_data.get("display_name"),
@@ -101,6 +103,8 @@ def register_reddit_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # 
                 if not isinstance(c, dict):
                     continue
                 child_data = dict_bag(c, "data")
+                if not child_data:
+                    continue
                 unread_messages.append(
                     {
                         "id": child_data.get("id"),

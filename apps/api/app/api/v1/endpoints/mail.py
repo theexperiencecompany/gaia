@@ -27,6 +27,7 @@ from app.models.mail_models import (
     GmailDraftsResponse,
     GmailLabelResource,
     GmailLabelsResponse,
+    GmailMessageResource,
     GmailMessageResponse,
     GmailMessagesResponse,
     GmailThreadResponse,
@@ -586,7 +587,7 @@ async def trash_emails(
         )
         return TrashEmailsResponse(
             success=True,
-            trashed=[text_bag(msg, "id") for msg in modified_messages],
+            trashed=[GmailMessageResource.model_validate(msg).id for msg in modified_messages],
             count=len(modified_messages),
             status="Messages moved to trash",
         )
@@ -620,7 +621,7 @@ async def untrash_emails(
         )
         return UntrashEmailsResponse(
             success=True,
-            restored=[text_bag(msg, "id") for msg in modified_messages],
+            restored=[GmailMessageResource.model_validate(msg).id for msg in modified_messages],
             count=len(modified_messages),
             status="Messages restored from trash",
         )

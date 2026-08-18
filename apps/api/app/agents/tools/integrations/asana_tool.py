@@ -39,9 +39,7 @@ def register_asana_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # t
         overdue = [
             t
             for t in tasks
-            if isinstance(t, dict)
-            and text_opt_bag(t, "due_on")
-            and (text_opt_bag(t, "due_on") or "9999") < today
+            if isinstance(t, dict) and (due_on := text_opt_bag(t, "due_on")) and due_on < today
         ]
         return {"tasks": tasks, "overdue_tasks": overdue}
 

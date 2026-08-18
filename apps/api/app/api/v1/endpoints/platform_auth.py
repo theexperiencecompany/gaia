@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from urllib.parse import urlencode
 
 from fastapi import APIRouter
@@ -9,8 +9,24 @@ from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.services.outbound_delivery import notify_account_linked
 from app.services.platform_link_service import PlatformLinkService
-from app.utils.json_helpers import dict_bag, text_bag, text_opt_bag
+from app.utils.json_helpers import dict_bag, text_opt_bag
 from shared.py.wide_events import log
+
+
+class PlatformIdentityError(RuntimeError):
+    """A provider's OAuth payload carried no usable account id.
+
+    The link record keys the GAIA user to this id, so a defaulted or empty one
+    would either strand the account or collide with another user's bad link.
+    """
+
+
+def _required_account_id(bag: Mapping[str, object], key: str, *, source: str) -> str:
+    """The non-empty string id under ``key``, or raise naming the payload."""
+    value = bag.get(key)
+    if not isinstance(value, str) or not value:
+        raise PlatformIdentityError(f"{source} returned no usable '{key}'")
+    return value
 
 
 class PlatformOAuthConfig:
@@ -77,8 +93,10 @@ PLATFORM_CONFIGS = {
         get_client_secret=lambda: settings.SLACK_OAUTH_CLIENT_SECRET,
         get_redirect_uri=lambda: settings.SLACK_OAUTH_REDIRECT_URI,
         user_info_url="https://slack.com/api/users.identity",
-        extract_user_id=lambda token_data, access_token: text_bag(
-            dict_bag(token_data, "authed_user"), "id"
+        extract_user_id=lambda token_data, access_token: _required_account_id(
+            dict_bag(token_data, "authed_user"),
+            "id",
+            source="slack oauth.v2.access authed_user",
         ),
         # User token lives under authed_user, not at the top level
         get_user_access_token=lambda data: text_opt_bag(
@@ -207,7 +225,7 @@ async def _handle_platform_oauth_callback(
 
                 user_data = user_response.json()
                 platform_user_id = (
-                    text_bag(user_data, "id")
+                    _required_account_id(user_data, "id", source=f"{config.platform} user info")
                     if "id" in user_data
                     else config.extract_user_id(token_data, access_token)
                 )

@@ -629,24 +629,22 @@ def register_google_sheets_custom_tools(composio: Composio[Any, Any]) -> list[st
                     }
                 )
 
-            chart_spec = {
-                "basicChart": {
-                    "chartType": request.chart_type,
-                    "legendPosition": request.legend_position,
-                    "domains": [
-                        {
-                            "domain": {
-                                "sourceRange": {"sources": [domain_range]},
-                            }
+            basic_chart: dict[str, object] = {
+                "chartType": request.chart_type,
+                "legendPosition": request.legend_position,
+                "domains": [
+                    {
+                        "domain": {
+                            "sourceRange": {"sources": [domain_range]},
                         }
-                    ],
-                    "series": series_list,
-                    "headerCount": 1,
-                }
+                    }
+                ],
+                "series": series_list,
+                "headerCount": 1,
             }
+            chart_spec = {"basicChart": basic_chart}
 
             if request.x_axis_title or request.y_axis_title:
-                basic_chart = dict_bag(chart_spec, "basicChart")
                 axis: list[object] = []
                 if request.x_axis_title:
                     axis.append(
@@ -699,12 +697,12 @@ def register_google_sheets_custom_tools(composio: Composio[Any, Any]) -> list[st
 
         chart_id: object | None = None
         for reply in list_bag(result or {}, "replies"):
-            if not isinstance(reply, dict):
+            if not isinstance(reply, dict) or "addChart" not in reply:
                 continue
-            add_chart = dict_bag(reply, "addChart")
-            if not add_chart:
-                continue
-            chart_id = dict_bag(add_chart, "chart").get("chartId")
+            # Google always returns chart.chartId on a successful addChart; a
+            # missing key means the reply shape changed and must not be silently
+            # reported back to the model as a chart with no id.
+            chart_id = dict_bag(dict_bag(reply, "addChart"), "chart")["chartId"]
             break
 
         url = f"https://docs.google.com/spreadsheets/d/{request.spreadsheet_id}/edit"

@@ -16,7 +16,7 @@ from app.constants.artifacts import ARTIFACT_ELEMENT_FIELDS
 from app.constants.cache import CONV_ARTIFACTS_CACHE_PATTERN, ONE_DAY_TTL
 from app.db.repositories.conversations import conversation_repository
 from app.decorators.caching import Cacheable, CacheInvalidator
-from app.utils.json_helpers import float_opt_bag, int_opt_bag, text_bag, text_opt_bag
+from app.utils.json_helpers import float_opt_bag, int_opt_bag, text_opt_bag
 
 
 class ArtifactRegistryEntry(TypedDict):
@@ -62,7 +62,15 @@ async def upsert_conversation_artifact(
     than gaining a rival shape (Type Safety item 14).
     """
     now_iso = datetime.now(UTC).isoformat()
-    path = text_bag(payload, "path")
+    path = text_opt_bag(payload, "path")
+    if not path:
+        # ``path`` is the upsert key: writing under "" would collapse every
+        # path-less event onto a single shared registry row. The wire contract
+        # (``ArtifactFileEvent``) makes it required, so a missing one is a broken
+        # publisher — loud here, absorbed by the forwarder's per-event guard.
+        raise ValueError("artifact event carries no 'path'; refusing to write the registry")
+
+    body = text_opt_bag(payload, "body")
 
     fields: ArtifactRegistryPatch = {
         # Both are ``| None`` on the entry: a zero would claim an empty file stamped at
@@ -73,8 +81,8 @@ async def upsert_conversation_artifact(
         "content_type": text_opt_bag(payload, "content_type"),
         "updated_at": now_iso,
     }
-    if payload.get("body") is not None:
-        fields["body"] = text_bag(payload, "body")
+    if body is not None:
+        fields["body"] = body
 
     if await conversation_repository.update_artifact(
         conv_id, user_id=user_id, path=path, fields=fields
@@ -84,8 +92,8 @@ async def upsert_conversation_artifact(
     # No existing element — push a new one.
     element: dict[str, object] = {key: payload.get(key) for key in ARTIFACT_ELEMENT_FIELDS}
     element["updated_at"] = now_iso
-    if payload.get("body") is not None:
-        element["body"] = payload["body"]
+    if body is not None:
+        element["body"] = body
     await conversation_repository.push_artifact(
         conv_id, user_id=user_id, path=path, element=element
     )

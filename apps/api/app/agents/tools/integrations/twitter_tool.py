@@ -13,7 +13,7 @@ Custom tools:
 Note: Errors are raised as exceptions - Composio wraps responses automatically.
 """
 
-from typing import Any
+from typing import Any, NamedTuple
 
 from composio import Composio
 from composio.types import ExecuteRequestFn
@@ -58,6 +58,18 @@ def _user_id(auth_credentials: dict[str, object]) -> str:
     return user_id
 
 
+class _FollowTarget(NamedTuple):
+    """A Twitter account resolved to a real id, ready to (un)follow.
+
+    The id is a plain ``str`` by construction: a lookup that yields no usable id
+    is recorded as a failed result instead of reaching the API, so no request is
+    ever aimed at an empty target.
+    """
+
+    user_id: str
+    username: str | None
+
+
 def register_twitter_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # type: ignore[explicit-any]
     """Register Twitter custom tools with Composio."""
 
@@ -84,22 +96,22 @@ def register_twitter_custom_tools(composio: Composio[Any, Any]) -> list[str]:  #
         success_count = 0
         failed_count = 0
 
-        user_ids_to_process: list[dict[str, object]] = []
+        targets: list[_FollowTarget] = []
 
         if request.user_ids:
             for uid in request.user_ids:
-                user_ids_to_process.append({"user_id": uid, "username": None})
+                targets.append(_FollowTarget(user_id=uid, username=None))
 
         if request.usernames:
             for username in request.usernames:
-                user_data = lookup_user_by_username(user_id, username)
-                if user_data and user_data.get("id"):
-                    user_ids_to_process.append(
-                        {
-                            "user_id": user_data["id"],
-                            "username": user_data.get("username"),
-                            "name": user_data.get("name"),
-                        }
+                user_data = lookup_user_by_username(user_id, username) or {}
+                target_id = text_bag(user_data, "id")
+                if target_id:
+                    targets.append(
+                        _FollowTarget(
+                            user_id=target_id,
+                            username=text_opt_bag(user_data, "username"),
+                        )
                     )
                 else:
                     results.append(
@@ -111,18 +123,18 @@ def register_twitter_custom_tools(composio: Composio[Any, Any]) -> list[str]:  #
                     )
                     failed_count += 1
 
-        total = len(user_ids_to_process)
+        total = len(targets)
         if writer is not None:
             writer({"progress": f"Following {total} users..."})
 
-        for i, user_info in enumerate(user_ids_to_process):
-            result = follow_user(user_id, my_user_id, text_bag(user_info, "user_id"))
+        for i, target in enumerate(targets):
+            result = follow_user(user_id, my_user_id, target.user_id)
 
             if result["success"]:
                 results.append(
                     {
-                        "user_id": user_info["user_id"],
-                        "username": user_info.get("username"),
+                        "user_id": target.user_id,
+                        "username": target.username,
                         "success": True,
                     }
                 )
@@ -130,8 +142,8 @@ def register_twitter_custom_tools(composio: Composio[Any, Any]) -> list[str]:  #
             else:
                 results.append(
                     {
-                        "user_id": user_info["user_id"],
-                        "username": user_info.get("username"),
+                        "user_id": target.user_id,
+                        "username": target.username,
                         "success": False,
                         "error": result.get("error"),
                     }
@@ -173,21 +185,22 @@ def register_twitter_custom_tools(composio: Composio[Any, Any]) -> list[str]:  #
         success_count = 0
         failed_count = 0
 
-        user_ids_to_process: list[dict[str, object]] = []
+        targets: list[_FollowTarget] = []
 
         if request.user_ids:
             for uid in request.user_ids:
-                user_ids_to_process.append({"user_id": uid, "username": None})
+                targets.append(_FollowTarget(user_id=uid, username=None))
 
         if request.usernames:
             for username in request.usernames:
-                user_data = lookup_user_by_username(user_id, username)
-                if user_data and user_data.get("id"):
-                    user_ids_to_process.append(
-                        {
-                            "user_id": user_data["id"],
-                            "username": user_data.get("username"),
-                        }
+                user_data = lookup_user_by_username(user_id, username) or {}
+                target_id = text_bag(user_data, "id")
+                if target_id:
+                    targets.append(
+                        _FollowTarget(
+                            user_id=target_id,
+                            username=text_opt_bag(user_data, "username"),
+                        )
                     )
                 else:
                     results.append(
@@ -199,18 +212,18 @@ def register_twitter_custom_tools(composio: Composio[Any, Any]) -> list[str]:  #
                     )
                     failed_count += 1
 
-        total = len(user_ids_to_process)
+        total = len(targets)
         if writer is not None:
             writer({"progress": f"Unfollowing {total} users..."})
 
-        for i, user_info in enumerate(user_ids_to_process):
-            result = unfollow_user(user_id, my_user_id, text_bag(user_info, "user_id"))
+        for i, target in enumerate(targets):
+            result = unfollow_user(user_id, my_user_id, target.user_id)
 
             if result["success"]:
                 results.append(
                     {
-                        "user_id": user_info["user_id"],
-                        "username": user_info.get("username"),
+                        "user_id": target.user_id,
+                        "username": target.username,
                         "success": True,
                     }
                 )
@@ -218,8 +231,8 @@ def register_twitter_custom_tools(composio: Composio[Any, Any]) -> list[str]:  #
             else:
                 results.append(
                     {
-                        "user_id": user_info["user_id"],
-                        "username": user_info.get("username"),
+                        "user_id": target.user_id,
+                        "username": target.username,
                         "success": False,
                         "error": result.get("error"),
                     }

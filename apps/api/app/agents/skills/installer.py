@@ -34,7 +34,6 @@ from app.services.storage import (
     ensure_user_skills_dir,
     write_skill_file,
 )
-from app.utils.json_helpers import text_bag
 from shared.py.wide_events import SkillContext, log
 
 
@@ -116,6 +115,22 @@ async def _fetch_github_contents(
     return data
 
 
+def _entry_text(entry: dict[str, object], key: str) -> str:
+    """A required string field of a GitHub contents entry.
+
+    ``name``, ``path`` and (for files) ``download_url`` are guaranteed by the
+    Contents API. Defaulting them to "" would fetch the wrong URL or write to
+    the skill root, so a missing one is a shape change and must be loud.
+    """
+    value = entry.get(key)
+    if not isinstance(value, str) or not value:
+        raise ValueError(
+            f"GitHub contents entry {entry.get('name')!r} has no usable '{key}'. "
+            "The GitHub API response did not match the expected shape."
+        )
+    return value
+
+
 async def _fetch_file_content(download_url: str, client: httpx.AsyncClient) -> str:
     """Download raw file content from a URL."""
     resp = await client.get(download_url, headers=get_github_headers())
@@ -189,7 +204,7 @@ async def install_from_github(
 
         # Download SKILL.md
         skill_md_content = await _fetch_file_content(
-            text_bag(skill_md_entry, "download_url"), client=client
+            _entry_text(skill_md_entry, "download_url"), client=client
         )
 
         # Validate
@@ -277,14 +292,14 @@ async def _download_github_dir(
             continue  # Already handled
 
         if entry_type == "file":
-            content = await _fetch_file_content(text_bag(entry, "download_url"), client=client)
-            relative_path = text_bag(entry, "path").removeprefix(f"{remote_path}/")
+            content = await _fetch_file_content(_entry_text(entry, "download_url"), client=client)
+            relative_path = _entry_text(entry, "path").removeprefix(f"{remote_path}/")
             await write_skill_file(user_id, skill_name, relative_path, content)
             file_list.append(relative_path)
 
         elif entry_type == "dir":
             sub_contents = await _fetch_github_contents(
-                owner, repo, text_bag(entry, "path"), client=client
+                owner, repo, _entry_text(entry, "path"), client=client
             )
             await _download_github_dir(
                 user_id=user_id,

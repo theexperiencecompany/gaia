@@ -377,7 +377,7 @@ def minimal_message_template(
 
     content = parser.content if include_both_formats else None
 
-    body_content = (text_bag(content, "text") if content else parser.text_content) or text_bag(
+    body_content = (content["text"] if content else parser.text_content) or text_bag(
         email_data, "messageText"
     )
     labels = parser.labels
