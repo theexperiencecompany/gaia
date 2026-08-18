@@ -72,7 +72,7 @@ class PublicFetchError extends Error {
 }
 
 /** Expand an IPv6 literal (allowing `::` compression) into a 128-bit BigInt. */
-export function parseIpv6ToBigInt(ip: string): bigint {
+function parseIpv6ToBigInt(ip: string): bigint {
   let groups: string[];
   const comp = ip.indexOf("::");
   if (comp !== -1) {
@@ -214,10 +214,19 @@ export async function fetchPublicAsset(
     });
     assertPublicResolvedAddresses(lookedUp);
 
-    const response = await fetcher(current, {
-      redirect: "manual",
-      signal: AbortSignal.timeout(60_000),
-    });
+    // AbortSignal.timeout is DOM-only in some consumers' TS lib — use an
+    // AbortController + setTimeout so bots type-check on every target lib.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60_000);
+    let response: Response;
+    try {
+      response = await fetcher(current, {
+        redirect: "manual",
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
     const contentType =
       response.headers.get("content-type") ?? "application/octet-stream";
 

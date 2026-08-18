@@ -257,6 +257,10 @@ class CommonSettings(BaseAppSettings):
     BROWSER_HOST_URL: str = "http://browser-host:8930"  # NOSONAR python:S5332 — internal docker service, plain HTTP on the private network by design (TLS terminates at the edge)
     # Port the host binds inside its container.
     BROWSER_HOST_PORT: int = 8930
+    # Address the host binds. All interfaces by default — the host runs in its own
+    # container on the internal overlay network and this port is never published; a
+    # value from settings also makes the bind configurable for local runs.
+    BROWSER_HOST_BIND: str = "0.0.0.0"  # noqa: S104 — internal overlay only, port never published
     # Hard cap on concurrent browser contexts the single Chromium will hold.
     BROWSER_HOST_MAX_SESSIONS: int = 6
     # Dispose a context after this many seconds with no activity and no live viewer.

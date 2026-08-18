@@ -136,6 +136,7 @@ async def get_session(session_id: str) -> SessionInfoResponse:
 async def healthz(response: Response) -> HealthResponse:
     """Report 503 when CDP is unresponsive so the orchestrator restarts the host."""
     health = HealthResponse.model_validate(await _host.healthz())
+    log.set(browser={"operation": "healthz", "session_id": ""})
     if not health.ok:
         response.status_code = 503
     return health
@@ -144,6 +145,7 @@ async def healthz(response: Response) -> HealthResponse:
 @app.websocket("/cdp/{session_id}")
 async def cdp_endpoint(websocket: WebSocket, session_id: str) -> None:
     """CDP websocket endpoint for one context, proxied through the filter."""
+    log.set(browser={"operation": "cdp_ws", "session_id": session_id})
     session = _host.get(session_id)
     if session is None or session.dead:
         await websocket.close(code=_WS_SESSION_GONE)
@@ -155,6 +157,7 @@ async def cdp_endpoint(websocket: WebSocket, session_id: str) -> None:
 @app.websocket("/live/{session_id}")
 async def live_endpoint(websocket: WebSocket, session_id: str) -> None:
     """Screencast + input websocket for one session's live view."""
+    log.set(browser={"operation": "live_ws", "session_id": session_id})
     session = _host.get(session_id)
     if session is None or session.dead:
         await websocket.close(code=_WS_SESSION_GONE)

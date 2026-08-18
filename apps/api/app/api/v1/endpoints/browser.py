@@ -141,7 +141,14 @@ async def list_browser_logins_endpoint(
 ) -> list[BrowserLoginResponse]:
     """Domains the user has a saved browser login for (never the encrypted state)."""
     log.set(user={"id": user_id}, browser={"operation": "list_logins"})
-    return await list_saved_logins(user_id)
+    logins = await list_saved_logins(user_id)
+    log.audit(
+        "browser logins listed",
+        actor=user_id,
+        resource="browser/logins",
+        count=len(logins),
+    )
+    return logins
 
 
 @router.delete("/logins/{domain}", status_code=204)
@@ -152,6 +159,11 @@ async def forget_browser_login_endpoint(
     """Forget the saved login for one domain."""
     log.set(user={"id": user_id}, browser={"operation": "forget_login", "domain": domain})
     await forget_saved_login(user_id, domain)
+    log.audit(
+        "browser login forgotten",
+        actor=user_id,
+        resource=domain,
+    )
 
 
 @router.delete("/logins", status_code=204)
@@ -161,3 +173,8 @@ async def clear_browser_logins_endpoint(
     """Forget every saved browser login for the user."""
     log.set(user={"id": user_id}, browser={"operation": "clear_logins"})
     await forget_saved_login(user_id, None)
+    log.audit(
+        "browser logins cleared",
+        actor=user_id,
+        resource="browser/logins",
+    )
