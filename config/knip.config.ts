@@ -376,6 +376,15 @@ const config: KnipConfig = {
       ],
     },
 
+    // ── iMessage bot ─────────────────────────────────────────────────
+    // The Photon SDK's gRPC transport calls import.meta.resolve() on these at
+    // runtime, so they must be installed and shipped even though no source
+    // file imports them. knip cannot see a runtime-only resolve.
+    "apps/bots/imessage": {
+      project: ["**/*.ts", "!**/__tests__/**", "!**/*.test.ts"],
+      ignoreDependencies: ["@grpc/grpc-js", "nice-grpc", "nice-grpc-common"],
+    },
+
     // ── CLI Package ──────────────────────────────────────────────────
     "packages/cli": {
       entry: ["src/index.{ts,tsx}", "src/commands/**/*.{ts,tsx}"],
