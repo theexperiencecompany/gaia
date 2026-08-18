@@ -126,7 +126,7 @@ dev = [
 backend = [
   "fastapi[standard]>=0.119.0",
   "uvicorn>=0.34.1",
-  "starlette>=0.49.1",
+  "starlette>=1.6.0",
   "PyJWT>=2.10.0",
   "authlib>=1.6.9",
   "workos==5.24.0",
