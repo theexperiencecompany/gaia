@@ -76,6 +76,14 @@ os.environ["LANGFUSE_PUBLIC_KEY"] = ""
 os.environ["LANGFUSE_SECRET_KEY"] = ""
 os.environ["LANGFUSE_HOST"] = ""
 
+# chromadb phones home on every client start and collection create, and its
+# telemetry client is a background thread doing network I/O. Beyond being an
+# external call the suite never asserts on, that thread is what makes the
+# process fork-hostile: mutmut re-runs a test file inside a fork, and the
+# child died on SIGTRAP (exit -5) before writing a byte, so every mutant of
+# chroma_store came back "suspicious" and the module could never be graded.
+os.environ["ANONYMIZED_TELEMETRY"] = "False"
+
 # Arm the Infisical fence BEFORE any app import: settings.py calls get_settings()
 # at import time (via the module-level `settings` singleton), and the import
 # chain below (payment_models -> ... -> app.config.settings) would dial the real
