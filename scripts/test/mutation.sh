@@ -216,6 +216,12 @@ echo "mutating $MODULE (tests: ${TESTFILES[*]}) ..."
 # layer further down stays as defense-in-depth.
 export MUTMUT_CHANGED_RANGES="$CHANGED_RANGES"
 export MUTMUT_SCOPED_MODULE="$MODULE"
+# macOS: httpx.AsyncClient() reaches urllib's getproxies_macosx_sysconf inside
+# mutmut's forked child, and SystemConfiguration is not fork-safe - every child
+# dies SIGSEGV (-11) and the run proves nothing (faulthandler: httpx/_client.py
+# __init__ -> getproxies_macosx_sysconf). no_proxy='*' makes CPython take the
+# environment branch and never touch sysconf. Linux runners unaffected.
+export no_proxy='*'
 MUTMUT_RC=0
 # timeout: mutmut can finish its work and then hang at interpreter teardown
 # (threads from C-extension-heavy test runs keep the process alive — seen
