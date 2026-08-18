@@ -11,6 +11,7 @@ Covers:
 - chatbot: default-model one-shot path, error handling
 """
 
+from collections.abc import Iterator
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
@@ -32,8 +33,10 @@ from app.agents.llm.client import (
     _create_configurable_llm,
     _get_available_providers,
     _get_ordered_providers,
+    _meter_discarded_replay,
     _openrouter_wire_configurables,
     _record_auxiliary_usage,
+    _silenced,
     _stamp_fallback,
     ainvoke_llm,
     ainvoke_structured,
@@ -50,6 +53,7 @@ from app.constants.llm import (
     DEFAULT_MODEL_NAME,
     STICKY_FLIP_RETRY_MIN_INPUT,
 )
+from app.constants.log_tags import LogTag
 from app.core.lazy_loader import ProviderRegistry
 from shared.py.wide_events import log
 
@@ -644,43 +648,61 @@ class TestFallbackHandover:
         }
 
 
+def _replay_result(content: str, *, prompt: int, cached: int) -> AIMessage:
+    """A provider answer carrying the usage the sticky-flip gate reads."""
+    return AIMessage(
+        content=content,
+        usage_metadata={
+            "input_tokens": prompt,
+            "output_tokens": 5,
+            "total_tokens": prompt + 5,
+            "input_token_details": {"cache_read": cached},
+        },
+    )
+
+
+def _replaying_primary(first: Any, second: Any) -> NonCallableMagicMock:
+    """A primary that answers ``first``, then ``second`` on the replay."""
+    runnable = NonCallableMagicMock()
+    runnable.with_retry = MagicMock(return_value=runnable)
+    runnable.ainvoke = AsyncMock(side_effect=[first, second])
+    return runnable
+
+
+# Only the graph lane of a sticky-routing provider replays at all, so the
+# thresholds and the replay's own wiring are unreachable without one.
+_STICKY_LANE = RunnableConfig(configurable={"provider": "openrouter"})
+
+
+@pytest.fixture
+def booked_replay() -> Iterator[AsyncMock]:
+    """The metering seam a fired replay reaches, stubbed.
+
+    A replay meters its discarded first answer through ``record_llm_call``,
+    which prices the model and writes the spend — real I/O the unit tier must
+    not do, and the seam these tests read to see what was booked.
+    """
+    with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.25)) as rec:
+        yield rec
+
+
 class TestStickyFlipReplayThresholds:
     """The cold-cache replay fires on a big prompt whose cache came back cold,
     and on nothing else: a re-send costs a whole extra request."""
 
-    @staticmethod
-    def _usage_result(content: str, *, prompt: int, cached: int) -> AIMessage:
-        return AIMessage(
-            content=content,
-            usage_metadata={
-                "input_tokens": prompt,
-                "output_tokens": 5,
-                "total_tokens": prompt + 5,
-                "input_token_details": {"cache_read": cached},
-            },
-        )
-
-    def _replaying_primary(self, first: AIMessage, second: AIMessage) -> NonCallableMagicMock:
-        runnable = NonCallableMagicMock()
-        runnable.with_retry = MagicMock(return_value=runnable)
-        runnable.ainvoke = AsyncMock(side_effect=[first, second])
-        return runnable
-
-    # Only the graph lane of a sticky-routing provider replays at all, so the
-    # thresholds are unreachable — and these tests vacuous — without one.
-    _STICKY_LANE = RunnableConfig(configurable={"provider": "openrouter"})
-
-    async def test_a_prompt_exactly_at_the_input_floor_is_replayed(self) -> None:
+    async def test_a_prompt_exactly_at_the_input_floor_is_replayed(
+        self, booked_replay: AsyncMock
+    ) -> None:
         """The floor is inclusive — a prompt that just reaches it still counts."""
-        primary = self._replaying_primary(
-            self._usage_result("cold", prompt=STICKY_FLIP_RETRY_MIN_INPUT, cached=0),
-            self._usage_result("warm", prompt=STICKY_FLIP_RETRY_MIN_INPUT, cached=7_900),
+        primary = _replaying_primary(
+            _replay_result("cold", prompt=STICKY_FLIP_RETRY_MIN_INPUT, cached=0),
+            _replay_result("warm", prompt=STICKY_FLIP_RETRY_MIN_INPUT, cached=7_900),
         )
 
         result = await ainvoke_llm(
             primary,
             [HumanMessage(content="hi")],
-            config=self._STICKY_LANE,
+            config=_STICKY_LANE,
             meter_auxiliary=False,
         )
 
@@ -690,15 +712,15 @@ class TestStickyFlipReplayThresholds:
     async def test_a_prompt_just_under_the_input_floor_is_not_replayed(self) -> None:
         """Under the floor the prompt is too small for a re-send to pay off."""
         prompt = STICKY_FLIP_RETRY_MIN_INPUT - 1
-        primary = self._replaying_primary(
-            self._usage_result("cold", prompt=prompt, cached=0),
-            self._usage_result("unused", prompt=prompt, cached=prompt),
+        primary = _replaying_primary(
+            _replay_result("cold", prompt=prompt, cached=0),
+            _replay_result("unused", prompt=prompt, cached=prompt),
         )
 
         result = await ainvoke_llm(
             primary,
             [HumanMessage(content="hi")],
-            config=self._STICKY_LANE,
+            config=_STICKY_LANE,
             meter_auxiliary=False,
         )
 
@@ -708,15 +730,15 @@ class TestStickyFlipReplayThresholds:
     async def test_a_hit_rate_exactly_at_the_floor_is_not_replayed(self) -> None:
         """At the floor the cache is warm enough; re-sending would just pay twice."""
         prompt = 10_000
-        primary = self._replaying_primary(
-            self._usage_result("warm", prompt=prompt, cached=int(prompt * 0.92)),
-            self._usage_result("unused", prompt=prompt, cached=prompt),
+        primary = _replaying_primary(
+            _replay_result("warm", prompt=prompt, cached=int(prompt * 0.92)),
+            _replay_result("unused", prompt=prompt, cached=prompt),
         )
 
         result = await ainvoke_llm(
             primary,
             [HumanMessage(content="hi")],
-            config=self._STICKY_LANE,
+            config=_STICKY_LANE,
             meter_auxiliary=False,
         )
 
@@ -765,6 +787,179 @@ class TestStickyFlipReplayThresholds:
 
         assert result is parsed
         assert primary.ainvoke.await_count == 1
+
+
+class TestStickyFlipReplayIsSentLikeTheFirstCall:
+    """What the re-send itself carries. The replay's answer is the one the user
+    gets and the one graph state meters, so anything the first call had and it
+    lacks is silently dropped from the turn."""
+
+    _FIRST = _replay_result("cold", prompt=10_000, cached=0)
+    _SECOND = _replay_result("warm", prompt=10_000, cached=9_900)
+
+    async def test_the_replay_re_sends_the_same_prompt(self, booked_replay: AsyncMock) -> None:
+        """Re-sending anything else answers a different question — and the
+        answer to THAT is what the user would receive."""
+        primary = _replaying_primary(self._FIRST, self._SECOND)
+        messages = [HumanMessage(content="hi")]
+
+        await ainvoke_llm(primary, messages, config=_STICKY_LANE, meter_auxiliary=False)
+
+        assert [call.args[0] for call in primary.ainvoke.await_args_list] == [messages, messages]
+
+    async def test_the_replay_inherits_the_caller_lane_and_is_silenced(
+        self, booked_replay: AsyncMock
+    ) -> None:
+        """The re-send must land on the same provider (that is the whole point
+        of re-sending) but must not stream: both answers share one SSE stream,
+        so an unsilenced replay appends a second answer to the first."""
+        primary = _replaying_primary(self._FIRST, self._SECOND)
+
+        await ainvoke_llm(
+            primary, [HumanMessage(content="hi")], config=_STICKY_LANE, meter_auxiliary=False
+        )
+
+        first, replay = (call.kwargs["config"] for call in primary.ainvoke.await_args_list)
+        assert replay["configurable"] == _STICKY_LANE["configurable"]
+        assert replay["metadata"]["silent"] is True
+        assert "silent" not in (first.get("metadata") or {})
+
+    async def test_the_replay_gets_one_attempt_while_the_first_call_keeps_its_budget(
+        self, booked_replay: AsyncMock
+    ) -> None:
+        """The replay is an optimisation on a latency budget — retrying it pays
+        for a third request to save a cache miss. The first call is the one the
+        turn depends on and keeps the caller's retry budget."""
+        primary = _replaying_primary(self._FIRST, self._SECOND)
+
+        await ainvoke_llm(
+            primary,
+            [HumanMessage(content="hi")],
+            config=_STICKY_LANE,
+            meter_auxiliary=False,
+            max_attempts=2,
+        )
+
+        assert [
+            call.kwargs["stop_after_attempt"] for call in primary.with_retry.call_args_list
+        ] == [2, 1]
+
+    @patch("app.agents.llm.client.log")
+    async def test_a_failed_replay_is_warned_about_by_name(
+        self, mock_log: MagicMock, booked_replay: AsyncMock
+    ) -> None:
+        """The first answer is already in hand, so the caller sees nothing — this
+        warning is the only trace that the re-send cost a request and failed."""
+        primary = _replaying_primary(self._FIRST, ConnectionError("provider down"))
+
+        result = await ainvoke_llm(
+            primary,
+            [HumanMessage(content="hi")],
+            config=_STICKY_LANE,
+            label="the_judge",
+            meter_auxiliary=False,
+        )
+
+        assert result is self._FIRST
+        mock_log.warning.assert_called_once_with(
+            f"{LogTag.AGENT} sticky-flip replay failed; keeping the first response",
+            agent_name="the_judge",
+            error="provider down",
+        )
+        booked_replay.assert_not_awaited()
+
+    @patch("app.agents.llm.client.log")
+    async def test_the_discarded_answer_is_booked_against_the_calling_agent(
+        self, mock_log: MagicMock, booked_replay: AsyncMock
+    ) -> None:
+        """``label`` is how the discarded spend is attributed; unlabelled it
+        cannot be traced back to the caller that paid for it."""
+        primary = _replaying_primary(self._FIRST, self._SECOND)
+
+        await ainvoke_llm(
+            primary,
+            [HumanMessage(content="hi")],
+            config=_STICKY_LANE,
+            label="the_judge",
+            meter_auxiliary=False,
+        )
+
+        booked_replay.assert_awaited_once()
+        assert mock_log.info.call_args.kwargs["agent_name"] == "the_judge"
+
+
+class TestSilenced:
+    """``_silenced`` stamps the flag the SSE consumer skips message chunks on."""
+
+    def test_the_flag_is_added_without_dropping_the_metadata_already_there(self) -> None:
+        """The rest of the metadata is what the run is traced and attributed by;
+        replacing the dict instead of merging into it loses all of it."""
+        config = RunnableConfig(metadata={"langfuse_session_id": "s-1"}, tags=["graph"])
+
+        silenced = _silenced(config)
+
+        assert silenced["metadata"] == {"langfuse_session_id": "s-1", "silent": True}
+        assert silenced["tags"] == ["graph"]
+
+    def test_the_caller_config_is_left_alone(self) -> None:
+        """Callers pass shared module-level configs and live graph configs — a
+        stamp written in place silences every later call that reuses one."""
+        config = RunnableConfig(metadata={"langfuse_session_id": "s-1"})
+
+        _silenced(config)
+
+        assert config["metadata"] == {"langfuse_session_id": "s-1"}
+
+    def test_a_config_with_no_metadata_yet_gets_only_the_flag(self) -> None:
+        assert _silenced(RunnableConfig())["metadata"] == {"silent": True}
+
+
+class TestMeterDiscardedReplay:
+    """Who pays for the answer the replay threw away.
+
+    The discarded first invocation never lands in graph state, so
+    ``LLMAccountingMiddleware`` cannot see it — this seam is its only accounting.
+    """
+
+    _DISCARDED = AIMessage(
+        content="cold",
+        response_metadata={"model_name": "served/model"},
+        usage_metadata={
+            "input_tokens": 10_000,
+            "output_tokens": 40,
+            "total_tokens": 10_040,
+            "input_token_details": {"cache_read": 100},
+            "output_token_details": {"reasoning": 7},
+        },
+    )
+
+    async def test_the_whole_token_breakdown_is_booked_to_the_budget(
+        self, booked_replay: AsyncMock
+    ) -> None:
+        """The user asked for this turn, so unlike auxiliary COGS the discarded
+        request counts against their allowance — and every token class is priced
+        separately, so a dropped field under-reports the spend."""
+        config = RunnableConfig(configurable={"user_id": "u-1", "root_request_id": "r-1"})
+
+        await _meter_discarded_replay(self._DISCARDED, config, "the_judge")
+
+        assert booked_replay.await_args.kwargs == {
+            "user_id": "u-1",
+            "model_name": "served/model",
+            "input_tokens": 10_000,
+            "output_tokens": 40,
+            "cached_tokens": 100,
+            "reasoning_tokens": 7,
+            "root_request_id": "r-1",
+            "charge_to_budget": True,
+        }
+
+    async def test_a_discarded_non_message_is_not_booked(self, booked_replay: AsyncMock) -> None:
+        """Structured runnables return a schema instance, which carries no usage
+        to price at all."""
+        await _meter_discarded_replay(_Extracted(fact="remembered"), None, "the_judge")
+
+        booked_replay.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -1065,6 +1260,24 @@ class TestRecordAuxiliaryUsage:
             await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
 
         assert rec.call_args.kwargs["reasoning_tokens"] == 77
+
+    async def test_a_missing_count_books_zero_beside_a_present_one(self) -> None:
+        """One absent token key must book 0, not a placeholder — a stand-in
+        charges tokens that never existed on every such call."""
+        handler = self._handler(gemini={"output_tokens": 20})
+
+        with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.0)) as rec:
+            await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
+
+        assert rec.call_args.kwargs["input_tokens"] == 0
+        assert rec.call_args.kwargs["output_tokens"] == 20
+
+        handler = self._handler(gemini={"input_tokens": 100})
+        with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.0)) as rec:
+            await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
+
+        assert rec.call_args.kwargs["input_tokens"] == 100
+        assert rec.call_args.kwargs["output_tokens"] == 0
 
     async def test_reasoning_defaults_to_zero_without_output_details(self) -> None:
         """A non-reasoning model sends no ``output_token_details`` at all; that

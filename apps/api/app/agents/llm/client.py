@@ -586,15 +586,14 @@ async def _meter_discarded_replay(
     discarded: Any,
     config: RunnableConfig | None,
     label: str,
-    usage_handler: UsageMetadataCallbackHandler | None,
 ) -> None:
     """Meter the first invocation the sticky-flip replay threw away — otherwise
-    its tokens miss the daily budget, the per-request ceiling and COGS entirely."""
-    # The provider billed both invocations, but only ONE of them is ever seen by
-    # an accounting seam: the auxiliary lane sums every call onto ``usage_handler``
-    # (so it is already covered and this is a no-op), while the graph lane meters
-    # from the AIMessage that lands in state — which is the replay's.
-    if usage_handler is not None or not isinstance(discarded, AIMessage):
+    its tokens miss the daily budget, the per-request ceiling and COGS entirely.
+
+    Graph-lane only by construction: the replay itself is gated on
+    ``not meter_auxiliary``, and the graph lane meters from the AIMessage that
+    lands in state — which is the replay's, never this discard's."""
+    if not isinstance(discarded, AIMessage):
         return
     configurable = agent_configurable(config)
     usage = extract_message_usage(discarded)
@@ -695,8 +694,13 @@ async def ainvoke_llm(
                 # turns.
                 usage = getattr(result, "usage_metadata", None) or {}
                 details = usage.get("input_token_details") or {}
-                cached = details.get("cache_read") or 0
-                prompt = usage.get("input_tokens") or 0
+                # pragma: no mutate ×2 — a truthy stand-in for either 0 is
+                # equivalent: 0 and 1 sit on the same side of the 8_000 input
+                # floor, and cached is only compared once prompt >= 8_000, so
+                # a 7_360 threshold treats 0 and 1 alike. Line-local proof is
+                # threshold arithmetic the classifier does not do.
+                cached = details.get("cache_read") or 0  # pragma: no mutate
+                prompt = usage.get("input_tokens") or 0  # pragma: no mutate
                 if (
                     # Graph lane on a sticky-routing provider only: auxiliary
                     # one-shots have no prior chain (cold IS their steady
@@ -714,7 +718,9 @@ async def ainvoke_llm(
                         # the user watches a second answer append to the first.
                         result = await with_llm_retry(primary, max_attempts=1).ainvoke(
                             messages,
-                            config=_silenced(_with_usage_handler(config, usage_handler)),
+                            # No usage handler to attach: this branch is gated
+                            # on the graph lane, where usage_handler is None.
+                            config=_silenced(config or {}),
                         )
                     except Exception as replay_error:
                         # The first answer is complete and in hand; a failed
@@ -725,7 +731,7 @@ async def ainvoke_llm(
                             error=str(replay_error),
                         )
                         return discarded
-                    await _meter_discarded_replay(discarded, config, label, usage_handler)
+                    await _meter_discarded_replay(discarded, config, label)
                 return result
             except LLM_FALLBACK_EXCEPTIONS as primary_error:
                 # The fallback runs under ``fallback_config`` when given. Reusing
