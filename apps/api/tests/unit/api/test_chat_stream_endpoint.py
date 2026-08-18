@@ -22,6 +22,11 @@ FRAMES = [
 ]
 
 
+async def _has_events_for(stream_id: str) -> bool:
+    """Only the requested stream's log exists — a check against any other id finds nothing."""
+    return stream_id == STREAM_ID
+
+
 def _fake_subscribe(
     stream_id: str, keepalive_interval: float = 15, last_event_id: str | None = None
 ) -> AsyncGenerator[str, None]:
@@ -44,7 +49,7 @@ class TestSubscribeExecutorStreamReplay:
             ),
             patch(
                 "app.api.v1.endpoints.chat.stream_manager.has_events",
-                new=AsyncMock(return_value=True),
+                new=_has_events_for,
             ),
             patch(
                 "app.api.v1.endpoints.chat.stream_manager.subscribe_stream",
@@ -79,7 +84,7 @@ class TestSubscribeExecutorStreamReplay:
             ),
             patch(
                 "app.api.v1.endpoints.chat.stream_manager.has_events",
-                new=AsyncMock(return_value=True),
+                new=_has_events_for,
             ),
             patch("app.api.v1.endpoints.chat.redis_cache.redis", new=None),
         ):

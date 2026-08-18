@@ -627,6 +627,21 @@ class TestProcessText:
         assert "x" * 4000 in user_content
         assert "x" * 4001 not in user_content
 
+    async def test_summary_uses_the_helper_llm_wired_at_construction(self) -> None:
+        """A freshly built processor summarizes with get_helper_llm's model."""
+        helper = _mock_llm(invoke_return="Helper summary")
+        with (
+            patch("app.utils.file_utils.LlamaParse"),
+            patch("app.utils.file_utils.get_helper_llm", return_value=helper),
+        ):
+            proc = DocumentProcessor(user_id="u-test")
+
+        result = await proc.process_text(b"some text")
+
+        assert isinstance(result, DocumentSummaryModel)
+        assert result.summary == "Helper summary"
+        helper.ainvoke.assert_awaited_once()
+
 
 # ---------------------------------------------------------------------------
 # _generate_text_summary

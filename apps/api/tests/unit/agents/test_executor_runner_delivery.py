@@ -245,6 +245,15 @@ class TestDeliverResultToolDataOwnership:
         assert ws_message["tool_data"] == saved.tool_data
         assert ws_message["task_id"] == "task-9"
 
+    async def test_the_message_is_saved_as_the_runs_own_user(self) -> None:
+        """A background run has no request session — the save is authorized by the
+        user carried on the run, so that user has to be the one handed over."""
+        run = _run()
+
+        save, _ws = await self._deliver_with_session(run)
+
+        assert save.await_args.kwargs["user"] == {"user_id": "user-1"}
+
     async def test_live_run_never_self_attaches_cards(self) -> None:
         """The comms stream owns a live run's cards — attaching here too would
         render every card twice on the happy path."""

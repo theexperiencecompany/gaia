@@ -276,10 +276,13 @@ class TestConnectedIntegrationsManifest:
 @pytest.mark.unit
 class TestTrackedTodosBlock:
     async def test_renders_the_cached_summary(self) -> None:
-        with patch(
-            "app.agents.context.fetchers._cached_tracked_todos_summary",
-            AsyncMock(return_value="Tracked: ship the refactor"),
-        ):
+        """The cache is keyed by user alone, so the requesting user's id is what
+        has to reach it — a lookup under anything else reads another entry."""
+
+        async def _summary_for(user_id: str) -> str:
+            return "Tracked: ship the refactor" if user_id == "user1" else "another user's todos"
+
+        with patch("app.agents.context.fetchers._cached_tracked_todos_summary", _summary_for):
             assert await build_tracked_todos_block(ctx()) == "Tracked: ship the refactor"
 
     async def test_a_pinned_view_bypasses_the_cache(self) -> None:
@@ -483,6 +486,18 @@ class TestSplitOffSection:
 
         assert before == ""
         assert body == "\n- ship it"
+
+    def test_a_heading_quoted_again_inside_the_body_splits_at_the_first_one(self) -> None:
+        """Section bodies are user memory text and can repeat a heading. The
+        split takes the first occurrence and leaves every later one inside the
+        body — the section must not lose its head, nor the split blow up."""
+        before, body = _split_off_section(
+            f"Loves espresso.\n\n{AGENDA_HEADING}\n- ship it\n\n{AGENDA_HEADING}\n- and again",
+            AGENDA_HEADING,
+        )
+
+        assert before == "Loves espresso."
+        assert body == f"\n- ship it\n\n{AGENDA_HEADING}\n- and again"
 
     def test_an_absent_heading_leaves_the_core_whole(self) -> None:
         before, body = _split_off_section("Loves espresso.", AGENDA_HEADING)

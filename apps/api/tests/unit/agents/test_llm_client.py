@@ -666,6 +666,10 @@ class TestStickyFlipReplayThresholds:
         runnable.ainvoke = AsyncMock(side_effect=[first, second])
         return runnable
 
+    # Only the graph lane of a sticky-routing provider replays at all, so the
+    # thresholds are unreachable — and these tests vacuous — without one.
+    _STICKY_LANE = RunnableConfig(configurable={"provider": "openrouter"})
+
     async def test_a_prompt_exactly_at_the_input_floor_is_replayed(self) -> None:
         """The floor is inclusive — a prompt that just reaches it still counts."""
         primary = self._replaying_primary(
@@ -673,10 +677,33 @@ class TestStickyFlipReplayThresholds:
             self._usage_result("warm", prompt=STICKY_FLIP_RETRY_MIN_INPUT, cached=7_900),
         )
 
-        result = await ainvoke_llm(primary, [HumanMessage(content="hi")], meter_auxiliary=False)
+        result = await ainvoke_llm(
+            primary,
+            [HumanMessage(content="hi")],
+            config=self._STICKY_LANE,
+            meter_auxiliary=False,
+        )
 
         assert result.content == "warm"
         assert primary.ainvoke.await_count == 2
+
+    async def test_a_prompt_just_under_the_input_floor_is_not_replayed(self) -> None:
+        """Under the floor the prompt is too small for a re-send to pay off."""
+        prompt = STICKY_FLIP_RETRY_MIN_INPUT - 1
+        primary = self._replaying_primary(
+            self._usage_result("cold", prompt=prompt, cached=0),
+            self._usage_result("unused", prompt=prompt, cached=prompt),
+        )
+
+        result = await ainvoke_llm(
+            primary,
+            [HumanMessage(content="hi")],
+            config=self._STICKY_LANE,
+            meter_auxiliary=False,
+        )
+
+        assert result.content == "cold"
+        assert primary.ainvoke.await_count == 1
 
     async def test_a_hit_rate_exactly_at_the_floor_is_not_replayed(self) -> None:
         """At the floor the cache is warm enough; re-sending would just pay twice."""
@@ -686,7 +713,12 @@ class TestStickyFlipReplayThresholds:
             self._usage_result("unused", prompt=prompt, cached=prompt),
         )
 
-        result = await ainvoke_llm(primary, [HumanMessage(content="hi")], meter_auxiliary=False)
+        result = await ainvoke_llm(
+            primary,
+            [HumanMessage(content="hi")],
+            config=self._STICKY_LANE,
+            meter_auxiliary=False,
+        )
 
         assert result.content == "warm"
         assert primary.ainvoke.await_count == 1

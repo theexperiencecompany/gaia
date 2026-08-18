@@ -4,6 +4,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from pydantic import ValidationError
 import pytest
 
 from app.agents.tools.skill_tools import (
@@ -438,6 +439,11 @@ def _learned_spec(**overrides: Any) -> dict[str, Any]:
     return spec
 
 
+def _field_errors(error: ValidationError) -> list[tuple[str, str]]:
+    """(field, message) pairs, so a rejection is asserted by its exact wording."""
+    return [(str(entry["loc"][-1]), entry["msg"]) for entry in error.errors()]
+
+
 @pytest.mark.unit
 class TestLearnedSkillSpecValidation:
     def test_empty_steps_rejected(self) -> None:
@@ -445,12 +451,16 @@ class TestLearnedSkillSpecValidation:
             LearnedSkillSpec(**_learned_spec(steps=[]))
 
     def test_blank_goal_rejected(self) -> None:
-        with pytest.raises(ValueError, match="goal"):
+        with pytest.raises(ValidationError) as err:
             LearnedSkillSpec(**_learned_spec(steps=[{"goal": "  ", "tool": "gmail_search"}]))
 
+        assert _field_errors(err.value) == [("goal", "Value error, must not be blank")]
+
     def test_blank_tool_rejected(self) -> None:
-        with pytest.raises(ValueError, match="tool"):
+        with pytest.raises(ValidationError) as err:
             LearnedSkillSpec(**_learned_spec(steps=[{"goal": "Do it", "tool": "   "}]))
+
+        assert _field_errors(err.value) == [("tool", "Value error, must not be blank")]
 
 
 @pytest.mark.unit

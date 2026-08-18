@@ -213,3 +213,20 @@ class TestManageSystemPrompts:
         assert "unexpected failure" in kwargs.get("error", ""), (
             f"The swallowed exception must be named in the log, got: {kwargs}"
         )
+
+
+class TestPromptPruningWideEvent:
+    """``tail_layout`` is the field a cache-hit-rate drop is diagnosed with, so
+    both its name and its polarity are part of the node's contract."""
+
+    def _prompt_pruning(self, provider: str | None) -> dict[str, Any]:
+        msgs = [_static("prompt"), _dynamic("ctx"), HumanMessage(content="hello")]
+        with patch("app.agents.core.nodes.manage_system_prompts.log") as mock_log:
+            manage_system_prompts_node(cast(State, {"messages": msgs}), _config(provider), _store())
+        return cast(dict[str, Any], mock_log.set.call_args.kwargs["prompt_pruning"])
+
+    def test_openai_wire_request_is_reported_as_the_tail_layout(self) -> None:
+        assert self._prompt_pruning("openrouter")["tail_layout"] is True
+
+    def test_gemini_request_is_reported_as_the_leading_layout(self) -> None:
+        assert self._prompt_pruning("gemini")["tail_layout"] is False

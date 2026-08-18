@@ -46,6 +46,7 @@ NON_IDENTITY_CASES: list[tuple[str, dict[str, Any], dict[str, Any]]] = [
     ("left value is None", {"a": None}, {"a": "x"}),
     ("right value is None", {"a": "x"}, {"a": None}),
     ("both values None", {"a": None}, {"a": None}),
+    ("a None right value skips only its key", {"a": "x", "b": "y"}, {"a": None, "b": "z"}),
     ("ordinary strings concatenate", {"finish_reason": "stop"}, {"finish_reason": "stop"}),
     ("lc_-prefixed index is idempotent", {"index": "lc_1"}, {"index": "lc_1"}),
     ("plain index string concatenates", {"index": "0"}, {"index": "1"}),
@@ -132,6 +133,15 @@ class TestApply:
 
         assert ai.merge_dicts is patch_module.merge_dicts
 
+    def test_apply_leaves_the_merge_utils_module_merging_idempotently(self) -> None:
+        """`_merge` is its own reference — anything reaching merge_dicts through it
+        must get the patched behaviour too, not just the message modules."""
+        patch_module.apply()
+
+        assert merge_module.merge_dicts({"model_name": "m"}, {"model_name": "m"}) == {
+            "model_name": "m"
+        }
+
 
 class TestUpstreamParity:
     """The patch is a verbatim copy of upstream plus one entry in the idempotent
@@ -180,6 +190,14 @@ class TestMergeBranches:
 
     def test_a_none_on_the_right_never_clobbers_the_left_value(self) -> None:
         assert patch_module.merge_dicts({"a": "x"}, {"a": None}) == {"a": "x"}
+
+    def test_a_none_on_the_right_does_not_abandon_the_rest_of_the_dict(self) -> None:
+        # A None value is skipped, not a stop signal: keys after it in the same
+        # right-hand dict still merge.
+        assert patch_module.merge_dicts({"a": "x", "b": "y"}, {"a": None, "b": "z"}) == {
+            "a": "x",
+            "b": "yz",
+        }
 
     def test_mismatched_types_are_refused(self) -> None:
         with pytest.raises(TypeError, match="but with a different type"):

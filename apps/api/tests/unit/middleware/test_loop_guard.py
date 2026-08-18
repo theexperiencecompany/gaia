@@ -8,8 +8,11 @@ instead of silently making them lie.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any, cast
+from unittest.mock import patch
 
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain.tools import ToolRuntime
@@ -25,6 +28,8 @@ from app.constants.llm import (
     LOOP_GUARD_WARN_REPEAT,
     LOOP_GUARD_WARN_SAME_TOOL,
 )
+from app.constants.log_tags import LogTag
+from shared.py.wide_events import log
 
 
 def _runtime(config: Any) -> ToolRuntime:
@@ -73,6 +78,18 @@ async def _wrap(mw: LoopGuardMiddleware, request: ToolCallRequest, handler: Any)
 async def _run(mw: LoopGuardMiddleware, times: int, **kwargs: Any) -> list[ToolMessage]:
     """Drive `times` identical failing calls and return every result."""
     return [await _wrap(mw, _request(**kwargs), _failing()) for _ in range(times)]
+
+
+@contextmanager
+def _captured_warnings() -> Iterator[list[tuple[str, dict[str, Any]]]]:
+    """Capture the guard's wide-event warnings as (message, kwargs) pairs."""
+    warnings: list[tuple[str, dict[str, Any]]] = []
+    with patch.object(
+        log,
+        "warning",
+        lambda message, **kwargs: warnings.append((message, kwargs)),
+    ):
+        yield warnings
 
 
 # --- warn escalation: identical arguments ------------------------------------ #
@@ -475,6 +492,9 @@ def test_fresh_run_counters_start_empty() -> None:
     assert counters.identical == {}
     assert counters.per_tool == {}
     assert counters.last_failure_key is None
+    # A brand-new run has seen no call yet, so nothing can be a repeat of it.
+    assert counters.last_call_key is None
+    assert counters.repeat == 0
 
 
 # --- repeat detection: identical calls regardless of outcome ------------------ #
@@ -526,6 +546,48 @@ async def test_the_repeat_streak_is_per_thread() -> None:
         for thread in ("thread-a", "thread-b"):
             result = await _wrap(mw, _request(thread_id=thread), _succeeding())
             assert "[Loop guard:" not in result.content
+
+
+async def test_the_repeat_block_spells_out_the_call_the_count_and_the_limit() -> None:
+    """The blocked message is all the model gets back — it has to be actionable."""
+    mw = LoopGuardMiddleware(hard_stop=True)
+    with _captured_warnings() as warnings:
+        results = [
+            await _wrap(mw, _request(), _succeeding()) for _ in range(LOOP_GUARD_STOP_REPEAT)
+        ]
+
+    blocked = results[-1]
+    assert blocked.content == (
+        "[Loop guard] Blocked without executing: `search` has already been "
+        f"called {LOOP_GUARD_STOP_REPEAT} times in a row with identical arguments (limit "
+        f"{LOOP_GUARD_STOP_REPEAT}). Re-running it will return the same result — "
+        "reuse the earlier result, or if the task is done, stop and report it."
+    )
+    assert blocked.name == "search"
+    assert warnings[-1] == (
+        f"{LogTag.AGENT} Loop guard hard-stopped tool — redundant duplicate call not executed",
+        {"tool_name": "search", "repeat": LOOP_GUARD_STOP_REPEAT},
+    )
+
+
+async def test_the_repeat_warning_note_names_the_tool_and_the_streak() -> None:
+    mw = LoopGuardMiddleware()
+    with _captured_warnings() as warnings:
+        results = [
+            await _wrap(mw, _request(), _succeeding()) for _ in range(LOOP_GUARD_WARN_REPEAT)
+        ]
+
+    assert results[-1].content == (
+        f"ok\n\n[Loop guard: `search` has now been called {LOOP_GUARD_WARN_REPEAT} times in a row "
+        "with identical arguments. The result won't change — reuse the earlier result "
+        "and move on instead of repeating this call.]"
+    )
+    assert warnings == [
+        (
+            f"{LogTag.AGENT} Loop guard repeat-warning appended for tool",
+            {"tool_name": "search", "repeat": LOOP_GUARD_WARN_REPEAT},
+        )
+    ]
 
 
 async def test_an_identical_failing_run_reports_the_failure_stop_not_the_repeat_one() -> None:

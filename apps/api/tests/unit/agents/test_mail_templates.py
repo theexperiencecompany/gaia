@@ -7,6 +7,7 @@ from unittest.mock import patch
 from app.agents.templates.mail_templates import (
     GmailMessageParser,
     _copy_headers,
+    _decode_part_payload,
     _get_text_from_html,
     detailed_message_template,
     draft_template,
@@ -823,3 +824,32 @@ class TestUndecodablePartIsSkippedNotFatal:
         _stamp_wire_encoding(parser, "text/plain")
 
         assert parser.content == {"text": "", "html": ""}
+
+
+class TestDecodePartPayload:
+    """The single place a malformed MIME part becomes a skipped part instead of a
+    failed fetch: what it hands back, and the warning it leaves behind."""
+
+    def test_a_well_formed_part_yields_its_decoded_bytes(self):
+        part = email.message_from_string(
+            "Content-Type: text/plain\nContent-Transfer-Encoding: base64\n\n"
+            + base64.b64encode(b"hello there").decode()
+        )
+
+        assert _decode_part_payload(part) == b"hello there"
+
+    def test_a_malformed_part_is_skipped_and_its_cause_named_in_the_log(self):
+        """An empty part claiming base64 is the shape that crashes the stdlib. The
+        skip is silent to the caller, so the warning is the only trace of why a
+        message came back short — it has to name the failure."""
+        part = email.message.Message()
+        part["Content-Transfer-Encoding"] = "base64"
+
+        with patch("app.agents.templates.mail_templates.log") as mock_log:
+            assert _decode_part_payload(part) is None
+
+        assert (
+            mock_log.warning.call_args.args[0]
+            == "Skipping malformed MIME part during content extraction"
+        )
+        assert mock_log.warning.call_args.kwargs == {"error_type": "UnboundLocalError"}
