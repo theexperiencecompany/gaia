@@ -85,7 +85,7 @@ async def _limited_tool(config: dict[str, Any] | None = None) -> dict[str, Any]:
 async def _call_blocked_tool(
     exceeded: RateLimitExceededException,
     *,
-    plan: PlanType = PlanType.FREE,
+    plan: PlanType | str = PlanType.FREE,
     writer: MagicMock | None = None,
     stream_writer_error: Exception | None = None,
 ) -> None:
@@ -229,7 +229,7 @@ class TestBlockedCallLabelsANonEnumPlan:
                     plan_required="pro",
                     reset_time=RESET_AT,
                 ),
-                plan="legacy_plan",  # type: ignore[arg-type]
+                plan="legacy_plan",
                 writer=writer,
             )
 
