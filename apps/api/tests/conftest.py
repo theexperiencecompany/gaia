@@ -84,6 +84,13 @@ os.environ["LANGFUSE_HOST"] = ""
 # chroma_store came back "suspicious" and the module could never be graded.
 os.environ["ANONYMIZED_TELEMETRY"] = "False"
 
+# HOST leaks into the model's context: fetchers.py renders the public artifact
+# URL from it, so the effective prompt — and the recorded context snapshots —
+# differ between a dev box with apps/api/.env (localhost) and CI without one
+# (the production default). Pinned so the rendered context is the same
+# everywhere; the snapshots were recorded against this value.
+os.environ["HOST"] = "http://localhost:8000"
+
 # Arm the Infisical fence BEFORE any app import: settings.py calls get_settings()
 # at import time (via the module-level `settings` singleton), and the import
 # chain below (payment_models -> ... -> app.config.settings) would dial the real
