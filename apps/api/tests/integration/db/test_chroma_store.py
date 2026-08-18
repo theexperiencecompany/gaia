@@ -556,6 +556,31 @@ class TestChromaStoreSearch:
 
 
 @pytest.mark.integration
+class TestChromaStoreCollectionResolution:
+    """Regression: _get_collection resolving a not-yet-created collection."""
+
+    @pytest.mark.regression
+    async def test_concurrent_first_resolution_does_not_race_on_create(
+        self, ephemeral_client, collection_prefix: str
+    ):
+        """Two stores resolving the same new collection must both succeed.
+
+        _get_collection used to list-then-create, so two callers racing on a
+        fresh collection both saw it missing and both issued create — the
+        loser got "Collection already exists". The startup catalog warmup
+        fans out exactly this way.
+        """
+        name = f"{collection_prefix}race"
+        stores = [
+            ChromaStore(client=ephemeral_client, collection_name=name, index=None) for _ in range(2)
+        ]
+
+        collections = await asyncio.gather(*(s._get_collection() for s in stores))
+
+        assert [c.name for c in collections] == [name, name]
+
+
+@pytest.mark.integration
 class TestComputeToolDiff:
     """Test _compute_tool_diff for upsert / delete detection."""
 
