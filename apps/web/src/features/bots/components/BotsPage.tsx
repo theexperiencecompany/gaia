@@ -110,7 +110,7 @@ export default function BotsPage() {
           ))}
         </div>
         <div className="flex flex-col items-center gap-3">
-          <h1 className="mt-2 font-serif text-4xl font-medium text-white sm:text-6xl">
+          <h1 className="mt-2 text-center font-serif text-4xl font-medium text-white sm:text-6xl">
             Your AI, Where You Already Work
           </h1>
           <p className="max-w-xl text-center text-lg text-zinc-400">
