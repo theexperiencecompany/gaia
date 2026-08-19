@@ -16,8 +16,11 @@ from shared.py.wide_events import log
 
 _KEY_PREFIX = "browser:sess:"
 # Register on create, unregister on delete. This TTL only bounds an entry that
-# leaked because delete never ran; it is well above any single run's lifetime.
-_REGISTRY_TTL_SECONDS = 3600
+# leaked because delete never ran; it must stay well above the longest possible
+# run (task timeout 600s + up to 5 handoffs × 600s = 3600s) so a live session /
+# mid-run handoff is never locked out of its own live view by an expiring
+# ownership entry. 2h keeps that margin while still bounding a genuine leak.
+_REGISTRY_TTL_SECONDS = 7200
 
 
 class SessionRegistryEntry(BaseModel):

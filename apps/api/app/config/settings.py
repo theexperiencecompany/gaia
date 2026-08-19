@@ -261,6 +261,12 @@ class CommonSettings(BaseAppSettings):
     # container on the internal overlay network and this port is never published; a
     # value from settings also makes the bind configurable for local runs.
     BROWSER_HOST_BIND: str = "0.0.0.0"  # noqa: S104  # nosec B104 — internal overlay only, port never published
+    # Shared secret the API/worker must present to every host endpoint (REST header
+    # X-Host-Key, WS query param ?hk=). Required in production: the host renders
+    # attacker-controlled pages in the SAME container, so a page could otherwise
+    # fetch() the control plane on localhost (a cross-tenant DoS / control surface);
+    # the key must never be reachable by page JS. Generate with: openssl rand -hex 32
+    BROWSER_HOST_KEY: str | None = None
     # Hard cap on concurrent browser contexts the single Chromium will hold.
     BROWSER_HOST_MAX_SESSIONS: int = 6
     # Dispose a context after this many seconds with no activity and no live viewer.

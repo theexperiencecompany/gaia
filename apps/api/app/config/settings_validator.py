@@ -265,7 +265,7 @@ class SettingsValidator:
         self.register_group(
             SettingsGroup(
                 name="Browser Host",
-                keys=["BROWSER_HOST_URL"],
+                keys=["BROWSER_HOST_URL", "BROWSER_HOST_KEY"],
                 description="gaia-browser-host (self-hosted Chromium) + Browser-Use agent",
                 affected_features="Autonomous browser automation (the browser_task tool)",
                 # Opt-in capability: absent until a deployment explicitly enables

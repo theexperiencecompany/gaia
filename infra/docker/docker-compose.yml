@@ -764,6 +764,10 @@ services:
       # Chromium is installed in the gaia image at this path (see apps/api/Dockerfile).
       PLAYWRIGHT_BROWSERS_PATH: /opt/browsers
       BROWSER_HOST_PORT: "8930"
+      # Shared secret the API/worker must present to every host endpoint — the
+      # host renders attacker-controlled pages in-container, so a page could
+      # otherwise hit the control plane on localhost. Empty in dev is allowed.
+      BROWSER_HOST_KEY: ${BROWSER_HOST_KEY:-}
     # No published ports — internal network only. Deliberately NOT on gaia_network:
     # the datastores must not be resolvable from the browser (see SECURITY above).
     networks:
@@ -776,7 +780,7 @@ services:
     shm_size: "1gb"
     restart: on-failure
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8930/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- --header=\"X-Host-Key: $BROWSER_HOST_KEY\" http://localhost:8930/healthz || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5

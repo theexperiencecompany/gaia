@@ -137,3 +137,44 @@ def test_cdp_endpoint_closes_4404_for_unknown_session(client) -> None:
         with client[0].websocket_connect("/cdp/nope"):
             pass
     assert exc.value.code == 4404
+
+
+def test_control_plane_requires_host_key(client) -> None:
+    """A rendered page in the same container can fetch() localhost:8930, so the
+    host must never serve the control plane unauthenticated when production."""
+    test_cli, host = client
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(server_mod.settings, "ENV", "production")
+    monkeypatch.setattr(server_mod.settings, "BROWSER_HOST_KEY", "s3cret!" * 4)
+    try:
+        # No key -> 401 on every REST surface.
+        assert test_cli.post("/sessions", json={"storage_state": None}).status_code == 401
+        assert test_cli.get("/sessions/s1").status_code == 401
+        assert test_cli.delete("/sessions/s1").status_code == 401
+        assert test_cli.get("/healthz").status_code == 401
+        # Correct key -> the session flows work (whatever the handler returns).
+        host.create_context.return_value = SESSION
+        ok = test_cli.post("/sessions", json={"storage_state": None}, headers={"X-Host-Key": "s3cret!" * 4})
+        assert ok.status_code == 200
+        # Wrong key -> 401.
+        bad = test_cli.post("/sessions", json={"storage_state": None}, headers={"X-Host-Key": "nope"})
+        assert bad.status_code == 401
+    finally:
+        monkeypatch.undo()
+
+
+def test_ws_requires_host_key(client) -> None:
+    """WS /cdp + /live refuse sockets without the ?hk= key (4401)."""
+    test_cli, host = client
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(server_mod.settings, "ENV", "production")
+    monkeypatch.setattr(server_mod.settings, "BROWSER_HOST_KEY", "k" * 32)
+    try:
+        from fastapi import WebSocketDisconnect
+
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with test_cli.websocket_connect("/cdp/s1"):
+                pass
+        assert exc.value.code == 4401
+    finally:
+        monkeypatch.undo()

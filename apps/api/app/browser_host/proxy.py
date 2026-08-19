@@ -64,7 +64,25 @@ _CDP_REFUSED_CODE = -32000
 # client that passed its own ``browserContextId`` would re-enable downloads for
 # its session. Refused outright — browser-use's call site already swallows the
 # failure with a warning, so nothing legitimate breaks.
-_REFUSED_METHODS = frozenset({"Browser.setDownloadBehavior", "Page.setDownloadBehavior"})
+_REFUSED_METHODS = frozenset({
+    "Browser.setDownloadBehavior",
+    "Page.setDownloadBehavior",
+    # The host owns the context lifecycle: every session lives in exactly the one
+    # context it created, counted by the capacity/reaper/recovery accounting. A
+    # client minting or disposing its own contexts would escape that accounting —
+    # un-capped, un-reaped memory growth on the single shared Chromium, and (on
+    # the dispose side) the ability to kill a sibling session's isolation.
+    "Target.createBrowserContext",
+    "Target.disposeBrowserContext",
+})
+
+# Refusal messages, keyed by method.
+_REFUSAL_REASONS: dict[str, str] = {
+    "Browser.setDownloadBehavior": "downloads are denied for this session",
+    "Page.setDownloadBehavior": "downloads are denied for this session",
+    "Target.createBrowserContext": "the host owns context lifecycle (one context per session)",
+    "Target.disposeBrowserContext": "the host owns context lifecycle (one context per session)",
+}
 
 
 def _refused_navigation_url(message: dict[str, Any]) -> str | None:
@@ -89,7 +107,7 @@ def _refusal_reason(message: dict[str, Any]) -> str | None:
     """Why this client command must not reach Chromium, or ``None`` to forward it."""
     method = message.get("method")
     if method in _REFUSED_METHODS:
-        return f"{method} refused: downloads are denied for this session"
+        return f"{method} refused: {_REFUSAL_REASONS[method]}"
     url = _refused_navigation_url(message)
     if url is not None:
         return f"navigation to {url} refused: only http and https are allowed"
@@ -118,7 +136,10 @@ def _rewrite_upstream(message: dict[str, Any], context_id: str, gettargets_ids: 
             gettargets_ids.add(message_id)
     elif method == "Target.createTarget":
         params = message.setdefault("params", {})
-        if isinstance(params, dict) and not params.get("browserContextId"):
+        # Always pin to THIS session's context — even when the client supplied
+        # its own browserContextId (a foreign/leaked id would otherwise create a
+        # page inside another tenant's context).
+        if isinstance(params, dict):
             params["browserContextId"] = context_id
     return json.dumps(message)
 

@@ -16,8 +16,9 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+import secrets
 
-from fastapi import FastAPI, HTTPException, Response, WebSocket
+from fastapi import FastAPI, HTTPException, Request, Response, WebSocket
 from playwright.sync_api import StorageState
 from pydantic import BaseModel
 
@@ -29,6 +30,7 @@ from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 # WebSocket close code for "session unknown or dead" (application 4xxx range).
+_WS_AUTH_FAILED = 4401
 _WS_SESSION_GONE = 4404
 
 
@@ -75,10 +77,60 @@ class HealthResponse(BaseModel):
 _host = ChromiumHost()
 
 
+# --- host-key authentication ---------------------------------------------
+# The host renders attacker-controlled pages in the SAME container, so a page
+# can fetch() the control plane on localhost with no network boundary in the
+# way. Every host endpoint therefore requires a shared secret the API/worker
+# presents (REST: X-Host-Key header; WS: ?hk= query param on the URLs the API
+# returns). The key lives only in API/worker config + env — page JS never sees
+# it. In production the host refuses to serve at all without a configured key.
+
+
+def _key_valid(candidate: str | None) -> bool:
+    key: str | None = settings.BROWSER_HOST_KEY
+    if key is None:
+        # No key configured: fine outside production (local dev tooling). In
+        # production this host is unsafe to serve — fail loud instead of
+        # silently running unauthenticated.
+        return bool(settings.ENV != "production")
+    return bool(candidate) and secrets.compare_digest(candidate, key)
+
+
+def _require_host_key(request: Request) -> None:
+    if not _key_valid(request.headers.get("X-Host-Key")):
+        raise HTTPException(status_code=401, detail="missing or invalid host key")
+
+
+_ALLOWED_WS_ORIGIN_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+
+def _ws_authorized(websocket: WebSocket) -> bool:
+    if not _key_valid(websocket.query_params.get("hk")):
+        return False
+    # Defense-in-depth: server-side WS clients (Browser-Use/Playwright, the API's
+    # live-view upstream proxy) send no Origin; a rendered page connecting a raw
+    # socket would. Reject any non-loopback Origin even with a valid key (the
+    # page could only have the key if the API leaked it — this makes that leak
+    # more survivable).
+    origin = websocket.headers.get("origin")
+    if not origin:
+        return True
+    try:
+        netloc = (origin.split("://", 1)[1] if "://" in origin else origin).split("/", 1)[0]
+        host = netloc.rsplit(":", 1)[0]
+    except Exception:
+        return False
+    return host in _ALLOWED_WS_ORIGIN_HOSTS
+
+
 def _ws_url(path: str) -> str:
     """Absolute ws(s) URL for a host path, derived from ``BROWSER_HOST_URL``."""
     base = settings.BROWSER_HOST_URL.replace("https://", "wss://", 1).replace("http://", "ws://", 1)
-    return f"{base.rstrip('/')}{path}"
+    url = f"{base.rstrip('/')}{path}"
+    key = settings.BROWSER_HOST_KEY
+    if key:
+        url = f"{url}?hk={key}" if "?" not in url else f"{url}&hk={key}"
+    return url
 
 
 @asynccontextmanager
@@ -94,8 +146,9 @@ app = FastAPI(lifespan=_lifespan)
 
 
 @app.post("/sessions")
-async def create_session(payload: CreateSessionRequest) -> CreateSessionResponse:
-    """Create a context on the host for one session; 429 when at capacity."""
+async def create_session(request: Request, payload: CreateSessionRequest) -> CreateSessionResponse:
+    """Create a context on the host for one session; 429 at capacity."""
+    _require_host_key(request)
     log.set(browser={"operation": "create"})
     try:
         session = await _host.create_context(payload.storage_state)
@@ -111,8 +164,9 @@ async def create_session(payload: CreateSessionRequest) -> CreateSessionResponse
 
 
 @app.delete("/sessions/{session_id}")
-async def delete_session(session_id: str) -> DeleteSessionResponse:
+async def delete_session(request: Request, session_id: str) -> DeleteSessionResponse:
     """Dispose the context and return the storage state to persist."""
+    _require_host_key(request)
     log.set(browser={"session_id": session_id, "operation": "delete"})
     try:
         storage_state = await _host.dispose_context(session_id)
@@ -122,8 +176,9 @@ async def delete_session(session_id: str) -> DeleteSessionResponse:
 
 
 @app.get("/sessions/{session_id}")
-async def get_session(session_id: str) -> SessionInfoResponse:
+async def get_session(request: Request, session_id: str) -> SessionInfoResponse:
     """Fetch live session info; 404 when the session is gone."""
+    _require_host_key(request)
     log.set(browser={"session_id": session_id, "operation": "get"})
     try:
         info = await _host.session_info(session_id)
@@ -133,8 +188,9 @@ async def get_session(session_id: str) -> SessionInfoResponse:
 
 
 @app.get("/healthz")
-async def healthz(response: Response) -> HealthResponse:
+async def healthz(request: Request, response: Response) -> HealthResponse:
     """Report 503 when CDP is unresponsive so the orchestrator restarts the host."""
+    _require_host_key(request)
     health = HealthResponse.model_validate(await _host.healthz())
     log.set(browser={"operation": "healthz", "session_id": ""})
     if not health.ok:
@@ -145,6 +201,9 @@ async def healthz(response: Response) -> HealthResponse:
 @app.websocket("/cdp/{session_id}")
 async def cdp_endpoint(websocket: WebSocket, session_id: str) -> None:
     """CDP websocket endpoint for one context, proxied through the filter."""
+    if not _ws_authorized(websocket):
+        await websocket.close(code=_WS_AUTH_FAILED)
+        return
     log.set(browser={"operation": "cdp_ws", "session_id": session_id})
     session = _host.get(session_id)
     if session is None or session.dead:
@@ -157,6 +216,9 @@ async def cdp_endpoint(websocket: WebSocket, session_id: str) -> None:
 @app.websocket("/live/{session_id}")
 async def live_endpoint(websocket: WebSocket, session_id: str) -> None:
     """Screencast + input websocket for one session's live view."""
+    if not _ws_authorized(websocket):
+        await websocket.close(code=_WS_AUTH_FAILED)
+        return
     log.set(browser={"operation": "live_ws", "session_id": session_id})
     session = _host.get(session_id)
     if session is None or session.dead:

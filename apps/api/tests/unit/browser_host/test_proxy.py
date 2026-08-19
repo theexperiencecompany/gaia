@@ -80,3 +80,13 @@ def test_ordinary_command_is_forwarded() -> None:
         )
         is None
     )
+
+
+def test_context_lifecycle_is_refused(browser_context_refusal: None = None) -> None:
+    """A session must not mint or dispose contexts itself — the host owns the
+    context lifecycle so untracked contexts can't escape capacity/reaper math."""
+    for method in ("Target.createBrowserContext", "Target.disposeBrowserContext"):
+        msg = {"id": 1, "method": method, "params": {}}
+        reason = _refusal_reason(msg)
+        assert reason is not None
+        assert "context lifecycle" in reason
