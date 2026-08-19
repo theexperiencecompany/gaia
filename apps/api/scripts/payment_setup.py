@@ -82,6 +82,7 @@ def build_plan_catalogue(monthly_product_id: str, yearly_product_id: str) -> lis
     """The subscription plans GAIA offers, as they should exist in the database."""
     now = datetime.now(UTC)
     pro_features = [
+        "Chat on iMessage",
         "Much higher usage limits",
         "Unlimited memories",
         "More powerful models",
@@ -101,6 +102,7 @@ def build_plan_catalogue(monthly_product_id: str, yearly_product_id: str) -> lis
             max_users=1,
             features=[
                 "All tools & 100s of integrations",
+                "Chat on WhatsApp, Telegram, Discord & Slack",
                 "Standard models",
                 "Daily AI usage allowance",
                 f"{FREE_MEMORY_FACT_LIMIT} saved memories",
