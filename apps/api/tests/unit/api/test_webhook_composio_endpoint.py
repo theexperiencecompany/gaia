@@ -1,16 +1,28 @@
-"""Tests for app/api/v1/endpoints/webhook_composio.py"""
+"""Tests for app/api/v1/endpoints/webhook_composio.py
+
+The endpoint module is resolved at test time, never imported at module scope: on
+the base revision, importing it standalone trips a circular import
+(triggers -> workflow -> trigger_service -> triggers) that this branch removes by
+emptying the dead `app/services/workflow/__init__.py` barrel. The regression lane
+replays the marked test below against that revision, where a module-scope import
+would fail at collection and prove nothing.
+"""
 
 import asyncio
+import importlib
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
 import pytest
 
-from app.api.v1.endpoints.webhook_composio import _expire_connection
-
 ENDPOINT = "/api/v1/webhook/composio"
 MODULE = "app.api.v1.endpoints.webhook_composio"
+
+
+def _endpoint():
+    """The endpoint module, resolved on use — see the module docstring."""
+    return importlib.import_module(MODULE)
 
 
 # A real Composio auth config whose toolkit slug is GOOGLECALENDAR (oauth_config.py).
@@ -316,7 +328,7 @@ class TestTheBackgroundExpiry:
             ) as pause,
             patch(f"{MODULE}.expire_user_integration", AsyncMock()) as expire,
         ):
-            await _expire_connection("user-1", "gmail", "refresh_token_revoked", "ca_1")
+            await _endpoint()._expire_connection("user-1", "gmail", "refresh_token_revoked", "ca_1")
 
         pause.assert_awaited_once_with("user-1", "gmail")
         expire.assert_awaited_once_with(
@@ -340,7 +352,7 @@ class TestTheBackgroundExpiry:
             patch(f"{MODULE}.expire_user_integration", AsyncMock()) as expire,
             patch(f"{MODULE}.log") as mock_log,
         ):
-            await _expire_connection("user-1", "gmail", "revoked", "ca_1")
+            await _endpoint()._expire_connection("user-1", "gmail", "revoked", "ca_1")
 
         expire.assert_not_awaited()
         mock_log.error.assert_called_once()
