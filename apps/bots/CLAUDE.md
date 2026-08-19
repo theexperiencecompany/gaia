@@ -53,7 +53,7 @@ Each bot's `index.ts` is three lines: `runBotProcess(new XAdapter(), allCommands
 
 `loadConfig()` (`bots/config/index.ts`) is called inside `boot()`, not the constructor. Resolution order, first wins: process env → `apps/bots/.env` (shared by all bots) → `apps/bots/{platform}/.env` (legacy) → Infisical. dotenv is loaded in code, so no `--require dotenv` flag.
 
-Required for every bot (process throws if missing): `GAIA_API_URL`, `GAIA_BOT_API_KEY` (must equal backend `BOT_API_KEY`), `GAIA_FRONTEND_URL`, `BOT_LOG_HASH_SECRET` (≥32 chars, HMAC key for hashing PII in logs; `openssl rand -hex 32`).
+Required for every bot (process throws if missing): `GAIA_API_URL`, `GAIA_BOT_API_KEY` (must equal backend `BOT_API_KEY`), `GAIA_FRONTEND_URL`, `BOT_LOG_HASH_SECRET` (≥64 hex chars = 32 bytes, HMAC key for hashing PII in logs; `openssl rand -hex 32`).
 
 Platform-specific: Discord `DISCORD_BOT_TOKEN` + `DISCORD_CLIENT_ID`; Slack `SLACK_BOT_TOKEN` + `SLACK_SIGNING_SECRET` + `SLACK_APP_TOKEN`; Telegram `TELEGRAM_BOT_TOKEN`; WhatsApp `KAPSO_API_KEY` + `KAPSO_PHONE_NUMBER_ID` + `KAPSO_WEBHOOK_SECRET`; iMessage `SPECTRUM_PROJECT_ID` + `SPECTRUM_PROJECT_SECRET` + `SPECTRUM_WEBHOOK_SECRET`.
 
