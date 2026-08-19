@@ -745,12 +745,6 @@
       "hash": "9e9a72d01cd43b3d3c57c12313d4e0e1863c24786f6907eb82728f246cac6338"
     },
     {
-      "path": "apps/web/src/features/landing/components/sections/BotsShowcaseSection.tsx",
-      "kind": "biome-ignore",
-      "count": 1,
-      "hash": "9f1e192a56efc0b70eba5a11446acabb1a3fe10e0ab8121d8037144f9f85e1f7"
-    },
-    {
       "path": "apps/web/src/features/onboarding/components/OnboardingIntro.tsx",
       "kind": "biome-ignore",
       "count": 2,
