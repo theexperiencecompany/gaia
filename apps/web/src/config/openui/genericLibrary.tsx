@@ -10,14 +10,14 @@ import {
   numberTickerDef,
   videoBlockDef,
 } from "./components/content.defs";
-import { textDocumentDef } from "./components/document";
+import { textDocumentDef } from "./components/document.defs";
 import {
   copyableContentDef,
   fileTreeDef,
   kbdRowDef,
-} from "./components/layout";
-import { avatarDef, progressDef } from "./components/primitives";
-import { timelineDef } from "./components/timeline";
+} from "./components/layout.defs";
+import { avatarDef, progressDef } from "./components/primitives.defs";
+import { timelineDef } from "./components/timeline.defs";
 
 /**
  * Merged OpenUI component library.

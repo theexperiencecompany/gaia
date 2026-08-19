@@ -1,12 +1,10 @@
 import { Button } from "@heroui/button";
 import { Link } from "@heroui/link";
-import { defineComponent } from "@openuidev/react-lang";
-import React from "react";
 import type { z } from "zod";
 import { sanitizeRedirectUrl } from "@/lib/url-safety";
 import { useSafeTriggerAction } from "../hooks/useSafeTriggerAction";
 import { ToolCard } from "../primitives";
-import { timelineSchema } from "../promptSpecs";
+import type { timelineSchema } from "../promptSpecs";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -159,15 +157,3 @@ export function TimelineView(props: z.infer<typeof timelineSchema>) {
     </ToolCard>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Component definitions
-// ---------------------------------------------------------------------------
-
-export const timelineDef = defineComponent({
-  name: "Timeline",
-  description:
-    "Chronological event feed with timestamps, status dots, optional actor, links, and actions.",
-  props: timelineSchema,
-  component: ({ props }) => React.createElement(TimelineView, props),
-});

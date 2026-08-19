@@ -1,8 +1,6 @@
 import { Avatar, Progress } from "@heroui/react";
-import { defineComponent } from "@openuidev/react-lang";
-import React from "react";
 import type { z } from "zod";
-import { avatarSchema, progressSchema } from "../promptSpecs";
+import type { avatarSchema, progressSchema } from "../promptSpecs";
 
 // ---------------------------------------------------------------------------
 // Views
@@ -53,21 +51,3 @@ export function AvatarView(props: z.infer<typeof avatarSchema>) {
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Component definitions
-// ---------------------------------------------------------------------------
-
-export const progressDef = defineComponent({
-  name: "Progress",
-  description: "Progress bar with optional label and value display.",
-  props: progressSchema,
-  component: ({ props }) => React.createElement(ProgressView, props),
-});
-
-export const avatarDef = defineComponent({
-  name: "Avatar",
-  description: "User avatar with name label.",
-  props: avatarSchema,
-  component: ({ props }) => React.createElement(AvatarView, props),
-});
