@@ -88,19 +88,19 @@ function PlatformIcons({ platforms }: PlatformIconsProps) {
       role="img"
       aria-label={label}
       title={label}
-      className="-space-x-1 mx-1.5 inline-flex align-middle leading-none"
+      className="-space-x-1 ml-1.5 inline-flex h-5 items-center align-middle leading-none"
     >
       {platforms.map((platform, index) => (
         <span
           key={platform}
-          className={`relative block size-7 ${FAN_ROTATIONS[platforms.length]?.[index] ?? "rotate-0"} ${STACK_ORDER[index] ?? "z-0"}`}
+          className={`relative block size-4 ${FAN_ROTATIONS[platforms.length]?.[index] ?? "rotate-0"} ${STACK_ORDER[index] ?? "z-0"}`}
         >
           <Image
             src={BOT_PLATFORM_ICONS[platform]}
             alt=""
             fill
             aria-hidden
-            className="object-contain drop-shadow-[0_2px_5px_rgba(0,0,0,0.6)] transition hover:-translate-y-1 hover:scale-110"
+            className="object-contain drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)] transition hover:-translate-y-0.5 hover:scale-110"
           />
         </span>
       ))}
