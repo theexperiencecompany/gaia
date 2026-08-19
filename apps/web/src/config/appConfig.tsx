@@ -173,6 +173,12 @@ export const appConfig = {
         "/images/icons/macos/discord.webp",
         "Add GAIA to your server",
       ),
+      botLink(
+        "/bots",
+        "iMessage",
+        "/images/icons/macos/imessage.webp",
+        "Text GAIA from your iPhone",
+      ),
       navLink(
         "/features",
         "Features",
