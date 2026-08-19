@@ -24,14 +24,14 @@ from app.browser_host.proxy import (
 @pytest.mark.unit
 def test_refused_navigation_url_missing_params_returns_none() -> None:
     assert _refused_navigation_url({"method": "Page.navigate"}) is None
-    assert _refused_navigation_url({"method": "Page.navigate", "params": None}) is None  # type: ignore[typeddict-item]
-    assert _refused_navigation_url({"method": "Page.navigate", "params": "oops"}) is None  # type: ignore[typeddict-item]
+    assert _refused_navigation_url({"method": "Page.navigate", "params": None}) is None
+    assert _refused_navigation_url({"method": "Page.navigate", "params": "oops"}) is None
 
 
 @pytest.mark.unit
 def test_refused_navigation_url_url_not_str_returns_none() -> None:
-    assert _refused_navigation_url({"method": "Page.navigate", "params": {"url": 123}}) is None  # type: ignore[typeddict-item]
-    assert _refused_navigation_url({"method": "Page.navigate", "params": {"url": None}}) is None  # type: ignore[typeddict-item]
+    assert _refused_navigation_url({"method": "Page.navigate", "params": {"url": 123}}) is None
+    assert _refused_navigation_url({"method": "Page.navigate", "params": {"url": None}}) is None
 
 
 @pytest.mark.unit
@@ -268,14 +268,14 @@ def test_event_context_id_returns_context_when_present() -> None:
 def test_event_context_id_returns_none_when_missing() -> None:
     assert _event_context_id({}) is None
     assert _event_context_id({"targetInfo": {}}) is None
-    assert _event_context_id({"targetInfo": None}) is None  # type: ignore[typeddict-item]
-    assert _event_context_id({"targetInfo": "not-a-dict"}) is None  # type: ignore[typeddict-item]
+    assert _event_context_id({"targetInfo": None}) is None
+    assert _event_context_id({"targetInfo": "not-a-dict"}) is None
 
 
 @pytest.mark.unit
 def test_event_context_id_returns_none_when_not_str() -> None:
-    assert _event_context_id({"targetInfo": {"browserContextId": 123}}) is None  # type: ignore[typeddict-item]
-    assert _event_context_id({"targetInfo": {"browserContextId": None}}) is None  # type: ignore[typeddict-item]
+    assert _event_context_id({"targetInfo": {"browserContextId": 123}}) is None
+    assert _event_context_id({"targetInfo": {"browserContextId": None}}) is None
 
 
 # ---------------------------------------------------------------------------
@@ -296,7 +296,7 @@ def test_rewrite_upstream_tracks_gettargets_id() -> None:
 def test_rewrite_upstream_gettargets_non_int_id_not_tracked() -> None:
     ids: set[int] = set()
     msg = {"id": "not-int", "method": "Target.getTargets", "params": {}}
-    _rewrite_upstream(msg, "ctx1", ids)  # type: ignore[typeddict-item]
+    _rewrite_upstream(msg, "ctx1", ids)
     assert ids == set()
     msg2 = {"method": "Target.getTargets", "params": {}}
     _rewrite_upstream(msg2, "ctx1", ids)
@@ -578,7 +578,7 @@ async def test_run_cdp_proxy_refuses_and_forwards() -> None:
     mock_ws_ctx.__aexit__ = AsyncMock(return_value=False)
 
     with patch.object(proxy_mod.websockets, "connect", return_value=mock_ws_ctx):
-        await proxy_mod.run_cdp_proxy(host, session, client_ws)  # type: ignore[arg-type]
+        await proxy_mod.run_cdp_proxy(host, session, client_ws)
 
     # refusal reply for Browser.setDownloadBehavior (id 1) should have been sent
     assert client_ws.send_text.call_count >= 1
@@ -622,7 +622,7 @@ async def test_run_cdp_proxy_handles_bytes_downstream() -> None:
     client_ws.send_text = AsyncMock()
 
     raw_bytes = json.dumps({"method": "Page.frameNavigated", "params": {}}).encode()
-    text = raw_bytes.decode() if isinstance(raw_bytes, bytes) else raw_bytes  # type: ignore[unreachable]
+    text = raw_bytes.decode() if isinstance(raw_bytes, bytes) else raw_bytes
     assert isinstance(text, str)
     from app.browser_host.proxy import _filter_downstream
 
@@ -644,7 +644,7 @@ async def test_run_cdp_proxy_handles_bytes_downstream() -> None:
     mock_ws_ctx.__aenter__ = AsyncMock(return_value=fake)
     mock_ws_ctx.__aexit__ = AsyncMock(return_value=False)
     with patch.object(proxy_mod.websockets, "connect", return_value=mock_ws_ctx):
-        await proxy_mod.run_cdp_proxy(host, session, client_ws)  # type: ignore[arg-type]
+        await proxy_mod.run_cdp_proxy(host, session, client_ws)
     host.touch.assert_not_called()
 
 
@@ -692,7 +692,7 @@ async def test_run_cdp_proxy_navigation_refusal_sends_error() -> None:
     mock_ctx.__aenter__ = AsyncMock(return_value=fake)
     mock_ctx.__aexit__ = AsyncMock(return_value=False)
     with patch.object(proxy_mod.websockets, "connect", return_value=mock_ctx):
-        await proxy_mod.run_cdp_proxy(host, session, client_ws)  # type: ignore[arg-type]
+        await proxy_mod.run_cdp_proxy(host, session, client_ws)
     assert client_ws.send_text.call_count >= 1
     reply = json.loads(client_ws.send_text.call_args_list[0][0][0])
     assert reply["id"] == 5
@@ -764,7 +764,7 @@ async def test_run_cdp_proxy_rewrites_create_target_and_filters_gettargets() -> 
     mock_ctx.__aenter__ = AsyncMock(return_value=fake)
     mock_ctx.__aexit__ = AsyncMock(return_value=False)
     with patch.object(proxy_mod.websockets, "connect", return_value=mock_ctx):
-        await proxy_mod.run_cdp_proxy(host, session, client_ws)  # type: ignore[arg-type]
+        await proxy_mod.run_cdp_proxy(host, session, client_ws)
     # Check that createTarget was pinned to ctx-1
     create_sent = [
         json.loads(s) for s in fake.sent if json.loads(s).get("method") == "Target.createTarget"
@@ -822,7 +822,7 @@ async def test_run_cdp_proxy_handles_non_int_refusal_id() -> None:
     mock_ctx.__aenter__ = AsyncMock(return_value=fake)
     mock_ctx.__aexit__ = AsyncMock(return_value=False)
     with patch.object(proxy_mod.websockets, "connect", return_value=mock_ctx):
-        await proxy_mod.run_cdp_proxy(host, session, client_ws)  # type: ignore[arg-type]
+        await proxy_mod.run_cdp_proxy(host, session, client_ws)
     assert client_ws.send_text.call_count == 1
     reply = json.loads(client_ws.send_text.call_args_list[0][0][0])
     assert reply["id"] is None

@@ -27,14 +27,18 @@ pytestmark = pytest.mark.unit
 # ---------------------------------------------------------------------------
 
 
-def _make_request(cookies: dict[str, str] | None = None, headers: dict[str, str] | None = None) -> MagicMock:
+def _make_request(
+    cookies: dict[str, str] | None = None, headers: dict[str, str] | None = None
+) -> MagicMock:
     req = MagicMock(spec=Request)
     req.cookies = cookies or {}
     req.headers = headers or {}
     return req
 
 
-def _make_ws(cookies: dict[str, str] | None = None, headers: dict[str, str] | None = None) -> MagicMock:
+def _make_ws(
+    cookies: dict[str, str] | None = None, headers: dict[str, str] | None = None
+) -> MagicMock:
     ws = MagicMock(spec=WebSocket)
     ws.cookies = cookies or {}
     ws.headers = headers or {}
@@ -53,10 +57,14 @@ def _make_ws(cookies: dict[str, str] | None = None, headers: dict[str, str] | No
 
 class TestReplayPage:
     async def test_success(self) -> None:
-        record = ReplayRecord(session_id="s1", steps=2, shots=["https://cdn/1.png", "https://cdn/2.png"])
+        record = ReplayRecord(
+            session_id="s1", steps=2, shots=["https://cdn/1.png", "https://cdn/2.png"]
+        )
         with (
             patch.object(blv, "resolve_replay_code", new=AsyncMock(return_value=record)),
-            patch.object(blv, "render_replay_page", return_value="<html>replay</html>") as mock_render,
+            patch.object(
+                blv, "render_replay_page", return_value="<html>replay</html>"
+            ) as mock_render,
         ):
             resp = await blv.replay_page("code123")
             assert isinstance(resp, HTMLResponse)
@@ -131,13 +139,13 @@ class TestLiveViewPage:
 class TestAuthorizePage:
     async def test_with_token_success(self) -> None:
         claims: dict[str, object] = {"session_id": "sess1", "user_id": "u1", "exp": 9999999999.0}
-        with patch.object(blv, "_verify_scoped_token", return_value=claims):  # type: ignore[return-value]
+        with patch.object(blv, "_verify_scoped_token", return_value=claims):
             uid = await blv._authorize_page(_make_request(), "sess1", token="tok123")
             assert uid == "u1"
 
     async def test_with_token_verifies_scoped(self) -> None:
         claims = {"session_id": "sess1", "user_id": "u1", "exp": 9999999999.0}
-        with patch.object(blv, "verify_takeover_token", return_value=claims):  # type: ignore[return-value]
+        with patch.object(blv, "verify_takeover_token", return_value=claims):
             out = blv._verify_scoped_token("tok", "sess1")
             assert out["user_id"] == "u1"
 
@@ -149,7 +157,7 @@ class TestAuthorizePage:
 
     async def test_verify_scoped_token_mismatch_raises_403(self) -> None:
         claims = {"session_id": "other", "user_id": "u1", "exp": 9999999999.0}
-        with patch.object(blv, "verify_takeover_token", return_value=claims):  # type: ignore[return-value]
+        with patch.object(blv, "verify_takeover_token", return_value=claims):
             with pytest.raises(HTTPException) as exc:
                 blv._verify_scoped_token("tok", "sess1")
             assert exc.value.status_code == status.HTTP_403_FORBIDDEN
@@ -184,7 +192,7 @@ class TestAuthorizeWs:
     async def test_token_success(self) -> None:
         claims: dict[str, object] = {"session_id": "sess1", "user_id": "u1", "exp": 9999999999.0}
         with (
-            patch.object(blv, "verify_takeover_token", return_value=claims),  # type: ignore[return-value]
+            patch.object(blv, "verify_takeover_token", return_value=claims),
             patch.object(blv, "takeover_token_ttl_seconds", return_value=100.0),
         ):
             ws = _make_ws()
@@ -197,7 +205,7 @@ class TestAuthorizeWs:
     async def test_token_expired_clamped_to_zero(self) -> None:
         claims: dict[str, object] = {"session_id": "sess1", "user_id": "u1", "exp": 100.0}
         with (
-            patch.object(blv, "verify_takeover_token", return_value=claims),  # type: ignore[return-value]
+            patch.object(blv, "verify_takeover_token", return_value=claims),
             patch.object(blv, "takeover_token_ttl_seconds", return_value=-50.0),
         ):
             ws = _make_ws()
@@ -215,7 +223,7 @@ class TestAuthorizeWs:
 
     async def test_token_session_mismatch_closes_1008(self) -> None:
         claims: dict[str, object] = {"session_id": "other", "user_id": "u1", "exp": 9999999999.0}
-        with patch.object(blv, "verify_takeover_token", return_value=claims):  # type: ignore[return-value]
+        with patch.object(blv, "verify_takeover_token", return_value=claims):
             ws = _make_ws()
             result = await blv._authorize_ws(ws, "sess1", token="tok")
             assert result is None
@@ -223,7 +231,9 @@ class TestAuthorizeWs:
 
     async def test_cookie_success(self) -> None:
         ws = _make_ws()
-        with patch.object(blv, "get_current_user_ws", new=AsyncMock(return_value={"user_id": "u1"})):
+        with patch.object(
+            blv, "get_current_user_ws", new=AsyncMock(return_value={"user_id": "u1"})
+        ):
             result = await blv._authorize_ws(ws, "sess1", token=None)
             assert result is not None
             assert result[0] == "u1"
@@ -231,7 +241,9 @@ class TestAuthorizeWs:
 
     async def test_cookie_missing_user_id_returns_none(self) -> None:
         ws = _make_ws()
-        with patch.object(blv, "get_current_user_ws", new=AsyncMock(return_value={"user_id": None})):
+        with patch.object(
+            blv, "get_current_user_ws", new=AsyncMock(return_value={"user_id": None})
+        ):
             result = await blv._authorize_ws(ws, "sess1", token=None)
             assert result is None
 
@@ -287,7 +299,9 @@ class TestLiveViewWs:
     async def test_code_path_no_owner_closes_1008(self) -> None:
         ws = _make_ws()
         with (
-            patch.object(blv, "_resolve_target_ws", new=AsyncMock(return_value=("sess1", "u1", None))),
+            patch.object(
+                blv, "_resolve_target_ws", new=AsyncMock(return_value=("sess1", "u1", None))
+            ),
             patch.object(blv.registry, "get_session_entry", new=AsyncMock(return_value=None)),
         ):
             await blv.live_view_ws(ws, "sess1", t=None)
@@ -297,7 +311,9 @@ class TestLiveViewWs:
         ws = _make_ws()
         entry = SessionRegistryEntry(owner="other", live_ws="ws://host/live/1")
         with (
-            patch.object(blv, "_resolve_target_ws", new=AsyncMock(return_value=("sess1", "u1", None))),
+            patch.object(
+                blv, "_resolve_target_ws", new=AsyncMock(return_value=("sess1", "u1", None))
+            ),
             patch.object(blv.registry, "get_session_entry", new=AsyncMock(return_value=entry)),
         ):
             await blv.live_view_ws(ws, "sess1", t=None)
@@ -307,7 +323,9 @@ class TestLiveViewWs:
         ws = _make_ws()
         entry = SessionRegistryEntry(owner="u1", live_ws=None)
         with (
-            patch.object(blv, "_resolve_target_ws", new=AsyncMock(return_value=("sess1", "u1", None))),
+            patch.object(
+                blv, "_resolve_target_ws", new=AsyncMock(return_value=("sess1", "u1", None))
+            ),
             patch.object(blv.registry, "get_session_entry", new=AsyncMock(return_value=entry)),
         ):
             await blv.live_view_ws(ws, "sess1", t=None)
@@ -318,7 +336,9 @@ class TestLiveViewWs:
         ws.accept = AsyncMock()
         entry = SessionRegistryEntry(owner="u1", live_ws="ws://host/live/1")
         with (
-            patch.object(blv, "_resolve_target_ws", new=AsyncMock(return_value=("sess1", "u1", None))),
+            patch.object(
+                blv, "_resolve_target_ws", new=AsyncMock(return_value=("sess1", "u1", None))
+            ),
             patch.object(blv.registry, "get_session_entry", new=AsyncMock(return_value=entry)),
             patch.object(blv, "_proxy_live_view", new=AsyncMock()) as mock_proxy,
         ):
@@ -331,7 +351,9 @@ class TestLiveViewWs:
         ws.accept = AsyncMock()
         entry = SessionRegistryEntry(owner="u1", live_ws="ws://host/live/1")
         with (
-            patch.object(blv, "_resolve_target_ws", new=AsyncMock(return_value=("sess1", "u1", 42.0))),
+            patch.object(
+                blv, "_resolve_target_ws", new=AsyncMock(return_value=("sess1", "u1", 42.0))
+            ),
             patch.object(blv.registry, "get_session_entry", new=AsyncMock(return_value=entry)),
             patch.object(blv, "_proxy_live_view", new=AsyncMock()) as mock_proxy,
         ):
@@ -348,7 +370,9 @@ class TestLiveViewWs:
         ws = _make_ws()
         entry = SessionRegistryEntry(owner="u1", live_ws=None)
         with (
-            patch.object(blv, "_resolve_target_ws", new=AsyncMock(return_value=("sess1", "u1", None))),
+            patch.object(
+                blv, "_resolve_target_ws", new=AsyncMock(return_value=("sess1", "u1", None))
+            ),
             patch.object(blv.registry, "get_session_entry", new=AsyncMock(return_value=entry)),
         ):
             await blv.live_view_ws(ws, "sess1")
@@ -359,7 +383,9 @@ class TestLiveViewWs:
         ws = _make_ws()
         entry = SessionRegistryEntry(owner="u1", live_ws="")
         with (
-            patch.object(blv, "_resolve_target_ws", new=AsyncMock(return_value=("sess1", "u1", None))),
+            patch.object(
+                blv, "_resolve_target_ws", new=AsyncMock(return_value=("sess1", "u1", None))
+            ),
             patch.object(blv.registry, "get_session_entry", new=AsyncMock(return_value=entry)),
         ):
             await blv.live_view_ws(ws, "sess1")
@@ -410,7 +436,9 @@ class TestProxyLiveView:
     async def test_host_unreachable_websocket_exception(self) -> None:
         client_ws = _make_ws()
         client_ws.close = AsyncMock()
-        with patch.object(blv.websockets, "connect", side_effect=websockets.exceptions.WebSocketException("boom")):
+        with patch.object(
+            blv.websockets, "connect", side_effect=websockets.exceptions.WebSocketException("boom")
+        ):
             await blv._proxy_live_view(client_ws, "ws://host/live/1", None)
             client_ws.close.assert_awaited_once()
 
@@ -451,31 +479,31 @@ class TestPumps:
             def __init__(self, msgs: list[object]) -> None:
                 self.msgs = msgs
 
-            def __aiter__(self):  # type: ignore[no-untyped-def]
+            def __aiter__(self):
                 return self
 
-            async def __anext__(self):  # type: ignore[no-untyped-def]
+            async def __anext__(self):
                 if not self.msgs:
                     raise StopAsyncIteration
                 return self.msgs.pop(0)
 
-        host_ws = FakeHostWs([b"bytes-frame", "text-frame"])  # type: ignore[arg-type]
+        host_ws = FakeHostWs([b"bytes-frame", "text-frame"])
         client_ws = _make_ws()
-        await blv._pump_host_to_client(host_ws, client_ws)  # type: ignore[arg-type]
+        await blv._pump_host_to_client(host_ws, client_ws)
         client_ws.send_bytes.assert_awaited_once_with(b"bytes-frame")
         client_ws.send_text.assert_awaited_once_with("text-frame")
 
     async def test_pump_host_to_client_empty(self) -> None:
         class EmptyHost:
-            def __aiter__(self):  # type: ignore[no-untyped-def]
+            def __aiter__(self):
                 return self
 
-            async def __anext__(self):  # type: ignore[no-untyped-def]
+            async def __anext__(self):
                 raise StopAsyncIteration
 
         host_ws = EmptyHost()
         client_ws = _make_ws()
-        await blv._pump_host_to_client(host_ws, client_ws)  # type: ignore[arg-type]
+        await blv._pump_host_to_client(host_ws, client_ws)
         client_ws.send_bytes.assert_not_called()
         client_ws.send_text.assert_not_called()
 
@@ -485,7 +513,7 @@ class TestPumps:
         host_ws = MagicMock()
         host_ws.send = AsyncMock()
         with pytest.raises(asyncio.CancelledError):
-            await blv._pump_client_to_host(client_ws, host_ws)  # type: ignore[arg-type]
+            await blv._pump_client_to_host(client_ws, host_ws)
         host_ws.send.assert_awaited_once_with("hello")
 
     async def test_pump_client_to_host_multiple(self) -> None:
@@ -494,7 +522,7 @@ class TestPumps:
         host_ws = MagicMock()
         host_ws.send = AsyncMock()
         with pytest.raises(asyncio.CancelledError):
-            await blv._pump_client_to_host(client_ws, host_ws)  # type: ignore[arg-type]
+            await blv._pump_client_to_host(client_ws, host_ws)
         assert host_ws.send.await_count == 2
 
     async def test_expire_after_sleeps(self) -> None:
@@ -522,7 +550,11 @@ class TestLiveViewPageExtra:
     async def test_via_token_path(self) -> None:
         with (
             patch.object(blv, "resolve_live_code", new=AsyncMock(return_value=None)),
-            patch.object(blv, "verify_takeover_token", return_value={"session_id": "sess1", "user_id": "u1", "exp": 9999999999.0}),  # type: ignore[return-value]
+            patch.object(
+                blv,
+                "verify_takeover_token",
+                return_value={"session_id": "sess1", "user_id": "u1", "exp": 9999999999.0},
+            ),
             patch.object(blv, "get_current_user", new=AsyncMock(return_value={"user_id": "u1"})),
             patch.object(blv.registry, "session_owner", new=AsyncMock(return_value="u1")),
             patch.object(blv, "render_live_view_page", return_value="<html>"),
@@ -555,7 +587,11 @@ class TestLiveViewPageExtra:
     async def test_token_session_mismatch_raises_403(self) -> None:
         with (
             patch.object(blv, "resolve_live_code", new=AsyncMock(return_value=None)),
-            patch.object(blv, "verify_takeover_token", return_value={"session_id": "other", "user_id": "u1", "exp": 9999999999.0}),  # type: ignore[return-value]
+            patch.object(
+                blv,
+                "verify_takeover_token",
+                return_value={"session_id": "other", "user_id": "u1", "exp": 9999999999.0},
+            ),
         ):
             req = _make_request()
             with pytest.raises(HTTPException) as exc:

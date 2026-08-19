@@ -20,23 +20,23 @@ def _fake_browser_use_modules(monkeypatch: pytest.MonkeyPatch) -> dict[str, Magi
 
     # top-level browser_use with ChatAnthropic / ChatGoogle / ChatOpenAI
     top = types.ModuleType("browser_use")
-    top.ChatAnthropic = MagicMock(return_value="anthropic-llm")  # type: ignore[attr-defined]
-    top.ChatGoogle = MagicMock(return_value="google-llm")  # type: ignore[attr-defined]
-    top.ChatOpenAI = MagicMock(return_value="openai-llm")  # type: ignore[attr-defined]
+    top.ChatAnthropic = MagicMock(return_value="anthropic-llm")
+    top.ChatGoogle = MagicMock(return_value="google-llm")
+    top.ChatOpenAI = MagicMock(return_value="openai-llm")
     monkeypatch.setitem(sys.modules, "browser_use", top)
-    mocks["ChatAnthropic"] = top.ChatAnthropic  # type: ignore[attr-defined]
-    mocks["ChatGoogle"] = top.ChatGoogle  # type: ignore[attr-defined]
-    mocks["ChatOpenAI"] = top.ChatOpenAI  # type: ignore[attr-defined]
+    mocks["ChatAnthropic"] = top.ChatAnthropic
+    mocks["ChatGoogle"] = top.ChatGoogle
+    mocks["ChatOpenAI"] = top.ChatOpenAI
 
     # deepseek chat module: browser_use.llm.deepseek.chat
     llm_mod = types.ModuleType("browser_use.llm")
     deepseek_mod = types.ModuleType("browser_use.llm.deepseek")
     deepseek_chat = types.ModuleType("browser_use.llm.deepseek.chat")
-    deepseek_chat.ChatDeepSeek = MagicMock(return_value="deepseek-llm")  # type: ignore[attr-defined]
+    deepseek_chat.ChatDeepSeek = MagicMock(return_value="deepseek-llm")
     monkeypatch.setitem(sys.modules, "browser_use.llm", llm_mod)
     monkeypatch.setitem(sys.modules, "browser_use.llm.deepseek", deepseek_mod)
     monkeypatch.setitem(sys.modules, "browser_use.llm.deepseek.chat", deepseek_chat)
-    mocks["ChatDeepSeek"] = deepseek_chat.ChatDeepSeek  # type: ignore[attr-defined]
+    mocks["ChatDeepSeek"] = deepseek_chat.ChatDeepSeek
 
     return mocks
 
@@ -255,7 +255,7 @@ class TestResolveUseVision:
         fake_catalog = AsyncMock()
         fake_catalog.accepts_images = AsyncMock(return_value=True)
         fake_module = types.ModuleType("app.agents.llm.model_catalog")
-        fake_module.get_openrouter_catalog = AsyncMock(return_value=fake_catalog)  # type: ignore[attr-defined]
+        fake_module.get_openrouter_catalog = AsyncMock(return_value=fake_catalog)
         monkeypatch.setitem(sys.modules, "app.agents.llm.model_catalog", fake_module)
 
         from app.services.browser.llm import resolve_use_vision as ruv
@@ -275,7 +275,7 @@ class TestResolveUseVision:
         fake_catalog = AsyncMock()
         fake_catalog.accepts_images = AsyncMock(return_value=False)
         fake_module = types.ModuleType("app.agents.llm.model_catalog")
-        fake_module.get_openrouter_catalog = AsyncMock(return_value=fake_catalog)  # type: ignore[attr-defined]
+        fake_module.get_openrouter_catalog = AsyncMock(return_value=fake_catalog)
         monkeypatch.setitem(sys.modules, "app.agents.llm.model_catalog", fake_module)
 
         from app.services.browser.llm import resolve_use_vision

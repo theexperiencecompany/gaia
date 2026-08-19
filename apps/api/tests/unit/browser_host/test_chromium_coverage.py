@@ -234,7 +234,7 @@ def test_storage_state_cookie_to_cdp_basic() -> None:
         "expires": 999,
         "sameSite": "Strict",
     }
-    out = _storage_state_cookie_to_cdp(cookie)  # type: ignore[arg-type]
+    out = _storage_state_cookie_to_cdp(cookie)
     assert out["name"] == "n"
     assert out["value"] == "v"
     assert out["domain"] == "example.com"
@@ -248,7 +248,7 @@ def test_storage_state_cookie_to_cdp_basic() -> None:
 @pytest.mark.unit
 def test_storage_state_cookie_to_cdp_defaults() -> None:
     cookie: dict = {"name": "n", "value": "v", "domain": "example.com"}
-    out = _storage_state_cookie_to_cdp(cookie)  # type: ignore[arg-type]
+    out = _storage_state_cookie_to_cdp(cookie)
     assert out["path"] == "/"
     assert out["secure"] is False
     assert out["httpOnly"] is False
@@ -259,21 +259,21 @@ def test_storage_state_cookie_to_cdp_defaults() -> None:
 @pytest.mark.unit
 def test_storage_state_cookie_to_cdp_zero_expires_not_included() -> None:
     cookie: dict = {"name": "n", "value": "v", "domain": "example.com", "expires": 0}
-    out = _storage_state_cookie_to_cdp(cookie)  # type: ignore[arg-type]
+    out = _storage_state_cookie_to_cdp(cookie)
     assert "expires" not in out
 
 
 @pytest.mark.unit
 def test_storage_state_cookie_to_cdp_negative_expires_not_included() -> None:
     cookie: dict = {"name": "n", "value": "v", "domain": "example.com", "expires": -1}
-    out = _storage_state_cookie_to_cdp(cookie)  # type: ignore[arg-type]
+    out = _storage_state_cookie_to_cdp(cookie)
     assert "expires" not in out
 
 
 @pytest.mark.unit
 def test_storage_state_cookie_to_cdp_empty_samesite_not_included() -> None:
     cookie: dict = {"name": "n", "value": "v", "domain": "example.com", "sameSite": ""}
-    out = _storage_state_cookie_to_cdp(cookie)  # type: ignore[arg-type]
+    out = _storage_state_cookie_to_cdp(cookie)
     assert "sameSite" not in out
 
 
@@ -501,18 +501,18 @@ async def test_reserve_slot_counts_existing_sessions(monkeypatch: pytest.MonkeyP
 async def test_dispose_context_id_noop_when_chromium_down() -> None:
     host = ChromiumHost()
     host._proc = MagicMock(returncode=1)  # dead
-    host._cdp_call = AsyncMock()  # type: ignore[method-assign]
+    host._cdp_call = AsyncMock()
     await host._dispose_context_id("ctx1")
-    host._cdp_call.assert_not_called()  # type: ignore[attr-defined]
+    host._cdp_call.assert_not_called()
 
 
 @pytest.mark.unit
 async def test_dispose_context_id_calls_cdp_when_up() -> None:
     host = ChromiumHost()
     host._proc = MagicMock(returncode=None)
-    host._cdp_call = AsyncMock(return_value={})  # type: ignore[method-assign]
+    host._cdp_call = AsyncMock(return_value={})
     await host._dispose_context_id("ctx1")
-    host._cdp_call.assert_awaited_once_with(  # type: ignore[attr-defined]
+    host._cdp_call.assert_awaited_once_with(
         "Target.disposeBrowserContext", {"browserContextId": "ctx1"}
     )
 
@@ -521,7 +521,7 @@ async def test_dispose_context_id_calls_cdp_when_up() -> None:
 async def test_dispose_context_id_suppresses_exception() -> None:
     host = ChromiumHost()
     host._proc = MagicMock(returncode=None)
-    host._cdp_call = AsyncMock(side_effect=RuntimeError("boom"))  # type: ignore[method-assign]
+    host._cdp_call = AsyncMock(side_effect=RuntimeError("boom"))
     # must not raise
     await host._dispose_context_id("ctx1")
 
@@ -530,9 +530,9 @@ async def test_dispose_context_id_suppresses_exception() -> None:
 async def test_dispose_context_id_noop_when_proc_none() -> None:
     host = ChromiumHost()
     host._proc = None
-    host._cdp_call = AsyncMock()  # type: ignore[method-assign]
+    host._cdp_call = AsyncMock()
     await host._dispose_context_id("ctx1")
-    host._cdp_call.assert_not_called()  # type: ignore[attr-defined]
+    host._cdp_call.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -543,18 +543,18 @@ async def test_dispose_context_id_noop_when_proc_none() -> None:
 @pytest.mark.unit
 async def test_seed_cookies_no_cookies() -> None:
     host = ChromiumHost()
-    host._cdp_call = AsyncMock()  # type: ignore[method-assign]
+    host._cdp_call = AsyncMock()
     await host._seed_cookies("ctx1", {"cookies": [], "origins": []})
-    host._cdp_call.assert_not_called()  # type: ignore[attr-defined]
-    await host._seed_cookies("ctx1", {"cookies": None, "origins": []})  # type: ignore[typeddict-item]
+    host._cdp_call.assert_not_called()
+    await host._seed_cookies("ctx1", {"cookies": None, "origins": []})
     # second still not called
-    host._cdp_call.assert_not_called()  # type: ignore[attr-defined]
+    host._cdp_call.assert_not_called()
 
 
 @pytest.mark.unit
 async def test_seed_cookies_with_cookies() -> None:
     host = ChromiumHost()
-    host._cdp_call = AsyncMock(return_value={})  # type: ignore[method-assign]
+    host._cdp_call = AsyncMock(return_value={})
     state = {
         "cookies": [
             {
@@ -569,9 +569,9 @@ async def test_seed_cookies_with_cookies() -> None:
         ],
         "origins": [],
     }
-    await host._seed_cookies("ctx1", state)  # type: ignore[arg-type]
-    host._cdp_call.assert_awaited_once()  # type: ignore[attr-defined]
-    args = host._cdp_call.call_args  # type: ignore[attr-defined]
+    await host._seed_cookies("ctx1", state)
+    host._cdp_call.assert_awaited_once()
+    args = host._cdp_call.call_args
     assert args[0][0] == "Storage.setCookies"
     assert args[0][1]["browserContextId"] == "ctx1"
     assert len(args[0][1]["cookies"]) == 1
@@ -606,25 +606,25 @@ async def test_dump_storage_state_when_up() -> None:
         "httpOnly": False,
         "secure": False,
     }
-    host._cdp_call = AsyncMock(side_effect=[{"cookies": [cdp_cookie]}, []])  # type: ignore[method-assign]
+    host._cdp_call = AsyncMock(side_effect=[{"cookies": [cdp_cookie]}, []])
     # patch _dump_origins to return known
     host._dump_origins = AsyncMock(
         return_value=[
             {"origin": "https://example.com", "localStorage": [{"name": "k", "value": "v"}]}
         ]
-    )  # type: ignore[method-assign]
+    )
     s = HostSession(
         session_id="s1", context_id="ctx1", target_id="t1", created_at=0, last_activity_at=0
     )
     # _cdp_call first returns cookies, but we also stubbed _dump_origins, so need to adapt:
     # Actually _dump_storage_state calls _cdp_call for Storage.getCookies then _dump_origins.
     # With our side_effect we only mock first call, second call is via _dump_origins stub, so make _cdp_call return cookies for first.
-    host._cdp_call = AsyncMock(return_value={"cookies": [cdp_cookie]})  # type: ignore[method-assign]
+    host._cdp_call = AsyncMock(return_value={"cookies": [cdp_cookie]})
     host._dump_origins = AsyncMock(
         return_value=[
             {"origin": "https://example.com", "localStorage": [{"name": "k", "value": "v"}]}
         ]
-    )  # type: ignore[method-assign]
+    )
     result = await host._dump_storage_state(s)
     assert len(result["cookies"]) == 1
     assert result["cookies"][0]["name"] == "a"
@@ -639,7 +639,7 @@ async def test_dump_storage_state_when_up() -> None:
 @pytest.mark.unit
 async def test_dump_origins_no_pages() -> None:
     host = ChromiumHost()
-    host._cdp_call = AsyncMock(return_value={"targetInfos": []})  # type: ignore[method-assign]
+    host._cdp_call = AsyncMock(return_value={"targetInfos": []})
     s = HostSession(
         session_id="s1", context_id="ctx1", target_id="t1", created_at=0, last_activity_at=0
     )
@@ -652,7 +652,7 @@ async def test_dump_origins_single_page_with_storage() -> None:
     host = ChromiumHost()
     # sequence: getTargets, attachToTarget, Runtime.evaluate, detachFromTarget
     host._cdp_call = AsyncMock(
-        side_effect=[  # type: ignore[method-assign]
+        side_effect=[
             {"targetInfos": [{"targetId": "t1", "type": "page", "browserContextId": "ctx1"}]},
             {"sessionId": "sess-t1"},
             {
@@ -678,7 +678,7 @@ async def test_dump_origins_single_page_with_storage() -> None:
 async def test_dump_origins_filters_other_context_and_non_page() -> None:
     host = ChromiumHost()
     host._cdp_call = AsyncMock(
-        side_effect=[  # type: ignore[method-assign]
+        side_effect=[
             {
                 "targetInfos": [
                     {"targetId": "t1", "type": "page", "browserContextId": "other"},
@@ -704,14 +704,14 @@ async def test_dump_origins_filters_other_context_and_non_page() -> None:
     result = await host._dump_origins(s)
     assert len(result) == 1
     # only t3 should be visited, so attach was for t3
-    assert host._cdp_call.call_args_list[1][0][1]["targetId"] == "t3"  # type: ignore[attr-defined]
+    assert host._cdp_call.call_args_list[1][0][1]["targetId"] == "t3"
 
 
 @pytest.mark.unit
 async def test_dump_origins_empty_value_skipped() -> None:
     host = ChromiumHost()
     host._cdp_call = AsyncMock(
-        side_effect=[  # type: ignore[method-assign]
+        side_effect=[
             {"targetInfos": [{"targetId": "t1", "type": "page", "browserContextId": "ctx1"}]},
             {"sessionId": "sess-t1"},
             {"result": {"value": None}},
@@ -729,7 +729,7 @@ async def test_dump_origins_empty_value_skipped() -> None:
 async def test_dump_origins_missing_origin_skipped() -> None:
     host = ChromiumHost()
     host._cdp_call = AsyncMock(
-        side_effect=[  # type: ignore[method-assign]
+        side_effect=[
             {"targetInfos": [{"targetId": "t1", "type": "page", "browserContextId": "ctx1"}]},
             {"sessionId": "sess-t1"},
             {"result": {"value": {"origin": "", "localStorage": [{"name": "k", "value": "v"}]}}},
@@ -747,7 +747,7 @@ async def test_dump_origins_missing_origin_skipped() -> None:
 async def test_dump_origins_empty_localstorage_skipped() -> None:
     host = ChromiumHost()
     host._cdp_call = AsyncMock(
-        side_effect=[  # type: ignore[method-assign]
+        side_effect=[
             {"targetInfos": [{"targetId": "t1", "type": "page", "browserContextId": "ctx1"}]},
             {"sessionId": "sess-t1"},
             {"result": {"value": {"origin": "https://example.com", "localStorage": []}}},
@@ -766,7 +766,7 @@ async def test_dump_origins_detaches_even_when_evaluate_raises() -> None:
     host = ChromiumHost()
     # evaluate raises, detach must still be called
     host._cdp_call = AsyncMock(
-        side_effect=[  # type: ignore[method-assign]
+        side_effect=[
             {"targetInfos": [{"targetId": "t1", "type": "page", "browserContextId": "ctx1"}]},
             {"sessionId": "sess-t1"},
             RuntimeError("eval boom"),
@@ -779,7 +779,7 @@ async def test_dump_origins_detaches_even_when_evaluate_raises() -> None:
     with pytest.raises(RuntimeError, match="eval boom"):
         await host._dump_origins(s)
     # detach still awaited
-    assert host._cdp_call.call_count == 4  # type: ignore[attr-defined]
+    assert host._cdp_call.call_count == 4
 
 
 # ---------------------------------------------------------------------------
@@ -802,7 +802,7 @@ async def test_focused_page_meta_when_chromium_down() -> None:
 async def test_focused_page_meta_returns_url_title() -> None:
     host = ChromiumHost()
     host._proc = MagicMock(returncode=None)
-    host._cdp_call = AsyncMock(  # type: ignore[method-assign]
+    host._cdp_call = AsyncMock(
         return_value={
             "targetInfos": [
                 {
@@ -838,7 +838,7 @@ async def test_focused_page_meta_no_matching_page_returns_none() -> None:
                 {"type": "page", "browserContextId": "other", "url": "https://other.com"}
             ]
         }
-    )  # type: ignore[method-assign]
+    )
     s = HostSession(
         session_id="s1", context_id="ctx1", target_id="t1", created_at=0, last_activity_at=0
     )
@@ -858,7 +858,7 @@ async def test_focused_target_id_returns_primary_when_no_pages() -> None:
         session_id="s1", context_id="ctx1", target_id="t-primary", created_at=0, last_activity_at=0
     )
     host._sessions["s1"] = s
-    host._cdp_call = AsyncMock(return_value={"targetInfos": []})  # type: ignore[method-assign]
+    host._cdp_call = AsyncMock(return_value={"targetInfos": []})
     result = await host.focused_target_id("s1")
     assert result == "t-primary"
 
@@ -870,7 +870,7 @@ async def test_focused_target_id_returns_primary_when_present() -> None:
         session_id="s1", context_id="ctx1", target_id="t-primary", created_at=0, last_activity_at=0
     )
     host._sessions["s1"] = s
-    host._cdp_call = AsyncMock(  # type: ignore[method-assign]
+    host._cdp_call = AsyncMock(
         return_value={
             "targetInfos": [
                 {"type": "page", "browserContextId": "ctx1", "targetId": "t-other"},
@@ -889,7 +889,7 @@ async def test_focused_target_id_fallback_to_most_recent() -> None:
         session_id="s1", context_id="ctx1", target_id="t-primary", created_at=0, last_activity_at=0
     )
     host._sessions["s1"] = s
-    host._cdp_call = AsyncMock(  # type: ignore[method-assign]
+    host._cdp_call = AsyncMock(
         return_value={
             "targetInfos": [
                 {"type": "page", "browserContextId": "ctx1", "targetId": "t1"},
@@ -908,7 +908,7 @@ async def test_focused_target_id_filters_by_context_and_type() -> None:
         session_id="s1", context_id="ctx1", target_id="t-primary", created_at=0, last_activity_at=0
     )
     host._sessions["s1"] = s
-    host._cdp_call = AsyncMock(  # type: ignore[method-assign]
+    host._cdp_call = AsyncMock(
         return_value={
             "targetInfos": [
                 {"type": "background_page", "browserContextId": "ctx1", "targetId": "bg"},
@@ -941,7 +941,7 @@ async def test_session_info_returns_expected_shape() -> None:
     )
     host._sessions["s1"] = s
     host._proc = MagicMock(returncode=None)
-    host._focused_page_meta = AsyncMock(return_value=("https://example.com", "Example"))  # type: ignore[method-assign]
+    host._focused_page_meta = AsyncMock(return_value=("https://example.com", "Example"))
     info = await host.session_info("s1")
     assert info["session_id"] == "s1"
     assert info["live"] is True
@@ -963,7 +963,7 @@ async def test_session_info_live_false_when_chromium_down() -> None:
     )
     host._sessions["s1"] = s
     host._proc = None
-    host._focused_page_meta = AsyncMock(return_value=(None, None))  # type: ignore[method-assign]
+    host._focused_page_meta = AsyncMock(return_value=(None, None))
     info = await host.session_info("s1")
     assert info["live"] is False
 
@@ -981,7 +981,7 @@ async def test_session_info_live_false_when_dead() -> None:
     )
     host._sessions["s1"] = s
     host._proc = MagicMock(returncode=None)
-    host._focused_page_meta = AsyncMock(return_value=("https://example.com", "Title"))  # type: ignore[method-assign]
+    host._focused_page_meta = AsyncMock(return_value=("https://example.com", "Title"))
     info = await host.session_info("s1")
     assert info["live"] is False
 
@@ -1017,7 +1017,7 @@ async def test_healthz_counts_sessions() -> None:
         session_id="s1", context_id="ctx1", target_id="t1", created_at=0, last_activity_at=0
     )
     host._sessions["s1"] = s
-    host._cdp_call = AsyncMock(return_value={"targetInfos": []})  # type: ignore[method-assign]
+    host._cdp_call = AsyncMock(return_value={"targetInfos": []})
     result = await host.healthz()
     assert result["sessions"] == 1
     assert result["ok"] is True
@@ -1027,7 +1027,7 @@ async def test_healthz_counts_sessions() -> None:
 async def test_healthz_cdp_exception_reports_unresponsive(monkeypatch: pytest.MonkeyPatch) -> None:
     host = ChromiumHost()
     host._proc = MagicMock(returncode=None)
-    host._cdp_call = AsyncMock(side_effect=RuntimeError("wedged"))  # type: ignore[method-assign]
+    host._cdp_call = AsyncMock(side_effect=RuntimeError("wedged"))
     result = await host.healthz()
     assert result["ok"] is False
     assert result["cdp_responsive"] is False
@@ -1044,11 +1044,11 @@ async def test_start_resolves_path_launches_and_starts_reaper(
 ) -> None:
     host = ChromiumHost()
     monkeypatch.setattr(chromium.asyncio, "to_thread", AsyncMock(return_value="/tmp/chrome"))
-    host._launch = AsyncMock()  # type: ignore[method-assign]
-    host._reaper_loop = AsyncMock()  # type: ignore[method-assign]
+    host._launch = AsyncMock()
+    host._reaper_loop = AsyncMock()
     await host.start()
     assert host._chromium_path == "/tmp/chrome"
-    host._launch.assert_awaited_once()  # type: ignore[attr-defined]
+    host._launch.assert_awaited_once()
     assert host._reaper_task is not None
     # cleanup
     host._reaper_task.cancel()
@@ -1060,18 +1060,18 @@ async def test_start_resolves_path_launches_and_starts_reaper(
 async def test_stop_cancels_reaper_and_shuts_down() -> None:
     host = ChromiumHost()
     host._reaper_task = asyncio.create_task(asyncio.sleep(10))
-    host._shutdown_chromium = AsyncMock()  # type: ignore[method-assign]
+    host._shutdown_chromium = AsyncMock()
     await host.stop()
     assert host._reaper_task is None
-    host._shutdown_chromium.assert_awaited_once()  # type: ignore[attr-defined]
+    host._shutdown_chromium.assert_awaited_once()
 
 
 @pytest.mark.unit
 async def test_stop_no_reaper_still_shuts_down() -> None:
     host = ChromiumHost()
-    host._shutdown_chromium = AsyncMock()  # type: ignore[method-assign]
+    host._shutdown_chromium = AsyncMock()
     await host.stop()
-    host._shutdown_chromium.assert_awaited_once()  # type: ignore[attr-defined]
+    host._shutdown_chromium.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -1085,7 +1085,7 @@ async def test_create_context_without_storage_state(monkeypatch: pytest.MonkeyPa
     host = ChromiumHost()
     host._proc = MagicMock(returncode=None)
     host._cdp_call = AsyncMock(
-        side_effect=[  # type: ignore[method-assign]
+        side_effect=[
             {"browserContextId": "ctx-1"},
             {},
             {"targetId": "t-1"},
@@ -1106,7 +1106,7 @@ async def test_create_context_with_storage_state_seeds_cookies(
     host = ChromiumHost()
     host._proc = MagicMock(returncode=None)
     host._cdp_call = AsyncMock(
-        side_effect=[  # type: ignore[method-assign]
+        side_effect=[
             {"browserContextId": "ctx-1"},
             {},
             {"targetId": "t-1"},
@@ -1126,10 +1126,10 @@ async def test_create_context_with_storage_state_seeds_cookies(
         ],
         "origins": [],
     }
-    session = await host.create_context(state)  # type: ignore[arg-type]
+    session = await host.create_context(state)
     assert session.context_id == "ctx-1"
     # 4 calls: createBrowserContext, setDownloadBehavior, createTarget, setCookies
-    assert host._cdp_call.call_count == 4  # type: ignore[attr-defined]
+    assert host._cdp_call.call_count == 4
 
 
 @pytest.mark.unit
@@ -1140,16 +1140,16 @@ async def test_create_context_failure_disposes_context_and_releases_slot(
     host = ChromiumHost()
     host._proc = MagicMock(returncode=None)
     host._cdp_call = AsyncMock(
-        side_effect=[  # type: ignore[method-assign]
+        side_effect=[
             {"browserContextId": "ctx-1"},
             RuntimeError("setDownloadBehavior boom"),
         ]
     )
-    host._dispose_context_id = AsyncMock()  # type: ignore[method-assign]
+    host._dispose_context_id = AsyncMock()
     with pytest.raises(RuntimeError, match="boom"):
         await host.create_context(None)
     assert host._pending_slots == 0
-    host._dispose_context_id.assert_awaited_once_with("ctx-1")  # type: ignore[attr-defined]
+    host._dispose_context_id.assert_awaited_once_with("ctx-1")
 
 
 @pytest.mark.unit
@@ -1173,12 +1173,12 @@ async def test_dispose_context_success(monkeypatch: pytest.MonkeyPatch) -> None:
         session_id="s1", context_id="ctx1", target_id="t1", created_at=0, last_activity_at=0
     )
     host._sessions["s1"] = s
-    host._dump_storage_state = AsyncMock(return_value={"cookies": [], "origins": []})  # type: ignore[method-assign]
-    host._dispose_context_id = AsyncMock()  # type: ignore[method-assign]
+    host._dump_storage_state = AsyncMock(return_value={"cookies": [], "origins": []})
+    host._dispose_context_id = AsyncMock()
     result = await host.dispose_context("s1")
     assert result == {"cookies": [], "origins": []}
     assert host.get("s1") is None
-    host._dispose_context_id.assert_awaited_once_with("ctx1")  # type: ignore[attr-defined]
+    host._dispose_context_id.assert_awaited_once_with("ctx1")
 
 
 @pytest.mark.unit
@@ -1211,7 +1211,7 @@ async def test_launch_builds_correct_args_headed_false_shell(
     mock_proc = MagicMock(returncode=None)
     mock_create = AsyncMock(return_value=mock_proc)
     monkeypatch.setattr(chromium.asyncio, "create_subprocess_exec", mock_create)
-    host._await_cdp_ready = AsyncMock(return_value="ws://127.0.0.1:9222")  # type: ignore[method-assign]
+    host._await_cdp_ready = AsyncMock(return_value="ws://127.0.0.1:9222")
     mock_cdp = MagicMock()
     mock_cdp.start = AsyncMock()
     with patch.object(chromium, "CDPClient", return_value=mock_cdp):
@@ -1244,12 +1244,12 @@ async def test_launch_headed_false_full_browser_uses_headless_new(
     monkeypatch.setattr(
         chromium.asyncio, "create_subprocess_exec", AsyncMock(return_value=mock_proc)
     )
-    host._await_cdp_ready = AsyncMock(return_value="ws://x")  # type: ignore[method-assign]
+    host._await_cdp_ready = AsyncMock(return_value="ws://x")
     mock_cdp = MagicMock()
     mock_cdp.start = AsyncMock()
     with patch.object(chromium, "CDPClient", return_value=mock_cdp):
         await host._launch()
-        args = chromium.asyncio.create_subprocess_exec.call_args[0]  # type: ignore[attr-defined]
+        args = chromium.asyncio.create_subprocess_exec.call_args[0]
         assert "--headless=new" in args
 
 
@@ -1270,12 +1270,12 @@ async def test_launch_headed_true_no_headless_flag(
         "create_subprocess_exec",
         AsyncMock(return_value=MagicMock(returncode=None)),
     )
-    host._await_cdp_ready = AsyncMock(return_value="ws://x")  # type: ignore[method-assign]
+    host._await_cdp_ready = AsyncMock(return_value="ws://x")
     mock_cdp = MagicMock()
     mock_cdp.start = AsyncMock()
     with patch.object(chromium, "CDPClient", return_value=mock_cdp):
         await host._launch()
-        args = chromium.asyncio.create_subprocess_exec.call_args[0]  # type: ignore[attr-defined]
+        args = chromium.asyncio.create_subprocess_exec.call_args[0]
         assert "--headless" not in args and "--headless=new" not in args
 
 
@@ -1288,7 +1288,7 @@ async def test_launch_headed_true_no_headless_flag(
 async def test_await_cdp_ready_success(monkeypatch: pytest.MonkeyPatch) -> None:
     host = ChromiumHost()
     host._user_data_dir = "/tmp/fake"
-    host._read_devtools_port = AsyncMock(return_value=9222)  # type: ignore[method-assign]
+    host._read_devtools_port = AsyncMock(return_value=9222)
 
     mock_resp = MagicMock()
     mock_resp.json.return_value = {"webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools"}
@@ -1307,7 +1307,7 @@ async def test_await_cdp_ready_success(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.unit
 async def test_await_cdp_ready_retries_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
     host = ChromiumHost()
-    host._read_devtools_port = AsyncMock(return_value=9222)  # type: ignore[method-assign]
+    host._read_devtools_port = AsyncMock(return_value=9222)
     mock_resp = MagicMock()
     mock_resp.json.return_value = {"webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools"}
     mock_resp.raise_for_status = MagicMock()
@@ -1325,7 +1325,7 @@ async def test_await_cdp_ready_retries_then_succeeds(monkeypatch: pytest.MonkeyP
 @pytest.mark.unit
 async def test_await_cdp_ready_timeout_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     host = ChromiumHost()
-    host._read_devtools_port = AsyncMock(return_value=9222)  # type: ignore[method-assign]
+    host._read_devtools_port = AsyncMock(return_value=9222)
     mock_client = MagicMock()
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -1539,12 +1539,12 @@ async def test_reap_idle_removes_stale_without_viewer(monkeypatch: pytest.Monkey
         viewer_count=1,
     )
     host._sessions = {"old": s_old, "fresh": s_fresh, "watched": s_watched}
-    host._dispose_context_id = AsyncMock()  # type: ignore[method-assign]
+    host._dispose_context_id = AsyncMock()
     await host._reap_idle()
     assert "old" not in host._sessions
     assert "fresh" in host._sessions
     assert "watched" in host._sessions
-    host._dispose_context_id.assert_awaited_once_with("ctx-old")  # type: ignore[attr-defined]
+    host._dispose_context_id.assert_awaited_once_with("ctx-old")
 
 
 @pytest.mark.unit
@@ -1561,9 +1561,9 @@ async def test_reap_idle_skips_when_none_stale(monkeypatch: pytest.MonkeyPatch) 
         viewer_count=0,
     )
     host._sessions["s1"] = s
-    host._dispose_context_id = AsyncMock()  # type: ignore[method-assign]
+    host._dispose_context_id = AsyncMock()
     await host._reap_idle()
-    host._dispose_context_id.assert_not_called()  # type: ignore[attr-defined]
+    host._dispose_context_id.assert_not_called()
 
 
 @pytest.mark.unit
@@ -1578,24 +1578,24 @@ async def test_recover_crash_marks_dead_clears_and_relaunches(
         session_id="s2", context_id="ctx2", target_id="t2", created_at=0, last_activity_at=0
     )
     host._sessions = {"s1": s1, "s2": s2}
-    host._shutdown_chromium = AsyncMock()  # type: ignore[method-assign]
-    host._launch = AsyncMock()  # type: ignore[method-assign]
+    host._shutdown_chromium = AsyncMock()
+    host._launch = AsyncMock()
     await host._recover_crash()
     assert s1.dead is True
     assert s2.dead is True
     assert host._sessions == {}
-    host._shutdown_chromium.assert_awaited_once()  # type: ignore[attr-defined]
-    host._launch.assert_awaited_once()  # type: ignore[attr-defined]
+    host._shutdown_chromium.assert_awaited_once()
+    host._launch.assert_awaited_once()
 
 
 @pytest.mark.unit
 async def test_recover_crash_with_no_sessions_still_relaunches() -> None:
     host = ChromiumHost()
-    host._shutdown_chromium = AsyncMock()  # type: ignore[method-assign]
-    host._launch = AsyncMock()  # type: ignore[method-assign]
+    host._shutdown_chromium = AsyncMock()
+    host._launch = AsyncMock()
     await host._recover_crash()
-    host._shutdown_chromium.assert_awaited_once()  # type: ignore[attr-defined]
-    host._launch.assert_awaited_once()  # type: ignore[attr-defined]
+    host._shutdown_chromium.assert_awaited_once()
+    host._launch.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -1633,8 +1633,8 @@ async def test_cdp_call_wrapper_forwards_to_cdp_call_fn() -> None:
 async def test_reaper_loop_recovers_when_chromium_down() -> None:
     host = ChromiumHost()
     host._proc = MagicMock(returncode=1)  # chromium_up False
-    host._recover_crash = AsyncMock()  # type: ignore[method-assign]
-    host._reap_idle = AsyncMock()  # type: ignore[method-assign]
+    host._recover_crash = AsyncMock()
+    host._reap_idle = AsyncMock()
     call_count = 0
 
     async def fake_sleep(_sec: float) -> None:
@@ -1646,16 +1646,16 @@ async def test_reaper_loop_recovers_when_chromium_down() -> None:
     with patch.object(chromium.asyncio, "sleep", side_effect=fake_sleep):
         with pytest.raises(asyncio.CancelledError):
             await host._reaper_loop()
-    host._recover_crash.assert_awaited_once()  # type: ignore[attr-defined]
-    host._reap_idle.assert_not_called()  # type: ignore[attr-defined]
+    host._recover_crash.assert_awaited_once()
+    host._reap_idle.assert_not_called()
 
 
 @pytest.mark.unit
 async def test_reaper_loop_reaps_when_chromium_up() -> None:
     host = ChromiumHost()
     host._proc = MagicMock(returncode=None)
-    host._recover_crash = AsyncMock()  # type: ignore[method-assign]
-    host._reap_idle = AsyncMock()  # type: ignore[method-assign]
+    host._recover_crash = AsyncMock()
+    host._reap_idle = AsyncMock()
     call_count = 0
 
     async def fake_sleep(_sec: float) -> None:
@@ -1667,16 +1667,16 @@ async def test_reaper_loop_reaps_when_chromium_up() -> None:
     with patch.object(chromium.asyncio, "sleep", side_effect=fake_sleep):
         with pytest.raises(asyncio.CancelledError):
             await host._reaper_loop()
-    host._reap_idle.assert_awaited_once()  # type: ignore[attr-defined]
-    host._recover_crash.assert_not_called()  # type: ignore[attr-defined]
+    host._reap_idle.assert_awaited_once()
+    host._recover_crash.assert_not_called()
 
 
 @pytest.mark.unit
 async def test_reaper_loop_swallows_sweep_exception_and_continues() -> None:
     host = ChromiumHost()
     host._proc = MagicMock(returncode=None)
-    host._reap_idle = AsyncMock(side_effect=[RuntimeError("boom"), None])  # type: ignore[method-assign]
-    host._recover_crash = AsyncMock()  # type: ignore[method-assign]
+    host._reap_idle = AsyncMock(side_effect=[RuntimeError("boom"), None])
+    host._recover_crash = AsyncMock()
     call_count = 0
 
     async def fake_sleep(_sec: float) -> None:
@@ -1689,7 +1689,7 @@ async def test_reaper_loop_swallows_sweep_exception_and_continues() -> None:
         with pytest.raises(asyncio.CancelledError):
             await host._reaper_loop()
     # first sweep failed, second succeeded, both were attempted despite exception
-    assert host._reap_idle.call_count == 2  # type: ignore[attr-defined]
+    assert host._reap_idle.call_count == 2
 
 
 @pytest.mark.unit
@@ -1699,14 +1699,14 @@ async def test_reaper_loop_relabels_chromium_down_after_recovery() -> None:
     # first call: up=False -> recover, second: up=True -> reap
     proc_mock = MagicMock(returncode=1)
     host._proc = proc_mock
-    host._recover_crash = AsyncMock()  # type: ignore[method-assign]
-    host._reap_idle = AsyncMock()  # type: ignore[method-assign]
+    host._recover_crash = AsyncMock()
+    host._reap_idle = AsyncMock()
 
     async def fake_recover():
         # simulate that after recovery chromium is up
         host._proc = MagicMock(returncode=None)
 
-    host._recover_crash.side_effect = fake_recover  # type: ignore[method-assign]
+    host._recover_crash.side_effect = fake_recover
     call_count = 0
 
     async def fake_sleep(_sec: float) -> None:
@@ -1718,16 +1718,16 @@ async def test_reaper_loop_relabels_chromium_down_after_recovery() -> None:
     with patch.object(chromium.asyncio, "sleep", side_effect=fake_sleep):
         with pytest.raises(asyncio.CancelledError):
             await host._reaper_loop()
-    host._recover_crash.assert_awaited_once()  # type: ignore[attr-defined]
-    host._reap_idle.assert_awaited_once()  # type: ignore[attr-defined]
+    host._recover_crash.assert_awaited_once()
+    host._reap_idle.assert_awaited_once()
 
 
 @pytest.mark.unit
 async def test_reap_idle_handles_gone_session_between_stale_and_lock() -> None:
     # covers line 632: session is None after stale list computed (race)
     # Use a custom dict-like that can mock `get` without patching builtin `dict.get`.
-    class FakeSessions(dict):  # type: ignore[type-arg]
-        def get(self, key, default=None):  # type: ignore[override]
+    class FakeSessions(dict):
+        def get(self, key, default=None):
             # Simulate that stale list was computed with ghost present, but by the time
             # the loop does `self._sessions.get(session_id)` the entry is gone.
             return None
@@ -1748,12 +1748,12 @@ async def test_reap_idle_handles_gone_session_between_stale_and_lock() -> None:
     fake = FakeSessions({"ghost": ghost})
     # Override values() to still return the ghost so stale = ["ghost"]
     # get() returns None, so the loop hits `if session is None: continue`
-    host._sessions = fake  # type: ignore[assignment]
-    host._dispose_context_id = AsyncMock()  # type: ignore[method-assign]
+    host._sessions = fake
+    host._dispose_context_id = AsyncMock()
     with patch.object(chromium.time, "monotonic", return_value=9999):
         with patch.object(chromium.settings, "BROWSER_HOST_IDLE_TTL_SECONDS", 1):
             await host._reap_idle()
-    host._dispose_context_id.assert_not_called()  # type: ignore[attr-defined]
+    host._dispose_context_id.assert_not_called()
 
 
 @pytest.mark.unit
@@ -1761,19 +1761,19 @@ async def test_reap_idle_handles_missing_on_second_lookup_with_real_dict() -> No
     # Simple sanity: empty sessions should not dispose anything (covers no-stale path)
     host = ChromiumHost()
     host._proc = MagicMock(returncode=None)
-    host._dispose_context_id = AsyncMock()  # type: ignore[method-assign]
+    host._dispose_context_id = AsyncMock()
     with patch.object(chromium.time, "monotonic", return_value=9999):
         with patch.object(chromium.settings, "BROWSER_HOST_IDLE_TTL_SECONDS", 1):
             await host._reap_idle()
-    host._dispose_context_id.assert_not_called()  # type: ignore[attr-defined]
+    host._dispose_context_id.assert_not_called()
 
 
 @pytest.mark.unit
 async def test_reaper_loop_propagates_cancelled_from_reap() -> None:
     host = ChromiumHost()
     host._proc = MagicMock(returncode=None)
-    host._reap_idle = AsyncMock(side_effect=asyncio.CancelledError)  # type: ignore[method-assign]
-    host._recover_crash = AsyncMock()  # type: ignore[method-assign]
+    host._reap_idle = AsyncMock(side_effect=asyncio.CancelledError)
+    host._recover_crash = AsyncMock()
     with patch.object(chromium.asyncio, "sleep", new=AsyncMock()):
         with pytest.raises(asyncio.CancelledError):
             await host._reaper_loop()
@@ -1783,8 +1783,8 @@ async def test_reaper_loop_propagates_cancelled_from_reap() -> None:
 async def test_reaper_loop_propagates_cancelled_from_recover() -> None:
     host = ChromiumHost()
     host._proc = MagicMock(returncode=1)  # chromium_up False -> recover path
-    host._recover_crash = AsyncMock(side_effect=asyncio.CancelledError)  # type: ignore[method-assign]
-    host._reap_idle = AsyncMock()  # type: ignore[method-assign]
+    host._recover_crash = AsyncMock(side_effect=asyncio.CancelledError)
+    host._reap_idle = AsyncMock()
     with patch.object(chromium.asyncio, "sleep", new=AsyncMock()):
         with pytest.raises(asyncio.CancelledError):
             await host._reaper_loop()
@@ -1811,16 +1811,16 @@ class _LowLevelCDPFake:
     ) -> dict[str, object]:
         self.calls.append((method, params, session_id))
         if method in self.responses:
-            return self.responses[method]  # type: ignore[return-value]
+            return self.responses[method]
         # sensible defaults per method
         if method == "Target.createBrowserContext":
-            return {"browserContextId": "ctx-low"}  # type: ignore[return-value]
+            return {"browserContextId": "ctx-low"}
         if method == "Target.createTarget":
-            return {"targetId": "t-low"}  # type: ignore[return-value]
+            return {"targetId": "t-low"}
         if method == "Target.getTargets":
-            return {"targetInfos": []}  # type: ignore[return-value]
+            return {"targetInfos": []}
         if method == "Storage.getCookies":
-            return {"cookies": []}  # type: ignore[return-value]
+            return {"cookies": []}
         if method == "Browser.setDownloadBehavior":
             return {}
         if method == "Storage.setCookies":
@@ -1828,9 +1828,9 @@ class _LowLevelCDPFake:
         if method == "Target.disposeBrowserContext":
             return {}
         if method == "Target.attachToTarget":
-            return {"sessionId": "sess-attach"}  # type: ignore[return-value]
+            return {"sessionId": "sess-attach"}
         if method == "Runtime.evaluate":
-            return {"result": {"value": None}}  # type: ignore[return-value]
+            return {"result": {"value": None}}
         if method == "Target.detachFromTarget":
             return {}
         return {}
@@ -1839,7 +1839,7 @@ class _LowLevelCDPFake:
 def _host_with_low_fake(responses: dict[str, dict[str, object]] | None = None) -> ChromiumHost:
     host = ChromiumHost()
     host._proc = MagicMock(returncode=None)
-    host._cdp = _LowLevelCDPFake(responses)  # type: ignore[assignment]
+    host._cdp = _LowLevelCDPFake(responses)
     return host
 
 
@@ -1851,13 +1851,13 @@ async def test_cdp_call_timeout_raises_and_logs() -> None:
             method: str,
             params: dict[str, object] | None = None,
             session_id: str | None = None,
-        ) -> dict[str, object]:  # type: ignore[override]
+        ) -> dict[str, object]:
             await asyncio.Event().wait()
             return {}
 
     with patch.object(chromium.log, "error") as mock_err:
         with pytest.raises(CDPTimeoutError) as exc_info:
-            await cdp_call(HangingFake(), "Target.getTargets", timeout=0.04)  # type: ignore[arg-type]
+            await cdp_call(HangingFake(), "Target.getTargets", timeout=0.04)
         assert exc_info.value.args[0] == "Target.getTargets"
         mock_err.assert_called_once()
 
@@ -1871,7 +1871,7 @@ async def test_cdp_call_wrapper_uses_bounded_timeout(monkeypatch: pytest.MonkeyP
         await asyncio.Event().wait()
         return {}
 
-    host._cdp.send_raw = hanging_send_raw  # type: ignore[method-assign]
+    host._cdp.send_raw = hanging_send_raw
     # patch the module-level timeout to be tiny so the test is fast
     monkeypatch.setattr(chromium, "_CDP_CALL_TIMEOUT_SECONDS", 0.05)
     with pytest.raises(CDPTimeoutError):
@@ -1893,7 +1893,7 @@ async def test_create_context_end_to_end_real_stack(monkeypatch: pytest.MonkeyPa
     assert host.get(session.session_id) is session
     assert host._pending_slots == 0
     # verify low-level calls were made (proves real _cdp_call/cdp_call exercised)
-    methods = [c[0] for c in host._cdp.calls]  # type: ignore[attr-defined]
+    methods = [c[0] for c in host._cdp.calls]
     assert "Target.createBrowserContext" in methods
     assert "Browser.setDownloadBehavior" in methods
     assert "Target.createTarget" in methods
@@ -1918,15 +1918,15 @@ async def test_create_context_with_storage_state_end_to_end(
         ],
         "origins": [],
     }
-    session = await host.create_context(state)  # type: ignore[arg-type]
+    session = await host.create_context(state)
     assert session.context_id == "ctx-low"
-    methods = [c[0] for c in host._cdp.calls]  # type: ignore[attr-defined]
+    methods = [c[0] for c in host._cdp.calls]
     assert "Storage.setCookies" in methods
     # verify cookie shape passed to CDP
-    for m, p, _ in host._cdp.calls:  # type: ignore[attr-defined]
+    for m, p, _ in host._cdp.calls:
         if m == "Storage.setCookies":
             assert p is not None
-            assert len(p["cookies"]) == 1  # type: ignore[index]
+            assert len(p["cookies"]) == 1
 
 
 @pytest.mark.unit
@@ -1936,8 +1936,8 @@ async def test_create_context_empty_storage_state_does_not_seed(
     monkeypatch.setattr(settings, "BROWSER_HOST_MAX_SESSIONS", 5)
     host = _host_with_low_fake()
     state = {"cookies": [], "origins": []}
-    await host.create_context(state)  # type: ignore[arg-type]
-    methods = [c[0] for c in host._cdp.calls]  # type: ignore[attr-defined]
+    await host.create_context(state)
+    methods = [c[0] for c in host._cdp.calls]
     assert "Storage.setCookies" not in methods
 
 
@@ -1953,20 +1953,20 @@ async def test_create_context_failure_before_context_id_no_dispose(
             method: str,
             params: dict[str, object] | None = None,
             session_id: str | None = None,
-        ) -> dict[str, object]:  # type: ignore[override]
+        ) -> dict[str, object]:
             if method == "Target.createBrowserContext":
                 raise RuntimeError("early boom")
             return {}
 
     host = ChromiumHost()
     host._proc = MagicMock(returncode=None)
-    host._cdp = FailFirst()  # type: ignore[assignment]
+    host._cdp = FailFirst()
     # patch _dispose_context_id to detect if it was called
-    host._dispose_context_id = AsyncMock()  # type: ignore[method-assign]
+    host._dispose_context_id = AsyncMock()
     with pytest.raises(RuntimeError, match="early boom"):
         await host.create_context(None)
     assert host._pending_slots == 0
-    host._dispose_context_id.assert_not_called()  # type: ignore[attr-defined]
+    host._dispose_context_id.assert_not_called()
 
 
 @pytest.mark.unit
@@ -2001,7 +2001,7 @@ async def test_dispose_context_end_to_end_real_dump(monkeypatch: pytest.MonkeyPa
     assert result["cookies"][0]["name"] == "a"
     assert host.get("s-e2e") is None
     # dispose should have been called via real _dispose_context_id -> _cdp_call
-    methods = [c[0] for c in host._cdp.calls]  # type: ignore[attr-defined]
+    methods = [c[0] for c in host._cdp.calls]
     assert "Target.disposeBrowserContext" in methods
 
 
@@ -2017,7 +2017,7 @@ async def test_dispose_context_when_chromium_down_returns_empty_and_clears() -> 
         last_activity_at=0,
     )
     host._sessions["s-down"] = s
-    host._cdp = _LowLevelCDPFake()  # type: ignore[assignment]
+    host._cdp = _LowLevelCDPFake()
     # _dump_storage_state will early return empty when chromium_up is False
     result = await host.dispose_context("s-down")
     assert result == {"cookies": [], "origins": []}
@@ -2036,32 +2036,32 @@ async def test_dispose_context_dump_failure_still_clears_and_logs() -> None:
         last_activity_at=0,
     )
     host._sessions["s-fail"] = s
-    host._dump_storage_state = AsyncMock(side_effect=RuntimeError("dump boom"))  # type: ignore[method-assign]
-    host._dispose_context_id = AsyncMock()  # type: ignore[method-assign]
+    host._dump_storage_state = AsyncMock(side_effect=RuntimeError("dump boom"))
+    host._dispose_context_id = AsyncMock()
     with patch.object(chromium.log, "error") as mock_err:
         with pytest.raises(RuntimeError, match="dump boom"):
             await host.dispose_context("s-fail")
         # error log for disposed without saving
         assert mock_err.called
     assert host.get("s-fail") is None
-    host._dispose_context_id.assert_awaited_once_with("ctx-fail")  # type: ignore[attr-defined]
+    host._dispose_context_id.assert_awaited_once_with("ctx-fail")
 
 
 @pytest.mark.unit
 async def test_seed_cookies_empty_via_real_path() -> None:
     host = _host_with_low_fake()
-    await host._seed_cookies("ctx-low", {"cookies": [], "origins": []})  # type: ignore[arg-type]
-    assert len(host._cdp.calls) == 0  # type: ignore[attr-defined]
-    await host._seed_cookies("ctx-low", {"cookies": None, "origins": []})  # type: ignore[typeddict-item]
-    assert len(host._cdp.calls) == 0  # type: ignore[attr-defined]
+    await host._seed_cookies("ctx-low", {"cookies": [], "origins": []})
+    assert len(host._cdp.calls) == 0
+    await host._seed_cookies("ctx-low", {"cookies": None, "origins": []})
+    assert len(host._cdp.calls) == 0
 
 
 @pytest.mark.unit
 async def test_seed_cookies_with_real_cdp_call() -> None:
     host = _host_with_low_fake()
     state = {"cookies": [{"name": "n", "value": "v", "domain": "ex.com"}], "origins": []}
-    await host._seed_cookies("ctx-low", state)  # type: ignore[arg-type]
-    assert host._cdp.calls[0][0] == "Storage.setCookies"  # type: ignore[attr-defined]
+    await host._seed_cookies("ctx-low", state)
+    assert host._cdp.calls[0][0] == "Storage.setCookies"
 
 
 @pytest.mark.unit
@@ -2114,7 +2114,7 @@ async def test_dump_origins_real_multiple_pages() -> None:
             method: str,
             params: dict[str, object] | None = None,
             session_id: str | None = None,
-        ) -> dict[str, object]:  # type: ignore[override]
+        ) -> dict[str, object]:
             nonlocal call_idx
             call_idx += 1
             if method == "Target.getTargets":
@@ -2123,9 +2123,9 @@ async def test_dump_origins_real_multiple_pages() -> None:
                         {"targetId": "t1", "type": "page", "browserContextId": "ctx-low"},
                         {"targetId": "t2", "type": "page", "browserContextId": "ctx-low"},
                     ]
-                }  # type: ignore[return-value]
+                }
             if method == "Target.attachToTarget":
-                return {"sessionId": f"sess-{params['targetId']}"}  # type: ignore[return-value, index]
+                return {"sessionId": f"sess-{params['targetId']}"}
             if method == "Runtime.evaluate":
                 return {
                     "result": {
@@ -2134,14 +2134,14 @@ async def test_dump_origins_real_multiple_pages() -> None:
                             "localStorage": [{"name": "k", "value": "v"}],
                         }
                     }
-                }  # type: ignore[return-value]
+                }
             if method == "Target.detachFromTarget":
                 return {}
             return {}
 
     host = ChromiumHost()
     host._proc = MagicMock(returncode=None)
-    host._cdp = MultiPageFake()  # type: ignore[assignment]
+    host._cdp = MultiPageFake()
     s = HostSession(
         session_id="s1", context_id="ctx-low", target_id="t1", created_at=0, last_activity_at=0
     )
@@ -2193,7 +2193,7 @@ async def test_healthz_real_responsive_and_unresponsive(monkeypatch: pytest.Monk
 
     fake = MagicMock()
     fake.send_raw = hanging
-    host2._cdp = fake  # type: ignore[assignment]
+    host2._cdp = fake
     monkeypatch.setattr(chromium, "_CDP_HEALTH_TIMEOUT_SECONDS", 0.05)
     res2 = await host2.healthz()
     assert res2["ok"] is False
@@ -2267,12 +2267,12 @@ async def test_launch_real_arg_composition_headed_false_shell(
     monkeypatch.setattr(
         chromium.asyncio, "create_subprocess_exec", AsyncMock(return_value=mock_proc)
     )
-    host._await_cdp_ready = AsyncMock(return_value="ws://127.0.0.1:9222")  # type: ignore[method-assign]
+    host._await_cdp_ready = AsyncMock(return_value="ws://127.0.0.1:9222")
     mock_cdp = MagicMock()
     mock_cdp.start = AsyncMock()
     with patch.object(chromium, "CDPClient", return_value=mock_cdp):
         await host._launch()
-    args = chromium.asyncio.create_subprocess_exec.call_args[0]  # type: ignore[attr-defined]
+    args = chromium.asyncio.create_subprocess_exec.call_args[0]
     assert "--remote-debugging-port=0" in args
     assert "--headless" in args
     assert any("max-old-space-size=512" in a for a in args)
@@ -2285,7 +2285,7 @@ async def test_launch_real_arg_composition_headed_false_shell(
 @pytest.mark.unit
 async def test_await_cdp_ready_handles_missing_key(monkeypatch: pytest.MonkeyPatch) -> None:
     host = ChromiumHost()
-    host._read_devtools_port = AsyncMock(return_value=9222)  # type: ignore[method-assign]
+    host._read_devtools_port = AsyncMock(return_value=9222)
     mock_resp = MagicMock()
     mock_resp.json.return_value = {}  # missing webSocketDebuggerUrl -> KeyError
     mock_resp.raise_for_status = MagicMock()
@@ -2355,11 +2355,11 @@ async def test_reap_idle_via_real_lock(monkeypatch: pytest.MonkeyPatch) -> None:
         viewer_count=0,
     )
     host._sessions = {"stale": s_stale, "keep": s_keep}
-    host._dispose_context_id = AsyncMock()  # type: ignore[method-assign]
+    host._dispose_context_id = AsyncMock()
     await host._reap_idle()
     assert "stale" not in host._sessions
     assert "keep" in host._sessions
-    host._dispose_context_id.assert_awaited_once_with("ctx-stale")  # type: ignore[attr-defined]
+    host._dispose_context_id.assert_awaited_once_with("ctx-stale")
 
 
 @pytest.mark.unit
@@ -2369,8 +2369,8 @@ async def test_recover_crash_real_marks_dead() -> None:
         session_id="s1", context_id="ctx1", target_id="t1", created_at=0, last_activity_at=0
     )
     host._sessions["s1"] = s
-    host._shutdown_chromium = AsyncMock()  # type: ignore[method-assign]
-    host._launch = AsyncMock()  # type: ignore[method-assign]
+    host._shutdown_chromium = AsyncMock()
+    host._launch = AsyncMock()
     await host._recover_crash()
     assert s.dead is True
     assert host._sessions == {}
@@ -2420,7 +2420,7 @@ def test_storage_state_cookie_to_cdp_real() -> None:
         "expires": 12345,
         "sameSite": "Lax",
     }
-    out = _storage_state_cookie_to_cdp(c)  # type: ignore[arg-type]
+    out = _storage_state_cookie_to_cdp(c)
     assert out["expires"] == 12345
     assert out["sameSite"] == "Lax"
 

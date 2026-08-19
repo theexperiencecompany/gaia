@@ -112,7 +112,7 @@ class TestBotProgressDeliverySession:
     async def test_emits_live_view_link(self, delivery):
         snapshot = BrowserSessionSnapshot(
             task="do thing",
-            status="running",  # type: ignore[arg-type]
+            status="running",
             session_id="sess-1",
         )
         with (
@@ -132,7 +132,7 @@ class TestBotProgressDeliverySession:
             assert "https://live.example.com/abc" in args[0][2][0]
 
     async def test_no_session_id_does_nothing(self, delivery):
-        snapshot = BrowserSessionSnapshot(task="t", status="running", session_id=None)  # type: ignore[arg-type]
+        snapshot = BrowserSessionSnapshot(task="t", status="running", session_id=None)
         with (
             patch(
                 "app.services.browser.bot_delivery.create_live_view_link", new=AsyncMock()
@@ -146,7 +146,7 @@ class TestBotProgressDeliverySession:
             mock_pub.assert_not_awaited()
 
     async def test_empty_session_id_does_nothing(self, delivery):
-        snapshot = BrowserSessionSnapshot(task="t", status="running", session_id="")  # type: ignore[arg-type]
+        snapshot = BrowserSessionSnapshot(task="t", status="running", session_id="")
         with (
             patch("app.services.browser.bot_delivery.create_live_view_link", new=AsyncMock()) as ml,
             patch(
@@ -353,7 +353,7 @@ class TestBotProgressDeliveryHandoff:
 
 class TestBotProgressDeliveryResult:
     async def test_success_message(self, delivery):
-        snap = BrowserResultSnapshot(status="completed", success=True, summary="Done", steps=3)  # type: ignore[arg-type]
+        snap = BrowserResultSnapshot(status="completed", success=True, summary="Done", steps=3)
         with patch(
             "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
         ) as mp:
@@ -362,7 +362,7 @@ class TestBotProgressDeliveryResult:
             assert "✅ Done." in msg
 
     async def test_failure_message(self, delivery):
-        snap = BrowserResultSnapshot(status="failed", success=False, summary="Failed", steps=2)  # type: ignore[arg-type]
+        snap = BrowserResultSnapshot(status="failed", success=False, summary="Failed", steps=2)
         with patch(
             "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
         ) as mp:
@@ -372,7 +372,7 @@ class TestBotProgressDeliveryResult:
 
     async def test_with_replay_url_appended(self, delivery):
         snap = BrowserResultSnapshot(
-            status="completed",  # type: ignore[arg-type]
+            status="completed",
             success=True,
             summary="Done",
             steps=1,
@@ -387,7 +387,7 @@ class TestBotProgressDeliveryResult:
             assert "recap" in msg.lower()
 
     async def test_without_replay_url_no_extra(self, delivery):
-        snap = BrowserResultSnapshot(status="completed", success=True, summary="Done", steps=1)  # type: ignore[arg-type]
+        snap = BrowserResultSnapshot(status="completed", success=True, summary="Done", steps=1)
         with patch(
             "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
         ) as mp:
@@ -397,7 +397,7 @@ class TestBotProgressDeliveryResult:
 
     async def test_failed_with_replay_url(self, delivery):
         snap = BrowserResultSnapshot(
-            status="failed",  # type: ignore[arg-type]
+            status="failed",
             success=False,
             summary="Fail",
             steps=1,

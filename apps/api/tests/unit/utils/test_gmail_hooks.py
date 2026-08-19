@@ -34,7 +34,7 @@ def _mock_tool(
 def _make_params(arguments: dict[str, Any] | None = None, **extra: Any) -> dict[str, Any]:
     params: dict[str, Any] = {"arguments": arguments or {}}
     params.update(extra)
-    return params  # type: ignore[return-value]
+    return params
 
 
 def _make_response(data: Any, successful: bool = True) -> dict[str, Any]:
@@ -204,14 +204,14 @@ class TestContactSummary:
         from app.utils.composio_hooks.gmail_hooks import _contact_summary
 
         card = {"name": "Alice", "email": "", "phone": "", "resource_name": "people/1"}
-        summary = _contact_summary(card)  # type: ignore[arg-type]
+        summary = _contact_summary(card)
         assert summary == {"name": "Alice"}
 
     def test_includes_email_and_phone_when_present(self) -> None:
         from app.utils.composio_hooks.gmail_hooks import _contact_summary
 
         card = {"name": "Bob", "email": "bob@x.com", "phone": "555", "resource_name": "p/1"}
-        summary = _contact_summary(card)  # type: ignore[arg-type]
+        summary = _contact_summary(card)
         assert summary["email"] == "bob@x.com"
         assert summary["phone"] == "555"
 
@@ -219,7 +219,7 @@ class TestContactSummary:
         from app.utils.composio_hooks.gmail_hooks import _contact_summary
 
         card = {"name": "Bob", "email": "bob@x.com", "phone": "", "resource_name": "p/1"}
-        summary = _contact_summary(card)  # type: ignore[arg-type]
+        summary = _contact_summary(card)
         assert "phone" not in summary
         assert summary["email"] == "bob@x.com"
 
@@ -334,7 +334,7 @@ class TestGmailComposeRequireSubjectSchemaModifier:
         )
 
         schema = _mock_tool(input_parameters=None)
-        schema.input_parameters = None  # type: ignore[assignment]
+        schema.input_parameters = None
         result = gmail_compose_require_subject_schema_modifier("GMAIL_SEND_EMAIL", "gmail", schema)
         assert result is schema
 
@@ -531,7 +531,7 @@ class TestGmailComposeBeforeHook:
         with patch(
             "app.utils.composio_hooks.gmail_hooks.normalize_email_body_to_html"
         ) as mock_norm:
-            params = _make_params({"body": 123, "recipient_email": "a@b.com", "subject": "hi"})  # type: ignore[dict-item]
+            params = _make_params({"body": 123, "recipient_email": "a@b.com", "subject": "hi"})
             gmail_compose_before_hook("GMAIL_SEND_EMAIL", "gmail", params)
             mock_norm.assert_not_called()
 
@@ -1070,7 +1070,7 @@ class TestGmailGetContactsBeforeHook:
         result = gmail_get_contacts_before_hook("GMAIL_GET_CONTACTS", "gmail", params)
         assert result["arguments"]["page_size"] == 50
         # progress streamed
-        mock_writer.return_value.assert_called_once()  # type: ignore[union-attr]
+        mock_writer.return_value.assert_called_once()
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
     def test_respects_explicit_page_size(self, mock_writer: MagicMock) -> None:
@@ -1362,42 +1362,42 @@ class TestGmailAttachmentAfterHook:
             },
             successful=True,
         )
-        result = gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "gmail", response)  # type: ignore[arg-type]
-        assert result["attachmentId"] == "att1"  # type: ignore[index]
-        assert result["filename"] == "report.pdf"  # type: ignore[index]
-        assert result["size"] == 1024  # type: ignore[index]
-        assert "data" not in result  # type: ignore[operator]
-        assert "message" in result  # type: ignore[operator]
+        result = gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "gmail", response)
+        assert result["attachmentId"] == "att1"
+        assert result["filename"] == "report.pdf"
+        assert result["size"] == 1024
+        assert "data" not in result
+        assert "message" in result
 
     def test_unsuccessful_passthrough(self) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_attachment_after_hook
 
         response = _make_response({"error": "Not found"}, successful=False)
-        result = gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "gmail", response)  # type: ignore[arg-type]
+        result = gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "gmail", response)
         assert result == {"error": "Not found"}
 
     def test_non_dict_data_passthrough_successful_true(self) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_attachment_after_hook
 
         response = {"data": "bare string data", "successful": True}
-        result = gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "gmail", response)  # type: ignore[arg-type]
+        result = gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "gmail", response)
         assert result == "bare string data"
 
     def test_non_dict_data_passthrough_successful_false(self) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_attachment_after_hook
 
         response = {"data": "bare string", "successful": False}
-        result = gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "gmail", response)  # type: ignore[arg-type]
+        result = gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "gmail", response)
         assert result == "bare string"
 
     def test_missing_fields_defaults(self) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_attachment_after_hook
 
         response = _make_response({}, successful=True)
-        result = gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "gmail", response)  # type: ignore[arg-type]
-        assert result["attachmentId"] == ""  # type: ignore[index]
-        assert result["filename"] == ""  # type: ignore[index]
-        assert result["size"] == 0  # type: ignore[index]
+        result = gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "gmail", response)
+        assert result["attachmentId"] == ""
+        assert result["filename"] == ""
+        assert result["size"] == 0
 
     @patch("app.utils.composio_hooks.gmail_hooks.log")
     def test_exception_inside_processing(self, mock_log: MagicMock) -> None:
@@ -1405,11 +1405,11 @@ class TestGmailAttachmentAfterHook:
 
         # response with successful True but data is dict that will be processed; make data.get raise?
         class BadDict(dict):
-            def get(self, *a, **kw):  # type: ignore[no-untyped-def]
+            def get(self, *a, **kw):
                 raise RuntimeError("bad get")
 
         response = {"data": BadDict({"attachmentId": "a"}), "successful": True}
-        result = gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "gmail", response)  # type: ignore[arg-type]
+        result = gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "gmail", response)
         # should fallback to raw data via exception handler
         assert isinstance(result, BadDict)
 

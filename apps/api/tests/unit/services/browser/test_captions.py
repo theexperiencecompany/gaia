@@ -372,11 +372,11 @@ class TestCaptionFromActions:
         class Empty:
             pass
 
-        assert caption_from_actions(Empty()) == ""  # type: ignore[arg-type]
+        assert caption_from_actions(Empty()) == ""
 
     def test_action_none(self):
         out = _FakeOutput(None)
-        assert caption_from_actions(out) == ""  # type: ignore[arg-type]
+        assert caption_from_actions(out) == ""
 
     def test_action_empty_list(self):
         assert caption_from_actions(_FakeOutput([])) == ""
@@ -427,16 +427,16 @@ class TestCaptionFromActions:
                 return {"click": {}, "scroll": {}}
 
         out = _FakeOutput([MultiAction()])
-        result = caption_from_actions(out)  # type: ignore[arg-type]
+        result = caption_from_actions(out)
         assert "Clicking" in result
         assert "Scrolling" in result
 
     def test_non_dict_params_treated_as_empty(self):
-        out = _FakeOutput([_FakeActionNonDictParams()])  # type: ignore[arg-type]
+        out = _FakeOutput([_FakeActionNonDictParams()])
         assert caption_from_actions(out) == "Clicking"
 
     def test_no_model_dump_returns_empty(self):
-        out = _FakeOutput([_FakeActionNoDump()])  # type: ignore[arg-type]
+        out = _FakeOutput([_FakeActionNoDump()])
         assert caption_from_actions(out) == ""
 
     def test_deduplicates(self):

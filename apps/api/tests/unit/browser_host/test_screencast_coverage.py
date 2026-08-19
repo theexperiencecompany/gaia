@@ -135,7 +135,7 @@ async def test_refresh_meta_sets_url_and_title() -> None:
             return_value={"targetInfo": {"url": "https://example.com", "title": "Example"}}
         ),
     ) as mock_call:
-        await _refresh_meta(fake_cdp, "target-1", meta)  # type: ignore[arg-type]
+        await _refresh_meta(fake_cdp, "target-1", meta)
         mock_call.assert_awaited_once_with(
             fake_cdp, "Target.getTargetInfo", {"targetId": "target-1"}
         )
@@ -150,7 +150,7 @@ async def test_refresh_meta_missing_fields_sets_none() -> None:
     meta.url = "old"
     meta.title = "old"
     with patch.object(screencast, "cdp_call", new=AsyncMock(return_value={"targetInfo": {}})):
-        await _refresh_meta(fake_cdp, "t", meta)  # type: ignore[arg-type]
+        await _refresh_meta(fake_cdp, "t", meta)
     assert meta.url is None
     assert meta.title is None
 
@@ -160,7 +160,7 @@ async def test_refresh_meta_no_target_info() -> None:
     fake_cdp = MagicMock()
     meta = _PageMeta()
     with patch.object(screencast, "cdp_call", new=AsyncMock(return_value={})):
-        await _refresh_meta(fake_cdp, "t", meta)  # type: ignore[arg-type]
+        await _refresh_meta(fake_cdp, "t", meta)
     assert meta.url is None
 
 
@@ -173,7 +173,7 @@ async def test_refresh_meta_no_target_info() -> None:
 async def test_start_screencast_sends_jpeg_with_quality() -> None:
     fake_cdp = MagicMock()
     with patch.object(screencast, "cdp_call", new=AsyncMock()) as mock_call:
-        await _start_screencast(fake_cdp, "sess-1", 1280, 800)  # type: ignore[arg-type]
+        await _start_screencast(fake_cdp, "sess-1", 1280, 800)
         mock_call.assert_awaited_once()
         args = mock_call.call_args
         assert args[0][1] == "Page.startScreencast"
@@ -190,7 +190,7 @@ async def test_start_screencast_quality_only_for_jpeg(monkeypatch: pytest.Monkey
     fake_cdp = MagicMock()
     monkeypatch.setattr(screencast, "_SCREENCAST_FORMAT", "png")
     with patch.object(screencast, "cdp_call", new=AsyncMock()) as mock_call:
-        await _start_screencast(fake_cdp, "sess-1", 640, 480)  # type: ignore[arg-type]
+        await _start_screencast(fake_cdp, "sess-1", 640, 480)
         params = mock_call.call_args[0][2]
         assert params["format"] == "png"
         assert "quality" not in params
@@ -214,7 +214,7 @@ async def test_send_frames_sends_json_with_meta() -> None:
     with pytest.raises(asyncio.CancelledError):
         # _send_frames loops forever; first iteration sends then second blocks on get
         # we make send_text cancel to exit
-        await _send_frames(client_ws, frames, meta)  # type: ignore[arg-type]
+        await _send_frames(client_ws, frames, meta)
 
     client_ws.send_text.assert_awaited_once()
     sent = json.loads(client_ws.send_text.call_args[0][0])
@@ -233,7 +233,7 @@ async def test_send_frames_with_none_meta() -> None:
     client_ws = MagicMock()
     client_ws.send_text = AsyncMock(side_effect=asyncio.CancelledError)
     with pytest.raises(asyncio.CancelledError):
-        await _send_frames(client_ws, frames, meta)  # type: ignore[arg-type]
+        await _send_frames(client_ws, frames, meta)
     sent = json.loads(client_ws.send_text.call_args[0][0])
     assert sent["url"] is None
     assert sent["title"] is None
@@ -258,7 +258,7 @@ async def test_apply_input_mouse_dispatch() -> None:
     )
     with patch.object(screencast, "cdp_call", new=AsyncMock()) as mock_call:
         with pytest.raises(asyncio.CancelledError):
-            await _apply_input(host, session, fake_cdp, client_ws, "page-sess")  # type: ignore[arg-type]
+            await _apply_input(host, session, fake_cdp, client_ws, "page-sess")
         mock_call.assert_awaited_once()
         assert mock_call.call_args[0][1] == "Input.dispatchMouseEvent"
         assert mock_call.call_args[0][2]["x"] == 10
@@ -279,7 +279,7 @@ async def test_apply_input_key_dispatch() -> None:
     )
     with patch.object(screencast, "cdp_call", new=AsyncMock()) as mock_call:
         with pytest.raises(asyncio.CancelledError):
-            await _apply_input(host, session, fake_cdp, client_ws, "page-sess")  # type: ignore[arg-type]
+            await _apply_input(host, session, fake_cdp, client_ws, "page-sess")
         assert mock_call.call_args[0][1] == "Input.dispatchKeyEvent"
         assert mock_call.call_args[0][2]["key"] == "a"
 
@@ -298,7 +298,7 @@ async def test_apply_input_resize_restarts_screencast() -> None:
     )
     with patch.object(screencast, "_start_screencast", new=AsyncMock()) as mock_screencast:
         with pytest.raises(asyncio.CancelledError):
-            await _apply_input(host, session, fake_cdp, client_ws, "page-sess")  # type: ignore[arg-type]
+            await _apply_input(host, session, fake_cdp, client_ws, "page-sess")
         mock_screencast.assert_awaited_once_with(fake_cdp, "page-sess", 640, 480)
 
 
@@ -316,7 +316,7 @@ async def test_apply_input_resize_defaults_when_missing() -> None:
     )
     with patch.object(screencast, "_start_screencast", new=AsyncMock()) as mock_screencast:
         with pytest.raises(asyncio.CancelledError):
-            await _apply_input(host, session, fake_cdp, client_ws, "page-sess")  # type: ignore[arg-type]
+            await _apply_input(host, session, fake_cdp, client_ws, "page-sess")
         mock_screencast.assert_awaited_once_with(
             fake_cdp, "page-sess", _DEFAULT_MAX_WIDTH, _DEFAULT_MAX_HEIGHT
         )
@@ -336,7 +336,7 @@ async def test_apply_input_unknown_type_ignored() -> None:
     )
     with patch.object(screencast, "cdp_call", new=AsyncMock()) as mock_call:
         with pytest.raises(asyncio.CancelledError):
-            await _apply_input(host, session, fake_cdp, client_ws, "page-sess")  # type: ignore[arg-type]
+            await _apply_input(host, session, fake_cdp, client_ws, "page-sess")
         mock_call.assert_not_called()
         host.touch.assert_called_once_with("s1")
 
@@ -355,7 +355,7 @@ async def test_register_frame_handler_ack_and_enqueue() -> None:
     background: set[asyncio.Task] = set()
 
     with patch.object(screencast, "cdp_call", new=AsyncMock(return_value=None)):
-        _register_frame_handler(fake_cdp, "page-sess", frames, background)  # type: ignore[arg-type]
+        _register_frame_handler(fake_cdp, "page-sess", frames, background)
         # capture handler
         handler = registry.register.call_args[0][1]
         # call handler — needs running loop for ensure_future
@@ -381,7 +381,7 @@ async def test_register_frame_handler_drops_when_queue_full() -> None:
     background: set[asyncio.Task] = set()
 
     with patch.object(screencast, "cdp_call", new=AsyncMock(return_value=None)):
-        _register_frame_handler(fake_cdp, "page-sess", frames, background)  # type: ignore[arg-type]
+        _register_frame_handler(fake_cdp, "page-sess", frames, background)
         handler = registry.register.call_args[0][1]
         # this put should be dropped (QueueFull suppressed) but ack still scheduled
         handler({"data": "new", "sessionId": "s"}, None)
@@ -400,7 +400,7 @@ def test_register_frame_handler_registers_correct_event() -> None:
     registry = MagicMock()
     fake_cdp._event_registry = registry
     with patch.object(screencast, "cdp_call", new=AsyncMock()):
-        _register_frame_handler(fake_cdp, "page-sess", asyncio.Queue(), set())  # type: ignore[arg-type]
+        _register_frame_handler(fake_cdp, "page-sess", asyncio.Queue(), set())
         registry.register.assert_called_once()
         assert registry.register.call_args[0][0] == "Page.screencastFrame"
 
@@ -418,7 +418,7 @@ async def test_register_nav_handler_top_level_triggers_refresh() -> None:
     meta = _PageMeta()
     background: set[asyncio.Task] = set()
     with patch.object(screencast, "_refresh_meta", new=AsyncMock()):
-        _register_nav_handler(fake_cdp, "target-1", meta, background)  # type: ignore[arg-type]
+        _register_nav_handler(fake_cdp, "target-1", meta, background)
         handler = registry.register.call_args[0][1]
         handler({"frame": {"parentId": None}}, None)
         await asyncio.sleep(0)
@@ -437,7 +437,7 @@ def test_register_nav_handler_child_frame_not_refreshed() -> None:
     meta = _PageMeta()
     background: set[asyncio.Task] = set()
     with patch.object(screencast, "_refresh_meta", new=AsyncMock()) as mock_refresh:
-        _register_nav_handler(fake_cdp, "target-1", meta, background)  # type: ignore[arg-type]
+        _register_nav_handler(fake_cdp, "target-1", meta, background)
         handler = registry.register.call_args[0][1]
         handler({"frame": {"parentId": "parent-123"}}, None)
         assert len(background) == 0
@@ -451,7 +451,7 @@ async def test_register_nav_handler_missing_frame_triggers_refresh() -> None:
     fake_cdp._event_registry = registry
     background: set[asyncio.Task] = set()
     with patch.object(screencast, "_refresh_meta", new=AsyncMock()):
-        _register_nav_handler(fake_cdp, "target-1", _PageMeta(), background)  # type: ignore[arg-type]
+        _register_nav_handler(fake_cdp, "target-1", _PageMeta(), background)
         handler = registry.register.call_args[0][1]
         # no frame key => frame defaults to {}, parentId None => triggers refresh
         handler({}, None)
@@ -467,7 +467,7 @@ def test_register_nav_handler_registers_correct_event() -> None:
     fake_cdp = MagicMock()
     registry = MagicMock()
     fake_cdp._event_registry = registry
-    _register_nav_handler(fake_cdp, "t", _PageMeta(), set())  # type: ignore[arg-type]
+    _register_nav_handler(fake_cdp, "t", _PageMeta(), set())
     assert registry.register.call_args[0][0] == "Page.frameNavigated"
 
 
@@ -504,7 +504,7 @@ async def test_run_live_view_cleans_up_background_and_removes_viewer_on_success(
         ),
         patch.object(screencast, "pump_until_first_close", new=AsyncMock()),
     ):
-        await screencast.run_live_view(host, session, MagicMock())  # type: ignore[arg-type]
+        await screencast.run_live_view(host, session, MagicMock())
 
     host.add_viewer.assert_called_once_with("sess-1")
     host.remove_viewer.assert_called_once_with("sess-1")
@@ -539,7 +539,7 @@ async def test_run_live_view_teardown_suppresses_cdp_stop_error() -> None:
         patch.object(screencast, "pump_until_first_close", new=AsyncMock()),
     ):
         # should not raise even though stop fails
-        await screencast.run_live_view(host, session, MagicMock())  # type: ignore[arg-type]
+        await screencast.run_live_view(host, session, MagicMock())
 
     host.remove_viewer.assert_called_once_with("sess-1")
 
@@ -588,7 +588,7 @@ async def test_run_live_view_cancels_background_tasks() -> None:
         patch.object(screencast, "_register_frame_handler", side_effect=fake_register_frame),
         patch.object(screencast, "_register_nav_handler", side_effect=fake_register_nav),
     ):
-        await screencast.run_live_view(host, session, MagicMock())  # type: ignore[arg-type]
+        await screencast.run_live_view(host, session, MagicMock())
 
     # The background task was cancelled in the finally; give the loop a tick
     await asyncio.sleep(0)

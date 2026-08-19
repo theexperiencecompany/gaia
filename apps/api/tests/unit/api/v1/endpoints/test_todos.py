@@ -5,11 +5,11 @@ Covers all 22 route handlers, success paths, validation, service
 errors and edge cases. Uses AsyncClient with mocked DB/services so
 no external infra is required.
 """
+
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
-import uuid
 
 from httpx import AsyncClient
 import pytest
@@ -32,7 +32,12 @@ from app.models.todo_models import (
 
 pytestmark = pytest.mark.unit
 
-from app.models.workflow_models import TriggerConfig, TriggerType, WorkflowStep, WorkflowWithIntegrations
+from app.models.workflow_models import (
+    TriggerConfig,
+    TriggerType,
+    WorkflowStep,
+    WorkflowWithIntegrations,
+)
 
 TODOS_MOD = "app.api.v1.endpoints.todos"
 ANALYTICS_PATCH = f"{TODOS_MOD}.capture_context_event"
@@ -45,7 +50,9 @@ def _noop_analytics():
         yield
 
 
-def _todo_resp(todo_id: str = "todo-1", workflow_id: str | None = None, vfs_path: str | None = None) -> TodoResponse:
+def _todo_resp(
+    todo_id: str = "todo-1", workflow_id: str | None = None, vfs_path: str | None = None
+) -> TodoResponse:
     return TodoResponse(
         id=todo_id,
         user_id=FAKE_USER_ID,
@@ -57,7 +64,9 @@ def _todo_resp(todo_id: str = "todo-1", workflow_id: str | None = None, vfs_path
     )
 
 
-def _todo_doc(todo_id: str = "todo-1", vfs_path: str | None = None, subtasks: list[SubTask] | None = None) -> TodoDocument:
+def _todo_doc(
+    todo_id: str = "todo-1", vfs_path: str | None = None, subtasks: list[SubTask] | None = None
+) -> TodoDocument:
     return TodoDocument(
         id=todo_id,
         user_id=FAKE_USER_ID,
@@ -106,8 +115,16 @@ class TestGetTodoCounts:
         mock_inbox = MagicMock()
         mock_inbox.id = "inbox-1"
         with (
-            patch(f"{TODOS_MOD}.project_repository.get_default_inbox", new_callable=AsyncMock, return_value=mock_inbox) as mock_get_inbox,
-            patch(f"{TODOS_MOD}.todo_repository.compute_counts", new_callable=AsyncMock, return_value=counts) as mock_counts,
+            patch(
+                f"{TODOS_MOD}.project_repository.get_default_inbox",
+                new_callable=AsyncMock,
+                return_value=mock_inbox,
+            ) as mock_get_inbox,
+            patch(
+                f"{TODOS_MOD}.todo_repository.compute_counts",
+                new_callable=AsyncMock,
+                return_value=counts,
+            ) as mock_counts,
         ):
             resp = await client.get("/api/v1/todos/counts")
 
@@ -122,8 +139,16 @@ class TestGetTodoCounts:
     async def test_no_inbox_uses_fallback_id(self, client: AsyncClient) -> None:
         counts = TodoCounts(inbox=0, today=0, upcoming=0, completed=0)
         with (
-            patch(f"{TODOS_MOD}.project_repository.get_default_inbox", new_callable=AsyncMock, return_value=None),
-            patch(f"{TODOS_MOD}.todo_repository.compute_counts", new_callable=AsyncMock, return_value=counts) as mock_counts,
+            patch(
+                f"{TODOS_MOD}.project_repository.get_default_inbox",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                f"{TODOS_MOD}.todo_repository.compute_counts",
+                new_callable=AsyncMock,
+                return_value=counts,
+            ) as mock_counts,
         ):
             resp = await client.get("/api/v1/todos/counts")
 
@@ -131,7 +156,11 @@ class TestGetTodoCounts:
         assert mock_counts.await_args.kwargs["inbox_project_id"] == "no_inbox_found"
 
     async def test_exception_returns_500(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.project_repository.get_default_inbox", new_callable=AsyncMock, side_effect=RuntimeError("db fail")):
+        with patch(
+            f"{TODOS_MOD}.project_repository.get_default_inbox",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("db fail"),
+        ):
             resp = await client.get("/api/v1/todos/counts")
 
         assert resp.status_code == 500
@@ -146,7 +175,9 @@ class TestGetTodoCounts:
 class TestGetTodoLabels:
     async def test_success_default_limit(self, client: AsyncClient) -> None:
         labels = [TodoLabelCount(name="work", count=5), TodoLabelCount(name="home", count=3)]
-        with patch(f"{TODOS_MOD}.todo_repository.top_labels", new_callable=AsyncMock, return_value=labels) as mock_top:
+        with patch(
+            f"{TODOS_MOD}.todo_repository.top_labels", new_callable=AsyncMock, return_value=labels
+        ) as mock_top:
             resp = await client.get("/api/v1/todos/labels")
 
         assert resp.status_code == 200
@@ -154,14 +185,18 @@ class TestGetTodoLabels:
         mock_top.assert_awaited_once_with(user_id=FAKE_USER_ID, limit=10)
 
     async def test_custom_limit(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.todo_repository.top_labels", new_callable=AsyncMock, return_value=[]) as mock_top:
+        with patch(
+            f"{TODOS_MOD}.todo_repository.top_labels", new_callable=AsyncMock, return_value=[]
+        ) as mock_top:
             resp = await client.get("/api/v1/todos/labels?limit=5")
 
         assert resp.status_code == 200
         mock_top.assert_awaited_once_with(user_id=FAKE_USER_ID, limit=5)
 
     async def test_empty_labels(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.todo_repository.top_labels", new_callable=AsyncMock, return_value=[]):
+        with patch(
+            f"{TODOS_MOD}.todo_repository.top_labels", new_callable=AsyncMock, return_value=[]
+        ):
             resp = await client.get("/api/v1/todos/labels")
 
         assert resp.status_code == 200
@@ -179,7 +214,11 @@ class TestListTodos:
         assert resp.status_code == 422
 
     async def test_list_returns_todos(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.TodoService.list_todos", new_callable=AsyncMock, return_value=_empty_list_response()) as mock_list:
+        with patch(
+            f"{TODOS_MOD}.TodoService.list_todos",
+            new_callable=AsyncMock,
+            return_value=_empty_list_response(),
+        ) as mock_list:
             resp = await client.get("/api/v1/todos?page=1&per_page=10")
 
         assert resp.status_code == 200
@@ -187,7 +226,11 @@ class TestListTodos:
         assert mock_list.await_args.args[0] == FAKE_USER_ID
 
     async def test_due_today_sets_date_range(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.TodoService.list_todos", new_callable=AsyncMock, return_value=_empty_list_response()) as mock_list:
+        with patch(
+            f"{TODOS_MOD}.TodoService.list_todos",
+            new_callable=AsyncMock,
+            return_value=_empty_list_response(),
+        ) as mock_list:
             resp = await client.get("/api/v1/todos?due_today=true")
 
         assert resp.status_code == 200
@@ -197,7 +240,11 @@ class TestListTodos:
         assert params.due_date_start.tzinfo is not None
 
     async def test_due_this_week_sets_date_range(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.TodoService.list_todos", new_callable=AsyncMock, return_value=_empty_list_response()) as mock_list:
+        with patch(
+            f"{TODOS_MOD}.TodoService.list_todos",
+            new_callable=AsyncMock,
+            return_value=_empty_list_response(),
+        ) as mock_list:
             resp = await client.get("/api/v1/todos?due_this_week=true")
 
         assert resp.status_code == 200
@@ -206,8 +253,14 @@ class TestListTodos:
         assert params.due_date_end is not None
 
     async def test_filters_q_project_completed_priority_labels(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.TodoService.list_todos", new_callable=AsyncMock, return_value=_empty_list_response()) as mock_list:
-            resp = await client.get("/api/v1/todos?q=hello&project_id=proj-1&completed=false&priority=high&labels=work&labels=home")
+        with patch(
+            f"{TODOS_MOD}.TodoService.list_todos",
+            new_callable=AsyncMock,
+            return_value=_empty_list_response(),
+        ) as mock_list:
+            resp = await client.get(
+                "/api/v1/todos?q=hello&project_id=proj-1&completed=false&priority=high&labels=work&labels=home"
+            )
 
         assert resp.status_code == 200
         params = mock_list.await_args.args[1]
@@ -218,21 +271,33 @@ class TestListTodos:
         assert params.labels == ["work", "home"]
 
     async def test_value_error_returns_400(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.TodoService.list_todos", new_callable=AsyncMock, side_effect=ValueError("bad filter")):
+        with patch(
+            f"{TODOS_MOD}.TodoService.list_todos",
+            new_callable=AsyncMock,
+            side_effect=ValueError("bad filter"),
+        ):
             resp = await client.get("/api/v1/todos")
 
         assert resp.status_code == 400
         assert "bad filter" in resp.json()["detail"]
 
     async def test_generic_exception_returns_500(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.TodoService.list_todos", new_callable=AsyncMock, side_effect=RuntimeError("boom")):
+        with patch(
+            f"{TODOS_MOD}.TodoService.list_todos",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("boom"),
+        ):
             resp = await client.get("/api/v1/todos")
 
         assert resp.status_code == 500
         assert "Failed to retrieve todos" in resp.json()["detail"]
 
     async def test_search_mode_default_hybrid(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.TodoService.list_todos", new_callable=AsyncMock, return_value=_empty_list_response()) as mock_list:
+        with patch(
+            f"{TODOS_MOD}.TodoService.list_todos",
+            new_callable=AsyncMock,
+            return_value=_empty_list_response(),
+        ) as mock_list:
             resp = await client.get("/api/v1/todos?q=test")
 
         assert resp.status_code == 200
@@ -240,7 +305,11 @@ class TestListTodos:
         assert params.mode.value == "hybrid"
 
     async def test_overdue_and_has_due_date_filters(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.TodoService.list_todos", new_callable=AsyncMock, return_value=_empty_list_response()) as mock_list:
+        with patch(
+            f"{TODOS_MOD}.TodoService.list_todos",
+            new_callable=AsyncMock,
+            return_value=_empty_list_response(),
+        ) as mock_list:
             resp = await client.get("/api/v1/todos?overdue=true&has_due_date=true")
 
         assert resp.status_code == 200
@@ -255,7 +324,11 @@ class TestListTodos:
         assert resp2.status_code == 422
 
     async def test_include_stats(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.TodoService.list_todos", new_callable=AsyncMock, return_value=_empty_list_response()) as mock_list:
+        with patch(
+            f"{TODOS_MOD}.TodoService.list_todos",
+            new_callable=AsyncMock,
+            return_value=_empty_list_response(),
+        ) as mock_list:
             resp = await client.get("/api/v1/todos?include_stats=true")
 
         assert resp.status_code == 200
@@ -271,7 +344,9 @@ class TestListTodos:
 class TestCreateTodo:
     async def test_success(self, client: AsyncClient) -> None:
         todo_resp = _todo_resp()
-        with patch(f"{TODOS_MOD}.TodoService.create_todo", new_callable=AsyncMock, return_value=todo_resp):
+        with patch(
+            f"{TODOS_MOD}.TodoService.create_todo", new_callable=AsyncMock, return_value=todo_resp
+        ):
             resp = await client.post("/api/v1/todos", json={"title": "New todo"})
 
         assert resp.status_code == 201
@@ -279,14 +354,22 @@ class TestCreateTodo:
         assert resp.json()["title"] == "Test todo"
 
     async def test_value_error_returns_400(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.TodoService.create_todo", new_callable=AsyncMock, side_effect=ValueError("Project not found")):
+        with patch(
+            f"{TODOS_MOD}.TodoService.create_todo",
+            new_callable=AsyncMock,
+            side_effect=ValueError("Project not found"),
+        ):
             resp = await client.post("/api/v1/todos", json={"title": "New todo"})
 
         assert resp.status_code == 400
         assert "Project not found" in resp.json()["detail"]
 
     async def test_generic_exception_returns_500(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.TodoService.create_todo", new_callable=AsyncMock, side_effect=RuntimeError("db down")):
+        with patch(
+            f"{TODOS_MOD}.TodoService.create_todo",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("db down"),
+        ):
             resp = await client.post("/api/v1/todos", json={"title": "New todo"})
 
         assert resp.status_code == 500
@@ -304,9 +387,17 @@ class TestCreateTodo:
 
 class TestBulkUpdateTodos:
     async def test_success(self, client: AsyncClient) -> None:
-        bulk_resp = BulkOperationResponse(success=["id1"], failed=[], total=1, message="Updated 1 todos")
-        with patch(f"{TODOS_MOD}.TodoService.bulk_update_todos", new_callable=AsyncMock, return_value=bulk_resp) as mock_bulk:
-            resp = await client.put("/api/v1/todos/bulk", json={"todo_ids": ["id1"], "updates": {"completed": True}})
+        bulk_resp = BulkOperationResponse(
+            success=["id1"], failed=[], total=1, message="Updated 1 todos"
+        )
+        with patch(
+            f"{TODOS_MOD}.TodoService.bulk_update_todos",
+            new_callable=AsyncMock,
+            return_value=bulk_resp,
+        ) as mock_bulk:
+            resp = await client.put(
+                "/api/v1/todos/bulk", json={"todo_ids": ["id1"], "updates": {"completed": True}}
+            )
 
         assert resp.status_code == 200
         assert resp.json()["total"] == 1
@@ -315,19 +406,34 @@ class TestBulkUpdateTodos:
     async def test_bulk_update_calls_analytics(self, client: AsyncClient) -> None:
         bulk_resp = BulkOperationResponse(success=["id1", "id2"], failed=[], total=2, message="ok")
         with (
-            patch(f"{TODOS_MOD}.TodoService.bulk_update_todos", new_callable=AsyncMock, return_value=bulk_resp),
+            patch(
+                f"{TODOS_MOD}.TodoService.bulk_update_todos",
+                new_callable=AsyncMock,
+                return_value=bulk_resp,
+            ),
             patch(ANALYTICS_PATCH) as mock_capture,
         ):
-            resp = await client.put("/api/v1/todos/bulk", json={"todo_ids": ["id1", "id2"], "updates": {"completed": True}})
+            resp = await client.put(
+                "/api/v1/todos/bulk",
+                json={"todo_ids": ["id1", "id2"], "updates": {"completed": True}},
+            )
 
         assert resp.status_code == 200
         mock_capture.assert_called_once()
         # first arg is event name string
-        assert mock_capture.call_args[0][0] == "todos:updated" or "TODO" in str(mock_capture.call_args)
+        assert mock_capture.call_args[0][0] == "todos:updated" or "TODO" in str(
+            mock_capture.call_args
+        )
 
     async def test_exception_returns_500(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.TodoService.bulk_update_todos", new_callable=AsyncMock, side_effect=RuntimeError("fail")):
-            resp = await client.put("/api/v1/todos/bulk", json={"todo_ids": ["id1"], "updates": {"completed": True}})
+        with patch(
+            f"{TODOS_MOD}.TodoService.bulk_update_todos",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("fail"),
+        ):
+            resp = await client.put(
+                "/api/v1/todos/bulk", json={"todo_ids": ["id1"], "updates": {"completed": True}}
+            )
 
         assert resp.status_code == 500
         assert "Bulk update failed" in resp.json()["detail"]
@@ -340,23 +446,43 @@ class TestBulkUpdateTodos:
 
 class TestBulkMoveTodos:
     async def test_success(self, client: AsyncClient) -> None:
-        bulk_resp = BulkOperationResponse(success=["id1"], failed=[], total=1, message="Moved 1 todos")
-        with patch(f"{TODOS_MOD}.TodoService.bulk_move_todos", new_callable=AsyncMock, return_value=bulk_resp):
-            resp = await client.post("/api/v1/todos/bulk/move", json={"todo_ids": ["id1"], "project_id": "proj-1"})
+        bulk_resp = BulkOperationResponse(
+            success=["id1"], failed=[], total=1, message="Moved 1 todos"
+        )
+        with patch(
+            f"{TODOS_MOD}.TodoService.bulk_move_todos",
+            new_callable=AsyncMock,
+            return_value=bulk_resp,
+        ):
+            resp = await client.post(
+                "/api/v1/todos/bulk/move", json={"todo_ids": ["id1"], "project_id": "proj-1"}
+            )
 
         assert resp.status_code == 200
         assert resp.json()["message"] == "Moved 1 todos"
 
     async def test_value_error_returns_400(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.TodoService.bulk_move_todos", new_callable=AsyncMock, side_effect=ValueError("Project not found")):
-            resp = await client.post("/api/v1/todos/bulk/move", json={"todo_ids": ["id1"], "project_id": "bad"})
+        with patch(
+            f"{TODOS_MOD}.TodoService.bulk_move_todos",
+            new_callable=AsyncMock,
+            side_effect=ValueError("Project not found"),
+        ):
+            resp = await client.post(
+                "/api/v1/todos/bulk/move", json={"todo_ids": ["id1"], "project_id": "bad"}
+            )
 
         assert resp.status_code == 400
         assert "Project not found" in resp.json()["detail"]
 
     async def test_generic_exception_returns_500(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.TodoService.bulk_move_todos", new_callable=AsyncMock, side_effect=RuntimeError("fail")):
-            resp = await client.post("/api/v1/todos/bulk/move", json={"todo_ids": ["id1"], "project_id": "proj-1"})
+        with patch(
+            f"{TODOS_MOD}.TodoService.bulk_move_todos",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("fail"),
+        ):
+            resp = await client.post(
+                "/api/v1/todos/bulk/move", json={"todo_ids": ["id1"], "project_id": "proj-1"}
+            )
 
         assert resp.status_code == 500
 
@@ -372,8 +498,14 @@ class TestBulkMoveTodos:
 
 class TestBulkDeleteTodos:
     async def test_success(self, client: AsyncClient) -> None:
-        bulk_resp = BulkOperationResponse(success=["id1", "id2"], failed=[], total=2, message="Deleted 2 todos")
-        with patch(f"{TODOS_MOD}.TodoService.bulk_delete_todos", new_callable=AsyncMock, return_value=bulk_resp):
+        bulk_resp = BulkOperationResponse(
+            success=["id1", "id2"], failed=[], total=2, message="Deleted 2 todos"
+        )
+        with patch(
+            f"{TODOS_MOD}.TodoService.bulk_delete_todos",
+            new_callable=AsyncMock,
+            return_value=bulk_resp,
+        ):
             resp = await client.request("DELETE", "/api/v1/todos/bulk", json=["id1", "id2"])
 
         assert resp.status_code == 200
@@ -389,7 +521,11 @@ class TestBulkDeleteTodos:
         assert resp.status_code == 422
 
     async def test_exception_returns_500(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.TodoService.bulk_delete_todos", new_callable=AsyncMock, side_effect=RuntimeError("fail")):
+        with patch(
+            f"{TODOS_MOD}.TodoService.bulk_delete_todos",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("fail"),
+        ):
             resp = await client.request("DELETE", "/api/v1/todos/bulk", json=["id1"])
 
         assert resp.status_code == 500
@@ -403,7 +539,11 @@ class TestBulkDeleteTodos:
 class TestBulkCompleteTodos:
     async def test_success(self, client: AsyncClient) -> None:
         bulk_resp = BulkOperationResponse(success=["id1"], failed=[], total=1, message="ok")
-        with patch(f"{TODOS_MOD}.TodoService.bulk_update_todos", new_callable=AsyncMock, return_value=bulk_resp) as mock_bulk:
+        with patch(
+            f"{TODOS_MOD}.TodoService.bulk_update_todos",
+            new_callable=AsyncMock,
+            return_value=bulk_resp,
+        ) as mock_bulk:
             resp = await client.post("/api/v1/todos/bulk/complete", json=["id1", "id2"])
 
         assert resp.status_code == 200
@@ -415,7 +555,11 @@ class TestBulkCompleteTodos:
     async def test_bulk_complete_captures_analytics(self, client: AsyncClient) -> None:
         bulk_resp = BulkOperationResponse(success=["id1"], failed=[], total=1, message="ok")
         with (
-            patch(f"{TODOS_MOD}.TodoService.bulk_update_todos", new_callable=AsyncMock, return_value=bulk_resp),
+            patch(
+                f"{TODOS_MOD}.TodoService.bulk_update_todos",
+                new_callable=AsyncMock,
+                return_value=bulk_resp,
+            ),
             patch(ANALYTICS_PATCH) as mock_capture,
         ):
             resp = await client.post("/api/v1/todos/bulk/complete", json=["id1"])
@@ -424,7 +568,11 @@ class TestBulkCompleteTodos:
         mock_capture.assert_called_once()
 
     async def test_exception_returns_500(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.TodoService.bulk_update_todos", new_callable=AsyncMock, side_effect=RuntimeError("fail")):
+        with patch(
+            f"{TODOS_MOD}.TodoService.bulk_update_todos",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("fail"),
+        ):
             resp = await client.post("/api/v1/todos/bulk/complete", json=["id1"])
 
         assert resp.status_code == 500
@@ -443,21 +591,31 @@ class TestBulkCompleteTodos:
 class TestGetTodo:
     async def test_success(self, client: AsyncClient) -> None:
         todo_resp = _todo_resp()
-        with patch(f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, return_value=todo_resp):
+        with patch(
+            f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, return_value=todo_resp
+        ):
             resp = await client.get("/api/v1/todos/todo-1")
 
         assert resp.status_code == 200
         assert resp.json()["id"] == "todo-1"
 
     async def test_not_found_returns_404(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, side_effect=ValueError("Todo not found")):
+        with patch(
+            f"{TODOS_MOD}.TodoService.get_todo",
+            new_callable=AsyncMock,
+            side_effect=ValueError("Todo not found"),
+        ):
             resp = await client.get("/api/v1/todos/missing")
 
         assert resp.status_code == 404
         assert "Todo not found" in resp.json()["detail"]
 
     async def test_generic_exception_returns_500(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, side_effect=RuntimeError("db fail")):
+        with patch(
+            f"{TODOS_MOD}.TodoService.get_todo",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("db fail"),
+        ):
             resp = await client.get("/api/v1/todos/todo-1")
 
         assert resp.status_code == 500
@@ -470,7 +628,9 @@ class TestGetTodo:
 
 class TestGetTodoCanvas:
     async def test_success_returns_content(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.read_canvas", new_callable=AsyncMock, return_value="# Canvas\nhello"):
+        with patch(
+            f"{TODOS_MOD}.read_canvas", new_callable=AsyncMock, return_value="# Canvas\nhello"
+        ):
             resp = await client.get("/api/v1/todos/todo-1/canvas")
 
         assert resp.status_code == 200
@@ -500,7 +660,9 @@ class TestUpdateTodo:
     async def test_success(self, client: AsyncClient) -> None:
         updated = _todo_resp()
         updated.title = "Updated"
-        with patch(f"{TODOS_MOD}.TodoService.update_todo", new_callable=AsyncMock, return_value=updated):
+        with patch(
+            f"{TODOS_MOD}.TodoService.update_todo", new_callable=AsyncMock, return_value=updated
+        ):
             resp = await client.put("/api/v1/todos/todo-1", json={"title": "Updated"})
 
         assert resp.status_code == 200
@@ -509,8 +671,14 @@ class TestUpdateTodo:
     async def test_reschedules_when_scheduled_at_and_vfs(self, client: AsyncClient) -> None:
         updated = _todo_resp(vfs_path="/users/u/todos/todo-1")
         with (
-            patch(f"{TODOS_MOD}.TodoService.update_todo", new_callable=AsyncMock, return_value=updated),
-            patch(f"{TODOS_MOD}.tracked_todo_service.reschedule_execution", new_callable=AsyncMock, return_value=True) as mock_resched,
+            patch(
+                f"{TODOS_MOD}.TodoService.update_todo", new_callable=AsyncMock, return_value=updated
+            ),
+            patch(
+                f"{TODOS_MOD}.tracked_todo_service.reschedule_execution",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as mock_resched,
         ):
             resp = await client.put(
                 "/api/v1/todos/todo-1",
@@ -523,20 +691,34 @@ class TestUpdateTodo:
     async def test_reschedule_failure_is_swallowed(self, client: AsyncClient) -> None:
         updated = _todo_resp(vfs_path="/users/u/todos/todo-1")
         with (
-            patch(f"{TODOS_MOD}.TodoService.update_todo", new_callable=AsyncMock, return_value=updated),
-            patch(f"{TODOS_MOD}.tracked_todo_service.reschedule_execution", new_callable=AsyncMock, side_effect=RuntimeError("redis down")),
+            patch(
+                f"{TODOS_MOD}.TodoService.update_todo", new_callable=AsyncMock, return_value=updated
+            ),
+            patch(
+                f"{TODOS_MOD}.tracked_todo_service.reschedule_execution",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("redis down"),
+            ),
         ):
-            resp = await client.put("/api/v1/todos/todo-1", json={"scheduled_at": "2025-06-01T10:00:00Z"})
+            resp = await client.put(
+                "/api/v1/todos/todo-1", json={"scheduled_at": "2025-06-01T10:00:00Z"}
+            )
 
         assert resp.status_code == 200  # still success
 
     async def test_no_reschedule_when_no_vfs(self, client: AsyncClient) -> None:
         updated = _todo_resp(vfs_path=None)
         with (
-            patch(f"{TODOS_MOD}.TodoService.update_todo", new_callable=AsyncMock, return_value=updated),
-            patch(f"{TODOS_MOD}.tracked_todo_service.reschedule_execution", new_callable=AsyncMock) as mock_resched,
+            patch(
+                f"{TODOS_MOD}.TodoService.update_todo", new_callable=AsyncMock, return_value=updated
+            ),
+            patch(
+                f"{TODOS_MOD}.tracked_todo_service.reschedule_execution", new_callable=AsyncMock
+            ) as mock_resched,
         ):
-            resp = await client.put("/api/v1/todos/todo-1", json={"scheduled_at": "2025-06-01T10:00:00Z"})
+            resp = await client.put(
+                "/api/v1/todos/todo-1", json={"scheduled_at": "2025-06-01T10:00:00Z"}
+            )
 
         assert resp.status_code == 200
         mock_resched.assert_not_called()
@@ -544,8 +726,12 @@ class TestUpdateTodo:
     async def test_no_reschedule_when_scheduled_at_none(self, client: AsyncClient) -> None:
         updated = _todo_resp(vfs_path="/users/u/todos/t1")
         with (
-            patch(f"{TODOS_MOD}.TodoService.update_todo", new_callable=AsyncMock, return_value=updated),
-            patch(f"{TODOS_MOD}.tracked_todo_service.reschedule_execution", new_callable=AsyncMock) as mock_resched,
+            patch(
+                f"{TODOS_MOD}.TodoService.update_todo", new_callable=AsyncMock, return_value=updated
+            ),
+            patch(
+                f"{TODOS_MOD}.tracked_todo_service.reschedule_execution", new_callable=AsyncMock
+            ) as mock_resched,
         ):
             resp = await client.put("/api/v1/todos/todo-1", json={"title": "no schedule"})
 
@@ -553,13 +739,21 @@ class TestUpdateTodo:
         mock_resched.assert_not_called()
 
     async def test_not_found_returns_404(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.TodoService.update_todo", new_callable=AsyncMock, side_effect=ValueError("Todo not found")):
+        with patch(
+            f"{TODOS_MOD}.TodoService.update_todo",
+            new_callable=AsyncMock,
+            side_effect=ValueError("Todo not found"),
+        ):
             resp = await client.put("/api/v1/todos/missing", json={"title": "x"})
 
         assert resp.status_code == 404
 
     async def test_generic_exception_returns_500(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.TodoService.update_todo", new_callable=AsyncMock, side_effect=RuntimeError("fail")):
+        with patch(
+            f"{TODOS_MOD}.TodoService.update_todo",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("fail"),
+        ):
             resp = await client.put("/api/v1/todos/todo-1", json={"title": "x"})
 
         assert resp.status_code == 500
@@ -567,7 +761,9 @@ class TestUpdateTodo:
     async def test_completion_toggled(self, client: AsyncClient) -> None:
         updated = _todo_resp()
         updated.completed = True
-        with patch(f"{TODOS_MOD}.TodoService.update_todo", new_callable=AsyncMock, return_value=updated):
+        with patch(
+            f"{TODOS_MOD}.TodoService.update_todo", new_callable=AsyncMock, return_value=updated
+        ):
             resp = await client.put("/api/v1/todos/todo-1", json={"completed": True})
 
         assert resp.status_code == 200
@@ -580,20 +776,30 @@ class TestUpdateTodo:
 
 class TestDeleteTodo:
     async def test_success_returns_204(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.TodoService.delete_todo", new_callable=AsyncMock, return_value=None):
+        with patch(
+            f"{TODOS_MOD}.TodoService.delete_todo", new_callable=AsyncMock, return_value=None
+        ):
             resp = await client.delete("/api/v1/todos/todo-1")
 
         assert resp.status_code == 204
         assert resp.content == b""
 
     async def test_not_found_returns_404(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.TodoService.delete_todo", new_callable=AsyncMock, side_effect=ValueError("Todo not found")):
+        with patch(
+            f"{TODOS_MOD}.TodoService.delete_todo",
+            new_callable=AsyncMock,
+            side_effect=ValueError("Todo not found"),
+        ):
             resp = await client.delete("/api/v1/todos/missing")
 
         assert resp.status_code == 404
 
     async def test_generic_exception_returns_500(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.TodoService.delete_todo", new_callable=AsyncMock, side_effect=RuntimeError("fail")):
+        with patch(
+            f"{TODOS_MOD}.TodoService.delete_todo",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("fail"),
+        ):
             resp = await client.delete("/api/v1/todos/todo-1")
 
         assert resp.status_code == 500
@@ -609,9 +815,15 @@ class TestGenerateWorkflow:
         todo_resp = _todo_resp(workflow_id=None)
         todo_resp.description = "desc"
         with (
-            patch(f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, return_value=todo_resp),
+            patch(
+                f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, return_value=todo_resp
+            ),
             patch(f"{TODOS_MOD}.delete_cache", new_callable=AsyncMock),
-            patch("app.services.workflow.queue_service.WorkflowQueueService.queue_todo_workflow_generation", new_callable=AsyncMock, return_value=True),
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.queue_todo_workflow_generation",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
         ):
             resp = await client.post("/api/v1/todos/todo-1/workflow")
 
@@ -636,8 +848,14 @@ class TestGenerateWorkflow:
             trigger_config=TriggerConfig(type=TriggerType.MANUAL),
         )
         with (
-            patch(f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, return_value=todo_resp),
-            patch("app.services.workflow.service.WorkflowService.get_workflow", new_callable=AsyncMock, return_value=wf),
+            patch(
+                f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, return_value=todo_resp
+            ),
+            patch(
+                "app.services.workflow.service.WorkflowService.get_workflow",
+                new_callable=AsyncMock,
+                return_value=wf,
+            ),
             patch(f"{TODOS_MOD}.delete_cache", new_callable=AsyncMock),
         ):
             resp = await client.post("/api/v1/todos/todo-1/workflow")
@@ -649,12 +867,30 @@ class TestGenerateWorkflow:
         todo_resp = _todo_resp(workflow_id="wf-1")
         wf_empty = _make_workflow(steps=[])
         with (
-            patch(f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, return_value=todo_resp),
-            patch("app.services.workflow.service.WorkflowService.get_workflow", new_callable=AsyncMock, return_value=wf_empty),
-            patch("app.services.workflow.service.WorkflowService.delete_workflow", new_callable=AsyncMock, return_value=True),
-            patch(f"{TODOS_MOD}.todo_repository.clear_workflow_id", new_callable=AsyncMock, return_value=None),
+            patch(
+                f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, return_value=todo_resp
+            ),
+            patch(
+                "app.services.workflow.service.WorkflowService.get_workflow",
+                new_callable=AsyncMock,
+                return_value=wf_empty,
+            ),
+            patch(
+                "app.services.workflow.service.WorkflowService.delete_workflow",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                f"{TODOS_MOD}.todo_repository.clear_workflow_id",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
             patch(f"{TODOS_MOD}.delete_cache", new_callable=AsyncMock),
-            patch("app.services.workflow.queue_service.WorkflowQueueService.queue_todo_workflow_generation", new_callable=AsyncMock, return_value=True),
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.queue_todo_workflow_generation",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
         ):
             resp = await client.post("/api/v1/todos/todo-1/workflow")
 
@@ -664,11 +900,25 @@ class TestGenerateWorkflow:
     async def test_regenerates_when_workflow_is_none(self, client: AsyncClient) -> None:
         todo_resp = _todo_resp(workflow_id="wf-1")
         with (
-            patch(f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, return_value=todo_resp),
-            patch("app.services.workflow.service.WorkflowService.get_workflow", new_callable=AsyncMock, return_value=None),
-            patch(f"{TODOS_MOD}.todo_repository.clear_workflow_id", new_callable=AsyncMock, return_value=None),
+            patch(
+                f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, return_value=todo_resp
+            ),
+            patch(
+                "app.services.workflow.service.WorkflowService.get_workflow",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                f"{TODOS_MOD}.todo_repository.clear_workflow_id",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
             patch(f"{TODOS_MOD}.delete_cache", new_callable=AsyncMock),
-            patch("app.services.workflow.queue_service.WorkflowQueueService.queue_todo_workflow_generation", new_callable=AsyncMock, return_value=True),
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.queue_todo_workflow_generation",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
         ):
             resp = await client.post("/api/v1/todos/todo-1/workflow")
 
@@ -678,9 +928,15 @@ class TestGenerateWorkflow:
     async def test_queue_failure_returns_500(self, client: AsyncClient) -> None:
         todo_resp = _todo_resp(workflow_id=None)
         with (
-            patch(f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, return_value=todo_resp),
+            patch(
+                f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, return_value=todo_resp
+            ),
             patch(f"{TODOS_MOD}.delete_cache", new_callable=AsyncMock),
-            patch("app.services.workflow.queue_service.WorkflowQueueService.queue_todo_workflow_generation", new_callable=AsyncMock, return_value=False),
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.queue_todo_workflow_generation",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
         ):
             resp = await client.post("/api/v1/todos/todo-1/workflow")
 
@@ -688,13 +944,21 @@ class TestGenerateWorkflow:
         assert "Failed to queue workflow generation" in resp.json()["detail"]
 
     async def test_not_found_returns_404(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, side_effect=ValueError("Todo not found")):
+        with patch(
+            f"{TODOS_MOD}.TodoService.get_todo",
+            new_callable=AsyncMock,
+            side_effect=ValueError("Todo not found"),
+        ):
             resp = await client.post("/api/v1/todos/missing/workflow")
 
         assert resp.status_code == 404
 
     async def test_generic_exception_returns_500(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, side_effect=RuntimeError("boom")):
+        with patch(
+            f"{TODOS_MOD}.TodoService.get_todo",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("boom"),
+        ):
             resp = await client.post("/api/v1/todos/todo-1/workflow")
 
         assert resp.status_code == 500
@@ -725,8 +989,14 @@ class TestGetWorkflowStatus:
         todo_resp = _todo_resp(workflow_id=None)
         with (
             patch(f"{TODOS_MOD}.get_cache", new_callable=AsyncMock, return_value=None),
-            patch(f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, return_value=todo_resp),
-            patch("app.services.workflow.queue_service.WorkflowQueueService.is_workflow_generating", new_callable=AsyncMock, return_value=True),
+            patch(
+                f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, return_value=todo_resp
+            ),
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.is_workflow_generating",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
             patch(f"{TODOS_MOD}.set_cache", new_callable=AsyncMock),
         ):
             resp = await client.get("/api/v1/todos/todo-1/workflow-status")
@@ -750,9 +1020,19 @@ class TestGetWorkflowStatus:
         )
         with (
             patch(f"{TODOS_MOD}.get_cache", new_callable=AsyncMock, return_value=None),
-            patch(f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, return_value=todo_resp),
-            patch("app.services.workflow.queue_service.WorkflowQueueService.is_workflow_generating", new_callable=AsyncMock, return_value=False),
-            patch("app.services.workflow.service.WorkflowService.get_workflow", new_callable=AsyncMock, return_value=wf),
+            patch(
+                f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, return_value=todo_resp
+            ),
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.is_workflow_generating",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
+                "app.services.workflow.service.WorkflowService.get_workflow",
+                new_callable=AsyncMock,
+                return_value=wf,
+            ),
             patch(f"{TODOS_MOD}.set_cache", new_callable=AsyncMock),
         ):
             resp = await client.get("/api/v1/todos/todo-1/workflow-status")
@@ -766,10 +1046,20 @@ class TestGetWorkflowStatus:
         wf_empty = _make_workflow(steps=[])
         with (
             patch(f"{TODOS_MOD}.get_cache", new_callable=AsyncMock, return_value=None),
-            patch(f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, return_value=todo_resp),
+            patch(
+                f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, return_value=todo_resp
+            ),
             # First call returns False (initial gather), second call inside branch returns True
-            patch("app.services.workflow.queue_service.WorkflowQueueService.is_workflow_generating", new_callable=AsyncMock, side_effect=[False, True]),
-            patch("app.services.workflow.service.WorkflowService.get_workflow", new_callable=AsyncMock, return_value=wf_empty),
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.is_workflow_generating",
+                new_callable=AsyncMock,
+                side_effect=[False, True],
+            ),
+            patch(
+                "app.services.workflow.service.WorkflowService.get_workflow",
+                new_callable=AsyncMock,
+                return_value=wf_empty,
+            ),
             patch(f"{TODOS_MOD}.set_cache", new_callable=AsyncMock),
         ):
             resp = await client.get("/api/v1/todos/todo-1/workflow-status")
@@ -784,9 +1074,19 @@ class TestGetWorkflowStatus:
         wf_empty = _make_workflow(steps=[])
         with (
             patch(f"{TODOS_MOD}.get_cache", new_callable=AsyncMock, return_value=None),
-            patch(f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, return_value=todo_resp),
-            patch("app.services.workflow.queue_service.WorkflowQueueService.is_workflow_generating", new_callable=AsyncMock, return_value=False),
-            patch("app.services.workflow.service.WorkflowService.get_workflow", new_callable=AsyncMock, return_value=wf_empty),
+            patch(
+                f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, return_value=todo_resp
+            ),
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.is_workflow_generating",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
+                "app.services.workflow.service.WorkflowService.get_workflow",
+                new_callable=AsyncMock,
+                return_value=wf_empty,
+            ),
             patch(f"{TODOS_MOD}.set_cache", new_callable=AsyncMock),
         ):
             resp = await client.get("/api/v1/todos/todo-1/workflow-status")
@@ -795,12 +1095,20 @@ class TestGetWorkflowStatus:
         assert resp.json()["workflow_status"] == TodoWorkflowStatus.FAILED.value
         assert resp.json()["has_workflow"] is False
 
-    async def test_not_started_when_no_workflow_and_not_generating(self, client: AsyncClient) -> None:
+    async def test_not_started_when_no_workflow_and_not_generating(
+        self, client: AsyncClient
+    ) -> None:
         todo_resp = _todo_resp(workflow_id=None)
         with (
             patch(f"{TODOS_MOD}.get_cache", new_callable=AsyncMock, return_value=None),
-            patch(f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, return_value=todo_resp),
-            patch("app.services.workflow.queue_service.WorkflowQueueService.is_workflow_generating", new_callable=AsyncMock, return_value=False),
+            patch(
+                f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, return_value=todo_resp
+            ),
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.is_workflow_generating",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
             patch(f"{TODOS_MOD}.set_cache", new_callable=AsyncMock) as mock_set,
         ):
             resp = await client.get("/api/v1/todos/todo-1/workflow-status")
@@ -813,8 +1121,14 @@ class TestGetWorkflowStatus:
         todo_resp = _todo_resp(workflow_id=None)
         with (
             patch(f"{TODOS_MOD}.get_cache", new_callable=AsyncMock, return_value=None),
-            patch(f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, return_value=todo_resp),
-            patch("app.services.workflow.queue_service.WorkflowQueueService.is_workflow_generating", new_callable=AsyncMock, return_value=True),
+            patch(
+                f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, return_value=todo_resp
+            ),
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.is_workflow_generating",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
             patch(f"{TODOS_MOD}.set_cache", new_callable=AsyncMock) as mock_set,
         ):
             resp = await client.get("/api/v1/todos/todo-1/workflow-status")
@@ -825,8 +1139,16 @@ class TestGetWorkflowStatus:
     async def test_not_found_returns_404(self, client: AsyncClient) -> None:
         with (
             patch(f"{TODOS_MOD}.get_cache", new_callable=AsyncMock, return_value=None),
-            patch(f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, side_effect=ValueError("Todo not found")),
-            patch("app.services.workflow.queue_service.WorkflowQueueService.is_workflow_generating", new_callable=AsyncMock, return_value=False),
+            patch(
+                f"{TODOS_MOD}.TodoService.get_todo",
+                new_callable=AsyncMock,
+                side_effect=ValueError("Todo not found"),
+            ),
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.is_workflow_generating",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
         ):
             resp = await client.get("/api/v1/todos/missing/workflow-status")
 
@@ -835,8 +1157,16 @@ class TestGetWorkflowStatus:
     async def test_generic_exception_returns_500(self, client: AsyncClient) -> None:
         with (
             patch(f"{TODOS_MOD}.get_cache", new_callable=AsyncMock, return_value=None),
-            patch(f"{TODOS_MOD}.TodoService.get_todo", new_callable=AsyncMock, side_effect=RuntimeError("boom")),
-            patch("app.services.workflow.queue_service.WorkflowQueueService.is_workflow_generating", new_callable=AsyncMock, return_value=False),
+            patch(
+                f"{TODOS_MOD}.TodoService.get_todo",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("boom"),
+            ),
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.is_workflow_generating",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
         ):
             resp = await client.get("/api/v1/todos/todo-1/workflow-status")
 
@@ -851,7 +1181,11 @@ class TestGetWorkflowStatus:
 class TestListProjects:
     async def test_success(self, client: AsyncClient) -> None:
         projects = [_project_resp("p1"), _project_resp("p2")]
-        with patch(f"{TODOS_MOD}.ProjectService.list_projects", new_callable=AsyncMock, return_value=projects):
+        with patch(
+            f"{TODOS_MOD}.ProjectService.list_projects",
+            new_callable=AsyncMock,
+            return_value=projects,
+        ):
             resp = await client.get("/api/v1/projects")
 
         assert resp.status_code == 200
@@ -859,7 +1193,11 @@ class TestListProjects:
         assert resp.json()[0]["id"] == "p1"
 
     async def test_exception_returns_500(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.ProjectService.list_projects", new_callable=AsyncMock, side_effect=RuntimeError("fail")):
+        with patch(
+            f"{TODOS_MOD}.ProjectService.list_projects",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("fail"),
+        ):
             resp = await client.get("/api/v1/projects")
 
         assert resp.status_code == 500
@@ -868,14 +1206,20 @@ class TestListProjects:
 class TestCreateProject:
     async def test_success(self, client: AsyncClient) -> None:
         proj = _project_resp()
-        with patch(f"{TODOS_MOD}.ProjectService.create_project", new_callable=AsyncMock, return_value=proj):
+        with patch(
+            f"{TODOS_MOD}.ProjectService.create_project", new_callable=AsyncMock, return_value=proj
+        ):
             resp = await client.post("/api/v1/projects", json={"name": "My Project"})
 
         assert resp.status_code == 201
         assert resp.json()["name"] == "My Project"
 
     async def test_exception_returns_500(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.ProjectService.create_project", new_callable=AsyncMock, side_effect=RuntimeError("fail")):
+        with patch(
+            f"{TODOS_MOD}.ProjectService.create_project",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("fail"),
+        ):
             resp = await client.post("/api/v1/projects", json={"name": "x"})
 
         assert resp.status_code == 500
@@ -888,8 +1232,12 @@ class TestCreateProject:
         proj = _project_resp()
         proj.color = "#FF0000"
         proj.description = "desc"
-        with patch(f"{TODOS_MOD}.ProjectService.create_project", new_callable=AsyncMock, return_value=proj):
-            resp = await client.post("/api/v1/projects", json={"name": "x", "color": "#FF0000", "description": "desc"})
+        with patch(
+            f"{TODOS_MOD}.ProjectService.create_project", new_callable=AsyncMock, return_value=proj
+        ):
+            resp = await client.post(
+                "/api/v1/projects", json={"name": "x", "color": "#FF0000", "description": "desc"}
+            )
 
         assert resp.status_code == 201
 
@@ -898,27 +1246,43 @@ class TestUpdateProject:
     async def test_success(self, client: AsyncClient) -> None:
         updated = _project_resp()
         updated.name = "Updated"
-        with patch(f"{TODOS_MOD}.ProjectService.update_project", new_callable=AsyncMock, return_value=updated):
+        with patch(
+            f"{TODOS_MOD}.ProjectService.update_project",
+            new_callable=AsyncMock,
+            return_value=updated,
+        ):
             resp = await client.put("/api/v1/projects/proj-1", json={"name": "Updated"})
 
         assert resp.status_code == 200
         assert resp.json()["name"] == "Updated"
 
     async def test_cannot_update_default_returns_400(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.ProjectService.update_project", new_callable=AsyncMock, side_effect=ValueError("Cannot update default Inbox project")):
+        with patch(
+            f"{TODOS_MOD}.ProjectService.update_project",
+            new_callable=AsyncMock,
+            side_effect=ValueError("Cannot update default Inbox project"),
+        ):
             resp = await client.put("/api/v1/projects/proj-1", json={"name": "x"})
 
         assert resp.status_code == 400
         assert "Cannot update" in resp.json()["detail"]
 
     async def test_not_found_returns_404(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.ProjectService.update_project", new_callable=AsyncMock, side_effect=ValueError("Project not found")):
+        with patch(
+            f"{TODOS_MOD}.ProjectService.update_project",
+            new_callable=AsyncMock,
+            side_effect=ValueError("Project not found"),
+        ):
             resp = await client.put("/api/v1/projects/missing", json={"name": "x"})
 
         assert resp.status_code == 404
 
     async def test_generic_exception_returns_500(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.ProjectService.update_project", new_callable=AsyncMock, side_effect=RuntimeError("fail")):
+        with patch(
+            f"{TODOS_MOD}.ProjectService.update_project",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("fail"),
+        ):
             resp = await client.put("/api/v1/projects/proj-1", json={"name": "x"})
 
         assert resp.status_code == 500
@@ -926,26 +1290,40 @@ class TestUpdateProject:
 
 class TestDeleteProject:
     async def test_success_returns_204(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.ProjectService.delete_project", new_callable=AsyncMock, return_value=None):
+        with patch(
+            f"{TODOS_MOD}.ProjectService.delete_project", new_callable=AsyncMock, return_value=None
+        ):
             resp = await client.delete("/api/v1/projects/proj-1")
 
         assert resp.status_code == 204
 
     async def test_cannot_delete_default_returns_400(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.ProjectService.delete_project", new_callable=AsyncMock, side_effect=ValueError("Cannot delete default Inbox project")):
+        with patch(
+            f"{TODOS_MOD}.ProjectService.delete_project",
+            new_callable=AsyncMock,
+            side_effect=ValueError("Cannot delete default Inbox project"),
+        ):
             resp = await client.delete("/api/v1/projects/proj-1")
 
         assert resp.status_code == 400
         assert "Cannot delete" in resp.json()["detail"]
 
     async def test_not_found_returns_404(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.ProjectService.delete_project", new_callable=AsyncMock, side_effect=ValueError("Project not found")):
+        with patch(
+            f"{TODOS_MOD}.ProjectService.delete_project",
+            new_callable=AsyncMock,
+            side_effect=ValueError("Project not found"),
+        ):
             resp = await client.delete("/api/v1/projects/missing")
 
         assert resp.status_code == 404
 
     async def test_generic_exception_returns_500(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.ProjectService.delete_project", new_callable=AsyncMock, side_effect=RuntimeError("fail")):
+        with patch(
+            f"{TODOS_MOD}.ProjectService.delete_project",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("fail"),
+        ):
             resp = await client.delete("/api/v1/projects/proj-1")
 
         assert resp.status_code == 500
@@ -960,7 +1338,9 @@ class TestCreateSubtask:
     async def test_success(self, client: AsyncClient) -> None:
         # repository returns updated document
         doc = _todo_doc(subtasks=[SubTask(id="sub-1", title="Buy milk", completed=False)])
-        with patch(f"{TODOS_MOD}.todo_repository.add_subtask", new_callable=AsyncMock, return_value=doc):
+        with patch(
+            f"{TODOS_MOD}.todo_repository.add_subtask", new_callable=AsyncMock, return_value=doc
+        ):
             resp = await client.post("/api/v1/todos/todo-1/subtasks", json={"title": "Buy milk"})
 
         assert resp.status_code == 201
@@ -969,14 +1349,20 @@ class TestCreateSubtask:
         assert resp.json()["subtasks"][0]["title"] == "Buy milk"
 
     async def test_not_found_returns_404(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.todo_repository.add_subtask", new_callable=AsyncMock, return_value=None):
+        with patch(
+            f"{TODOS_MOD}.todo_repository.add_subtask", new_callable=AsyncMock, return_value=None
+        ):
             resp = await client.post("/api/v1/todos/todo-1/subtasks", json={"title": "x"})
 
         assert resp.status_code == 404
         assert "not found" in resp.json()["detail"].lower()
 
     async def test_generic_exception_returns_500(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.todo_repository.add_subtask", new_callable=AsyncMock, side_effect=RuntimeError("fail")):
+        with patch(
+            f"{TODOS_MOD}.todo_repository.add_subtask",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("fail"),
+        ):
             resp = await client.post("/api/v1/todos/todo-1/subtasks", json={"title": "x"})
 
         assert resp.status_code == 500
@@ -989,22 +1375,36 @@ class TestCreateSubtask:
 class TestUpdateSubtask:
     async def test_success_update_title(self, client: AsyncClient) -> None:
         doc = _todo_doc(subtasks=[SubTask(id="sub-1", title="New title", completed=False)])
-        with patch(f"{TODOS_MOD}.todo_repository.set_subtask_fields", new_callable=AsyncMock, return_value=doc):
-            resp = await client.put("/api/v1/todos/todo-1/subtasks/sub-1", json={"title": "New title"})
+        with patch(
+            f"{TODOS_MOD}.todo_repository.set_subtask_fields",
+            new_callable=AsyncMock,
+            return_value=doc,
+        ):
+            resp = await client.put(
+                "/api/v1/todos/todo-1/subtasks/sub-1", json={"title": "New title"}
+            )
 
         assert resp.status_code == 200
         assert resp.json()["subtasks"][0]["title"] == "New title"
 
     async def test_success_update_completed(self, client: AsyncClient) -> None:
         doc = _todo_doc(subtasks=[SubTask(id="sub-1", title="x", completed=True)])
-        with patch(f"{TODOS_MOD}.todo_repository.set_subtask_fields", new_callable=AsyncMock, return_value=doc):
+        with patch(
+            f"{TODOS_MOD}.todo_repository.set_subtask_fields",
+            new_callable=AsyncMock,
+            return_value=doc,
+        ):
             resp = await client.put("/api/v1/todos/todo-1/subtasks/sub-1", json={"completed": True})
 
         assert resp.status_code == 200
         assert resp.json()["subtasks"][0]["completed"] is True
 
     async def test_todo_not_found_returns_404(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.todo_repository.set_subtask_fields", new_callable=AsyncMock, return_value=None):
+        with patch(
+            f"{TODOS_MOD}.todo_repository.set_subtask_fields",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
             resp = await client.put("/api/v1/todos/missing/subtasks/sub-1", json={"title": "x"})
 
         assert resp.status_code == 404
@@ -1012,14 +1412,22 @@ class TestUpdateSubtask:
     async def test_subtask_not_found_returns_404(self, client: AsyncClient) -> None:
         # repository returns document but without matching subtask -> endpoint checks and returns 404
         doc = _todo_doc(subtasks=[SubTask(id="other", title="x", completed=False)])
-        with patch(f"{TODOS_MOD}.todo_repository.set_subtask_fields", new_callable=AsyncMock, return_value=doc):
+        with patch(
+            f"{TODOS_MOD}.todo_repository.set_subtask_fields",
+            new_callable=AsyncMock,
+            return_value=doc,
+        ):
             resp = await client.put("/api/v1/todos/todo-1/subtasks/sub-1", json={"title": "x"})
 
         assert resp.status_code == 404
         assert "Subtask not found" in resp.json()["detail"]
 
     async def test_generic_exception_returns_500(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.todo_repository.set_subtask_fields", new_callable=AsyncMock, side_effect=RuntimeError("fail")):
+        with patch(
+            f"{TODOS_MOD}.todo_repository.set_subtask_fields",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("fail"),
+        ):
             resp = await client.put("/api/v1/todos/todo-1/subtasks/sub-1", json={"title": "x"})
 
         assert resp.status_code == 500
@@ -1029,14 +1437,18 @@ class TestDeleteSubtask:
     async def test_success(self, client: AsyncClient) -> None:
         # after deletion, doc.subtasks should NOT contain the deleted id
         doc = _todo_doc(subtasks=[SubTask(id="sub-2", title="keep", completed=False)])
-        with patch(f"{TODOS_MOD}.todo_repository.remove_subtask", new_callable=AsyncMock, return_value=doc):
+        with patch(
+            f"{TODOS_MOD}.todo_repository.remove_subtask", new_callable=AsyncMock, return_value=doc
+        ):
             resp = await client.delete("/api/v1/todos/todo-1/subtasks/sub-1")
 
         assert resp.status_code == 200
         assert all(s["id"] != "sub-1" for s in resp.json()["subtasks"])
 
     async def test_todo_not_found_returns_404(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.todo_repository.remove_subtask", new_callable=AsyncMock, return_value=None):
+        with patch(
+            f"{TODOS_MOD}.todo_repository.remove_subtask", new_callable=AsyncMock, return_value=None
+        ):
             resp = await client.delete("/api/v1/todos/missing/subtasks/sub-1")
 
         assert resp.status_code == 404
@@ -1044,14 +1456,20 @@ class TestDeleteSubtask:
     async def test_subtask_not_found_returns_404(self, client: AsyncClient) -> None:
         # If subtask still present after remove, it means nothing was removed -> 404
         doc = _todo_doc(subtasks=[SubTask(id="sub-1", title="still there", completed=False)])
-        with patch(f"{TODOS_MOD}.todo_repository.remove_subtask", new_callable=AsyncMock, return_value=doc):
+        with patch(
+            f"{TODOS_MOD}.todo_repository.remove_subtask", new_callable=AsyncMock, return_value=doc
+        ):
             resp = await client.delete("/api/v1/todos/todo-1/subtasks/sub-1")
 
         assert resp.status_code == 404
         assert "Subtask not found" in resp.json()["detail"]
 
     async def test_generic_exception_returns_500(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.todo_repository.remove_subtask", new_callable=AsyncMock, side_effect=RuntimeError("fail")):
+        with patch(
+            f"{TODOS_MOD}.todo_repository.remove_subtask",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("fail"),
+        ):
             resp = await client.delete("/api/v1/todos/todo-1/subtasks/sub-1")
 
         assert resp.status_code == 500
@@ -1062,8 +1480,14 @@ class TestToggleSubtaskCompletion:
         doc_before = _todo_doc(subtasks=[SubTask(id="sub-1", title="x", completed=False)])
         doc_after = _todo_doc(subtasks=[SubTask(id="sub-1", title="x", completed=True)])
         with (
-            patch(f"{TODOS_MOD}.todo_repository.get", new_callable=AsyncMock, return_value=doc_before),
-            patch(f"{TODOS_MOD}.todo_repository.set_subtask_fields", new_callable=AsyncMock, return_value=doc_after),
+            patch(
+                f"{TODOS_MOD}.todo_repository.get", new_callable=AsyncMock, return_value=doc_before
+            ),
+            patch(
+                f"{TODOS_MOD}.todo_repository.set_subtask_fields",
+                new_callable=AsyncMock,
+                return_value=doc_after,
+            ),
             patch(ANALYTICS_PATCH) as mock_capture,
         ):
             resp = await client.post("/api/v1/todos/todo-1/subtasks/sub-1/toggle")
@@ -1079,8 +1503,14 @@ class TestToggleSubtaskCompletion:
         doc_before = _todo_doc(subtasks=[SubTask(id="sub-1", title="x", completed=True)])
         doc_after = _todo_doc(subtasks=[SubTask(id="sub-1", title="x", completed=False)])
         with (
-            patch(f"{TODOS_MOD}.todo_repository.get", new_callable=AsyncMock, return_value=doc_before),
-            patch(f"{TODOS_MOD}.todo_repository.set_subtask_fields", new_callable=AsyncMock, return_value=doc_after),
+            patch(
+                f"{TODOS_MOD}.todo_repository.get", new_callable=AsyncMock, return_value=doc_before
+            ),
+            patch(
+                f"{TODOS_MOD}.todo_repository.set_subtask_fields",
+                new_callable=AsyncMock,
+                return_value=doc_after,
+            ),
         ):
             resp = await client.post("/api/v1/todos/todo-1/subtasks/sub-1/toggle")
 
@@ -1104,15 +1534,25 @@ class TestToggleSubtaskCompletion:
     async def test_set_subtask_fields_returns_none_returns_404(self, client: AsyncClient) -> None:
         doc_before = _todo_doc(subtasks=[SubTask(id="sub-1", title="x", completed=False)])
         with (
-            patch(f"{TODOS_MOD}.todo_repository.get", new_callable=AsyncMock, return_value=doc_before),
-            patch(f"{TODOS_MOD}.todo_repository.set_subtask_fields", new_callable=AsyncMock, return_value=None),
+            patch(
+                f"{TODOS_MOD}.todo_repository.get", new_callable=AsyncMock, return_value=doc_before
+            ),
+            patch(
+                f"{TODOS_MOD}.todo_repository.set_subtask_fields",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
         ):
             resp = await client.post("/api/v1/todos/todo-1/subtasks/sub-1/toggle")
 
         assert resp.status_code == 404
 
     async def test_generic_exception_returns_500(self, client: AsyncClient) -> None:
-        with patch(f"{TODOS_MOD}.todo_repository.get", new_callable=AsyncMock, side_effect=RuntimeError("fail")):
+        with patch(
+            f"{TODOS_MOD}.todo_repository.get",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("fail"),
+        ):
             resp = await client.post("/api/v1/todos/todo-1/subtasks/sub-1/toggle")
 
         assert resp.status_code == 500
@@ -1120,8 +1560,14 @@ class TestToggleSubtaskCompletion:
     async def test_set_fields_exception_returns_500(self, client: AsyncClient) -> None:
         doc_before = _todo_doc(subtasks=[SubTask(id="sub-1", title="x", completed=False)])
         with (
-            patch(f"{TODOS_MOD}.todo_repository.get", new_callable=AsyncMock, return_value=doc_before),
-            patch(f"{TODOS_MOD}.todo_repository.set_subtask_fields", new_callable=AsyncMock, side_effect=RuntimeError("fail")),
+            patch(
+                f"{TODOS_MOD}.todo_repository.get", new_callable=AsyncMock, return_value=doc_before
+            ),
+            patch(
+                f"{TODOS_MOD}.todo_repository.set_subtask_fields",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("fail"),
+            ),
         ):
             resp = await client.post("/api/v1/todos/todo-1/subtasks/sub-1/toggle")
 

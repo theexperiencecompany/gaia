@@ -70,13 +70,13 @@
       "path": "apps/api/app/config/settings.py",
       "kind": "noqa",
       "count": 1,
-      "hash": "372e7139abfc49e0150705af0b03c0cab2e4c11afbb503604b66d8599ad3fe24"
+      "hash": "e2115173e2dfea71a016dbd0d5a00e62d68f6c43712adb7dee3dcfa40fa3d41b"
     },
     {
       "path": "apps/api/app/config/settings.py",
       "kind": "type-ignore",
       "count": 8,
-      "hash": "372e7139abfc49e0150705af0b03c0cab2e4c11afbb503604b66d8599ad3fe24"
+      "hash": "e2115173e2dfea71a016dbd0d5a00e62d68f6c43712adb7dee3dcfa40fa3d41b"
     },
     {
       "path": "apps/api/app/core/app_factory.py",
@@ -263,12 +263,6 @@
       "kind": "type-ignore",
       "count": 1,
       "hash": "536e7bcec2c103842673bd4544dece621f575ab951de4a799db03f8af30de11a"
-    },
-    {
-      "path": "apps/api/tests/unit/agents/test_llm_client.py",
-      "kind": "type-ignore",
-      "count": 2,
-      "hash": "857c29206c88f49ee8a68ffeb065fd74ee6d200500c1f98d60a327fac98db9bf"
     },
     {
       "path": "apps/api/tests/unit/agents/test_middleware_executor.py",
