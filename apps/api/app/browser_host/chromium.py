@@ -131,9 +131,7 @@ def _headless_shell_beside(chromium: Path) -> Path | None:
     for parent in chromium.parents:
         if not parent.name.startswith("chromium-"):
             continue
-        shell_root = parent.with_name(
-            parent.name.replace("chromium-", "chromium_headless_shell-", 1)
-        )
+        shell_root = parent.parent / parent.name.replace("chromium-", "chromium_headless_shell-", 1)
         if not shell_root.is_dir():
             return None
         for name in _HEADLESS_SHELL_BINARIES:

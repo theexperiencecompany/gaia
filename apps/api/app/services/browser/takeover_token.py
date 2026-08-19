@@ -10,6 +10,7 @@ the secret never overlaps with the bot-session secret so a leak is contained.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import TypedDict
 
 from jose import JWTError, jwt
 
@@ -19,6 +20,16 @@ from app.constants.auth import JWT_ALGORITHM
 _TAKEOVER_ROLE = "browser_takeover"
 _TAKEOVER_TOKEN_EXPIRY_MINUTES = 15
 _MIN_SECRET_LENGTH = 32
+
+
+class TakeoverTokenClaims(TypedDict):
+    """The verified claims of a takeover token — always signature-checked."""
+
+    session_id: str
+    user_id: str
+    # Verified expiry timestamp (seconds since epoch) so a connection's remaining
+    # lifetime is always read from a validated claim, never an unverified parse.
+    exp: float
 
 
 def create_takeover_token(session_id: str, user_id: str) -> str:
@@ -36,7 +47,7 @@ def create_takeover_token(session_id: str, user_id: str) -> str:
     return token
 
 
-def verify_takeover_token(token: str) -> dict[str, object]:
+def verify_takeover_token(token: str) -> TakeoverTokenClaims:
     """Decode and validate a takeover token, returning ``{session_id, user_id, exp}``.
 
     ``exp`` is the verified expiry timestamp (seconds since epoch) so the caller
@@ -56,13 +67,17 @@ def verify_takeover_token(token: str) -> dict[str, object]:
     session_id = payload.get("session_id")
     user_id = payload.get("sub")
     exp = payload.get("exp")
-    if not session_id or not user_id or exp is None:
+    if (
+        not isinstance(session_id, str)
+        or not isinstance(user_id, str)
+        or not isinstance(exp, (int, float))
+    ):
         raise JWTError("Takeover token missing session_id, subject, or expiry")
 
     return {"session_id": session_id, "user_id": user_id, "exp": float(exp)}
 
 
-def takeover_token_ttl_seconds(claims: dict[str, object]) -> float:
+def takeover_token_ttl_seconds(claims: TakeoverTokenClaims) -> float:
     """Seconds until an already-verified token expires (``<= 0`` once past).
 
     Used to bound the live-view WebSocket to the token's lifetime — the socket
@@ -70,7 +85,7 @@ def takeover_token_ttl_seconds(claims: dict[str, object]) -> float:
     :func:`verify_takeover_token` (verified first); only its validated ``exp`` is
     read here — no unverified claim is ever trusted.
     """
-    return float(claims["exp"]) - datetime.now(UTC).timestamp()
+    return claims["exp"] - datetime.now(UTC).timestamp()
 
 
 def _get_takeover_secret() -> str:

@@ -32,6 +32,7 @@ from app.services.browser.live_code import resolve_live_code
 from app.services.browser.live_view import render_live_view_page
 from app.services.browser.replay import render_replay_page, resolve_replay_code
 from app.services.browser.takeover_token import (
+    TakeoverTokenClaims,
     takeover_token_ttl_seconds,
     verify_takeover_token,
 )
@@ -180,7 +181,7 @@ async def _authorize_ws(
     return str(user_id), None
 
 
-def _verify_scoped_token(token: str, session_id: str) -> dict[str, str]:
+def _verify_scoped_token(token: str, session_id: str) -> TakeoverTokenClaims:
     """Verify a takeover token and assert it is scoped to ``session_id`` (HTTP path)."""
     try:
         claims = verify_takeover_token(token)

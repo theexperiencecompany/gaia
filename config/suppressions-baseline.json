@@ -70,13 +70,13 @@
       "path": "apps/api/app/config/settings.py",
       "kind": "noqa",
       "count": 1,
-      "hash": "67269d7e43268fc0d970950e6e27dc154e7cd563b8a6007ed7ab676476371925"
+      "hash": "372e7139abfc49e0150705af0b03c0cab2e4c11afbb503604b66d8599ad3fe24"
     },
     {
       "path": "apps/api/app/config/settings.py",
       "kind": "type-ignore",
       "count": 8,
-      "hash": "67269d7e43268fc0d970950e6e27dc154e7cd563b8a6007ed7ab676476371925"
+      "hash": "372e7139abfc49e0150705af0b03c0cab2e4c11afbb503604b66d8599ad3fe24"
     },
     {
       "path": "apps/api/app/core/app_factory.py",
@@ -760,7 +760,7 @@
       "path": "apps/web/src/features/landing/components/demo/SimpleChatBubbles.tsx",
       "kind": "biome-ignore",
       "count": 1,
-      "hash": "7af33b778b4dea376e237480cc553987efe06d03182f4090631deb487f5cbc7d"
+      "hash": "625a43eabea0c35fe7393f40ff95d2f5ff70563f065755f73456b8c282ec4958"
     },
     {
       "path": "apps/web/src/features/landing/components/iphone/ChatDemo.tsx",
