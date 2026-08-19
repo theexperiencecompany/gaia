@@ -22,6 +22,7 @@ from dataclasses import dataclass
 
 from app.agents.context.fetchers import (
     build_active_todo_banner,
+    build_agenda_and_activity_block,
     build_background_banner,
     build_connected_integrations_manifest,
     build_core_memory_block,
@@ -212,7 +213,13 @@ SECTIONS: tuple[Section, ...] = (
         60,
         _custom_instructions,
     ),
-    Section("core_memory", PromptSlot.MEMORY_RECALL, ALL_TIERS, 10, build_core_memory_block),
+    # The memory core's documents, not the whole core: the agenda and the
+    # activity journal are split off into their own volatile section, because
+    # they are rewritten every turn and would otherwise churn the cached prefix.
+    Section("core_memory", PromptSlot.DYNAMIC_STABLE, ALL_TIERS, 70, build_core_memory_block),
+    Section(
+        "agenda_activity", PromptSlot.MEMORY_RECALL, ALL_TIERS, 10, build_agenda_and_activity_block
+    ),
     Section("memory_recall", PromptSlot.MEMORY_RECALL, ALL_TIERS, 20, build_memory_recall_block),
     Section("gaia_knowledge", PromptSlot.MEMORY_RECALL, ALL_TIERS, 30, build_gaia_knowledge_block),
     Section("skills", PromptSlot.MEMORY_RECALL, WORKER_TIERS, 40, _skills),

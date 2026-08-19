@@ -45,7 +45,7 @@ Every file you touch leaves stricter than you found it, and never looser. Scope 
 
 - Close what is in front of you: `Any`, unparametrized generics (`dict`, `list`, `Callable`), untyped empty collections, a bare `str` holding a fixed set of values.
 - **Never introduce** a new `Any` or bare generic into a file that did not have one. Adding a hole is never in scope; closing one nearly always is.
-- A literal repeated at both a definition site and a lookup site (registry keys, event names, queue names, config keys) is an enum. Nothing else enforces that the two stay in sync, and the drift is silent until production.
+- A literal repeated at both a definition site and a lookup site (registry keys, event names, queue names, config keys) is an enum — when the value set is closed and this repo owns every member. When the values are external, open-ended, or owned by someone else's schema (provider model ids, third-party API fields), a named constant referenced from both sites is the right shape; an enum there claims a closed world we don't control and goes stale. Either way, nothing else enforces that the two sites stay in sync, and the drift is silent until production.
 - An existing annotation is a claim, not evidence. `Any` launders wrong types downstream, so confirm the real runtime type before trusting a neighbouring declaration.
 - Prove the tightening bites. A checker that was green before *and* after proves nothing changed — a decorative annotation is exactly as green as a load-bearing one.
 

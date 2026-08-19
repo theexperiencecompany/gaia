@@ -403,6 +403,68 @@ class TestBuildAgentConfig:
         assert configurable["writing_style"] is None
 
     @patch("app.helpers.agent_helpers.providers")
+    async def test_session_id_is_the_conversation_when_there_is_no_parent(self, mock_providers):
+        """The sticky-routing key defaults to the conversation id itself."""
+        mock_providers.get.return_value = None
+
+        configurable = (
+            await build_agent_config(
+                conversation_id=CONV_ID, user=FAKE_USER, agent_name="comms_agent"
+            )
+        )["configurable"]
+
+        assert configurable["session_id"] == CONV_ID
+
+    @patch("app.helpers.agent_helpers.providers")
+    async def test_session_id_is_inherited_verbatim_from_the_parent(self, mock_providers):
+        """Every agent in the tree routes on the parent's sticky key, not its own id.
+
+        A child is spawned with a wrapped thread id as its ``conversation_id``, so
+        deriving the key locally would send it to a provider with a cold cache.
+        """
+        mock_providers.get.return_value = None
+
+        configurable = (
+            await build_agent_config(
+                conversation_id="github_executor_conv-1",
+                user=FAKE_USER,
+                agent_name="executor",
+                base_configurable={"session_id": "conv-1"},
+            )
+        )["configurable"]
+
+        assert configurable["session_id"] == "conv-1"
+
+    @patch("app.helpers.agent_helpers.providers")
+    async def test_session_id_survives_a_parent_that_carries_none(self, mock_providers):
+        """A parent that explicitly holds no sticky key hands down that absence.
+
+        Present-but-None and absent are different: the key is inherited on
+        presence, so a parent routing without one must not have a child invent one.
+        """
+        mock_providers.get.return_value = None
+
+        with_none = (
+            await build_agent_config(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="executor",
+                base_configurable={"session_id": None},
+            )
+        )["configurable"]
+        without_key = (
+            await build_agent_config(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="executor",
+                base_configurable={"selected_tool": "web_search"},
+            )
+        )["configurable"]
+
+        assert with_none["session_id"] is None
+        assert without_key["session_id"] == CONV_ID
+
+    @patch("app.helpers.agent_helpers.providers")
     async def test_stream_id_always_comes_from_the_parent(self, mock_providers):
         """Pass-through, not a fallback: a child never invents its own stream."""
         mock_providers.get.return_value = None

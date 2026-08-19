@@ -184,3 +184,4 @@ dump.rdb
 # a full app/tests/scripts copy plus mutmut's mutants/ tree, ~3.5k files. Left
 # behind only on a crash or MUTMUT_KEEP_WORKDIR=1, and swept into a commit once.
 .mutation-*/
+mutants/

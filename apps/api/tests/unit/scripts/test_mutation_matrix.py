@@ -269,3 +269,38 @@ def test_entries_carry_the_whole_list_under_a_plural_key() -> None:
 
     assert entry["testfiles"] == ["tests/unit/a.py", "tests/unit/b.py"]
     assert "testfile" not in entry
+
+
+def test_a_test_file_is_parsed_once_no_matter_how_many_modules_are_planned(
+    tmp_path: Path,
+) -> None:
+    """Reference detection must not re-parse the tree per changed module.
+
+    Without memoization the scan is quadratic — every changed module re-parses
+    every test file and, through the consumer fallback, every app file. On a
+    whole-tree diff (429 modules) the plan step blew the lane's 10-minute
+    ceiling and was cancelled, so nothing downstream got a gate at all. This
+    asserts the parse count, which is the property that keeps it linear; a
+    wall-clock assertion would be flaky on a loaded runner.
+    """
+    _write(tmp_path, "tests/unit/test_one.py", "import app.alpha\n")
+    _write(tmp_path, "tests/unit/test_two.py", "import app.beta\n")
+    mm._module_refs.cache_clear()
+    mm._py_files.cache_clear()
+
+    for module in ("alpha", "beta", "alpha", "beta"):
+        mm._test_files_for(module, tmp_path)
+
+    # Two files exist, so at most two parses no matter how many lookups ran.
+    assert mm._module_refs.cache_info().currsize == 2
+    assert mm._module_refs.cache_info().misses == 2
+    assert mm._module_refs.cache_info().hits > 0
+
+
+def test_module_refs_returns_an_immutable_set(tmp_path: Path) -> None:
+    """Cached values are shared, so a caller must not be able to mutate one."""
+    _write(tmp_path, "test_refs.py", "import app.one\n")
+
+    refs = mm._module_refs(tmp_path / "test_refs.py")
+
+    assert isinstance(refs, frozenset)

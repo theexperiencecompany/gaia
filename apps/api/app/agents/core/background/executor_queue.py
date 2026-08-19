@@ -62,6 +62,10 @@ class ExecutorRunItem(TypedDict, total=False):
     configurable: AgentConfigurable
     conversation_id: str
     user_message_id: str | None
+    #: The original live turn's bot message id, set only when this item was
+    #: written by a HIL pause (``_record_pause``) — a plain queue enqueue never
+    #: sets it. Read back by ``prepare_run_from_item`` into ``ExecutorRun``.
+    bot_message_id: str | None
 
 
 @dataclass(frozen=True)
@@ -339,6 +343,7 @@ def build_run_item(
     configurable: AgentConfigurable,
     conversation_id: str,
     user_message_id: str | None,
+    bot_message_id: str | None = None,
 ) -> ExecutorRunItem:
     """The one serialized run-context shape: written by the queue and the HIL
     resume store, read back by ``prepare_run_from_item``. Add fields here, not
@@ -349,6 +354,7 @@ def build_run_item(
         "configurable": safe_configurable(configurable),
         "conversation_id": conversation_id,
         "user_message_id": user_message_id,
+        "bot_message_id": bot_message_id,
     }
 
 
@@ -391,6 +397,7 @@ async def prepare_run_from_item(
     task = item.get("task", "")
     task_id = item.get("task_id")
     queued_user_message_id = item.get("user_message_id")
+    queued_bot_message_id = item.get("bot_message_id")
     configurable: AgentConfigurable = item.get("configurable") or {}
 
     queued_stream_id = f"{QUEUED_STREAM_ID_PREFIX}{uuid4()}"
@@ -425,6 +432,10 @@ async def prepare_run_from_item(
                 "stream_id": queued_stream_id,
                 "conversation_id": conversation_id,
                 "task_id": task_id,
+                # A HIL resume continues the ORIGINAL turn's message: the client
+                # folds this stream into it instead of opening a second
+                # placeholder (which would render its own tool accordion).
+                "bot_message_id": item.get("bot_message_id"),
             },
         )
 
@@ -436,5 +447,6 @@ async def prepare_run_from_item(
         kind=RunKind.QUEUED,
         task_id=task_id,
         user_message_id=queued_user_message_id,
+        bot_message_id=queued_bot_message_id,
     )
     return PreparedQueuedTask(run=run, task=task, configurable=configurable)

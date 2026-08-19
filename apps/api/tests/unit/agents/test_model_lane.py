@@ -14,6 +14,7 @@ import pytest
 from redis.exceptions import DataError
 
 from app.agents.llm import lane as lane_module
+from app.agents.llm.client import PROVIDER_MODELS
 from app.agents.llm.lane import (
     AgentRole,
     ModelLane,
@@ -33,7 +34,6 @@ from app.constants.llm import (
     DEFAULT_MODEL_NAME,
     MONTHLY_BUDGET_TTL_SECONDS,
     OPENROUTER_REASONING,
-    PAID_MODEL_MODEL_KWARGS,
     PAID_MODEL_NAME,
     PAID_MODEL_PROVIDER,
     PRO_MONTHLY_COST_BUDGET_USD,
@@ -50,6 +50,12 @@ from app.models.payment_models import PlanType
 #: a lookup for the wrong user (or for ``None``) fails instead of quietly
 #: answering.
 USER = "u1"
+
+#: A provider-routing pin, in the shape a DEV_MODEL_OPTIONS entry carries one.
+#: The paid lane no longer pins (session_id sticky routing replaced it), but the
+#: pin's plumbing — reaching the wire, being dropped on fallback — still has to be
+#: right for the lanes that do.
+_A_ROUTING_PIN: dict[str, Any] = {"provider": {"only": ["minimax"]}}
 
 
 def _plan(plan: PlanType, *, over_budget: bool = False) -> Any:
@@ -85,14 +91,18 @@ class TestPlanRouting:
         assert resolved.model == DEFAULT_MODEL_NAME
         assert resolved.provider_pin is None
 
-    async def test_paid_gets_the_paid_model_on_the_first_party_lane(self) -> None:
-        """Without the pin, OpenRouter load-balances across resellers whose shared
-        pools get rate-limited upstream."""
+    async def test_paid_gets_the_paid_model_with_no_routing_pin(self) -> None:
+        """No `only` pin, deliberately: the session_id sticky-routing key keeps a
+        conversation on the provider holding its warm prompt cache, and an explicit
+        pin fought that — measured 64% cache hits against 83-91% per turn without
+        it. The key must be ABSENT rather than None; the SDK's **model_kwargs
+        spread crashes on None."""
         resolved = await _resolve(PlanType.PRO)
 
         assert resolved.provider == PAID_MODEL_PROVIDER
         assert resolved.model == PAID_MODEL_NAME
-        assert resolved.provider_pin == PAID_MODEL_MODEL_KWARGS
+        assert resolved.provider_pin is None
+        assert "model_kwargs" not in resolved.binding_keys()
 
     async def test_every_lane_carries_the_context_window(self) -> None:
         """A lane with no budget silently uncaps the summarization middleware."""
@@ -472,9 +482,48 @@ class TestDevOverride:
         assert resolved.provider_pin == option["model_kwargs"]
         assert resolved.max_input_tokens == DEFAULT_MAX_TOKENS
 
-    async def test_the_custom_endpoint_pins_no_model_so_the_client_default_serves_it(
-        self,
+    async def test_the_custom_endpoint_resolves_the_model_the_client_would_serve(
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """DEV_MODEL_OPTIONS["custom"] carries no model of its own. Leaving the
+        lane's model None left LLMAccountingMiddleware with no name to price the
+        call against — it falls back to DEFAULT_PRICING, ~11x the real rate. The
+        client binds PROVIDER_MODELS[CUSTOM] (DEV_LLM_MODEL) as its own default
+        whenever the model key is absent, so resolving that same value changes
+        nothing about which model runs and keeps the name visible to accounting.
+        """
+        monkeypatch.setitem(PROVIDER_MODELS, LLMProviderName.CUSTOM, "nous/deepseek-v4-flash-cheap")
+        option = dev_option_for("custom", use_defaults=False)
+        assert option is not None
+
+        resolved, _ = await resolve_lane(USER, AgentRole.COMMS, dev_option=option)
+
+        assert resolved.provider == LLMProviderName.CUSTOM
+        assert resolved.model == "nous/deepseek-v4-flash-cheap"
+
+    async def test_the_custom_endpoint_pins_no_model_when_dev_llm_model_is_unset(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Genuinely unknown ahead of the call (the endpoint is not configured), so
+        None is still right — the client raises its own unconfigured-endpoint error
+        rather than the run being priced against a name we invented."""
+        monkeypatch.setitem(PROVIDER_MODELS, LLMProviderName.CUSTOM, "")
+        option = dev_option_for("custom", use_defaults=False)
+        assert option is not None
+
+        resolved, _ = await resolve_lane(USER, AgentRole.COMMS, dev_option=option)
+
+        assert resolved.provider == LLMProviderName.CUSTOM
+        assert resolved.model is None
+
+    async def test_a_lane_missing_from_provider_models_pins_no_model(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The sibling above configures the lane to an empty string; here the lane
+        is absent from the map entirely. The lookup's fallback has to stay falsy — a
+        placeholder default would pin a model that does not exist and price the call
+        against it."""
+        monkeypatch.delitem(PROVIDER_MODELS, LLMProviderName.CUSTOM, raising=False)
         option = dev_option_for("custom", use_defaults=False)
         assert option is not None
 
@@ -514,8 +563,10 @@ class TestDevOverride:
             dev_option_for(None, use_defaults=True)
 
         assert log.warning.call_args.args == (
-            f"{LogTag.AGENT} DEV_DEFAULT_MODEL is not a DEV_MODEL_OPTIONS key; "
-            "keeping the plan-resolved lane",
+            (
+                f"{LogTag.AGENT} DEV_DEFAULT_MODEL is not a DEV_MODEL_OPTIONS key; "
+                "keeping the plan-resolved lane"
+            ),
         )
         assert log.warning.call_args.kwargs == {"dev_default": "not-a-real-id"}
 
@@ -572,7 +623,7 @@ class TestFallback:
             provider="openrouter",
             model=PAID_MODEL_NAME,
             reasoning=COMMS_REASONING,
-            provider_pin=PAID_MODEL_MODEL_KWARGS,
+            provider_pin=_A_ROUTING_PIN,
             max_input_tokens=DEFAULT_MAX_TOKENS,
         )
 
@@ -618,7 +669,7 @@ class TestRebindOntoAFallbackLane:
             provider=LLMProviderName.OPENROUTER,
             model=PAID_MODEL_NAME,
             reasoning=COMMS_REASONING,
-            provider_pin=PAID_MODEL_MODEL_KWARGS,
+            provider_pin=_A_ROUTING_PIN,
             max_input_tokens=DEFAULT_MAX_TOKENS,
         )
 

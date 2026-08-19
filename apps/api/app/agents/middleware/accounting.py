@@ -30,18 +30,35 @@ from langchain.agents.middleware.types import (
     ModelRequest,
     ModelResponse,
 )
-from langchain_core.messages import AIMessage, AnyMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
-from langgraph.config import get_config
+from langgraph.config import get_config, get_stream_writer
 from langgraph.runtime import Runtime
 
 from app.agents.llm.lane import ModelLane
-from app.constants.llm import AGENT_RECURSION_LIMIT, LANE_FIELD_ID, RECURSION_HWM_FRACTION
+from app.config.rate_limits import (
+    PRIMARY_METERED_FEATURE,
+    RateLimitPeriod,
+    get_daily_cost_budget_usd,
+    get_reset_time,
+)
+from app.constants.llm import (
+    AGENT_RECURSION_LIMIT,
+    LANE_FIELD_ID,
+    RECURSION_HWM_FRACTION,
+    UNKNOWN_MODEL_NAME,
+)
 from app.constants.log_tags import LogTag
+from app.decorators.rate_limiting import build_rate_limit_card
 from app.models.agent_models import agent_configurable
 from app.models.payment_models import PlanType
-from app.services.cost_budget import get_budget_stop_reason
-from app.services.llm_metering import record_llm_call
+from app.services.cost_budget import (
+    BUDGET_WRAPUP_NOTICE,
+    BudgetCheck,
+    get_budget_stop_reason,
+    is_budget_wrapup_threshold,
+)
+from app.services.llm_metering import extract_message_usage, record_llm_call
 from shared.py.wide_events import ModelContext, log
 
 
@@ -58,46 +75,6 @@ def _current_config() -> RunnableConfig:
         return get_config()
     except RuntimeError:
         return RunnableConfig()
-
-
-def _extract_usage(message: AIMessage) -> dict[str, int]:
-    """Return input/output/cached token counts from a message's usage metadata.
-
-    Reads ``message.usage_metadata`` (the canonical LangChain shape) and falls
-    back to ``response_metadata.usage_metadata`` for the provider SDK versions
-    that only populate that. ``cached_tokens`` comes from
-    ``input_token_details.cache_read`` or — when the provider surfaces it
-    separately — ``cached_content_token_count``. Missing fields default to 0.
-    """
-    usage = getattr(message, "usage_metadata", None) or {}
-    resp_meta = getattr(message, "response_metadata", None) or {}
-    resp_usage = resp_meta.get("usage_metadata") or {}
-
-    input_tokens = int(usage.get("input_tokens") or 0)
-    output_tokens = int(usage.get("output_tokens") or 0)
-    cached_tokens = int((usage.get("input_token_details") or {}).get("cache_read") or 0)
-
-    # Each field falls back independently. Gating the output fallback behind a
-    # missing *input* count (as this once did) silently dropped output tokens —
-    # and their cost — from every message that reported only one of the two.
-    # Both `prompt_token_count`/`candidates_token_count` (provider-native shape)
-    # and the LangChain-normalised keys are accepted.
-    if not input_tokens:
-        input_tokens = int(
-            resp_usage.get("prompt_token_count", resp_usage.get("input_tokens", 0)) or 0
-        )
-    if not output_tokens:
-        output_tokens = int(
-            resp_usage.get("candidates_token_count", resp_usage.get("output_tokens", 0)) or 0
-        )
-    if not cached_tokens:
-        cached_tokens = int(resp_usage.get("cached_content_token_count") or 0)
-
-    return {
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "cached_tokens": cached_tokens,
-    }
 
 
 def _latest_ai_message(messages: list[AnyMessage]) -> AIMessage | None:
@@ -120,7 +97,9 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
       ``recursion_high_water_mark`` exactly once per thread.
     - ``@awrap_model_call``: the budget wall — short-circuits the model call
       with a stop message when the daily cost budget or per-request token
-      ceiling is exhausted (see :func:`get_budget_stop_reason`).
+      ceiling is exhausted (see :func:`get_budget_stop_reason`); below that,
+      injects a one-time-per-thread wrap-up notice once spend crosses
+      ``BUDGET_WRAPUP_REMAINING_FRACTION``.
     """
 
     def __init__(self, agent_name: str, recursion_limit: int = AGENT_RECURSION_LIMIT) -> None:
@@ -140,6 +119,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         # overhead to every model step without improving correctness.
         self._step_counts: dict[str, int] = {}
         self._hwm_emitted: set[str] = set()
+        self._budget_wrapup_emitted: set[str] = set()
         self._start_ts: dict[str, float] = {}
 
     # --- helpers ---------------------------------------------------------
@@ -152,6 +132,30 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         n = self._step_counts.get(thread_id, 0) + 1
         self._step_counts[thread_id] = n
         return n
+
+    def _emit_budget_stop_card(self, stop_reason: str, plan_type: PlanType) -> None:
+        """Stream a ``rate_limit_data`` frame so the frontend renders RateLimitCard
+        instead of the bare stop text. Same helper ``with_rate_limiting`` uses in
+        ``app.decorators.rate_limiting``; a missing stream writer (workflows, bots)
+        is normal and logged at debug, never raised.
+        """
+        try:
+            writer = get_stream_writer()
+            writer(
+                build_rate_limit_card(
+                    feature=PRIMARY_METERED_FEATURE,
+                    plan_required="pro" if plan_type == PlanType.FREE else None,
+                    reset_time=get_reset_time(RateLimitPeriod.DAY).isoformat(),
+                    current_plan=plan_type.value,
+                    message=stop_reason,
+                )
+            )
+        except Exception as e:
+            log.debug(
+                f"{LogTag.AGENT} Budget stop card not streamed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     # --- hooks -----------------------------------------------------------
 
@@ -191,8 +195,15 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         On a hit, returns the user-facing stop text as the final AIMessage —
         no tool calls, so the graph ends naturally. Fail-open on infra errors:
         a Redis hiccup must never take down the turn.
+
+        Below the hard wall, when spend has crossed
+        ``BUDGET_WRAPUP_REMAINING_FRACTION`` of the daily budget, injects a
+        one-time-per-thread wrap-up notice (mirrors the recursion wrap-up in
+        ``create_agent._maybe_inject_wrapup``) so the model lands the plane
+        with what it has instead of dying mid-tool-call on the hard stop.
         """
-        configurable = agent_configurable(_current_config())
+        config = _current_config()
+        configurable = agent_configurable(config)
         user_id = configurable.get("user_id")
         root_request_id = configurable.get("root_request_id")
         # plan_type is passed through when the path stamped it (the hot chat path,
@@ -206,7 +217,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             plan_type = None
 
         try:
-            stop_reason = await get_budget_stop_reason(
+            check = await get_budget_stop_reason(
                 str(user_id) if user_id else None,
                 plan_type,
                 str(root_request_id) if root_request_id else None,
@@ -217,9 +228,9 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
                 error=str(e),
                 error_type=type(e).__name__,
             )
-            stop_reason = None
+            check = BudgetCheck(None, None, None)
 
-        if stop_reason is not None:
+        if check.stop_reason is not None:
             log.warning(
                 "budget_stop",
                 event_name="budget_stop",
@@ -228,7 +239,33 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
                 plan_type=plan_raw,
                 root_request_id=root_request_id,
             )
-            return ModelResponse(result=[AIMessage(content=stop_reason)])
+            # check.plan_type is always resolved alongside stop_reason (see
+            # get_budget_stop_reason: every return that sets stop_reason also
+            # sets plan_type), so the card always has a real plan to render.
+            if check.plan_type is not None:
+                self._emit_budget_stop_card(check.stop_reason, check.plan_type)
+            return ModelResponse(result=[AIMessage(content=check.stop_reason)])
+
+        thread_id = self._thread_id(config)
+        if (
+            check.spent_usd is not None
+            and check.plan_type is not None
+            and thread_id not in self._budget_wrapup_emitted
+            and is_budget_wrapup_threshold(check.spent_usd, check.plan_type)
+        ):
+            self._budget_wrapup_emitted.add(thread_id)
+            log.warning(
+                "budget_wrapup_notice",
+                event_name="budget_wrapup_notice",
+                agent_name=self.agent_name,
+                user_id=user_id,
+                thread_id=thread_id,
+                spent=check.spent_usd,
+                budget=get_daily_cost_budget_usd(check.plan_type),
+            )
+            request = request.override(
+                messages=[*request.messages, HumanMessage(content=BUDGET_WRAPUP_NOTICE)]
+            )
 
         return await handler(request)
 
@@ -246,17 +283,12 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         if ai_msg is None:
             return None
 
-        usage = _extract_usage(ai_msg)
-        input_tokens = usage["input_tokens"]
-        output_tokens = usage["output_tokens"]
-        cached_tokens = usage["cached_tokens"]
-
         config = _current_config()
         configurable = agent_configurable(config)
         thread_id = self._thread_id(config)
         lane = ModelLane.from_configurable(configurable.get(LANE_FIELD_ID))
-        model_name = (lane.model if lane else None) or "unknown"
-        provider = lane.provider if lane else "unknown"
+        model_name = (lane.model if lane else None) or UNKNOWN_MODEL_NAME
+        provider = lane.provider if lane else UNKNOWN_MODEL_NAME
         if lane is None:
             # Priced as "unknown", which cannot match a real pricing entry, so the
             # call undercharges the budget. Loud rather than silent, matching
@@ -278,6 +310,11 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         # actively asked for, so it charges the budget. Auxiliary one-shot calls
         # reach the same helper via ``ainvoke_structured`` with
         # ``charge_to_budget=False`` (COGS observability only).
+        usage = extract_message_usage(ai_msg)
+        input_tokens = usage["input_tokens"]
+        output_tokens = usage["output_tokens"]
+        cached_tokens = usage["cached_tokens"]
+        reasoning_tokens = usage["reasoning_tokens"]
         root_request_id = configurable.get("root_request_id")
         total_cost = await record_llm_call(
             user_id=str(user_id) if user_id else None,
@@ -285,6 +322,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cached_tokens=cached_tokens,
+            reasoning_tokens=reasoning_tokens,
             root_request_id=str(root_request_id) if root_request_id else None,
             charge_to_budget=True,
         )
@@ -304,11 +342,13 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         prior_input = int(prior.get("input_tokens") or 0)
         prior_output = int(prior.get("output_tokens") or 0)
         prior_cached = int(prior.get("cached_tokens") or 0)
+        prior_reasoning = int(prior.get("reasoning_tokens") or 0)
         prior_cost = float(prior.get("cost_usd") or 0.0)
 
         agg_input = prior_input + input_tokens
         agg_output = prior_output + output_tokens
         agg_cached = prior_cached + cached_tokens
+        agg_reasoning = prior_reasoning + reasoning_tokens
         agg_cost = prior_cost + total_cost
         agg_hit_rate = agg_cached / max(agg_input, 1) if agg_input else 0.0
 
@@ -320,6 +360,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
                 output_tokens=agg_output,
                 tokens_used=agg_input + agg_output,
                 cached_tokens=agg_cached,
+                reasoning_tokens=agg_reasoning,
                 cache_hit_rate=round(agg_hit_rate, 4),
                 cost_usd=round(agg_cost, 6),
                 credits_charged=round(agg_cost, 6),
@@ -338,6 +379,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             input_tokens=input_tokens,
             cached_tokens=cached_tokens,
             output_tokens=output_tokens,
+            reasoning_tokens=reasoning_tokens,
             cost_usd=total_cost,
             step_index=step_index,
         )

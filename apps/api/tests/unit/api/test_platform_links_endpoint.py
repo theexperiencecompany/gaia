@@ -8,6 +8,7 @@ import pytest
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.models.payment_models import PlanType
 from app.models.platform_models import DisconnectPlatformResponse, PlatformLinkResult
+from app.services.analytics_service import AnalyticsEvents
 from app.services.photon.photon_client import PhotonUser
 from app.services.platform_link_service import IMESSAGE_REGISTRATION_FEATURE_KEY
 from tests.conftest import FAKE_USER
@@ -131,12 +132,59 @@ class TestLinkPlatform:
                 new_callable=AsyncMock,
                 return_value=link_result,
             ),
+            patch("app.api.v1.endpoints.platform_links.capture_context_event") as mock_capture,
         ):
             mock_cache.client = mock_redis
             resp = await client.post(f"{BASE}/discord", json={"token": "valid_tok"})
 
         assert resp.status_code == 200
         assert resp.json()["status"] == "linked"
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.INTEGRATION_CONNECTED,
+            {"integration_id": "discord", "is_new_link": False},
+        )
+
+    @pytest.mark.asyncio
+    async def test_link_new_platform_captures_is_new_link_true(self, client: AsyncClient) -> None:
+        """A fresh link reports is_new_link=True in the capture payload."""
+        mock_redis = AsyncMock()
+        mock_redis.hgetall = AsyncMock(
+            return_value={
+                "platform": "discord",
+                "platform_user_id": "DISC123",
+                "username": "testuser",
+                "display_name": "Test User",
+            }
+        )
+        mock_redis.delete = AsyncMock()
+        link_result = PlatformLinkResult(
+            status="linked",
+            platform="discord",
+            platform_user_id="DISC123",
+            connected_at="2024-01-01T00:00:00Z",
+            is_new_link=True,
+        )
+
+        with (
+            patch("app.api.v1.endpoints.platform_links.redis_cache") as mock_cache,
+            patch(
+                "app.api.v1.endpoints.platform_links.PlatformLinkService.link_account",
+                new_callable=AsyncMock,
+                return_value=link_result,
+            ),
+            patch(
+                "app.api.v1.endpoints.platform_links.notify_account_linked", new_callable=AsyncMock
+            ),
+            patch("app.api.v1.endpoints.platform_links.capture_context_event") as mock_capture,
+        ):
+            mock_cache.client = mock_redis
+            resp = await client.post(f"{BASE}/discord", json={"token": "valid_tok"})
+
+        assert resp.status_code == 200
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.INTEGRATION_CONNECTED,
+            {"integration_id": "discord", "is_new_link": True},
+        )
 
     @pytest.mark.asyncio
     async def test_link_conflict(self, client: AsyncClient) -> None:
@@ -198,6 +246,7 @@ class TestDisconnectPlatform:
                 return_value={"status": "disconnected", "platform": "discord"},
             ),
             patch("app.api.v1.endpoints.platform_links.redis_cache") as mock_cache,
+            patch("app.api.v1.endpoints.platform_links.capture_context_event") as mock_capture,
         ):
             mock_cache.client = mock_redis
             resp = await client.delete(f"{BASE}/discord")
@@ -205,6 +254,9 @@ class TestDisconnectPlatform:
         assert resp.status_code == 200
         assert resp.json()["status"] == "disconnected"
         mock_redis.delete.assert_called_once_with("bot_user:discord:DISC999")
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.INTEGRATION_DISCONNECTED, {"integration_id": "discord"}
+        )
 
     @pytest.mark.asyncio
     async def test_disconnect_no_existing_entry(self, client: AsyncClient) -> None:
@@ -456,7 +508,9 @@ class TestImessagePremiumGate:
 
     @pytest.mark.asyncio
     async def test_pro_user_connect_returns_photon_deep_link(self, client: AsyncClient) -> None:
-        photon_user = PhotonUser(id="pu_123", phoneNumber="+15551234567")
+        photon_user = PhotonUser(
+            id="pu_123", phoneNumber="+15551234567", assignedPhoneNumber="+14155955082"
+        )
         with (
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
             patch(
@@ -480,15 +534,41 @@ class TestImessagePremiumGate:
         assert body["auth_type"] == "manual"
         assert body["auth_url"] is None
         assert body["instructions"] == (
-            "Open the link on your iPhone or Mac, then text /auth to your GAIA iMessage "
-            "number to link your account."
+            "Text /auth to your GAIA iMessage number from the phone you just registered."
         )
         assert body["action_link"] == "https://spectrum.photon.codes/users/pu_123/redirect"
         mock_register.assert_awaited_once_with("+15551234567")
 
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_pro_user_connect_returns_the_number_to_text(self, client: AsyncClient) -> None:
+        """The deep link is an Apple-only `sms:` URL — a desktop browser opens it to a
+        blank tab. The number the user has to text must reach the client as data."""
+        photon_user = PhotonUser(
+            id="pu_123", phoneNumber="+15551234567", assignedPhoneNumber="+14155955082"
+        )
+        with (
+            patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
+            patch(
+                "app.api.v1.endpoints.platform_links.register_shared_user",
+                new_callable=AsyncMock,
+                return_value=photon_user,
+            ),
+            patch(
+                "app.api.v1.endpoints.platform_links.register_pending_imessage_number",
+                new_callable=AsyncMock,
+            ),
+        ):
+            resp = await client.post(f"{BASE}/imessage/connect", json={"phone": "+15551234567"})
+
+        assert resp.status_code == 200
+        assert resp.json()["contact_number"] == "+14155955082"
+
     @pytest.mark.asyncio
     async def test_pro_user_connect_charges_registration_quota(self, client: AsyncClient) -> None:
-        photon_user = PhotonUser(id="pu_123", phoneNumber="+15551234567")
+        photon_user = PhotonUser(
+            id="pu_123", phoneNumber="+15551234567", assignedPhoneNumber="+14155955082"
+        )
         with (
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
             patch(
@@ -535,7 +615,9 @@ class TestImessagePremiumGate:
         self, client: AsyncClient
     ) -> None:
         """Unrecorded, an abandoned registration holds its pool seat forever."""
-        photon_user = PhotonUser(id="pu_123", phoneNumber="+15551234567")
+        photon_user = PhotonUser(
+            id="pu_123", phoneNumber="+15551234567", assignedPhoneNumber="+14155955082"
+        )
         with (
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
             patch("app.api.v1.endpoints.platform_links.enforce_rate_limit", new_callable=AsyncMock),

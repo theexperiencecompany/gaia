@@ -3,6 +3,7 @@
 import { Chip } from "@heroui/chip";
 
 import { ArrowUp02Icon, BubbleChatIcon, LinkSquare02Icon } from "@icons";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import type { RedditPostData } from "@/types/features/redditTypes";
 
 interface RedditPostCardProps {
@@ -41,6 +42,13 @@ function formatNumber(num: number): string {
 export default function RedditPostCard({ post }: RedditPostCardProps) {
   const handleOpenPost = () => {
     if (post.permalink) {
+      trackEvent(ANALYTICS_EVENTS.REDDIT_POST_VIEWED, {
+        subreddit: post.subreddit,
+        score: post.score,
+        num_comments: post.num_comments,
+        has_selftext: Boolean(post.selftext),
+        has_external_link: !post.is_self && Boolean(post.url),
+      });
       window.open(`https://reddit.com${post.permalink}`, "_blank");
     }
   };

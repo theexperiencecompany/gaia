@@ -144,7 +144,7 @@ jobs:
           # Bot/grafana aliases only move when their tags were deployed this
           # run — extend the health gate to match exactly what will be retagged.
           if [[ -n "${BOTS_IMAGE_TAG}" ]]; then
-            SERVICES="${SERVICES} discord-bot slack-bot telegram-bot whatsapp-bot"
+            SERVICES="${SERVICES} discord-bot slack-bot telegram-bot whatsapp-bot imessage-bot"
           fi
           if [[ -n "${GRAFANA_IMAGE_TAG}" ]]; then
             SERVICES="${SERVICES} grafana"
@@ -318,7 +318,7 @@ jobs:
         run: |
           if [ "$ROLLBACK_MODE" = "last" ]; then
             for svc in $(docker --context prod stack services gaia-prod --format '{{.Name}}' \
-              | grep -E 'gaia-backend|arq_worker|embedding-sidecar|voice-agent-worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot'); do
+              | grep -E 'gaia-backend|arq_worker|embedding-sidecar|voice-agent-worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot|imessage-bot'); do
               echo "Rolling back $svc..."
               docker --context prod service rollback "$svc"
             done
@@ -338,7 +338,7 @@ jobs:
         run: |
           if [ "$ROLLBACK_MODE" = "last" ]; then
             SERVICES=$(docker --context prod stack services gaia-prod --format '{{.Name}}' \
-              | grep -E 'gaia-backend|arq_worker|embedding-sidecar|voice-agent-worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot')
+              | grep -E 'gaia-backend|arq_worker|embedding-sidecar|voice-agent-worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot|imessage-bot')
           else
             SERVICES="gaia-prod_gaia-backend gaia-prod_arq_worker gaia-prod_embedding-sidecar"
           fi

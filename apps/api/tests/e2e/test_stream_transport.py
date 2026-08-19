@@ -39,7 +39,7 @@ from starlette.requests import Request
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.endpoints import chat as chat_endpoint
-from app.constants.cache import STREAM_TURN_DEDUP_PREFIX
+from app.constants.cache import STREAM_EVENTS_PREFIX, STREAM_TURN_DEDUP_PREFIX
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.utils.agent_utils import format_sse_data
@@ -195,30 +195,72 @@ class TestSubscribeAuthorization:
         assert response.status_code == 400
 
 
+async def seed_completed_turn(user_id: str, frames: list[str]) -> str:
+    """A stream terminated the way a real turn terminates, log intact.
+
+    The producer publishes ``data: [DONE]`` into the log as an ordinary chunk
+    and only then calls ``complete_stream`` (``services/chat/stream.py``,
+    ``background/executor_runner.py``). The control entry that
+    ``complete_stream`` writes is consumed by ``subscribe_stream`` and never
+    reaches the wire, so seeding without the chunk would build a log no
+    producer can actually create — and a replay of it would look like a client
+    that never closes.
+    """
+    stream_id = str(uuid4())
+    await stream_manager.start_stream(
+        stream_id=stream_id,
+        conversation_id=str(uuid4()),
+        user_id=user_id,
+    )
+    for frame in [*frames, "data: [DONE]\n\n"]:
+        await stream_manager.publish_chunk(stream_id, frame)
+    await stream_manager.complete_stream(stream_id)
+    return stream_id
+
+
 class TestAlreadyCompleteShortCircuit:
-    async def test_completed_stream_returns_exactly_one_done_frame(
+    """``is_complete`` alone is not a reason to hang up.
+
+    A HIL resume publishes its frames and closes inside ~100ms — quicker than
+    the client's websocket-to-fetch round trip — so a short-circuit keyed on
+    ``is_complete`` threw away nearly every resumed run: the next approval card
+    never arrived and the turn sat on "Waiting for your approval" forever. The
+    log outliving the turn is what makes the late attach recoverable, so the
+    short-circuit is keyed on the log being *gone*, not on the turn being over.
+
+    The unit tier (``unit/api/test_chat_stream_endpoint.py``) pins the same two
+    branches with ``has_events`` and ``subscribe_stream`` mocked — which is
+    precisely the code the fix leans on. This is the tier that runs them for
+    real, over a real event log.
+    """
+
+    async def test_a_completed_turn_replays_its_whole_log_then_closes_once(
         self, client: AsyncClient, as_user: Callable[[dict[str, Any]], None]
     ) -> None:
-        """A client that attaches after the turn ended must close, not replay.
-
-        The event log outlives the turn by design (``cleanup`` keeps it), so
-        dropping this branch would re-deliver every frame of a finished turn to
-        a client that already rendered them.
-        """
         as_user(FAKE_USER)
-        stream_id = str(uuid4())
-        await stream_manager.start_stream(
-            stream_id=stream_id, conversation_id=str(uuid4()), user_id=OWNER_ID
-        )
-        for frame in TURN_FRAMES:
-            await stream_manager.publish_chunk(stream_id, frame)
-        await stream_manager.complete_stream(stream_id)
+        stream_id = await seed_completed_turn(OWNER_ID, TURN_FRAMES)
+
+        response = await client.get(f"/api/v1/stream/{stream_id}")
+
+        assert response.status_code == 200
+        transcript = Transcript.from_sse(response.text)
+        assert transcript.final_text() == "Hello there, friend!"
+        assert transcript.kinds().count(DONE) == 1, "the client would never close"
+        assert transcript.kinds()[-1] == DONE
+
+    async def test_an_expired_log_still_short_circuits_to_a_bare_done(
+        self, client: AsyncClient, as_user: Callable[[dict[str, Any]], None]
+    ) -> None:
+        """With nothing left to replay there is nothing to wait for either —
+        without this branch the attach idles on keepalives until it times out."""
+        as_user(FAKE_USER)
+        stream_id = await seed_completed_turn(OWNER_ID, TURN_FRAMES)
+        await redis_cache.redis.delete(f"{STREAM_EVENTS_PREFIX}{stream_id}")
 
         response = await client.get(f"/api/v1/stream/{stream_id}")
 
         assert response.status_code == 200
         assert response.text == "data: [DONE]\n\n"
-        assert Transcript.from_sse(response.text).kinds() == [DONE]
 
 
 # ---------------------------------------------------------------------------

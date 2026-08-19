@@ -20,7 +20,11 @@ from app.agents.context.slots import (
     PromptSlot,
     mark,
 )
-from app.agents.context.text import STABLE_SECTION_JOIN, VOLATILE_SECTION_JOIN
+from app.agents.context.text import (
+    STABLE_SECTION_JOIN,
+    VOLATILE_BLOCK_TRUNC_MARKER,
+    VOLATILE_SECTION_JOIN,
+)
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
@@ -41,6 +45,28 @@ class AssembledContext:
 
     def messages(self) -> list[SystemMessage]:
         return [self.stable] if self.volatile is None else [self.stable, self.volatile]
+
+
+#: Backstop against a pathological volatile block blowing the context window and
+#: the bill — a runaway section, not a caching mechanism: nothing here affects
+#: the prompt cache, which is decided by slot ORDER (see ``slots``), not size.
+#: Sections are otherwise emitted in full. Head and tail are kept — the head is
+#: the agenda and journal, the tail the todo and run-binding directives that
+#: carry recency value — and the middle goes.
+VOLATILE_BLOCK_MAX_CHARS = 8_000
+VOLATILE_BLOCK_HEAD_CHARS = 4_000
+VOLATILE_BLOCK_TAIL_CHARS = 4_000
+
+
+def _bounded(volatile_text: str) -> str:
+    """The volatile block, clipped to :data:`VOLATILE_BLOCK_MAX_CHARS`."""
+    if len(volatile_text) <= VOLATILE_BLOCK_MAX_CHARS:
+        return volatile_text
+    return (
+        volatile_text[:VOLATILE_BLOCK_HEAD_CHARS]
+        + VOLATILE_BLOCK_TRUNC_MARKER
+        + volatile_text[-VOLATILE_BLOCK_TAIL_CHARS:]
+    )
 
 
 async def _render_section(section: Section, ctx: SectionContext) -> tuple[str, str]:
@@ -73,8 +99,10 @@ async def _gather_sections(ctx: SectionContext) -> AssembledContext:
     stable_text = STABLE_SECTION_JOIN.join(
         text for section in stable_sections if (text := rendered[section.id])
     )
-    volatile_text = VOLATILE_SECTION_JOIN.join(
-        text for section in volatile_sections if (text := rendered[section.id])
+    volatile_text = _bounded(
+        VOLATILE_SECTION_JOIN.join(
+            text for section in volatile_sections if (text := rendered[section.id])
+        )
     )
 
     log.set(

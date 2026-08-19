@@ -279,7 +279,9 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
       expect.any(Function), // onAuthError callback
       expect.any(Function), // onGenericError callback
       expect.objectContaining({ platform: "telegram" }),
-      undefined,
+      expect.objectContaining({
+        distinctId: expect.any(String),
+      }),
     );
   });
 
@@ -334,7 +336,9 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "telegram" }),
-      undefined,
+      expect.objectContaining({
+        distinctId: expect.any(String),
+      }),
     );
   });
 
@@ -555,7 +559,9 @@ describe("TelegramAdapter - handleTelegramStreaming (streaming setup)", () => {
       expect.any(Function), // onAuthError callback
       expect.any(Function), // onGenericError callback
       expect.objectContaining({ platform: "telegram" }),
-      undefined,
+      expect.objectContaining({
+        distinctId: expect.any(String),
+      }),
     );
   });
 
@@ -1014,7 +1020,9 @@ describe("TelegramAdapter - /gaia command", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "telegram" }),
-      undefined,
+      expect.objectContaining({
+        distinctId: expect.any(String),
+      }),
     );
   });
 });
@@ -1406,7 +1414,9 @@ describe("TelegramAdapter - media message routing", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "telegram" }),
-      undefined,
+      expect.objectContaining({
+        distinctId: expect.any(String),
+      }),
     );
   });
 

@@ -27,7 +27,6 @@ from app.models.integration_models import (
     ListIntegrationsResult,
     SuggestedIntegration,
 )
-from app.services.connect_link_service import build_connect_link_url
 from app.services.oauth.oauth_service import (
     check_integration_status as check_single_integration_status,
     check_multiple_integrations_status,
@@ -37,10 +36,7 @@ from app.templates.docstrings.integration_tool_docs import (
     CONNECT_INTEGRATION,
     LIST_INTEGRATIONS,
 )
-from app.utils.integration_checker import (
-    build_integration_connection_message,
-    emit_integration_connection_required,
-)
+from app.utils.integration_checker import request_integration_connection
 from shared.py.wide_events import log
 
 
@@ -298,13 +294,8 @@ async def connect_integration(
 
         for integration in connections_to_initiate:
             writer({"progress": f"Initiating {integration.name} connection..."})
-
-            expired = await user_integration_repository.is_expired(str(user_id), integration.id)
-            emit_integration_connection_required(integration.id, integration.name, expired=expired)
-
-            connect_url = await build_connect_link_url(str(user_id), integration.id)
             results.append(
-                build_integration_connection_message(integration.name, connect_url, expired=expired)
+                await request_integration_connection(integration.id, integration.name, str(user_id))
             )
 
         return "\n".join(results) if results else "No integrations to connect."

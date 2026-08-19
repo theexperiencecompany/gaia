@@ -32,8 +32,9 @@ EXECUTOR_CONNECTED_INTEGRATIONS_HEADER = (
     "CONNECTED INTEGRATIONS (live snapshot of the user's currently connected accounts as of "
     "this turn; this is the latest connected set, so trust it over retrieve_tools for what is "
     "connected). To act on one, handoff to its subagent using the id in parentheses as the "
-    "handoff subagent_id. If the user asks for a provider that is NOT listed here, it is not "
-    "connected yet, so tell them to connect it instead of attempting the handoff. Built-in "
+    "handoff subagent_id. If the user asks for a provider that is NOT listed here, STILL do the "
+    "handoff: the handoff is what shows the user the connect card. Telling the user to connect "
+    "WITHOUT handing off leaves them hunting for a button that was never rendered. Built-in "
     "subagents (reminders, todos, gaia_knowledge_guide, docgen) are always available and are "
     "not listed here:"
 )
@@ -46,3 +47,8 @@ MEMORY_RECALL_HEADER = (
 CORE_MEMORY_HEADER = "What you remember about this user (memory core):"
 
 GAIA_KNOWLEDGE_HEADER = "About Gaia (your identity and capabilities):"
+
+#: Tells the model its view is partial when the volatile block overruns the
+#: ceiling in ``assemble``. Fixed text, so the notice does not itself grow with
+#: the content it stands in for.
+VOLATILE_BLOCK_TRUNC_MARKER = "\n…[context truncated to bound prompt size]…\n"

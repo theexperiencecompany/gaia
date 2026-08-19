@@ -27,7 +27,7 @@ tests:
               instance: embedding-sidecar:8200
             exp_annotations:
               description: >-
-                These five targets have no metrics of their own and are health-probed instead. If this is embedding-sidecar:8200, both the API and the ARQ worker lose embedding and reranking, so memory storage and semantic memory search break product-wide — there is no in-process fallback, the worker cannot fit the models in its memory limit. If it is one of the discord, slack, telegram or whatsapp bots, that platform's users get no replies even though the API itself is healthy.
+                These six targets have no metrics of their own and are health-probed instead. If this is embedding-sidecar:8200, both the API and the ARQ worker lose embedding and reranking, so memory storage and semantic memory search break product-wide — there is no in-process fallback, the worker cannot fit the models in its memory limit. If it is one of the discord, slack, telegram, whatsapp or imessage bots, that platform's users get no replies even though the API itself is healthy.
               runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-internal-service-down
               __dashboardUid__: gaia-containers
               __panelId__: '1'

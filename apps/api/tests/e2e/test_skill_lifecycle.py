@@ -621,7 +621,7 @@ class TestUninstall:
         mount, mongo, _ = stack
         skill = await _install()
 
-        assert await uninstall_skill_full(USER, skill.id) is True
+        assert (await uninstall_skill_full(USER, skill.id)) is not None
 
         assert not _skill_dir(mount, "quarterly-report").exists()
         assert await get_skill(USER, skill.id) is None
@@ -656,7 +656,7 @@ class TestUninstall:
         mount, _, _ = stack
         skill = await _install()
 
-        assert await uninstall_skill_full(OTHER_USER, skill.id) is False
+        assert (await uninstall_skill_full(OTHER_USER, skill.id)) is None
 
         assert _skill_md(mount, "quarterly-report").is_file()
         assert await get_skill(USER, skill.id) is not None
@@ -665,7 +665,7 @@ class TestUninstall:
         mount, _, _ = stack
         await _install()
 
-        assert await uninstall_skill_full(USER, "no-such-id") is False
+        assert (await uninstall_skill_full(USER, "no-such-id")) is None
 
         assert _skill_md(mount, "quarterly-report").is_file()
 
@@ -683,7 +683,7 @@ class TestUninstall:
         ):
             result = await uninstall_skill_full(USER, skill.id)
 
-        assert result is True
+        assert result is not None
         assert await get_skill(USER, skill.id) is None
 
     async def test_a_reinstall_after_uninstall_succeeds(self, stack):

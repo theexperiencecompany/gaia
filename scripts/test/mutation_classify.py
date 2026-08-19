@@ -42,11 +42,13 @@ orig_match = re.search(
 if not orig_match:
     sys.exit(1)
 orig_name = orig_match.group(1).rsplit(".", 1)[-1]
-# Leading indentation allowed: a mutated METHOD is emitted inside its class, so a
-# module-level-only split found no body for it, and two empty bodies compare
-# equal — silently reporting every method survivor as a provably equivalent
-# mutant. That is the false green this script exists to prevent.
-blocks = re.split(r"^[ \t]*(?:async )?def ", src, flags=re.MULTILINE)
+# Split ONLY at mutmut's own generated names (x_..__mutmut_N / xǁClassǁ..), at
+# any indentation: methods are emitted inside their class (a module-level-only
+# split found no body for them), and a plain any-def split truncated every
+# CONTAINER function at its first nested def — the header alone then compared
+# equal to every mutant and 788 real survivors on one module were stamped
+# provably equivalent. Both are the false green this script exists to prevent.
+blocks = re.split(r"^[ \t]*(?:async )?def (?=x[\w.ǁ]*__mutmut_)", src, flags=re.MULTILINE)
 
 
 def _def_lines(path: str) -> dict[str, int]:
@@ -102,11 +104,41 @@ def _normalized(lines: list[str]) -> list[str]:
     still maps a differing line back to the real file.
     """
 
-    def _blank(match: re.Match[str]) -> str:
-        return "cast(" + "\n" * match.group(1).count("\n") + "_,"
-
-    joined = re.sub(r"cast\((\s*[^,()]+),", _blank, "\n".join(lines))
-    return joined.split("\n")
+    joined = "\n".join(lines)
+    out: list[str] = []
+    pos = 0
+    while (start := joined.find("cast(", pos)) != -1:
+        # Scan the FIRST argument with bracket/quote balancing: a type arg
+        # like ``dict[str, object] | None`` (or a quoted forward ref) holds
+        # commas a regex stops at, and a half-blanked cast then reads as a
+        # real change.
+        i = start + len("cast(")
+        depth = 0
+        quote: str | None = None
+        while i < len(joined):
+            ch = joined[i]
+            if quote:
+                if ch == quote and joined[i - 1] != "\\":
+                    quote = None
+            elif ch in "\"'":
+                quote = ch
+            elif ch in "([{":
+                depth += 1
+            elif ch in ")]}":
+                if depth == 0:
+                    break  # cast with one argument — not ours to touch
+                depth -= 1
+            elif ch == "," and depth == 0:
+                break
+            i += 1
+        if i < len(joined) and joined[i] == ",":
+            arg = joined[start + len("cast(") : i]
+            out.append(joined[pos:start] + "cast(" + "\n" * arg.count("\n") + "_")
+        else:
+            out.append(joined[pos:i])
+        pos = i
+    out.append(joined[pos:])
+    return "".join(out).split("\n")
 
 
 orig_raw = _body(orig_name)
@@ -204,11 +236,28 @@ def _boolean_consumer(node) -> bool:
     if isinstance(parent, ast.BoolOp) and isinstance(parent.op, ast.Or):
         # `x or y` evaluates to y for EVERY falsy x, so which falsy x it was is lost.
         return parent.values[-1] is not node
+    if isinstance(parent, ast.UnaryOp) and isinstance(parent.op, ast.Not):
+        # `not x` is True for every falsy x — the distinction dies here no
+        # matter where the result then flows.
+        return True
     return isinstance(parent, ast.If | ast.IfExp) and parent.test is node
 
 
+def _early_exit_on_falsy(stmt, name: str) -> bool:
+    """True for ``if not name: <exit>`` — everything after runs only on truthy."""
+    return (
+        isinstance(stmt, ast.If)
+        and not stmt.orelse
+        and isinstance(stmt.test, ast.UnaryOp)
+        and isinstance(stmt.test.op, ast.Not)
+        and isinstance(stmt.test.operand, ast.Name)
+        and stmt.test.operand.id == name
+        and all(isinstance(s, ast.Return | ast.Raise | ast.Continue | ast.Break) for s in stmt.body)
+    )
+
+
 def _guarded_by(node, name: str) -> bool:
-    """True when node sits in a branch that runs only while `name` is truthy."""
+    """True when node sits in code that runs only while `name` is truthy."""
     child = node
     parent = getattr(node, "parent", None)
     while parent is not None:
@@ -221,12 +270,35 @@ def _guarded_by(node, name: str) -> bool:
             body = parent.body if isinstance(parent.body, list) else [parent.body]
             if any(child is stmt for stmt in body):
                 return True
+        # An earlier `if not name: return/raise/continue/break` sibling means
+        # this statement is only reached on the truthy side.
+        for field in ("body", "orelse", "finalbody"):
+            stmts = getattr(parent, field, None)
+            if isinstance(stmts, list) and child in stmts:
+                idx = stmts.index(child)
+                if any(_early_exit_on_falsy(s, name) for s in stmts[:idx]):
+                    return True
         child, parent = parent, getattr(parent, "parent", None)
     return False
 
 
+def _through_casts(node):
+    """Hop out of enclosing ``cast(T, node)`` calls — cast returns node unchanged."""
+    parent = getattr(node, "parent", None)
+    while (
+        isinstance(parent, ast.Call)
+        and isinstance(parent.func, ast.Name)
+        and parent.func.id == "cast"
+        and len(parent.args) == 2
+        and parent.args[1] is node
+    ):
+        node, parent = parent, getattr(parent, "parent", None)
+    return node
+
+
 def _only_boolean_uses(call) -> bool:
     """True when nothing downstream of `call` can tell one falsy value from another."""
+    call = _through_casts(call)
     if _boolean_consumer(call):
         return True
     # Bound to a name first: then EVERY read of that name has to be blind to
@@ -252,6 +324,38 @@ def _only_boolean_uses(call) -> bool:
         if not (_boolean_consumer(node) or _guarded_by(node, target.id)):
             return False
     return True
+
+
+def _lookup_with_default(node) -> bool:
+    """True for ``x.get(k, d)``, ``x.pop(k, d)`` or ``getattr(o, n, d)``.
+
+    Each hands back ``d`` only when the lookup misses, so the same reasoning
+    about which falsy fallback was written applies to every spelling — pop's
+    removal side effect happens either way.
+    """
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    if isinstance(func, ast.Attribute) and func.attr in ("get", "pop") and len(node.args) == 2:
+        return True
+    return isinstance(func, ast.Name) and func.id == "getattr" and len(node.args) == 3
+
+
+def _outermost_lookup(node):
+    """Follow a fallback that is itself another lookup's fallback, to the last one.
+
+    ``a.get(k, b.get(j, 0))`` delivers that 0 through the OUTER call, so the outer
+    call's consumers are the ones that decide whether the literal is observable.
+    Checking the inner call alone answered "its value is an argument, so it might
+    be", and reported an unkillable mutant on every nested-fallback read.
+    """
+    current = node
+    while True:
+        parent = getattr(current, "parent", None)
+        if _lookup_with_default(parent) and parent.args[-1] is current:
+            current = parent
+            continue
+        return current
 
 
 def _unobservable_get_default(
@@ -283,14 +387,9 @@ def _unobservable_get_default(
         for child in ast.iter_child_nodes(node):
             child.parent = node
     for node in ast.walk(tree):
-        if not (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "get"
-            and len(node.args) == 2
-        ):
+        if not _lookup_with_default(node):
             continue
-        default = node.args[1]
+        default = node.args[-1]
         if not _falsy_literal(default):
             continue
         span = (
@@ -303,7 +402,7 @@ def _unobservable_get_default(
             continue
         return _falsy_replacement(
             _mutated_token(span, line_no, orig_line, mut_line)
-        ) and _only_boolean_uses(node)
+        ) and _only_boolean_uses(_outermost_lookup(node))
     return False
 
 

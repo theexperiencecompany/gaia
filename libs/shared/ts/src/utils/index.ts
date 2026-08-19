@@ -39,7 +39,6 @@ export {
 export {
   NEW_MESSAGE_BREAK_TOKEN,
   NEW_MESSAGE_BREAK_TOKEN_LENGTH,
-  splitMessageByBreaks,
 } from "./messageBreakUtils";
 export type {
   OpenUIActionEventLike,
@@ -50,7 +49,7 @@ export type { ContentSegment, OpenUILibraryLike } from "./openui-parser";
 export {
   normalizeOpenUICode,
   parseOpenUISegments,
-  splitByBreaksPreservingFences,
+  splitMessageByBreaks,
 } from "./openui-parser";
 export type { OpenUISample } from "./openui-samples";
 export { OPENUI_SAMPLES } from "./openui-samples";

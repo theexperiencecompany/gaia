@@ -349,8 +349,8 @@ class TestToolIndexing:
         assert result_a[0].value["description"] == "Tool A description"
         assert result_b[0].value["description"] == "Tool B description"
 
-    async def test_index_tools_to_store_skips_on_cache_hit(self, ephemeral_client):
-        """index_tools_to_store should skip indexing when Redis cache matches."""
+    async def test_cache_hit_is_verified_against_the_store(self, ephemeral_client):
+        """A cache hit is trusted only when the store actually holds the docs."""
         embeddings = _DeterministicEmbeddings()
         store = ChromaStore(
             client=ephemeral_client,
@@ -391,12 +391,32 @@ class TestToolIndexing:
         ):
             await index_tools_to_store(tools_with_space)
 
-        # set_cache should not be called because we skipped indexing
-        mock_set_cache.assert_not_called()
-
-        # Tool should NOT be in the store (indexing was skipped)
+        # The hash matched but the store was EMPTY, so the guard cannot trust it:
+        # this is the wiped-Chroma case, and it must reindex rather than skip.
+        mock_set_cache.assert_called()
         result = await store.abatch([GetOp(namespace=("testns",), key="cached_tool")])
-        assert result[0] is None
+        assert result[0] is not None
+
+        # Now the store agrees with the hash, so a second pass really does skip.
+        with (
+            patch(
+                "app.db.chroma.chroma_tools_store.providers.aget",
+                new_callable=AsyncMock,
+                return_value=store,
+            ),
+            patch(
+                "app.db.chroma.chroma_tools_store.get_cache",
+                new_callable=AsyncMock,
+                return_value=expected_hash,
+            ),
+            patch(
+                "app.db.chroma.chroma_tools_store.set_cache",
+                new_callable=AsyncMock,
+            ) as mock_set_cache_again,
+        ):
+            await index_tools_to_store(tools_with_space)
+
+        mock_set_cache_again.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

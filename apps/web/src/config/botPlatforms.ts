@@ -24,6 +24,8 @@ export const BOT_PLATFORM_ICONS: Record<BotPlatform, string> = {
   discord: "/images/icons/macos/discord.webp",
 };
 
+export const BOT_AUTH_COMMAND = "/auth";
+
 export function isBotPlatform(value: string): value is BotPlatform {
   return (BOT_PLATFORMS as readonly string[]).includes(value);
 }

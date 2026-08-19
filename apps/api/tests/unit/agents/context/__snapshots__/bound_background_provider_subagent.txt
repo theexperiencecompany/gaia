@@ -278,8 +278,13 @@
     - email: ada@example.com
     CUSTOM INSTRUCTIONS FOR GMAIL (set by the user — honor these):
     Always archive newsletters.
+    What you remember about this user (memory core):
+    - Prefers short answers.
 
-[2] system markers=todo_context
+[2] human
+    summarise my unread mail
+
+[3] system markers=todo_context
     You have TWO separate task systems — do not confuse them.
     
     — EXECUTION PLANS (plan_tasks / update_tasks) —
@@ -305,10 +310,7 @@
     - "I need to organize my current steps" → plan_tasks
     - "GAIA is doing something the user might ask about later" → create_tracked_todo
 
-[3] system markers=memory_recall
-    What you remember about this user (memory core):
-    - Prefers short answers.
-    
+[4] system markers=memory_recall
     Based on our previous conversations (bracketed dates say when something happened / was last mentioned):
     - Ships on Fridays [mentioned 2026-02-01]
     
@@ -342,9 +344,6 @@
        - Use `update_tracked_todo_canvas(todo_id="todo-7", ...)` for any progress, outcome, or learning from this run.
        - Use `add_memory(...)` ONLY for durable cross-cutting facts unrelated to this todo (rare).
        - To work on a different todo, you must reference it explicitly by id.
-
-[4] human
-    summarise my unread mail
 
 [5] human markers=time_context
     [Current UTC Time: Tuesday, March 17, 2026, 14:30 UTC]

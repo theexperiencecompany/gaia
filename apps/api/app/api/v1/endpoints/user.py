@@ -28,7 +28,7 @@ from app.models.user_models import (
     UserUpdate,
     UserUpdateResponse,
 )
-from app.services.analytics_service import track_logout
+from app.services.analytics_service import AnalyticsEvents, capture_context_event, track_logout
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
 from app.services.user_service import update_user_profile
 from app.utils.timezone import is_valid_timezone
@@ -115,6 +115,13 @@ async def update_me(
         if changed
     ]
     log.audit("profile updated", actor=user_id, changed_fields=changed_fields)
+    capture_context_event(
+        AnalyticsEvents.PROFILE_UPDATED,
+        {
+            "changed_field_count": len(changed_fields),
+            "has_picture_upload": picture_data is not None,
+        },
+    )
     log.set(outcome="success")
     return updated_user
 
@@ -136,6 +143,7 @@ async def update_user_name(
 
         updated_user = await update_user_profile(user_id=user_id, name=name)
         log.audit("profile updated", actor=user_id, changed_fields=["name"])
+        capture_context_event(AnalyticsEvents.PROFILE_UPDATED, {"changed_field_count": 1})
         log.set(outcome="success")
         return updated_user
     except HTTPException as e:
@@ -182,6 +190,7 @@ async def update_user_timezone(
             raise HTTPException(status_code=404, detail="User not found")
 
         log.audit("profile updated", actor=user_id, changed_fields=["timezone"])
+        capture_context_event(AnalyticsEvents.PROFILE_UPDATED, {"changed_field_count": 1})
         log.set(outcome="success")
         return UpdateTimezoneResponse(
             success=True,
@@ -303,6 +312,7 @@ async def update_holo_card_colors(
             actor=user_id,
             changed_fields=["overlay_color", "overlay_opacity"],
         )
+        capture_context_event(AnalyticsEvents.PROFILE_UPDATED, {"changed_field_count": 2})
         log.set(outcome="success")
         return UpdateHoloCardColorsResponse(
             success=True,
@@ -351,9 +361,12 @@ async def logout(
         user_email: str | None = user.get("email")
         user_id: str | None = user.get("user_id")
 
-        if user_email:
+        # The auth model always carries both fields, so an or-flip of this
+        # guard is behaviorally unreachable (the mutation gate would never see
+        # it red). pragma: no mutate
+        if user_email and user_id:  # pragma: no mutate
             try:
-                track_logout(user_id=user_id or user_email, email=user_email)
+                track_logout(user_id=user_id)
             except Exception as analytics_error:
                 log.warning(
                     f"{LogTag.API} Failed to track logout analytics",

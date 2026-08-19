@@ -7,13 +7,17 @@ stopped the 500 but left the user stuck (nothing ever recorded the connection
 as dead) and swallowed timeouts, 5xx and real bugs into the same opaque string.
 """
 
+import asyncio
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import composio_client
 import httpx
 import pytest
 
+from app.db.repositories.user_integrations import user_integration_repository
 from app.services.composio.langchain_composio_service import (
     LangchainProvider,
     _expire_with_log_boundary,
@@ -21,6 +25,7 @@ from app.services.composio.langchain_composio_service import (
 )
 
 MODULE = "app.services.composio.langchain_composio_service"
+CHECKER = "app.utils.integration_checker"
 
 DEAD_ACCOUNT_BODY = {
     "error": {
@@ -61,6 +66,18 @@ def _action_func(provider: LangchainProvider, execute_tool: Any, toolkit: str = 
         keywords={},
         toolkit=toolkit,
     )
+
+
+@contextmanager
+def _ui_chat_turn(writer: MagicMock, *, expired: bool = True) -> Iterator[None]:
+    """Stand in for the graph run the wrapper's connect prompt writes into."""
+    with (
+        patch(f"{CHECKER}.get_config", return_value={"configurable": {"source_category": "ui"}}),
+        patch(f"{CHECKER}.get_stream_writer", return_value=writer),
+        patch(f"{CHECKER}.build_connect_link_url", AsyncMock(return_value=None)),
+        patch.object(user_integration_repository, "is_expired", AsyncMock(return_value=expired)),
+    ):
+        yield
 
 
 class TestDeadAccountClassifier:
@@ -120,28 +137,69 @@ class TestUnrelatedFailuresPropagate:
 
 class TestDeadAccountReconciles:
     @pytest.mark.regression
-    def test_it_expires_the_integration_and_asks_the_user_to_reconnect(self) -> None:
+    async def test_it_expires_the_integration_and_asks_the_user_to_reconnect(self) -> None:
+        """Driven through the real executor-thread -> event-loop bridge the wrapper
+        uses in production, because that hop is what carries the graph's stream
+        context to the connect prompt. Mocking it away proves nothing about it."""
         provider = LangchainProvider()
+        provider._loop = asyncio.get_running_loop()
         action_func = _action_func(provider, _raises(_not_found(DEAD_ACCOUNT_BODY, "no account")))
+        writer = MagicMock()
 
         with (
-            patch.object(provider, "_dispatch") as dispatch,
-            patch.object(provider, "_run_on_loop", return_value="https://gaia.test/connect/abc"),
-            patch(f"{MODULE}.emit_integration_connection_required") as emit,
-            patch(f"{MODULE}._expire_with_log_boundary") as expire,
+            patch(f"{MODULE}.expire_user_integration", AsyncMock()) as expire,
+            _ui_chat_turn(writer),
         ):
-            result = action_func(__runnable_config__={"metadata": {"user_id": "user-1"}})
+            result = await asyncio.to_thread(
+                action_func, __runnable_config__={"metadata": {"user_id": "user-1"}}
+            )
 
-        expire.assert_called_once_with("user-1", "gmail", "no account")
-        dispatch.assert_called_once()
-        dispatch.call_args.args[0].close()  # the coroutine _dispatch would have run
+        expire.assert_awaited_once_with(
+            "user-1", "gmail", reason="no account", trigger="tool_execution", notify=False
+        )
 
         # The transition runs in this very turn, so the card and the agent copy
         # both say expired — not "you never connected this".
-        emit.assert_called_once_with("gmail", "Gmail", expired=True)
+        card = writer.call_args.args[0]["integration_connection_required"]
+        assert card == {
+            "integration_id": "gmail",
+            "expired": True,
+            "message": "Your Gmail connection expired. Sign in again to keep using it.",
+        }
         assert result["successful"] is False
         assert "EXPIRED" in result["error"]
         assert "sign in again" in result["error"]
+
+    async def test_the_expiry_is_persisted_before_the_prompt_reads_the_status(self) -> None:
+        """Racing the write would show first-time-connect copy for a connection
+        that plainly died, so the order is the contract."""
+        provider = LangchainProvider()
+        provider._loop = asyncio.get_running_loop()
+        action_func = _action_func(provider, _raises(_not_found(DEAD_ACCOUNT_BODY, "no account")))
+        calls: list[str] = []
+
+        async def _expire(*_a: object, **_k: object) -> None:
+            calls.append("expire")
+
+        async def _is_expired(*_a: object, **_k: object) -> bool:
+            calls.append("read_status")
+            return True
+
+        with (
+            patch(f"{MODULE}.expire_user_integration", AsyncMock(side_effect=_expire)),
+            patch(
+                f"{CHECKER}.get_config", return_value={"configurable": {"source_category": "ui"}}
+            ),
+            patch(f"{CHECKER}.get_stream_writer", return_value=MagicMock()),
+            patch.object(
+                user_integration_repository, "is_expired", AsyncMock(side_effect=_is_expired)
+            ),
+        ):
+            await asyncio.to_thread(
+                action_func, __runnable_config__={"metadata": {"user_id": "user-1"}}
+            )
+
+        assert calls == ["expire", "read_status"]
 
     async def test_the_dispatched_transition_does_not_notify_and_is_tagged_tool_execution(
         self,
@@ -161,15 +219,11 @@ class TestDeadAccountReconciles:
             provider, _raises(_not_found(DEAD_ACCOUNT_BODY, "no account")), toolkit="NOT_A_TOOLKIT"
         )
 
-        with (
-            patch.object(provider, "_dispatch") as dispatch,
-            patch(f"{MODULE}.emit_integration_connection_required") as emit,
-        ):
+        with patch.object(provider, "_run_on_loop") as bridge:
             result = action_func(__runnable_config__={"metadata": {"user_id": "user-1"}})
 
         # Nothing to reconnect to, so no transition and no card — just the failure.
-        dispatch.assert_not_called()
-        emit.assert_not_called()
+        bridge.assert_not_called()
         assert result == {"successful": False, "error": "no account", "data": None}
 
     def test_a_trigger_option_call_with_no_user_skips_the_transition(self) -> None:
@@ -179,14 +233,10 @@ class TestDeadAccountReconciles:
         provider = LangchainProvider()
         action_func = _action_func(provider, _raises(_not_found(DEAD_ACCOUNT_BODY, "no account")))
 
-        with (
-            patch.object(provider, "_dispatch") as dispatch,
-            patch(f"{MODULE}.emit_integration_connection_required") as emit,
-        ):
+        with patch.object(provider, "_run_on_loop") as bridge:
             result = action_func(__runnable_config__={"metadata": {}})
 
-        dispatch.assert_not_called()
-        emit.assert_not_called()
+        bridge.assert_not_called()
         assert result == {"successful": False, "error": "no account", "data": None}
 
 
@@ -206,30 +256,30 @@ class TestNonRaisingDeadAccountResult:
         action_func = _action_func(provider, _returns(failure))
 
         with (
-            patch.object(provider, "_dispatch") as dispatch,
-            patch(f"{MODULE}.emit_integration_connection_required") as emit,
+            patch.object(provider, "_run_on_loop") as bridge,
             patch(f"{MODULE}.log") as mock_log,
         ):
             result = action_func(__runnable_config__={"metadata": {"user_id": "user-1"}})
 
-        dispatch.assert_not_called()
-        emit.assert_not_called()
+        bridge.assert_not_called()
         assert result == failure
 
         mock_log.warning.assert_called_once()
         assert "dead connected account" in mock_log.warning.call_args.args[0]
 
 
-class TestExpiryDispatchNeedsALoop:
-    def test_without_a_captured_loop_it_warns_and_skips_rather_than_crashing(self) -> None:
-        # The connect card and the agent message must still ship even when the
-        # transition cannot be dispatched.
+class TestReconnectPromptNeedsALoop:
+    def test_without_a_captured_loop_it_degrades_to_the_raw_error(self) -> None:
+        """No loop means no expiry and no prompt — the tool must still return the
+        underlying failure rather than a None error the agent cannot read."""
         provider = LangchainProvider()
         provider._loop = None
-        coro = MagicMock()
+        action_func = _action_func(provider, _raises(_not_found(DEAD_ACCOUNT_BODY, "no account")))
 
         with patch(f"{MODULE}.log") as mock_log:
-            provider._dispatch(coro)
+            result = action_func(__runnable_config__={"metadata": {"user_id": "user-1"}})
 
-        coro.close.assert_called_once()
-        mock_log.warning.assert_called_once()
+        assert result == {"successful": False, "error": "no account", "data": None}
+        assert any(
+            "No event loop captured" in call.args[0] for call in mock_log.warning.call_args_list
+        )

@@ -7,6 +7,7 @@ is absent — that precondition lives with the read rather than at the call site
 so no caller can forget it.
 """
 
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -14,7 +15,10 @@ from tests._harness.context_sources import knowledge, memory
 from tests.helpers import captured_wide_event
 
 from app.agents.context.fetchers import (
+    _split_core_context,
+    _split_off_section,
     build_active_todo_banner,
+    build_agenda_and_activity_block,
     build_background_banner,
     build_connected_integrations_manifest,
     build_core_memory_block,
@@ -32,6 +36,7 @@ from app.agents.context.text import (
 )
 from app.agents.context.tiers import AgentTier
 from app.agents.workspace.paths import session_dir
+from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
 from app.models.memory_models import MemorySearchResult
 from app.models.todo_models import TodoDocument
 from app.utils.artifact_utils import artifact_url_base
@@ -271,10 +276,13 @@ class TestConnectedIntegrationsManifest:
 @pytest.mark.unit
 class TestTrackedTodosBlock:
     async def test_renders_the_cached_summary(self) -> None:
-        with patch(
-            "app.agents.context.fetchers._cached_tracked_todos_summary",
-            AsyncMock(return_value="Tracked: ship the refactor"),
-        ):
+        """The cache is keyed by user alone, so the requesting user's id is what
+        has to reach it — a lookup under anything else reads another entry."""
+
+        async def _summary_for(user_id: str) -> str:
+            return "Tracked: ship the refactor" if user_id == "user1" else "another user's todos"
+
+        with patch("app.agents.context.fetchers._cached_tracked_todos_summary", _summary_for):
             assert await build_tracked_todos_block(ctx()) == "Tracked: ship the refactor"
 
     async def test_a_pinned_view_bypasses_the_cache(self) -> None:
@@ -456,3 +464,181 @@ class TestASectionDeclinesWhenItsContextIsAbsent:
         present: dict[str, str | None] = {"user_id": "user1", "active_todo_id": "todo-7"}
         with patch("app.db.repositories.todos.todo_repository.get", AsyncMock(return_value=todo)):
             assert await build_active_todo_banner(ctx(**{**present, missing: None})) == ""
+
+
+@pytest.mark.unit
+class TestSplitOffSection:
+    """How the memory core is divided into its stable and churning halves."""
+
+    def test_a_heading_splits_the_body_off_the_documents(self) -> None:
+        before, body = _split_off_section(
+            f"Loves espresso.\n\n{AGENDA_HEADING}\n- ship it", AGENDA_HEADING
+        )
+
+        assert before == "Loves espresso."
+        assert body == "\n- ship it"
+
+    def test_a_heading_that_opens_the_core_leaves_nothing_stable(self) -> None:
+        """A user with no consolidated documents starts at a churning section.
+        Requiring the blank line ahead of the heading filed that section as
+        stable — putting per-turn bytes in the prefix for exactly those users."""
+        before, body = _split_off_section(f"{AGENDA_HEADING}\n- ship it", AGENDA_HEADING)
+
+        assert before == ""
+        assert body == "\n- ship it"
+
+    def test_a_heading_quoted_again_inside_the_body_splits_at_the_first_one(self) -> None:
+        """Section bodies are user memory text and can repeat a heading. The
+        split takes the first occurrence and leaves every later one inside the
+        body — the section must not lose its head, nor the split blow up."""
+        before, body = _split_off_section(
+            f"Loves espresso.\n\n{AGENDA_HEADING}\n- ship it\n\n{AGENDA_HEADING}\n- and again",
+            AGENDA_HEADING,
+        )
+
+        assert before == "Loves espresso."
+        assert body == f"\n- ship it\n\n{AGENDA_HEADING}\n- and again"
+
+    def test_an_absent_heading_leaves_the_core_whole(self) -> None:
+        before, body = _split_off_section("Loves espresso.", AGENDA_HEADING)
+
+        assert before == "Loves espresso."
+        assert body == ""
+
+
+@pytest.mark.unit
+class TestTheMemoryCoreSplit:
+    """``get_core_context`` renders documents, agenda and journal as one string.
+    Only the documents are byte-stable; the other two are rewritten every turn,
+    so they are two sections in two different slots.
+    """
+
+    @staticmethod
+    def _core(core: str) -> Any:
+        return patch(
+            "app.memory.engine.memory_engine.get_core_context", AsyncMock(return_value=core)
+        )
+
+    async def test_the_documents_alone_are_the_stable_block(self) -> None:
+        core = (
+            "Loves espresso."
+            f"\n\n{AGENDA_HEADING}\n- ship the cache work"
+            f"\n\n{RECENT_ACTIVITY_HEADING}\n- reviewed a PR"
+        )
+        with self._core(core):
+            assert await build_core_memory_block(ctx()) == f"{CORE_MEMORY_HEADER}\nLoves espresso."
+
+    async def test_the_agenda_and_the_journal_are_the_volatile_block(self) -> None:
+        core = (
+            "Loves espresso."
+            f"\n\n{AGENDA_HEADING}\n- ship the cache work"
+            f"\n\n{RECENT_ACTIVITY_HEADING}\n- reviewed a PR"
+        )
+        with self._core(core):
+            block = await build_agenda_and_activity_block(ctx())
+
+        assert block == (
+            f"{AGENDA_HEADING}\n- ship the cache work\n\n{RECENT_ACTIVITY_HEADING}\n- reviewed a PR"
+        )
+
+    async def test_a_core_with_no_documents_still_yields_its_volatile_half(self) -> None:
+        """The stable slot holds the documents or nothing. Filling it from
+        "whatever came first" put a churning section in the cached prefix for
+        every user who has not been consolidated yet."""
+        with self._core(f"{RECENT_ACTIVITY_HEADING}\n- reviewed a PR"):
+            assert await build_core_memory_block(ctx()) == ""
+            assert "- reviewed a PR" in await build_agenda_and_activity_block(ctx())
+
+    def test_the_agenda_does_not_swallow_the_journal(self) -> None:
+        """Split from the back. ``get_core_context`` emits the agenda before the
+        journal, so splitting on the agenda first hands back the journal as part
+        of "the agenda" and leaves the journal's own split with nothing to
+        match — the two sections stop being two sections."""
+        core = (
+            "Loves espresso."
+            f"\n\n{AGENDA_HEADING}\n- ship the cache work"
+            f"\n\n{RECENT_ACTIVITY_HEADING}\n- reviewed a PR"
+        )
+
+        documents, agenda, activity = _split_core_context(core)
+
+        assert documents == "Loves espresso."
+        assert agenda == "\n- ship the cache work"
+        assert activity == "\n- reviewed a PR"
+
+    async def test_the_stable_documents_are_never_capped(self) -> None:
+        """Truncating them would churn the cached prefix every time the core grew
+        — the exact failure the split exists to prevent."""
+        documents = "\n".join(f"- fact {i}" for i in range(500))
+        with self._core(documents):
+            block = await build_core_memory_block(ctx())
+
+        assert block == f"{CORE_MEMORY_HEADER}\n{documents}"
+
+    async def test_a_failed_core_read_costs_both_halves_and_nothing_else(self) -> None:
+        with patch(
+            "app.memory.engine.memory_engine.get_core_context",
+            AsyncMock(side_effect=RuntimeError("redis down")),
+        ):
+            assert await build_core_memory_block(ctx()) == ""
+            assert await build_agenda_and_activity_block(ctx()) == ""
+
+    async def test_an_empty_core_yields_no_blocks_at_all(self) -> None:
+        """No core document at all is not the same as an empty-looking one —
+        both halves of the split come back empty rather than one manufacturing
+        a header over nothing."""
+        with self._core(""):
+            assert await build_core_memory_block(ctx()) == ""
+            assert await build_agenda_and_activity_block(ctx()) == ""
+
+    async def test_a_long_agenda_and_journal_both_survive_whole(self) -> None:
+        """No section is clipped. Capping these to a few hundred characters hid
+        commitments and journal entries the model was then asked about, and
+        bought nothing: what a provider caches is decided by where the volatile
+        block SITS, not by how long it is."""
+        agenda = "\n".join(f"- commitment {i}" for i in range(200))
+        journal = "\n".join(f"- did thing {i}" for i in range(200))
+        core = (
+            f"Loves espresso.\n\n{AGENDA_HEADING}\n{agenda}\n\n{RECENT_ACTIVITY_HEADING}\n{journal}"
+        )
+        with self._core(core):
+            block = await build_agenda_and_activity_block(ctx())
+
+        assert block == (f"{AGENDA_HEADING}\n{agenda}\n\n{RECENT_ACTIVITY_HEADING}\n{journal}")
+
+
+@pytest.mark.unit
+class TestNoVolatileSectionIsClipped:
+    """Every fetched section reaches the model whole. The prompt cache is won by
+    slot ordering, not by shortening what the agent is allowed to see, so a cap
+    here only costs answers.
+    """
+
+    async def test_a_long_recall_keeps_every_memory(self) -> None:
+        memories = [memory("m" * 200, mentioned="2026-02-01") for _ in range(10)]
+        with patch(
+            "app.memory.engine.memory_engine.recall",
+            AsyncMock(return_value=MemorySearchResult(memories=memories)),
+        ):
+            block = await build_memory_recall_block(ctx())
+
+        notes = "\n".join("- " + "m" * 200 + " [mentioned 2026-02-01]" for _ in range(10))
+        assert block == f"{MEMORY_RECALL_HEADER}\n{notes}"
+
+    async def test_a_long_knowledge_result_is_rendered_whole(self) -> None:
+        with patch(
+            "app.services.gaia_knowledge_service.gaia_knowledge_service.search_knowledge",
+            AsyncMock(return_value=[knowledge("k" * 400)]),
+        ):
+            block = await build_gaia_knowledge_block(ctx())
+
+        assert block == f"{GAIA_KNOWLEDGE_HEADER}\n- {'k' * 400}"
+
+    async def test_a_long_todo_summary_is_rendered_whole(self) -> None:
+        with patch(
+            "app.services.tracked_todo_service.tracked_todo_service.get_active_tracked_summary",
+            AsyncMock(return_value="t" * 400),
+        ):
+            block = await build_tracked_todos_block(ctx(active_todo_id="todo-1"))
+
+        assert block == "t" * 400

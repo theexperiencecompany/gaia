@@ -18,7 +18,10 @@ from app.agents.core.background.comms_narrator import (
 )
 from app.agents.core.graph_manager import GraphUnavailableError
 from app.agents.llm.lane import AgentRole
-from app.agents.prompts.comms_prompts import PLATFORM_DELIVERY_NOTE
+from app.agents.prompts.comms_prompts import (
+    INTERACTIVE_DELIVERY_NOTE,
+    PLATFORM_DELIVERY_NOTE,
+)
 from app.constants.agents import (
     EXECUTOR_CANCELLED_MARKER,
     EXECUTOR_ERROR_MARKER,
@@ -60,7 +63,9 @@ class TestNarrateExecutorResult:
         message = initial["messages"][0]
         assert isinstance(message, HumanMessage)
         assert message.name == "background_executor"
-        assert message.content == f"{EXECUTOR_RESULT_MARKER}\n{RESULT_TEXT}"
+        assert message.content == (
+            f"{INTERACTIVE_DELIVERY_NOTE}{EXECUTOR_RESULT_MARKER}\n{RESULT_TEXT}"
+        )
         config = silent.await_args.args[2]
         assert config["configurable"]["conversation_id"] == CONVERSATION_ID
 
@@ -100,7 +105,9 @@ class TestNarrateExecutorResult:
             await narrate_executor_result("boom", "error", CONVERSATION_ID, USER)
 
         initial = silent.await_args.args[1]
-        assert initial["messages"][0].content == f"{EXECUTOR_ERROR_MARKER}\nboom"
+        assert initial["messages"][0].content == (
+            f"{INTERACTIVE_DELIVERY_NOTE}{EXECUTOR_ERROR_MARKER}\nboom"
+        )
 
     async def test_workflow_delivery_prepends_the_platform_delivery_note(self) -> None:
         with (
@@ -134,7 +141,11 @@ class TestNarrateExecutorResult:
             )
 
         content = silent.await_args.args[1]["messages"][0].content
-        assert content == f"[CARD_NOTE]{EXECUTOR_RESULT_MARKER}\n{RESULT_TEXT}"
+        # The card note comes first, then the bubble-split instruction, then the
+        # result — comms reads "already shown" before it decides how to split.
+        assert content == (
+            f"[CARD_NOTE]{INTERACTIVE_DELIVERY_NOTE}{EXECUTOR_RESULT_MARKER}\n{RESULT_TEXT}"
+        )
 
     async def test_parroted_internal_markers_are_stripped(self) -> None:
         with (

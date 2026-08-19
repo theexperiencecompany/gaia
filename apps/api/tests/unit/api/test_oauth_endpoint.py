@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
 
+from app.services.analytics_service import AnalyticsEvents
+
 OAUTH_BASE = "/api/v1/oauth"
 
 
@@ -353,6 +355,7 @@ class TestWorkOSCallback:
 class TestComposioCallback:
     """GET /api/v1/oauth/composio/callback"""
 
+    @patch("app.api.v1.endpoints.oauth.capture_event")
     @patch("app.api.v1.endpoints.oauth.handle_oauth_connection", new_callable=AsyncMock)
     @patch("app.api.v1.endpoints.oauth.get_integration_by_config")
     @patch("app.api.v1.endpoints.oauth.get_composio_service")
@@ -366,6 +369,7 @@ class TestComposioCallback:
         mock_composio: MagicMock,
         mock_config: MagicMock,
         mock_handle: AsyncMock,
+        mock_capture: MagicMock,
         client: AsyncClient,
     ):
         mock_state.return_value = {
@@ -385,6 +389,14 @@ class TestComposioCallback:
         )
         assert response.status_code == 307
         assert "oauth_success=true" in response.headers["location"]
+        # Explicit user id, not the request context: Composio redirects the
+        # browser here with no WorkOS session, so a context capture would land
+        # the connection on an anonymous profile.
+        mock_capture.assert_called_once_with(
+            "uid1",
+            AnalyticsEvents.INTEGRATION_CONNECTED,
+            {"integration_id": "gmail", "provider": integration.provider},
+        )
 
     @patch(
         "app.api.v1.endpoints.oauth.validate_and_consume_oauth_state",

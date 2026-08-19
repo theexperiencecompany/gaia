@@ -28,9 +28,16 @@
 useDefault = true
 
 [allowlist]
-description = "deliberate fake values: local-dev sandbox env + agent eval fixtures"
+description = "deliberate fake values: local-dev sandbox env, agent eval fixtures"
 paths = [
   "scripts/dev/sandbox-env.sh",
+  # harness_triage_demo.py was DELETED in this PR, but the scan reads history and
+  # the fake throwaway env values it set (the same structurally-required Fernet
+  # MCP_ENCRYPTION_KEY as sandbox-env.sh) still live in the commits that carried
+  # it. Allowlisting by commit SHA does not hold — the merges that followed
+  # re-attribute the blob — so the path stays. It is the narrowest form
+  # available here precisely because no file exists at it any more.
+  "apps/api/scripts/harness_triage_demo.py",
   '''^apps/api/scripts/evals/data/''',
   '''(^|/)\.mutation-[0-9]+/''',
 ]

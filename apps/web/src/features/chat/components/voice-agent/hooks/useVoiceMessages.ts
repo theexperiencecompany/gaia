@@ -9,6 +9,7 @@ import {
   VOICE_STREAM_TOPIC,
 } from "@/features/chat/components/voice-agent/constants";
 import { readToolDataLoadingHints } from "@/features/chat/utils/loadingHints";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import type { IMessage } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
 import { useStreamStore } from "@/stores/streamStore";
@@ -351,6 +352,9 @@ export function useVoiceMessages(
     // the active bot turn so the previous reply/tools/followups don't merge
     // into the next turn.
     if (currentUserGroupRef.current === null) {
+      trackEvent(ANALYTICS_EVENTS.VOICE_TRANSCRIPTION_RECEIVED, {
+        conversation_id: cid,
+      });
       activeTurnRef.current = null;
       // New user turn — re-arm the thinking indicator for the upcoming reply.
       botTokenSeenThisTurnRef.current = false;

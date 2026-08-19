@@ -28,15 +28,23 @@ from tests._harness.context_sources import (
 )
 from tests.helpers import captured_wide_event
 
-from app.agents.context.assemble import assemble_context
+from app.agents.context.assemble import (
+    VOLATILE_BLOCK_HEAD_CHARS,
+    VOLATILE_BLOCK_MAX_CHARS,
+    VOLATILE_BLOCK_TAIL_CHARS,
+    assemble_context,
+)
 from app.agents.context.section_context import SectionContext
 from app.agents.context.slots import (
     DYNAMIC_CONTEXT_MARKER,
     LEGACY_DYNAMIC_MARKER,
     MEMORY_RECALL_MARKER,
     PromptSlot,
+    request_slot_order,
     slot_of,
 )
+from app.agents.context.text import VOLATILE_BLOCK_TRUNC_MARKER
+from app.agents.llm.types import LLMProviderName
 from app.constants.log_tags import LogTag
 
 RICH_SOURCES = ContextSources(
@@ -72,7 +80,11 @@ class TestSystemBlockIsLeadingAndContiguous:
     """``langchain-google-genai`` promotes a ``SystemMessage`` to
     ``system_instruction`` only while the system block is leading and unbroken.
     The first non-system message ends the block, and every later system message
-    is silently discarded — taking the entire persona with it."""
+    is silently discarded — taking the entire persona with it.
+
+    This binds on the GEMINI lane. The OpenAI wire has no such rule, and the tail
+    layout spends exactly that freedom (see ``TestTheTailLayoutOnTheOpenAIWire``).
+    """
 
     @pytest.mark.parametrize("tier", list(AgentTier))
     @pytest.mark.parametrize("multi_turn", [False, True])
@@ -83,6 +95,7 @@ class TestSystemBlockIsLeadingAndContiguous:
             tier,
             sources=RICH_SOURCES,
             prior_messages=list(STALE_THREAD) if multi_turn else None,
+            configurable_overrides={"provider": LLMProviderName.GEMINI},
         )
 
         first_non_system = next(
@@ -93,6 +106,43 @@ class TestSystemBlockIsLeadingAndContiguous:
             f"{len(trailing_system)} system message(s) sit after the conversation begins; "
             "Gemini would drop every one of them"
         )
+
+
+@pytest.mark.unit
+class TestTheTailLayoutOnTheOpenAIWire:
+    """What the default (OpenRouter) lane does instead, and why.
+
+    Every provider on the OpenAI wire applies a system message wherever it
+    appears, so the per-turn slots sort BEHIND the conversation and the cacheable
+    prefix grows to cover the history — measured 97% against 83% for the
+    leading-block layout. Nothing here is safe on Gemini, which is why the layout
+    is chosen per provider rather than globally.
+    """
+
+    @pytest.mark.parametrize("tier", list(AgentTier))
+    async def test_the_per_turn_slots_sit_behind_the_conversation(self, tier: AgentTier) -> None:
+        messages = await effective_context(
+            tier, sources=RICH_SOURCES, prior_messages=list(STALE_THREAD)
+        )
+
+        slots = slots_of(messages)
+        conversation_at = slots.index(PromptSlot.CONVERSATION)
+        assert PromptSlot.MEMORY_RECALL in slots
+        assert slots.index(PromptSlot.MEMORY_RECALL) > conversation_at
+
+    @pytest.mark.parametrize("tier", list(AgentTier))
+    async def test_the_stable_block_still_leads(self, tier: AgentTier) -> None:
+        """The point of moving the churn to the tail is that everything ahead of
+        the conversation is byte-stable — if a stable slot slipped behind it, the
+        prefix would end at the static prompt again."""
+        messages = await effective_context(
+            tier, sources=RICH_SOURCES, prior_messages=list(STALE_THREAD)
+        )
+
+        slots = slots_of(messages)
+        conversation_at = slots.index(PromptSlot.CONVERSATION)
+        assert slots.index(PromptSlot.STATIC) < conversation_at
+        assert slots.index(PromptSlot.DYNAMIC_STABLE) < conversation_at
 
 
 @pytest.mark.unit
@@ -210,14 +260,23 @@ class TestOneMessagePerSlot:
                     f"a stale {message.content!r} outlived the current turn's copy"
                 )
 
+    @pytest.mark.parametrize("provider", [LLMProviderName.OPENROUTER, LLMProviderName.GEMINI])
     @pytest.mark.parametrize("tier", list(AgentTier))
-    async def test_slots_appear_in_canonical_order(self, tier: AgentTier) -> None:
+    async def test_slots_appear_in_canonical_order(
+        self, tier: AgentTier, provider: LLMProviderName
+    ) -> None:
+        """Canonical means "the order this provider's layout declares" — the two
+        differ, and sorting by the enum alone would only ever check one of them."""
         messages = await effective_context(
-            tier, sources=RICH_SOURCES, prior_messages=list(STALE_THREAD)
+            tier,
+            sources=RICH_SOURCES,
+            prior_messages=list(STALE_THREAD),
+            configurable_overrides={"provider": provider},
         )
 
+        order = request_slot_order(provider)
         slots = slots_of(messages)
-        assert slots == sorted(slots)
+        assert slots == sorted(slots, key=order.index)
 
     async def test_conversation_history_is_preserved_in_order(self) -> None:
         """Collapsing slots must never collapse the conversation."""
@@ -438,17 +497,44 @@ class TestTheGatherSlotsEachSectionWhereItDeclared:
 
         stable = text_of(assembled.stable)
         volatile = text_of(assembled.volatile)
-        for declared_stable in ("Ada", "Asia/Kolkata", "Gmail"):
+        # "Prefers short answers" is a memory-core DOCUMENT: rewritten by the
+        # consolidation pass, never per turn, so it declares the stable slot.
+        # The core's agenda and activity journal are the churning half and are
+        # split out into their own volatile section — see the sibling below.
+        for declared_stable in ("Ada", "Asia/Kolkata", "Gmail", "Prefers short answers"):
             assert declared_stable in stable
             assert declared_stable not in volatile
         for declared_volatile in (
-            "Prefers short answers",
             "Ships on Fridays",
             "GAIA can run scheduled workflows",
             "ship the context refactor",
         ):
             assert declared_volatile in volatile
             assert declared_volatile not in stable
+
+    async def test_the_memory_cores_churning_half_is_split_off_into_the_volatile_block(
+        self,
+    ) -> None:
+        """``get_core_context`` renders the stable documents, the agenda and the
+        activity journal as one string. The agenda's commitments move and the
+        journal grows on every turn, so leaving them joined to the documents puts
+        per-turn bytes inside the cached prefix — measured as ~10 points of comms
+        hit rate before the split."""
+        core = (
+            "- Prefers short answers.\n\n"
+            "## Current agenda\n- Ship the merge by Friday\n\n"
+            "## Recent activity\n- Asked about the invoice at 14:02"
+        )
+        with fake_context_sources(replace(RICH_SOURCES, core_memory=core)):
+            assembled = await assemble_context(COMMS_CONTEXT)
+
+        stable = text_of(assembled.stable)
+        volatile = text_of(assembled.volatile)
+        assert "Prefers short answers" in stable
+        assert "Current agenda" not in stable
+        assert "Recent activity" not in stable
+        assert "Ship the merge by Friday" in volatile
+        assert "Asked about the invoice at 14:02" in volatile
 
     async def test_an_empty_section_leaves_no_blank_gap(self) -> None:
         """Sections that render nothing are dropped, not joined as empty
@@ -458,6 +544,41 @@ class TestTheGatherSlotsEachSectionWhereItDeclared:
             assembled = await assemble_context(COMMS_CONTEXT)
 
         assert text_of(assembled.stable) == "User Name: Ada\nUser Timezone: Asia/Kolkata"
+
+    async def test_the_volatile_block_is_bounded_however_big_its_sections_get(self) -> None:
+        """Sections are emitted whole; this is the backstop on their SUM, so one
+        runaway section cannot blow the context window and the bill. Driven
+        through the skills section because it is the one that can grow without
+        bound — a user's whole installed skill list.
+        """
+        skills = "## Available skills\n" + "- inbox-triage\n" * 2000
+        with fake_context_sources(replace(RICH_SOURCES, skills=skills)):
+            assembled = await assemble_context(replace(COMMS_CONTEXT, tier=AgentTier.EXECUTOR))
+
+        volatile = text_of(assembled.volatile)
+        assert len(volatile) <= VOLATILE_BLOCK_MAX_CHARS + len(VOLATILE_BLOCK_TRUNC_MARKER)
+        assert VOLATILE_BLOCK_TRUNC_MARKER in volatile
+
+    async def test_a_volatile_block_exactly_at_the_cap_is_left_whole(self) -> None:
+        """The ceiling truncates what exceeds it, not what exactly fills it."""
+        skills = "S" * VOLATILE_BLOCK_MAX_CHARS
+        with fake_context_sources(ContextSources(skills=skills)):
+            assembled = await assemble_context(replace(COMMS_CONTEXT, tier=AgentTier.EXECUTOR))
+
+        assert text_of(assembled.volatile) == skills
+
+    async def test_an_oversized_volatile_block_keeps_head_and_tail_verbatim(self) -> None:
+        """Over the ceiling: head + the exact truncation marker + tail, nothing
+        else. The marker's own bytes are asserted whole — a marker that grew
+        extra characters would still satisfy a substring check while changing
+        what every request sends."""
+        head = "H" * VOLATILE_BLOCK_HEAD_CHARS
+        middle = "M" * 1_000
+        tail = "T" * VOLATILE_BLOCK_TAIL_CHARS
+        with fake_context_sources(ContextSources(skills=head + middle + tail)):
+            assembled = await assemble_context(replace(COMMS_CONTEXT, tier=AgentTier.EXECUTOR))
+
+        assert text_of(assembled.volatile) == f"{head}{VOLATILE_BLOCK_TRUNC_MARKER}{tail}"
 
     async def test_nothing_per_turn_to_say_means_no_volatile_message_at_all(self) -> None:
         """An empty volatile block would still occupy its slot and cost bytes."""

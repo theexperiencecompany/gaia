@@ -19,12 +19,8 @@ import pydantic
 
 from app.config.oauth_config import get_integration_by_toolkit
 from app.constants.log_tags import LogTag
-from app.services.connect_link_service import build_connect_link_url
 from app.services.integrations.integration_expiry import expire_user_integration
-from app.utils.integration_checker import (
-    build_integration_connection_message,
-    emit_integration_connection_required,
-)
+from app.utils.integration_checker import request_integration_connection
 from shared.py.wide_events import log, log_context
 
 _python_reserved = {"for", "async", "from", "import", "as", "pass", "continue"}
@@ -44,10 +40,10 @@ _DEAD_ACCOUNT_MESSAGE_MARKERS = (
     "no connected account",
 )
 
-# How long the tool wrapper waits on the main loop for a single-use connect link.
-# On timeout the agent copy falls back to the integrations page rather than
-# stalling the turn.
-_CONNECT_LINK_TIMEOUT_S = 5.0
+# How long the tool wrapper waits on the main loop for the expiry write plus the
+# connect prompt. A timeout only abandons the wait — the coroutine keeps running
+# on the loop, so the expiry still lands; the agent just gets the raw error.
+_RECONNECT_PROMPT_TIMEOUT_S = 10.0
 
 
 def _running_loop_or_none() -> asyncio.AbstractEventLoop | None:
@@ -97,6 +93,19 @@ async def _expire_with_log_boundary(user_id: str, integration_id: str, reason: s
             trigger="tool_execution",
             notify=False,
         )
+
+
+async def _expire_and_request_reconnect(
+    user_id: str, integration_id: str, integration_name: str, reason: str
+) -> str:
+    """Mark the integration expired, then ask the user to reconnect.
+
+    Ordered, not concurrent: the prompt reads the stored status to tell "expired"
+    from "never connected", so racing the write would show first-time-connect copy
+    for a connection that plainly died.
+    """
+    await _expire_with_log_boundary(user_id, integration_id, reason)
+    return await request_integration_connection(integration_id, integration_name, user_id)
 
 
 def _clean_reserved_keyword(keyword: str) -> str:
@@ -222,34 +231,15 @@ class LangchainProvider(
             # webhook path covers this case with no dependency on chat context.
             return {"successful": False, "error": reason, "data": None}
 
-        connect_url = self._run_on_loop(
-            build_connect_link_url(user_id, integration.id), timeout=_CONNECT_LINK_TIMEOUT_S
-        )
-        # The expiry transition is dispatched right here, so this connection is
-        # expired by definition — the user had it and the grant died. It does not
-        # pause the workflows depending on this integration: that needs the
-        # workflow layer, which cannot be imported from inside this wrapper. The
+        # This does not pause the workflows depending on the integration: that needs
+        # the workflow layer, which cannot be imported from inside this wrapper. The
         # connection webhook is what pauses them, off the same dead account.
-        self._dispatch(_expire_with_log_boundary(user_id, integration.id, reason))
-        emit_integration_connection_required(integration.id, integration.name, expired=True)
+        message = self._run_on_loop(
+            _expire_and_request_reconnect(user_id, integration.id, integration.name, reason),
+            timeout=_RECONNECT_PROMPT_TIMEOUT_S,
+        )
 
-        return {
-            "successful": False,
-            "error": build_integration_connection_message(
-                integration.name, connect_url, expired=True
-            ),
-            "data": None,
-        }
-
-    def _dispatch(self, coro: t.Coroutine[t.Any, t.Any, None]) -> None:
-        """Fire an async side effect onto the captured loop without awaiting it."""
-        if self._loop is None:
-            coro.close()
-            log.warning(
-                f"{LogTag.COMPOSIO} No event loop captured — skipping integration expiry transition"
-            )
-            return
-        asyncio.run_coroutine_threadsafe(coro, self._loop)
+        return {"successful": False, "error": message or reason, "data": None}
 
     def _run_on_loop(
         self, coro: t.Coroutine[t.Any, t.Any, str | None], *, timeout: float
@@ -257,11 +247,14 @@ class LangchainProvider(
         """Await a coroutine on the captured loop from this executor thread, bounded."""
         if self._loop is None:
             coro.close()
+            log.warning(f"{LogTag.COMPOSIO} No event loop captured — skipping the reconnect prompt")
             return None
         try:
             return asyncio.run_coroutine_threadsafe(coro, self._loop).result(timeout=timeout)
         except TimeoutError:
-            log.warning(f"{LogTag.COMPOSIO} Timed out minting connect link", timeout_s=timeout)
+            log.warning(
+                f"{LogTag.COMPOSIO} Timed out building the reconnect prompt", timeout_s=timeout
+            )
             return None
 
     def _wrap_action(

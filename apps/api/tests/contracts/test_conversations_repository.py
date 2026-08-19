@@ -311,6 +311,262 @@ class TestMessages:
         assert await repo.find_owner_of_message(doc.user_id, "no-such") is None
 
 
+class TestMessageSettlementWrites:
+    """``set_message_response`` / ``set_message_tool_data`` /
+    ``set_message_approval_status`` — the in-place writes background delivery and
+    the HIL bridge use to settle a turn that has already been persisted."""
+
+    @staticmethod
+    async def _seed(repo) -> tuple[ConversationDocument, str, str]:
+        """A conversation with a tool_data-less user message and a bot message.
+
+        The leading user message is load-bearing for the approval-status filter:
+        it has no ``tool_data`` at all, which is exactly the shape a
+        ``messages.$[]`` positional filter chokes on.
+        """
+        doc = _doc()
+        await repo.create(doc)
+        ids = await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[
+                MessageModel(type="user", response="do the thing"),
+                MessageModel(type="bot", response=""),
+            ],
+        )
+        assert ids is not None and len(ids) == 2
+        return doc, ids[0], ids[1]
+
+    async def test_set_response_writes_only_the_named_message(self, repo):
+        doc, user_mid, bot_mid = await self._seed(repo)
+
+        assert await repo.set_message_response(
+            doc.conversation_id, user_id=doc.user_id, message_id=bot_mid, response="the answer"
+        )
+
+        fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert fetched is not None
+        assert [m.response for m in fetched.messages] == ["do the thing", "the answer"]
+        assert [m.message_id for m in fetched.messages] == [user_mid, bot_mid]
+
+    async def test_set_response_on_an_unknown_message_returns_false(self, repo):
+        doc, _user_mid, _bot_mid = await self._seed(repo)
+        assert (
+            await repo.set_message_response(
+                doc.conversation_id, user_id=doc.user_id, message_id="no-such", response="x"
+            )
+            is False
+        )
+
+    async def test_set_response_is_refused_for_another_user(self, repo):
+        doc, _user_mid, bot_mid = await self._seed(repo)
+
+        assert (
+            await repo.set_message_response(
+                doc.conversation_id, user_id="attacker", message_id=bot_mid, response="pwned"
+            )
+            is False
+        )
+        stored = await repo.get_message(doc.conversation_id, bot_mid, user_id=doc.user_id)
+        assert stored is not None and stored.response == ""
+
+    async def test_set_tool_data_replaces_rather_than_appends(self, repo):
+        """The distinction from ``append_message_tool_data``: delivery re-persists
+        the whole frame list, so a stale entry must not survive the write."""
+        doc, _user_mid, bot_mid = await self._seed(repo)
+        assert await repo.append_message_tool_data(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            message_id=bot_mid,
+            entries=[{"tool_name": "stale", "data": {}, "timestamp": "2026-01-01"}],
+        )
+
+        assert await repo.set_message_tool_data(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            message_id=bot_mid,
+            entries=[{"tool_name": "fresh", "data": {"ok": True}, "timestamp": "2026-01-02"}],
+        )
+
+        stored = await repo.get_message(doc.conversation_id, bot_mid, user_id=doc.user_id)
+        assert stored is not None and stored.tool_data is not None
+        assert [e["tool_name"] for e in stored.tool_data] == ["fresh"]
+
+    async def test_set_tool_data_on_an_unknown_message_returns_false(self, repo):
+        doc, _user_mid, _bot_mid = await self._seed(repo)
+        assert (
+            await repo.set_message_tool_data(
+                doc.conversation_id, user_id=doc.user_id, message_id="no-such", entries=[]
+            )
+            is False
+        )
+
+    async def test_set_tool_data_is_refused_for_another_user(self, repo):
+        doc, _user_mid, bot_mid = await self._seed(repo)
+
+        assert (
+            await repo.set_message_tool_data(
+                doc.conversation_id,
+                user_id="attacker",
+                message_id=bot_mid,
+                entries=[{"tool_name": "injected", "data": {}, "timestamp": "2026-01-01"}],
+            )
+            is False
+        )
+        stored = await repo.get_message(doc.conversation_id, bot_mid, user_id=doc.user_id)
+        assert stored is not None
+        assert not stored.tool_data
+
+    async def test_approval_status_settles_only_the_named_frame(self, repo):
+        """Two approval cards on one message: settling ``a1`` must not touch ``a2``,
+        and the tool_data-less user message ahead of them must not block the write."""
+        doc, _user_mid, bot_mid = await self._seed(repo)
+        assert await repo.set_message_tool_data(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            message_id=bot_mid,
+            entries=[
+                {
+                    "tool_name": "approval_request",
+                    "data": {"approval_id": "a1", "status": "pending"},
+                    "timestamp": "2026-01-01",
+                },
+                {
+                    "tool_name": "approval_request",
+                    "data": {"approval_id": "a2", "status": "pending"},
+                    "timestamp": "2026-01-01",
+                },
+            ],
+        )
+
+        assert (
+            await repo.set_message_approval_status(
+                doc.conversation_id, user_id=doc.user_id, approval_id="a1", status="approved"
+            )
+            is True
+        )
+
+        stored = await repo.get_message(doc.conversation_id, bot_mid, user_id=doc.user_id)
+        assert stored is not None and stored.tool_data is not None
+        by_id = {e["data"]["approval_id"]: e["data"]["status"] for e in stored.tool_data}
+        assert by_id == {"a1": "approved", "a2": "pending"}
+
+    @pytest.mark.regression
+    async def test_approval_status_for_an_unknown_id_reports_failure(self, repo):
+        """Returning True for an approval that is not in the document reports work
+        that did not happen. The sibling writes filter on ``messages.message_id``,
+        so their ``matched > 0`` means "the row was there"; this one filtered on the
+        conversation alone, so it meant "the conversation exists" — true for every
+        stale or already-reconciled approval_id a caller might pass."""
+        doc, _user_mid, bot_mid = await self._seed(repo)
+        assert await repo.set_message_tool_data(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            message_id=bot_mid,
+            entries=[
+                {
+                    "tool_name": "approval_request",
+                    "data": {"approval_id": "a1", "status": "pending"},
+                    "timestamp": "2026-01-01",
+                }
+            ],
+        )
+
+        assert (
+            await repo.set_message_approval_status(
+                doc.conversation_id, user_id=doc.user_id, approval_id="nope", status="approved"
+            )
+            is False
+        )
+
+    async def test_approval_status_for_an_unknown_id_settles_nothing(self, repo):
+        doc, _user_mid, bot_mid = await self._seed(repo)
+        assert await repo.set_message_tool_data(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            message_id=bot_mid,
+            entries=[
+                {
+                    "tool_name": "approval_request",
+                    "data": {"approval_id": "a1", "status": "pending"},
+                    "timestamp": "2026-01-01",
+                }
+            ],
+        )
+
+        await repo.set_message_approval_status(
+            doc.conversation_id, user_id=doc.user_id, approval_id="nope", status="approved"
+        )
+
+        stored = await repo.get_message(doc.conversation_id, bot_mid, user_id=doc.user_id)
+        assert stored is not None and stored.tool_data is not None
+        assert stored.tool_data[0]["data"]["status"] == "pending"
+
+    async def test_approval_status_on_a_missing_conversation_returns_false(self, repo):
+        assert (
+            await repo.set_message_approval_status(
+                _cid(), user_id=_uid(), approval_id="a1", status="approved"
+            )
+            is False
+        )
+
+    async def test_approval_status_is_refused_for_another_user(self, repo):
+        doc, _user_mid, bot_mid = await self._seed(repo)
+        assert await repo.set_message_tool_data(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            message_id=bot_mid,
+            entries=[
+                {
+                    "tool_name": "approval_request",
+                    "data": {"approval_id": "a1", "status": "pending"},
+                    "timestamp": "2026-01-01",
+                }
+            ],
+        )
+
+        assert (
+            await repo.set_message_approval_status(
+                doc.conversation_id, user_id="attacker", approval_id="a1", status="approved"
+            )
+            is False
+        )
+        stored = await repo.get_message(doc.conversation_id, bot_mid, user_id=doc.user_id)
+        assert stored is not None and stored.tool_data is not None
+        assert stored.tool_data[0]["data"]["status"] == "pending"
+
+    async def test_settlement_writes_never_advance_updated_at(self, repo):
+        """All three settle a turn the client already sees; bumping ``updatedAt``
+        would reshuffle the sidebar's recency ordering behind the user's back."""
+        doc, _user_mid, bot_mid = await self._seed(repo)
+        assert await repo.set_starred(doc.conversation_id, user_id=doc.user_id, starred=True)
+        before = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert before is not None and before.updatedAt is not None
+
+        assert await repo.set_message_response(
+            doc.conversation_id, user_id=doc.user_id, message_id=bot_mid, response="answer"
+        )
+        assert await repo.set_message_tool_data(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            message_id=bot_mid,
+            entries=[
+                {
+                    "tool_name": "approval_request",
+                    "data": {"approval_id": "a1", "status": "pending"},
+                    "timestamp": "2026-01-01",
+                }
+            ],
+        )
+        assert await repo.set_message_approval_status(
+            doc.conversation_id, user_id=doc.user_id, approval_id="a1", status="approved"
+        )
+
+        after = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert after is not None
+        assert after.updatedAt == before.updatedAt
+
+
 class TestLegacyReadTolerance:
     async def test_get_reads_legacy_message_missing_timestamp_and_legacy_tool_field(
         self, repo, raw_collection

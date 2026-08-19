@@ -16,12 +16,20 @@ Two constraints fix the order, and neither is negotiable:
   block, byte-stable slots come first and per-turn churn sorts to the tail, and
   the clock — which ticks every minute — lives at the very end of contents where
   it can never move the boundary.
+
+The first constraint is Gemini's alone. Every OpenAI-wire provider accepts a
+system message anywhere in the list, which buys a strictly better layout: the
+per-turn slots move BEHIND the conversation, so the cacheable prefix covers the
+history instead of stopping at the stable block. ``request_slot_order`` is where
+that choice is made, and the enum below is the Gemini-safe order it starts from.
 """
 
 from enum import IntEnum
 from typing import TypeVar
 
 from langchain_core.messages import AnyMessage, BaseMessage
+
+from app.agents.llm.types import LLMProviderName
 
 #: ``mark`` returns the message it was given, so it must preserve the concrete
 #: type — a caller stamping a ``SystemMessage`` gets a ``SystemMessage`` back,
@@ -66,6 +74,56 @@ class PromptSlot(IntEnum):
 #: cache prefix. ``CONVERSATION`` is the only slot that accumulates — it IS the
 #: history, and its internal order is preserved.
 SINGLETON_SLOTS = frozenset(slot for slot in PromptSlot if slot is not PromptSlot.CONVERSATION)
+
+#: Slots whose text is retrieved against THIS turn, so their bytes change on
+#: every request. On a provider that allows it they sort behind the conversation
+#: (see :func:`request_slot_order`); ahead of it they would move the cache
+#: boundary every turn and the whole history would re-send uncached.
+TAIL_VOLATILE_SLOTS: frozenset[PromptSlot] = frozenset(
+    {
+        PromptSlot.TODO_CONTEXT,
+        PromptSlot.BACKGROUND_EXECUTOR,
+        PromptSlot.EXECUTOR_STATUS,
+        PromptSlot.MEMORY_RECALL,
+    }
+)
+
+#: Providers on the OpenAI wire format. They apply every system message wherever
+#: it appears (DeepSeek included — the earliest wins on a directive conflict,
+#: which keeps the static prompt's authority), so the tail layout is safe on
+#: them. Gemini is not on this list and never can be: ``langchain-google-genai``
+#: promotes only a LEADING contiguous run of system messages to
+#: ``system_instruction`` and silently DROPS every one after that.
+TAIL_VOLATILE_PROVIDERS: frozenset[LLMProviderName] = frozenset(
+    {LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM}
+)
+
+
+def request_slot_order(provider: str | None) -> tuple[PromptSlot, ...]:
+    """The slot order a request bound for ``provider`` is emitted in.
+
+    Gemini gets the declaration order — everything system-ish ahead of the
+    conversation, because anything after it is dropped on the floor — and its
+    cache can therefore only ever cover ``[static, dynamic_stable]``.
+
+    On the OpenAI wire the per-turn slots move after the conversation, making the
+    stable prefix ``[static, dynamic_stable, ...conversation]``. Measured on the
+    real lane: 97% hit rate against 83% for the leading-block layout
+    (``scripts/measure_llm_cache.py``), because the conversation joins the cached
+    prefix instead of re-sending in full every turn.
+    """
+    if provider not in TAIL_VOLATILE_PROVIDERS:
+        return tuple(PromptSlot)
+    return (
+        *(
+            slot
+            for slot in PromptSlot
+            if slot < PromptSlot.CONVERSATION and slot not in TAIL_VOLATILE_SLOTS
+        ),
+        PromptSlot.CONVERSATION,
+        *(slot for slot in PromptSlot if slot in TAIL_VOLATILE_SLOTS),
+        *(slot for slot in PromptSlot if slot > PromptSlot.CONVERSATION),
+    )
 
 
 def has_marker(message: AnyMessage, name: str) -> bool:

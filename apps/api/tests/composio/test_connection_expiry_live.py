@@ -271,7 +271,7 @@ class _ToolRun:
         """The streamed connect-card payload, the contract the frontend renders.
 
         Structural on purpose: the agent-facing copy in
-        ``build_integration_connection_message`` is prose and gets reworded, but
+        ``request_integration_connection`` is prose and gets reworded, but
         ``integration_id`` / ``expired`` are what the UI actually branches on.
         """
         for event in self.custom_events:

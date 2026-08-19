@@ -27,6 +27,7 @@ from tests._harness.context_chain import (
 from tests._harness.context_sources import ContextSources, memory
 
 from app.agents.context.slots import PromptSlot
+from app.agents.llm.types import LLMProviderName
 
 VOLATILE_SOURCES = ContextSources(
     core_memory="- Prefers short answers.",
@@ -89,7 +90,11 @@ class TestVolatileContentIsNotInTheCacheablePrefix:
         messages = await effective_context(tier, sources=VOLATILE_SOURCES)
 
         stable = text_of(message_in_slot(messages, PromptSlot.DYNAMIC_STABLE))
-        for volatile in ("Ships on Fridays", "inbox-triage", "Prefers short answers"):
+        # "Prefers short answers" is deliberately absent: a memory-core DOCUMENT
+        # is rewritten by consolidation, not per query, so it belongs in the
+        # prefix. The core's agenda and journal are what churn, and they are a
+        # separate section in the volatile slot.
+        for volatile in ("Ships on Fridays", "inbox-triage"):
             assert volatile not in stable, (
                 f"{volatile!r} churns per query but sits in the cacheable prefix"
             )
@@ -123,9 +128,22 @@ class TestSeedOrderIsAlreadyCanonical:
     @pytest.mark.parametrize("tier", list(AgentTier))
     async def test_hooks_leave_a_fresh_seed_order_unchanged(self, tier: AgentTier) -> None:
         """Reordering should be a normalisation of already-correct input, not a
-        correction the tiers silently depend on."""
+        correction the tiers silently depend on.
+
+        Asserted on the Gemini lane, which is the layout the seed is written in.
+        The OpenAI wire's tail layout IS a deliberate reorder by the hook — the
+        one thing a tier cannot do itself, because the seed is built before the
+        provider is known to it (pinned in ``test_context_invariants``:
+        ``TestTheTailLayoutOnTheOpenAIWire``).
+        """
         seed = slots_of(await seed_only(tier, sources=VOLATILE_SOURCES))
-        effective = slots_of(await effective_context(tier, sources=VOLATILE_SOURCES))
+        effective = slots_of(
+            await effective_context(
+                tier,
+                sources=VOLATILE_SOURCES,
+                configurable_overrides={"provider": LLMProviderName.GEMINI},
+            )
+        )
 
         assert [slot for slot in effective if slot in seed] == seed
 

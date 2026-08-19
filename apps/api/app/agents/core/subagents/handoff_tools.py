@@ -55,13 +55,11 @@ from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from app.db.redis import get_cache, set_cache
 from app.db.repositories.integrations import integration_repository
-from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.agent_helpers import build_agent_config
 from app.helpers.namespace_utils import derive_integration_namespace
 from app.models.agent_models import AgentConfigurable, AgentUserContext, agent_configurable
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.models.subagent_models import Subagent
-from app.services.connect_link_service import build_connect_link_url
 from app.services.hil.approvals_store import list_parked_subagents_for_conversation
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_token_store import MCPTokenStore
@@ -77,10 +75,7 @@ from app.utils.agent_utils import (
     parse_subagent_id,
 )
 from app.utils.background_tasks import spawn_background_task
-from app.utils.integration_checker import (
-    build_integration_connection_message,
-    emit_integration_connection_required,
-)
+from app.utils.integration_checker import request_integration_connection
 from shared.py.wide_events import log
 
 SUBAGENTS_NAMESPACE = ("subagents",)
@@ -126,34 +121,15 @@ async def check_integration_connection(
     integration_id: str,
     user_id: str,
 ) -> str | None:
-    """Check if integration is connected and return error message if not."""
-    try:
-        subagent = get_subagent_by_id(integration_id)
-        if not subagent:
-            return None
-
-        is_connected = await check_integration_status(integration_id, user_id)
-
-        if is_connected:
-            return None
-
-        writer = get_stream_writer()
-        writer({"progress": f"Checking {subagent.name} connection..."})
-
-        expired = await user_integration_repository.is_expired(user_id, subagent.id)
-        emit_integration_connection_required(subagent.id, subagent.name, expired=expired)
-
-        connect_url = await build_connect_link_url(user_id, subagent.id)
-        return build_integration_connection_message(subagent.name, connect_url, expired=expired)
-
-    except Exception as e:
-        log.error(
-            f"{LogTag.AGENT} Error checking integration status",
-            integration_id=integration_id,
-            error_type=type(e).__name__,
-            error=str(e),
-        )
+    """Return the connect prompt when the integration isn't connected, else None."""
+    subagent = get_subagent_by_id(integration_id)
+    if not subagent:
         return None
+
+    if await check_integration_status(integration_id, user_id):
+        return None
+
+    return await request_integration_connection(subagent.id, subagent.name, user_id)
 
 
 async def _get_subagent_by_id(subagent_id: str) -> Subagent | dict[str, Any] | None:
@@ -360,13 +336,10 @@ async def _resolve_subagent(
         token_store = MCPTokenStore(user_id=user_id)
         is_connected = await token_store.is_connected(integration_id)
         if not is_connected:
-            connect_url = await build_connect_link_url(user_id, integration_id)
             return (
                 None,
                 None,
-                # MCP grants live in the token store and have no expiry transition
-                # — the only way here is never having connected.
-                build_integration_connection_message(subagent.name, connect_url, expired=False),
+                await request_integration_connection(integration_id, subagent.name, user_id),
                 False,
             )
 

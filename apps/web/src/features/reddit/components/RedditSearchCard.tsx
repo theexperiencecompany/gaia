@@ -5,6 +5,7 @@ import { ArrowUp02Icon, BubbleChatIcon } from "@icons";
 import Link from "next/link";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { RedditIcon } from "@/components/shared/icons";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import type { RedditSearchData } from "@/types/features/redditTypes";
 
 interface RedditSearchCardProps {
@@ -58,6 +59,15 @@ export default function RedditSearchCard({
               href={`https://reddit.com${post?.permalink}`}
               key={post.id}
               target="_blank"
+              onClick={() => {
+                trackEvent(ANALYTICS_EVENTS.REDDIT_POST_VIEWED, {
+                  subreddit: post.subreddit,
+                  score: post.score,
+                  num_comments: post.num_comments,
+                  has_selftext: Boolean(post.selftext),
+                  has_external_link: Boolean(post.url),
+                });
+              }}
             >
               <div className="space-y-2">
                 {/* Header */}

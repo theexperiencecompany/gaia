@@ -112,7 +112,7 @@ jobs:
             api=true
           fi
 
-          if echo "$AFFECTED" | grep -qx "bot-discord" || echo "$AFFECTED" | grep -qx "bot-slack" || echo "$AFFECTED" | grep -qx "bot-telegram" || echo "$AFFECTED" | grep -qx "bot-whatsapp"; then
+          if echo "$AFFECTED" | grep -qx "bot-discord" || echo "$AFFECTED" | grep -qx "bot-slack" || echo "$AFFECTED" | grep -qx "bot-telegram" || echo "$AFFECTED" | grep -qx "bot-whatsapp" || echo "$AFFECTED" | grep -qx "bot-imessage"; then
             bots=true
           fi
 
@@ -134,7 +134,8 @@ jobs:
                if image_missing "ghcr.io/theexperiencecompany/gaia-bot-discord:latest" || \
                   image_missing "ghcr.io/theexperiencecompany/gaia-bot-slack:latest" || \
                   image_missing "ghcr.io/theexperiencecompany/gaia-bot-telegram:latest" || \
-                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-whatsapp:latest"; then
+                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-whatsapp:latest" || \
+                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-imessage:latest"; then
                 echo "⚠️ Bot image(s) missing from GHCR — forcing build"
                 bots=true
               fi
@@ -175,7 +176,7 @@ jobs:
         id: ensure-bot-images
         if: steps.affected.outputs.bots == 'true'
         run: |
-          for bot in discord slack telegram whatsapp; do
+          for bot in discord slack telegram whatsapp imessage; do
             img="ghcr.io/theexperiencecompany/gaia-bot-${bot}:latest"
             if docker image inspect "$img" &>/dev/null; then
               echo "Pushing $img..."
@@ -343,7 +344,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Determine image tag
         id: tag
@@ -421,7 +422,7 @@ jobs:
     if: always() && needs.deployment-plan.outputs.backend_orphaned == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # continue-on-error on the send step only: the alert content is fully
       # logged by the script either way, and a webhook hiccup must not turn
       # an otherwise-green run red — the run didn't get worse because Discord

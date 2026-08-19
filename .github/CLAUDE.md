@@ -13,7 +13,7 @@ same PR (its header says so too).
 - **`workflows/code-quality.yml` ("Code Quality") — hygiene.** Twenty-two
   lanes (Biome, tsc, ruff + custom AST lints, mypy, dead code, complexity,
   security, evlog-map observability score, wide-event cross-runtime
-  conformance, semgrep, per-module mutation testing, …) behind the
+  conformance, semgrep, sharded mutation testing, …) behind the
   ratcheted `Quality gate (required)` check.
 
 
@@ -28,8 +28,8 @@ lists, parsing output, loops, multi-line shell — lives in a script under
 `scripts/ci/` (or `scripts/test/` for tooling), and the step calls it:
 
 ```yaml
-- name: Mutation check
-  run: bash scripts/ci/mutation-check.sh
+- name: Compute the mutation matrix
+  run: bash scripts/ci/mutation-plan.sh
 ```
 
 Not heredocs, not inline `for` loops, not python embedded in YAML. Scripts
@@ -99,6 +99,24 @@ intended semantic, keep it:
   `*.test.ts` / `__tests__/**` from `project` — otherwise knip's vitest
   plugin registers test files as entry points and test-only-referenced code
   counts as used. When adding a workspace, add the exclusion.
+
+## The mutation lane's shard count
+
+`scripts/ci/mutation-plan.sh` fans the changed modules across a matrix, capped
+at **the matrix's own `max-parallel`**. Do not raise the cap to "get more
+parallelism" — GitHub runs only `max-parallel` jobs at a time regardless, so a
+wider matrix cannot finish sooner. What it does cost is one check row per job
+(a 430-module diff produced 250 of them, which no reviewer can read past) and a
+full checkout + `uv sync` per job rather than per shard.
+
+Under the cap each module gets its own shard and the check is named after it,
+which is the common case and the most useful thing to read at a glance. Over
+it, modules pack in round-robin and the check says `shard N/M (K modules)`; the
+step then names every failing module in an `::error::` annotation and the job
+summary, because "this shard is red" is useless without saying which module.
+
+If the two ever drift, the plan silently either wastes runners or under-uses
+them — keep `MAX_SHARDS` and `max-parallel` in step.
 
 ## The quality gate
 

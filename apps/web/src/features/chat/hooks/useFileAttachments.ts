@@ -7,7 +7,6 @@ import {
   MAX_FILE_SIZE_BYTES,
   MAX_FILES,
 } from "@/features/chat/constants/files";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import { useComposerStore } from "@/stores/composerStore";
 import { useStreamStore } from "@/stores/streamStore";
@@ -27,7 +26,7 @@ const validateFile = (file: File): string | null => {
  * uploading chip immediately and resolves in place, no modal step.
  * Send stays blocked while any chip is uploading (useComposerIsUploading).
  */
-export const useFileAttachments = (conversationId?: string) => {
+export const useFileAttachments = () => {
   const setAuxLoading = useStreamStore((state) => state.setAuxLoading);
   // Ref-count concurrent attachFiles invocations so a slow batch doesn't clear
   // the global loading state while a later batch is still uploading.
@@ -79,7 +78,7 @@ export const useFileAttachments = (conversationId?: string) => {
       activeUploads.current += 1;
       setAuxLoading(true, "Uploading files...");
       try {
-        const results = await Promise.allSettled(
+        await Promise.allSettled(
           pending.map(async ({ file, tempId, previewUrl }) => {
             try {
               const response = await chatApi.uploadFile(file);
@@ -119,21 +118,12 @@ export const useFileAttachments = (conversationId?: string) => {
             }
           }),
         );
-
-        const uploaded = results.filter((r) => r.status === "fulfilled");
-        if (uploaded.length > 0) {
-          trackEvent(ANALYTICS_EVENTS.CHAT_FILE_UPLOADED, {
-            file_count: uploaded.length,
-            file_types: uploaded.map((r) => r.value.type),
-            conversation_id: conversationId,
-          });
-        }
       } finally {
         activeUploads.current -= 1;
         if (activeUploads.current === 0) setAuxLoading(false);
       }
     },
-    [conversationId, setAuxLoading],
+    [setAuxLoading],
   );
 
   return { attachFiles };

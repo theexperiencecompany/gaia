@@ -17,7 +17,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.agents.core.background import executor_runner as er, session as sess
-from app.agents.core.background.executor_queue import LockState, PreparedQueuedTask
+from app.agents.core.background.executor_queue import (
+    LockState,
+    PreparedQueuedTask,
+    build_run_item,
+)
 from app.agents.core.background.session import (
     ExecutorRun,
     RunKind,
@@ -367,3 +371,39 @@ class TestQueueLockHandoff:
         # Lock handed off to the next run — must NOT be released or reclaimed.
         boundaries.release.assert_not_awaited()
         boundaries.reclaim.assert_not_awaited()
+
+
+class TestBuildRunItem:
+    """The one serialized run-context shape, written by the queue and by the HIL
+    resume store and read back by ``prepare_run_from_item``. A renamed or dropped
+    key here is invisible on write and only shows when a resumed run silently
+    loses what a queued run kept."""
+
+    def test_every_field_survives_the_round_trip_shape(self) -> None:
+        item = build_run_item(
+            task="triage my inbox",
+            task_id="task-1",
+            configurable={"user_id": "user-1", "thread_id": "conv-1"},
+            conversation_id="conv-1",
+            user_message_id="user-msg-1",
+            bot_message_id="bot-msg-1",
+        )
+
+        assert item["task"] == "triage my inbox"
+        assert item["task_id"] == "task-1"
+        assert item["conversation_id"] == "conv-1"
+        assert item["user_message_id"] == "user-msg-1"
+        assert item["bot_message_id"] == "bot-msg-1"
+
+    def test_a_plain_enqueue_carries_no_bot_message_id(self) -> None:
+        """Only a HIL pause sets it; a queued run must still carry the key, as
+        ``prepare_run_from_item`` reads it unconditionally."""
+        item = build_run_item(
+            task="t",
+            task_id=None,
+            configurable={"user_id": "user-1"},
+            conversation_id="conv-1",
+            user_message_id=None,
+        )
+
+        assert item["bot_message_id"] is None

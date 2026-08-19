@@ -291,15 +291,61 @@ class PlatformLinkService:
         # Read before the $unset, or the number to release is already gone.
         linked = await PlatformLinkService.get_linked_platforms(user_id)
         entry = linked.get(platform)
+        pending = await pending_platform_registration_repository.get_for_user(user_id, platform)
 
         result = await user_repository.unlink_platform(user_id, platform)
         if result is None:
             raise ValueError("User not found")
 
-        await pending_platform_registration_repository.delete_for_user(user_id, platform)
+        if platform != Platform.IMESSAGE.value:
+            await pending_platform_registration_repository.delete_for_user(user_id, platform)
+            return DisconnectPlatformResponse(status="disconnected", platform=platform)
 
-        if platform == Platform.IMESSAGE.value and entry:
-            await _release_imessage_number(user_id, entry["platformUserId"])
+        # Every number this user holds a Photon seat for, not only the linked
+        # one: connect can be re-run with a second number, which registers that
+        # one while the first stays linked. Deleting the pending record without
+        # releasing its number stranded that seat with nothing in GAIA pointing
+        # at it — and the sweep only ever scans pending records, so it could
+        # never find it either.
+        seats: list[str] = []
+        if pending is not None:
+            seats.append(pending.platform_user_id)
+        if entry and entry["platformUserId"] not in seats:
+            seats.append(entry["platformUserId"])
+
+        unreleased = [
+            number for number in seats if not await _release_imessage_number(user_id, number)
+        ]
+
+        # Photon unreachable: hand the number back to the pending record so the
+        # abandoned-registration sweep retries it, which is the invariant
+        # reap_abandoned_imessage_registrations already documents for itself.
+        # Deleting the record instead is what made a failed release of a LINKED
+        # number unrecoverable.
+        if not unreleased:
+            await pending_platform_registration_repository.delete_for_user(user_id, platform)
+        else:
+            await pending_platform_registration_repository.record(
+                user_id=user_id,
+                platform=platform,
+                platform_user_id=unreleased[0],
+                created_at=datetime.now(UTC),
+            )
+            # One record per user and platform, so any further unreleased
+            # number has nowhere to live. Say so loudly rather than dropping it
+            # in silence — those need releasing on Photon by hand.
+            if len(unreleased) > 1:
+                log.error(
+                    "imessage seats left registered with nothing tracking them",
+                    user={"id": user_id},
+                    provider=Platform.IMESSAGE.value,
+                    stranded=len(unreleased) - 1,
+                    # Named, not just counted: the pending record holds only the
+                    # first, so nothing else records these and "release them by
+                    # hand" is not actionable without knowing which.
+                    untracked=unreleased[1:],
+                    fix="release these numbers on Photon by hand; the sweep cannot see them",
+                )
 
         return DisconnectPlatformResponse(status="disconnected", platform=platform)
 

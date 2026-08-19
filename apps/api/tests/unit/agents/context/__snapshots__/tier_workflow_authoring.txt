@@ -394,11 +394,18 @@
     User Profession: Engineer
     Session directory: /workspace/sessions/conv-1
     Public artifact URL: a file at `artifacts/<name>` is served at https://api.heygaia.io/api/v1/sessions/conv-1/artifacts/<name>
-
-[2] system markers=memory_recall
     What you remember about this user (memory core):
     - Prefers short answers.
+
+[2] human
+    # Connected integrations
+    Gmail (`gmail`)
     
+    ---
+    
+    Request: summarise my unread mail
+
+[3] system markers=memory_recall
     Based on our previous conversations (bracketed dates say when something happened / was last mentioned):
     - Ships on Fridays [mentioned 2026-02-01]
     
@@ -409,14 +416,6 @@
     - inbox-triage
     
     Tracked: ship the context refactor
-
-[3] human
-    # Connected integrations
-    Gmail (`gmail`)
-    
-    ---
-    
-    Request: summarise my unread mail
 
 [4] human markers=time_context
     [Current UTC Time: Tuesday, March 17, 2026, 14:30 UTC]

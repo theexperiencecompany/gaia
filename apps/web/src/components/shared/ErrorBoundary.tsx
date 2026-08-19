@@ -31,11 +31,11 @@ class ErrorBoundary extends React.Component<
     // Log error details for debugging or reporting
     console.error("Error caught in Error Boundary:", error, errorInfo);
 
-    // Track error in PostHog
+    // Track error in PostHog. Full diagnostics stay in the console (and
+    // Sentry); error.message/stack can carry user content, so analytics only
+    // gets the stable error type and component stack.
     trackEvent(ANALYTICS_EVENTS.ERROR_OCCURRED, {
       error_type: "react_error_boundary",
-      error_message: error.message,
-      error_stack: error.stack,
       component_stack: errorInfo.componentStack,
     });
   }

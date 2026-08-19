@@ -82,6 +82,27 @@ class TestCreateAgent:
 
         assert isinstance(builder, StateGraph)
 
+    def test_the_runtime_context_schema_reaches_the_graph(self) -> None:
+        """Runtime context (the per-run config the tiers read) only arrives if
+        the schema is declared on the StateGraph — dropped, every node sees an
+        empty context and nothing raises to say so."""
+        from dataclasses import dataclass
+
+        from app.override.langgraph_bigtool.create_agent import create_agent
+
+        @dataclass
+        class _Ctx:
+            tenant: str
+
+        builder = create_agent(
+            _make_llm(),
+            _make_tool_registry(dummy_tool_a),
+            disable_retrieve_tools=True,
+            context_schema=_Ctx,
+        )
+
+        assert builder.context_schema is _Ctx
+
     def test_with_retrieve_tools_coroutine(self) -> None:
         from app.override.langgraph_bigtool.create_agent import create_agent
 
@@ -687,6 +708,75 @@ class TestSelectTools:
 
         result = await select_node.runnable.afunc(tool_calls, config, store=store)  # type: ignore[union-attr]
         assert "dummy_tool_a" in result["selected_tool_ids"]
+
+
+class TestBindSessionId:
+    """The OpenRouter sticky-routing key, bound onto the tool-bound runnable.
+
+    It pins a conversation to one upstream provider so the prompt cache chains
+    across turns. Binding the wrong key, or silently not binding at all, costs
+    the cache with nothing failing — so both halves are asserted here rather
+    than through a graph run that would never notice either.
+    """
+
+    def test_a_configured_session_id_is_bound_onto_the_runnable(self) -> None:
+        from app.override.langgraph_bigtool.create_agent import _bind_session_id
+
+        llm = MagicMock()
+        bound = _bind_session_id(
+            llm, {"provider": LLMProviderName.OPENROUTER, "session_id": "conv-1"}
+        )
+
+        llm.bind.assert_called_once_with(session_id="conv-1")
+        assert bound is llm.bind.return_value
+
+    def test_no_session_id_leaves_the_runnable_exactly_as_it_was(self) -> None:
+        from app.override.langgraph_bigtool.create_agent import _bind_session_id
+
+        llm = MagicMock()
+        bound = _bind_session_id(llm, {"provider": LLMProviderName.OPENROUTER})
+
+        llm.bind.assert_not_called()
+        assert bound is llm
+
+    def test_an_empty_session_id_is_not_bound(self) -> None:
+        # Binding "" would pin every conversation to the same routing key.
+        from app.override.langgraph_bigtool.create_agent import _bind_session_id
+
+        llm = MagicMock()
+        bound = _bind_session_id(llm, {"provider": LLMProviderName.OPENROUTER, "session_id": ""})
+
+        llm.bind.assert_not_called()
+        assert bound is llm
+
+    @pytest.mark.parametrize("provider", [LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM])
+    def test_a_sticky_provider_gets_the_key(self, provider: LLMProviderName) -> None:
+        from app.override.langgraph_bigtool.create_agent import _bind_session_id
+
+        llm = MagicMock()
+        _bind_session_id(llm, {"provider": provider, "session_id": "conv-1"})
+
+        llm.bind.assert_called_once_with(session_id="conv-1")
+
+    def test_gemini_is_left_alone(self) -> None:
+        """session_id is an OpenRouter routing hint. Gemini has no stickiness to
+        pin, so sending it there is an unsupported argument on every graph call."""
+        from app.override.langgraph_bigtool.create_agent import _bind_session_id
+
+        llm = MagicMock()
+        bound = _bind_session_id(llm, {"provider": LLMProviderName.GEMINI, "session_id": "conv-1"})
+
+        llm.bind.assert_not_called()
+        assert bound is llm
+
+    def test_an_unrelated_configurable_key_is_not_mistaken_for_it(self) -> None:
+        from app.override.langgraph_bigtool.create_agent import _bind_session_id
+
+        llm = MagicMock()
+        bound = _bind_session_id(llm, {"thread_id": "conv-1", "model_name": "m"})
+
+        llm.bind.assert_not_called()
+        assert bound is llm
 
 
 # ---------------------------------------------------------------------------
