@@ -305,7 +305,7 @@ class LangchainProvider(
                 succeeded = result.get("successful") if isinstance(result, dict) else None
                 err_preview = (
                     str(result.get("error"))[:200]
-                    if isinstance(result, dict) and not succeeded
+                    if isinstance(result, dict) and succeeded is False
                     else None
                 )
                 log.set(
@@ -316,11 +316,11 @@ class LangchainProvider(
                         "successful": succeeded,
                     }
                 )
-                if succeeded is False:
-                    # Composio also reports a dead account without raising. That
-                    # string match is too loose to drive a state mutation, so this
-                    # stays a log line — but it shares the raising path's markers.
-                    if _message_mentions_dead_account(err_preview or ""):
+                # Composio also reports a dead account without raising. That
+                # string match is too loose to drive a state mutation, so this
+                # stays a log line — but it shares the raising path's markers.
+                if err_preview is not None:
+                    if _message_mentions_dead_account(err_preview):
                         log.warning(
                             f"{LogTag.COMPOSIO} composio tool failed — likely a dead connected account",
                             tool=tool,

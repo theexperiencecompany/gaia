@@ -1005,8 +1005,15 @@ class TestCapabilitiesPayloadAndArguments:
 
     @staticmethod
     def _registry(*core_tool_names: str) -> MagicMock:
+        # `name` is a MagicMock constructor kwarg, so it has to be assigned after
+        # construction to become a real attribute (same as the tests above).
+        tools = []
+        for tool_name in core_tool_names:
+            tool = MagicMock()
+            tool.name = tool_name
+            tools.append(tool)
         category = MagicMock()
-        category.tools = [MagicMock(**{"name": n}) for n in core_tool_names]
+        category.tools = tools
         registry = MagicMock()
         registry.get_core_categories.return_value = [category]
         return registry

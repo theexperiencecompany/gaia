@@ -10,70 +10,35 @@
  * renders as "Disconnected <n> ago".
  *
  * Fidelity note: this workspace has no jsdom/happy-dom and no
- * `@testing-library/react`, so there is no renderer and `renderHook` is
- * unavailable. `useCallback`/`useMemo`/`useRef` are stubbed with the minimum
- * semantics the hook relies on and the hook body is invoked directly. What runs
- * for real: the catalog mapping, the sort, and the status lookup. What is NOT
- * exercised: React's memo/dependency scheduling, and no component rendering at
- * all — that the row actually paints "Disconnected 3 days ago", or that the
+ * `@testing-library/react`, so there is no renderer. These tests drive the pure
+ * derivations the hook is built from, which is where all of this logic lives.
+ * What is NOT exercised: that the hook wires them up, and no component renders
+ * at all — that the row actually paints "Disconnected 3 days ago", or that the
  * dashboard button paints "Reconnect", is unverified here.
  */
-import type { MyIntegrationItem, MyIntegrationsResponse } from "@shared/types";
+import type { MyIntegrationItem } from "@shared/types";
 import {
   CONNECT_ACTION_LABEL,
   integrationConnectionState,
 } from "@shared/utils";
-import { QueryClient } from "@tanstack/react-query";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import { describe, expect, it } from "vitest";
+import {
+  byConnectionStateThenName,
+  findIntegrationStatus,
+  toIntegration,
+} from "@/features/integrations/utils/catalog";
 
-const harness = vi.hoisted(() => ({
-  data: null as { integrations: unknown[] } | null,
-  queryClient: null as import("@tanstack/react-query").QueryClient | null,
-}));
-
-vi.mock("react", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react")>();
-  return {
-    ...actual,
-    useCallback: <T>(fn: T): T => fn,
-    useMemo: <T>(fn: () => T): T => fn(),
-    useRef: <T>(initial: T): { current: T } => ({ current: initial }),
-  };
-});
-
-vi.mock("@tanstack/react-query", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@tanstack/react-query")>();
-  return {
-    ...actual,
-    useQuery: () => ({ data: harness.data, isLoading: false, error: null }),
-    useMutation: () => ({ mutateAsync: vi.fn() }),
-    useQueryClient: () => {
-      if (!harness.queryClient) throw new Error("queryClient not installed");
-      return harness.queryClient;
-    },
-  };
-});
-
-vi.mock("@/features/auth/hooks/useAuth", () => ({
-  useAuth: () => ({
-    userEmail: "dev@gaia.local",
-    isAuthenticated: true,
-    openLoginModal: vi.fn(),
-  }),
-}));
-
-function item(overrides: Partial<MyIntegrationItem>): MyIntegrationItem {
+function item(overrides: Partial<MyIntegrationItem> = {}): MyIntegrationItem {
   return {
     id: "gmail",
     name: "Gmail",
     description: "Email",
-    category: "communication",
+    category: "productivity",
     source: "platform",
     managedBy: "composio",
     status: "not_connected",
     requiresAuth: true,
-    isFeatured: true,
+    isFeatured: false,
     displayPriority: 0,
     available: true,
     toolCount: 3,
@@ -82,30 +47,12 @@ function item(overrides: Partial<MyIntegrationItem>): MyIntegrationItem {
   };
 }
 
-function install(...items: MyIntegrationItem[]): void {
-  harness.data = { integrations: items } satisfies Pick<
-    MyIntegrationsResponse,
-    "integrations"
-  >;
-}
+const statusOf = (items: MyIntegrationItem[], id: string) =>
+  findIntegrationStatus(items, id);
 
-/** Invokes the hook body outside React — see the fidelity note above. */
-function callHook(): ReturnType<typeof useIntegrations> {
-  // biome-ignore lint/correctness/useHookAtTopLevel: no DOM renderer exists in this workspace, so this driver invokes the hook body outside React on purpose.
-  return useIntegrations();
-}
-
-describe("useIntegrations.getIntegrationStatus", () => {
-  beforeEach(() => {
-    harness.queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-  });
-
+describe("findIntegrationStatus", () => {
   it("carries the backend status, not just the connected boolean", () => {
-    install(item({ status: "expired" }));
-
-    const record = callHook().getIntegrationStatus("gmail");
+    const record = statusOf([item({ status: "expired" })], "gmail");
 
     expect(record).toEqual({
       integrationId: "gmail",
@@ -115,12 +62,13 @@ describe("useIntegrations.getIntegrationStatus", () => {
   });
 
   it("lets a caller label a dead connection Reconnect instead of Connect", () => {
-    install(item({ status: "expired" }), item({ id: "slack", name: "Slack" }));
-
-    const { getIntegrationStatus } = callHook();
+    const items = [
+      item({ status: "expired" }),
+      item({ id: "slack", name: "Slack" }),
+    ];
     const label = (id: string) =>
       CONNECT_ACTION_LABEL[
-        integrationConnectionState(getIntegrationStatus(id)?.status)
+        integrationConnectionState(statusOf(items, id)?.status)
       ];
 
     expect(label("gmail")).toBe("Reconnect");
@@ -128,49 +76,71 @@ describe("useIntegrations.getIntegrationStatus", () => {
   });
 
   it("labels an added-but-never-authenticated integration Retry", () => {
-    install(item({ status: "created" }));
+    const items = [item({ status: "created" })];
 
     expect(
       CONNECT_ACTION_LABEL[
-        integrationConnectionState(
-          callHook().getIntegrationStatus("gmail")?.status,
-        )
+        integrationConnectionState(statusOf(items, "gmail")?.status)
       ],
     ).toBe("Retry");
   });
 
   it("matches the integration id case-insensitively", () => {
-    install(item({ id: "GoogleCalendar", status: "connected" }));
+    const items = [item({ id: "GoogleCalendar", status: "connected" })];
 
-    const record = callHook().getIntegrationStatus("googlecalendar");
+    const record = statusOf(items, "googlecalendar");
 
     expect(record?.status).toBe("connected");
     expect(record?.connected).toBe(true);
   });
 
   it("returns undefined for an integration missing from the catalog", () => {
-    install(item({}));
-
-    expect(callHook().getIntegrationStatus("notion")).toBeUndefined();
+    expect(statusOf([item({})], "notion")).toBeUndefined();
   });
 });
 
-describe("useIntegrations catalog mapping", () => {
-  beforeEach(() => {
-    harness.queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-  });
-
+describe("toIntegration", () => {
   it("carries expiredAt through so the row can say when the grant died", () => {
-    install(item({ status: "expired", expiredAt: "2026-08-15T09:00:00Z" }));
+    const mapped = toIntegration(
+      item({ status: "expired", expiredAt: "2026-08-15T09:00:00Z" }),
+    );
 
-    expect(callHook().integrations[0].expiredAt).toBe("2026-08-15T09:00:00Z");
+    expect(mapped.expiredAt).toBe("2026-08-15T09:00:00Z");
   });
 
   it("normalizes a null expiredAt to undefined", () => {
-    install(item({ status: "connected", expiredAt: null }));
+    const mapped = toIntegration(
+      item({ status: "connected", expiredAt: null }),
+    );
 
-    expect(callHook().integrations[0].expiredAt).toBeUndefined();
+    expect(mapped.expiredAt).toBeUndefined();
+  });
+});
+
+describe("byConnectionStateThenName", () => {
+  it("puts what needs attention first, then connected, then the rest", () => {
+    const sorted = [
+      item({ id: "slack", name: "Slack", status: "not_connected" }),
+      item({ id: "notion", name: "Notion", status: "connected" }),
+      item({ id: "gmail", name: "Gmail", status: "expired" }),
+      item({ id: "linear", name: "Linear", status: "created" }),
+    ]
+      .map(toIntegration)
+      .toSorted(byConnectionStateThenName)
+      .map((i) => i.id);
+
+    expect(sorted).toEqual(["gmail", "linear", "notion", "slack"]);
+  });
+
+  it("falls back to name order within one state", () => {
+    const sorted = [
+      item({ id: "zulip", name: "Zulip", status: "connected" }),
+      item({ id: "asana", name: "Asana", status: "connected" }),
+    ]
+      .map(toIntegration)
+      .toSorted(byConnectionStateThenName)
+      .map((i) => i.name);
+
+    expect(sorted).toEqual(["Asana", "Zulip"]);
   });
 });
