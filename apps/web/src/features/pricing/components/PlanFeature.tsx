@@ -15,47 +15,82 @@ const PLATFORM_PATTERN = new RegExp(
   "g",
 );
 
-interface PlatformToken {
-  platform: BotPlatform;
+const SEPARATOR_ONLY = /^[\s,]*(?:&|and)?[\s,]*$/;
+
+interface PlatformRun {
+  platforms: BotPlatform[];
   at: number;
 }
 
-function tokenize(feature: string): {
+function parseFeature(feature: string): {
   segments: string[];
-  platforms: PlatformToken[];
+  runs: PlatformRun[];
 } {
   const segments: string[] = [];
-  const platforms: PlatformToken[] = [];
+  const runs: PlatformRun[] = [];
   let cursor = 0;
 
   for (const match of feature.matchAll(PLATFORM_PATTERN)) {
     const platform = PLATFORM_BY_LABEL.get(match[0]);
     if (platform === undefined || match.index === undefined) continue;
-    segments.push(feature.slice(cursor, match.index));
-    platforms.push({ platform, at: match.index });
+
+    const gap = feature.slice(cursor, match.index);
+    const previous = runs.at(-1);
+    if (previous !== undefined && SEPARATOR_ONLY.test(gap)) {
+      previous.platforms.push(platform);
+    } else {
+      segments.push(gap);
+      runs.push({ platforms: [platform], at: match.index });
+    }
     cursor = match.index + match[0].length;
   }
   segments.push(feature.slice(cursor));
 
-  return { segments, platforms };
+  return { segments, runs };
 }
 
-interface PlatformMentionProps {
-  platform: BotPlatform;
+interface PlatformIconsProps {
+  platforms: BotPlatform[];
 }
 
-function PlatformMention({ platform }: PlatformMentionProps) {
+function PlatformIcons({ platforms }: PlatformIconsProps) {
+  const label = platforms.map((p) => BOT_PLATFORM_LABELS[p]).join(", ");
+
+  if (platforms.length === 1) {
+    const platform = platforms[0];
+    return (
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap align-middle">
+        <Image
+          src={BOT_PLATFORM_ICONS[platform]}
+          alt=""
+          width={18}
+          height={18}
+          aria-hidden
+          className="inline-block size-[18px] shrink-0 rounded-[5px]"
+        />
+        {BOT_PLATFORM_LABELS[platform]}
+      </span>
+    );
+  }
+
   return (
-    <span className="inline-flex items-center gap-1 whitespace-nowrap align-middle">
-      <Image
-        src={BOT_PLATFORM_ICONS[platform]}
-        alt=""
-        width={16}
-        height={16}
-        aria-hidden
-        className="inline-block h-4 w-4 shrink-0 rounded-[4px]"
-      />
-      {BOT_PLATFORM_LABELS[platform]}
+    <span
+      role="img"
+      aria-label={label}
+      title={label}
+      className="mx-1 inline-flex items-center gap-1 align-middle"
+    >
+      {platforms.map((platform) => (
+        <Image
+          key={platform}
+          src={BOT_PLATFORM_ICONS[platform]}
+          alt=""
+          width={22}
+          height={22}
+          aria-hidden
+          className="size-[22px] shrink-0 rounded-[6px]"
+        />
+      ))}
     </span>
   );
 }
@@ -65,18 +100,18 @@ interface PlanFeatureProps {
 }
 
 export function PlanFeature({ feature }: PlanFeatureProps) {
-  const { segments, platforms } = tokenize(feature);
+  const { segments, runs } = parseFeature(feature);
 
-  if (platforms.length === 0) {
+  if (runs.length === 0) {
     return <span className="whitespace-nowrap text-zinc-300">{feature}</span>;
   }
 
   return (
     <span className="text-zinc-300">
       {segments[0]}
-      {platforms.map(({ platform, at }, index) => (
-        <span key={`${platform}-${at}`}>
-          <PlatformMention platform={platform} />
+      {runs.map(({ platforms, at }, index) => (
+        <span key={at}>
+          <PlatformIcons platforms={platforms} />
           {segments[index + 1]}
         </span>
       ))}
