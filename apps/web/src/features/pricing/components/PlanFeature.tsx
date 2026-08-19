@@ -17,6 +17,16 @@ const PLATFORM_PATTERN = new RegExp(
 
 const SEPARATOR_ONLY = /^[\s,]*(?:&|and)?[\s,]*$/;
 
+const FAN_ROTATIONS: Record<number, string[]> = {
+  1: ["rotate-0"],
+  2: ["-rotate-6", "rotate-6"],
+  3: ["-rotate-6", "rotate-0", "rotate-6"],
+  4: ["-rotate-12", "-rotate-6", "rotate-6", "rotate-12"],
+  5: ["-rotate-12", "-rotate-6", "rotate-0", "rotate-6", "rotate-12"],
+};
+
+const STACK_ORDER = ["z-[1]", "z-[2]", "z-[3]", "z-[4]", "z-[5]"];
+
 interface PlatformRun {
   platforms: BotPlatform[];
   at: number;
@@ -78,18 +88,21 @@ function PlatformIcons({ platforms }: PlatformIconsProps) {
       role="img"
       aria-label={label}
       title={label}
-      className="mx-1 inline-flex items-center gap-1 align-middle"
+      className="-space-x-1 mx-1.5 inline-flex align-middle leading-none"
     >
-      {platforms.map((platform) => (
-        <Image
+      {platforms.map((platform, index) => (
+        <span
           key={platform}
-          src={BOT_PLATFORM_ICONS[platform]}
-          alt=""
-          width={22}
-          height={22}
-          aria-hidden
-          className="size-[22px] shrink-0 rounded-[6px]"
-        />
+          className={`relative block size-7 ${FAN_ROTATIONS[platforms.length]?.[index] ?? "rotate-0"} ${STACK_ORDER[index] ?? "z-0"}`}
+        >
+          <Image
+            src={BOT_PLATFORM_ICONS[platform]}
+            alt=""
+            fill
+            aria-hidden
+            className="object-contain drop-shadow-[0_2px_5px_rgba(0,0,0,0.6)] transition hover:-translate-y-1 hover:scale-110"
+          />
+        </span>
       ))}
     </span>
   );
