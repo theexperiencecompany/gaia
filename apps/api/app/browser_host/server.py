@@ -111,16 +111,25 @@ def _ws_authorized(websocket: WebSocket) -> bool:
     # live-view upstream proxy) send no Origin; a rendered page connecting a raw
     # socket would. Reject any non-loopback Origin even with a valid key (the
     # page could only have the key if the API leaked it — this makes that leak
-    # more survivable).
+    # more survivable). Rejections are logged so they are observable.
     origin = websocket.headers.get("origin")
     if not origin:
         return True
     try:
         netloc = (origin.split("://", 1)[1] if "://" in origin else origin).split("/", 1)[0]
         host = netloc.rsplit(":", 1)[0]
-    except Exception:
+    except (ValueError, IndexError) as exc:
+        log.set(browser={"operation": "ws_origin_reject"})
+        log.warning(
+            f"{LogTag.BROWSER} live-view WS rejected: unparsable Origin",
+            error_type=type(exc).__name__,
+        )
         return False
-    return host in _ALLOWED_WS_ORIGIN_HOSTS
+    if host not in _ALLOWED_WS_ORIGIN_HOSTS:
+        log.set(browser={"operation": "ws_origin_reject"})
+        log.warning(f"{LogTag.BROWSER} live-view WS rejected: cross-origin Origin")
+        return False
+    return True
 
 
 def _ws_url(path: str) -> str:
