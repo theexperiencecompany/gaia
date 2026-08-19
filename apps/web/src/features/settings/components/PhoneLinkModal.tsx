@@ -10,7 +10,7 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import CopyButton from "@/components/ui/CopyButton";
 
 const E164_PHONE_PATTERN = /^\+[1-9]\d{6,14}$/;
@@ -51,13 +51,13 @@ export function PhoneLinkModal({
   onClose,
 }: PhoneLinkModalProps) {
   const [phone, setPhone] = useState("");
-  const prevIsOpenRef = useRef(isOpen);
-  useEffect(() => {
-    if (prevIsOpenRef.current !== isOpen) {
-      prevIsOpenRef.current = isOpen;
-      if (isOpen) setPhone("");
-    }
-  }, [isOpen]);
+  // Clear the phone field whenever the modal opens — adjust state during
+  // render (state prev-tracker), not an effect.
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+  if (prevIsOpen !== isOpen) {
+    setPrevIsOpen(isOpen);
+    if (isOpen) setPhone("");
+  }
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="sm">

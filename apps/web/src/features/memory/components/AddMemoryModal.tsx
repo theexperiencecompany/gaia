@@ -9,7 +9,7 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import { MAX_MEMORY_LENGTH } from "@/features/memory/constants";
 import { toast } from "@/lib/toast";
@@ -28,16 +28,16 @@ export function AddMemoryModal({
   const [content, setContent] = useState("");
   const [categoryPath, setCategoryPath] = useState("");
   const [isPending, startTransition] = useTransition();
-  const prevIsOpenRef = useRef(isOpen);
-  useEffect(() => {
-    if (prevIsOpenRef.current !== isOpen) {
-      prevIsOpenRef.current = isOpen;
-      if (!isOpen) {
-        setContent("");
-        setCategoryPath("");
-      }
+  // Clear the draft whenever the modal closes — adjust state during render
+  // (state prev-tracker), not an effect.
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+  if (prevIsOpen !== isOpen) {
+    setPrevIsOpen(isOpen);
+    if (!isOpen) {
+      setContent("");
+      setCategoryPath("");
     }
-  }, [isOpen]);
+  }
 
   const handleSave = () => {
     if (!content.trim()) return;

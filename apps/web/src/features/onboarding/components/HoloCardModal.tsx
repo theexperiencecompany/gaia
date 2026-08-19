@@ -12,7 +12,7 @@ import { Modal, ModalContent } from "@heroui/modal";
 import { Skeleton } from "@heroui/skeleton";
 import { Rocket01Icon } from "@icons";
 import confetti from "canvas-confetti";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { TwitterShareButton } from "react-share";
 import { TwitterIcon } from "@/components/shared/icons";
 import { HoloCardEditor } from "@/components/ui/holo-card/HoloCardEditor";
@@ -55,7 +55,7 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
     if (!mounted) return;
     setDefaultMemberSince(MEMBER_SINCE_FORMATTER.format(new Date()));
   }, [mounted]);
-  const hasShownConfetti = useRef(false);
+  const [hasShownConfetti, setHasShownConfetti] = useState(false);
   const user = useUser();
 
   // Use centralized personalization hook
@@ -79,21 +79,22 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
     }
   }, [personalizationData?.holo_card_id]);
 
-  const prevIsOpenRef = useRef(isOpen);
-  useEffect(() => {
-    if (prevIsOpenRef.current !== isOpen) {
-      prevIsOpenRef.current = isOpen;
-      if (!isOpen) {
-        setIsCardRevealed(false);
-        hasShownConfetti.current = false;
-      }
+  // Reset reveal state whenever the modal closes — adjust state during render
+  // (state prev-tracker), not an effect, so a fresh card starts collapsed and
+  // confetti can fire once per open.
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+  if (prevIsOpen !== isOpen) {
+    setPrevIsOpen(isOpen);
+    if (!isOpen) {
+      setIsCardRevealed(false);
+      setHasShownConfetti(false);
     }
-  }, [isOpen]);
+  }
 
   // Trigger confetti only after card is revealed
   useEffect(() => {
-    if (!isCardRevealed || hasShownConfetti.current) return;
-    hasShownConfetti.current = true;
+    if (!isCardRevealed || hasShownConfetti) return;
+    setHasShownConfetti(true);
 
     // Small delay to let the card animation complete
     const timer = setTimeout(() => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { toast } from "@/lib/toast";
 
 export interface ValidationRule<T> {
@@ -95,18 +95,20 @@ export function useModalForm<T extends object, R = void>({
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof T, string>>>({});
 
-  const prevInitialDataRef = useRef(initialData);
-  useEffect(() => {
-    if (prevInitialDataRef.current !== initialData) {
-      prevInitialDataRef.current = initialData;
-      const newData =
-        typeof initialData === "function"
-          ? (initialData as unknown as () => T)()
-          : initialData;
-      setFormData(newData);
-      setErrors({});
-    }
-  }, [initialData]);
+  // Reset the draft whenever the initial data identity changes (e.g. the modal
+  // opens for a different entity). Adjusting state during render — tracking the
+  // previous initialData in state, not a ref, not an effect — is the pattern
+  // react.dev recommends for "adjusting some state when a prop changes".
+  const [prevInitialData, setPrevInitialData] = useState(initialData);
+  if (initialData !== prevInitialData) {
+    setPrevInitialData(initialData);
+    setFormData(
+      typeof initialData === "function"
+        ? (initialData as unknown as () => T)()
+        : initialData,
+    );
+    setErrors({});
+  }
 
   const validateField = useCallback(
     (field: keyof T): string | null => {

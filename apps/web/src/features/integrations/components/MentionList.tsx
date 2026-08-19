@@ -29,13 +29,13 @@ export const MentionList = forwardRef<MentionListHandle, MentionListProps>(
   ({ items, command, renderIcon }, ref) => {
     const [selected, setSelected] = useState(0);
     const activeRef = useRef<HTMLButtonElement>(null);
-    const prevItemsRef = useRef(items);
-    useEffect(() => {
-      if (prevItemsRef.current !== items) {
-        prevItemsRef.current = items;
-        setSelected(0);
-      }
-    }, [items]);
+    // Reset to the first item whenever the list changes — adjust state during
+    // render (state prev-tracker), not an effect, per react.dev.
+    const [prevItems, setPrevItems] = useState(items);
+    if (prevItems !== items) {
+      setPrevItems(items);
+      setSelected(0);
+    }
 
     // Keep the highlighted item visible when navigating past the fold.
     useEffect(() => {

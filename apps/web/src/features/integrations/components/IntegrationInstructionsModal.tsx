@@ -51,16 +51,22 @@ export const IntegrationInstructionsModal = ({
 }: IntegrationInstructionsModalProps) => {
   const [value, setValue] = useState(savedContent);
   const [tab, setTab] = useState("write");
-  const wasOpenRef = useRef(false);
   const { isMac, modifierKeyName } = usePlatform();
 
-  useEffect(() => {
-    if (isOpen && !wasOpenRef.current) {
-      setValue(savedContent);
-      setTab("write");
-    }
-    wasOpenRef.current = isOpen;
-  }, [isOpen, savedContent]);
+  // Reset the draft to the persisted content every time the modal opens —
+  // driven by the open event, not an effect, so there is no stale-flash
+  // window and nothing to pause over.
+  const handleOpenChange = useCallback(
+    (open: boolean) => {
+      if (open) {
+        setValue(savedContent);
+        setTab("write");
+      } else {
+        onClose();
+      }
+    },
+    [savedContent, onClose],
+  );
 
   // Raw compare: leading/trailing whitespace can be meaningful in Markdown,
   // and the backend already normalizes whitespace-only content to empty.
@@ -139,7 +145,7 @@ export const IntegrationInstructionsModal = ({
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onOpenChange={handleOpenChange}
       size="2xl"
       backdrop="blur"
       scrollBehavior="inside"

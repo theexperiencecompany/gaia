@@ -2,7 +2,6 @@
 
 import { Button } from "@heroui/button";
 import { AiBrain01Icon } from "@icons";
-import { useEffect, useRef, useState } from "react";
 
 interface MemoryResult {
   id: string;
@@ -70,38 +69,24 @@ export default function MemoryIndicator({
   memoryData,
   onOpenModal,
 }: MemoryIndicatorProps) {
-  const [displayText, setDisplayText] = useState<string>("");
-  const [showIndicator, setShowIndicator] = useState(false);
-  const prevDataRef = useRef(memoryData);
-  useEffect(() => {
-    if (prevDataRef.current !== memoryData) {
-      prevDataRef.current = memoryData;
-      if (memoryData) {
-        const text = resolveMemoryText(memoryData);
-        if (text !== null) {
-          setDisplayText(text);
-          setShowIndicator(true);
-        }
-      }
-    }
-  }, [memoryData]);
+  // Derive the indicator entirely from props — no state to sync, no effects.
+  const displayText =
+    memoryData !== null && memoryData !== undefined
+      ? resolveMemoryText(memoryData)
+      : null;
 
-  if (!showIndicator && !displayText) return null;
+  if (displayText === null) return null;
 
   return (
-    <>
-      {showIndicator && (
-        <Button
-          size="sm"
-          variant="flat"
-          radius="full"
-          className="w-fit text-gray-500"
-          startContent={<AiBrain01Icon className="h-4 w-4" />}
-          onPress={onOpenModal}
-        >
-          {displayText}
-        </Button>
-      )}
-    </>
+    <Button
+      size="sm"
+      variant="flat"
+      radius="full"
+      className="w-fit text-gray-500"
+      startContent={<AiBrain01Icon className="h-4 w-4" />}
+      onPress={onOpenModal}
+    >
+      {displayText}
+    </Button>
   );
 }
