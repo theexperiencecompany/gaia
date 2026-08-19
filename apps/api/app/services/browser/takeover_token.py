@@ -36,9 +36,11 @@ def create_takeover_token(session_id: str, user_id: str) -> str:
     return token
 
 
-def verify_takeover_token(token: str) -> dict[str, str]:
-    """Decode and validate a takeover token, returning ``{session_id, user_id}``.
+def verify_takeover_token(token: str) -> dict[str, object]:
+    """Decode and validate a takeover token, returning ``{session_id, user_id, exp}``.
 
+    ``exp`` is the verified expiry timestamp (seconds since epoch) so the caller
+    can bound a connection's lifetime without ever reading an *unverified* claim.
     Raises :class:`jose.JWTError` if the signature, role, expiry, or required
     claims are invalid — the caller rejects the connection on any failure.
     """
@@ -53,24 +55,22 @@ def verify_takeover_token(token: str) -> dict[str, str]:
 
     session_id = payload.get("session_id")
     user_id = payload.get("sub")
-    if not session_id or not user_id:
-        raise JWTError("Takeover token missing session_id or subject")
+    exp = payload.get("exp")
+    if not session_id or not user_id or exp is None:
+        raise JWTError("Takeover token missing session_id, subject, or expiry")
 
-    return {"session_id": session_id, "user_id": user_id}
+    return {"session_id": session_id, "user_id": user_id, "exp": float(exp)}
 
 
-def takeover_token_ttl_seconds(token: str) -> float:
+def takeover_token_ttl_seconds(claims: dict[str, object]) -> float:
     """Seconds until an already-verified token expires (``<= 0`` once past).
 
     Used to bound the live-view WebSocket to the token's lifetime — the socket
-    closes when the token expires. The token must be verified first; this only
-    reads the ``exp`` claim it already trusts.
+    closes when the token expires. ``claims`` MUST come from
+    :func:`verify_takeover_token` (verified first); only its validated ``exp`` is
+    read here — no unverified claim is ever trusted.
     """
-    claims = jwt.get_unverified_claims(token)
-    exp = claims.get("exp")
-    if exp is None:
-        return 0.0
-    return float(exp) - datetime.now(UTC).timestamp()
+    return float(claims["exp"]) - datetime.now(UTC).timestamp()
 
 
 def _get_takeover_secret() -> str:

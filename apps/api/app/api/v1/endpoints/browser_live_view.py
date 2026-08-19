@@ -171,7 +171,7 @@ async def _authorize_ws(
             log.warning(f"{LogTag.BROWSER} browser live view token session mismatch")
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return None
-        return claims["user_id"], max(takeover_token_ttl_seconds(token), 0.0)
+        return claims["user_id"], max(takeover_token_ttl_seconds(claims), 0.0)
 
     user = await get_current_user_ws(websocket)  # closes the socket on auth failure
     user_id = user.get("user_id")

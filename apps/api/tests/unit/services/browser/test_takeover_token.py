@@ -20,12 +20,15 @@ def _takeover_secret(monkeypatch):
 async def test_round_trip_returns_session_and_user():
     token = tt.create_takeover_token("sess-1", "user-1")
     claims = tt.verify_takeover_token(token)
-    assert claims == {"session_id": "sess-1", "user_id": "user-1"}
+    assert claims["session_id"] == "sess-1"
+    assert claims["user_id"] == "user-1"
+    assert "exp" in claims
 
 
 async def test_ttl_is_positive_for_fresh_token():
     token = tt.create_takeover_token("sess-1", "user-1")
-    ttl = tt.takeover_token_ttl_seconds(token)
+    claims = tt.verify_takeover_token(token)
+    ttl = tt.takeover_token_ttl_seconds(claims)
     assert 0 < ttl <= tt._TAKEOVER_TOKEN_EXPIRY_MINUTES * 60
 
 

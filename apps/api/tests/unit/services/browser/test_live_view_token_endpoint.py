@@ -26,7 +26,8 @@ async def test_owner_gets_scoped_token(monkeypatch):
     resp = await browser_ep.get_live_view_token("sess-1", {"user_id": "user-1"})
     assert resp.expires_in > 0
     claims = tt.verify_takeover_token(resp.token)
-    assert claims == {"session_id": "sess-1", "user_id": "user-1"}
+    assert claims["session_id"] == "sess-1"
+    assert claims["user_id"] == "user-1"
 
 
 async def test_non_owner_is_forbidden(monkeypatch):
