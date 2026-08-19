@@ -2,13 +2,9 @@ import { ImageResponse } from "next/og";
 import { getIconPaths } from "@/config/iconPaths.generated";
 import {
   getCategoryInitial,
-  getIconPath,
   getOgIconPath,
   getToolIconConfig,
-  iconAliases,
-  normalizeCategoryName,
   type ToolIconConfig,
-  toolIconConfigs,
 } from "@/config/toolIconConfig";
 import { wallpapers } from "@/config/wallpapers";
 import { siteConfig } from "@/lib/seo";
@@ -18,13 +14,9 @@ export type { ToolIconConfig };
 // Re-export from shared config
 export {
   getCategoryInitial,
-  getIconPath,
   getIconPaths,
   getOgIconPath,
   getToolIconConfig,
-  iconAliases,
-  normalizeCategoryName,
-  toolIconConfigs,
   wallpapers,
 };
 
@@ -209,46 +201,6 @@ export function getOgCompatibleAvatarUrl(
  * Get an OG-compatible icon URL for integrations
  * Validates the URL format and returns null for incompatible formats
  */
-export function getOgCompatibleIconUrl(
-  url: string | null | undefined,
-): string | null {
-  if (!url) return null;
-
-  const lowercaseUrl = url.toLowerCase();
-
-  // Skip WebP images - Satori doesn't support them
-  if (lowercaseUrl.endsWith(".webp")) {
-    return null;
-  }
-
-  // Skip ICO images - Satori doesn't support them
-  if (lowercaseUrl.includes(".ico")) {
-    return null;
-  }
-
-  // Skip external SVG images - fetching is unreliable (rate limits, CORS)
-  // Note: local SVG paths (starting with /) are handled separately via svgPath in iconConfig
-  if (lowercaseUrl.includes(".svg")) {
-    return null;
-  }
-
-  // Extract path without query string for extension checking
-  const urlPath = lowercaseUrl.split("?")[0];
-
-  // Check if compatible format (png, jpg, jpeg, gif only - others are skipped above)
-  const compatibleExtensions = [".png", ".jpg", ".jpeg", ".gif"];
-  if (compatibleExtensions.some((ext) => urlPath.endsWith(ext))) {
-    return url;
-  }
-
-  // Also check if the URL contains these extensions anywhere (for dynamic URLs)
-  if (compatibleExtensions.some((ext) => lowercaseUrl.includes(ext))) {
-    return url;
-  }
-
-  return null;
-}
-
 /**
  * Fetch any external image and convert to base64 data URI
  * This allows Satori to render images it normally can't handle (external SVG, etc)
@@ -299,56 +251,6 @@ export async function fetchImageAsBase64(url: string): Promise<string | null> {
 /**
  * Check if a URL points to an SVG file
  */
-export function isSvgUrl(url: string | null | undefined): boolean {
-  if (!url) return false;
-  const lowercaseUrl = url.toLowerCase();
-  return lowercaseUrl.includes(".svg");
-}
-
-/**
- * Fetch external SVG content and extract the path data for inline rendering
- * Returns the viewBox and path data, or null if fetch fails
- */
-export async function fetchSvgContent(
-  url: string,
-): Promise<{ viewBox: string; paths: string[] } | null> {
-  try {
-    const response = await fetch(url, {
-      headers: {
-        Accept: "image/svg+xml",
-      },
-    });
-
-    if (!response.ok) return null;
-
-    const svgText = await response.text();
-
-    // Extract viewBox attribute
-    const viewBoxMatch = svgText.match(/viewBox=["']([^"']+)["']/i);
-    const viewBox = viewBoxMatch?.[1] || "0 0 24 24";
-
-    // Extract path d attributes
-    const pathMatches = svgText.matchAll(
-      /<path[^>]*d=["']([^"']+)["'][^>]*>/gi,
-    );
-    const paths: string[] = [];
-    for (const match of pathMatches) {
-      if (match[1]) {
-        paths.push(match[1]);
-      }
-    }
-
-    if (paths.length === 0) {
-      return null;
-    }
-
-    return { viewBox, paths };
-  } catch (error) {
-    console.error("[OG Image] Failed to fetch SVG:", error);
-    return null;
-  }
-}
-
 /**
  * Check if the creator is the GAIA team (system user)
  */

@@ -20,23 +20,6 @@ export function CategoryBadge({ label }: { label: string }) {
   );
 }
 
-export function CategoryBadgeSmall({ label }: { label: string }) {
-  return (
-    <div
-      style={{
-        backgroundColor: colors.accentBg,
-        color: colors.accent,
-        padding: "8px 20px",
-        borderRadius: 999,
-        fontSize: 16,
-        fontWeight: 500,
-      }}
-    >
-      {label}
-    </div>
-  );
-}
-
 export function HeroLayout({
   title,
   subtitle,
