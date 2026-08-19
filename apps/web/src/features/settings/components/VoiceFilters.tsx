@@ -18,11 +18,9 @@ import {
 import { type ReactNode, useMemo } from "react";
 
 import type { VoiceOption } from "@/features/settings/api/voiceApi";
+import { flagUrl } from "./VoiceFilters.defs";
 
-const FLAG_CDN_BASE = "https://flagcdn.com/w80";
-
-export const flagUrl = (countryCode: string) =>
-  `${FLAG_CDN_BASE}/${countryCode.toLowerCase()}.png`;
+export { flagUrl } from "./VoiceFilters.defs";
 
 export const ALL_FILTER = "all";
 
@@ -46,13 +44,11 @@ interface VoiceFiltersProps {
   onCountryFilterChange: (value: string) => void;
 }
 
-/** First key of a HeroUI single-select change, or the all-items fallback. */
 const selectedFilterKey = (keys: Selection): string => {
   const key = keys === "all" ? undefined : Array.from(keys)[0];
   return typeof key === "string" ? key : ALL_FILTER;
 };
 
-/** Search box + gender/country dropdowns above the voice table. */
 export function VoiceFilters({
   voices,
   search,
@@ -62,7 +58,6 @@ export function VoiceFilters({
   countryFilter,
   onCountryFilterChange,
 }: Readonly<VoiceFiltersProps>) {
-  // Distinct filter options derived from the loaded voices.
   const genderOptions = useMemo(
     () =>
       [...new Set(voices.map((v) => v.gender))].sort((a, b) =>
@@ -70,7 +65,6 @@ export function VoiceFilters({
       ),
     [voices],
   );
-  // accent -> country_code so the dropdown can show the same flag as the rows.
   const countryOptions = useMemo(() => {
     const byAccent = new Map<string, string>();
     for (const v of voices) {
@@ -81,9 +75,6 @@ export function VoiceFilters({
       .sort((a, b) => a.accent.localeCompare(b.accent));
   }, [voices]);
 
-  // Resolved ahead of the JSX so the trigger content is a plain expression,
-  // not a component defined inline in the render tree. Shows the chosen
-  // country's flag inline in the trigger, not just inside the open list.
   let countryStartContent: ReactNode;
   if (countryFilter !== ALL_FILTER) {
     const code = countryOptions.find(
@@ -137,7 +128,6 @@ export function VoiceFilters({
       <Autocomplete
         aria-label="Filter by country"
         placeholder="Country"
-        // Autocomplete is single-key: null on clear maps back to the all-filter.
         selectedKey={countryFilter}
         onSelectionChange={(key) =>
           onCountryFilterChange(typeof key === "string" ? key : ALL_FILTER)
