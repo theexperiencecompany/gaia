@@ -98,8 +98,9 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
   if (isDisplayOnly && replyToMessage) {
     return (
       <div className="relative mr-6">
-        <div
-          className="flex items-center gap-2 cursor-pointer px-2.5 py-1.5 rounded-2xl border-zinc-700 border-2 hover:bg-zinc-700/50 transition-colors max-w-70"
+        <button
+          type="button"
+          className="w-full flex items-center gap-2 cursor-pointer px-2.5 py-1.5 rounded-2xl border-zinc-700 border-2 hover:bg-zinc-700/50 transition-colors max-w-70"
           onClick={handleClick}
         >
           <div className="shrink-0 text-zinc-400">
@@ -114,7 +115,7 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
               {truncateContent(replyToMessage.content, 40)}
             </span>
           </div>
-        </div>
+        </button>
         {!hideConnector && <ReplyConnectorLine />}
       </div>
     );

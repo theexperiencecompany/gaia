@@ -15,10 +15,12 @@ export function useVoicePreview() {
 
   useEffect(() => {
     const audio = new Audio();
-    audio.addEventListener("ended", () => setPlayingVoiceId(null));
+    const handleEnded = () => setPlayingVoiceId(null);
+    audio.addEventListener("ended", handleEnded);
     audioRef.current = audio;
     return () => {
       audio.pause();
+      audio.removeEventListener("ended", handleEnded);
       audioRef.current = null;
     };
   }, []);

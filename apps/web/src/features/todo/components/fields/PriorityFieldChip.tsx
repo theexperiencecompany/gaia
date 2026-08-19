@@ -52,14 +52,15 @@ export default function PriorityFieldChip({
                     : null;
 
             return (
-              <div
+              <button
                 key={option.value}
+                type="button"
                 onClick={() => {
                   onChange(option.value);
                   onClose();
                 }}
                 className={
-                  "flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800 "
+                  "flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800 "
                 }
               >
                 <div className="flex items-center gap-2">
@@ -75,7 +76,7 @@ export default function PriorityFieldChip({
                     {shortcut}
                   </span>
                 )}
-              </div>
+              </button>
             );
           })}
 

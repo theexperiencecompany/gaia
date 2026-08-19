@@ -70,9 +70,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   });
 
   const contentType = backendResponse.headers.get("content-type") ?? "";
-  const payload = contentType.includes("application/json")
-    ? await backendResponse.json()
-    : await backendResponse.text();
+  const parseBody = async (): Promise<unknown> =>
+    contentType.includes("application/json")
+      ? await backendResponse.json()
+      : await backendResponse.text();
 
-  return NextResponse.json(payload, { status: backendResponse.status });
+  // fetch resolves (does not reject) on HTTP 4xx/5xx — read the body only after
+  // confirming success so an error payload is never mistaken for a success.
+  if (!backendResponse.ok) {
+    return NextResponse.json(await parseBody(), {
+      status: backendResponse.status,
+    });
+  }
+
+  return NextResponse.json(await parseBody(), {
+    status: backendResponse.status,
+  });
 }

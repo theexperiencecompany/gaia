@@ -646,23 +646,20 @@ function ChatDemoWindow() {
                           className="mb-4 flex items-center gap-3"
                         >
                           {toolIcon ?? <MiniWaveSpinner />}
-                          <AnimatePresence mode="wait">
-                            <m.span
-                              key={loadingKey}
-                              variants={slideUp}
-                              initial="initial"
-                              animate="animate"
-                              exit="exit"
-                              transition={tx}
-                              className="animate-shine bg-size-[200%_100%] w-fit bg-clip-text text-sm font-medium text-transparent"
-                              style={{
-                                backgroundImage:
-                                  "linear-gradient(90deg, rgb(255 255 255 / 0.3) 20%, rgb(255 255 255) 50%, rgb(255 255 255 / 0.3) 80%)",
-                              }}
-                            >
-                              {loadingText}
-                            </m.span>
-                          </AnimatePresence>
+                          <m.span
+                            key={loadingKey}
+                            variants={slideUp}
+                            initial="initial"
+                            animate="animate"
+                            transition={tx}
+                            className="animate-shine bg-size-[200%_100%] w-fit bg-clip-text text-sm font-medium text-transparent"
+                            style={{
+                              backgroundImage:
+                                "linear-gradient(90deg, rgb(255 255 255 / 0.3) 20%, rgb(255 255 255) 50%, rgb(255 255 255 / 0.3) 80%)",
+                            }}
+                          >
+                            {loadingText}
+                          </m.span>
                         </m.div>
                       )}
                     </AnimatePresence>

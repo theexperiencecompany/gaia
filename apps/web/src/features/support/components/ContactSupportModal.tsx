@@ -12,7 +12,7 @@ import {
 import { Select, SelectItem } from "@heroui/select";
 import { Cancel01Icon, Upload01Icon } from "@icons";
 import Image from "next/image";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "@/lib/toast";
 
 import {
@@ -63,6 +63,33 @@ function formatFileSize(bytes: number): string {
   const sizes = ["Bytes", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${parseFloat((bytes / k ** i).toFixed(2))} ${sizes[i]}`;
+}
+
+/**
+ * Renders a file attachment thumbnail. Owns its object URL: it is created in
+ * an effect and always revoked in the cleanup, so the Blob is not pinned in
+ * memory for the lifetime of the page.
+ */
+function AttachmentPreview({ file }: { file: File }) {
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const url = URL.createObjectURL(file);
+    setObjectUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  if (!objectUrl) return null;
+
+  return (
+    <Image
+      src={objectUrl}
+      alt={file.name}
+      fill
+      sizes="(max-width: 640px) 20vw, 120px"
+      className="object-cover transition-transform group-hover:scale-105"
+    />
+  );
 }
 
 export default function ContactSupportModal({
@@ -200,24 +227,24 @@ export default function ContactSupportModal({
 
               {/* File Upload01Icon Section */}
               <div className="space-y-3">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept={ALLOWED_FILE_TYPES.join(",")}
+                  onChange={handleFileInputChange}
+                  className="hidden"
+                />
                 {/* Upload01Icon Area - Entire area is clickable */}
-                <div
-                  className={`cursor-pointer rounded-2xl border-2 border-dashed p-5 text-center transition-all duration-200 ${dragActive ? "scale-[1.02] border-primary bg-blue-50 shadow-lg" : "hover:bg-zinc-750 border-zinc-700 bg-zinc-800 hover:border-primary"}`}
+                <button
+                  type="button"
+                  className={`w-full cursor-pointer rounded-2xl border-2 border-dashed bg-transparent p-5 font-inherit text-center transition-all duration-200 ${dragActive ? "scale-[1.02] border-primary bg-blue-50 shadow-lg" : "hover:bg-zinc-750 border-zinc-700 bg-zinc-800 hover:border-primary"}`}
                   onDragEnter={handleDrag}
                   onDragLeave={handleDrag}
                   onDragOver={handleDrag}
                   onDrop={handleDrop}
                   onClick={() => fileInputRef.current?.click()}
                 >
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    accept={ALLOWED_FILE_TYPES.join(",")}
-                    onChange={handleFileInputChange}
-                    className="hidden"
-                  />
-
                   <div className="flex flex-col items-center space-y-2">
                     <div
                       className={`rounded-full p-4 ${dragActive ? "bg-blue-100" : "bg-zinc-700"} transition-colors`}
@@ -255,7 +282,7 @@ export default function ContactSupportModal({
                       </span>
                     </div>
                   </div>
-                </div>
+                </button>
 
                 {/* File List */}
                 {formData.attachments.length > 0 && (
@@ -271,12 +298,7 @@ export default function ContactSupportModal({
                           className="group relative overflow-hidden rounded-xl bg-zinc-800"
                         >
                           <div className="aspect-square">
-                            <Image
-                              src={URL.createObjectURL(file)}
-                              alt={file.name}
-                              fill
-                              className="object-cover transition-transform group-hover:scale-105"
-                            />
+                            <AttachmentPreview file={file} />
                           </div>
 
                           {/* Overlay with file info */}
@@ -294,6 +316,7 @@ export default function ContactSupportModal({
                           {/* Remove button */}
                           <button
                             type="button"
+                            aria-label={`Remove ${file.name}`}
                             onClick={() => removeFile(index)}
                             className="absolute top-2 right-2 rounded-full bg-red-500 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-600"
                           >

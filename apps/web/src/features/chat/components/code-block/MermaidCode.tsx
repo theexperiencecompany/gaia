@@ -54,11 +54,17 @@ const MermaidCode: React.FC<MermaidCodeProps> = ({
   } | null>(null);
 
   React.useEffect(() => {
-    loadVscDarkPlusTheme().then((style) =>
-      // The style module is loosely typed upstream; assert the runtime shape
-      // (a token → CSSProperties map) without changing the value passed.
-      setTheme(style as unknown as { [key: string]: CSSProperties }),
-    );
+    loadVscDarkPlusTheme()
+      .then((style) =>
+        // The style module is loosely typed upstream; assert the runtime shape
+        // (a token → CSSProperties map) without changing the value passed.
+        setTheme(style as unknown as { [key: string]: CSSProperties }),
+      )
+      .catch((err: unknown) => {
+        // Fail loud: surface load failures so a silently stuck loading state
+        // doesn't hide a broken theme.
+        console.error("Failed to load Mermaid syntax theme", err);
+      });
   }, []);
 
   if (!theme) {

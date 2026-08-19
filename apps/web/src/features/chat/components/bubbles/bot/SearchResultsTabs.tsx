@@ -298,31 +298,31 @@ function WebResults({ web }: WebResultsProps) {
             <p className="line-clamp-2 text-xs text-foreground-500">
               {result.content}
             </p>
-            <div className="flex flex-wrap items-center gap-x-4 text-sm">
-              <span className="flex items-center gap-2">
-                <Image
-                  src={`https://www.google.com/s2/favicons?domain=${new URL(result.url).hostname}&sz=64`}
-                  alt={`${new URL(result.url).hostname} favicon`}
-                  width={16}
-                  height={16}
-                  className="rounded-full"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    target.style.display = "none";
-                  }}
-                />
-                <a
-                  href={result.url}
-                  className="max-w-xs truncate text-xs text-primary hover:underline"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {new URL(result.url).hostname}
-                </a>
-              </span>
-              {/* <span className="flex items-center">{timeAgo(result.date)}</span> */}
-            </div>
           </a>
+          <div className="flex flex-wrap items-center gap-x-4 text-sm">
+            <span className="flex items-center gap-2">
+              <Image
+                src={`https://www.google.com/s2/favicons?domain=${new URL(result.url).hostname}&sz=64`}
+                alt={`${new URL(result.url).hostname} favicon`}
+                width={16}
+                height={16}
+                className="rounded-full"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  target.style.display = "none";
+                }}
+              />
+              <a
+                href={result.url}
+                className="max-w-xs truncate text-xs text-primary hover:underline"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {new URL(result.url).hostname}
+              </a>
+            </span>
+            {/* <span className="flex items-center">{timeAgo(result.date)}</span> */}
+          </div>
         </div>
       ))}
     </div>

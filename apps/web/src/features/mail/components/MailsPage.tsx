@@ -220,8 +220,10 @@ export default function MailsPage() {
           onClick={() => openEmail(email)}
         >
           {/* Add selection checkbox */}
-          <div
-            className="flex items-center justify-center px-2"
+          <button
+            type="button"
+            aria-pressed={selectedEmails.has(email.id)}
+            className="flex cursor-pointer items-center justify-center bg-transparent border-none p-0 px-2"
             onClick={(e) => {
               e.stopPropagation();
               toggleEmailSelection(e, email.id);
@@ -232,7 +234,7 @@ export default function MailsPage() {
             ) : (
               <SquareIcon className="h-5 w-5 cursor-pointer opacity-60 hover:opacity-100" />
             )}
-          </div>
+          </button>
 
           {isMobileScreen ? (
             <>
@@ -317,12 +319,13 @@ export default function MailsPage() {
                     className="z-50"
                     color="foreground"
                   >
-                    <div
-                      className="flex h-6 w-6 cursor-pointer items-center justify-center"
+                    <button
+                      type="button"
+                      className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-none border-none bg-transparent p-0"
                       onClick={onClick}
                     >
                       <Icon size={19} {...iconProps} />
-                    </div>
+                    </button>
                   </Tooltip>
                 ))}
               </div>

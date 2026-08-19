@@ -15,6 +15,7 @@ import {
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { apiService } from "@/lib/api/service";
 import { toast } from "@/lib/toast";
+import { useUserStore } from "@/stores/userStore";
 
 /** Shared card shell: rounded, flat, no outline, no shadow — matches GAIA surfaces. */
 function Card({ children }: { children: React.ReactNode }) {
@@ -46,14 +47,13 @@ export default function LinkPlatformClient({
     username?: string;
     displayName?: string;
   } | null>(null);
-  // Guard: only redirect after the Zustand persist store has rehydrated.
-  // Without this, the initial render always sees isAuthenticated=false
-  // (persist middleware hydrates asynchronously), sending even authenticated
-  // users to /login in an infinite loop.
-  //
-  // Using useState (not useRef) so that setting true triggers a re-render,
-  // giving the store one full cycle to rehydrate before the auth check runs.
-  const [hasMounted, setHasMounted] = useState(false);
+  // Gate the auth check until the Zustand persist store has rehydrated — the
+  // first render always sees `isAuthenticated === false` (persist middleware
+  // hydrates asynchronously), so an unguarded check would bounce even
+  // authenticated users to /login in a loop. `persist.hasHydrated` is the
+  // store's own rehydration signal, so no mount-effect → state → second effect
+  // chain is needed: the value flips to true on its own and re-renders.
+  const hasHydrated = useUserStore(useUserStore.persist.hasHydrated);
 
   const config = useMemo(
     () =>
@@ -67,16 +67,12 @@ export default function LinkPlatformClient({
   );
 
   useEffect(() => {
-    setHasMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (!hasMounted) return;
+    if (!hasHydrated) return;
     if (!isAuthenticated && platform && token && config) {
       const returnUrl = `/auth/link-platform?platform=${encodeURIComponent(platform)}&token=${encodeURIComponent(token)}`;
       router.replace(`/login?return_url=${encodeURIComponent(returnUrl)}`);
     }
-  }, [hasMounted, isAuthenticated, platform, token, config, router]);
+  }, [hasHydrated, isAuthenticated, platform, token, config, router]);
 
   useEffect(() => {
     if (token) {
@@ -129,7 +125,7 @@ export default function LinkPlatformClient({
     );
   }
 
-  if (!hasMounted) {
+  if (!hasHydrated) {
     return null;
   }
 

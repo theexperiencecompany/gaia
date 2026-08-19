@@ -29,6 +29,10 @@ const STAMP_BORDER_STYLE = {
   boxSizing: "border-box" as const,
 };
 
+// Hoisted out of `HoloCard` so the component keeps a stable identity across
+// renders (defining it inline would remount it every frame).
+const StampBorder = () => <div aria-hidden style={STAMP_BORDER_STYLE} />;
+
 export const HoloCard = ({
   data,
   height = 446,
@@ -182,12 +186,25 @@ export const HoloCard = ({
   };
 
   // Use CSS `border` not mask-composite: html-to-image drops the mask and downloads it as a filled rectangle.
-  const StampBorder = () => <div aria-hidden style={STAMP_BORDER_STYLE} />;
+
+  const isFlippable = !forceSide;
 
   return (
     <div
       className={forceSide ? "" : "perspective-1000"}
       onClick={handleCardClick}
+      role={isFlippable ? "button" : undefined}
+      tabIndex={isFlippable ? 0 : undefined}
+      onKeyDown={
+        isFlippable
+          ? (event: React.KeyboardEvent<HTMLDivElement>) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                handleCardClick();
+              }
+            }
+          : undefined
+      }
       style={containerStyle}
     >
       <svg

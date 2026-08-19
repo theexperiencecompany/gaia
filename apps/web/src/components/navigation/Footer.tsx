@@ -107,6 +107,7 @@ export default function Footer() {
               scrolling="no"
               height={30}
               width={186}
+              sandbox="allow-popups"
               style={{ colorScheme: "normal" }}
             />
 

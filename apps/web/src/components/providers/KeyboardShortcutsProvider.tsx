@@ -8,6 +8,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -127,15 +128,18 @@ export default function KeyboardShortcutsProvider({
     hotkeyOptions,
   );
 
+  const contextValue = useMemo(
+    () => ({
+      openShortcutsModal,
+      closeShortcutsModal,
+      isModalOpen,
+      triggerCreateAction,
+    }),
+    [openShortcutsModal, closeShortcutsModal, isModalOpen, triggerCreateAction],
+  );
+
   return (
-    <KeyboardShortcutsContext.Provider
-      value={{
-        openShortcutsModal,
-        closeShortcutsModal,
-        isModalOpen,
-        triggerCreateAction,
-      }}
-    >
+    <KeyboardShortcutsContext.Provider value={contextValue}>
       {children}
       <KeyboardShortcutsModal
         isOpen={isModalOpen}

@@ -11,6 +11,7 @@ export default function PublishWorkflowCTA() {
     <div className="mx-auto mt-20 max-w-7xl rounded-4xl bg-black p-6 py-20 text-center relative overflow-hidden outline-zinc-900 outline-2">
       <Image
         fill
+        sizes="(max-width: 1280px) 100vw, 1280px"
         src={"/images/wallpapers/blueprint.png"}
         alt="Blueprint image"
         className="object-cover  z-0 opacity-50 blur-[3px]"

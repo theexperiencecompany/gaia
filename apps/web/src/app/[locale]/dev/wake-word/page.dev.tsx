@@ -25,6 +25,14 @@ interface DetectionRecord {
   timeToWakeMs: number | null;
 }
 
+// Hoisted so a new Intl.DateTimeFormat isn't rebuilt on every render.
+const FIRED_AT_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+
 export default function WakeWordDemoPage() {
   const [enabled, setEnabled] = useState(false);
   const [history, setHistory] = useState<DetectionRecord[]>([]);
@@ -469,9 +477,7 @@ function DetectionLog({ history }: Readonly<{ history: DetectionRecord[] }>) {
                     : `${Math.round(h.timeToWakeMs)} ms`}
                 </span>
                 <span className="ml-auto text-zinc-500">
-                  {new Date(h.firedAt).toLocaleTimeString(undefined, {
-                    hour12: false,
-                  })}
+                  {FIRED_AT_FORMATTER.format(new Date(h.firedAt))}
                 </span>
               </li>
             ))}

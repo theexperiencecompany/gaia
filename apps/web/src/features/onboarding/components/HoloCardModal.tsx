@@ -45,6 +45,9 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
   const [shareUrl, setShareUrl] = useState("");
   const [isCardRevealed, setIsCardRevealed] = useState(false);
   const [isVibrating, setIsVibrating] = useState(false);
+  // "member since" fallback is computed after mount so the server and browser
+  // render the same text (avoids a hydration mismatch from formatting `now`).
+  const [defaultMemberSince, setDefaultMemberSince] = useState("");
   const hasShownConfetti = useRef(false);
   const user = useUser();
 
@@ -77,21 +80,26 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
     }
   }, [isOpen]);
 
+  // Compute the "member since" fallback once, client-side only.
+  useEffect(() => {
+    setDefaultMemberSince(MEMBER_SINCE_FORMATTER.format(new Date()));
+  }, []);
+
   // Trigger confetti only after card is revealed
   useEffect(() => {
-    if (isCardRevealed && !hasShownConfetti.current) {
-      hasShownConfetti.current = true;
+    if (!isCardRevealed || hasShownConfetti.current) return;
+    hasShownConfetti.current = true;
 
-      // Small delay to let the card animation complete
-      setTimeout(() => {
-        confetti({
-          particleCount: 300,
-          spread: 500,
-          origin: { y: 0.4 },
-          colors: ["#00bbff", "#a855f7", "#ec4899", "#f59e0b"],
-        });
-      }, 200);
-    }
+    // Small delay to let the card animation complete
+    const timer = setTimeout(() => {
+      confetti({
+        particleCount: 300,
+        spread: 500,
+        origin: { y: 0.4 },
+        colors: ["#00bbff", "#a855f7", "#ec4899", "#f59e0b"],
+      });
+    }, 200);
+    return () => clearTimeout(timer);
   }, [isCardRevealed]);
 
   const handleShare = (platform: "twitter" | "linkedin" | "copy") => {
@@ -126,9 +134,7 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
       personalizationData?.user_bio ||
       "A passionate individual exploring new possibilities and making an impact.",
     account_number: `#${personalizationData?.account_number || "00000"}`,
-    member_since:
-      personalizationData?.member_since ||
-      MEMBER_SINCE_FORMATTER.format(new Date()),
+    member_since: personalizationData?.member_since || defaultMemberSince,
     overlay_color: personalizationData?.overlay_color || "rgba(0,0,0,0)",
     overlay_opacity: personalizationData?.overlay_opacity ?? 40,
     holo_card_id: personalizationData?.holo_card_id,

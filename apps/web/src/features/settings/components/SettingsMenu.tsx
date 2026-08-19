@@ -184,13 +184,14 @@ export default function SettingsMenu({
           src={platform.iconPath}
           alt={platform.displayName}
           fill
+          sizes="18px"
           className="object-contain"
         />
       </div>
     ),
     action: () => {
       if (platform.downloadUrl) {
-        window.open(platform.downloadUrl, "_blank");
+        window.open(platform.downloadUrl, "_blank", "noopener,noreferrer");
       } else {
         router.push("/download");
       }
@@ -209,7 +210,7 @@ export default function SettingsMenu({
         documentation: docsLink?.href,
       };
       const url = linkMap[item.key];
-      if (url) window.open(url, "_blank");
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
     }
   };
 

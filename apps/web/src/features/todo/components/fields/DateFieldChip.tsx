@@ -82,62 +82,67 @@ export default function DateFieldChip({
           </div>
 
           {/* Quick date options */}
-          <div
+          <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               handleQuickDate(0, onClose);
             }}
-            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-zinc-500 transition-colors hover:bg-zinc-800"
+            className="flex w-full cursor-pointer items-center gap-2 rounded-lg border-none bg-transparent p-0 px-3 py-2 text-left font-inherit text-zinc-500 transition-colors hover:bg-zinc-800"
           >
             <CalendarIcon width={18} height={18} />
             Today
-          </div>
-          <div
+          </button>
+          <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               handleQuickDate(1, onClose);
             }}
-            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-zinc-500 transition-colors hover:bg-zinc-800"
+            className="flex w-full cursor-pointer items-center gap-2 rounded-lg border-none bg-transparent p-0 px-3 py-2 text-left font-inherit text-zinc-500 transition-colors hover:bg-zinc-800"
           >
             <CalendarIcon width={18} height={18} />
             Tomorrow
-          </div>
-          <div
+          </button>
+          <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               handleQuickDate(3, onClose);
             }}
-            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-zinc-500 transition-colors hover:bg-zinc-800"
+            className="flex w-full cursor-pointer items-center gap-2 rounded-lg border-none bg-transparent p-0 px-3 py-2 text-left font-inherit text-zinc-500 transition-colors hover:bg-zinc-800"
           >
             <CalendarIcon width={18} height={18} />
             In 3 days
-          </div>
-          <div
+          </button>
+          <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               handleQuickDate(7, onClose);
             }}
-            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-zinc-500 transition-colors hover:bg-zinc-800"
+            className="flex w-full cursor-pointer items-center gap-2 rounded-lg border-none bg-transparent p-0 px-3 py-2 text-left font-inherit text-zinc-500 transition-colors hover:bg-zinc-800"
           >
             <CalendarIcon width={18} height={18} />
             Next week
-          </div>
+          </button>
 
           {/* Clear date option */}
           {value && (
             <>
               <div className="my-1 h-px bg-zinc-700" />
-              <div
+              <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   onChange(undefined, undefined);
                   onClose();
                 }}
-                className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-red-400 transition-colors hover:bg-zinc-800"
+                className="flex w-full cursor-pointer items-center gap-2 rounded-lg border-none bg-transparent p-0 px-3 py-2 text-left font-inherit text-red-400 transition-colors hover:bg-zinc-800"
               >
                 <Cancel01Icon width={18} height={18} />
                 Clear date
-              </div>
+              </button>
             </>
           )}
 

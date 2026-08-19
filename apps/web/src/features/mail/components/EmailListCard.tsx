@@ -129,8 +129,9 @@ export default function EmailListCard({
                 closeDelay={0}
                 disableAnimation
               >
-                <div
-                  className="group flex cursor-pointer items-center gap-4 p-3 transition-colors hover:bg-zinc-700"
+                <button
+                  type="button"
+                  className="group flex w-full cursor-pointer items-center gap-4 p-3 text-left transition-colors hover:bg-zinc-700 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
                   onClick={() => handleEmailClick(email)}
                 >
                   <div className="w-40 flex-shrink-0">
@@ -151,7 +152,7 @@ export default function EmailListCard({
                       {formatTime(email.time || null)}
                     </span>
                   </div>
-                </div>
+                </button>
               </Tooltip>
             ))}
 

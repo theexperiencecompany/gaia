@@ -53,11 +53,12 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
   useEffect(() => {
     if (open) {
       trackEvent(ANALYTICS_EVENTS.SEARCH_GLOBAL_OPENED);
-      setTimeout(() => inputRef.current?.focus(), 50);
-    } else {
-      setSearch("");
-      setSearchResults({ conversations: [], messages: [], notes: [] });
+      const focusTimer = setTimeout(() => inputRef.current?.focus(), 50);
+      return () => clearTimeout(focusTimer);
     }
+    setSearch("");
+    setSearchResults({ conversations: [], messages: [], notes: [] });
+    return undefined;
   }, [open]);
 
   // SearchIcon with debouncing
@@ -152,6 +153,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
             window.open(
               link?.href || `https://${config.externalUrl}.heygaia.io`,
               "_blank",
+              "noopener,noreferrer",
             );
             onOpenChange(false);
           },

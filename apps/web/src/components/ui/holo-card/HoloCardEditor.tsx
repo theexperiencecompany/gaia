@@ -19,7 +19,7 @@ import {
   Share08Icon,
 } from "@icons";
 import { toPng } from "html-to-image";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ColorPicker from "react-best-gradient-color-picker";
 import { TwitterShareButton } from "react-share";
 import { Dices, TwitterIcon } from "@/components/shared/icons";
@@ -293,9 +293,12 @@ export const HoloCardEditor = ({
     saveColors(defaultColor, defaultOpacity);
   };
 
-  const shareUrl = data.holo_card_id
-    ? `${window.location.origin}/profile/${data.holo_card_id}`
-    : window.location.href;
+  const shareUrl = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    return data.holo_card_id
+      ? `${window.location.origin}/profile/${data.holo_card_id}`
+      : window.location.href;
+  }, [data.holo_card_id]);
   const shareTitle = "Check out my Personal Card made using GAIA";
 
   return (

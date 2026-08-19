@@ -13,7 +13,7 @@ import { defineComponent } from "@openuidev/react-lang";
 import React from "react";
 import type { z } from "zod";
 import { cn } from "@/lib/utils";
-import { ToolCard } from "../primitives";
+import { ToolCard } from "../primitives/ToolCard";
 import {
   copyableContentSchema,
   fileTreeSchema,
@@ -76,12 +76,17 @@ function FileTreeNodeRow({
   const isDir = node.type === "dir";
   const hasChildren = Object.keys(node.children).length > 0;
 
+  const isExpandable = isDir && hasChildren;
+
   return (
     <div>
-      <div
-        className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg transition cursor-pointer select-none group/file [&_span]:hover:text-zinc-100"
+      <button
+        type="button"
+        disabled={!isExpandable}
+        className="flex w-full items-center justify-between gap-2 rounded-lg border-none bg-transparent p-0 px-2 py-1 font-inherit text-left transition cursor-pointer select-none group/file disabled:cursor-default [&_span]:hover:text-zinc-100"
         style={{ paddingLeft: `${8 + depth * 16}px` }}
-        onClick={isDir && hasChildren ? () => setOpen((o) => !o) : undefined}
+        aria-expanded={isExpandable ? open : undefined}
+        onClick={isExpandable ? () => setOpen((o) => !o) : undefined}
       >
         <div className="flex items-center gap-1.5 min-w-0">
           {isDir && hasChildren ? (
@@ -124,7 +129,7 @@ function FileTreeNodeRow({
         {!isDir && node.size && (
           <span className="text-xs text-zinc-600 shrink-0">{node.size}</span>
         )}
-      </div>
+      </button>
       {isDir && open && hasChildren && (
         <div>
           {Object.values(node.children).map((child) => (

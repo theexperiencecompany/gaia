@@ -15,8 +15,9 @@ export const LockedToolItem: React.FC<LockedToolItemProps> = ({
   onConnect,
 }) => {
   return (
-    <div
-      className="group relative mx-2 mb-1 cursor-pointer"
+    <button
+      type="button"
+      className="group relative mx-2 mb-1 w-full cursor-pointer text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
       onClick={onConnect}
     >
       {/* Overlay */}
@@ -51,6 +52,6 @@ export const LockedToolItem: React.FC<LockedToolItemProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </button>
   );
 };

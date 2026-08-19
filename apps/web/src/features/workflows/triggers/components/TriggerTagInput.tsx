@@ -44,7 +44,9 @@ export function TriggerTagInput({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
+    // Skip while composing IME text — Enter confirms the candidate, it does
+    // not add the value yet.
+    if (e.key === "Enter" && !e.nativeEvent.isComposing) {
       e.preventDefault();
       handleAdd();
     } else if (e.key === "Backspace" && !input && values.length > 0) {

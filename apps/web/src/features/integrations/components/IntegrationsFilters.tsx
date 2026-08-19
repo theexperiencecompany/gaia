@@ -72,25 +72,6 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
 }) => {
   const [search, setSearch] = useState(initialFilters.search || "");
   const [sort, setSort] = useState(initialFilters.sort || "popular");
-  const hasSyncedParams = useRef(false);
-
-  useEffect(() => {
-    if (hasSyncedParams.current) return;
-    const params = new URLSearchParams(window.location.search);
-    const urlSearch = params.get("search");
-    const urlCategory = params.get("category");
-    if (urlSearch || urlCategory) {
-      hasSyncedParams.current = true;
-      if (urlSearch) setSearch(urlSearch);
-      onFilterChange({
-        search: urlSearch || search,
-        category: urlCategory || category,
-        sort,
-      });
-    }
-    // The ref guard makes this run-at-most-once; deps are listed for completeness.
-  }, [onFilterChange, search, category, sort]);
-
   const debouncedSearch = useDebouncedCallback((value: string) => {
     onFilterChange({ search: value, category, sort });
   }, 300);

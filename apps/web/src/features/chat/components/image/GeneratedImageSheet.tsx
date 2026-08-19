@@ -34,6 +34,7 @@ export default function GeneratedImageSheet({
               alt={"Generated Image"}
               className="my-2 aspect-square rounded-3xl"
               fill={true}
+              sizes="(min-width: 640px) 640px, 100vw"
               src={imageData.src}
               objectFit="contain"
             />

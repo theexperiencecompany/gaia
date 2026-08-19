@@ -274,7 +274,7 @@ function RecipientSelectionModal({
   };
 
   const handleCustomEmailKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
+    if (e.key === "Enter" && !e.nativeEvent.isComposing) {
       e.preventDefault();
       handleAddCustomEmail();
     }

@@ -84,6 +84,16 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
     const { match, toolIndex } = item;
     const isSelected = toolIndex === selectedIndex;
 
+    const handleSelect = () => {
+      trackEvent(ANALYTICS_EVENTS.CHAT_SLASH_COMMAND_SELECTED, {
+        tool_name: match.tool.name,
+        tool_category: match.tool.category,
+        opened_via_button: openedViaButton,
+        // The typed filter query is user free text — intentionally not sent.
+      });
+      onSelect(match);
+    };
+
     return (
       <div
         data-index={virtualRow.index}
@@ -91,16 +101,16 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
         className="absolute top-0 left-0 w-full"
         style={baseStyle}
       >
-        <div
-          className={`relative mx-2 mb-1 cursor-pointer rounded-xl border-none transition-all duration-150 ${isSelected ? "bg-zinc-700/40" : "hover:bg-white/5"}`}
-          onClick={() => {
-            trackEvent(ANALYTICS_EVENTS.CHAT_SLASH_COMMAND_SELECTED, {
-              tool_name: match.tool.name,
-              tool_category: match.tool.category,
-              opened_via_button: openedViaButton,
-              // The typed filter query is user free text — intentionally not sent.
-            });
-            onSelect(match);
+        <button
+          type="button"
+          className={`relative mx-2 mb-1 w-full cursor-pointer rounded-xl border-none bg-transparent p-0 text-left font-inherit transition-all duration-150 ${isSelected ? "bg-zinc-700/40" : "hover:bg-white/5"}`}
+          onClick={handleSelect}
+          onKeyDown={(event: React.KeyboardEvent<HTMLButtonElement>) => {
+            // The focused item handles Enter/Space natively — stop the
+            // list-level key handler from acting on the same keypress.
+            if (event.key === "Enter" || event.key === " ") {
+              event.stopPropagation();
+            }
           }}
         >
           <div className="flex items-center gap-2 p-2">
@@ -130,7 +140,7 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
               </div>
             </div>
           </div>
-        </div>
+        </button>
       </div>
     );
   }

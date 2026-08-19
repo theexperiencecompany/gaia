@@ -59,6 +59,10 @@ export default function PopupComposer({
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    // Bail during IME composition so Enter confirming a CJK candidate
+    // doesn't also send the message mid-composition.
+    if (event.nativeEvent.isComposing) return;
+
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       handleSend();

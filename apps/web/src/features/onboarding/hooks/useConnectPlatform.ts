@@ -23,7 +23,7 @@ export function useConnectPlatform(
   const connect = useCallback(
     (platform: string) => {
       const url = BOT_LINKS[platform as BotPlatform];
-      if (url) window.open(url, "_blank");
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
       dispatch({ type: "platformConnected", platform });
     },
     [dispatch],

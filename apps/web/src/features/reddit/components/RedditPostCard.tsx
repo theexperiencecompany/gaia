@@ -60,7 +60,11 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
         has_selftext: Boolean(post.selftext),
         has_external_link: !post.is_self && Boolean(post.url),
       });
-      window.open(`https://reddit.com${post.permalink}`, "_blank");
+      window.open(
+        `https://reddit.com${post.permalink}`,
+        "_blank",
+        "noopener,noreferrer",
+      );
     }
   };
 
@@ -84,12 +88,13 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
             </div>
 
             {/* Title */}
-            <h3
-              className="cursor-pointer text-base leading-snug font-semibold text-white transition-colors group-hover:text-[#FF4500]"
+            <button
+              type="button"
+              className="cursor-pointer text-left text-base leading-snug font-semibold text-white transition-colors group-hover:text-[#FF4500] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4500]"
               onClick={handleOpenPost}
             >
               {post.title}
-            </h3>
+            </button>
           </div>
 
           {/* Flair if available */}

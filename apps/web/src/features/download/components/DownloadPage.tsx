@@ -132,6 +132,7 @@ function DesktopDownloadButton({
         alt={meta.name}
         fill
         unoptimized
+        sizes="16px"
         className={
           invertIcon ? "object-contain filter invert" : "object-contain"
         }
@@ -335,6 +336,7 @@ function MobileSection() {
                     alt="iOS"
                     fill
                     unoptimized
+                    sizes="16px"
                     className="object-contain"
                   />
                 </div>
@@ -352,6 +354,7 @@ function MobileSection() {
                     alt="Android"
                     fill
                     unoptimized
+                    sizes="16px"
                     className="object-contain"
                   />
                 </div>

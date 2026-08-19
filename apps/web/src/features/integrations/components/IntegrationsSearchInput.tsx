@@ -15,7 +15,9 @@ export const IntegrationsSearchInput = forwardRef<
   IntegrationsSearchInputProps
 >(({ value, onChange, endContent, onEnter }, ref) => {
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && onEnter) {
+    // Skip while composing IME text — Enter confirms the candidate, it does
+    // not submit the search.
+    if (e.key === "Enter" && !e.nativeEvent.isComposing && onEnter) {
       e.preventDefault();
       onEnter();
     }

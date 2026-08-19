@@ -417,14 +417,7 @@ export default function WorkflowModal({
     }
 
     return false;
-  }, [
-    formData,
-    mode,
-    isCreating,
-    existingWorkflow,
-    missingTriggerIntegration,
-    hasFormChanges,
-  ]);
+  }, [formData, mode, isCreating, missingTriggerIntegration, hasFormChanges]);
 
   // Keyboard shortcut: Escape to close modal
   useHotkeys(

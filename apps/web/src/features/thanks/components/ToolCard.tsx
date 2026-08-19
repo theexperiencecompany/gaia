@@ -85,6 +85,7 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
                 src={websiteImage}
                 alt={`${tool.name} preview`}
                 fill
+                sizes="320px"
                 className="object-cover"
                 onError={() => setImageError(true)}
               />

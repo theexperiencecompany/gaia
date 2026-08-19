@@ -3,6 +3,12 @@ import { useEffect, useState } from "react";
 
 const PX_PER_MINUTE = 64 / 60;
 
+// Hoisted so a new Intl.DateTimeFormat isn't rebuilt on every render.
+const TIME_LABEL_FORMATTER = new Intl.DateTimeFormat([], {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 // Horizontal line that spans across all calendar columns
 export const CurrentTimeLine: React.FC = () => {
   const [now, setNow] = useState<Date>(new Date());
@@ -39,10 +45,7 @@ export const CurrentTimeLabel: React.FC = () => {
 
   const currentHour = now.getHours();
   const currentMinute = now.getMinutes();
-  const currentTimeLabel = now.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const currentTimeLabel = TIME_LABEL_FORMATTER.format(now);
   const currentTimeTop = (currentHour * 60 + currentMinute) * PX_PER_MINUTE;
 
   return (

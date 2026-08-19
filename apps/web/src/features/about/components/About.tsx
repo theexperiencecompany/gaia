@@ -44,6 +44,7 @@ export default async function About() {
             alt="GAIA Logo"
             className="scale-110 object-contain grayscale"
             fill
+            sizes="100vw"
           />
         </div>
 

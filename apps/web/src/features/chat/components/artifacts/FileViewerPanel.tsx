@@ -299,12 +299,13 @@ export default function FileViewerPanel({
       const blob = new Blob([content], { type: contentType });
       link.href = URL.createObjectURL(blob);
     }
+    const blobUrl = isImage || content === null ? null : link.href;
     link.download = filename;
     link.rel = "noopener";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    if (!isImage && content !== null) URL.revokeObjectURL(link.href);
+    if (blobUrl !== null) URL.revokeObjectURL(blobUrl);
   }, [content, contentType, conversationId, filename, isImage, path]);
 
   const ext = getExtension(filename).toUpperCase();

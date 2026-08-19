@@ -14,7 +14,7 @@ import { BubbleMenu, EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import React from "react";
 import type { z } from "zod";
-import { ToolCard } from "../primitives";
+import { ToolCard } from "../primitives/ToolCard";
 import type { textDocumentSchema } from "../promptSpecs";
 
 // ---------------------------------------------------------------------------

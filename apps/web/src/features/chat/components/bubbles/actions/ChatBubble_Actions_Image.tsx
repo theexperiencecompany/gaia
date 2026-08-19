@@ -31,6 +31,11 @@ export default function ChatBubble_Actions_Image({
 
       // Fetch the image as a blob
       const response = await fetch(image_data.url);
+      // fetch resolves on HTTP 4xx/5xx too — bail out (and hit the catch →
+      // error toast) rather than downloading an error payload as an image.
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image (${response.status})`);
+      }
       const blob = await response.blob();
 
       // Create URL from blob

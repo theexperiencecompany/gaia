@@ -758,6 +758,7 @@ function IMessageDemo({
             <input
               type="text"
               placeholder="iMessage"
+              aria-label="iMessage text input"
               value={composerValue}
               onChange={(e) => onComposerChange(e.target.value)}
               onKeyDown={composerKeyHandler(onComposerSend)}
@@ -2220,6 +2221,7 @@ function DiscordDemo({
             <input
               type="text"
               placeholder="Message"
+              aria-label="Discord message input"
               value={composerValue}
               onChange={(e) => onComposerChange(e.target.value)}
               onKeyDown={composerKeyHandler(onComposerSend)}

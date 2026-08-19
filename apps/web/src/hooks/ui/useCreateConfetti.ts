@@ -11,6 +11,10 @@ const randomInRange = (min: number, max: number): number =>
   Math.random() * (max - min) + min;
 
 export default function UseCreateConfetti(duration: number = 4000): void {
+  // Client-only visual effect — nothing to do during SSR (defensive guard for
+  // the window read below).
+  if (typeof window === "undefined") return;
+
   const animationEnd = Date.now() + duration;
 
   const interval = window.setInterval(() => {

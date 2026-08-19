@@ -2,6 +2,17 @@ import tinycolor from "tinycolor2";
 
 import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
+// Hoisted Intl formatters — never rebuild these per call/render.
+const DAY_OF_WEEK_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  weekday: "short",
+});
+
+const TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  hour: "numeric",
+  minute: "2-digit",
+  hour12: true,
+});
+
 // Group events by a date string like "day dayOfWeek"
 export function groupEventsByDate(
   events: GoogleCalendarEvent[],
@@ -25,9 +36,7 @@ export function groupEventsByDate(
 export function formatDateDay(event: GoogleCalendarEvent): [string, string] {
   const startDate = new Date(event.start.date || event.start.dateTime || "");
   const day = startDate.getDate().toString();
-  const dayOfWeek = new Intl.DateTimeFormat("en-US", {
-    weekday: "short",
-  }).format(startDate);
+  const dayOfWeek = DAY_OF_WEEK_FORMATTER.format(startDate);
 
   return [day, dayOfWeek];
 }
@@ -38,15 +47,9 @@ export function formatEventDate(event: GoogleCalendarEvent): string | null {
     const startDateTime = new Date(event.start.dateTime);
     const endDateTime = new Date(event.end.dateTime);
 
-    return `${new Intl.DateTimeFormat("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    }).format(startDateTime)} - ${new Intl.DateTimeFormat("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    }).format(endDateTime)}`;
+    return `${TIME_FORMATTER.format(startDateTime)} - ${TIME_FORMATTER.format(
+      endDateTime,
+    )}`;
   }
 
   return null;

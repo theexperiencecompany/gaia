@@ -43,19 +43,20 @@ export default function ProjectFieldChip({
       {({ onClose }) => (
         <div className="p-1">
           {projects.map((project) => (
-            <div
+            <button
               key={project.id}
+              type="button"
               onClick={() => {
                 onChange(project.id);
                 onClose();
               }}
-              className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800"
+              className="flex w-full cursor-pointer items-center gap-2 rounded-md border-none bg-transparent px-3 py-2 text-left font-inherit text-zinc-300 transition-colors hover:bg-zinc-800"
             >
               <div style={{ color: project.color || "#71717a" }}>
                 <Folder02Icon width={18} height={18} />
               </div>
               <span className="truncate">{project.name}</span>
-            </div>
+            </button>
           ))}
 
           {/* Hint */}

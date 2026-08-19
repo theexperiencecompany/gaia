@@ -31,7 +31,11 @@ export default function ToolsList({ tools }: ToolsListProps) {
 
   const displayIcons = uniqueTools.slice(0, 3);
   return (
-    <div className="inline-block" onClick={toggleExpanded}>
+    <button
+      type="button"
+      className="inline-block border-none bg-transparent p-0 font-inherit text-left"
+      onClick={toggleExpanded}
+    >
       <AnimatePresence mode="wait">
         {!isExpanded ? (
           // Collapsed state - single card showing count and icons
@@ -108,6 +112,6 @@ export default function ToolsList({ tools }: ToolsListProps) {
           </m.div>
         )}
       </AnimatePresence>
-    </div>
+    </button>
   );
 }

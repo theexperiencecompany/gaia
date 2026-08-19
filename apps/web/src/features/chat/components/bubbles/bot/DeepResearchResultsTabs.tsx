@@ -150,6 +150,7 @@ function EnhancedWebResults({ results }: EnhancedWebResultsProps) {
                 href={result.url}
                 target="_blank"
                 rel="noopener noreferrer"
+                aria-label={`Open ${result.title}`}
                 className="group relative block"
               >
                 <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition group-hover:opacity-100">

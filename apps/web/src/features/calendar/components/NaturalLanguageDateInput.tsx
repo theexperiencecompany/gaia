@@ -21,6 +21,12 @@ import {
   toDateTimeLocalString,
 } from "@/utils/date/dateTimeLocalUtils";
 
+/** Pure helper — hoisted so it isn't rebuilt on every render. */
+function formatDateDisplay(dateStr: string): string {
+  if (!dateStr) return "";
+  return formatDateLocal(dateStr);
+}
+
 interface NaturalLanguageDateInputProps {
   label: string;
   value: string;
@@ -252,11 +258,6 @@ export const NaturalLanguageDateRangeInput: React.FC<
       to: endValue ? fromDateTimeLocalString(endValue) : undefined,
     });
   }, [startValue, endValue]);
-
-  const formatDateDisplay = (dateStr: string) => {
-    if (!dateStr) return "";
-    return formatDateLocal(dateStr);
-  };
 
   const handleInputChange = (text: string) => {
     setInputValue(text);

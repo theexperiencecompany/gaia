@@ -25,6 +25,7 @@ import {
 } from "@icons";
 import { useRouter } from "next/navigation";
 import {
+  type KeyboardEvent,
   type ReactNode,
   type SetStateAction,
   useCallback,
@@ -250,8 +251,12 @@ export default function ChatOptionsDropdown({
               onChange={(e: { target: { value: SetStateAction<string> } }) =>
                 setNewName(e.target.value)
               }
-              onKeyDown={(e: { key: string }) => {
-                if (e.key === "Enter") handleEdit();
+              onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                // Skip while composing IME text — Enter confirms the candidate,
+                // it does not submit the rename.
+                if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                  handleEdit();
+                }
               }}
             />
           </ModalBody>
