@@ -12,7 +12,7 @@ import {
   TriggerSettingsCard,
 } from "../components/TriggerSettingsCard";
 import { useTriggerOptions } from "../hooks/useTriggerOptions";
-import type { RegisteredHandler, TriggerSettingsProps } from "../registry";
+import type { TriggerSettingsProps } from "../registry";
 import type { TriggerConfig } from "../types";
 
 // =============================================================================
@@ -67,7 +67,7 @@ function renderSpreadsheetValue(
 // GOOGLE SHEETS SETTINGS COMPONENT
 // =============================================================================
 
-function GoogleSheetsSettings({
+export function GoogleSheetsSettings({
   triggerConfig,
   onConfigChange,
 }: TriggerSettingsProps) {
@@ -263,34 +263,3 @@ function GoogleSheetsSettings({
     </TriggerSettingsCard>
   );
 }
-
-// =============================================================================
-// HANDLER REGISTRATION
-// =============================================================================
-
-export const googleSheetsTriggerHandler: RegisteredHandler = {
-  triggerSlugs: ["google_sheets_new_row", "google_sheets_new_sheet"],
-
-  createDefaultConfig: (slug: string): TriggerConfig => ({
-    type: "integration",
-    enabled: true,
-    trigger_name: slug,
-    trigger_data: {
-      trigger_name: slug,
-      spreadsheet_ids: [],
-      sheet_names: [],
-    },
-  }),
-
-  SettingsComponent: GoogleSheetsSettings,
-
-  getDisplayInfo: (config) => {
-    const triggerName =
-      (config as GoogleSheetsConfig).trigger_name || config.type;
-    return {
-      label:
-        triggerName === "google_sheets_new_row" ? "on new row" : "on new sheet",
-      integrationId: "googlesheets",
-    };
-  },
-};

@@ -16,14 +16,14 @@ import { calendarTriggerHandler } from "@/features/workflows/triggers/handlers/c
 import { githubTriggerHandler } from "@/features/workflows/triggers/handlers/github";
 import { gmailTriggerHandler } from "@/features/workflows/triggers/handlers/gmail";
 import { googleDocsTriggerHandler } from "@/features/workflows/triggers/handlers/googleDocs";
-import { googleSheetsTriggerHandler } from "@/features/workflows/triggers/handlers/googleSheets";
-import { linearTriggerHandler } from "@/features/workflows/triggers/handlers/linear";
-import { notionTriggerHandler } from "@/features/workflows/triggers/handlers/notion";
+import { googleSheetsTriggerHandler } from "@/features/workflows/triggers/handlers/googleSheets.handler";
+import { linearTriggerHandler } from "@/features/workflows/triggers/handlers/linear.handler";
+import { notionTriggerHandler } from "@/features/workflows/triggers/handlers/notion.handler";
 import {
   manualTriggerHandler,
   scheduleTriggerHandler,
 } from "@/features/workflows/triggers/handlers/schedule";
-import { slackTriggerHandler } from "@/features/workflows/triggers/handlers/slack";
+import { slackTriggerHandler } from "@/features/workflows/triggers/handlers/slack.handler";
 import { todoistTriggerHandler } from "@/features/workflows/triggers/handlers/todoist";
 import type { TriggerConfig, TriggerSchema } from "./types";
 

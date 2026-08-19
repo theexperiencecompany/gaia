@@ -17,7 +17,7 @@ import {
   TriggerSettingsCard,
 } from "../components/TriggerSettingsCard";
 import { useTriggerOptions } from "../hooks/useTriggerOptions";
-import type { RegisteredHandler, TriggerSettingsProps } from "../registry";
+import type { TriggerSettingsProps } from "../registry";
 import type { TriggerConfig } from "../types";
 
 // =============================================================================
@@ -43,7 +43,7 @@ interface OptionItem {
 // LINEAR SETTINGS COMPONENT
 // =============================================================================
 
-function LinearSettings({
+export function LinearSettings({
   triggerConfig,
   onConfigChange,
 }: TriggerSettingsProps) {
@@ -161,40 +161,3 @@ function LinearSettings({
     </TriggerSettingsCard>
   );
 }
-
-// =============================================================================
-// HANDLER DEFINITION
-// =============================================================================
-
-export const linearTriggerHandler: RegisteredHandler = {
-  triggerSlugs: [
-    "linear_issue_created",
-    "linear_issue_updated",
-    "linear_comment_added",
-  ],
-
-  createDefaultConfig: (slug: string): TriggerConfig => ({
-    type: "integration",
-    enabled: true,
-    trigger_name: slug,
-    trigger_data: {
-      trigger_name: slug,
-      team_id: "",
-    },
-  }),
-
-  SettingsComponent: LinearSettings,
-
-  getDisplayInfo: (config) => {
-    const triggerName = (config as LinearConfig).trigger_name || config.type;
-    let label = "on linear event";
-    if (triggerName === "linear_issue_created") label = "on new issue";
-    if (triggerName === "linear_issue_updated") label = "on issue updated";
-    if (triggerName === "linear_comment_added") label = "on new comment";
-
-    return {
-      label,
-      integrationId: "linear",
-    };
-  },
-};

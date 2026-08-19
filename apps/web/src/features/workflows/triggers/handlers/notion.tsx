@@ -16,7 +16,7 @@ import {
 } from "../components/TriggerSettingsCard";
 import type { OptionItem } from "../components/types";
 import { useTriggerOptions } from "../hooks/useTriggerOptions";
-import type { RegisteredHandler, TriggerSettingsProps } from "../registry";
+import type { TriggerSettingsProps } from "../registry";
 import type { TriggerConfig } from "../types";
 
 // =============================================================================
@@ -38,7 +38,7 @@ interface NotionConfig extends TriggerConfig {
 // NOTION SETTINGS COMPONENT
 // =============================================================================
 
-function NotionSettings({
+export function NotionSettings({
   triggerConfig,
   onConfigChange,
 }: TriggerSettingsProps) {
@@ -189,50 +189,3 @@ function NotionSettings({
     </TriggerSettingsCard>
   );
 }
-
-// =============================================================================
-// HANDLER DEFINITION
-// =============================================================================
-
-export const notionTriggerHandler: RegisteredHandler = {
-  triggerSlugs: [
-    "notion_new_page_in_db",
-    "notion_page_updated",
-    "notion_all_page_events",
-  ],
-
-  createDefaultConfig: (slug: string): TriggerConfig => {
-    const triggerData: NotionTriggerData = {
-      trigger_name: slug,
-    };
-
-    if (slug === "notion_new_page_in_db") {
-      triggerData.database_ids = [];
-    }
-    if (slug === "notion_page_updated") {
-      triggerData.page_ids = [];
-    }
-
-    return {
-      type: "integration",
-      enabled: true,
-      trigger_name: slug,
-      trigger_data: triggerData,
-    };
-  },
-
-  SettingsComponent: NotionSettings,
-
-  getDisplayInfo: (config) => {
-    const triggerName = (config as NotionConfig).trigger_name || config.type;
-    let label = "on notion event";
-    if (triggerName === "notion_new_page_in_db") label = "on new page in db";
-    if (triggerName === "notion_page_updated") label = "on page updated";
-    if (triggerName === "notion_all_page_events") label = "on any page event";
-
-    return {
-      label,
-      integrationId: "notion",
-    };
-  },
-};
