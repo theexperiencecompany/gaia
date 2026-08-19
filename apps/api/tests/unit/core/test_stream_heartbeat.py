@@ -32,7 +32,11 @@ async def test_silent_producer_still_writes_to_the_socket() -> None:
     """
 
     async def silent_then_speak() -> AsyncGenerator[str, None]:
-        await asyncio.sleep(INTERVAL * 3.5)
+        # 6 intervals rather than a tight 3.5: under heavy xdist load the loop
+        # can stall for a couple of interval-lengths, and the old 0.5-interval
+        # margin was a single sleep tick of flakiness (observed once in CI).
+        # Six still guarantees the >= 3 keepalives with a wide margin.
+        await asyncio.sleep(INTERVAL * 6)
         yield "data: real\n\n"
 
     frames = await _drain(with_heartbeat(silent_then_speak(), interval=INTERVAL))
@@ -61,8 +65,10 @@ async def test_no_keepalive_when_the_producer_keeps_talking() -> None:
     """A stream that never goes quiet gets no padding — keepalives are for gaps."""
 
     async def steady() -> AsyncGenerator[str, None]:
+        # Continuous back-to-back yields: every frame resolves well inside the
+        # interval, so no keepalive can ever fire — deterministic under load (a
+        # paced ``sleep(interval/4)`` version flaked when the loop stalled).
         for index in range(4):
-            await asyncio.sleep(INTERVAL / 4)
             yield f"data: {index}\n\n"
 
     frames = await _drain(with_heartbeat(steady(), interval=INTERVAL))
