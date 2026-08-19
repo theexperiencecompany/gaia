@@ -4,6 +4,8 @@ Tests the bot endpoints with mocked service layer to verify
 routing, status codes, response bodies, and auth checks.
 """
 
+import asyncio
+from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException
@@ -11,6 +13,7 @@ from httpx import AsyncClient
 import pytest
 
 from app.api.v1.endpoints.bot import bot_chat_stream
+from app.core.stream_manager import with_heartbeat
 from app.models.bot_models import BotChatRequest
 from app.models.payment_models import PlanType
 from app.services.analytics_service import AnalyticsEvents
@@ -773,6 +776,107 @@ class TestBotChatStream:
         assert event["user"] == {"id": "uid1"}
         assert event["platform"] == "discord"
         assert event["outcome"] == "success"
+
+
+# ---------------------------------------------------------------------------
+# The streamed body of POST /bot/chat-stream — translation + keepalive
+# ---------------------------------------------------------------------------
+
+
+class TestBotChatStreamBody:
+    """What actually reaches the bot over the wire.
+
+    The tests above stop at the gates (auth, plan, quota, analytics); none of
+    them read the response body, so the translator was uncovered. That is the
+    gap that let the 2026-08-18 outage ship: the translator drops every
+    web-only frame, and nothing checked that anything at all still reached the
+    socket while it did so.
+
+    `with_heartbeat` is exercised for real here — only its interval is shortened,
+    so the padding behaviour under test is the shipped implementation.
+    """
+
+    @staticmethod
+    def _fast_heartbeat(frames: AsyncGenerator[str, None]) -> AsyncGenerator[str, None]:
+        return with_heartbeat(frames, interval=0.05)
+
+    @staticmethod
+    async def _collect(client: AsyncClient, frames: AsyncGenerator[str, None]) -> str:
+        with (
+            patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock()),
+            patch("app.api.v1.endpoints.bot.spawn_background_task", new=MagicMock()),
+            patch("app.api.v1.endpoints.bot.run_chat_stream_background", new=AsyncMock()),
+            patch(
+                "app.api.v1.endpoints.bot.create_bot_session_token",
+                new=MagicMock(return_value="tok"),
+            ),
+            patch(
+                "app.api.v1.endpoints.bot.with_heartbeat",
+                new=TestBotChatStreamBody._fast_heartbeat,
+            ),
+            patch(
+                "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+                new=AsyncMock(return_value={"user_id": "uid1", "_id": "uid1"}),
+            ),
+            patch("app.api.v1.endpoints.bot.BotService") as bot_svc,
+            patch("app.api.v1.endpoints.bot.capture_event", new=MagicMock()),
+            patch("app.api.v1.endpoints.bot.stream_manager") as sm,
+        ):
+            bot_svc.enforce_rate_limit = AsyncMock()
+            bot_svc.get_or_create_session = AsyncMock(return_value="conv-1")
+            bot_svc.load_conversation_history = AsyncMock(return_value=[])
+            sm.start_stream = AsyncMock()
+            sm.subscribe_stream.return_value = frames
+
+            response = await client.post(f"{BOT_BASE}/chat-stream", json=_CHAT_BODY("discord"))
+            assert response.status_code == 200
+            # Not decoration: a bot client parses this stream as SSE and will
+            # not read a body served under any other media type.
+            assert response.headers["content-type"].startswith("text/event-stream")
+            return (await response.aread()).decode()
+
+    async def test_a_silent_stretch_of_web_only_frames_still_reaches_the_socket(
+        self, client: AsyncClient
+    ):
+        """The regression. A turn busy with tool work publishes frames the bot
+        never sees; without padding the connection goes quiet and a proxy kills
+        it (nginx's stock proxy_read_timeout is 60s)."""
+
+        async def tool_work() -> AsyncGenerator[str, None]:
+            for i in range(3):
+                await asyncio.sleep(0.12)
+                yield f'data: {{"tool_data": {{"i": {i}}}}}\n\n'
+            yield "data: [DONE]\n\n"
+
+        body = await self._collect(client, tool_work())
+
+        assert '"keepalive"' in body, f"nothing kept the socket alive: {body!r}"
+        assert "tool_data" not in body, "web-only frames must not reach the bot"
+
+    async def test_text_frames_are_translated_and_the_turn_closes_with_done(
+        self, client: AsyncClient
+    ):
+        async def answer() -> AsyncGenerator[str, None]:
+            yield 'data: {"response": "hello "}\n\n'
+            yield 'data: {"response": "world"}\n\n'
+            yield "data: [DONE]\n\n"
+
+        body = await self._collect(client, answer())
+
+        assert '"text": "hello "' in body
+        assert '"text": "world"' in body
+        assert '"done": true' in body
+        assert '"conversation_id": "conv-1"' in body
+
+    async def test_the_session_token_is_the_first_thing_the_bot_receives(self, client: AsyncClient):
+        """The bot stores this to authenticate follow-up calls for the turn."""
+
+        async def answer() -> AsyncGenerator[str, None]:
+            yield "data: [DONE]\n\n"
+
+        body = await self._collect(client, answer())
+
+        assert body.index('"session_token": "tok"') < body.index('"done"')
 
 
 # ---------------------------------------------------------------------------

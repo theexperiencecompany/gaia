@@ -558,6 +558,14 @@ export class DiscordAdapter extends BaseBotAdapter {
     header: string,
   ): Promise<void> {
     let replied = false;
+    // The header owns the deferred reply; every bubble of the answer is its own
+    // follow-up. Editing the reply for extra bubbles (as this used to) silently
+    // overwrote the previous bubble, so a multi-bubble or over-length answer
+    // arrived as only its last piece. Keeping the header out of the streamed
+    // content also keeps the bubbles inside Discord's 2000-char limit, which
+    // the shared streamer sizes them against.
+    await interaction.editReply({ content: `**${header}**` });
+    let lastFollowUp: Message | null = null;
     await handleStreamingChat(
       this.gaia,
       {
@@ -567,14 +575,19 @@ export class DiscordAdapter extends BaseBotAdapter {
         channelId,
       },
       async (text: string) => {
-        await interaction.editReply({ content: `**${header}**\n${text}` });
         replied = true;
+        if (lastFollowUp) {
+          await lastFollowUp.edit({ content: text });
+        } else {
+          lastFollowUp = await interaction.followUp({ content: text });
+        }
       },
       async (text: string) => {
         replied = true;
-        await interaction.editReply({ content: `**${header}**\n${text}` });
+        const followUp = await interaction.followUp({ content: text });
+        lastFollowUp = followUp;
         return async (updated: string) => {
-          await interaction.editReply({ content: `**${header}**\n${updated}` });
+          await followUp.edit({ content: updated });
         };
       },
       async (authUrl: string) => {

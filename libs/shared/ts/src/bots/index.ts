@@ -165,7 +165,7 @@ export {
   renderForPlatform,
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,
-  truncateResponse,
+  sendChunked,
   unfetchableMediaMessage,
   unsupportedMediaMessage,
   WEBHOOK_BODY_READ_TIMEOUT_MS,
