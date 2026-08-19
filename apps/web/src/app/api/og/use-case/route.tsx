@@ -19,7 +19,7 @@ import {
   OG_HEIGHT,
   OG_WIDTH,
   truncateText,
-} from "../shared";
+} from "../shared.helpers";
 
 export const runtime = "edge";
 

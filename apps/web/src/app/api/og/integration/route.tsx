@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
+import { CategoryBadge } from "../shared";
 import {
-  CategoryBadge,
   colors,
   createErrorResponse,
   createFallbackResponse,
@@ -17,7 +17,7 @@ import {
   OG_WIDTH,
   truncateText,
   wallpapers,
-} from "../shared";
+} from "../shared.helpers";
 
 export const runtime = "edge";
 

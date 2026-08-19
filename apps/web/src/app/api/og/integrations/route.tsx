@@ -1,13 +1,13 @@
 import { ImageResponse } from "next/og";
+import { HeroLayout } from "../shared";
 import {
   createErrorResponse,
   getBaseUrl,
-  HeroLayout,
   loadFonts,
   OG_HEIGHT,
   OG_WIDTH,
   wallpapers,
-} from "../shared";
+} from "../shared.helpers";
 
 export const runtime = "edge";
 
