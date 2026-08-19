@@ -40,7 +40,11 @@ function tokenize(feature: string): {
   return { segments, platforms };
 }
 
-function PlatformMention({ platform }: { platform: BotPlatform }) {
+interface PlatformMentionProps {
+  platform: BotPlatform;
+}
+
+function PlatformMention({ platform }: PlatformMentionProps) {
   return (
     <span className="inline-flex items-center gap-1 whitespace-nowrap align-middle">
       <Image
@@ -56,7 +60,11 @@ function PlatformMention({ platform }: { platform: BotPlatform }) {
   );
 }
 
-export function PlanFeature({ feature }: { feature: string }) {
+interface PlanFeatureProps {
+  feature: string;
+}
+
+export function PlanFeature({ feature }: PlanFeatureProps) {
   const { segments, platforms } = tokenize(feature);
 
   if (platforms.length === 0) {
