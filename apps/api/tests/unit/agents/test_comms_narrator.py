@@ -61,8 +61,7 @@ class TestNarrateExecutorResult:
         assert isinstance(message, HumanMessage)
         assert message.name == "background_executor"
         assert message.content == (
-            INTERACTIVE_DELIVERY_NOTE
-            + wrap_agent_payload(AgentTag.EXECUTOR_RESULT, RESULT_TEXT)
+            INTERACTIVE_DELIVERY_NOTE + wrap_agent_payload(AgentTag.EXECUTOR_RESULT, RESULT_TEXT)
         )
         config = silent.await_args.args[2]
         assert config["configurable"]["conversation_id"] == CONVERSATION_ID
@@ -189,11 +188,16 @@ class TestRecordExecutorCancellation:
         assert call.kwargs["as_node"] == "tools"
         messages = call.args[1]["messages"]
         assert len(messages) == 1
-        content = messages[0].content
-        assert content.startswith(f"<{AgentTag.EXECUTOR_CANCELLED}>")
-        assert content.rstrip().endswith(f"</{AgentTag.EXECUTOR_CANCELLED}>")
-        assert "task-42" in content
-        assert "did NOT finish" in content
+        # The whole record, not a fragment of it: this text is the only thing
+        # that stops comms claiming a cancelled task finished, so every clause
+        # of the denial is load-bearing and a test that matched one phrase let
+        # the rest of the sentence be rewritten unnoticed.
+        assert messages[0].content == wrap_agent_payload(
+            AgentTag.EXECUTOR_CANCELLED,
+            "The background task task-42 ('send the email') was cancelled by the user "
+            "before it completed. It did NOT finish and will not deliver results — "
+            "do not claim otherwise.",
+        )
 
     async def test_unknown_task_id_is_named_as_unknown(self) -> None:
         graph = _fake_comms_graph()

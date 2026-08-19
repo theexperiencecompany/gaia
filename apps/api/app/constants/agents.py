@@ -34,14 +34,18 @@ class AgentTag(StrEnum):
     SUBAGENT_RESULT = "subagent_result"
 
 
-def wrap_agent_payload(tag: AgentTag, body: str, **attrs: str) -> str:
+def wrap_agent_payload(tag: AgentTag, body: str, agent: str | None = None) -> str:
     """Frame an internal payload in its channel tag.
+
+    ``agent`` names the tier that produced the payload, which only a
+    ``<subagent_result>`` carries — several land in one collection and the
+    executor has to tell whose report is whose.
 
     Trailing newline included so consecutive blocks concatenate into one
     readable document without the caller managing separators.
     """
-    rendered_attrs = "".join(f' {name}="{value}"' for name, value in attrs.items())
-    return f"<{tag}{rendered_attrs}>\n{body.strip()}\n</{tag}>\n"
+    attribution = f' agent="{agent}"' if agent else ""
+    return f"<{tag}{attribution}>\n{body.strip()}\n</{tag}>\n"
 
 
 # Every internal tag, open or close, with or without attributes. Stripped

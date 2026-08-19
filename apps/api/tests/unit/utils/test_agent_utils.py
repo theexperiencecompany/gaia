@@ -423,9 +423,17 @@ class TestWrapAgentPayload:
             "<executor_result>\n3 unread\n</executor_result>\n"
         )
 
-    def test_attributes_are_rendered_on_the_opening_tag(self) -> None:
+    def test_the_producing_agent_is_named_on_the_opening_tag(self) -> None:
         assert wrap_agent_payload(AgentTag.SUBAGENT_RESULT, "sent", agent="gmail") == (
             '<subagent_result agent="gmail">\nsent\n</subagent_result>\n'
+        )
+
+    def test_a_payload_with_no_producing_agent_carries_no_attribute(self) -> None:
+        """Only a subagent result is attributed; an executor result naming an
+        empty agent would be a tag the strip pattern still matches but a reader
+        cannot parse."""
+        assert wrap_agent_payload(AgentTag.EXECUTOR_RESULT, "done", agent=None) == (
+            "<executor_result>\ndone\n</executor_result>\n"
         )
 
     def test_consecutive_blocks_concatenate_without_running_together(self) -> None:

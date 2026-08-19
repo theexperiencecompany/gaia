@@ -312,9 +312,7 @@ class TestCoalescedApprovalBarrier:
                     assert (
                         f'<subagent_result agent="{GMAIL}">' in final_text
                         and f'<subagent_result agent="{SLACK}">' in final_text
-                    ), (
-                        f"the join returns both sections in one output, got: {final_text[:160]}"
-                    )
+                    ), f"the join returns both sections in one output, got: {final_text[:160]}"
 
                     gmail_thread = await graphs[GMAIL].aget_state(
                         {"configurable": {"thread_id": f"{GMAIL}_executor_{conv}"}}

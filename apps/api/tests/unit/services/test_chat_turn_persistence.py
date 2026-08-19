@@ -212,3 +212,18 @@ class TestInternalTagsNeverReachTheSavedTurn:
         bot = await persist(state)
 
         assert bot.response == "wrap it in `<div>` and check 3 < 5"
+
+
+class TestArtifactLinksSurviveTheSave:
+    async def test_a_relative_artifact_path_is_absolutized_against_this_conversation(self):
+        """The agent writes ``./artifacts/<name>``, which is right inside the
+        sandbox and a dead link from the browser. The rewrite needs THIS
+        conversation's id — without it the saved message keeps the relative
+        path and every image in the turn renders broken on reload."""
+        state = _StreamState()
+        state.complete_message = "here's the chart: ./artifacts/chart.png"
+
+        bot = await persist(state)
+
+        assert f"/sessions/{CONV}/artifacts/chart.png" in bot.response
+        assert "./artifacts/chart.png" not in bot.response
