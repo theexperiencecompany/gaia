@@ -105,3 +105,18 @@ async def save_storage_state(user_id: str, domain: str | None, state: StorageSta
         cookie_count=len(state.get("cookies", [])),
         origin_count=len(state.get("origins", [])),
     )
+
+
+async def forget_browser_logins(user_id: str, domain: str | None = None) -> int:
+    """Delete saved logins for ``user_id``, optionally scoped to one ``domain``.
+
+    Returns the number of records deleted. This is the storage-layer primitive
+    exercised by the contract test; the settings-UI path
+    (``profiles.forget_saved_login``) delegates here so there is one canonical
+    implementation.
+    """
+    if not user_id:
+        return 0
+    deleted = await browser_profile_repository.delete_for_user(user_id, domain)
+    log.info(f"{LogTag.BROWSER} Forgot browser logins", domain=domain, deleted_count=deleted)
+    return deleted

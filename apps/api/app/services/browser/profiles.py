@@ -9,6 +9,7 @@ from datetime import timedelta
 from app.constants.browser import BROWSER_PROFILE_TTL_SECONDS
 from app.db.repositories.browser_profiles import browser_profile_repository
 from app.schemas.browser import BrowserLoginResponse
+from app.services.browser.storage_persistence import forget_browser_logins
 
 
 async def list_saved_logins(user_id: str) -> list[BrowserLoginResponse]:
@@ -35,6 +36,8 @@ async def list_saved_logins(user_id: str) -> list[BrowserLoginResponse]:
 async def forget_saved_login(user_id: str, domain: str | None = None) -> int:
     """Forget one domain's saved login, or all of them when ``domain`` is None.
 
-    Returns the number of logins removed.
+    Returns the number of logins removed. Delegates to the storage-layer
+    primitive so there is one canonical delete path (see
+    ``storage_persistence.forget_browser_logins``).
     """
-    return await browser_profile_repository.delete_for_user(user_id, domain)
+    return await forget_browser_logins(user_id, domain)
