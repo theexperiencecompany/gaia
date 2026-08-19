@@ -5,7 +5,6 @@ import {
   PlusSignIcon,
   RefreshIcon,
 } from "@icons";
-import { defineComponent } from "@openuidev/react-lang";
 import type { StyleSpecification } from "maplibre-gl";
 import * as m from "motion/react-m";
 import { useParams } from "next/navigation";
@@ -27,7 +26,7 @@ import {
 import { NumberTicker } from "@/components/ui/number-ticker";
 import { resolveArtifactSrc } from "@/features/chat/api/sessionFilesApi";
 import { ToolCard, ToolInset } from "../primitives";
-import {
+import type {
   audioPlayerSchema,
   imageGallerySchema,
   mapBlockSchema,
@@ -439,42 +438,3 @@ export function NumberTickerView(props: z.infer<typeof numberTickerSchema>) {
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Component definitions
-// ---------------------------------------------------------------------------
-
-export const imageGalleryDef = defineComponent({
-  name: "ImageGallery",
-  description: "Grid of images with captions.",
-  props: imageGallerySchema,
-  component: ({ props }) => React.createElement(ImageGalleryView, props),
-});
-
-export const videoBlockDef = defineComponent({
-  name: "VideoBlock",
-  description: "YouTube/Vimeo embed or native video player.",
-  props: videoBlockSchema,
-  component: ({ props }) => React.createElement(VideoBlockView, props),
-});
-
-export const audioPlayerDef = defineComponent({
-  name: "AudioPlayer",
-  description: "Audio player with title and description.",
-  props: audioPlayerSchema,
-  component: ({ props }) => React.createElement(AudioPlayerView, props),
-});
-
-export const mapBlockDef = defineComponent({
-  name: "MapBlock",
-  description: "OpenStreetMap embed for a lat/lng location.",
-  props: mapBlockSchema,
-  component: ({ props }) => React.createElement(MapBlockView, props),
-});
-
-export const numberTickerDef = defineComponent({
-  name: "NumberTicker",
-  description: "Animated count-up number display.",
-  props: numberTickerSchema,
-  component: ({ props }) => React.createElement(NumberTickerView, props),
-});

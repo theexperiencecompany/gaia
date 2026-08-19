@@ -9,7 +9,7 @@ import {
   mapBlockDef,
   numberTickerDef,
   videoBlockDef,
-} from "./components/content";
+} from "./components/content.defs";
 import { textDocumentDef } from "./components/document";
 import {
   copyableContentDef,
