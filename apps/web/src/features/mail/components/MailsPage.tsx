@@ -492,25 +492,37 @@ export default function MailsPage() {
   } = useEmailViewer();
 
   // Handlers for single email actions
-  const handleToggleReadStatus = (e: React.MouseEvent, email: EmailData) => {
-    e.stopPropagation();
-    hookToggleReadStatus(email);
-  };
+  const handleToggleReadStatus = useCallback(
+    (e: React.MouseEvent, email: EmailData) => {
+      e.stopPropagation();
+      hookToggleReadStatus(email);
+    },
+    [hookToggleReadStatus],
+  );
 
-  const handleToggleStarStatus = (e: React.MouseEvent, email: EmailData) => {
-    e.stopPropagation();
-    toggleStarStatus(email);
-  };
+  const handleToggleStarStatus = useCallback(
+    (e: React.MouseEvent, email: EmailData) => {
+      e.stopPropagation();
+      toggleStarStatus(email);
+    },
+    [toggleStarStatus],
+  );
 
-  const handleArchiveEmail = (e: React.MouseEvent, email: EmailData) => {
-    e.stopPropagation();
-    archiveEmail(email.id);
-  };
+  const handleArchiveEmail = useCallback(
+    (e: React.MouseEvent, email: EmailData) => {
+      e.stopPropagation();
+      archiveEmail(email.id);
+    },
+    [archiveEmail],
+  );
 
-  const handleTrashEmail = (e: React.MouseEvent, email: EmailData) => {
-    e.stopPropagation();
-    trashEmail(email.id);
-  };
+  const handleTrashEmail = useCallback(
+    (e: React.MouseEvent, email: EmailData) => {
+      e.stopPropagation();
+      trashEmail(email.id);
+    },
+    [trashEmail],
+  );
 
   // Adapter for isItemLoaded to match the function signature expected by InfiniteLoader
   const isItemLoaded = useCallback(

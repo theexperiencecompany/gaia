@@ -332,7 +332,14 @@ const MapView = forwardRef<MapRef, MapProps>(function MapView(
       setIsStyleLoaded(false);
       setMapInstance(null);
     };
-  }, []);
+  }, [
+    resolvedTheme,
+    mapStyles,
+    props,
+    viewport,
+    projection,
+    clearStyleTimeout,
+  ]);
 
   // Sync controlled viewport to map
   useEffect(() => {
@@ -529,7 +536,7 @@ function MapMarker({
     markerInstance.on("dragend", handleDragEnd);
 
     return markerInstance;
-  }, []);
+  }, [markerOptions, draggable, longitude, latitude]);
 
   useEffect(() => {
     if (!map) return;
@@ -539,7 +546,7 @@ function MapMarker({
     return () => {
       marker.remove();
     };
-  }, [map]);
+  }, [map, marker]);
 
   const { offset, rotation, rotationAlignment, pitchAlignment } = markerOptions;
 
@@ -655,7 +662,7 @@ function MarkerPopup({
       .setDOMContent(container);
 
     return popupInstance;
-  }, []);
+  }, [popupOptions, container]);
 
   useEffect(() => {
     if (!map) return;
@@ -666,7 +673,7 @@ function MarkerPopup({
     return () => {
       marker.setPopup(null);
     };
-  }, [map]);
+  }, [map, marker, popup, container]);
 
   // Sync popup options when they change.
   useEffect(() => {
@@ -716,7 +723,7 @@ function MarkerTooltip({
     }).setMaxWidth("none");
 
     return tooltipInstance;
-  }, []);
+  }, [popupOptions]);
 
   useEffect(() => {
     if (!map) return;
@@ -736,7 +743,7 @@ function MarkerTooltip({
       marker.getElement()?.removeEventListener("mouseleave", handleMouseLeave);
       tooltip.remove();
     };
-  }, [map]);
+  }, [map, marker, tooltip, container]);
 
   // Sync tooltip options when they change.
   useEffect(() => {
@@ -1044,7 +1051,7 @@ function MapPopup({
       .setLngLat([longitude, latitude]);
 
     return popupInstance;
-  }, []);
+  }, [popupOptions, longitude, latitude]);
 
   useEffect(() => {
     if (!map) return;
@@ -1062,7 +1069,7 @@ function MapPopup({
         popup.remove();
       }
     };
-  }, [map]);
+  }, [map, popup, container]);
 
   // Sync popup position and options when they change.
   useEffect(() => {
@@ -1168,7 +1175,7 @@ function MapRoute({
         // ignore
       }
     };
-  }, [isLoaded, map]);
+  }, [isLoaded, map, sourceId, layerId, color, width, opacity, dashArray]);
 
   // When coordinates change, update the source data. Fewer than two points
   // can't form a line, so push an empty LineString to clear any stale route
@@ -1396,7 +1403,7 @@ function MapGeoJSON<
         // style may be mid-reload
       }
     };
-  }, [isLoaded, map]);
+  }, [isLoaded, map, sourceId, data, promoteId, lineLayerId, fillLayerId]);
 
   // Sync data when it changes.
   useEffect(() => {
@@ -1760,7 +1767,18 @@ function MapArc<T extends MapArcDatum = MapArcDatum>({
         // ignore
       }
     };
-  }, [isLoaded, map]);
+  }, [
+    isLoaded,
+    map,
+    sourceId,
+    geoJSON,
+    hitLayerId,
+    hitWidth,
+    beforeId,
+    layerId,
+    mergedLayout,
+    mergedPaint,
+  ]);
 
   // Sync features when data / curvature / samples change.
   useEffect(() => {
@@ -2018,7 +2036,20 @@ function MapClusterLayer<
         // ignore
       }
     };
-  }, [isLoaded, map, sourceId]);
+  }, [
+    isLoaded,
+    map,
+    sourceId,
+    data,
+    clusterMaxZoom,
+    clusterRadius,
+    clusterLayerId,
+    clusterColors,
+    clusterThresholds,
+    clusterCountLayerId,
+    unclusteredLayerId,
+    pointColor,
+  ]);
 
   // Update source data when data prop changes (only for non-URL data)
   useEffect(() => {

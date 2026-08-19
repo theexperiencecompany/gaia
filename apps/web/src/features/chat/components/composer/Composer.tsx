@@ -190,7 +190,7 @@ function useComposerSlashSync(
       setIsSlashCommandDropdownOpen(isOpen);
     }, 100);
     return () => clearInterval(interval);
-  }, [setIsSlashCommandDropdownOpen]);
+  }, [composerInputRef, setIsSlashCommandDropdownOpen]);
 }
 
 const Composer: React.FC<MainSearchbarProps> = ({
