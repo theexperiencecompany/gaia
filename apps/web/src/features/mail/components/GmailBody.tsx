@@ -15,7 +15,6 @@ const decodeBase64 = (str: string): string => {
 };
 
 export default function GmailBody({ email }: { email: EmailData | null }) {
-  const [loading, setLoading] = useState(true);
   const shadowHostRef = useRef<HTMLDivElement | null>(null);
 
   const decodedHtml = useMemo(() => {
@@ -39,22 +38,23 @@ export default function GmailBody({ email }: { email: EmailData | null }) {
       : null;
   }, [decodedHtml]);
 
-  useEffect(() => {
-    if (!sanitizedHtml) {
-      setLoading(false);
-      return;
-    }
+  const [loading, setLoading] = useState(!!sanitizedHtml);
 
-    if (shadowHostRef.current) {
-      const shadowRoot =
-        shadowHostRef.current.shadowRoot ||
-        shadowHostRef.current.attachShadow({ mode: "open" });
-      shadowRoot.innerHTML = "";
-      const contentWrapper = document.createElement("div");
-      contentWrapper.innerHTML = sanitizedHtml;
-      shadowRoot.appendChild(contentWrapper);
-      setLoading(false);
-    }
+  // Initial loading gate — not dependent on prop to avoid adjust-on-prop-change.
+  useEffect(() => {
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (!sanitizedHtml) return;
+    if (!shadowHostRef.current) return;
+    const shadowRoot =
+      shadowHostRef.current.shadowRoot ||
+      shadowHostRef.current.attachShadow({ mode: "open" });
+    shadowRoot.innerHTML = "";
+    const contentWrapper = document.createElement("div");
+    contentWrapper.innerHTML = sanitizedHtml;
+    shadowRoot.appendChild(contentWrapper);
   }, [sanitizedHtml]);
 
   if (!email) return null;

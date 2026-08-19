@@ -1,7 +1,7 @@
 import { Button } from "@heroui/button";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { CalendarAdd01Icon, Tick02Icon } from "@icons";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { calendarApi } from "@/features/calendar/api/calendarApi";
 import { toast } from "@/lib/toast";
 import type {
@@ -68,6 +68,8 @@ export default function CalendarEventSection({
 }: {
   calendar_options: CalendarOptions[];
 }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const [eventStatuses, setEventStatuses] = useState<
     Record<number, EventStatus>
   >({});
@@ -231,7 +233,7 @@ export default function CalendarEventSection({
             <div className="relative flex items-center">
               <div className="flex-1 border-t border-zinc-700" />
               <span className="px-3 text-xs text-zinc-500">
-                {formatDateWithRelative(dateString)}
+                {mounted ? formatDateWithRelative(dateString) : ""}
               </span>
               <div className="flex-1 border-t border-zinc-700" />
             </div>
@@ -258,7 +260,9 @@ export default function CalendarEventSection({
                           {sameDayEvent.summary}
                         </div>
                         <div className="mt-1 flex items-center gap-2 text-xs text-zinc-400">
-                          <span>{getDisplayTime(sameDayEvent)}</span>
+                          <span>
+                            {mounted ? getDisplayTime(sameDayEvent) : ""}
+                          </span>
                           {sameDayEvent.calendarTitle && (
                             <>
                               <span className="text-zinc-500">•</span>

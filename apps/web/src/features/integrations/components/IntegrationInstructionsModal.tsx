@@ -57,13 +57,12 @@ export const IntegrationInstructionsModal = ({
   // Reset the draft to the persisted content only on the closed->open
   // transition — not on every savedContent change, which would clobber
   // in-progress edits if the query refetches while the modal is open.
-  useEffect(() => {
-    if (isOpen && !wasOpenRef.current) {
-      setValue(savedContent);
-      setTab("write");
-    }
-    wasOpenRef.current = isOpen;
-  }, [isOpen, savedContent]);
+  // Guarded render update to avoid stale flash from effect.
+  if (isOpen && !wasOpenRef.current) {
+    setValue(savedContent);
+    setTab("write");
+  }
+  wasOpenRef.current = isOpen;
 
   // Raw compare: leading/trailing whitespace can be meaningful in Markdown,
   // and the backend already normalizes whitespace-only content to empty.

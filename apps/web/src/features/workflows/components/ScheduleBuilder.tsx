@@ -13,10 +13,8 @@ import {
 import { TimezoneAutocomplete } from "./TimezoneAutocomplete";
 
 interface ScheduleBuilderProps {
-  value?: string; // cron expression
+  value?: string;
   onChange: (cronExpression: string) => void;
-  // The timezone the schedule runs in. The cron/time picker is wall-clock time
-  // interpreted in this zone, so it must travel with the schedule to the backend.
   timezone: string;
   onTimezoneChange: (timezone: string) => void;
 }
@@ -30,7 +28,6 @@ interface SimpleSchedule {
   minute: string;
 }
 
-// Pure function to initialize schedule state from cron expression
 const initializeScheduleFromCron = (
   cronExpression?: string,
 ): SimpleSchedule => {
@@ -42,20 +39,16 @@ const initializeScheduleFromCron = (
     hour: "9",
     minute: "0",
   };
-
   if (!cronExpression?.trim()) {
     return defaultSchedule;
   }
-
   const parsed = parseCronExpression(cronExpression);
-
   if (parsed.type === "custom") {
     return {
       ...defaultSchedule,
       frequency: "custom",
     };
   }
-
   return {
     frequency: "every",
     interval:
@@ -73,23 +66,16 @@ const initializeScheduleFromCron = (
   };
 };
 
-// Pure function to initialize custom cron state
 const initializeCustomCron = (cronExpression?: string): string => {
   if (!cronExpression?.trim()) return "";
-
   const parsed = parseCronExpression(cronExpression);
   return parsed.type === "custom"
     ? parsed.customExpression || cronExpression
     : "";
 };
 
-// Keep the compact inline triggers, but let each dropdown popover grow to fit
-// its option labels instead of inheriting the narrow trigger width (which
-// truncates "Custom", "Month", "Wednesday", …). min-width beats the inline
-// trigger-width style HeroUI sets on the popover.
 const SELECT_CLASSNAMES = { popoverContent: "min-w-fit" } as const;
 
-// Helper to convert 24h to 12h for display
 const to12Hour = (hour24: number): { hour12: number; ampm: "AM" | "PM" } => {
   if (hour24 === 0) return { hour12: 12, ampm: "AM" };
   if (hour24 === 12) return { hour12: 12, ampm: "PM" };
@@ -97,11 +83,336 @@ const to12Hour = (hour24: number): { hour12: number; ampm: "AM" | "PM" } => {
   return { hour12: hour24 - 12, ampm: "PM" };
 };
 
-// Helper to convert 12h to 24h for storage
 const to24Hour = (hour12: number, ampm: "AM" | "PM"): number => {
   if (ampm === "AM") return hour12 === 12 ? 0 : hour12;
   return hour12 === 12 ? 12 : hour12 + 12;
 };
+
+interface ScheduleFrequencySelectorProps {
+  frequency: SimpleSchedule["frequency"];
+  onChange: (frequency: SimpleSchedule["frequency"]) => void;
+}
+
+function ScheduleFrequencySelector({
+  frequency,
+  onChange,
+}: ScheduleFrequencySelectorProps) {
+  return (
+    <Select
+      aria-label="Select every or once or custom"
+      size="sm"
+      selectedKeys={new Set([frequency])}
+      onSelectionChange={(keys) =>
+        onChange(Array.from(keys)[0] as SimpleSchedule["frequency"])
+      }
+      className="w-20 shrink-0"
+      classNames={SELECT_CLASSNAMES}
+    >
+      <SelectItem key="every" textValue="Every">
+        Every
+      </SelectItem>
+      <SelectItem key="once" textValue="Once">
+        Once
+      </SelectItem>
+      <SelectItem key="custom" textValue="Custom">
+        Custom
+      </SelectItem>
+    </Select>
+  );
+}
+
+interface ScheduleTimeInputsProps {
+  hour12: number;
+  minute: string;
+  ampm: "AM" | "PM";
+  onHour12Change: (value: string) => void;
+  onMinuteChange: (value: string) => void;
+  onAmpmChange: (value: "AM" | "PM") => void;
+}
+
+function ScheduleTimeInputs({
+  hour12,
+  minute,
+  ampm,
+  onHour12Change,
+  onMinuteChange,
+  onAmpmChange,
+}: ScheduleTimeInputsProps) {
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      <Input
+        size="sm"
+        type="number"
+        min="1"
+        max="12"
+        value={hour12.toString()}
+        onChange={(e) => onHour12Change(e.target.value)}
+        className="w-12"
+      />
+      <span className="text-zinc-500">:</span>
+      <Input
+        size="sm"
+        type="number"
+        min="0"
+        max="59"
+        value={minute.padStart(2, "0")}
+        onChange={(e) => onMinuteChange(e.target.value)}
+        className="w-12"
+      />
+      <Select
+        aria-label="Select AM or PM"
+        size="sm"
+        selectedKeys={new Set([ampm])}
+        onSelectionChange={(keys) =>
+          onAmpmChange(Array.from(keys)[0] as "AM" | "PM")
+        }
+        className="w-17"
+        classNames={SELECT_CLASSNAMES}
+      >
+        <SelectItem key="AM" textValue="AM">
+          AM
+        </SelectItem>
+        <SelectItem key="PM" textValue="PM">
+          PM
+        </SelectItem>
+      </Select>
+    </div>
+  );
+}
+
+interface ScheduleIntervalFieldsProps {
+  interval: SimpleSchedule["interval"];
+  dayOfWeek: string;
+  dayOfMonth: string;
+  onIntervalChange: (interval: SimpleSchedule["interval"]) => void;
+  onDayOfWeekChange: (day: string) => void;
+  onDayOfMonthChange: (day: string) => void;
+}
+
+function ScheduleIntervalFields({
+  interval,
+  dayOfWeek,
+  dayOfMonth,
+  onIntervalChange,
+  onDayOfWeekChange,
+  onDayOfMonthChange,
+}: ScheduleIntervalFieldsProps) {
+  return (
+    <>
+      <Select
+        size="sm"
+        aria-label="Select day or week or month"
+        selectedKeys={new Set([interval])}
+        onSelectionChange={(keys) =>
+          onIntervalChange(Array.from(keys)[0] as SimpleSchedule["interval"])
+        }
+        className="w-20 shrink-0"
+        classNames={SELECT_CLASSNAMES}
+      >
+        <SelectItem key="day" textValue="Day">
+          Day
+        </SelectItem>
+        <SelectItem key="week" textValue="Week">
+          Week
+        </SelectItem>
+        <SelectItem key="month" textValue="Month">
+          Month
+        </SelectItem>
+      </Select>
+      {interval === "week" && (
+        <>
+          <span className="shrink-0 text-zinc-400">on</span>
+          <Select
+            size="sm"
+            selectedKeys={new Set([dayOfWeek])}
+            onSelectionChange={(keys) =>
+              onDayOfWeekChange(Array.from(keys)[0] as string)
+            }
+            className="w-22 shrink-0"
+            classNames={SELECT_CLASSNAMES}
+          >
+            <SelectItem key="1" textValue="Monday">
+              Monday
+            </SelectItem>
+            <SelectItem key="2" textValue="Tuesday">
+              Tuesday
+            </SelectItem>
+            <SelectItem key="3" textValue="Wednesday">
+              Wednesday
+            </SelectItem>
+            <SelectItem key="4" textValue="Thursday">
+              Thursday
+            </SelectItem>
+            <SelectItem key="5" textValue="Friday">
+              Friday
+            </SelectItem>
+            <SelectItem key="6" textValue="Saturday">
+              Saturday
+            </SelectItem>
+            <SelectItem key="0" textValue="Sunday">
+              Sunday
+            </SelectItem>
+          </Select>
+        </>
+      )}
+      {interval === "month" && (
+        <>
+          <span className="shrink-0 text-nowrap text-zinc-400">on the</span>
+          <Select
+            aria-label="Select day of the month"
+            size="sm"
+            selectionMode="single"
+            selectedKeys={new Set([dayOfMonth])}
+            onSelectionChange={(keys) => {
+              const selectedDay = Array.from(keys)[0] as string;
+              onDayOfMonthChange(selectedDay);
+            }}
+            className="w-16 shrink-0"
+            classNames={SELECT_CLASSNAMES}
+            placeholder="Day"
+          >
+            {Array.from({ length: 31 }, (_, i) => (
+              <SelectItem
+                key={(i + 1).toString()}
+                textValue={(i + 1).toString()}
+              >
+                {i + 1}
+              </SelectItem>
+            ))}
+          </Select>
+        </>
+      )}
+    </>
+  );
+}
+
+interface ScheduleSimpleSectionProps {
+  simpleSchedule: SimpleSchedule;
+  hour12: number;
+  ampm: "AM" | "PM";
+  timezone: string;
+  timezoneOptions: { value: string; label: string; offset: string }[];
+  onSimpleChange: (updates: Partial<SimpleSchedule>) => void;
+  onHour12Change: (value: string) => void;
+  onAmpmChange: (value: "AM" | "PM") => void;
+  onTimezoneChange: (timezone: string) => void;
+}
+
+function ScheduleSimpleSection({
+  simpleSchedule,
+  hour12,
+  ampm,
+  timezone,
+  timezoneOptions,
+  onSimpleChange,
+  onHour12Change,
+  onAmpmChange,
+  onTimezoneChange,
+}: ScheduleSimpleSectionProps) {
+  return (
+    <>
+      <ScheduleIntervalFields
+        interval={simpleSchedule.interval}
+        dayOfWeek={simpleSchedule.dayOfWeek}
+        dayOfMonth={simpleSchedule.dayOfMonth}
+        onIntervalChange={(interval) => onSimpleChange({ interval })}
+        onDayOfWeekChange={(dayOfWeek) => onSimpleChange({ dayOfWeek })}
+        onDayOfMonthChange={(dayOfMonth) => onSimpleChange({ dayOfMonth })}
+      />
+      <span className="shrink-0 text-zinc-400">at</span>
+      <ScheduleTimeInputs
+        hour12={hour12}
+        minute={simpleSchedule.minute}
+        ampm={ampm}
+        onHour12Change={onHour12Change}
+        onMinuteChange={(minute) => onSimpleChange({ minute })}
+        onAmpmChange={onAmpmChange}
+      />
+      <span className="shrink-0 text-zinc-500">in</span>
+      <div className="flex-1 min-w-18">
+        <TimezoneAutocomplete
+          timezone={timezone}
+          options={timezoneOptions}
+          onChange={onTimezoneChange}
+          className="w-full"
+        />
+      </div>
+    </>
+  );
+}
+
+interface ScheduleCustomSectionProps {
+  customCron: string;
+  timezone: string;
+  timezoneOptions: { value: string; label: string; offset: string }[];
+  isInvalid: boolean;
+  onCronChange: (cron: string) => void;
+  onTimezoneChange: (timezone: string) => void;
+}
+
+function ScheduleCustomSection({
+  customCron,
+  timezone,
+  timezoneOptions,
+  isInvalid,
+  onCronChange,
+  onTimezoneChange,
+}: ScheduleCustomSectionProps) {
+  return (
+    <>
+      <Input
+        placeholder="0 9 * * *"
+        aria-label="Cron expression"
+        value={customCron}
+        size="sm"
+        isInvalid={isInvalid}
+        onChange={(e) => onCronChange(e.target.value)}
+        className="w-40 shrink-0"
+      />
+      <span className="shrink-0 text-nowrap text-zinc-500">in</span>
+      <div className="flex-1 min-w-18">
+        <TimezoneAutocomplete
+          timezone={timezone}
+          options={timezoneOptions}
+          onChange={onTimezoneChange}
+          className="w-full"
+        />
+      </div>
+    </>
+  );
+}
+
+interface ScheduleCronPreviewProps {
+  description?: string;
+  isInvalid: boolean;
+}
+
+function ScheduleCronPreview({
+  description,
+  isInvalid,
+}: ScheduleCronPreviewProps) {
+  return (
+    <div className="mt-2 flex items-center gap-1.5 text-xs">
+      {description && !isInvalid ? (
+        <>
+          <Clock01Icon className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+          <span className="text-zinc-400">{description}</span>
+        </>
+      ) : (
+        <>
+          <InformationCircleIcon
+            className={`h-3.5 w-3.5 shrink-0 ${
+              isInvalid ? "text-danger" : "text-zinc-500"
+            }`}
+          />
+          <span className={isInvalid ? "text-danger" : "text-zinc-500"}>
+            minute hour day-of-month month day-of-week
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
 
 export const ScheduleBuilder = ({
   value,
@@ -109,20 +420,13 @@ export const ScheduleBuilder = ({
   timezone,
   onTimezoneChange,
 }: ScheduleBuilderProps) => {
-  // Initialize state using pure functions - much faster and cleaner
   const [simpleSchedule, setSimpleSchedule] = useState<SimpleSchedule>(() =>
     initializeScheduleFromCron(value),
   );
   const [customCron, setCustomCron] = useState<string>(() =>
     initializeCustomCron(value),
   );
-
-  // Normalise legacy aliases (e.g. "Asia/Calcutta" -> "Asia/Kolkata") so the
-  // active zone matches a canonical option and shows its city + offset.
   const normalizedTimezone = normalizeTimezone(timezone);
-
-  // Every IANA zone (not just the popular shortlist) so any user can pick their
-  // exact zone; the active one is guaranteed to be present.
   const timezoneOptions = useMemo(() => {
     const options = getTimezoneList(true).map((tz) => ({
       value: tz.value,
@@ -131,7 +435,7 @@ export const ScheduleBuilder = ({
     }));
     if (
       normalizedTimezone &&
-      !options.some((tz) => tz.value === normalizedTimezone)
+      !options.some((tz: { value: string }) => tz.value === normalizedTimezone)
     ) {
       options.unshift({
         value: normalizedTimezone,
@@ -141,24 +445,16 @@ export const ScheduleBuilder = ({
     }
     return options;
   }, [normalizedTimezone]);
-
-  // Update state when value prop changes (e.g., when switching between workflow cards)
   useEffect(() => {
     const newSimpleSchedule = initializeScheduleFromCron(value);
     const newCustomCron = initializeCustomCron(value);
-
     setSimpleSchedule(newSimpleSchedule);
     setCustomCron(newCustomCron);
   }, [value]);
-
   const handleSimpleScheduleChange = (updates: Partial<SimpleSchedule>) => {
     const newSchedule = { ...simpleSchedule, ...updates };
     setSimpleSchedule(newSchedule);
-
-    // Only generate cron if not in custom mode
     if (newSchedule.frequency === "custom") return;
-
-    // Convert to cron expression
     let cronSchedule: CronSchedule;
     switch (newSchedule.interval) {
       case "day":
@@ -191,259 +487,62 @@ export const ScheduleBuilder = ({
           minute: parseInt(newSchedule.minute, 10),
         };
     }
-
     const cronExpr = buildCronExpression(cronSchedule);
     onChange(cronExpr);
   };
-
   const handleCustomCronChange = (cron: string) => {
     setCustomCron(cron);
     onChange(cron);
   };
-
-  // Live preview/validation of the custom cron expression
   const cronPreview = useMemo(() => describeCron(customCron), [customCron]);
   const showCronError = customCron.trim().length > 0 && !cronPreview.isValid;
-
-  // Get 12-hour display values from 24-hour stored value
   const hour24 = parseInt(simpleSchedule.hour, 10) || 0;
   const { hour12, ampm } = to12Hour(hour24);
-
-  // Handle 12-hour time changes
   const handleHour12Change = (newHour12: string) => {
     const h12 = parseInt(newHour12, 10) || 1;
     const h24 = to24Hour(h12, ampm);
     handleSimpleScheduleChange({ hour: h24.toString() });
   };
-
   const handleAmpmChange = (newAmpm: "AM" | "PM") => {
     const h24 = to24Hour(hour12, newAmpm);
     handleSimpleScheduleChange({ hour: h24.toString() });
   };
-
   return (
     <div className="w-full">
       <div className="flex w-full flex-row items-center gap-x-2 text-sm">
         <span className="shrink-0 text-zinc-400">Run</span>
-
-        <Select
-          aria-label="Select every or once or custom"
-          size="sm"
-          selectedKeys={new Set([simpleSchedule.frequency])}
-          onSelectionChange={(keys) =>
-            handleSimpleScheduleChange({
-              frequency: Array.from(keys)[0] as SimpleSchedule["frequency"],
-            })
-          }
-          className="w-20 shrink-0"
-          classNames={SELECT_CLASSNAMES}
-        >
-          <SelectItem key="every" textValue="Every">
-            Every
-          </SelectItem>
-          <SelectItem key="once" textValue="Once">
-            Once
-          </SelectItem>
-          <SelectItem key="custom" textValue="Custom">
-            Custom
-          </SelectItem>
-        </Select>
-
-        {simpleSchedule.frequency !== "custom" && (
-          <>
-            <Select
-              size="sm"
-              aria-label="Select day or week or month"
-              selectedKeys={new Set([simpleSchedule.interval])}
-              onSelectionChange={(keys) =>
-                handleSimpleScheduleChange({
-                  interval: Array.from(keys)[0] as SimpleSchedule["interval"],
-                })
-              }
-              className="w-20 shrink-0"
-              classNames={SELECT_CLASSNAMES}
-            >
-              <SelectItem key="day" textValue="Day">
-                Day
-              </SelectItem>
-              <SelectItem key="week" textValue="Week">
-                Week
-              </SelectItem>
-              <SelectItem key="month" textValue="Month">
-                Month
-              </SelectItem>
-            </Select>
-
-            {simpleSchedule.interval === "week" && (
-              <>
-                <span className="shrink-0 text-zinc-400">on</span>
-                <Select
-                  size="sm"
-                  selectedKeys={new Set([simpleSchedule.dayOfWeek])}
-                  onSelectionChange={(keys) =>
-                    handleSimpleScheduleChange({
-                      dayOfWeek: Array.from(keys)[0] as string,
-                    })
-                  }
-                  className="w-22 shrink-0"
-                  classNames={SELECT_CLASSNAMES}
-                >
-                  <SelectItem key="1" textValue="Monday">
-                    Monday
-                  </SelectItem>
-                  <SelectItem key="2" textValue="Tuesday">
-                    Tuesday
-                  </SelectItem>
-                  <SelectItem key="3" textValue="Wednesday">
-                    Wednesday
-                  </SelectItem>
-                  <SelectItem key="4" textValue="Thursday">
-                    Thursday
-                  </SelectItem>
-                  <SelectItem key="5" textValue="Friday">
-                    Friday
-                  </SelectItem>
-                  <SelectItem key="6" textValue="Saturday">
-                    Saturday
-                  </SelectItem>
-                  <SelectItem key="0" textValue="Sunday">
-                    Sunday
-                  </SelectItem>
-                </Select>
-              </>
-            )}
-
-            {simpleSchedule.interval === "month" && (
-              <>
-                <span className="shrink-0 text-nowrap text-zinc-400">
-                  on the
-                </span>
-                <Select
-                  aria-label="Select day of the month"
-                  size="sm"
-                  selectionMode="single"
-                  selectedKeys={new Set([simpleSchedule.dayOfMonth])}
-                  onSelectionChange={(keys) => {
-                    const selectedDay = Array.from(keys)[0] as string;
-                    handleSimpleScheduleChange({
-                      dayOfMonth: selectedDay,
-                    });
-                  }}
-                  className="w-16 shrink-0"
-                  classNames={SELECT_CLASSNAMES}
-                  placeholder="Day"
-                >
-                  {Array.from({ length: 31 }, (_, i) => (
-                    <SelectItem
-                      key={(i + 1).toString()}
-                      textValue={(i + 1).toString()}
-                    >
-                      {i + 1}
-                    </SelectItem>
-                  ))}
-                </Select>
-              </>
-            )}
-
-            <span className="shrink-0 text-zinc-400">at</span>
-            <div className="flex shrink-0 items-center gap-1">
-              <Input
-                size="sm"
-                type="number"
-                min="1"
-                max="12"
-                value={hour12.toString()}
-                onChange={(e) => handleHour12Change(e.target.value)}
-                className="w-12"
-              />
-              <span className="text-zinc-500">:</span>
-              <Input
-                size="sm"
-                type="number"
-                min="0"
-                max="59"
-                value={simpleSchedule.minute.padStart(2, "0")}
-                onChange={(e) =>
-                  handleSimpleScheduleChange({ minute: e.target.value })
-                }
-                className="w-12"
-              />
-              <Select
-                aria-label="Select AM or PM"
-                size="sm"
-                selectedKeys={new Set([ampm])}
-                onSelectionChange={(keys) =>
-                  handleAmpmChange(Array.from(keys)[0] as "AM" | "PM")
-                }
-                className="w-17"
-                classNames={SELECT_CLASSNAMES}
-              >
-                <SelectItem key="AM" textValue="AM">
-                  AM
-                </SelectItem>
-                <SelectItem key="PM" textValue="PM">
-                  PM
-                </SelectItem>
-              </Select>
-            </div>
-            <span className="shrink-0 text-zinc-500">in</span>
-            <div className="flex-1 min-w-18">
-              <TimezoneAutocomplete
-                timezone={normalizedTimezone}
-                options={timezoneOptions}
-                onChange={onTimezoneChange}
-                className="w-full"
-              />
-            </div>
-          </>
-        )}
-
-        {simpleSchedule.frequency === "custom" && (
-          <>
-            <Input
-              placeholder="0 9 * * *"
-              aria-label="Cron expression"
-              value={customCron}
-              size="sm"
-              isInvalid={showCronError}
-              onChange={(e) => handleCustomCronChange(e.target.value)}
-              className="w-40 shrink-0"
-            />
-            <span className="shrink-0 text-nowrap text-zinc-500">in</span>
-            <div className="flex-1 min-w-18">
-              <TimezoneAutocomplete
-                timezone={normalizedTimezone}
-                options={timezoneOptions}
-                onChange={onTimezoneChange}
-                className="w-full"
-              />
-            </div>
-          </>
+        <ScheduleFrequencySelector
+          frequency={simpleSchedule.frequency}
+          onChange={(frequency) => handleSimpleScheduleChange({ frequency })}
+        />
+        {simpleSchedule.frequency !== "custom" ? (
+          <ScheduleSimpleSection
+            simpleSchedule={simpleSchedule}
+            hour12={hour12}
+            ampm={ampm}
+            timezone={normalizedTimezone}
+            timezoneOptions={timezoneOptions}
+            onSimpleChange={handleSimpleScheduleChange}
+            onHour12Change={handleHour12Change}
+            onAmpmChange={handleAmpmChange}
+            onTimezoneChange={onTimezoneChange}
+          />
+        ) : (
+          <ScheduleCustomSection
+            customCron={customCron}
+            timezone={normalizedTimezone}
+            timezoneOptions={timezoneOptions}
+            isInvalid={showCronError}
+            onCronChange={handleCustomCronChange}
+            onTimezoneChange={onTimezoneChange}
+          />
         )}
       </div>
-
       {simpleSchedule.frequency === "custom" && (
-        <div className="mt-2 flex items-center gap-1.5 text-xs">
-          {cronPreview.description && !showCronError ? (
-            // Valid expression: show the clock + a plain-English preview.
-            <>
-              <Clock01Icon className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
-              <span className="text-zinc-400">{cronPreview.description}</span>
-            </>
-          ) : (
-            // Otherwise: info icon + the field format, tinted red when invalid.
-            <>
-              <InformationCircleIcon
-                className={`h-3.5 w-3.5 shrink-0 ${
-                  showCronError ? "text-danger" : "text-zinc-500"
-                }`}
-              />
-              <span className={showCronError ? "text-danger" : "text-zinc-500"}>
-                minute hour day-of-month month day-of-week
-              </span>
-            </>
-          )}
-        </div>
+        <ScheduleCronPreview
+          description={cronPreview.description}
+          isInvalid={showCronError}
+        />
       )}
     </div>
   );

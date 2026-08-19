@@ -33,6 +33,221 @@ const STAMP_BORDER_STYLE = {
 // renders (defining it inline would remount it every frame).
 const StampBorder = () => <div aria-hidden style={STAMP_BORDER_STYLE} />;
 
+interface HoloCardFaceCommonProps {
+  overlayColor?: string;
+  overlayOpacity: number;
+  clipStyle: React.CSSProperties;
+  houseImage: string;
+  height: number;
+  width: number;
+  showSparkles: boolean;
+  cardRef: React.RefObject<HTMLInputElement | null>;
+  hover: boolean;
+  animated: boolean;
+  activeBackgroundPosition: { tp: number; lp: number };
+  activeRotation: { x: number; y: number };
+  onMouseMove: (e: React.MouseEvent<HTMLDivElement>) => void;
+  onTouchMove: (e: React.TouchEvent<HTMLDivElement>) => void;
+  onMouseOut: () => void;
+  isStatic: boolean;
+  children?: React.ReactNode;
+}
+
+interface HoloCardFrontFaceProps extends HoloCardFaceCommonProps {
+  name: string;
+  personalityPhrase: string;
+  accountNumber: string | number;
+  memberSince: string | number;
+}
+
+function HoloCardFrontFace({
+  name,
+  personalityPhrase,
+  accountNumber,
+  memberSince,
+  overlayColor,
+  overlayOpacity,
+  clipStyle,
+  houseImage,
+  height,
+  width,
+  showSparkles,
+  cardRef,
+  hover,
+  animated,
+  activeBackgroundPosition,
+  activeRotation,
+  onMouseMove,
+  onTouchMove,
+  onMouseOut,
+  isStatic,
+  children,
+}: HoloCardFrontFaceProps) {
+  const content = (
+    <>
+      <StampBorder />
+      <CardOverlay
+        overlayColor={overlayColor}
+        overlayOpacity={overlayOpacity}
+      />
+      <div className={CARD_CLASSES.CONTENT_WRAPPER}>
+        <LogoHeader variant="front" />
+        <FrontCardContent
+          name={name}
+          personalityPhrase={personalityPhrase}
+          accountNumber={accountNumber}
+          memberSince={memberSince}
+          isStatic={isStatic ? true : undefined}
+        />
+      </div>
+      <StyledHoloCard
+        $url={houseImage}
+        ref={cardRef}
+        $active={isStatic ? false : hover}
+        $animated={isStatic ? false : animated}
+        $activeRotation={activeRotation}
+        $activeBackgroundPosition={activeBackgroundPosition}
+        onMouseMove={isStatic ? undefined : onMouseMove}
+        onTouchMove={isStatic ? undefined : onTouchMove}
+        onMouseOut={isStatic ? undefined : onMouseOut}
+        $height={height}
+        $width={width}
+        $showSparkles={showSparkles}
+      >
+        {children}
+      </StyledHoloCard>
+    </>
+  );
+
+  if (isStatic) {
+    return (
+      <div className="relative h-full w-full" style={clipStyle}>
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <Tilt className="relative h-full w-full p-0!" style={clipStyle}>
+      {content}
+    </Tilt>
+  );
+}
+
+interface HoloCardBackFaceProps extends HoloCardFaceCommonProps {
+  name: string;
+  personalityPhrase: string;
+  userBio: string;
+  accountNumber: string | number;
+  memberSince: string | number;
+}
+
+function HoloCardBackFace({
+  name,
+  personalityPhrase,
+  userBio,
+  accountNumber,
+  memberSince,
+  overlayColor,
+  overlayOpacity,
+  clipStyle,
+  houseImage,
+  height,
+  width,
+  showSparkles,
+  cardRef,
+  hover,
+  animated,
+  activeBackgroundPosition,
+  activeRotation,
+  onMouseMove,
+  onTouchMove,
+  onMouseOut,
+  isStatic,
+  children,
+}: HoloCardBackFaceProps) {
+  const content = (
+    <>
+      <StampBorder />
+      <CardOverlay
+        overlayColor={overlayColor}
+        overlayOpacity={overlayOpacity}
+      />
+      <div className={CARD_CLASSES.CONTENT_WRAPPER_BACK}>
+        <div className="flex min-h-0 w-full flex-1 flex-col gap-4">
+          <BackCardContent
+            name={name}
+            personalityPhrase={personalityPhrase}
+            userBio={userBio}
+            accountNumber={accountNumber}
+            memberSince={memberSince}
+            isStatic={isStatic ? true : undefined}
+          />
+        </div>
+        <BackCardFooter
+          accountNumber={accountNumber}
+          memberSince={memberSince}
+          isStatic={isStatic ? true : undefined}
+        />
+      </div>
+      <StyledHoloCard
+        $url={houseImage}
+        ref={cardRef}
+        $active={isStatic ? false : hover}
+        $animated={isStatic ? false : animated}
+        $activeRotation={activeRotation}
+        $activeBackgroundPosition={activeBackgroundPosition}
+        onMouseMove={isStatic ? undefined : onMouseMove}
+        onTouchMove={isStatic ? undefined : onTouchMove}
+        onMouseOut={isStatic ? undefined : onMouseOut}
+        $height={height}
+        $width={width}
+        $showSparkles={showSparkles}
+      >
+        {children}
+      </StyledHoloCard>
+    </>
+  );
+
+  if (isStatic) {
+    return (
+      <div className="relative h-full w-full" style={clipStyle}>
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <Tilt className="relative h-full w-full p-0!" style={clipStyle}>
+      {content}
+    </Tilt>
+  );
+}
+
+function HoloCardClipDefs({
+  clipId,
+  clipTransform,
+}: {
+  clipId: string;
+  clipTransform: string;
+}) {
+  return (
+    <svg
+      aria-hidden
+      width="0"
+      height="0"
+      style={{ position: "absolute", width: 0, height: 0 }}
+    >
+      <title>Stamp clip-path</title>
+      <defs>
+        <clipPath id={clipId} clipPathUnits="userSpaceOnUse">
+          <path d={STAMP_OUTER_PATH_D} transform={clipTransform} />
+        </clipPath>
+      </defs>
+    </svg>
+  );
+}
+
 export const HoloCard = ({
   data,
   height = 446,
@@ -76,14 +291,11 @@ export const HoloCard = ({
   const handleOnMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
     setAnimated(false);
     setHover(true);
-
     const card = ref.current;
     if (!card) return;
-
     const offsetX = event.nativeEvent.offsetX;
     const offsetY = event.nativeEvent.offsetY;
     const { clientWidth, clientHeight } = card;
-
     const position = calculateBackgroundPosition(
       offsetX,
       offsetY,
@@ -96,16 +308,13 @@ export const HoloCard = ({
   const handleOnTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
     setAnimated(false);
     setHover(true);
-
     const card = ref.current;
     if (!card) return;
-
     const touch = event.touches[0];
     const rect = card.getBoundingClientRect();
     const offsetX = touch.clientX - rect.left;
     const offsetY = touch.clientY - rect.top;
     const { clientWidth, clientHeight } = card;
-
     const position = calculateBackgroundPosition(
       offsetX,
       offsetY,
@@ -123,7 +332,6 @@ export const HoloCard = ({
 
   const effectiveFlipped = forceSide ? forceSide === "back" : isFlipped;
 
-  // Static mode styles for download
   const containerStyle = forceSide
     ? {
         perspective: "none",
@@ -166,7 +374,7 @@ export const HoloCard = ({
         display: forceSide === "back" ? "block" : "none",
         position: "absolute" as const,
         inset: 0,
-        transform: "none", // Crucial: No rotation for static back view
+        transform: "none",
       }
     : {
         position: "absolute" as const,
@@ -176,7 +384,6 @@ export const HoloCard = ({
         transform: "rotateY(180deg)",
       };
 
-  // clipPath ID must be unique per instance so multiple cards on a page don't collide.
   const clipId = useId();
   const clipUrl = `url(#${clipId})`;
   const clipTransform = `scale(${width / STAMP_NATURAL_HEIGHT} ${height / STAMP_NATURAL_WIDTH}) translate(${STAMP_NATURAL_HEIGHT} 0) rotate(90)`;
@@ -185,9 +392,27 @@ export const HoloCard = ({
     WebkitClipPath: clipUrl,
   };
 
-  // Use CSS `border` not mask-composite: html-to-image drops the mask and downloads it as a filled rectangle.
-
   const isFlippable = !forceSide;
+  const isStatic = Boolean(forceSide);
+
+  const faceCommon = {
+    overlayColor: overlay_color,
+    overlayOpacity: overlay_opacity,
+    clipStyle,
+    houseImage,
+    height,
+    width,
+    showSparkles,
+    cardRef: ref,
+    hover,
+    animated,
+    activeBackgroundPosition,
+    activeRotation,
+    onMouseMove: handleOnMouseMove,
+    onTouchMove: handleOnTouchMove,
+    onMouseOut: handleOnMouseOut,
+    isStatic,
+  } as const;
 
   return (
     <div
@@ -207,192 +432,35 @@ export const HoloCard = ({
       }
       style={containerStyle}
     >
-      <svg
-        aria-hidden
-        width="0"
-        height="0"
-        style={{ position: "absolute", width: 0, height: 0 }}
-      >
-        <title>Stamp clip-path</title>
-        <defs>
-          <clipPath id={clipId} clipPathUnits="userSpaceOnUse">
-            <path d={STAMP_OUTER_PATH_D} transform={clipTransform} />
-          </clipPath>
-        </defs>
-      </svg>
+      <HoloCardClipDefs clipId={clipId} clipTransform={clipTransform} />
       <div
         className={
           forceSide ? "relative" : "relative transition-transform duration-700"
         }
         style={innerStyle}
       >
-        {/* Front Side */}
         <div style={frontStyle}>
-          {forceSide ? (
-            <div className="relative h-full w-full" style={clipStyle}>
-              <StampBorder />
-              <CardOverlay
-                overlayColor={overlay_color}
-                overlayOpacity={overlay_opacity}
-              />
-
-              <div className={CARD_CLASSES.CONTENT_WRAPPER}>
-                <LogoHeader variant="front" />
-                <FrontCardContent
-                  name={name}
-                  personalityPhrase={personality_phrase}
-                  accountNumber={account_number}
-                  memberSince={member_since}
-                  isStatic
-                />
-              </div>
-
-              {/* <DitherEffect intensity={1}> */}
-              <StyledHoloCard
-                $url={houseImage}
-                ref={ref}
-                $active={false}
-                $animated={false}
-                $activeRotation={activeRotation}
-                $activeBackgroundPosition={activeBackgroundPosition}
-                $height={height}
-                $width={width}
-                $showSparkles={showSparkles}
-              >
-                {children}
-              </StyledHoloCard>
-              {/* </DitherEffect> */}
-            </div>
-          ) : (
-            <Tilt className="relative h-full w-full p-0!" style={clipStyle}>
-              <StampBorder />
-              <CardOverlay
-                overlayColor={overlay_color}
-                overlayOpacity={overlay_opacity}
-              />
-
-              <div className={CARD_CLASSES.CONTENT_WRAPPER}>
-                <LogoHeader variant="front" />
-                <FrontCardContent
-                  name={name}
-                  personalityPhrase={personality_phrase}
-                  accountNumber={account_number}
-                  memberSince={member_since}
-                />
-              </div>
-
-              {/* <DitherEffect intensity={1}> */}
-              <StyledHoloCard
-                $url={houseImage}
-                ref={ref}
-                $active={hover}
-                $animated={animated}
-                $activeRotation={activeRotation}
-                $activeBackgroundPosition={activeBackgroundPosition}
-                onMouseMove={handleOnMouseMove}
-                onTouchMove={handleOnTouchMove}
-                onMouseOut={handleOnMouseOut}
-                $height={height}
-                $width={width}
-                $showSparkles={showSparkles}
-              >
-                {children}
-              </StyledHoloCard>
-              {/* </DitherEffect> */}
-            </Tilt>
-          )}
+          <HoloCardFrontFace
+            name={name}
+            personalityPhrase={personality_phrase}
+            accountNumber={account_number}
+            memberSince={member_since}
+            {...faceCommon}
+          >
+            {children}
+          </HoloCardFrontFace>
         </div>
-
-        {/* Back Side */}
         <div style={backStyle}>
-          {forceSide ? (
-            <div className="relative h-full w-full" style={clipStyle}>
-              <StampBorder />
-              <CardOverlay
-                overlayColor={overlay_color}
-                overlayOpacity={overlay_opacity}
-              />
-
-              <div className={CARD_CLASSES.CONTENT_WRAPPER_BACK}>
-                <div className="flex min-h-0 w-full flex-1 flex-col gap-4">
-                  <BackCardContent
-                    name={name}
-                    personalityPhrase={personality_phrase}
-                    userBio={user_bio}
-                    accountNumber={account_number}
-                    memberSince={member_since}
-                    isStatic
-                  />
-                </div>
-
-                <BackCardFooter
-                  accountNumber={account_number}
-                  memberSince={member_since}
-                  isStatic
-                />
-              </div>
-
-              {/* <DitherEffect intensity={1}> */}
-              <StyledHoloCard
-                $url={houseImage}
-                ref={ref}
-                $active={false}
-                $animated={false}
-                $activeRotation={activeRotation}
-                $activeBackgroundPosition={activeBackgroundPosition}
-                $height={height}
-                $width={width}
-                $showSparkles={showSparkles}
-              >
-                {children}
-              </StyledHoloCard>
-              {/* </DitherEffect> */}
-            </div>
-          ) : (
-            <Tilt className="relative h-full w-full p-0!" style={clipStyle}>
-              <StampBorder />
-              <CardOverlay
-                overlayColor={overlay_color}
-                overlayOpacity={overlay_opacity}
-              />
-
-              <div className={CARD_CLASSES.CONTENT_WRAPPER_BACK}>
-                <div className="flex min-h-0 w-full flex-1 flex-col gap-4">
-                  <BackCardContent
-                    name={name}
-                    personalityPhrase={personality_phrase}
-                    userBio={user_bio}
-                    accountNumber={account_number}
-                    memberSince={member_since}
-                  />
-                </div>
-
-                <BackCardFooter
-                  accountNumber={account_number}
-                  memberSince={member_since}
-                />
-              </div>
-
-              {/* <DitherEffect intensity={1}> */}
-              <StyledHoloCard
-                $url={houseImage}
-                ref={ref}
-                $active={hover}
-                $animated={animated}
-                $activeRotation={activeRotation}
-                $activeBackgroundPosition={activeBackgroundPosition}
-                onMouseMove={handleOnMouseMove}
-                onTouchMove={handleOnTouchMove}
-                onMouseOut={handleOnMouseOut}
-                $height={height}
-                $width={width}
-                $showSparkles={showSparkles}
-              >
-                {children}
-              </StyledHoloCard>
-              {/* </DitherEffect> */}
-            </Tilt>
-          )}
+          <HoloCardBackFace
+            name={name}
+            personalityPhrase={personality_phrase}
+            userBio={user_bio}
+            accountNumber={account_number}
+            memberSince={member_since}
+            {...faceCommon}
+          >
+            {children}
+          </HoloCardBackFace>
         </div>
       </div>
     </div>

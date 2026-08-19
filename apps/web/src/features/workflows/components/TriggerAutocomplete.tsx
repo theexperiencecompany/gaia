@@ -6,7 +6,7 @@ import {
 import { Skeleton } from "@heroui/skeleton";
 import Fuse from "fuse.js";
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import type { TriggerSchema } from "@/features/workflows/triggers/types/base";
@@ -42,22 +42,34 @@ export function TriggerAutocomplete({
   );
   const normalizedSelectedKey = selectedSchema?.slug ?? selectedTrigger;
 
-  useEffect(() => {
+  // Guarded render update to keep inputValue in sync without stale flash.
+  const prevTriggerSyncRef = useRef({
+    selectedTrigger,
+    name: selectedSchema?.name,
+    slug: selectedSchema?.slug,
+    triggerSchemas,
+  });
+  const prev = prevTriggerSyncRef.current;
+  if (
+    prev.selectedTrigger !== selectedTrigger ||
+    prev.name !== selectedSchema?.name ||
+    prev.slug !== selectedSchema?.slug ||
+    prev.triggerSchemas !== triggerSchemas
+  ) {
+    prevTriggerSyncRef.current = {
+      selectedTrigger,
+      name: selectedSchema?.name,
+      slug: selectedSchema?.slug,
+      triggerSchemas,
+    };
     if (selectedSchema && selectedTrigger) {
       setFilterValue(selectedSchema.name);
     } else if (!selectedTrigger) {
       setFilterValue("");
     } else if (selectedTrigger && triggerSchemas !== undefined) {
-      // Schemas loaded but this trigger slug wasn't found — clear the display
-      // so it doesn't appear as a ghost selection
       setFilterValue("");
     }
-  }, [
-    selectedTrigger,
-    selectedSchema?.name,
-    selectedSchema?.slug,
-    triggerSchemas,
-  ]);
+  }
 
   const fuse = useMemo(() => {
     if (!triggerSchemas) return null;

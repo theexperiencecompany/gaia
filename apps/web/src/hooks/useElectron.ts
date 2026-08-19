@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import { getElectronAPI } from "@/lib/electron/api";
 
 const noopCleanup = () => {
@@ -12,11 +12,12 @@ const noopCleanup = () => {
  * @returns boolean indicating if running in Electron
  */
 function useIsElectron(): boolean {
-  const [isElectron, setIsElectron] = useState(false);
-
-  useEffect(() => {
-    setIsElectron(getElectronAPI() !== null);
-  }, []);
+  const mounted = useSyncExternalStore(
+    () => () => undefined,
+    () => true,
+    () => false,
+  );
+  const isElectron = mounted ? getElectronAPI() !== null : false;
 
   return isElectron;
 }

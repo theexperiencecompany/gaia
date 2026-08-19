@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { desktopApi } from "@/features/download/api/desktopApi";
 import type { DesktopRelease } from "@/features/download/types";
 import type {
@@ -252,15 +252,14 @@ function detectPlatform(): Platform {
 }
 
 export function usePlatformDetection() {
-  const [platform, setPlatform] = useState<Platform>("unknown");
-  const [isLoading, setIsLoading] = useState(true);
+  const platform = useSyncExternalStore(
+    () => () => undefined,
+    () => detectPlatform(),
+    () => "unknown" as Platform,
+  );
+  const isLoading = false;
   const { release, isLoading: isDesktopReleaseLoading } =
     useLatestDesktopRelease();
-
-  useEffect(() => {
-    setPlatform(detectPlatform());
-    setIsLoading(false);
-  }, []);
 
   const desktopDownloads = useMemo(
     () => buildDesktopDownloads(release),

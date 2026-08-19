@@ -2,6 +2,7 @@
 
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { ArrowUp02Icon, RedditIcon, UserCircle02Icon } from "@icons";
+import { useEffect, useState } from "react";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import type { RedditCommentData } from "@/types/features/redditTypes";
 
@@ -47,6 +48,8 @@ export default function RedditCommentCard({
   maxHeight = "max-h-[500px]",
   isCollapsible = true,
 }: RedditCommentCardProps) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   if (!comments || comments.length === 0) {
     return null;
   }
@@ -78,7 +81,7 @@ export default function RedditCommentCard({
                   )}
                   <span className="text-gray-500">•</span>
                   <span className="text-gray-500">
-                    {formatTime(comment.created_utc)}
+                    {mounted ? formatTime(comment.created_utc) : ""}
                   </span>
                 </div>
 

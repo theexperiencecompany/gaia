@@ -7,7 +7,7 @@
 import * as Sentry from "@sentry/nextjs";
 import NextError from "next/error";
 import posthog from "posthog-js";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo } from "react";
 
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import {
@@ -21,13 +21,26 @@ export default function GlobalError({
   error: Error & { digest?: string };
 }) {
   const isChunk = isChunkLoadError(error);
-  const [recovering, setRecovering] = useState(isChunk);
+  // Derive recovering during render to avoid stale flash from effect-adjusted state.
+  // Pure check: will this chunk error trigger a reload? (mirrors recoverFromChunkError's guard without side effects)
+  const recovering = useMemo(() => {
+    if (!isChunk) return false;
+    if (typeof window === "undefined") return true;
+    try {
+      const raw = window.sessionStorage.getItem("gaia:chunk-recovery-at");
+      if (raw === null) return true;
+      const last = Number.parseInt(raw, 10);
+      if (Number.isNaN(last)) return true;
+      return Date.now() - last >= 10_000;
+    } catch {
+      return true;
+    }
+  }, [isChunk, error]);
 
   useEffect(() => {
     // Stale-asset chunk failure — reload once for fresh chunks. Skip Sentry:
     // this is an expected deploy-boundary condition, not an app fault.
     if (isChunk && recoverFromChunkError(error) === "reloading") return;
-    setRecovering(false);
     if (isChunk) return;
 
     Sentry.captureException(error);

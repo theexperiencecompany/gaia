@@ -28,7 +28,10 @@ export default function SearchResultsTabs({
         )}
 
         {search_results.images && search_results.images?.length > 0 && (
-          <ImageResults images={search_results.images} />
+          <ImageResults
+            key={search_results.images.join("|")}
+            images={search_results.images}
+          />
         )}
 
         {search_results.news && search_results.news?.length > 0 && (
@@ -49,6 +52,7 @@ function ImageResults({ images }: ImageResultsProps) {
   const [startIndex, setStartIndex] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
     const validateImages = async () => {
       // Filter out obviously invalid images first
       const potentiallyValidImages = images.filter(
@@ -81,11 +85,13 @@ function ImageResults({ images }: ImageResultsProps) {
 
       try {
         const results = await Promise.all(validationPromises);
+        if (cancelled) return;
         const validImageUrls = results.filter(
           (url): url is string => url !== null,
         );
         setValidImages(validImageUrls);
       } catch (error) {
+        if (cancelled) return;
         console.error("Error validating images:", error);
         setValidImages([]);
       }
@@ -93,7 +99,9 @@ function ImageResults({ images }: ImageResultsProps) {
 
     if (images && images.length > 0) validateImages();
     else setValidImages([]);
-    setStartIndex(0);
+    return () => {
+      cancelled = true;
+    };
   }, [images]);
 
   if (validImages.length === 0) {

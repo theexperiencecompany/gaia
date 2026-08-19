@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 export function usePlatform() {
-  const [isMac, setIsMac] = useState(true);
-
-  useEffect(() => {
-    // Detect if user is on macOS
-    setIsMac(/(Mac|iPhone|iPod|iPad)/i.test(navigator.platform));
-  }, []);
+  const mounted = useSyncExternalStore(
+    () => () => undefined,
+    () => true,
+    () => false,
+  );
+  const isMac = mounted
+    ? /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform)
+    : true;
 
   return {
     isMac,

@@ -10,7 +10,13 @@ import {
 import { useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
 import Image from "next/image";
-import { type CSSProperties, useCallback, useEffect, useState } from "react";
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { RaisedButton } from "@/components/ui/raised-button";
 import { isOfferLive } from "@/config/offer";
@@ -309,9 +315,12 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
   // Voice mode hides the letter, but hiding it only stops it rendering — the
   // component stays mounted, so an open letter would leave the body scroll
   // locked with nothing on screen to explain why. Hiding it closes it.
-  useEffect(() => {
+  // Guarded render update to avoid stale flash from effect.
+  const prevHiddenRef = useRef(hidden);
+  if (prevHiddenRef.current !== hidden) {
+    prevHiddenRef.current = hidden;
     if (hidden) setIsOpen(false);
-  }, [hidden]);
+  }
 
   const copyCode = useCallback(async () => {
     try {

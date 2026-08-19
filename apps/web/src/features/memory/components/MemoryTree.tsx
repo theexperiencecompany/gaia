@@ -3,7 +3,7 @@
 import { Skeleton } from "@heroui/skeleton";
 import { Spinner } from "@heroui/spinner";
 import { Folder01Icon } from "@icons";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { ChevronRight } from "@/components/shared/icons";
 import { memoryApi } from "@/features/memory/api/memoryApi";
@@ -90,6 +90,11 @@ function TreeFolder({ node, depth, actions }: TreeFolderProps) {
   const [expanded, setExpanded] = useState(false);
   const [memories, setMemories] = useState<MemoryEntry[] | null>(node.memories);
   const [loadingMemories, setLoadingMemories] = useState(false);
+  const prevMemoriesRef = useRef(node.memories);
+  if (prevMemoriesRef.current !== node.memories) {
+    prevMemoriesRef.current = node.memories;
+    setMemories(node.memories);
+  }
 
   const handleForget = useCallback(
     async (target: MemoryEntry) => {

@@ -10,6 +10,7 @@ import {
   Loading03Icon,
 } from "@icons";
 import { useRouter } from "next/navigation";
+import { useSyncExternalStore } from "react";
 import { ChevronRight } from "@/components/shared/icons";
 
 import { useWorkflowExecutions } from "../hooks/useWorkflowExecutions";
@@ -102,6 +103,11 @@ function ExecutionStatusBadge({
 }
 
 function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
+  const mounted = useSyncExternalStore(
+    () => () => undefined,
+    () => true,
+    () => false,
+  );
   const router = useRouter();
 
   const handleViewClick = () => {
@@ -148,7 +154,7 @@ function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
       </div>
       <div className="flex items-center gap-2">
         <span className="text-xs text-zinc-500">
-          {formatRelativeDate(execution.started_at)}
+          {mounted ? formatRelativeDate(execution.started_at) : ""}
         </span>
         {isClickable && <ChevronRight className="h-4 w-4 text-zinc-500" />}
       </div>

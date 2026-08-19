@@ -38,29 +38,20 @@ type WorkflowVariant = "user" | "community" | "explore" | "suggestion";
 type ActionType = "run" | "create" | "insert-prompt" | "navigate" | "none";
 
 interface UnifiedWorkflowCardProps {
-  // Core data - accepts either full Workflow or simplified data
   workflow?: Workflow;
   communityWorkflow?: CommunityWorkflow;
-  // Simplified props for direct use (alternative to workflow objects)
   title?: string;
   description?: string;
   steps?: PublicWorkflowStep[];
-  /** User-chosen icon slug (gaia-icons component name) */
   icon?: string | null;
-  /** Hex color for the user-chosen icon */
   iconColor?: string | null;
-  /** Built-in workflow key — keeps "add" idempotent with the provisioner */
   systemWorkflowKey?: string | null;
-  /** The trigger this card advertises, reproduced on add */
   triggerConfig?: TriggerConfig;
-  /** Author, for cards built from flat props rather than a workflow object */
   creator?: ContentCreator;
   totalExecutions?: number;
   slug?: string;
   prompt?: string;
   actionType?: "prompt" | "workflow";
-
-  // Display configuration
   variant?: WorkflowVariant;
   showTrigger?: boolean;
   showExecutions?: boolean;
@@ -68,78 +59,50 @@ interface UnifiedWorkflowCardProps {
   showCreator?: boolean;
   useBlurEffect?: boolean;
   showDescriptionAsTooltip?: boolean;
-
-  // Action configuration
   primaryAction?: ActionType;
   onCardClick?: () => void;
   onActionComplete?: () => void;
-  /**
-   * When set, the whole card becomes a real crawlable link to this URL (no
-   * client-side router.push). The action button stays clickable above it.
-   */
   href?: string;
-
-  // Button customization
   actionButtonLabel?: string;
-
-  // Explicit missing integrations override (for cards that don't pass a full workflow object)
   missingIntegrations?: IntegrationRef[];
 }
 
-export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
-  const {
-    workflow,
-    communityWorkflow,
-    description: propDescription,
-    slug,
-    prompt,
-    actionType: propActionType,
-    variant = "explore",
-    showExecutions = true,
-    useBlurEffect = false,
-    showDescriptionAsTooltip = false,
-    onCardClick,
-    onActionComplete,
-    actionButtonLabel,
-    href,
-  } = props;
-  const [isLoading, setIsLoading] = useState(false);
+function useWorkflowCardActions({
+  workflow,
+  communityWorkflow,
+  title,
+  displayDescription,
+  steps,
+  systemWorkflowKey,
+  sourceTriggerConfig,
+  prompt,
+  slug,
+  variant,
+  onActionComplete,
+  resolvedAction,
+  isLoading,
+  setIsLoading,
+}: {
+  workflow?: Workflow;
+  communityWorkflow?: CommunityWorkflow;
+  title: string;
+  displayDescription: string;
+  steps: PublicWorkflowStep[];
+  systemWorkflowKey?: string;
+  sourceTriggerConfig?: TriggerConfig;
+  prompt?: string;
+  slug?: string;
+  variant: WorkflowVariant;
+  onActionComplete?: () => void;
+  resolvedAction: ActionType;
+  isLoading: boolean;
+  setIsLoading: (loading: boolean) => void;
+}) {
   const router = useRouter();
-
-  // Auth check
   const { isAuthenticated, openLoginModal } = useAuth();
-
   const { selectWorkflow } = useWorkflowSelection();
   const { createWorkflow } = useWorkflowCreation();
-  const { integrations } = useIntegrations();
   const appendToInput = useAppendToInput();
-
-  // Normalize data + display settings from the various supported prop sources.
-  const {
-    title,
-    displayDescription,
-    steps,
-    customIcon,
-    customIconColor,
-    systemWorkflowKey,
-    sourceTriggerConfig,
-    totalExecutions,
-    creator,
-    shouldShowTrigger,
-    shouldShowCreator,
-    shouldShowActivation,
-    resolvedAction,
-    resolvedMissingIntegrations,
-    isClickable,
-  } = deriveWorkflowCardConfig(props);
-
-  // Get trigger info for user workflows
-  const triggerDisplay = workflow
-    ? getTriggerDisplayInfo(workflow, integrations)
-    : null;
-  const nextRunText = workflow ? getNextRunDisplay(workflow) : null;
-
-  // Action handlers
   const handleRunWorkflow = async () => {
     if (!workflow || isLoading) return;
     setIsLoading(true);
@@ -157,50 +120,38 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
       setIsLoading(false);
     }
   };
-
   const handleCreateWorkflow = async () => {
     if (isLoading) return;
-
-    // Check authentication first - open login modal if not authenticated
     if (!isAuthenticated) {
       openLoginModal();
       return;
     }
-
     setIsLoading(true);
     const toastId = toast.loading("Creating workflow...");
-
     try {
-      // Convert PublicWorkflowStep to WorkflowStepData format if steps exist
       const formattedSteps = steps?.map((step, index) => ({
         id: step.id || `step_${index}`,
         title: step.title,
         description: step.description,
         category: step.category,
       }));
-
       const workflowRequest = {
         title,
         description:
-          communityWorkflow?.description || propDescription || undefined,
+          communityWorkflow?.description || displayDescription || undefined,
         prompt: communityWorkflow?.prompt || displayDescription || title,
-        // Reproduce the trigger the card advertises; manual only as a fallback.
         trigger_config: sourceTriggerConfig ?? {
           type: "manual" as const,
           enabled: true,
         },
         system_workflow_key: systemWorkflowKey,
-        // Pass formatted steps if available to avoid regeneration
         ...(formattedSteps &&
           formattedSteps.length > 0 && {
             steps: formattedSteps,
           }),
-        // Only generate if no steps exist
         generate_immediately: !formattedSteps || formattedSteps.length === 0,
       };
-
       const result = await createWorkflow(workflowRequest);
-
       if (result.success && result.workflow) {
         toast.success("Workflow created successfully!", { id: toastId });
         trackEvent(ANALYTICS_EVENTS.WORKFLOWS_CREATED, {
@@ -219,17 +170,14 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
       setIsLoading(false);
     }
   };
-
   const handleInsertPrompt = () => {
     if (prompt) {
-      // `title` is user-authored free text — intentionally not sent.
       trackEvent(ANALYTICS_EVENTS.USE_CASES_PROMPT_INSERTED);
       appendToInput(prompt);
       router.push("/c");
       onActionComplete?.();
     }
   };
-
   const handleNavigate = () => {
     const targetSlug = slug || communityWorkflow?.slug || workflow?.slug;
     if (targetSlug) {
@@ -240,7 +188,6 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
       router.push(`/use-cases/${targetSlug}`);
     }
   };
-
   const handlePrimaryAction = async () => {
     switch (resolvedAction) {
       case "run":
@@ -259,14 +206,11 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
         break;
     }
   };
-
-  const handleCardClick = () => {
+  const handleCardClick = (onCardClick?: () => void) => {
     if (onCardClick) {
       onCardClick();
       return;
     }
-
-    // Default card click behavior
     if (variant === "suggestion") {
       handleCreateWorkflow();
     } else if (variant === "user" && workflow) {
@@ -275,29 +219,269 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
       handleNavigate();
     }
   };
+  return {
+    handleRunWorkflow,
+    handleCreateWorkflow,
+    handleInsertPrompt,
+    handleNavigate,
+    handlePrimaryAction,
+    handleCardClick,
+  };
+}
 
-  // Get button configuration
+interface WorkflowCardHeaderProps {
+  steps: PublicWorkflowStep[];
+  customIcon?: string | null;
+  customIconColor?: string | null;
+  resolvedMissingIntegrations?: IntegrationRef[];
+  shouldShowActivation: boolean;
+  workflow?: Workflow;
+}
+
+function WorkflowCardHeader({
+  steps,
+  customIcon,
+  customIconColor,
+  resolvedMissingIntegrations,
+  shouldShowActivation,
+  workflow,
+}: WorkflowCardHeaderProps) {
+  return (
+    <div className="flex items-start justify-between">
+      <div className="flex items-center gap-2">
+        <WorkflowIcons
+          steps={steps}
+          icon={customIcon}
+          iconColor={customIconColor}
+          iconSize={25}
+          maxIcons={3}
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        {resolvedMissingIntegrations?.length ? (
+          <MissingIntegrationsWarning
+            missingIntegrations={resolvedMissingIntegrations}
+          />
+        ) : (
+          shouldShowActivation &&
+          workflow && <ActivationStatus activated={workflow.activated} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface WorkflowCardTitleProps {
+  title: string;
+  displayDescription: string;
+  showDescriptionAsTooltip: boolean;
+}
+
+function WorkflowCardTitle({
+  title,
+  displayDescription,
+  showDescriptionAsTooltip,
+}: WorkflowCardTitleProps) {
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <h3 className="line-clamp-2 text-lg font-medium">{title}</h3>
+      </div>
+      {!showDescriptionAsTooltip && (
+        <div className="mt-1 line-clamp-2 min-h-8 flex-1 text-xs text-zinc-500">
+          {displayDescription}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface WorkflowCardMetaProps {
+  shouldShowCreator: boolean;
+  creator?: ContentCreator;
+  shouldShowTrigger: boolean;
+  triggerDisplay: ReturnType<typeof getTriggerDisplayInfo> | null;
+  triggerType?: string;
+  nextRunText: string | null;
+  showExecutions: boolean;
+  totalExecutions: number;
+}
+
+function WorkflowCardMeta({
+  shouldShowCreator,
+  creator,
+  shouldShowTrigger,
+  triggerDisplay,
+  triggerType,
+  nextRunText,
+  showExecutions,
+  totalExecutions,
+}: WorkflowCardMetaProps) {
+  return (
+    <div className="min-w-0 space-y-1">
+      {shouldShowCreator && creator && (
+        <CreatorAvatar creator={creator} showName />
+      )}
+      {shouldShowTrigger && triggerDisplay && (
+        <TriggerDisplay
+          triggerType={triggerType || "manual"}
+          triggerLabel={triggerDisplay.label
+            .split(" ")
+            .map(
+              (word: string) =>
+                word.charAt(0).toUpperCase() + word.slice(1).toLowerCase(),
+            )
+            .join(" ")}
+          integrationId={triggerDisplay.integrationId}
+          nextRunText={nextRunText || undefined}
+        />
+      )}
+      {showExecutions && totalExecutions > 0 && (
+        <div className="flex items-center gap-1 text-xs text-zinc-500">
+          <PlayIcon width={15} height={15} className="w-4 text-zinc-500" />
+          <span className="text-nowrap">{formatRunCount(totalExecutions)}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface WorkflowCardFooterProps {
+  workflow?: Workflow;
+  resolvedAction: ActionType;
+  buttonConfig: { label: string; variant: "primary" | "flat" };
+  isLoading: boolean;
+  onPrimaryAction: () => void;
+  meta: React.ReactNode;
+}
+
+function WorkflowCardFooter({
+  workflow,
+  resolvedAction,
+  buttonConfig,
+  isLoading,
+  onPrimaryAction,
+  meta,
+}: WorkflowCardFooterProps) {
+  return (
+    <div className="mt-auto">
+      <div className="mt-1 flex items-center justify-between gap-2">
+        {meta}
+        <div className="flex items-center gap-3">
+          {workflow?.is_system_workflow && <SystemWorkflowChip />}
+          {resolvedAction !== "none" && (
+            <span className="relative z-[2]">
+              <WorkflowActionButton
+                label={buttonConfig.label}
+                isLoading={isLoading}
+                onPress={(e: React.MouseEvent) => {
+                  e.stopPropagation();
+                  onPrimaryAction();
+                }}
+                variant={buttonConfig.variant}
+              />
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
+  const {
+    workflow,
+    communityWorkflow,
+    slug,
+    prompt,
+    actionType: propActionType,
+    variant = "explore",
+    showExecutions = true,
+    useBlurEffect = false,
+    showDescriptionAsTooltip = false,
+    onCardClick,
+    onActionComplete,
+    actionButtonLabel,
+    href,
+  } = props;
+  const [isLoading, setIsLoading] = useState(false);
+  const { integrations } = useIntegrations();
+  const {
+    title,
+    displayDescription,
+    steps,
+    customIcon,
+    customIconColor,
+    systemWorkflowKey,
+    sourceTriggerConfig,
+    totalExecutions,
+    creator,
+    shouldShowTrigger,
+    shouldShowCreator,
+    shouldShowActivation,
+    resolvedAction,
+    resolvedMissingIntegrations,
+    isClickable,
+  } = deriveWorkflowCardConfig(props);
+  const triggerDisplay = workflow
+    ? getTriggerDisplayInfo(workflow, integrations)
+    : null;
+  const nextRunText = workflow ? getNextRunDisplay(workflow) : null;
+  const { handlePrimaryAction, handleCardClick } = useWorkflowCardActions({
+    workflow,
+    communityWorkflow,
+    title,
+    displayDescription,
+    steps,
+    systemWorkflowKey,
+    sourceTriggerConfig,
+    prompt,
+    slug,
+    variant,
+    onActionComplete,
+    resolvedAction,
+    isLoading,
+    setIsLoading,
+  });
   const buttonConfig = getButtonConfig(
     resolvedAction,
     actionButtonLabel,
     propActionType,
   );
-
-  // Render tool icons using the shared component
-  const renderToolIcons = () => (
-    <WorkflowIcons
+  const onCardPress = href ? undefined : () => handleCardClick(onCardClick);
+  const header = (
+    <WorkflowCardHeader
       steps={steps}
-      icon={customIcon}
-      iconColor={customIconColor}
-      iconSize={25}
-      maxIcons={3}
+      customIcon={customIcon}
+      customIconColor={customIconColor}
+      resolvedMissingIntegrations={resolvedMissingIntegrations}
+      shouldShowActivation={shouldShowActivation}
+      workflow={workflow}
     />
   );
-
+  const titleSection = (
+    <WorkflowCardTitle
+      title={title}
+      displayDescription={displayDescription}
+      showDescriptionAsTooltip={showDescriptionAsTooltip}
+    />
+  );
+  const meta = (
+    <WorkflowCardMeta
+      shouldShowCreator={shouldShowCreator}
+      creator={creator}
+      shouldShowTrigger={shouldShowTrigger}
+      triggerDisplay={triggerDisplay}
+      triggerType={workflow?.trigger_config.type}
+      nextRunText={nextRunText}
+      showExecutions={showExecutions}
+      totalExecutions={totalExecutions}
+    />
+  );
   const cardContent = (
     <div
       className={`group relative z-1 flex h-full min-h-fit w-full flex-col gap-2 rounded-3xl outline-1 ${useBlurEffect ? "bg-zinc-800/40 outline-zinc-800/50 backdrop-blur-lg" : "bg-zinc-800 outline-zinc-800/70"} p-4 transition-all select-none ${isClickable ? "cursor-pointer hover:bg-zinc-700/50" : ""}`}
-      onClick={href ? undefined : handleCardClick}
+      onClick={onCardPress}
     >
       {href && (
         <Link
@@ -306,90 +490,18 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
           className="absolute inset-0 z-[1] rounded-3xl"
         />
       )}
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-2">{renderToolIcons()}</div>
-        <div className="flex items-center gap-2">
-          {resolvedMissingIntegrations?.length ? (
-            // The warning replaces the activation badge: a workflow with
-            // unconnected integrations can't run, so its activated/deactivated
-            // state is moot until they're connected.
-            <MissingIntegrationsWarning
-              missingIntegrations={resolvedMissingIntegrations}
-            />
-          ) : (
-            shouldShowActivation &&
-            workflow && <ActivationStatus activated={workflow.activated} />
-          )}
-        </div>
-      </div>
-
-      <div>
-        <div className="flex items-center gap-2">
-          <h3 className="line-clamp-2 text-lg font-medium">{title}</h3>
-        </div>
-        {!showDescriptionAsTooltip && (
-          <div className="mt-1 line-clamp-2 min-h-8 flex-1 text-xs text-zinc-500">
-            {displayDescription}
-          </div>
-        )}
-      </div>
-
-      <div className="mt-auto">
-        <div className="mt-1 flex items-center justify-between gap-2">
-          <div className="min-w-0 space-y-1">
-            {shouldShowCreator && creator && (
-              <CreatorAvatar creator={creator} showName />
-            )}
-
-            {shouldShowTrigger && triggerDisplay && (
-              <TriggerDisplay
-                triggerType={workflow?.trigger_config.type || "manual"}
-                triggerLabel={triggerDisplay.label
-                  .split(" ")
-                  .map(
-                    (word: string) =>
-                      word.charAt(0).toUpperCase() +
-                      word.slice(1).toLowerCase(),
-                  )
-                  .join(" ")}
-                integrationId={triggerDisplay.integrationId}
-                nextRunText={nextRunText || undefined}
-              />
-            )}
-
-            {showExecutions && totalExecutions > 0 && (
-              <div className="flex items-center gap-1 text-xs text-zinc-500">
-                <PlayIcon
-                  width={15}
-                  height={15}
-                  className="w-4 text-zinc-500"
-                />
-                <span className="text-nowrap">
-                  {formatRunCount(totalExecutions)}
-                </span>
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center gap-3">
-            {workflow?.is_system_workflow && <SystemWorkflowChip />}
-
-            {resolvedAction !== "none" && (
-              <span className="relative z-[2]">
-                <WorkflowActionButton
-                  label={buttonConfig.label}
-                  isLoading={isLoading}
-                  onPress={handlePrimaryAction}
-                  variant={buttonConfig.variant}
-                />
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
+      {header}
+      {titleSection}
+      <WorkflowCardFooter
+        workflow={workflow}
+        resolvedAction={resolvedAction}
+        buttonConfig={buttonConfig}
+        isLoading={isLoading}
+        onPrimaryAction={handlePrimaryAction}
+        meta={meta}
+      />
     </div>
   );
-
   return showDescriptionAsTooltip ? (
     <Tooltip
       content={workflow?.prompt || displayDescription}
@@ -409,8 +521,6 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
   );
 }
 
-// Resolve the card's display data and settings from the various supported prop
-// shapes (full Workflow, CommunityWorkflow, or simplified direct props).
 function deriveWorkflowCardConfig(props: UnifiedWorkflowCardProps) {
   const {
     workflow,
@@ -433,7 +543,6 @@ function deriveWorkflowCardConfig(props: UnifiedWorkflowCardProps) {
     href,
     missingIntegrations: propMissingIntegrations,
   } = props;
-
   const title = propTitle || workflow?.title || communityWorkflow?.title || "";
   const displayDescription =
     propDescription ||
@@ -451,16 +560,13 @@ function deriveWorkflowCardConfig(props: UnifiedWorkflowCardProps) {
     0;
   const creator =
     propCreator || communityWorkflow?.creator || workflow?.creator;
-
   const shouldShowTrigger = showTrigger ?? (variant === "user" && !!workflow);
-  // A byline credits a community author; our own workflows don't need one.
   const shouldShowCreator =
     (showCreator ?? variant === "community") &&
     !!creator &&
     !isSystemCreator(creator);
   const shouldShowActivation =
     showActivationStatus ?? (variant === "user" && !!workflow);
-
   const resolvedAction = primaryAction ?? getDefaultAction(variant);
   const resolvedMissingIntegrations =
     propMissingIntegrations ?? workflow?.missing_integrations;
@@ -471,7 +577,6 @@ function deriveWorkflowCardConfig(props: UnifiedWorkflowCardProps) {
     undefined;
   const sourceTriggerConfig =
     propTriggerConfig ?? communityWorkflow?.trigger_config;
-
   return {
     title,
     displayDescription,
@@ -491,7 +596,6 @@ function deriveWorkflowCardConfig(props: UnifiedWorkflowCardProps) {
   };
 }
 
-// Helper function to determine default action based on variant
 function getDefaultAction(variant: WorkflowVariant): ActionType {
   switch (variant) {
     case "user":
@@ -506,7 +610,6 @@ function getDefaultAction(variant: WorkflowVariant): ActionType {
   }
 }
 
-// Helper function to get button configuration
 function getButtonConfig(
   action: ActionType,
   customLabel?: string,
@@ -515,12 +618,9 @@ function getButtonConfig(
   if (customLabel) {
     return { label: customLabel, variant: "primary" };
   }
-
-  // Handle prompt vs workflow action type
   if (propActionType === "prompt") {
     return { label: "Insert Prompt", variant: "primary" };
   }
-
   switch (action) {
     case "run":
       return { label: "Run", variant: "flat" };
@@ -535,7 +635,6 @@ function getButtonConfig(
   }
 }
 
-// Unified action button component
 interface WorkflowActionButtonProps {
   label: string;
   isLoading: boolean;
@@ -552,7 +651,6 @@ function WorkflowActionButton({
   size = "sm",
 }: WorkflowActionButtonProps) {
   const buttonVariant = variant === "flat" ? "flat" : "solid";
-
   return (
     <Button
       color="primary"

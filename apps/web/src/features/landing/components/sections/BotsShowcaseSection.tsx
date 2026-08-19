@@ -284,10 +284,11 @@ function BotsShowcaseDemo() {
     });
   }, []);
 
-  useEffect(() => {
-    if (inView) return;
-    setAutoRotate(true);
-  }, [inView]);
+  const prevInViewRef = useRef(inView);
+  if (prevInViewRef.current !== inView) {
+    prevInViewRef.current = inView;
+    if (!inView) setAutoRotate(true);
+  }
 
   useEffect(() => {
     if (!inView || !autoRotate) return;

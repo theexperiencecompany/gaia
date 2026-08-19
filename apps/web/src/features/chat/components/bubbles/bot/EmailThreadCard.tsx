@@ -40,9 +40,6 @@ function EmailBodyRenderer({
   body: string;
   content?: { text: string; html: string };
 }) {
-  const [loading, setLoading] = useState(true);
-  const shadowHostRef = useRef<HTMLDivElement | null>(null);
-
   const htmlContent = content?.html || content?.text || body;
 
   const sanitizedHtml = DOMPurify.sanitize(htmlContent, {
@@ -50,22 +47,24 @@ function EmailBodyRenderer({
     ADD_TAGS: ["iframe"],
   });
 
-  useEffect(() => {
-    if (!sanitizedHtml) {
-      setLoading(false);
-      return;
-    }
+  const [loading, setLoading] = useState(!!sanitizedHtml);
+  const shadowHostRef = useRef<HTMLDivElement | null>(null);
 
-    if (shadowHostRef.current) {
-      const shadowRoot =
-        shadowHostRef.current.shadowRoot ||
-        shadowHostRef.current.attachShadow({ mode: "open" });
-      shadowRoot.innerHTML = "";
-      const contentWrapper = document.createElement("div");
-      contentWrapper.innerHTML = sanitizedHtml;
-      shadowRoot.appendChild(contentWrapper);
-      setLoading(false);
-    }
+  // Initial loading gate — not dependent on prop to avoid adjust-on-prop-change.
+  useEffect(() => {
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (!sanitizedHtml) return;
+    if (!shadowHostRef.current) return;
+    const shadowRoot =
+      shadowHostRef.current.shadowRoot ||
+      shadowHostRef.current.attachShadow({ mode: "open" });
+    shadowRoot.innerHTML = "";
+    const contentWrapper = document.createElement("div");
+    contentWrapper.innerHTML = sanitizedHtml;
+    shadowRoot.appendChild(contentWrapper);
   }, [sanitizedHtml]);
 
   if (!body && (!content || (!content.text && !content.html))) {

@@ -3,7 +3,7 @@
 import { Button } from "@heroui/button";
 import { Spinner } from "@heroui/spinner";
 import { Home01Icon } from "@icons";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import {
   isChunkLoadError,
@@ -22,14 +22,26 @@ interface RouteErrorProps {
  */
 export default function RouteError({ error, reset }: RouteErrorProps) {
   const isChunk = isChunkLoadError(error);
-  const [recovering, setRecovering] = useState(isChunk);
+  // Derive recovering during render to avoid stale flash from effect-adjusted state.
+  const recovering = useMemo(() => {
+    if (!isChunk) return false;
+    if (typeof window === "undefined") return true;
+    try {
+      const raw = window.sessionStorage.getItem("gaia:chunk-recovery-at");
+      if (raw === null) return true;
+      const last = Number.parseInt(raw, 10);
+      if (Number.isNaN(last)) return true;
+      return Date.now() - last >= 10_000;
+    } catch {
+      return true;
+    }
+  }, [isChunk, error]);
 
   useEffect(() => {
     // A stale-asset chunk failure reached the boundary. Reload once to fetch
     // fresh chunks; if recovery is exhausted, fall through to the retryable UI.
     // `recoverFromChunkError` emits its own analytics for both paths.
     if (isChunk && recoverFromChunkError(error) === "reloading") return;
-    setRecovering(false);
     if (isChunk) return;
 
     // Full diagnostics stay in the console (and Sentry). Only the stable,

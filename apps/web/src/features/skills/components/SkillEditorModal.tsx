@@ -11,7 +11,7 @@ import {
 } from "@heroui/modal";
 import { Tab, Tabs } from "@heroui/tabs";
 import { Github01Icon } from "@icons";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useReducer, useRef } from "react";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { toast } from "@/lib/toast";
 import { skillsApi } from "../api/skillsApi";
@@ -35,6 +35,72 @@ interface SkillEditorModalProps {
   skill: Skill | null;
 }
 
+type SkillFormState = {
+  mode: "write" | "import";
+  instructionsTab: "write" | "preview";
+  name: string;
+  target: string;
+  description: string;
+  instructions: string;
+  saving: boolean;
+};
+
+type SkillFormAction =
+  | { type: "reset"; skill: Skill | null }
+  | { type: "setMode"; mode: "write" | "import" }
+  | { type: "setInstructionsTab"; tab: "write" | "preview" }
+  | { type: "setName"; name: string }
+  | { type: "setTarget"; target: string }
+  | { type: "setDescription"; description: string }
+  | { type: "setInstructions"; instructions: string }
+  | { type: "setSaving"; saving: boolean };
+
+function skillFormReducer(
+  state: SkillFormState,
+  action: SkillFormAction,
+): SkillFormState {
+  switch (action.type) {
+    case "reset":
+      return {
+        mode: "write",
+        instructionsTab: "write",
+        name: action.skill?.name ?? "",
+        target: action.skill?.target ?? EXECUTOR_TARGET,
+        description: action.skill?.description ?? "",
+        instructions: action.skill?.body_content ?? "",
+        saving: false,
+      };
+    case "setMode":
+      return { ...state, mode: action.mode };
+    case "setInstructionsTab":
+      return { ...state, instructionsTab: action.tab };
+    case "setName":
+      return { ...state, name: action.name };
+    case "setTarget":
+      return { ...state, target: action.target };
+    case "setDescription":
+      return { ...state, description: action.description };
+    case "setInstructions":
+      return { ...state, instructions: action.instructions };
+    case "setSaving":
+      return { ...state, saving: action.saving };
+    default:
+      return state;
+  }
+}
+
+function initSkillForm(skill: Skill | null): SkillFormState {
+  return {
+    mode: "write",
+    instructionsTab: "write",
+    name: skill?.name ?? "",
+    target: skill?.target ?? EXECUTOR_TARGET,
+    description: skill?.description ?? "",
+    instructions: skill?.body_content ?? "",
+    saving: false,
+  };
+}
+
 export function SkillEditorModal({
   isOpen,
   onClose,
@@ -44,25 +110,31 @@ export function SkillEditorModal({
 }: Readonly<SkillEditorModalProps>) {
   const isEdit = skill !== null;
 
-  const [mode, setMode] = useState<"write" | "import">("write");
-  const [instructionsTab, setInstructionsTab] = useState<"write" | "preview">(
-    "write",
+  const [formState, dispatch] = useReducer(
+    skillFormReducer,
+    skill,
+    initSkillForm,
   );
-  const [name, setName] = useState("");
-  const [target, setTarget] = useState(EXECUTOR_TARGET);
-  const [description, setDescription] = useState("");
-  const [instructions, setInstructions] = useState("");
-  const [saving, setSaving] = useState(false);
+  const {
+    mode,
+    instructionsTab,
+    name,
+    target,
+    description,
+    instructions,
+    saving,
+  } = formState;
 
-  useEffect(() => {
-    if (!isOpen) return;
-    setMode("write");
-    setInstructionsTab("write");
-    setName(skill?.name ?? "");
-    setTarget(skill?.target ?? EXECUTOR_TARGET);
-    setDescription(skill?.description ?? "");
-    setInstructions(skill?.body_content ?? "");
-  }, [isOpen, skill]);
+  // Guarded render update to reset form when modal opens or skill changes — avoids stale flash.
+  const prevIsOpenRef = useRef(isOpen);
+  const prevSkillRef = useRef(skill);
+  if (prevIsOpenRef.current !== isOpen || prevSkillRef.current !== skill) {
+    prevIsOpenRef.current = isOpen;
+    prevSkillRef.current = skill;
+    if (isOpen) {
+      dispatch({ type: "reset", skill });
+    }
+  }
 
   const nameError = useMemo(() => {
     if (!name) return undefined;
@@ -90,7 +162,7 @@ export function SkillEditorModal({
 
   const handleSave = async () => {
     if (!isValid) return;
-    setSaving(true);
+    dispatch({ type: "setSaving", saving: true });
     try {
       if (isEdit) {
         await skillsApi.updateSkill(skill.id, {
@@ -113,7 +185,7 @@ export function SkillEditorModal({
     } catch {
       // The API interceptor surfaces the server's error message.
     } finally {
-      setSaving(false);
+      dispatch({ type: "setSaving", saving: false });
     }
   };
 
@@ -123,7 +195,7 @@ export function SkillEditorModal({
         label="Name"
         placeholder="triage-inbox"
         value={name}
-        onValueChange={setName}
+        onValueChange={(v) => dispatch({ type: "setName", name: v })}
         isDisabled={isEdit}
         description={
           isEdit
@@ -137,7 +209,9 @@ export function SkillEditorModal({
         label="Description"
         placeholder="Sort, label, and draft replies for new mail"
         value={description}
-        onValueChange={setDescription}
+        onValueChange={(v) =>
+          dispatch({ type: "setDescription", description: v })
+        }
         description="What it does and when to use it — the agent sees this at all times."
         isInvalid={!!descriptionError}
         errorMessage={descriptionError}
@@ -145,7 +219,7 @@ export function SkillEditorModal({
       <SkillTargetSelect
         targets={targets}
         value={target}
-        onChange={setTarget}
+        onChange={(v) => dispatch({ type: "setTarget", target: v })}
       />
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
@@ -155,7 +229,10 @@ export function SkillEditorModal({
             radius="full"
             selectedKey={instructionsTab}
             onSelectionChange={(key) =>
-              setInstructionsTab(key as "write" | "preview")
+              dispatch({
+                type: "setInstructionsTab",
+                tab: key as "write" | "preview",
+              })
             }
           >
             <Tab key="write" title="Write" />
@@ -167,7 +244,9 @@ export function SkillEditorModal({
             aria-label="Instructions"
             placeholder={"# Triage inbox\n\n1. Fetch unread mail\n2. ..."}
             value={instructions}
-            onValueChange={setInstructions}
+            onValueChange={(v) =>
+              dispatch({ type: "setInstructions", instructions: v })
+            }
             minRows={8}
             maxRows={18}
             classNames={{ input: "font-mono text-xs" }}
@@ -209,7 +288,9 @@ export function SkillEditorModal({
               variant="solid"
               color="primary"
               selectedKey={mode}
-              onSelectionChange={(key) => setMode(key as "write" | "import")}
+              onSelectionChange={(key) =>
+                dispatch({ type: "setMode", mode: key as "write" | "import" })
+              }
               classNames={{ base: "mb-1" }}
             >
               <Tab key="write" title="Write your own">

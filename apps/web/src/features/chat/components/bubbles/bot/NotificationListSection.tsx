@@ -3,7 +3,7 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { NotificationIcon } from "@icons";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { NotificationItem } from "@/features/notification/components/NotificationItem";
 import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";
@@ -23,6 +23,11 @@ export default function NotificationListSection({
 }: NotificationListSectionProps) {
   const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
   const [localNotifications, setLocalNotifications] = useState(notifications);
+  const prevNotificationsRef = useRef(notifications);
+  if (prevNotificationsRef.current !== notifications) {
+    prevNotificationsRef.current = notifications;
+    setLocalNotifications(notifications);
+  }
 
   const unreadNotifications = localNotifications.filter(
     (n) => n.status === NotificationStatus.DELIVERED,

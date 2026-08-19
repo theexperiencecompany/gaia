@@ -29,9 +29,11 @@ export const MentionList = forwardRef<MentionListHandle, MentionListProps>(
   ({ items, command, renderIcon }, ref) => {
     const [selected, setSelected] = useState(0);
     const activeRef = useRef<HTMLButtonElement>(null);
-
-    // A new query yields a new list — start from the top.
-    useEffect(() => setSelected(0), [items]);
+    const prevItemsRef = useRef(items);
+    if (prevItemsRef.current !== items) {
+      prevItemsRef.current = items;
+      setSelected(0);
+    }
 
     // Keep the highlighted item visible when navigating past the fold.
     useEffect(() => {

@@ -10,7 +10,7 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import CopyButton from "@/components/ui/CopyButton";
 
 const E164_PHONE_PATTERN = /^\+[1-9]\d{6,14}$/;
@@ -51,10 +51,11 @@ export function PhoneLinkModal({
   onClose,
 }: PhoneLinkModalProps) {
   const [phone, setPhone] = useState("");
-
-  useEffect(() => {
+  const prevIsOpenRef = useRef(isOpen);
+  if (prevIsOpenRef.current !== isOpen) {
+    prevIsOpenRef.current = isOpen;
     if (isOpen) setPhone("");
-  }, [isOpen]);
+  }
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="sm">

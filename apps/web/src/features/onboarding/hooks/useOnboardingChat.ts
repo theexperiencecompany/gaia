@@ -47,23 +47,44 @@ export function useOnboardingChat(
     activeConversationIdRef.current = conversationId;
   }, [conversationId]);
 
-  useEffect(() => {
-    if (!todoExecutionInProgressRef.current) return;
-    if (!isChatSending) {
+  // Guarded render updates to avoid stale flash from effect-adjusted state.
+  const prevIsChatSendingRef = useRef(isChatSending);
+  if (prevIsChatSendingRef.current !== isChatSending) {
+    prevIsChatSendingRef.current = isChatSending;
+    if (todoExecutionInProgressRef.current && !isChatSending) {
       todoExecutionInProgressRef.current = false;
       setIsTodoExecutionDone(true);
     }
-  }, [isChatSending]);
-
-  useEffect(() => {
-    if (isTodoExecutionDone) return;
-    if (!conversationId || isChatSending) return;
-    if (
-      streamMessages.some((m) => m.role === "assistant" && m.status === "sent")
-    ) {
-      setIsTodoExecutionDone(true);
+  }
+  const prevSecondDepsRef = useRef({
+    isTodoExecutionDone,
+    conversationId,
+    isChatSending,
+    streamMessages,
+  });
+  const prevSecond = prevSecondDepsRef.current;
+  if (
+    prevSecond.isTodoExecutionDone !== isTodoExecutionDone ||
+    prevSecond.conversationId !== conversationId ||
+    prevSecond.isChatSending !== isChatSending ||
+    prevSecond.streamMessages !== streamMessages
+  ) {
+    prevSecondDepsRef.current = {
+      isTodoExecutionDone,
+      conversationId,
+      isChatSending,
+      streamMessages,
+    };
+    if (!isTodoExecutionDone && conversationId && !isChatSending) {
+      if (
+        streamMessages.some(
+          (m) => m.role === "assistant" && m.status === "sent",
+        )
+      ) {
+        setIsTodoExecutionDone(true);
+      }
     }
-  }, [isTodoExecutionDone, conversationId, isChatSending, streamMessages]);
+  }
 
   const sendChatMessage = useCallback(
     async (content: string) => {

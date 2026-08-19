@@ -3,7 +3,7 @@
 import { Spinner } from "@heroui/react";
 import type { Virtualizer } from "@tanstack/react-virtual";
 import type React from "react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { AllDayEventsSection } from "@/features/calendar/components/AllDayEventsSection";
 import {
@@ -81,6 +81,8 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
   isLoadingPast = false,
   isLoadingFuture = false,
 }) => {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const daysData = useMemo(
     () =>
       dates.map((date) => {
@@ -232,21 +234,25 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
                               {eventPos.event.start.dateTime &&
                                 eventPos.event.end.dateTime && (
                                   <div className="mt-1 text-xs text-zinc-400">
-                                    {new Date(
-                                      eventPos.event.start.dateTime,
-                                    ).toLocaleTimeString("en-US", {
-                                      hour: "numeric",
-                                      minute: "2-digit",
-                                      hour12: true,
-                                    })}{" "}
+                                    {mounted
+                                      ? new Date(
+                                          eventPos.event.start.dateTime,
+                                        ).toLocaleTimeString("en-US", {
+                                          hour: "numeric",
+                                          minute: "2-digit",
+                                          hour12: true,
+                                        })
+                                      : ""}{" "}
                                     –{" "}
-                                    {new Date(
-                                      eventPos.event.end.dateTime,
-                                    ).toLocaleTimeString("en-US", {
-                                      hour: "numeric",
-                                      minute: "2-digit",
-                                      hour12: true,
-                                    })}
+                                    {mounted
+                                      ? new Date(
+                                          eventPos.event.end.dateTime,
+                                        ).toLocaleTimeString("en-US", {
+                                          hour: "numeric",
+                                          minute: "2-digit",
+                                          hour12: true,
+                                        })
+                                      : ""}
                                   </div>
                                 )}
                             </div>

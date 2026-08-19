@@ -33,6 +33,186 @@ interface CommandMenuProps {
   onOpenChange: (open: boolean) => void;
 }
 
+function CommandInputRow({
+  inputRef,
+  search,
+  onSearchChange,
+  modifierKeyName,
+}: {
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  search: string;
+  onSearchChange: (value: string) => void;
+  modifierKeyName: "command" | "ctrl";
+}) {
+  return (
+    <div className={COMMAND_MENU_STYLES.inputWrapper}>
+      <SearchIcon className={COMMAND_MENU_STYLES.searchIcon} />
+      <Command.Input
+        ref={inputRef}
+        value={search}
+        onValueChange={onSearchChange}
+        placeholder="Search or run a command..."
+        className={COMMAND_MENU_STYLES.input}
+      />
+      <Kbd keys={[modifierKeyName]}> K</Kbd>
+    </div>
+  );
+}
+
+function ConversationsGroup({
+  conversations,
+  onSelect,
+}: {
+  conversations: ComprehensiveSearchResponse["conversations"];
+  onSelect: (conversationId: string) => void;
+}) {
+  if (conversations.length === 0) return null;
+  return (
+    <Command.Group heading="Conversations">
+      {conversations.slice(0, 3).map((conversation) => (
+        <Command.Item
+          key={`conversation-${conversation.conversation_id}`}
+          value={conversation.description || "Conversation"}
+          onSelect={() => onSelect(conversation.conversation_id)}
+          className={COMMAND_MENU_STYLES.item}
+        >
+          <MessageMultiple02Icon width={16} height={16} />
+          <div className={COMMAND_MENU_STYLES.contentWrapper}>
+            <div className={COMMAND_MENU_STYLES.resultTitle}>
+              {conversation.description || "Conversation"}
+            </div>
+            <div className={COMMAND_MENU_STYLES.resultSubtitle}>
+              Conversation
+            </div>
+          </div>
+        </Command.Item>
+      ))}
+    </Command.Group>
+  );
+}
+
+function MessagesGroup({
+  messages,
+  onSelect,
+}: {
+  messages: ComprehensiveSearchResponse["messages"];
+  onSelect: (conversationId: string, messageId: string) => void;
+}) {
+  if (messages.length === 0) return null;
+  return (
+    <Command.Group heading="Messages">
+      {messages.slice(0, 3).map((message) => (
+        <Command.Item
+          key={`message-${message.message.message_id}`}
+          value={message.snippet}
+          onSelect={() =>
+            onSelect(message.conversation_id, message.message.message_id)
+          }
+          className={COMMAND_MENU_STYLES.item}
+        >
+          <SearchIcon width={16} height={16} />
+          <div className={COMMAND_MENU_STYLES.contentWrapper}>
+            <div className={COMMAND_MENU_STYLES.resultTitleClamp}>
+              {message.snippet}
+            </div>
+            <div
+              className={COMMAND_MENU_STYLES.resultSubtitle}
+              suppressHydrationWarning
+            >
+              {new Date(message.message.date).toLocaleDateString()}
+            </div>
+          </div>
+        </Command.Item>
+      ))}
+    </Command.Group>
+  );
+}
+
+function SearchResultsSection({
+  search,
+  searchResults,
+  onSelectConversation,
+  onSelectMessage,
+}: {
+  search: string;
+  searchResults: ComprehensiveSearchResponse;
+  onSelectConversation: (id: string) => void;
+  onSelectMessage: (conversationId: string, messageId: string) => void;
+}) {
+  if (!search) return null;
+  return (
+    <>
+      <ConversationsGroup
+        conversations={searchResults.conversations}
+        onSelect={onSelectConversation}
+      />
+      <MessagesGroup
+        messages={searchResults.messages}
+        onSelect={onSelectMessage}
+      />
+      <Command.Separator className={COMMAND_MENU_STYLES.separator} />
+    </>
+  );
+}
+
+function MenuSectionsList({
+  sections,
+  search,
+}: {
+  sections: Array<
+    Omit<MenuSectionConfig, "items"> & {
+      items: (MenuItemConfig & { onSelect: () => void })[];
+    }
+  >;
+  search: string;
+}) {
+  return (
+    <>
+      {sections.map((section, sectionIndex) => (
+        <React.Fragment key={section.key}>
+          {sectionIndex > 0 && !search && (
+            <Command.Separator className={COMMAND_MENU_STYLES.separator} />
+          )}
+          <Command.Group
+            heading={section.heading}
+            className="pt-1! pb-3!"
+            style={{ padding: 0 }}
+          >
+            {section.items.map((item) => (
+              <Command.Item
+                key={item.id}
+                value={item.label}
+                onSelect={item.onSelect}
+                className={COMMAND_MENU_STYLES.item}
+              >
+                {item.icon}
+                <span className={COMMAND_MENU_STYLES.flexOne}>
+                  {item.label}
+                </span>
+                {item.shortcut && (
+                  <kbd className={COMMAND_MENU_STYLES.itemShortcut}>
+                    {item.shortcut}
+                  </kbd>
+                )}
+              </Command.Item>
+            ))}
+          </Command.Group>
+        </React.Fragment>
+      ))}
+    </>
+  );
+}
+
+function CommandFooter() {
+  return (
+    <div className={COMMAND_MENU_STYLES.footer}>
+      <p className={COMMAND_MENU_STYLES.footerText}>
+        Type to search, use ↑↓ to navigate, ↵ to select, ESC to close
+      </p>
+    </div>
+  );
+}
+
 export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
   const router = useRouter();
   const { modifierKeyName } = usePlatform();
@@ -210,6 +390,31 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
     return sections;
   }, [search, subscriptionStatus, buildMenuItem]);
 
+  const handleSelectConversation = useCallback(
+    (conversationId: string) => {
+      trackEvent(ANALYTICS_EVENTS.SEARCH_RESULT_CLICKED, {
+        result_type: "conversation",
+        conversation_id: conversationId,
+      });
+      router.push(`/c/${conversationId}`);
+      onOpenChange(false);
+    },
+    [router, onOpenChange],
+  );
+
+  const handleSelectMessage = useCallback(
+    (conversationId: string, messageId: string) => {
+      trackEvent(ANALYTICS_EVENTS.SEARCH_RESULT_CLICKED, {
+        result_type: "message",
+        conversation_id: conversationId,
+        message_id: messageId,
+      });
+      router.push(`/c/${conversationId}`);
+      onOpenChange(false);
+    },
+    [router, onOpenChange],
+  );
+
   return (
     <AnimatePresence>
       {open && (
@@ -231,160 +436,29 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
               loop
               className={COMMAND_MENU_STYLES.groupHeadings}
             >
-              {/* Input */}
-              <div className={COMMAND_MENU_STYLES.inputWrapper}>
-                <SearchIcon className={COMMAND_MENU_STYLES.searchIcon} />
-                <Command.Input
-                  ref={inputRef}
-                  value={search}
-                  onValueChange={setSearch}
-                  placeholder="Search or run a command..."
-                  className={COMMAND_MENU_STYLES.input}
-                />
-                <Kbd keys={[modifierKeyName]}> K</Kbd>
-              </div>
+              <CommandInputRow
+                inputRef={inputRef}
+                search={search}
+                onSearchChange={setSearch}
+                modifierKeyName={modifierKeyName}
+              />
 
               <Command.List ref={listRef} className={COMMAND_MENU_STYLES.list}>
                 <Command.Empty className={COMMAND_MENU_STYLES.empty}>
                   {isSearching ? "Searching..." : "No results found."}
                 </Command.Empty>
 
-                {/* Search Results */}
-                {search && (
-                  <>
-                    {searchResults.conversations.length > 0 && (
-                      <Command.Group heading="Conversations">
-                        {searchResults.conversations
-                          .slice(0, 3)
-                          .map((conversation) => (
-                            <Command.Item
-                              key={`conversation-${conversation.conversation_id}`}
-                              value={conversation.description || "Conversation"}
-                              onSelect={() => {
-                                trackEvent(
-                                  ANALYTICS_EVENTS.SEARCH_RESULT_CLICKED,
-                                  {
-                                    result_type: "conversation",
-                                    conversation_id:
-                                      conversation.conversation_id,
-                                  },
-                                );
-                                router.push(
-                                  `/c/${conversation.conversation_id}`,
-                                );
-                                onOpenChange(false);
-                              }}
-                              className={COMMAND_MENU_STYLES.item}
-                            >
-                              <MessageMultiple02Icon width={16} height={16} />
-                              <div
-                                className={COMMAND_MENU_STYLES.contentWrapper}
-                              >
-                                <div
-                                  className={COMMAND_MENU_STYLES.resultTitle}
-                                >
-                                  {conversation.description || "Conversation"}
-                                </div>
-                                <div
-                                  className={COMMAND_MENU_STYLES.resultSubtitle}
-                                >
-                                  Conversation
-                                </div>
-                              </div>
-                            </Command.Item>
-                          ))}
-                      </Command.Group>
-                    )}
+                <SearchResultsSection
+                  search={search}
+                  searchResults={searchResults}
+                  onSelectConversation={handleSelectConversation}
+                  onSelectMessage={handleSelectMessage}
+                />
 
-                    {searchResults.messages.length > 0 && (
-                      <Command.Group heading="Messages">
-                        {searchResults.messages.slice(0, 3).map((message) => (
-                          <Command.Item
-                            key={`message-${message.message.message_id}`}
-                            value={message.snippet}
-                            onSelect={() => {
-                              trackEvent(
-                                ANALYTICS_EVENTS.SEARCH_RESULT_CLICKED,
-                                {
-                                  result_type: "message",
-                                  conversation_id: message.conversation_id,
-                                  message_id: message.message.message_id,
-                                },
-                              );
-                              router.push(`/c/${message.conversation_id}`);
-                              onOpenChange(false);
-                            }}
-                            className={COMMAND_MENU_STYLES.item}
-                          >
-                            <SearchIcon width={16} height={16} />
-                            <div className={COMMAND_MENU_STYLES.contentWrapper}>
-                              <div
-                                className={COMMAND_MENU_STYLES.resultTitleClamp}
-                              >
-                                {message.snippet}
-                              </div>
-                              <div
-                                className={COMMAND_MENU_STYLES.resultSubtitle}
-                                suppressHydrationWarning
-                              >
-                                {new Date(
-                                  message.message.date,
-                                ).toLocaleDateString()}
-                              </div>
-                            </div>
-                          </Command.Item>
-                        ))}
-                      </Command.Group>
-                    )}
-
-                    <Command.Separator
-                      className={COMMAND_MENU_STYLES.separator}
-                    />
-                  </>
-                )}
-
-                {/* Menu Sections */}
-                {menuSections.map((section, sectionIndex) => (
-                  <React.Fragment key={section.key}>
-                    {sectionIndex > 0 && !search && (
-                      <Command.Separator
-                        className={COMMAND_MENU_STYLES.separator}
-                      />
-                    )}
-                    <Command.Group
-                      heading={section.heading}
-                      className="pt-1! pb-3!"
-                      style={{ padding: 0 }}
-                    >
-                      {section.items.map((item) => (
-                        <Command.Item
-                          key={item.id}
-                          value={item.label}
-                          onSelect={item.onSelect}
-                          className={COMMAND_MENU_STYLES.item}
-                        >
-                          {item.icon}
-                          <span className={COMMAND_MENU_STYLES.flexOne}>
-                            {item.label}
-                          </span>
-                          {item.shortcut && (
-                            <kbd className={COMMAND_MENU_STYLES.itemShortcut}>
-                              {item.shortcut}
-                            </kbd>
-                          )}
-                        </Command.Item>
-                      ))}
-                    </Command.Group>
-                  </React.Fragment>
-                ))}
+                <MenuSectionsList sections={menuSections} search={search} />
               </Command.List>
 
-              {/* Footer */}
-              <div className={COMMAND_MENU_STYLES.footer}>
-                <p className={COMMAND_MENU_STYLES.footerText}>
-                  Type to search, use ↑↓ to navigate, ↵ to select, ESC to close
-                </p>
-              </div>
+              <CommandFooter />
             </Command>
           </m.div>
         </div>

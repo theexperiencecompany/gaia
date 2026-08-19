@@ -1,5 +1,5 @@
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 const PX_PER_MINUTE = 64 / 60;
 
@@ -34,6 +34,11 @@ export const CurrentTimeLine: React.FC = () => {
 
 // Time label that shows in the left time column
 export const CurrentTimeLabel: React.FC = () => {
+  const mounted = useSyncExternalStore(
+    () => () => undefined,
+    () => true,
+    () => false,
+  );
   const [now, setNow] = useState<Date>(new Date());
 
   useEffect(() => {
@@ -43,9 +48,14 @@ export const CurrentTimeLabel: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  const [currentTimeLabel, setCurrentTimeLabel] = useState("");
+  useEffect(() => {
+    if (!mounted) return;
+    setCurrentTimeLabel(TIME_LABEL_FORMATTER.format(now));
+  }, [mounted, now]);
+
   const currentHour = now.getHours();
   const currentMinute = now.getMinutes();
-  const currentTimeLabel = TIME_LABEL_FORMATTER.format(now);
   const currentTimeTop = (currentHour * 60 + currentMinute) * PX_PER_MINUTE;
 
   return (

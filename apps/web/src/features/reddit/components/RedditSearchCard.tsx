@@ -3,6 +3,7 @@
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { ArrowUp02Icon, BubbleChatIcon } from "@icons";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { RedditIcon } from "@/components/shared/icons";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
@@ -48,6 +49,8 @@ export default function RedditSearchCard({
   maxHeight = "max-h-[400px]",
   isCollapsible = true,
 }: RedditSearchCardProps) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   if (!posts || posts.length === 0) return null;
 
   const content = (
@@ -86,7 +89,7 @@ export default function RedditSearchCard({
                       <span className="text-gray-500">u/{post.author}</span>
                       <span className="text-gray-500">•</span>
                       <span className="text-gray-500">
-                        {formatTime(post.created_utc)}
+                        {mounted ? formatTime(post.created_utc) : ""}
                       </span>
                     </div>
                     <h4 className="line-clamp-2 text-sm leading-snug font-medium text-white group-hover:text-[#FF4500]">

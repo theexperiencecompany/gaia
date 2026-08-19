@@ -238,10 +238,11 @@ function ToolCallRow({
         <AnimatePresence>
           {expanded && hasDetails && (
             <m.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
+              initial={{ opacity: 0, scaleY: 0 }}
+              animate={{ opacity: 1, scaleY: 1 }}
+              exit={{ opacity: 0, scaleY: 0 }}
               transition={expandTransition}
+              style={{ transformOrigin: "top" }}
               className="overflow-hidden"
             >
               <div className="mt-2 space-y-2 text-[11px] bg-zinc-800/50 rounded-xl p-3 mb-3 w-fit">
@@ -311,10 +312,11 @@ function ThinkingStepRow({
         <AnimatePresence>
           {expanded && (
             <m.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
+              initial={{ opacity: 0, scaleY: 0 }}
+              animate={{ opacity: 1, scaleY: 1 }}
+              exit={{ opacity: 0, scaleY: 0 }}
               transition={expandTransition}
+              style={{ transformOrigin: "top" }}
               className="overflow-hidden"
             >
               <div className="mt-2 mb-3 w-fit rounded-xl bg-zinc-800/50 p-3 text-[11px] text-zinc-400">
@@ -530,10 +532,11 @@ export function SubagentRow({
         <AnimatePresence>
           {expanded && (
             <m.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
+              initial={{ opacity: 0, scaleY: 0 }}
+              animate={{ opacity: 1, scaleY: 1 }}
+              exit={{ opacity: 0, scaleY: 0 }}
               transition={expandTransition}
+              style={{ transformOrigin: "top" }}
               className="overflow-hidden"
             >
               <div className="mt-1.5 mb-1">

@@ -86,15 +86,16 @@ export default function Onboarding() {
     skipAutoRedirect: true,
   });
   const userId = useUserStore((s) => s.userId);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   // `null` until userId hydrates from persisted storage, so the intro doesn't replay on every reload.
-  const [introDone, setIntroDone] = useState<boolean | null>(() =>
-    userId ? hasSeenIntro(userId) : null,
-  );
+  // Mounted gate ensures server and client render the same initial output.
+  const [introDone, setIntroDone] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!mounted || !userId) return;
     setIntroDone((prev) => (prev === null ? hasSeenIntro(userId) : prev));
-  }, [userId]);
+  }, [mounted, userId]);
 
   const handleRestart = () => {
     clearIntroSeen(userId);

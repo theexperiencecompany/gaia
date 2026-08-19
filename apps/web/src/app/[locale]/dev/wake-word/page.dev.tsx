@@ -446,6 +446,8 @@ function MetricCard({
 }
 
 function DetectionLog({ history }: Readonly<{ history: DetectionRecord[] }>) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   return (
     <div className="rounded-2xl bg-zinc-900 p-4">
       <div className="flex flex-col gap-3">
@@ -477,7 +479,9 @@ function DetectionLog({ history }: Readonly<{ history: DetectionRecord[] }>) {
                     : `${Math.round(h.timeToWakeMs)} ms`}
                 </span>
                 <span className="ml-auto text-zinc-500">
-                  {FIRED_AT_FORMATTER.format(new Date(h.firedAt))}
+                  {mounted
+                    ? FIRED_AT_FORMATTER.format(new Date(h.firedAt))
+                    : ""}
                 </span>
               </li>
             ))}

@@ -9,7 +9,7 @@
 
 import * as m from "motion/react-m";
 import type { Dispatch } from "react";
-import { useEffect } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 import { BOT_BUBBLE_DEFAULTS } from "../../constants/bubbleDefaults";
 import {
@@ -55,6 +55,16 @@ export function useChatStage(
 }
 
 export function Chat({ state }: Omit<ChatProps, "dispatch" | "chat">) {
+  const mounted = useSyncExternalStore(
+    () => () => undefined,
+    () => true,
+    () => false,
+  );
+  const [dateIso, setDateIso] = useState("1970-01-01T00:00:00.000Z");
+  useEffect(() => {
+    if (!mounted) return;
+    setDateIso(new Date().toISOString());
+  }, [mounted]);
   const showHolo = state.server?.has_personalization && state.server;
   if (!showHolo || !state.server) return null;
 
@@ -68,7 +78,7 @@ export function Chat({ state }: Omit<ChatProps, "dispatch" | "chat">) {
           text={firstMessage}
           message_id="onboarding-first-message"
           loading={false}
-          date={new Date().toISOString()}
+          date={dateIso}
         />
       )}
       <div className="my-4">

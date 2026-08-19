@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import type { BlogPostMeta } from "@/lib/blog";
 
@@ -13,6 +13,11 @@ interface BlogListProps {
 
 export function BlogList({ blogs }: BlogListProps) {
   const [filtered, setFilteredBlogs] = useState<BlogPostMeta[]>(blogs);
+  const prevBlogsRef = useRef(blogs);
+  if (prevBlogsRef.current !== blogs) {
+    prevBlogsRef.current = blogs;
+    setFilteredBlogs(blogs);
+  }
 
   const featured = filtered.filter((b) => b.featured);
   const rest = filtered.filter((b) => !b.featured);

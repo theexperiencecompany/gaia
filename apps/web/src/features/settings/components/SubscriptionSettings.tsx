@@ -3,6 +3,7 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Skeleton } from "@heroui/skeleton";
+import { useSyncExternalStore } from "react";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import {
   convertToUSDCents,
@@ -74,6 +75,11 @@ function getStatusText(status: string): string {
 }
 
 export function SubscriptionSettings() {
+  const mounted = useSyncExternalStore(
+    () => () => undefined,
+    () => true,
+    () => false,
+  );
   const {
     data: status,
     isLoading,
@@ -205,7 +211,9 @@ export function SubscriptionSettings() {
             <span className="ml-3 text-xs text-amber-500">
               Cancellation scheduled · access until{" "}
               {subscription?.next_billing_date
-                ? formatDate(subscription.next_billing_date)
+                ? mounted
+                  ? formatDate(subscription.next_billing_date)
+                  : ""
                 : "period end"}
             </span>
           ) : (
@@ -232,7 +240,7 @@ export function SubscriptionSettings() {
             description={nextBillingLabel ?? undefined}
           >
             <span className="text-sm text-zinc-300">
-              {formatDate(subscription.next_billing_date)}
+              {mounted ? formatDate(subscription.next_billing_date) : ""}
             </span>
           </SettingsRow>
         )}
@@ -240,7 +248,7 @@ export function SubscriptionSettings() {
         {subscription?.previous_billing_date && (
           <SettingsRow label="Last payment">
             <span className="text-sm text-zinc-300">
-              {formatDate(subscription.previous_billing_date)}
+              {mounted ? formatDate(subscription.previous_billing_date) : ""}
             </span>
           </SettingsRow>
         )}
@@ -248,7 +256,7 @@ export function SubscriptionSettings() {
         {subscription?.created_at && (
           <SettingsRow label="Subscribed since">
             <span className="text-sm text-zinc-300">
-              {formatDate(subscription.created_at)}
+              {mounted ? formatDate(subscription.created_at) : ""}
             </span>
           </SettingsRow>
         )}
@@ -256,7 +264,7 @@ export function SubscriptionSettings() {
         {subscription?.cancelled_at && (
           <SettingsRow label="Cancelled on">
             <span className="text-sm text-red-400">
-              {formatDate(subscription.cancelled_at)}
+              {mounted ? formatDate(subscription.cancelled_at) : ""}
             </span>
           </SettingsRow>
         )}

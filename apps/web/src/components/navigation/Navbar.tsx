@@ -4,7 +4,7 @@ import { Login02Icon, MessageMultiple02Icon } from "@icons";
 import NumberFlow from "@number-flow/react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ChevronDown, Github, StarFilledIcon } from "@/components/shared/icons";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { Button } from "@/components/ui/button";
@@ -79,8 +79,12 @@ export default function Navbar() {
   // mismatch. useUser() reads a persisted (localStorage) store that rehydrates
   // synchronously on the client, so a returning logged-in user would otherwise
   // render a different CTA on the first client render than the server sent.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  // Use useSyncExternalStore to avoid extra render from mount effect.
+  const mounted = useSyncExternalStore(
+    () => () => undefined,
+    () => true,
+    () => false,
+  );
   const isAuthenticated = mounted ? !!user.email : false;
 
   // Handle scroll to change navbar appearance

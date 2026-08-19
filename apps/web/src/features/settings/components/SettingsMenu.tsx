@@ -25,7 +25,7 @@ import {
 } from "@icons";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { type ReactNode, useState } from "react";
+import { type ReactElement, type ReactNode, useState } from "react";
 import { useKeyboardShortcuts } from "@/components/providers/KeyboardShortcutsProvider";
 import {
   type ConfirmAction,
@@ -71,6 +71,217 @@ interface MenuItem {
   };
 }
 
+type NestedMenu = ReturnType<typeof useNestedMenu>;
+
+function SettingsDropdown({
+  children,
+  isMenuOpen,
+  onOpenChange,
+  menuSections,
+  submenuByKey,
+  fallbackMenu,
+  iconClasses,
+  onItemAction,
+}: {
+  children: ReactNode;
+  isMenuOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+  menuSections: Array<{
+    key: string;
+    title?: string;
+    showDivider: boolean;
+    items: MenuItem[];
+  }>;
+  submenuByKey: Record<string, NestedMenu>;
+  fallbackMenu: NestedMenu;
+  iconClasses: string;
+  onItemAction: (item: MenuItem) => void;
+}) {
+  return (
+    <Dropdown
+      placement="right"
+      className="bg-secondary-bg text-foreground dark shadow-xl"
+      offset={21}
+      isOpen={isMenuOpen}
+      onOpenChange={onOpenChange}
+    >
+      <DropdownTrigger>{children}</DropdownTrigger>
+      <DropdownMenu aria-label="Settings Menu" variant="faded">
+        {menuSections.map((section) => (
+          <DropdownSection
+            key={section.key}
+            title={section.title}
+            showDivider={section.showDivider}
+            classNames={{ divider: "bg-zinc-800/60" }}
+          >
+            {section.items.map((item: MenuItem) => {
+              const Icon = item.icon;
+              const iconColor =
+                item.iconColor || SOCIAL_MEDIA_COLOR_MAP[item.key];
+
+              if (item.hasSubmenu) {
+                const menu = submenuByKey[item.key] ?? fallbackMenu;
+                return (
+                  <DropdownItem
+                    key={item.key}
+                    textValue={item.label}
+                    variant="flat"
+                    onMouseEnter={menu.handleMouseEnter}
+                    onMouseLeave={menu.handleMouseLeave}
+                    className="text-zinc-400 transition hover:text-white"
+                    startContent={Icon && <Icon className={iconClasses} />}
+                    endContent={
+                      <div className="flex items-center gap-1.5">
+                        {item.badge}
+                        <ChevronRight className="h-4 w-4 text-zinc-500" />
+                      </div>
+                    }
+                  >
+                    {item.label}
+                  </DropdownItem>
+                );
+              }
+
+              return (
+                <DropdownItem
+                  key={item.key}
+                  textValue={item.label}
+                  variant="flat"
+                  color={item.color}
+                  onPress={() => onItemAction(item)}
+                  className={
+                    item.color === "danger"
+                      ? "text-danger"
+                      : iconColor
+                        ? "transition"
+                        : "text-zinc-400 transition hover:text-white"
+                  }
+                  style={iconColor ? { color: iconColor } : undefined}
+                  startContent={
+                    Icon && <Icon className={iconClasses} color={iconColor} />
+                  }
+                  classNames={item.customClassNames}
+                >
+                  {item.label}
+                </DropdownItem>
+              );
+            })}
+          </DropdownSection>
+        ))}
+      </DropdownMenu>
+    </Dropdown>
+  );
+}
+
+function SettingsSubmenus({
+  whatsNewMenu,
+  resourcesMenu,
+  supportMenu,
+  downloadMenu,
+  resourcesMenuItems,
+  supportMenuItems,
+  downloadMenuItems,
+  iconClasses,
+  onWhatsNewClose,
+}: {
+  whatsNewMenu: NestedMenu;
+  resourcesMenu: NestedMenu;
+  supportMenu: NestedMenu;
+  downloadMenu: NestedMenu;
+  resourcesMenuItems: Array<{
+    key: string;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    action: () => void;
+  }>;
+  supportMenuItems: Array<{
+    key: string;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    action: () => void;
+  }>;
+  downloadMenuItems: Array<{
+    key: string;
+    label: string;
+    iconElement: ReactElement;
+    action: () => void;
+  }>;
+  iconClasses: string;
+  onWhatsNewClose: () => void;
+}) {
+  return (
+    <>
+      <NestedMenuTooltip
+        isOpen={whatsNewMenu.isOpen}
+        onOpenChange={whatsNewMenu.setIsOpen}
+        itemRef={whatsNewMenu.itemRef}
+        customContent={<WhatsNewTimelineMenu onClose={onWhatsNewClose} />}
+      />
+
+      <NestedMenuTooltip
+        isOpen={resourcesMenu.isOpen}
+        onOpenChange={resourcesMenu.setIsOpen}
+        itemRef={resourcesMenu.itemRef}
+        menuItems={resourcesMenuItems}
+        iconClasses={iconClasses}
+      />
+
+      <NestedMenuTooltip
+        isOpen={supportMenu.isOpen}
+        onOpenChange={supportMenu.setIsOpen}
+        itemRef={supportMenu.itemRef}
+        menuItems={supportMenuItems}
+        iconClasses={iconClasses}
+      />
+
+      <NestedMenuTooltip
+        isOpen={downloadMenu.isOpen}
+        onOpenChange={downloadMenu.setIsOpen}
+        itemRef={downloadMenu.itemRef}
+        menuItems={downloadMenuItems}
+        iconClasses={iconClasses}
+      />
+    </>
+  );
+}
+
+function SettingsDialogs({
+  supportModalOpen,
+  supportModalType,
+  onSupportOpenChange,
+  modalAction,
+  onModalActionChange,
+  confirmationProps,
+}: {
+  supportModalOpen: boolean;
+  supportModalType: string | undefined;
+  onSupportOpenChange: (open: boolean) => void;
+  modalAction: ModalAction | null;
+  onModalActionChange: (action: ModalAction | null) => void;
+  confirmationProps: ReturnType<typeof useConfirmation>["confirmationProps"];
+}) {
+  return (
+    <>
+      <ContactSupportModal
+        isOpen={supportModalOpen}
+        onOpenChange={() => {
+          onSupportOpenChange(false);
+        }}
+        initialValues={
+          supportModalType ? { type: supportModalType } : undefined
+        }
+      />
+
+      <ConfirmActionDialog
+        action={modalAction as ConfirmAction}
+        onOpenChange={(action) => onModalActionChange(action as ModalAction)}
+      />
+
+      <ConfirmationDialog {...confirmationProps} />
+    </>
+  );
+}
+
 export default function SettingsMenu({
   children,
   onOpenChange,
@@ -101,7 +312,7 @@ export default function SettingsMenu({
   const downloadMenu = useNestedMenu();
 
   // Maps a submenu item's key to the nested-menu controller driving its flyout.
-  const submenuByKey: Record<string, ReturnType<typeof useNestedMenu>> = {
+  const submenuByKey: Record<string, NestedMenu> = {
     "whats-new": whatsNewMenu,
     download: downloadMenu,
     resources: resourcesMenu,
@@ -306,142 +517,54 @@ export default function SettingsMenu({
     },
   ];
 
+  const handleWhatsNewClose = () => {
+    whatsNewMenu.setIsOpen(false);
+    setIsMenuOpen(false);
+    onOpenChange?.(false);
+  };
+
+  const handleSupportOpenChange = (open: boolean) => {
+    setSupportModalOpen(open);
+    if (!open) setSupportModalType(undefined);
+  };
+
   return (
     <>
-      <Dropdown
-        placement="right"
-        className="bg-secondary-bg text-foreground dark shadow-xl"
-        offset={21}
-        isOpen={isMenuOpen}
+      <SettingsDropdown
+        isMenuOpen={isMenuOpen}
         onOpenChange={(open) => {
           setIsMenuOpen(open);
           onOpenChange?.(open);
         }}
+        menuSections={menuSections}
+        submenuByKey={submenuByKey}
+        fallbackMenu={supportMenu}
+        iconClasses={iconClasses}
+        onItemAction={handleItemAction}
       >
-        <DropdownTrigger>{children}</DropdownTrigger>
-        <DropdownMenu aria-label="Settings Menu" variant="faded">
-          {menuSections.map((section) => (
-            <DropdownSection
-              key={section.key}
-              title={section.title}
-              showDivider={section.showDivider}
-              classNames={{ divider: "bg-zinc-800/60" }}
-            >
-              {section.items.map((item: MenuItem) => {
-                const Icon = item.icon;
-                const iconColor =
-                  item.iconColor || SOCIAL_MEDIA_COLOR_MAP[item.key];
+        {children}
+      </SettingsDropdown>
 
-                // Handle nested menus (What's new, Download, Resources, Support)
-                if (item.hasSubmenu) {
-                  const menu = submenuByKey[item.key] ?? supportMenu;
-
-                  return (
-                    <DropdownItem
-                      key={item.key}
-                      textValue={item.label}
-                      variant="flat"
-                      onMouseEnter={menu.handleMouseEnter}
-                      onMouseLeave={menu.handleMouseLeave}
-                      className="text-zinc-400 transition hover:text-white"
-                      startContent={Icon && <Icon className={iconClasses} />}
-                      endContent={
-                        <div className="flex items-center gap-1.5">
-                          {item.badge}
-                          <ChevronRight className="h-4 w-4 text-zinc-500" />
-                        </div>
-                      }
-                    >
-                      {item.label}
-                    </DropdownItem>
-                  );
-                }
-
-                return (
-                  <DropdownItem
-                    key={item.key}
-                    textValue={item.label}
-                    variant="flat"
-                    color={item.color}
-                    onPress={() => handleItemAction(item)}
-                    className={
-                      item.color === "danger"
-                        ? "text-danger"
-                        : iconColor
-                          ? "transition"
-                          : "text-zinc-400 transition hover:text-white"
-                    }
-                    style={iconColor ? { color: iconColor } : undefined}
-                    startContent={
-                      Icon && <Icon className={iconClasses} color={iconColor} />
-                    }
-                    classNames={item.customClassNames}
-                  >
-                    {item.label}
-                  </DropdownItem>
-                );
-              })}
-            </DropdownSection>
-          ))}
-        </DropdownMenu>
-      </Dropdown>
-
-      <NestedMenuTooltip
-        isOpen={whatsNewMenu.isOpen}
-        onOpenChange={whatsNewMenu.setIsOpen}
-        itemRef={whatsNewMenu.itemRef}
-        customContent={
-          <WhatsNewTimelineMenu
-            onClose={() => {
-              whatsNewMenu.setIsOpen(false);
-              setIsMenuOpen(false);
-              onOpenChange?.(false);
-            }}
-          />
-        }
-      />
-
-      <NestedMenuTooltip
-        isOpen={resourcesMenu.isOpen}
-        onOpenChange={resourcesMenu.setIsOpen}
-        itemRef={resourcesMenu.itemRef}
-        menuItems={resourcesMenuItems}
+      <SettingsSubmenus
+        whatsNewMenu={whatsNewMenu}
+        resourcesMenu={resourcesMenu}
+        supportMenu={supportMenu}
+        downloadMenu={downloadMenu}
+        resourcesMenuItems={resourcesMenuItems}
+        supportMenuItems={supportMenuItems}
+        downloadMenuItems={downloadMenuItems}
         iconClasses={iconClasses}
+        onWhatsNewClose={handleWhatsNewClose}
       />
 
-      <NestedMenuTooltip
-        isOpen={supportMenu.isOpen}
-        onOpenChange={supportMenu.setIsOpen}
-        itemRef={supportMenu.itemRef}
-        menuItems={supportMenuItems}
-        iconClasses={iconClasses}
+      <SettingsDialogs
+        supportModalOpen={supportModalOpen}
+        supportModalType={supportModalType}
+        onSupportOpenChange={handleSupportOpenChange}
+        modalAction={modalAction}
+        onModalActionChange={setModalAction}
+        confirmationProps={confirmationProps}
       />
-
-      <NestedMenuTooltip
-        isOpen={downloadMenu.isOpen}
-        onOpenChange={downloadMenu.setIsOpen}
-        itemRef={downloadMenu.itemRef}
-        menuItems={downloadMenuItems}
-        iconClasses={iconClasses}
-      />
-
-      <ContactSupportModal
-        isOpen={supportModalOpen}
-        onOpenChange={() => {
-          setSupportModalOpen(false);
-          setSupportModalType(undefined);
-        }}
-        initialValues={
-          supportModalType ? { type: supportModalType } : undefined
-        }
-      />
-
-      <ConfirmActionDialog
-        action={modalAction as ConfirmAction}
-        onOpenChange={(action) => setModalAction(action as ModalAction)}
-      />
-
-      <ConfirmationDialog {...confirmationProps} />
     </>
   );
 }

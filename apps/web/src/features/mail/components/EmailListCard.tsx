@@ -1,7 +1,7 @@
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Spinner } from "@heroui/spinner";
 import { Tooltip } from "@heroui/tooltip";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { Gmail } from "@/components/shared/icons";
@@ -76,6 +76,8 @@ export default function EmailListCard({
   hasNextPage,
   isFetchingNextPage,
 }: EmailListProps) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const appendToInput = useAppendToInput();
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -149,7 +151,7 @@ export default function EmailListCard({
                   {/* Time */}
                   <div className="w-20 flex-shrink-0 text-right">
                     <span className="text-xs text-gray-400">
-                      {formatTime(email.time || null)}
+                      {mounted ? formatTime(email.time || null) : ""}
                     </span>
                   </div>
                 </button>

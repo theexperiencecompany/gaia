@@ -12,7 +12,7 @@ import { Modal, ModalContent } from "@heroui/modal";
 import { Skeleton } from "@heroui/skeleton";
 import { Rocket01Icon } from "@icons";
 import confetti from "canvas-confetti";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { TwitterShareButton } from "react-share";
 import { TwitterIcon } from "@/components/shared/icons";
 import { HoloCardEditor } from "@/components/ui/holo-card/HoloCardEditor";
@@ -45,9 +45,16 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
   const [shareUrl, setShareUrl] = useState("");
   const [isCardRevealed, setIsCardRevealed] = useState(false);
   const [isVibrating, setIsVibrating] = useState(false);
-  // "member since" fallback is computed after mount so the server and browser
-  // render the same text (avoids a hydration mismatch from formatting `now`).
+  const mounted = useSyncExternalStore(
+    () => () => undefined,
+    () => true,
+    () => false,
+  );
   const [defaultMemberSince, setDefaultMemberSince] = useState("");
+  useEffect(() => {
+    if (!mounted) return;
+    setDefaultMemberSince(MEMBER_SINCE_FORMATTER.format(new Date()));
+  }, [mounted]);
   const hasShownConfetti = useRef(false);
   const user = useUser();
 
@@ -72,18 +79,15 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
     }
   }, [personalizationData?.holo_card_id]);
 
-  // Reset reveal state when modal closes
-  useEffect(() => {
+  // Reset reveal state when modal closes — guarded render update to avoid stale flash.
+  const prevIsOpenRef = useRef(isOpen);
+  if (prevIsOpenRef.current !== isOpen) {
+    prevIsOpenRef.current = isOpen;
     if (!isOpen) {
       setIsCardRevealed(false);
       hasShownConfetti.current = false;
     }
-  }, [isOpen]);
-
-  // Compute the "member since" fallback once, client-side only.
-  useEffect(() => {
-    setDefaultMemberSince(MEMBER_SINCE_FORMATTER.format(new Date()));
-  }, []);
+  }
 
   // Trigger confetti only after card is revealed
   useEffect(() => {

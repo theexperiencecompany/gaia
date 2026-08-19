@@ -2,6 +2,11 @@
 
 import type { Virtualizer } from "@tanstack/react-virtual";
 import type React from "react";
+import { useEffect, useState } from "react";
+
+const WEEKDAY_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  weekday: "short",
+});
 
 interface DateStripProps {
   dates: Date[];
@@ -19,6 +24,8 @@ export const DateStrip: React.FC<DateStripProps> = ({
   onDateSelect,
   columnVirtualizer,
 }) => {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   return (
     <div className="sticky top-0 z-[30] flex min-h-9 min-w-fit flex-shrink-0 border-b border-zinc-800 bg-primary-bg">
       {/* Time Label Column */}
@@ -41,11 +48,13 @@ export const DateStrip: React.FC<DateStripProps> = ({
 
             const isSelected =
               date.toDateString() === selectedDate.toDateString();
-            const isToday = date.toDateString() === new Date().toDateString();
+            const isToday = mounted
+              ? date.toDateString() === new Date().toDateString()
+              : false;
             const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-            const dayLabel = date
-              .toLocaleDateString("en-US", { weekday: "short" })
-              .toUpperCase();
+            const dayLabel = mounted
+              ? WEEKDAY_FORMATTER.format(date).toUpperCase()
+              : "";
             const dayNumber = date.getDate();
 
             return (

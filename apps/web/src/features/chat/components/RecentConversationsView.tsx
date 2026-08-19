@@ -11,7 +11,7 @@ import {
   PlayIcon,
 } from "@icons";
 import { useRouter } from "next/navigation";
-import { memo, useCallback, useMemo } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { DiscordIcon } from "@/components/shared/icons";
 import type { CardAction } from "@/features/chat/components/interface/BaseCardView";
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
@@ -22,6 +22,8 @@ import { useAppendToInput } from "@/stores/composerStore";
 const updatedAtFormatter = new Intl.DateTimeFormat();
 
 const RecentConversationsView = memo(() => {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const router = useRouter();
   const appendToInput = useAppendToInput();
   const { conversations } = useConversationList();
@@ -153,7 +155,11 @@ const RecentConversationsView = memo(() => {
                     <Calendar03Icon width={15} height={15} className="mx-1" />
                   }
                 >
-                  {updatedAtFormatter.format(new Date(conversation.updated_at))}
+                  {mounted
+                    ? updatedAtFormatter.format(
+                        new Date(conversation.updated_at),
+                      )
+                    : ""}
                 </Chip>
 
                 {conversation.is_system_generated && (

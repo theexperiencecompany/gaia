@@ -362,28 +362,42 @@ const MapView = forwardRef<MapRef, MapProps>(function MapView(
     internalUpdateRef.current = false;
   }, [mapInstance, isControlled, viewport]);
 
-  // Handle style change
-  useEffect(() => {
-    if (!mapInstance || !resolvedTheme) return;
+  // Handle style change — guarded render update to avoid stale flash from effect.
+  const prevStyleRef = useRef<{
+    mapInstance: typeof mapInstance;
+    resolvedTheme: typeof resolvedTheme;
+    mapStyles: typeof mapStyles;
+  } | null>(null);
+  const styleDeps = { mapInstance, resolvedTheme, mapStyles };
+  if (
+    prevStyleRef.current?.mapInstance !== mapInstance ||
+    prevStyleRef.current?.resolvedTheme !== resolvedTheme ||
+    prevStyleRef.current?.mapStyles !== mapStyles
+  ) {
+    prevStyleRef.current = styleDeps;
+    if (mapInstance && resolvedTheme) {
+      const newStyle =
+        resolvedTheme === "dark" ? mapStyles.dark : mapStyles.light;
+      if (currentStyleRef.current !== newStyle) {
+        clearStyleTimeout();
+        currentStyleRef.current = newStyle;
+        setIsStyleLoaded(false);
+        mapInstance.setStyle(newStyle, { diff: true });
+      }
+    }
+  }
 
-    const newStyle =
-      resolvedTheme === "dark" ? mapStyles.dark : mapStyles.light;
-
-    if (currentStyleRef.current === newStyle) return;
-
-    clearStyleTimeout();
-    currentStyleRef.current = newStyle;
-    setIsStyleLoaded(false);
-
-    mapInstance.setStyle(newStyle, { diff: true });
-  }, [mapInstance, resolvedTheme, mapStyles, clearStyleTimeout]);
-
-  // Sync projection when the prop changes after mount. Falling back to
-  // `mercator` resets MapLibre to its default when the prop is cleared.
-  useEffect(() => {
-    if (!mapInstance || !isStyleLoaded) return;
+  // Sync projection synchronously during render to avoid stale flash.
+  // Guarded with prev-tracker so the imperative setProjection runs exactly when the prop changes.
+  const prevProjectionRef = useRef(projection);
+  if (
+    mapInstance &&
+    isStyleLoaded &&
+    prevProjectionRef.current !== projection
+  ) {
+    prevProjectionRef.current = projection;
     mapInstance.setProjection(projection ?? { type: "mercator" });
-  }, [mapInstance, isStyleLoaded, projection]);
+  }
 
   const contextValue = useMemo(
     () => ({

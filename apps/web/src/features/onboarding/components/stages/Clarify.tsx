@@ -265,10 +265,11 @@ export function ClarifyComposer({ state, dispatch }: ClarifyProps) {
             <AnimatePresence initial={false}>
               {isOtherSelected && (
                 <m.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
+                  initial={{ opacity: 0, scaleY: 0 }}
+                  animate={{ opacity: 1, scaleY: 1 }}
+                  exit={{ opacity: 0, scaleY: 0 }}
                   transition={{ duration: 0.25, ease: EASE_OUT_QUART }}
+                  style={{ transformOrigin: "top" }}
                   className="overflow-hidden"
                 >
                   <Input
