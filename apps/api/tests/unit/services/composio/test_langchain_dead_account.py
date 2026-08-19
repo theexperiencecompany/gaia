@@ -19,6 +19,7 @@ from contextlib import contextmanager
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from composio.types import Tool
 import composio_client
 import httpx
 import pytest
@@ -58,6 +59,39 @@ def _returns(result: dict[str, Any]) -> Any:
         return result
 
     return execute_tool
+
+
+def _composio_tool(slug: str = "GMAIL_FETCH_MESSAGES") -> Tool:
+    """The minimum Composio tool descriptor `wrap_tool` needs."""
+    return Tool(
+        slug=slug,
+        name=slug,
+        description="Fetch messages.",
+        # `title` is load-bearing: the wrapper builds a pydantic model class from
+        # each schema and uses it as the class name.
+        input_parameters={"type": "object", "title": "GmailFetchMessagesRequest", "properties": {}},
+        output_parameters={
+            "type": "object",
+            "title": "GmailFetchMessagesResponse",
+            "properties": {},
+        },
+        toolkit={"slug": "gmail", "name": "Gmail", "logo": ""},
+        tags=[],
+        scopes=[],
+        version="latest",
+        available_versions=["latest"],
+        # Mixed casing is the SDK's, not a typo: `displayName` is aliased while its
+        # siblings are not.
+        deprecated={
+            "available_versions": ["latest"],
+            "displayName": "Fetch messages",
+            "is_deprecated": False,
+            "toolkit": {"slug": "gmail", "name": "Gmail", "logo": ""},
+            "version": "latest",
+        },
+        is_deprecated=False,
+        no_auth=False,
+    )
 
 
 def _action_func(provider: LangchainProvider, execute_tool: Any, toolkit: str = "GMAIL") -> Any:
@@ -315,6 +349,30 @@ class TestNonRaisingDeadAccountResult:
         assert "dead connected account" in mock_log.warning.call_args.args[0]
 
 
+class TestASuccessfulCallIsNeverReportedDead:
+    def test_dead_account_wording_inside_a_successful_payload_is_not_a_dead_account(self) -> None:
+        """Tool payloads echo arbitrary provider text — a successful search whose
+        results mention "no active connected account" is a result, not a failure.
+        Reporting it would put a false dead-account warning on a healthy run."""
+        provider = LangchainProvider()
+        action_func = _action_func(
+            provider,
+            _returns(
+                {
+                    "successful": True,
+                    "error": "no active connected account",
+                    "data": {"messages": []},
+                }
+            ),
+        )
+
+        with patch(f"{MODULE}.log") as mock_log:
+            result = action_func(__runnable_config__={"metadata": {"user_id": "user-1"}})
+
+        assert result["successful"] is True
+        assert mock_log.warning.call_args_list == []
+
+
 class TestReconnectPromptNeedsALoop:
     def test_without_a_captured_loop_it_degrades_to_the_raw_error(self) -> None:
         """No loop means no expiry and no prompt — the tool must still return the
@@ -337,6 +395,31 @@ class TestTheProviderCapturesItsLoop:
         """The wrapped tool callables are sync and run in an executor thread; the
         loop captured here is the only way back to async work from there."""
         assert LangchainProvider()._loop is asyncio.get_running_loop()
+
+    def test_a_provider_built_off_the_loop_captures_nothing_yet(self) -> None:
+        assert LangchainProvider()._loop is None
+
+    async def test_wrapping_a_tool_tops_up_a_capture_the_constructor_missed(self) -> None:
+        """The provider is a lazy singleton, so whichever caller builds it first may
+        be off-loop — but tools are fetched per request from the running loop.
+        Without this second chance the reconnect prompt is skipped for the whole
+        process, which is how it failed the first time."""
+        provider = await asyncio.to_thread(LangchainProvider)
+        assert provider._loop is None
+
+        provider.wrap_tool(_composio_tool(), _returns({"successful": True}))
+
+        assert provider._loop is asyncio.get_running_loop()
+
+    async def test_wrapping_does_not_steal_an_already_captured_loop(self) -> None:
+        provider = LangchainProvider()
+        captured = provider._loop
+
+        await asyncio.to_thread(
+            provider.wrap_tool, _composio_tool(), _returns({"successful": True})
+        )
+
+        assert provider._loop is captured
 
 
 class TestTheDeadAccountWideEvent:

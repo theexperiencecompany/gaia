@@ -1,10 +1,13 @@
 """Tests for app/api/v1/endpoints/webhook_composio.py"""
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
 import pytest
+
+from app.api.v1.endpoints.webhook_composio import _expire_connection
 
 ENDPOINT = "/api/v1/webhook/composio"
 MODULE = "app.api.v1.endpoints.webhook_composio"
@@ -295,4 +298,55 @@ class TestTheExpiryIsHandedOffCorrectly:
             "user": {"id": "507f1f77bcf86cd799439011"},
             "operation": "webhook_accepted",
             "outcome": "success",
+        }
+
+
+class TestTheBackgroundExpiry:
+    """Runs detached from the request, so nothing is watching it: a stall that
+    logged nothing would leave a user's integration reading as connected forever
+    with no trace of why."""
+
+    async def test_it_pauses_the_dependent_workflows_before_expiring_them(self) -> None:
+        """The paused titles become the notification copy ("2 workflows are
+        paused"), so the pause has to complete first and hand them over."""
+        with (
+            patch(
+                f"{MODULE}.pause_workflows_for_expired_integration",
+                AsyncMock(return_value=["Morning digest"]),
+            ) as pause,
+            patch(f"{MODULE}.expire_user_integration", AsyncMock()) as expire,
+        ):
+            await _expire_connection("user-1", "gmail", "refresh_token_revoked", "ca_1")
+
+        pause.assert_awaited_once_with("user-1", "gmail")
+        expire.assert_awaited_once_with(
+            "user-1",
+            "gmail",
+            reason="refresh_token_revoked",
+            trigger="webhook",
+            notify=True,
+            connected_account_id="ca_1",
+            paused_workflows=["Morning digest"],
+        )
+
+    async def test_a_stall_is_logged_rather_than_disappearing_with_the_task(self) -> None:
+        async def _never_finishes(*_a: object, **_k: object) -> list[str]:
+            await asyncio.sleep(10)
+            return []
+
+        with (
+            patch(f"{MODULE}._WEBHOOK_TASK_TIMEOUT", 0.01),
+            patch(f"{MODULE}.pause_workflows_for_expired_integration", _never_finishes),
+            patch(f"{MODULE}.expire_user_integration", AsyncMock()) as expire,
+            patch(f"{MODULE}.log") as mock_log,
+        ):
+            await _expire_connection("user-1", "gmail", "revoked", "ca_1")
+
+        expire.assert_not_awaited()
+        mock_log.error.assert_called_once()
+        assert "timed out" in mock_log.error.call_args.args[0].lower()
+        assert mock_log.error.call_args.kwargs == {
+            "timeout_s": 0.01,
+            "user_id": "user-1",
+            "integration_id": "gmail",
         }
