@@ -147,7 +147,9 @@ def _expiry_cause(integration_name: str, reason: str | None) -> str | None:
     a raw Composio error sentence as the reason, and developer text must never reach
     user-facing copy.
     """
-    token = (reason or "").strip().lower()
+    if not reason:
+        return None
+    token = reason.strip().lower()
     if len(token.split()) != 1:
         return None
     for marker, template in _EXPIRY_CAUSE_BY_TOKEN:

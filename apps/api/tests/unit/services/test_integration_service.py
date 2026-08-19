@@ -963,6 +963,144 @@ class TestCheckUserHasIntegration:
         result = await check_user_has_integration(USER_ID, "missing")
         assert result is False
 
+    @patch("app.services.integrations.user_integrations.user_integration_repository")
+    async def test_the_question_is_scoped_to_this_user_and_this_integration(self, mock_repo):
+        """A fixed-answer stub cannot tell the real lookup from one that dropped or
+        swapped an argument — and answering for the wrong user is how a caller
+        concludes a stranger's integration is connected."""
+
+        async def _exists(user_id: str, integration_id: str) -> bool:
+            return (user_id, integration_id) == (USER_ID, INTEGRATION_ID)
+
+        mock_repo.exists = AsyncMock(side_effect=_exists)
+
+        assert await check_user_has_integration(USER_ID, INTEGRATION_ID) is True
+        assert await check_user_has_integration("someone-else", INTEGRATION_ID) is False
+        assert await check_user_has_integration(USER_ID, "another-integration") is False
+
+
+CAPABILITIES_MODULE = "app.agents.core.integration_capabilities"
+
+
+def _integration_response(integration_id: str, name: str, tools: list[IntegrationTool]):
+    return IntegrationResponse(
+        integration_id=integration_id,
+        name=name,
+        description="",
+        category="developer",
+        managed_by="mcp",
+        source="platform",
+        is_featured=False,
+        display_priority=0,
+        tools=tools,
+    )
+
+
+@pytest.mark.asyncio
+class TestCapabilitiesPayloadAndArguments:
+    """The suggestions the LLM turns into clickable follow-ups are built from this
+    payload, so its exact shape is the contract. The tests above stub with fixed
+    return values, which cannot tell a correct argument from a nulled one, and
+    never assert the per-integration entry at all."""
+
+    @staticmethod
+    def _registry(*core_tool_names: str) -> MagicMock:
+        category = MagicMock()
+        category.tools = [MagicMock(**{"name": n}) for n in core_tool_names]
+        registry = MagicMock()
+        registry.get_core_categories.return_value = [category]
+        return registry
+
+    async def test_it_reads_the_asking_users_integrations_and_looks_each_one_up(self) -> None:
+        """A nulled user id would build another user's follow-up suggestions; a
+        nulled integration id would look up the wrong integration's tools."""
+
+        async def _connected(user_id: str) -> set[str]:
+            return {"github"} if user_id == USER_ID else set()
+
+        async def _details(integration_id: str):
+            if integration_id != "github":
+                return None
+            return _integration_response(
+                "github", "GitHub", [IntegrationTool(name="create_issue", description="Create")]
+            )
+
+        with (
+            patch(
+                f"{CAPABILITIES_MODULE}.get_tool_registry", AsyncMock(return_value=self._registry())
+            ),
+            patch(
+                f"{CAPABILITIES_MODULE}.get_connected_integration_ids",
+                AsyncMock(side_effect=_connected),
+            ),
+            patch(
+                f"{CAPABILITIES_MODULE}.get_integration_details", AsyncMock(side_effect=_details)
+            ),
+        ):
+            result = await get_user_integration_capabilities.__wrapped__(USER_ID)
+
+        assert result["capabilities"] == {
+            "github": {
+                "name": "GitHub",
+                "tools": [{"name": "create_issue", "description": "Create"}],
+            }
+        }
+
+    async def test_a_tool_without_a_description_carries_an_empty_string(self) -> None:
+        """The follow-up prompt reads `description` off every entry — a None there
+        renders as the word "None" in the model's context."""
+        with (
+            patch(
+                f"{CAPABILITIES_MODULE}.get_tool_registry", AsyncMock(return_value=self._registry())
+            ),
+            patch(
+                f"{CAPABILITIES_MODULE}.get_connected_integration_ids",
+                AsyncMock(return_value={"github"}),
+            ),
+            patch(
+                f"{CAPABILITIES_MODULE}.get_integration_details",
+                AsyncMock(
+                    return_value=_integration_response(
+                        "github", "GitHub", [IntegrationTool(name="create_issue", description=None)]
+                    )
+                ),
+            ),
+        ):
+            result = await get_user_integration_capabilities.__wrapped__(USER_ID)
+
+        assert result["capabilities"]["github"]["tools"] == [
+            {"name": "create_issue", "description": ""}
+        ]
+
+    async def test_an_integration_that_no_longer_exists_does_not_end_the_scan(self) -> None:
+        """The deleted integration is FIRST: a loop that breaks instead of
+        continuing would drop every still-connected integration behind it."""
+
+        async def _details(integration_id: str):
+            if integration_id == "deleted":
+                return None
+            return _integration_response(
+                "github", "GitHub", [IntegrationTool(name="create_issue", description="Create")]
+            )
+
+        with (
+            patch(
+                f"{CAPABILITIES_MODULE}.get_tool_registry", AsyncMock(return_value=self._registry())
+            ),
+            patch(
+                f"{CAPABILITIES_MODULE}.get_connected_integration_ids",
+                # A list, not a set: the order this test depends on must be real.
+                AsyncMock(return_value=["deleted", "github"]),
+            ),
+            patch(
+                f"{CAPABILITIES_MODULE}.get_integration_details", AsyncMock(side_effect=_details)
+            ),
+        ):
+            result = await get_user_integration_capabilities.__wrapped__(USER_ID)
+
+        assert result["integration_names"] == ["GitHub"]
+        assert "github" in result["capabilities"]
+
 
 class TestGetUserIntegrationCapabilities:
     @patch(

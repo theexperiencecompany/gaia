@@ -856,7 +856,6 @@ class TestReconnectionFlow:
             assert doc.user_id == USER_ID
             assert doc.integration_id == "gmail"
 
-    @pytest.mark.regression
     async def test_reconnect_after_expiry_clears_the_expiry_stamps(self) -> None:
         """A reconnected integration must not read as connected-but-broken.
 

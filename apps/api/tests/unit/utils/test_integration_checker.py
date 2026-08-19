@@ -15,6 +15,9 @@ from app.utils.integration_checker import request_integration_connection
 
 _FAKE_FRONTEND = "https://app.example.com"
 _MAGIC_LINK = "https://app.example.com/connect/abc123"
+# The identity the status lookup is expected to be asked about.
+_USER = "user1"
+_INTEGRATION_ID = "gmail"
 
 
 @contextmanager
@@ -29,7 +32,16 @@ def _graph_run(
     ``category=None`` simulates no runnable context at all (get_config raises).
     ``expired`` is the stored connection status the prompt reads to tell a dead
     grant from one that was never set up.
+
+    The status lookup answers from the arguments it is handed rather than a fixed
+    value: a stub that ignores them cannot tell the real call from one that passed
+    the wrong user, dropped an argument, or swapped the two — and every such
+    mutation survived while it did.
     """
+
+    async def _is_expired(user_id: str, integration_id: str) -> bool:
+        return expired and (user_id, integration_id) == (_USER, _INTEGRATION_ID)
+
     writer = MagicMock()
     config_patch = (
         patch(
@@ -50,7 +62,7 @@ def _graph_run(
             AsyncMock(return_value=connect_url),
         ),
         patch("app.utils.integration_checker.settings") as mock_settings,
-        patch.object(user_integration_repository, "is_expired", AsyncMock(return_value=expired)),
+        patch.object(user_integration_repository, "is_expired", AsyncMock(side_effect=_is_expired)),
     ):
         mock_settings.FRONTEND_URL = _FAKE_FRONTEND
         yield writer
@@ -65,6 +77,10 @@ class TestRequestIntegrationConnection:
             msg = await request_integration_connection("gmail", "Gmail", "user1")
         assert "Gmail" in msg
         assert "card" in msg.lower()
+        # The verb, not just the card: "connect" vs "reconnect" is the whole
+        # distinction this copy exists to make.
+        assert "connect button" in msg
+        assert "reconnect button" not in msg
         assert "http" not in msg
         assert "/integrations" not in msg
 
@@ -91,7 +107,7 @@ class TestRequestIntegrationConnection:
         with _graph_run(category, connect_url=None):
             msg = await request_integration_connection("gmail", "Gmail", "user1")
         assert f"{_FAKE_FRONTEND}/integrations" in msg
-        assert "Gmail" in msg
+        assert "connect Gmail there" in msg
 
     async def test_outside_runnable_context_defaults_to_url_and_skips_card(self) -> None:
         """No graph run means no stream to carry a card — the link must be inline."""

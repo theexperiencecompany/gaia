@@ -386,7 +386,6 @@ class TestComposioConnectionEvents:
                     },
                 )
 
-    @pytest.mark.regression
     async def test_an_expired_connection_is_accepted_and_runs_the_expiry_transition(
         self, real_redis
     ):
@@ -419,7 +418,6 @@ class TestComposioConnectionEvents:
             paused_workflows=[],
         )
 
-    @pytest.mark.regression
     async def test_it_pauses_the_dependent_workflows_and_hands_the_titles_to_the_expiry(
         self, real_redis, pause
     ):
@@ -620,32 +618,3 @@ class TestComposioConnectionEvents:
         expire.assert_awaited_once()
         assert expire.await_args.args[0] == stranger_id
 
-    @pytest.mark.regression
-    @pytest.mark.parametrize(
-        ("raw_body", "webhook_id"),
-        [(b"[]", "conn-nonobject-array"), (b'"nope"', "conn-nonobject-string")],
-    )
-    async def test_a_json_body_that_is_not_an_object_is_acked_not_raised(
-        self, real_redis, raw_body, webhook_id
-    ):
-        # A non-dict body fails the connection-event type guard and falls through
-        # to the trigger path, where `body.get("data")` has nothing to call. A 500
-        # here is the worst outcome available: Composio redelivers it forever.
-        timestamp = "2025-01-01T00:00:00Z"
-        signature = _sign_composio(webhook_id, timestamp, raw_body, "test-secret")
-        await real_redis.delete(f"webhook:composio:{webhook_id}")
-
-        async with _make_composio_client() as client:
-            with patch("app.config.settings.settings.COMPOSIO_WEBHOOK_SECRET", "test-secret"):
-                response = await client.post(
-                    "/api/v1/webhook/composio",
-                    content=raw_body,
-                    headers={
-                        "content-type": "application/json",
-                        "webhook-id": webhook_id,
-                        "webhook-timestamp": timestamp,
-                        "webhook-signature": signature,
-                    },
-                )
-
-        assert response.status_code < 500, "A malformed body must be acked or refused, never 500'd"

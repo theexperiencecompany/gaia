@@ -5,6 +5,12 @@ Regression cover for GAIA-BACKEND-2ZG: a revoked Composio account made
 `except Exception` returning `{"successful": False, "error": str(e)}`. That
 stopped the 500 but left the user stuck (nothing ever recorded the connection
 as dead) and swallowed timeouts, 5xx and real bugs into the same opaque string.
+
+The wrapper is imported as a module rather than by symbol: the regression lane
+replays marked tests against the base revision, where the private helpers below
+do not exist yet. ``from ... import _helper`` would break at collection and prove
+nothing; attribute access fails inside the test body, where it counts as a real
+failure.
 """
 
 import asyncio
@@ -18,11 +24,8 @@ import httpx
 import pytest
 
 from app.db.repositories.user_integrations import user_integration_repository
-from app.services.composio.langchain_composio_service import (
-    LangchainProvider,
-    _expire_with_log_boundary,
-    _is_dead_account_error,
-)
+from app.services.composio import langchain_composio_service as wrapper
+from app.services.composio.langchain_composio_service import LangchainProvider
 
 MODULE = "app.services.composio.langchain_composio_service"
 CHECKER = "app.utils.integration_checker"
@@ -85,26 +88,30 @@ class TestDeadAccountClassifier:
     classifier must key on the structured error and not merely on a 404."""
 
     def test_structured_error_code_is_recognized(self) -> None:
-        assert _is_dead_account_error(_not_found(DEAD_ACCOUNT_BODY, "boom")) is True
+        assert wrapper._is_dead_account_error(_not_found(DEAD_ACCOUNT_BODY, "boom")) is True
 
     def test_structured_error_name_is_recognized_without_the_code(self) -> None:
         body = {"error": {"name": "ActionExecute_ConnectedAccountNotFound"}}
-        assert _is_dead_account_error(_not_found(body, "boom")) is True
+        assert wrapper._is_dead_account_error(_not_found(body, "boom")) is True
 
     def test_message_is_the_fallback_when_the_body_is_not_json(self) -> None:
         error = _not_found(None, "Composio error 1810: no active connected account")
-        assert _is_dead_account_error(error) is True
+        assert wrapper._is_dead_account_error(error) is True
 
     def test_an_unrelated_404_is_not_a_dead_account(self) -> None:
         body = {"error": {"error_code": 1404, "name": "ToolNotFound"}}
-        assert _is_dead_account_error(_not_found(body, "Tool not found")) is False
+        assert wrapper._is_dead_account_error(_not_found(body, "Tool not found")) is False
 
 
 class TestUnrelatedFailuresPropagate:
     """The blanket catch this replaces turned every failure into an opaque
-    `{"successful": False}` string and hid it from Sentry."""
+    `{"successful": False}` string and hid it from Sentry.
 
-    @pytest.mark.regression
+    Unmarked on purpose: that catch only ever existed in the PR #932 diff, never
+    on master, so these pass on the base revision. They guard the narrow catch
+    from widening again rather than pinning a shipped bug.
+    """
+
     @pytest.mark.parametrize(
         "exc",
         [
@@ -126,7 +133,6 @@ class TestUnrelatedFailuresPropagate:
         with pytest.raises(type(exc)):
             action_func(__runnable_config__={"metadata": {"user_id": "user-1"}})
 
-    @pytest.mark.regression
     def test_a_404_that_is_not_the_dead_account_error_still_raises(self) -> None:
         body = {"error": {"error_code": 1404, "name": "ToolNotFound"}}
         action_func = _action_func(LangchainProvider(), _raises(_not_found(body, "Tool not found")))
@@ -207,7 +213,7 @@ class TestDeadAccountReconciles:
         # The user is already being handed a connect card in this same turn, so a
         # notification saying the same thing seconds later is noise.
         with patch(f"{MODULE}.expire_user_integration") as expire:
-            await _expire_with_log_boundary("user-1", "gmail", "no account")
+            await wrapper._expire_with_log_boundary("user-1", "gmail", "no account")
 
         expire.assert_called_once_with(
             "user-1", "gmail", reason="no account", trigger="tool_execution", notify=False
