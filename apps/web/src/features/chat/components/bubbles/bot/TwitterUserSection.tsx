@@ -42,14 +42,12 @@ function TwitterUserCard({
 }) {
   const metrics = user.public_metrics || {};
 
-  const handleOpenProfile = () => {
-    window.open(`https://twitter.com/${user.username}`, "_blank");
-  };
-
   return (
-    <div
-      className="group relative flex w-full flex-col gap-3 rounded-xl border border-default-200 bg-content1/50 p-4 backdrop-blur-sm transition-colors hover:border-default-300 hover:bg-content1/70 cursor-pointer"
-      onClick={handleOpenProfile}
+    <a
+      href={`https://twitter.com/${user.username}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group relative flex w-full flex-col gap-3 rounded-xl border border-default-200 bg-content1/50 p-4 backdrop-blur-sm transition-colors hover:border-default-300 hover:bg-content1/70 cursor-pointer text-left"
     >
       {/* Header Row */}
       <div className="flex items-start justify-between">
@@ -138,7 +136,7 @@ function TwitterUserCard({
           <span className="text-default-500">Followers</span>
         </div>
       </div>
-    </div>
+    </a>
   );
 }
 

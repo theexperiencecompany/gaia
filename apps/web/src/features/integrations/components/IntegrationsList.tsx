@@ -35,10 +35,7 @@ const IntegrationRow: React.FC<{
   };
 
   return (
-    <div
-      className="flex min-h-16 cursor-pointer items-center gap-4 overflow-hidden rounded-2xl bg-zinc-800/0 px-4 py-3 hover:bg-zinc-800 transition-colors duration-200"
-      onClick={handleClick}
-    >
+    <div className="flex min-h-16 cursor-pointer items-center gap-4 overflow-hidden rounded-2xl bg-zinc-800/0 px-4 py-3 hover:bg-zinc-800 transition-colors duration-200">
       <div className="shrink-0">
         {getToolCategoryIcon(
           integration.id,
@@ -52,12 +49,16 @@ const IntegrationRow: React.FC<{
         )}
       </div>
 
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <div className="font-medium">{integration.name}</div>
-        <div className="truncate text-sm font-light text-zinc-400">
+      <button
+        type="button"
+        onClick={handleClick}
+        className="flex min-w-0 flex-1 flex-col gap-0.5 text-left"
+      >
+        <span className="font-medium">{integration.name}</span>
+        <span className="truncate text-sm font-light text-zinc-400">
           {integration.description}
-        </div>
-      </div>
+        </span>
+      </button>
 
       <div className="shrink-0">
         {isConnected && (

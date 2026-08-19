@@ -118,16 +118,17 @@ export default function LabelsFieldChip({
           {value.length > 0 && (
             <>
               <div className="my-1 h-px bg-zinc-700" />
-              <div
+              <button
+                type="button"
                 onClick={() => {
                   onChange([]);
                   onClose();
                 }}
-                className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-red-400 transition-colors hover:bg-zinc-800"
+                className="flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left text-red-400 transition-colors hover:bg-zinc-800"
               >
                 <Cancel01Icon size={14} />
                 Clear all labels
-              </div>
+              </button>
             </>
           )}
 

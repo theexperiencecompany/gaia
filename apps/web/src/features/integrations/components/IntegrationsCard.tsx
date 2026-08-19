@@ -48,7 +48,6 @@ const IntegrationItem: React.FC<{
   return (
     <div
       className={`flex min-h-12 cursor-pointer flex-col justify-center ${gapClass} overflow-hidden ${size === "small" ? "rounded-xl" : "rounded-2xl"} bg-zinc-800/40 ${paddingClass} transition hover:bg-zinc-700`}
-      onClick={handleClick}
     >
       <div className="flex items-center gap-3">
         <div className="shrink-0">
@@ -65,14 +64,24 @@ const IntegrationItem: React.FC<{
         </div>
 
         {size !== "small" ? (
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <div className="text-sm font-medium">{integration.name}</div>
-            <div className="truncate text-xs font-light text-zinc-400">
+          <button
+            type="button"
+            onClick={handleClick}
+            className="flex min-w-0 flex-1 flex-col gap-1 text-left"
+          >
+            <span className="text-sm font-medium">{integration.name}</span>
+            <span className="truncate text-xs font-light text-zinc-400">
               {integration.description}
-            </div>
-          </div>
+            </span>
+          </button>
         ) : (
-          <div className="flex-1 text-sm font-medium">{integration.name}</div>
+          <button
+            type="button"
+            onClick={handleClick}
+            className="flex-1 text-left text-sm font-medium"
+          >
+            {integration.name}
+          </button>
         )}
 
         <div className="shrink-0 flex items-center gap-2">

@@ -126,7 +126,6 @@ function IntegrationListSection({
       <div
         key={integration.id}
         className="group flex items-start gap-3 p-3 transition-colors hover:bg-zinc-700 cursor-pointer"
-        onClick={() => handleIntegrationClick(integration.id)}
       >
         <div className="shrink-0 pt-0.5">
           {getToolCategoryIcon(
@@ -141,8 +140,12 @@ function IntegrationListSection({
           )}
         </div>
 
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => handleIntegrationClick(integration.id)}
+          className="flex min-w-0 flex-1 flex-col items-start gap-1 text-left"
+        >
+          <span className="flex items-center gap-2">
             <span className="text-sm font-medium text-white">
               {integration.name}
             </span>
@@ -151,11 +154,11 @@ function IntegrationListSection({
                 Connected
               </Chip>
             )}
-          </div>
-          <p className="mt-1 text-xs text-zinc-400">
+          </span>
+          <span className="text-xs text-zinc-400">
             {integration.description}
-          </p>
-        </div>
+          </span>
+        </button>
 
         {/* Show connect button for all available integrations */}
         {!isConnected && isAvailable && (
