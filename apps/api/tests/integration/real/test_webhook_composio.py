@@ -617,4 +617,3 @@ class TestComposioConnectionEvents:
         assert response.json()["message"] == "Connection event accepted"
         expire.assert_awaited_once()
         assert expire.await_args.args[0] == stranger_id
-
