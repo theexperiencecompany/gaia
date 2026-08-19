@@ -9,7 +9,7 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import { MAX_MEMORY_LENGTH } from "@/features/memory/constants";
 import { toast } from "@/lib/toast";
@@ -29,13 +29,15 @@ export function AddMemoryModal({
   const [categoryPath, setCategoryPath] = useState("");
   const [isPending, startTransition] = useTransition();
   const prevIsOpenRef = useRef(isOpen);
-  if (prevIsOpenRef.current !== isOpen) {
-    prevIsOpenRef.current = isOpen;
-    if (!isOpen) {
-      setContent("");
-      setCategoryPath("");
+  useEffect(() => {
+    if (prevIsOpenRef.current !== isOpen) {
+      prevIsOpenRef.current = isOpen;
+      if (!isOpen) {
+        setContent("");
+        setCategoryPath("");
+      }
     }
-  }
+  }, [isOpen]);
 
   const handleSave = () => {
     if (!content.trim()) return;

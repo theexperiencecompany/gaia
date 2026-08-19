@@ -11,7 +11,7 @@ import {
 } from "@heroui/modal";
 import { Tab, Tabs } from "@heroui/tabs";
 import { Github01Icon } from "@icons";
-import { useMemo, useReducer, useRef } from "react";
+import { useEffect, useMemo, useReducer, useRef } from "react";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { toast } from "@/lib/toast";
 import { skillsApi } from "../api/skillsApi";
@@ -125,16 +125,17 @@ export function SkillEditorModal({
     saving,
   } = formState;
 
-  // Guarded render update to reset form when modal opens or skill changes — avoids stale flash.
   const prevIsOpenRef = useRef(isOpen);
   const prevSkillRef = useRef(skill);
-  if (prevIsOpenRef.current !== isOpen || prevSkillRef.current !== skill) {
-    prevIsOpenRef.current = isOpen;
-    prevSkillRef.current = skill;
-    if (isOpen) {
-      dispatch({ type: "reset", skill });
+  useEffect(() => {
+    if (prevIsOpenRef.current !== isOpen || prevSkillRef.current !== skill) {
+      prevIsOpenRef.current = isOpen;
+      prevSkillRef.current = skill;
+      if (isOpen) {
+        dispatch({ type: "reset", skill });
+      }
     }
-  }
+  }, [isOpen, skill]);
 
   const nameError = useMemo(() => {
     if (!name) return undefined;

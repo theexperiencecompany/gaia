@@ -30,10 +30,12 @@ export const MentionList = forwardRef<MentionListHandle, MentionListProps>(
     const [selected, setSelected] = useState(0);
     const activeRef = useRef<HTMLButtonElement>(null);
     const prevItemsRef = useRef(items);
-    if (prevItemsRef.current !== items) {
-      prevItemsRef.current = items;
-      setSelected(0);
-    }
+    useEffect(() => {
+      if (prevItemsRef.current !== items) {
+        prevItemsRef.current = items;
+        setSelected(0);
+      }
+    }, [items]);
 
     // Keep the highlighted item visible when navigating past the fold.
     useEffect(() => {

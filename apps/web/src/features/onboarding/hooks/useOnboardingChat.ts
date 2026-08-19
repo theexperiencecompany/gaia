@@ -47,44 +47,47 @@ export function useOnboardingChat(
     activeConversationIdRef.current = conversationId;
   }, [conversationId]);
 
-  // Guarded render updates to avoid stale flash from effect-adjusted state.
   const prevIsChatSendingRef = useRef(isChatSending);
-  if (prevIsChatSendingRef.current !== isChatSending) {
-    prevIsChatSendingRef.current = isChatSending;
-    if (todoExecutionInProgressRef.current && !isChatSending) {
-      todoExecutionInProgressRef.current = false;
-      setIsTodoExecutionDone(true);
+  useEffect(() => {
+    if (prevIsChatSendingRef.current !== isChatSending) {
+      prevIsChatSendingRef.current = isChatSending;
+      if (todoExecutionInProgressRef.current && !isChatSending) {
+        todoExecutionInProgressRef.current = false;
+        setIsTodoExecutionDone(true);
+      }
     }
-  }
+  }, [isChatSending]);
   const prevSecondDepsRef = useRef({
     isTodoExecutionDone,
     conversationId,
     isChatSending,
     streamMessages,
   });
-  const prevSecond = prevSecondDepsRef.current;
-  if (
-    prevSecond.isTodoExecutionDone !== isTodoExecutionDone ||
-    prevSecond.conversationId !== conversationId ||
-    prevSecond.isChatSending !== isChatSending ||
-    prevSecond.streamMessages !== streamMessages
-  ) {
-    prevSecondDepsRef.current = {
-      isTodoExecutionDone,
-      conversationId,
-      isChatSending,
-      streamMessages,
-    };
-    if (!isTodoExecutionDone && conversationId && !isChatSending) {
-      if (
-        streamMessages.some(
-          (m) => m.role === "assistant" && m.status === "sent",
-        )
-      ) {
-        setIsTodoExecutionDone(true);
+  useEffect(() => {
+    const prevSecond = prevSecondDepsRef.current;
+    if (
+      prevSecond.isTodoExecutionDone !== isTodoExecutionDone ||
+      prevSecond.conversationId !== conversationId ||
+      prevSecond.isChatSending !== isChatSending ||
+      prevSecond.streamMessages !== streamMessages
+    ) {
+      prevSecondDepsRef.current = {
+        isTodoExecutionDone,
+        conversationId,
+        isChatSending,
+        streamMessages,
+      };
+      if (!isTodoExecutionDone && conversationId && !isChatSending) {
+        if (
+          streamMessages.some(
+            (m) => m.role === "assistant" && m.status === "sent",
+          )
+        ) {
+          setIsTodoExecutionDone(true);
+        }
       }
     }
-  }
+  }, [isTodoExecutionDone, conversationId, isChatSending, streamMessages]);
 
   const sendChatMessage = useCallback(
     async (content: string) => {

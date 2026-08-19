@@ -285,10 +285,12 @@ function BotsShowcaseDemo() {
   }, []);
 
   const prevInViewRef = useRef(inView);
-  if (prevInViewRef.current !== inView) {
-    prevInViewRef.current = inView;
-    if (!inView) setAutoRotate(true);
-  }
+  useEffect(() => {
+    if (prevInViewRef.current !== inView) {
+      prevInViewRef.current = inView;
+      if (!inView) setAutoRotate(true);
+    }
+  }, [inView]);
 
   useEffect(() => {
     if (!inView || !autoRotate) return;

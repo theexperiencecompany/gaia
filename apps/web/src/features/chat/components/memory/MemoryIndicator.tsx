@@ -2,7 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { AiBrain01Icon } from "@icons";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface MemoryResult {
   id: string;
@@ -73,16 +73,18 @@ export default function MemoryIndicator({
   const [displayText, setDisplayText] = useState<string>("");
   const [showIndicator, setShowIndicator] = useState(false);
   const prevDataRef = useRef(memoryData);
-  if (prevDataRef.current !== memoryData) {
-    prevDataRef.current = memoryData;
-    if (memoryData) {
-      const text = resolveMemoryText(memoryData);
-      if (text !== null) {
-        setDisplayText(text);
-        setShowIndicator(true);
+  useEffect(() => {
+    if (prevDataRef.current !== memoryData) {
+      prevDataRef.current = memoryData;
+      if (memoryData) {
+        const text = resolveMemoryText(memoryData);
+        if (text !== null) {
+          setDisplayText(text);
+          setShowIndicator(true);
+        }
       }
     }
-  }
+  }, [memoryData]);
 
   if (!showIndicator && !displayText) return null;
 

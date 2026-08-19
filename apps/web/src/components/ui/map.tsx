@@ -19,6 +19,7 @@ import {
   useEffect,
   useId,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -251,7 +252,9 @@ const MapView = forwardRef<MapRef, MapProps>(function MapView(
   const isControlled = viewport !== undefined && onViewportChange !== undefined;
 
   const onViewportChangeRef = useRef(onViewportChange);
-  onViewportChangeRef.current = onViewportChange;
+  useEffect(() => {
+    onViewportChangeRef.current = onViewportChange;
+  }, [onViewportChange]);
 
   const mapStyles = useMemo(() => {
     // Explicit styles win. Otherwise `blank` opts into the transparent
@@ -369,19 +372,20 @@ const MapView = forwardRef<MapRef, MapProps>(function MapView(
     internalUpdateRef.current = false;
   }, [mapInstance, isControlled, viewport]);
 
-  // Handle style change — guarded render update to avoid stale flash from effect.
   const prevStyleRef = useRef<{
     mapInstance: typeof mapInstance;
     resolvedTheme: typeof resolvedTheme;
     mapStyles: typeof mapStyles;
   } | null>(null);
-  const styleDeps = { mapInstance, resolvedTheme, mapStyles };
-  if (
-    prevStyleRef.current?.mapInstance !== mapInstance ||
-    prevStyleRef.current?.resolvedTheme !== resolvedTheme ||
-    prevStyleRef.current?.mapStyles !== mapStyles
-  ) {
-    prevStyleRef.current = styleDeps;
+  useLayoutEffect(() => {
+    if (
+      prevStyleRef.current?.mapInstance === mapInstance &&
+      prevStyleRef.current?.resolvedTheme === resolvedTheme &&
+      prevStyleRef.current?.mapStyles === mapStyles
+    ) {
+      return;
+    }
+    prevStyleRef.current = { mapInstance, resolvedTheme, mapStyles };
     if (mapInstance && resolvedTheme) {
       const newStyle =
         resolvedTheme === "dark" ? mapStyles.dark : mapStyles.light;
@@ -392,19 +396,15 @@ const MapView = forwardRef<MapRef, MapProps>(function MapView(
         mapInstance.setStyle(newStyle, { diff: true });
       }
     }
-  }
+  }, [mapInstance, resolvedTheme, mapStyles, clearStyleTimeout]);
 
-  // Sync projection synchronously during render to avoid stale flash.
-  // Guarded with prev-tracker so the imperative setProjection runs exactly when the prop changes.
   const prevProjectionRef = useRef(projection);
-  if (
-    mapInstance &&
-    isStyleLoaded &&
-    prevProjectionRef.current !== projection
-  ) {
+  useLayoutEffect(() => {
+    if (!mapInstance || !isStyleLoaded) return;
+    if (prevProjectionRef.current === projection) return;
     prevProjectionRef.current = projection;
     mapInstance.setProjection(projection ?? { type: "mercator" });
-  }
+  }, [mapInstance, isStyleLoaded, projection]);
 
   const contextValue = useMemo(
     () => ({
@@ -488,14 +488,16 @@ function MapMarker({
     onDrag,
     onDragEnd,
   });
-  callbacksRef.current = {
-    onClick,
-    onMouseEnter,
-    onMouseLeave,
-    onDragStart,
-    onDrag,
-    onDragEnd,
-  };
+  useEffect(() => {
+    callbacksRef.current = {
+      onClick,
+      onMouseEnter,
+      onMouseLeave,
+      onDragStart,
+      onDrag,
+      onDragEnd,
+    };
+  }, [onClick, onMouseEnter, onMouseLeave, onDragStart, onDrag, onDragEnd]);
 
   const marker = useMemo(() => {
     const markerInstance = new MapLibreGL.Marker({
@@ -1037,7 +1039,9 @@ function MapPopup({
 }: MapPopupProps) {
   const { map } = useMap();
   const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
   const container = useMemo(() => document.createElement("div"), []);
   const { offset, maxWidth } = popupOptions;
 
@@ -1382,7 +1386,9 @@ function MapGeoJSON<
     [defaults.line, linePaint],
   );
   const latestRef = useRef({ onClick, onHover });
-  latestRef.current = { onClick, onHover };
+  useEffect(() => {
+    latestRef.current = { onClick, onHover };
+  }, [onClick, onHover]);
 
   // Add source on mount.
   useEffect(() => {
@@ -1720,7 +1726,9 @@ function MapArc<T extends MapArcDatum = MapArcDatum>({
   );
 
   const latestRef = useRef({ data, onClick, onHover });
-  latestRef.current = { data, onClick, onHover };
+  useEffect(() => {
+    latestRef.current = { data, onClick, onHover };
+  }, [data, onClick, onHover]);
 
   // Add source and layers on mount.
   useEffect(() => {

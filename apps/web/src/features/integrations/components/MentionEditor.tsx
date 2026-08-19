@@ -3,7 +3,7 @@
 import type { ChipProps } from "@heroui/chip";
 import type { Extensions } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
-import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useMemo, useRef } from "react";
 import { buildMentionExtensions } from "@/features/integrations/components/mentionExtensions";
 import {
   docToValue,
@@ -76,19 +76,22 @@ export const MentionEditor = ({
     radiusRef.current = mentionRadius;
   });
 
-  const extensionsRef = useRef<Extensions>(undefined);
-  extensionsRef.current ??= buildMentionExtensions(
-    {
-      icon: iconRef,
-      removable: removableRef,
-      radius: radiusRef,
-      toolNames: toolNamesRef,
-    },
-    maxLength,
+  const extensions = useMemo<Extensions>(
+    () =>
+      buildMentionExtensions(
+        {
+          icon: iconRef,
+          removable: removableRef,
+          radius: radiusRef,
+          toolNames: toolNamesRef,
+        },
+        maxLength,
+      ),
+    [maxLength],
   );
 
   const editor = useEditor({
-    extensions: extensionsRef.current,
+    extensions,
     content: valueToContent(value, toolNames),
     editable: !readOnly,
     immediatelyRender: false,

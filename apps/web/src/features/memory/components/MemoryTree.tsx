@@ -91,10 +91,12 @@ function TreeFolder({ node, depth, actions }: TreeFolderProps) {
   const [memories, setMemories] = useState<MemoryEntry[] | null>(node.memories);
   const [loadingMemories, setLoadingMemories] = useState(false);
   const prevMemoriesRef = useRef(node.memories);
-  if (prevMemoriesRef.current !== node.memories) {
-    prevMemoriesRef.current = node.memories;
-    setMemories(node.memories);
-  }
+  useEffect(() => {
+    if (prevMemoriesRef.current !== node.memories) {
+      prevMemoriesRef.current = node.memories;
+      setMemories(node.memories);
+    }
+  }, [node.memories]);
 
   const handleForget = useCallback(
     async (target: MemoryEntry) => {

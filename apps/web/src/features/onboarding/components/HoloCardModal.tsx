@@ -79,15 +79,16 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
     }
   }, [personalizationData?.holo_card_id]);
 
-  // Reset reveal state when modal closes — guarded render update to avoid stale flash.
   const prevIsOpenRef = useRef(isOpen);
-  if (prevIsOpenRef.current !== isOpen) {
-    prevIsOpenRef.current = isOpen;
-    if (!isOpen) {
-      setIsCardRevealed(false);
-      hasShownConfetti.current = false;
+  useEffect(() => {
+    if (prevIsOpenRef.current !== isOpen) {
+      prevIsOpenRef.current = isOpen;
+      if (!isOpen) {
+        setIsCardRevealed(false);
+        hasShownConfetti.current = false;
+      }
     }
-  }
+  }, [isOpen]);
 
   // Trigger confetti only after card is revealed
   useEffect(() => {

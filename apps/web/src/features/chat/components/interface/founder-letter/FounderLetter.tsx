@@ -317,10 +317,12 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
   // locked with nothing on screen to explain why. Hiding it closes it.
   // Guarded render update to avoid stale flash from effect.
   const prevHiddenRef = useRef(hidden);
-  if (prevHiddenRef.current !== hidden) {
-    prevHiddenRef.current = hidden;
-    if (hidden) setIsOpen(false);
-  }
+  useEffect(() => {
+    if (prevHiddenRef.current !== hidden) {
+      prevHiddenRef.current = hidden;
+      if (hidden) setIsOpen(false);
+    }
+  }, [hidden]);
 
   const copyCode = useCallback(async () => {
     try {

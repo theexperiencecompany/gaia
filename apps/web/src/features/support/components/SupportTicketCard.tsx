@@ -13,7 +13,7 @@ import {
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Comment01Icon, HelpCircleIcon, PencilEdit01Icon } from "@icons";
 import type React from "react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { Separator } from "@/components/ui/separator";
 import { supportApi } from "@/features/support/api/supportApi";
@@ -142,10 +142,12 @@ export default function SupportTicketCard({
   const [editData, setEditData] = useState<SupportTicketData>(ticketData);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const prevTicketDataRef = useRef(ticketData);
-  if (prevTicketDataRef.current !== ticketData) {
-    prevTicketDataRef.current = ticketData;
-    setEditData(ticketData);
-  }
+  useEffect(() => {
+    if (prevTicketDataRef.current !== ticketData) {
+      prevTicketDataRef.current = ticketData;
+      setEditData(ticketData);
+    }
+  }, [ticketData]);
 
   const validateForm = () => {
     try {
