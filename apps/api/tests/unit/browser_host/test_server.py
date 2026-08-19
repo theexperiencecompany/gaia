@@ -154,10 +154,14 @@ def test_control_plane_requires_host_key(client) -> None:
         assert test_cli.get("/healthz").status_code == 401
         # Correct key -> the session flows work (whatever the handler returns).
         host.create_context.return_value = SESSION
-        ok = test_cli.post("/sessions", json={"storage_state": None}, headers={"X-Host-Key": "s3cret!" * 4})
+        ok = test_cli.post(
+            "/sessions", json={"storage_state": None}, headers={"X-Host-Key": "s3cret!" * 4}
+        )
         assert ok.status_code == 200
         # Wrong key -> 401.
-        bad = test_cli.post("/sessions", json={"storage_state": None}, headers={"X-Host-Key": "nope"})
+        bad = test_cli.post(
+            "/sessions", json={"storage_state": None}, headers={"X-Host-Key": "nope"}
+        )
         assert bad.status_code == 401
     finally:
         monkeypatch.undo()

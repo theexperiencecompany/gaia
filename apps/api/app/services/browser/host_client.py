@@ -61,7 +61,9 @@ async def create_session(storage_state: StorageState | None) -> HostSession:
     """Create an isolated browser session, seeding ``storage_state`` when given."""
     try:
         async with httpx.AsyncClient(
-            base_url=settings.BROWSER_HOST_URL, timeout=_CREATE_TIMEOUT_SECONDS, headers=_host_headers()
+            base_url=settings.BROWSER_HOST_URL,
+            timeout=_CREATE_TIMEOUT_SECONDS,
+            headers=_host_headers(),
         ) as client:
             response = await client.post("/sessions", json={"storage_state": storage_state})
     except httpx.HTTPError as exc:
@@ -86,7 +88,9 @@ async def delete_session(session_id: str) -> StorageState:
     """Dispose the session and return its ``storage_state`` for persistence."""
     try:
         async with httpx.AsyncClient(
-            base_url=settings.BROWSER_HOST_URL, timeout=_DEFAULT_TIMEOUT_SECONDS, headers=_host_headers()
+            base_url=settings.BROWSER_HOST_URL,
+            timeout=_DEFAULT_TIMEOUT_SECONDS,
+            headers=_host_headers(),
         ) as client:
             response = await client.delete(f"/sessions/{session_id}")
     except httpx.HTTPError as exc:
@@ -103,7 +107,9 @@ async def get_session(session_id: str) -> HostSessionInfo:
     """Fetch the host's current view of a session."""
     try:
         async with httpx.AsyncClient(
-            base_url=settings.BROWSER_HOST_URL, timeout=_DEFAULT_TIMEOUT_SECONDS, headers=_host_headers()
+            base_url=settings.BROWSER_HOST_URL,
+            timeout=_DEFAULT_TIMEOUT_SECONDS,
+            headers=_host_headers(),
         ) as client:
             response = await client.get(f"/sessions/{session_id}")
     except httpx.HTTPError as exc:

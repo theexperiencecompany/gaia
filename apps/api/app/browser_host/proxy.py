@@ -64,17 +64,19 @@ _CDP_REFUSED_CODE = -32000
 # client that passed its own ``browserContextId`` would re-enable downloads for
 # its session. Refused outright — browser-use's call site already swallows the
 # failure with a warning, so nothing legitimate breaks.
-_REFUSED_METHODS = frozenset({
-    "Browser.setDownloadBehavior",
-    "Page.setDownloadBehavior",
-    # The host owns the context lifecycle: every session lives in exactly the one
-    # context it created, counted by the capacity/reaper/recovery accounting. A
-    # client minting or disposing its own contexts would escape that accounting —
-    # un-capped, un-reaped memory growth on the single shared Chromium, and (on
-    # the dispose side) the ability to kill a sibling session's isolation.
-    "Target.createBrowserContext",
-    "Target.disposeBrowserContext",
-})
+_REFUSED_METHODS = frozenset(
+    {
+        "Browser.setDownloadBehavior",
+        "Page.setDownloadBehavior",
+        # The host owns the context lifecycle: every session lives in exactly the one
+        # context it created, counted by the capacity/reaper/recovery accounting. A
+        # client minting or disposing its own contexts would escape that accounting —
+        # un-capped, un-reaped memory growth on the single shared Chromium, and (on
+        # the dispose side) the ability to kill a sibling session's isolation.
+        "Target.createBrowserContext",
+        "Target.disposeBrowserContext",
+    }
+)
 
 # Refusal messages, keyed by method.
 _REFUSAL_REASONS: dict[str, str] = {
