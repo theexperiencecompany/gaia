@@ -1,5 +1,5 @@
 /**
- * Locale-aware navigation helpers (Link, useRouter, usePathname, redirect).
+ * Locale-aware navigation helpers (Link, useRouter, usePathname).
  *
  * These wrap next/navigation to automatically prepend the active locale prefix
  * for non-default locales (e.g. /fr/pricing, /ja/blog).
@@ -17,5 +17,4 @@ import { createNavigation } from "next-intl/navigation";
 
 import { routing } from "./routing";
 
-export const { Link, redirect, usePathname, useRouter } =
-  createNavigation(routing);
+export const { Link, usePathname, useRouter } = createNavigation(routing);

@@ -377,16 +377,6 @@ export const useCalendarStore = create<CalendarStore>()(
 );
 
 // Selectors
-export const useCalendars = () => useCalendarStore((state) => state.calendars);
-export const useSelectedCalendars = () =>
-  useCalendarStore((state) => state.selectedCalendars);
-export const useCalendarEvents = () =>
-  useCalendarStore((state) => state.events);
-export const useCalendarLoading = () =>
-  useCalendarStore((state) => state.loading);
-export const useCalendarError = () => useCalendarStore((state) => state.error);
-export const useCalendarInitialized = () =>
-  useCalendarStore((state) => state.isInitialized);
 export const useSetCreateEventAction = () =>
   useCalendarStore((state) => state.setCreateEventAction);
 export const useCreateEventAction = () =>
@@ -399,17 +389,11 @@ export const useDaysToShow = () =>
   useCalendarStore((state) => state.daysToShow);
 
 // Individual action selectors for stable references
-export const useSetSelectedDate = () =>
-  useCalendarStore((state) => state.setSelectedDate);
-export const useSetCurrentWeek = () =>
-  useCalendarStore((state) => state.setCurrentWeek);
 export const useGoToPreviousDay = () =>
   useCalendarStore((state) => state.goToPreviousDay);
 export const useGoToNextDay = () =>
   useCalendarStore((state) => state.goToNextDay);
 export const useGoToToday = () => useCalendarStore((state) => state.goToToday);
-export const useHandleDateChange = () =>
-  useCalendarStore((state) => state.handleDateChange);
 export const useAddEvent = () => useCalendarStore((state) => state.addEvent);
 export const useUpdateEvent = () =>
   useCalendarStore((state) => state.updateEvent);

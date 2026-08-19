@@ -1,7 +1,6 @@
 import type {
   CalendarEventDateTime,
   CalendarFetchData,
-  SameDayEvent,
 } from "@/types/features/calendarTypes";
 
 import {
@@ -91,24 +90,4 @@ export const extractTimestampFromFetchData = (
   event: CalendarFetchData,
 ): number => {
   return new Date(event.start_time).getTime();
-};
-
-export const getDateFromSameDayEvent = (event: SameDayEvent): string => {
-  if (event.start?.dateTime) {
-    return new Date(event.start.dateTime).toISOString().slice(0, 10);
-  }
-  if (event.start?.date) {
-    return event.start.date;
-  }
-  return new Date().toISOString().slice(0, 10);
-};
-
-export const getTimestampFromSameDayEvent = (event: SameDayEvent): number => {
-  if (event.start?.dateTime) {
-    return new Date(event.start.dateTime).getTime();
-  }
-  if (event.start?.date) {
-    return new Date(event.start.date).getTime();
-  }
-  return 0;
 };

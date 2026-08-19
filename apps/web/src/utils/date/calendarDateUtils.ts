@@ -9,26 +9,6 @@ const allDayDateFormatter = new Intl.DateTimeFormat("en-US", {
   weekday: "long",
 });
 
-const timedEventDateFormatter = new Intl.DateTimeFormat("en-US", {
-  year: "numeric",
-  month: "long",
-  day: "numeric",
-  hour: "numeric",
-  minute: "numeric",
-  hour12: true,
-});
-
-const allDayMonthDayFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-});
-
-const allDayMonthDayYearFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-});
-
 /**
  * Format date with relative labels (Today, Tomorrow, Yesterday)
  */
@@ -116,79 +96,8 @@ export const formatAllDayDate = (dateString: string): string => {
 };
 
 /**
- * Format datetime for timed events
- */
-export const formatTimedEventDate = (isoString: string): string => {
-  try {
-    const withoutTimezone = isoString.replace(/([+-]\d{2}:\d{2})$/, "");
-    const date = new Date(withoutTimezone);
-
-    return timedEventDateFormatter.format(date);
-  } catch (error) {
-    console.error("Error formatting timed event date:", error);
-    return isoString;
-  }
-};
-
-/**
- * Format date range for all-day events
- */
-export const formatAllDayDateRange = (
-  startDate: string,
-  endDate: string,
-): string => {
-  try {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-
-    if (start.toDateString() === end.toDateString()) {
-      return formatAllDayDate(startDate);
-    }
-
-    const startFormatted = allDayMonthDayFormatter.format(start);
-
-    const endFormatted = allDayMonthDayYearFormatter.format(end);
-
-    return `${startFormatted} - ${endFormatted}`;
-  } catch (error) {
-    console.error("Error formatting date range:", error);
-    return `${startDate} - ${endDate}`;
-  }
-};
-
-/**
  * Check if a date string is date-only (no time)
  */
 export const isDateOnly = (dateString: string): boolean => {
   return /^\d{4}-\d{2}-\d{2}$/.test(dateString);
-};
-
-/**
- * Get event duration text
- */
-export const getEventDurationText = (
-  startDate: string,
-  endDate?: string,
-): string => {
-  if (!endDate) return "Single event";
-
-  try {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const diffMs = end.getTime() - start.getTime();
-    const diffHours = diffMs / (1000 * 60 * 60);
-
-    if (diffHours < 1) {
-      const diffMinutes = Math.round(diffMs / (1000 * 60));
-      return `${diffMinutes} minute${diffMinutes !== 1 ? "s" : ""}`;
-    } else if (diffHours < 24) {
-      const hours = Math.round(diffHours);
-      return `${hours} hour${hours !== 1 ? "s" : ""}`;
-    } else {
-      const days = Math.round(diffHours / 24);
-      return `${days} day${days !== 1 ? "s" : ""}`;
-    }
-  } catch {
-    return "Duration unknown";
-  }
 };

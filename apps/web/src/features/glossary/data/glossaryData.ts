@@ -46,10 +46,3 @@ export async function getAllGlossaryTermSlugs(): Promise<string[]> {
 export async function getAllGlossaryTerms(): Promise<GlossaryTerm[]> {
   return getAllFeatureEntries<GlossaryTerm>(FEATURE);
 }
-
-export async function getGlossaryTermsByCategory(
-  category: string,
-): Promise<GlossaryTerm[]> {
-  const all = await getAllGlossaryTerms();
-  return all.filter((term) => term.category === category);
-}
