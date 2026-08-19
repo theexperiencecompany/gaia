@@ -51,13 +51,23 @@ export function TimezoneAutocomplete({
   // `items` (controlled) means HeroUI shows exactly what we pass — no built-in
   // filtering — so we match across the full search text ourselves. When the box
   // just shows the current selection (or is empty), show everything to browse.
+  // Precompute each option's search text once so the per-keystroke filter is a
+  // constant-time Map lookup instead of rebuilding the string for every option.
+  const searchTextByValue = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const tz of options) {
+      map.set(tz.value, timezoneSearchText(tz.value, tz.offset));
+    }
+    return map;
+  }, [options]);
+
   const filteredOptions = useMemo(() => {
     const query = inputValue.trim().toLowerCase();
     if (!query || query === selectedCity.toLowerCase()) return options;
     return options.filter((tz) =>
-      timezoneSearchText(tz.value, tz.offset).includes(query),
+      searchTextByValue.get(tz.value)?.includes(query),
     );
-  }, [inputValue, options, selectedCity]);
+  }, [inputValue, options, selectedCity, searchTextByValue]);
 
   return (
     <Autocomplete

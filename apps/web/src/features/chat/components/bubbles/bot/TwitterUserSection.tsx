@@ -13,6 +13,22 @@ import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { TwitterIcon } from "@/components/shared/icons";
 import type { TwitterUserData } from "@/types/features/twitterTypes";
 
+const formatNumber = (num: number | undefined) => {
+  if (!num) return "0";
+  if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
+  if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
+  return num.toString();
+};
+
+const formatJoinDate = (dateStr?: string) => {
+  if (!dateStr) return "";
+  try {
+    return format(parseISO(dateStr), "MMMM yyyy");
+  } catch {
+    return dateStr;
+  }
+};
+
 /**
  * Twitter User Card - Displays a user profile with metrics.
  * Styled to closely match the real Twitter/X profile card.
@@ -26,29 +42,13 @@ function TwitterUserCard({
 }) {
   const metrics = user.public_metrics || {};
 
-  const formatNumber = (num: number | undefined) => {
-    if (!num) return "0";
-    if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
-    if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
-    return num.toString();
-  };
-
-  const formatJoinDate = (dateStr?: string) => {
-    if (!dateStr) return "";
-    try {
-      return format(parseISO(dateStr), "MMMM yyyy");
-    } catch {
-      return dateStr;
-    }
-  };
-
   const handleOpenProfile = () => {
     window.open(`https://twitter.com/${user.username}`, "_blank");
   };
 
   return (
     <div
-      className="group relative flex w-full flex-col gap-3 rounded-xl border border-default-200 bg-content1/50 p-4 backdrop-blur-sm transition-all hover:border-default-300 hover:bg-content1/70 cursor-pointer"
+      className="group relative flex w-full flex-col gap-3 rounded-xl border border-default-200 bg-content1/50 p-4 backdrop-blur-sm transition-colors hover:border-default-300 hover:bg-content1/70 cursor-pointer"
       onClick={handleOpenProfile}
     >
       {/* Header Row */}

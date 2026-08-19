@@ -50,10 +50,14 @@ export function MCPAppRenderer({ data }: Props) {
   const bridgeRef = useRef<AppBridge | null>(null);
 
   const dataRef = useRef(data);
-  dataRef.current = data;
   const sendMessage = useSendMessage();
   const sendMessageRef = useRef(sendMessage);
-  sendMessageRef.current = sendMessage;
+  // Keep the refs in sync after every render (not during render, which is impure)
+  // so downstream effects/handlers always read the latest data & sendMessage.
+  useEffect(() => {
+    dataRef.current = data;
+    sendMessageRef.current = sendMessage;
+  });
 
   const sandboxUrl = useMemo(
     () => new URL("/mcp-sandbox-proxy.html", window.location.origin),

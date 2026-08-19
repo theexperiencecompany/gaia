@@ -124,9 +124,11 @@ export default function TodoListPage({
   const updateTodoRef = useRef(updateTodo);
   const deleteTodoRef = useRef(deleteTodo);
   const clearSelectionRef = useRef(clearSelection);
-  updateTodoRef.current = updateTodo;
-  deleteTodoRef.current = deleteTodo;
-  clearSelectionRef.current = clearSelection;
+  useEffect(() => {
+    updateTodoRef.current = updateTodo;
+    deleteTodoRef.current = deleteTodo;
+    clearSelectionRef.current = clearSelection;
+  });
 
   // Stable callbacks that don't change reference
   const handleTodoUpdate = useCallback(

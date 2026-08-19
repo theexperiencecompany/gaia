@@ -11,7 +11,7 @@ import DOMPurify from "dompurify";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import type React from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { ChevronRight, Gmail } from "@/components/shared/icons";
 import { Separator } from "@/components/ui/separator";
@@ -254,6 +254,13 @@ function RecipientSelectionModal({
   setCustomEmailError: React.Dispatch<React.SetStateAction<string>>;
   handleAddCustomEmail: () => void;
 }) {
+  // Constant-time lookup so the suggestion chips below don't scan the whole
+  // selection list per chip (and twice per chip).
+  const selectedEmailsSet = useMemo(
+    () => new Set(selectedEmails),
+    [selectedEmails],
+  );
+
   const handleSuggestionToggle = (email: string) => {
     setSelectedEmails((prev) => {
       if (prev.includes(email)) {
@@ -287,11 +294,11 @@ function RecipientSelectionModal({
                   key={email}
                   size="sm"
                   variant="flat"
-                  color={selectedEmails.includes(email) ? "primary" : "default"}
+                  color={selectedEmailsSet.has(email) ? "primary" : "default"}
                   className="cursor-pointer text-xs"
                   onClick={() => handleSuggestionToggle(email)}
                   endContent={
-                    selectedEmails.includes(email) ? (
+                    selectedEmailsSet.has(email) ? (
                       <Cancel01Icon className="h-3 w-3" />
                     ) : null
                   }
@@ -377,7 +384,7 @@ export default function EmailComposeCard({
   useEffect(() => {
     setRecipientSuggestions(seedSuggestions(emailData));
     setRecipients(seedRecipients(emailData));
-  }, [emailData.to, emailData.cc, emailData.bcc]);
+  }, [emailData]);
 
   const activeSuggestions = activeRecipientField
     ? recipientSuggestions[activeRecipientField]

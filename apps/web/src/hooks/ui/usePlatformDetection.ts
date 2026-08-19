@@ -276,10 +276,16 @@ export function usePlatformDetection() {
     ...platformConfigs[platform],
   };
 
-  const desktopPlatforms: PlatformInfo[] = Object.entries(platformConfigs)
-    .filter(([key]) => key !== "unknown")
-    .map(([key, config]) => ({ platform: key as Platform, ...config }))
-    .filter((p) => p.isDesktop);
+  const desktopPlatforms: PlatformInfo[] = Object.entries(
+    platformConfigs,
+  ).flatMap(([key, config]) => {
+    if (key === "unknown") return [];
+    const platformInfo: PlatformInfo = {
+      platform: key as Platform,
+      ...config,
+    };
+    return platformInfo.isDesktop ? [platformInfo] : [];
+  });
 
   return {
     platform,

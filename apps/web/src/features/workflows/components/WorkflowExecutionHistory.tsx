@@ -27,6 +27,13 @@ function formatDuration(seconds: number | undefined): string {
   return `Ran for ${Math.round(seconds / 3600)}h`;
 }
 
+// Fixed-locale, hoisted formatter so server and client render identically
+// (a browser-default locale would cause a hydration mismatch).
+const relativeDateFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+});
+
 function formatRelativeDate(dateString: string): string {
   const date = new Date(dateString);
   const now = new Date();
@@ -42,10 +49,7 @@ function formatRelativeDate(dateString: string): string {
   if (diffDays === 1) return "Yesterday";
   if (diffDays < 7) return `${diffDays}d ago`;
 
-  return date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
+  return relativeDateFormatter.format(date);
 }
 
 function ExecutionStatusBadge({

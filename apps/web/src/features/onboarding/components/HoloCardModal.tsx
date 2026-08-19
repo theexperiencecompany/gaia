@@ -29,6 +29,12 @@ import type { House } from "@/features/onboarding/types/websocket";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 import { toast } from "@/lib/toast";
 
+const MEMBER_SINCE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+
 interface FeatureModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -122,11 +128,7 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
     account_number: `#${personalizationData?.account_number || "00000"}`,
     member_since:
       personalizationData?.member_since ||
-      new Date().toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      }),
+      MEMBER_SINCE_FORMATTER.format(new Date()),
     overlay_color: personalizationData?.overlay_color || "rgba(0,0,0,0)",
     overlay_opacity: personalizationData?.overlay_opacity ?? 40,
     holo_card_id: personalizationData?.holo_card_id,
@@ -172,9 +174,9 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
                 </>
               ) : (
                 (personalizationData?.suggested_workflows || []).map(
-                  (workflow, index) => (
+                  (workflow) => (
                     <UnifiedWorkflowCard
-                      key={workflow.id || index}
+                      key={workflow.id}
                       title={workflow.title}
                       description={workflow.description}
                       variant="explore"

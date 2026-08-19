@@ -297,7 +297,11 @@ function VoiceSessionInner({
   // the countdown on every transition, so it would never measure "ready within
   // N seconds of joining".
   const agentStateRef = useRef(agentState);
-  agentStateRef.current = agentState;
+  // Sync after every render (not during render, which is impure) so the
+  // ready-check timer reads the current agent state without depending on it.
+  useEffect(() => {
+    agentStateRef.current = agentState;
+  });
   useEffect(() => {
     const timer = setTimeout(() => {
       const state = agentStateRef.current;
@@ -449,7 +453,7 @@ export function VoiceControlBarContainer({
       }
       room.disconnect();
     };
-  }, [room, sessionStarted]);
+  }, [room, sessionStarted, voiceConversationId]);
 
   return (
     <RoomContext.Provider value={room}>

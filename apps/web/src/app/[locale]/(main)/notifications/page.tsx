@@ -85,7 +85,13 @@ export default function NotificationsPage() {
   // without adding handleMarkAllAsRead to the setHeader effect's dep array
   // (which would cause an infinite loop via setHeader → re-render → new callback → setHeader…)
   const handleMarkAllAsReadRef = useRef(handleMarkAllAsRead);
-  handleMarkAllAsReadRef.current = handleMarkAllAsRead;
+  // Keep the ref in sync after every render (not during render, which is impure)
+  // so the header's onMarkAllAsRead always calls the latest version without
+  // adding handleMarkAllAsRead to the setHeader effect's dep array
+  // (which would cause an infinite loop via setHeader → re-render → new callback → setHeader…)
+  useEffect(() => {
+    handleMarkAllAsReadRef.current = handleMarkAllAsRead;
+  });
 
   // Set the header with tab state
   useEffect(() => {

@@ -29,6 +29,14 @@ const NAVBAR_ITEMS = [
   { type: "dropdown", label: "Resources", menu: "resources" },
 ] as const;
 
+function setNavbarBackdrop(show: boolean) {
+  const backdrop = document.getElementById("navbar-backdrop");
+  if (backdrop) {
+    backdrop.style.opacity = show ? "1" : "0";
+    backdrop.style.pointerEvents = "none";
+  }
+}
+
 export default function Navbar() {
   const pathname = usePathname();
   const isMobileScreen = useMediaQuery("(max-width: 990px)");
@@ -86,27 +94,13 @@ export default function Navbar() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Function to control backdrop blur
-  const toggleBackdrop = (show: boolean) => {
-    const backdrop = document.getElementById("navbar-backdrop");
-    if (backdrop) {
-      if (show) {
-        backdrop.style.opacity = "1";
-        backdrop.style.pointerEvents = "none";
-      } else {
-        backdrop.style.opacity = "0";
-        backdrop.style.pointerEvents = "none";
-      }
-    }
-  };
-
   // Handle mouse leave for navbar container
   const handleNavbarMouseLeave = () => {
     if (isMobileScreen) return;
 
     setActiveDropdown(null);
     setHoveredItem(null);
-    toggleBackdrop(false);
+    setNavbarBackdrop(false);
   };
 
   const handleMouseEnter = (
@@ -127,46 +121,46 @@ export default function Navbar() {
 
     setActiveDropdown(menu);
     setHoveredItem(menu);
-    toggleBackdrop(true);
+    setNavbarBackdrop(true);
   };
 
   useEffect(() => {
     setActiveDropdown(null);
     setHoveredItem(null);
-    toggleBackdrop(false);
+    setNavbarBackdrop(false);
 
-    return () => toggleBackdrop(false);
+    return () => setNavbarBackdrop(false);
   }, [pathname]);
 
   return (
-    <div
-      className={`fixed top-0 left-0 z-50 w-full px-4 pt-4 transition-all duration-300`}
-    >
+    <div className={`fixed top-0 left-0 z-50 w-full px-4 pt-4`}>
       <div
         ref={wrapperRef}
         className="relative mx-auto w-full max-w-7xl"
         onMouseLeave={handleNavbarMouseLeave}
       >
         <div
-          className={`navbar_content flex h-14 w-full items-center justify-between rounded-2xl px-3 transition-all duration-300 ${isScrolled || activeDropdown ? "bg-zinc-900/30 backdrop-blur-md" : "bg-transparent"}`}
+          className={`navbar_content flex h-14 w-full items-center justify-between rounded-2xl px-3 transition-[background-color,backdrop-filter] duration-300 ${isScrolled || activeDropdown ? "bg-zinc-900/30 backdrop-blur-md" : "bg-transparent"}`}
         >
           <LogoWithContextMenu className="px-2" />
 
           <div className="hidden items-center gap-1 sm:flex">
-            {appConfig.links.main
-              .filter((link) => link.href !== "/") // Filter out Home link for desktop nav
-              .map(({ href, label, icon, external }) => (
-                <LinkButton
-                  key={href}
-                  size="sm"
-                  className={`text-sm font-medium ${pathname === href ? "text-primary" : "text-zinc-300 hover:text-zinc-100"}`}
-                  href={href}
-                  startContent={icon}
-                  external={external}
-                >
-                  {label}
-                </LinkButton>
-              ))}
+            {appConfig.links.main.flatMap(({ href, label, icon, external }) =>
+              href === "/" // Filter out Home link for desktop nav
+                ? []
+                : [
+                    <LinkButton
+                      key={href}
+                      size="sm"
+                      className={`text-sm font-medium ${pathname === href ? "text-primary" : "text-zinc-300 hover:text-zinc-100"}`}
+                      href={href}
+                      startContent={icon}
+                      external={external}
+                    >
+                      {label}
+                    </LinkButton>,
+                  ],
+            )}
           </div>
 
           {isMobileScreen ? (
@@ -182,7 +176,7 @@ export default function Navbar() {
                     onMouseEnter={() => {
                       setHoveredItem(item.label.toLowerCase());
                       setActiveDropdown(null);
-                      toggleBackdrop(false);
+                      setNavbarBackdrop(false);
                     }}
                     onClick={() => {
                       trackEvent(
@@ -212,7 +206,7 @@ export default function Navbar() {
                     }}
                   >
                     {hoveredItem === item.menu && (
-                      <div className="absolute inset-0 h-full w-full rounded-xl bg-zinc-800 font-medium! transition-all duration-300 ease-out" />
+                      <div className="absolute inset-0 h-full w-full rounded-xl bg-zinc-800 font-medium! transition-opacity duration-300 ease-out" />
                     )}
                     <div className="relative z-10 flex items-center gap-2">
                       <span>

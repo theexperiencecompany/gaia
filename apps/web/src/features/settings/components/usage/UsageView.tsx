@@ -685,12 +685,11 @@ function Tools({
         f.periods.month?.percentage ?? 0,
       );
     return Object.entries(summary.features)
-      .filter(([key]) => key !== primary)
-      .map(([key, f]) => ({ key, f, p: f.periods[period] }))
-      .filter(
-        (r): r is { key: string; f: FeatureUsage; p: PeriodData } =>
-          !!r.p && r.p.limit > 0,
-      )
+      .flatMap(([key, f]) => {
+        if (key === primary) return [];
+        const p = f.periods[period];
+        return p && p.limit > 0 ? [{ key, f, p: p as PeriodData }] : [];
+      })
       .sort(
         (a, b) =>
           severity(b.f) - severity(a.f) || a.f.title.localeCompare(b.f.title),

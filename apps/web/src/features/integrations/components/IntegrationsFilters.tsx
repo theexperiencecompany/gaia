@@ -88,7 +88,8 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
         sort,
       });
     }
-  }, []);
+    // The ref guard makes this run-at-most-once; deps are listed for completeness.
+  }, [onFilterChange, search, category, sort]);
 
   const debouncedSearch = useDebouncedCallback((value: string) => {
     onFilterChange({ search: value, category, sort });

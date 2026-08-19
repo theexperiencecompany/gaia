@@ -2,6 +2,7 @@
 
 import { Button, Divider, Input } from "@heroui/react";
 import { Cancel01Icon, Clock01Icon } from "@icons";
+import { useMemo } from "react";
 import { getBrowserTimezone } from "@/lib/timezone";
 import BaseFieldChip from "./BaseFieldChip";
 
@@ -22,40 +23,51 @@ export default function ScheduledFieldChip({
   const normalizedTimezone = timezone?.trim();
   const userTimezone = normalizedTimezone || getBrowserTimezone();
 
-  const formatDisplayValue = (dateString: string) => {
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-      timeZone: userTimezone,
-    }).format(date);
-  };
+  const displayFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+        timeZone: userTimezone,
+      }),
+    [userTimezone],
+  );
 
-  const displayValue = value ? formatDisplayValue(value) : undefined;
+  const displayValue = value
+    ? displayFormatter.format(new Date(value))
+    : undefined;
 
   // Extract date portion (YYYY-MM-DD) in the user's timezone
-  const dateInputValue = value
-    ? new Intl.DateTimeFormat("en-CA", {
+  const dateFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat("en-CA", {
         year: "numeric",
         month: "2-digit",
         day: "2-digit",
         timeZone: userTimezone,
-      }).format(new Date(value))
-    : "";
+      }),
+    [userTimezone],
+  );
+
+  const dateInputValue = value ? dateFormatter.format(new Date(value)) : "";
 
   // Extract time portion (HH:mm) in the user's timezone
-  const timeInputValue = value
-    ? new Intl.DateTimeFormat("en-GB", {
+  const timeFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat("en-GB", {
         hour: "2-digit",
         minute: "2-digit",
         hour12: false,
         timeZone: userTimezone,
-      }).format(new Date(value))
-    : "";
+      }),
+    [userTimezone],
+  );
+
+  const timeInputValue = value ? timeFormatter.format(new Date(value)) : "";
 
   const buildISOFromParts = (datePart: string, timePart: string): string => {
     if (normalizedTimezone) {

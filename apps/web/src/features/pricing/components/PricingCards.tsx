@@ -10,6 +10,10 @@ import { convertToUSDCents } from "../utils/currencyConverter";
 import { EnterpriseBar } from "./EnterpriseBar";
 import { PricingCard } from "./PricingCard";
 
+function isEnterprise(plan: Plan): boolean {
+  return plan.name.toLowerCase().includes("enterprise");
+}
+
 const ENTERPRISE_CONTACT_TEMPLATE = `Hey GAIA team,
 
 We're looking at rolling GAIA out at work and wanted to reach out.
@@ -95,9 +99,6 @@ export function PricingCards({
       </div>
     );
   }
-
-  const isEnterprise = (plan: Plan) =>
-    plan.name.toLowerCase().includes("enterprise");
 
   // Enterprise is shown as a full-width bar below the grid, not as a card.
   const enterprisePlan = hideEnterprise ? undefined : plans.find(isEnterprise);

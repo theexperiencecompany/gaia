@@ -30,7 +30,11 @@ export function useOAuthSuccessToast() {
   const sendMessage = useSendMessage();
   // Use ref to hold stable reference to sendMessage
   const sendMessageRef = useRef(sendMessage);
-  sendMessageRef.current = sendMessage;
+  // Sync after every render (not during render, which is impure) so the OAuth
+  // effect below always reads the latest sendMessage.
+  useEffect(() => {
+    sendMessageRef.current = sendMessage;
+  });
 
   useEffect(() => {
     const oauthSuccess = searchParams.get("oauth_success");

@@ -30,6 +30,18 @@ interface KeyboardShortcutsContextValue {
 const KeyboardShortcutsContext =
   createContext<KeyboardShortcutsContextValue | null>(null);
 
+// Route-based create actions config — static, hoisted so it isn't rebuilt on
+// every render and the shortcut callbacks never capture a stale copy.
+const ROUTE_ACTIONS = [
+  { prefix: "/todos", selector: "create-todo" },
+  { prefix: "/calendar", navigate: "/calendar?create=true" },
+  { prefix: "/workflows", selector: "create-workflow" },
+  { prefix: "/integrations", selector: "create-integration" },
+] as const;
+
+// Common options for all shortcuts — static, hoisted to module scope.
+const hotkeyOptions = { enableOnFormTags: false, preventDefault: true };
+
 export function useKeyboardShortcuts() {
   const context = useContext(KeyboardShortcutsContext);
   if (!context) {
@@ -56,18 +68,14 @@ export default function KeyboardShortcutsProvider({
 
   const createActionRef = useRef<(() => void) | null>(null);
   const routerRef = useRef(router);
-  routerRef.current = router;
+
+  // Keep the router ref fresh outside the render body — render must be pure.
+  useEffect(() => {
+    routerRef.current = router;
+  });
 
   const openShortcutsModal = useCallback(() => setIsModalOpen(true), []);
   const closeShortcutsModal = useCallback(() => setIsModalOpen(false), []);
-
-  // Route-based create actions config
-  const ROUTE_ACTIONS = [
-    { prefix: "/todos", selector: "create-todo" },
-    { prefix: "/calendar", navigate: "/calendar?create=true" },
-    { prefix: "/workflows", selector: "create-workflow" },
-    { prefix: "/integrations", selector: "create-integration" },
-  ] as const;
 
   const triggerCreateAction = useCallback(() => {
     const action = ROUTE_ACTIONS.find((a) => pathname.startsWith(a.prefix));
@@ -87,9 +95,6 @@ export default function KeyboardShortcutsProvider({
   useEffect(() => {
     createActionRef.current = triggerCreateAction;
   }, [triggerCreateAction]);
-
-  // Common options for all shortcuts
-  const hotkeyOptions = { enableOnFormTags: false, preventDefault: true };
 
   // ===========================================
   // SHORTCUTS MODAL: ? key

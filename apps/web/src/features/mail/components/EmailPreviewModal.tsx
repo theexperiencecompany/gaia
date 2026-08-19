@@ -17,6 +17,12 @@ import { toast } from "@/lib/toast";
 
 import { NotificationsAPI } from "../../../services/api/notifications";
 
+/** Pure email validation — hoisted to module scope so it isn't rebuilt per render. */
+const isValidEmail = (email: string): boolean => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email.trim());
+};
+
 interface EmailPreviewModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -61,12 +67,6 @@ export function EmailPreviewModal({
       setErrors((prev) => ({ ...prev, recipients: undefined }));
     }
   }, [emailChips, errors.recipients]);
-
-  // Email validation function
-  const isValidEmail = (email: string): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email.trim());
-  };
 
   // Add email chip
   const addEmailChip = (email: string) => {

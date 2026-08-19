@@ -498,9 +498,9 @@ export default function TextBubble({
           // point at a non-rendered entry. Animation delays use the visible
           // index so blanks don't shift the stagger; the original index is kept
           // for keys to preserve React identity across re-renders.
-          const visibleParts = textParts
-            .map((part, originalIndex) => ({ part, originalIndex }))
-            .filter(({ part }) => part.trim());
+          const visibleParts = textParts.flatMap((part, originalIndex) =>
+            part.trim() ? [{ part, originalIndex }] : [],
+          );
 
           if (visibleParts.length === 0) return null;
 

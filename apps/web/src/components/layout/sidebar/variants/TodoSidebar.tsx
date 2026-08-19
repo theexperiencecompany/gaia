@@ -243,23 +243,24 @@ export default function TodoSidebar() {
   // Project items - convert projects to menu items or empty state
   const projectMenuItems: MenuItem[] = useMemo(
     () =>
-      projects
-        .filter((p) => !p.is_default)
-        .map((project) => {
-          const color = project.color;
-          const ProjectColorIcon = ({
-            className: _className,
-          }: {
-            className?: string;
-          }) => <ProjectIcon color={color} />;
-          ProjectColorIcon.displayName = `ProjectIcon_${project.id}`;
-          return {
+      projects.flatMap((project) => {
+        if (project.is_default) return [];
+        const color = project.color;
+        const ProjectColorIcon = ({
+          className: _className,
+        }: {
+          className?: string;
+        }) => <ProjectIcon color={color} />;
+        ProjectColorIcon.displayName = `ProjectIcon_${project.id}`;
+        return [
+          {
             label: project.name,
             icon: ProjectColorIcon,
             href: `/todos/project/${project.id}`,
             count: project.todo_count,
-          };
-        }),
+          },
+        ];
+      }),
     [projects],
   );
 

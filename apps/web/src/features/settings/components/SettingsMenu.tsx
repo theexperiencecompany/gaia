@@ -48,6 +48,11 @@ import { settingsPageItems, socialMediaItems } from "../config/settingsConfig";
 import { useNestedMenu } from "../hooks/useNestedMenu";
 import { NestedMenuTooltip } from "./NestedMenuTooltip";
 
+const SOCIAL_MEDIA_COLOR_MAP: Record<string, string> = {
+  discord: "#5865F2",
+  whatsapp: "#25d366",
+};
+
 export type ModalAction = "clear_chats" | "logout";
 
 interface MenuItem {
@@ -192,11 +197,6 @@ export default function SettingsMenu({
     },
   }));
 
-  const socialMediaColorMap: Record<string, string> = {
-    discord: "#5865F2",
-    whatsapp: "#25d366",
-  };
-
   const handleItemAction = (item: MenuItem) => {
     if (item.href) {
       router.push(item.href);
@@ -218,6 +218,7 @@ export default function SettingsMenu({
       ? []
       : [
           {
+            key: "pro",
             title: undefined,
             showDivider: true,
             items: [
@@ -233,6 +234,7 @@ export default function SettingsMenu({
           },
         ]),
     {
+      key: "account",
       title: undefined,
       showDivider: true,
       items: [
@@ -248,11 +250,13 @@ export default function SettingsMenu({
       ],
     },
     {
+      key: "community",
       title: "Community",
       showDivider: true,
       items: socialMediaItems,
     },
     {
+      key: "main",
       title: undefined,
       showDivider: false,
       items: [
@@ -315,9 +319,9 @@ export default function SettingsMenu({
       >
         <DropdownTrigger>{children}</DropdownTrigger>
         <DropdownMenu aria-label="Settings Menu" variant="faded">
-          {menuSections.map((section, index) => (
+          {menuSections.map((section) => (
             <DropdownSection
-              key={section.title || `section-${index}`}
+              key={section.key}
               title={section.title}
               showDivider={section.showDivider}
               classNames={{ divider: "bg-zinc-800/60" }}
@@ -325,7 +329,7 @@ export default function SettingsMenu({
               {section.items.map((item: MenuItem) => {
                 const Icon = item.icon;
                 const iconColor =
-                  item.iconColor || socialMediaColorMap[item.key];
+                  item.iconColor || SOCIAL_MEDIA_COLOR_MAP[item.key];
 
                 // Handle nested menus (What's new, Download, Resources, Support)
                 if (item.hasSubmenu) {

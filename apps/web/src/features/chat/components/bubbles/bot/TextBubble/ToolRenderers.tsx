@@ -17,6 +17,7 @@ import { IntegrationListSection } from "@/features/integrations/components/Integ
 import type {
   IntegrationConnectionData,
   IntegrationListStreamData,
+  SuggestedIntegration,
 } from "@/features/integrations/types";
 import EmailListCard from "@/features/mail/components/EmailListCard";
 import { WeatherCard } from "@/features/weather/components/WeatherCard";
@@ -112,146 +113,81 @@ function mergeSearchResults(items: readonly SearchResults[]): SearchResults {
 
 const TOOL_RENDERERS: Partial<RendererMap> = {
   // Search
-  search_results: (data, index) => {
+  search_results: (data) => {
     const items = (Array.isArray(data) ? data : [data]) as SearchResults[];
-    return (
-      <SearchResultsTabs
-        key={`tool-search-${index}`}
-        search_results={mergeSearchResults(items)}
-      />
-    );
+    return <SearchResultsTabs search_results={mergeSearchResults(items)} />;
   },
-  deep_research_results: (data, index) => (
-    <DeepResearchResultsTabs
-      key={`tool-deep-search-${index}`}
-      deep_research_results={data}
-    />
+  deep_research_results: (data) => (
+    <DeepResearchResultsTabs deep_research_results={data} />
   ),
 
   // Weather
-  weather_data: (data, index) => (
-    <WeatherCard key={`tool-weather-${index}`} weatherData={data} />
-  ),
+  weather_data: (data) => <WeatherCard weatherData={data} />,
 
   // Desktop
-  screenshot_data: (data, index) => (
-    <ScreenshotSection
-      key={`tool-screenshot-${index}`}
-      screenshot_data={data}
-    />
-  ),
+  screenshot_data: (data) => <ScreenshotSection screenshot_data={data} />,
 
   // Email
-  email_thread_data: (data, index) => (
-    <EmailThreadCard
-      key={`tool-email-thread-${index}`}
-      emailThreadData={data}
-    />
-  ),
-  email_fetch_data: (data, index) => {
+  email_thread_data: (data) => <EmailThreadCard emailThreadData={data} />,
+  email_fetch_data: (data) => {
     // When grouped, data is EmailFetchData[][] — flatten batches into one list
     const emails = Array.isArray(data[0])
       ? (data as unknown as EmailFetchData[][]).flat()
       : data;
-    return <EmailListCard key={`tool-email-fetch-${index}`} emails={emails} />;
+    return <EmailListCard emails={emails} />;
   },
-  email_compose_data: (data, index) => {
+  email_compose_data: (data) => {
     // When grouped, data is EmailComposeData[][] — flatten batches
     const items = Array.isArray(data[0])
       ? (data as unknown as EmailComposeData[][]).flat()
       : data;
-    return (
-      <EmailComposeSection
-        key={`tool-email-compose-${index}`}
-        email_compose_data={items}
-      />
-    );
+    return <EmailComposeSection email_compose_data={items} />;
   },
-  email_sent_data: (data, index) => {
+  email_sent_data: (data) => {
     // When grouped, data is EmailSentData[][] — flatten batches
     const items = Array.isArray(data[0])
       ? (data as unknown as EmailSentData[][]).flat()
       : data;
-    return (
-      <EmailSentSection
-        key={`tool-email-sent-${index}`}
-        email_sent_data={items}
-      />
-    );
+    return <EmailSentSection email_sent_data={items} />;
   },
-  contacts_data: (data, index) => (
-    <ContactListSection
-      key={`tool-contacts-${index}`}
-      contacts_data={Array.isArray(data) ? data : [data]}
-    />
+  contacts_data: (data) => (
+    <ContactListSection contacts_data={Array.isArray(data) ? data : [data]} />
   ),
-  people_search_data: (data, index) => (
+  people_search_data: (data) => (
     <PeopleSearchSection
-      key={`tool-people-search-${index}`}
       people_search_data={Array.isArray(data) ? data : [data]}
     />
   ),
 
   // Calendar
-  calendar_options: (data, index) => {
-    return (
-      <CalendarEventSection
-        key={`tool-cal-options-${index}`}
-        calendar_options={data}
-      />
-    );
+  calendar_options: (data) => {
+    return <CalendarEventSection calendar_options={data} />;
   },
-  calendar_delete_options: (data, index) => {
-    return (
-      <CalendarDeleteSection
-        key={`tool-cal-del-${index}`}
-        calendar_delete_options={data}
-      />
-    );
+  calendar_delete_options: (data) => {
+    return <CalendarDeleteSection calendar_delete_options={data} />;
   },
-  calendar_edit_options: (data, index) => {
-    return (
-      <CalendarEditSection
-        key={`tool-cal-edit-${index}`}
-        calendar_edit_options={data}
-      />
-    );
+  calendar_edit_options: (data) => {
+    return <CalendarEditSection calendar_edit_options={data} />;
   },
-  calendar_fetch_data: (data, index) => (
-    <CalendarListCard
-      key={`tool-cal-fetch-${index}`}
-      events={Array.isArray(data) ? data : [data]}
-    />
+  calendar_fetch_data: (data) => (
+    <CalendarListCard events={Array.isArray(data) ? data : [data]} />
   ),
-  calendar_list_fetch_data: (data, index) => (
-    <CalendarListFetchCard
-      key={`tool-cal-list-${index}`}
-      calendars={Array.isArray(data) ? data : [data]}
-    />
+  calendar_list_fetch_data: (data) => (
+    <CalendarListFetchCard calendars={Array.isArray(data) ? data : [data]} />
   ),
 
   // Support ticket
-  support_ticket_data: (data, index) => (
-    <SupportTicketSection
-      key={`tool-support-${index}`}
-      support_ticket_data={data}
-    />
+  support_ticket_data: (data) => (
+    <SupportTicketSection support_ticket_data={data} />
   ),
 
   // Documents & Code
-  google_docs_data: (data, index) => (
-    <GoogleDocsSection key={`tool-gdocs-${index}`} google_docs_data={data} />
-  ),
-  code_data: (data, index) => (
-    <CodeExecutionSection key={`tool-code-${index}`} code_data={data} />
-  ),
-  artifact_data: (data, index) => (
-    <FileArtifactSection key={`tool-artifact-${index}`} artifact_data={data} />
-  ),
+  google_docs_data: (data) => <GoogleDocsSection google_docs_data={data} />,
+  code_data: (data) => <CodeExecutionSection code_data={data} />,
+  artifact_data: (data) => <FileArtifactSection artifact_data={data} />,
 
-  todo_data: (data, index) => (
+  todo_data: (data) => (
     <TodoSection
-      key={`tool-todo-${index}`}
       todos={data.todos}
       projects={data.projects}
       stats={data.stats}
@@ -259,9 +195,8 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
       message={data.message}
     />
   ),
-  notification_data: (data, index) => (
+  notification_data: (data) => (
     <NotificationListSection
-      key={`tool-notifications-${index}`}
       notifications={
         (data as { notifications: unknown[] })
           .notifications as NotificationRecord[]
@@ -269,13 +204,10 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
       title="Your Notifications"
     />
   ),
-  send_notification_data: (data, index) => (
-    <SendNotificationSection
-      key={`tool-notification-sent-${index}`}
-      send_notification_data={data}
-    />
+  send_notification_data: (data) => (
+    <SendNotificationSection send_notification_data={data} />
   ),
-  integration_connection_required: (data, index) => {
+  integration_connection_required: (data) => {
     // Data can be a single item or an array (when grouped)
     const items = (
       Array.isArray(data) ? data : [data]
@@ -291,7 +223,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
       <>
         {uniqueItems.map((item) => (
           <IntegrationConnectionPrompt
-            key={`tool-integration-connection-${index}-${item.integration_id}`}
+            key={`tool-integration-connection-${item.integration_id}`}
             integration_connection_required={item}
           />
         ))}
@@ -299,7 +231,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     );
   },
 
-  integration_list_data: (data, index) => {
+  integration_list_data: (data) => {
     // Handle grouped data (array of IntegrationListStreamData)
     const items = (
       Array.isArray(data) ? data : [data]
@@ -307,32 +239,24 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
 
     // Merge all suggested integrations and de-duplicate by id
     const seen = new Set<string>();
-    const mergedSuggested = items
-      .flatMap((item) => item.suggested || [])
-      .filter((s) => {
-        if (seen.has(s.id)) return false;
-        seen.add(s.id);
-        return true;
-      });
+    const mergedSuggested: SuggestedIntegration[] = [];
+    for (const item of items) {
+      for (const integration of item.suggested || []) {
+        if (seen.has(integration.id)) continue;
+        seen.add(integration.id);
+        mergedSuggested.push(integration);
+      }
+    }
 
-    return (
-      <IntegrationListSection
-        key={`tool-integration-list-${index}`}
-        suggestedIntegrations={mergedSuggested}
-      />
-    );
+    return <IntegrationListSection suggestedIntegrations={mergedSuggested} />;
   },
 
   // Twitter
-  twitter_search_data: (data, index) => (
-    <TwitterSearchSection
-      key={`tool-twitter-search-${index}`}
-      twitter_search_data={data}
-    />
+  twitter_search_data: (data) => (
+    <TwitterSearchSection twitter_search_data={data} />
   ),
-  twitter_user_data: (data, index) => (
+  twitter_user_data: (data) => (
     <TwitterUserSection
-      key={`tool-twitter-users-${index}`}
       twitter_user_data={Array.isArray(data) ? data : [data]}
     />
   ),
@@ -387,25 +311,13 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     );
   },
 
-  workflow_draft: (data, index) => (
-    <WorkflowDraftCard key={`tool-workflow-draft-${index}`} draft={data} />
-  ),
+  workflow_draft: (data) => <WorkflowDraftCard draft={data} />,
 
-  workflow_created: (data, index) => (
-    <WorkflowCreatedCard
-      key={`tool-workflow-created-${index}`}
-      workflow={data}
-    />
-  ),
+  workflow_created: (data) => <WorkflowCreatedCard workflow={data} />,
 
-  mcp_app: (data, index) => (
-    <MCPAppRenderer
-      key={`tool-mcp-app-${data.tool_call_id || index}`}
-      data={data}
-    />
-  ),
+  mcp_app: (data) => <MCPAppRenderer data={data} />,
 
-  rate_limit_data: (data, index) => {
+  rate_limit_data: (data) => {
     // When grouped, data is RateLimitData[] — deduplicate by feature
     const items = (Array.isArray(data) ? data : [data]) as RateLimitData[];
     const seen = new Set<string>();
@@ -419,7 +331,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
       <>
         {unique.map((item) => (
           <RateLimitCard
-            key={`tool-rate-limit-${index}-${item.feature ?? "unknown"}`}
+            key={`tool-rate-limit-${item.feature ?? "unknown"}`}
             data={item}
           />
         ))}
@@ -429,9 +341,9 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
 
   // Memory — multiple calls in one turn (e.g. several add_memory or a search
   // followed by an add) are grouped into one card with stacked action rows.
-  memory_data: (data, index) => {
+  memory_data: (data) => {
     const items = (Array.isArray(data) ? data : [data]) as MemoryData[];
-    return <MemoryCard key={`tool-memory-${index}`} items={items} />;
+    return <MemoryCard items={items} />;
   },
 
   // HIL approval — grouped so a run needing many decisions doesn't stack a full
@@ -439,7 +351,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   // assistant's reply already reflects them). Each approval_id is a single entry
   // (pending→resolved replaced in place via upsertApprovalToolData); grouping
   // collects them into the array.
-  approval_request: (data, index) => {
+  approval_request: (data) => {
     const raw = (Array.isArray(data) ? data : [data]) as ApprovalRequestData[];
     // A resumed stream replays the gate-time PENDING frame after the decision
     // already settled it — collapse by approval_id, settled wins over pending.
@@ -453,7 +365,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     const items = [...byId.values()];
     return (
       <ApprovalRequestGroup
-        key={`approval-group-${items[0]?.approval_id || index}`}
+        key={`approval-group-${items[0]?.approval_id ?? "unknown"}`}
         items={items}
       />
     );

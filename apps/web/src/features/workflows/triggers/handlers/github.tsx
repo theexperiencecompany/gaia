@@ -21,6 +21,15 @@ import { useInfiniteTriggerOptions } from "../hooks/useInfiniteTriggerOptions";
 import type { RegisteredHandler, TriggerSettingsProps } from "../registry";
 import type { TriggerConfig } from "../types";
 
+/** Accepts "owner/repo" with valid GitHub name segments. */
+function isValidRepo(value: string): boolean {
+  const parts = value.split("/");
+  if (parts.length !== 2) return false;
+  const [owner, repo] = parts;
+  const githubNameRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-_]*[a-zA-Z0-9])?$/;
+  return githubNameRegex.test(owner) && githubNameRegex.test(repo);
+}
+
 interface GitHubTriggerData {
   trigger_name: string;
   repos?: string[];
@@ -92,14 +101,6 @@ function GitHubSettings({
   };
 
   // Accepts "owner/repo" with valid GitHub name segments.
-  const isValidRepo = (value: string): boolean => {
-    const parts = value.split("/");
-    if (parts.length !== 2) return false;
-    const [owner, repo] = parts;
-    const githubNameRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-_]*[a-zA-Z0-9])?$/;
-    return githubNameRegex.test(owner) && githubNameRegex.test(repo);
-  };
-
   const handleScroll = (e: React.UIEvent<HTMLUListElement>) => {
     const bottom =
       e.currentTarget.scrollHeight - e.currentTarget.scrollTop ===

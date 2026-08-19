@@ -9,7 +9,7 @@ import {
   DashedLineCircleIcon,
   Loading03Icon,
 } from "@icons";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { ChevronDown } from "@/components/shared/icons";
 import { toTitleCase } from "@/features/chat/utils/chatUtils";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
@@ -203,9 +203,12 @@ function MultiSourceAccordion({
         latest = key;
       }
     }
-    prevDataRef.current = todo_progress;
     return latest ?? activeSources[activeSources.length - 1];
   }, [activeSources, todo_progress]);
+
+  useEffect(() => {
+    prevDataRef.current = todo_progress;
+  }, [todo_progress]);
 
   return (
     <div className="mt-2 mb-2 animate-scale-in rounded-2xl bg-zinc-800/70 backdrop-blur-xl p-1 w-full max-w-96">

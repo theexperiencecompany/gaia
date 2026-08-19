@@ -62,15 +62,19 @@ export const MentionEditor = ({
   // Live props reach the once-built extensions through refs (Tiptap can't
   // rebuild extensions reactively), so updating them never recreates the editor.
   const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
   const toolNamesRef = useRef(toolNames);
-  toolNamesRef.current = toolNames;
   const iconRef = useRef(renderMentionIcon);
-  iconRef.current = renderMentionIcon;
   const removableRef = useRef(mentionRemovable);
-  removableRef.current = mentionRemovable;
   const radiusRef = useRef(mentionRadius);
-  radiusRef.current = mentionRadius;
+  // Sync live props after every render (not during render, which is impure) so
+  // the once-built Tiptap extensions always read the latest values.
+  useEffect(() => {
+    onChangeRef.current = onChange;
+    toolNamesRef.current = toolNames;
+    iconRef.current = renderMentionIcon;
+    removableRef.current = mentionRemovable;
+    radiusRef.current = mentionRadius;
+  });
 
   const extensionsRef = useRef<Extensions>(undefined);
   extensionsRef.current ??= buildMentionExtensions(

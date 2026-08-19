@@ -228,10 +228,11 @@ const warnOnMessageContentLoss = (
   localMessages: IMessage[],
   conversationId: string,
 ): void => {
+  const localById = new Map(localMessages.map((m) => [m.id, m]));
   for (const merged of mergedMessages) {
     if (merged.role !== "assistant") continue;
 
-    const local = localMessages.find((m) => m.id === merged.id);
+    const local = localById.get(merged.id);
     if (local?.content && !merged.content) {
       console.warn(
         `[SyncService] ⚠️ SYNC OVERWRITING bot message ${merged.id} — local has content (${local.content.length} chars), merged is EMPTY. This is the bug!`,

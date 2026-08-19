@@ -22,6 +22,22 @@ import {
 } from "@/types/features/notificationTypes";
 import { parseDate } from "@/utils/date/dateUtils";
 
+/** Icon for a notification action type (pure — safe to hoist to module scope). */
+const getActionIcon = (actionType: ActionType) => {
+  switch (actionType) {
+    case "redirect":
+      return <LinkSquare02Icon className="h-3 w-3" strokeWidth={2.5} />;
+    case "api_call":
+      return <CheckmarkCircle02Icon className="h-3 w-3" strokeWidth={2.5} />;
+    case "workflow":
+      return <Timer02Icon className="h-3 w-3" strokeWidth={2.5} />;
+    case "modal":
+      return <AlertCircleIcon className="h-3 w-3" strokeWidth={2.5} />;
+    default:
+      return null;
+  }
+};
+
 interface EnhancedNotificationCardProps {
   notification: NotificationRecord;
   onMarkAsRead?: (id: string) => Promise<void>;
@@ -74,21 +90,6 @@ export const EnhancedNotificationCard = ({
     });
     if (onMarkAsRead) {
       await onMarkAsRead(notification.id);
-    }
-  };
-
-  const getActionIcon = (actionType: ActionType) => {
-    switch (actionType) {
-      case "redirect":
-        return <LinkSquare02Icon className="h-3 w-3" strokeWidth={2.5} />;
-      case "api_call":
-        return <CheckmarkCircle02Icon className="h-3 w-3" strokeWidth={2.5} />;
-      case "workflow":
-        return <Timer02Icon className="h-3 w-3" strokeWidth={2.5} />;
-      case "modal":
-        return <AlertCircleIcon className="h-3 w-3" strokeWidth={2.5} />;
-      default:
-        return null;
     }
   };
 

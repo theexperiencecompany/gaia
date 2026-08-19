@@ -14,14 +14,16 @@ import { SettingsSection } from "@/features/settings/components/ui/SettingsSecti
 import { usePricingModalStore } from "@/stores/pricingModalStore";
 import { CancelSubscriptionAction } from "./CancelSubscriptionAction";
 
+const LONG_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+});
+
 const formatDate = (dateString?: string): string => {
   if (!dateString) return "N/A";
   try {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
+    return LONG_DATE_FORMATTER.format(new Date(dateString));
   } catch {
     return "N/A";
   }

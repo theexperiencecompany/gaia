@@ -69,7 +69,7 @@ const FileChip: React.FC<{
 
   return (
     <div
-      className={`group/filetype group relative flex ${file.type.startsWith("image/") ? "h-14 max-h-14 min-h-14 w-14 max-w-14 min-w-14 justify-center" : "max-w-[220px] min-w-[180px] p-2 pr-8"} items-center rounded-xl bg-zinc-700 transition-all hover:bg-zinc-900`}
+      className={`group/filetype group relative flex ${file.type.startsWith("image/") ? "h-14 max-h-14 min-h-14 w-14 max-w-14 min-w-14 justify-center" : "max-w-[220px] min-w-[180px] p-2 pr-8"} items-center rounded-xl bg-zinc-700 transition-colors hover:bg-zinc-900`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -84,7 +84,7 @@ const FileChip: React.FC<{
         size="sm"
         variant="faded"
         isDisabled={file.isUploading}
-        className="absolute top-0 right-0 z-10 h-6 w-6 min-w-0 scale-90 rounded-full opacity-0 transition-all group-hover:opacity-100"
+        className="absolute top-0 right-0 z-10 h-6 w-6 min-w-0 scale-90 rounded-full opacity-0 transition-opacity group-hover:opacity-100"
         onPress={() => onRemove(file.id)}
       >
         <Cancel01Icon size={14} />

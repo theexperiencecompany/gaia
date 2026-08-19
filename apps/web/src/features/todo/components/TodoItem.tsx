@@ -61,6 +61,26 @@ const priorityRingColors = {
   [Priority.NONE]: "border-zinc-500",
 } as const;
 
+// Intl formatters are expensive — cache one per timezone at module scope
+// instead of rebuilding on every call, keyed by the resolved timezone.
+const scheduledLabelFormatters = new Map<string, Intl.DateTimeFormat>();
+function getScheduledLabelFormatter(timezone: string): Intl.DateTimeFormat {
+  let formatter = scheduledLabelFormatters.get(timezone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: timezone,
+    });
+    scheduledLabelFormatters.set(timezone, formatter);
+  }
+  return formatter;
+}
+
 const formatScheduledLabel = (
   scheduledAt: string | null | undefined,
   timezone: string | undefined,
@@ -68,15 +88,9 @@ const formatScheduledLabel = (
   if (!scheduledAt) return undefined;
   const resolvedTimezone =
     timezone && timezone.trim() !== "" ? timezone : getBrowserTimezone();
-  return new Intl.DateTimeFormat("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-    timeZone: resolvedTimezone,
-  }).format(new Date(scheduledAt));
+  return getScheduledLabelFormatter(resolvedTimezone).format(
+    new Date(scheduledAt),
+  );
 };
 
 // Fanned-out category icons shown on the right edge of a todo row.

@@ -226,9 +226,16 @@ export const useChatStore = create<ChatState>((set) => ({
       artifactsByConversation: {
         ...state.artifactsByConversation,
         [conversationId]: Object.fromEntries(
-          artifacts
-            .filter((a) => a?.path)
-            .map((a) => [a.path, { ...a, session_id: conversationId }]),
+          artifacts.flatMap((a) =>
+            a?.path
+              ? [
+                  [a.path, { ...a, session_id: conversationId }] as [
+                    string,
+                    ArtifactData,
+                  ],
+                ]
+              : [],
+          ),
         ),
       },
     })),

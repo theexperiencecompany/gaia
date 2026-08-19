@@ -115,7 +115,11 @@ export const IntegrationInstructionsModal = ({
   // stable while always reading the latest state. (Escape is handled by the
   // Modal's built-in dismiss.)
   const saveShortcutRef = useRef({ isMac, canSave, handleSave });
-  saveShortcutRef.current = { isMac, canSave, handleSave };
+  // Sync after every render (not during render, which is impure) so the
+  // keydown listener always reads the latest save state/handler.
+  useEffect(() => {
+    saveShortcutRef.current = { isMac, canSave, handleSave };
+  });
 
   useEffect(() => {
     if (!isOpen) return;

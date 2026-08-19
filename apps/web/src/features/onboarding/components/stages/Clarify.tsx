@@ -16,6 +16,7 @@ import {
 } from "../../constants/clarify";
 import { EASE_OUT_QUART } from "../../constants/motion";
 import type { Action, OnboardingState } from "../../state/types";
+import type { ClarifyQuestion } from "../../types";
 import {
   CLARIFY_RADIO_BASE_CLASS,
   CLARIFY_RADIO_LABEL_CLASS,
@@ -28,13 +29,15 @@ import {
   SKIP_VALUE,
 } from "../../utils/clarifyHelpers";
 
+const NO_CLARIFY_QUESTIONS: ClarifyQuestion[] = [];
+
 interface ClarifyProps {
   state: OnboardingState;
   dispatch: Dispatch<Action>;
 }
 
 export function ClarifyComposer({ state, dispatch }: ClarifyProps) {
-  const questions = state.clarifyQuestions ?? [];
+  const questions = state.clarifyQuestions ?? NO_CLARIFY_QUESTIONS;
   const activeId = state.clarifyActiveTab ?? questions[0]?.id ?? "";
   const activeQuestion = useMemo(
     () => questions.find((q) => q.id === activeId) ?? questions[0],

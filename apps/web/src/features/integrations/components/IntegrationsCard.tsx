@@ -17,6 +17,13 @@ interface IntegrationsCardProps {
   size?: "default" | "small";
 }
 
+const STATUS_ORDER = {
+  created: 0,
+  connected: 1,
+  not_connected: 2,
+  error: 3,
+} as const;
+
 const IntegrationItem: React.FC<{
   integration: Integration;
   onConnect: (id: string) => void;
@@ -135,12 +142,6 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
     (i) => i.status === "connected",
   ).length;
 
-  const statusOrder = {
-    created: 0,
-    connected: 1,
-    not_connected: 2,
-    error: 3,
-  };
   return (
     <div className="mx-2 mb-3 border-b-1 border-zinc-800">
       <Accordion
@@ -178,8 +179,8 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
               {myIntegrations
                 .toSorted((a, b) => {
                   // Connected first, then alphabetically
-                  const aOrder = statusOrder[a.status] ?? 99;
-                  const bOrder = statusOrder[b.status] ?? 99;
+                  const aOrder = STATUS_ORDER[a.status] ?? 99;
+                  const bOrder = STATUS_ORDER[b.status] ?? 99;
                   if (aOrder !== bOrder) return aOrder - bOrder;
                   return a.name.localeCompare(b.name);
                 })

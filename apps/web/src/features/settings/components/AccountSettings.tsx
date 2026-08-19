@@ -90,7 +90,7 @@ export default function AccountSection({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={isLoading}
-              className="relative h-14 w-14 cursor-pointer overflow-hidden rounded-full bg-zinc-800 transition-all duration-200 hover:ring-2 hover:ring-primary hover:ring-offset-2 hover:ring-offset-zinc-900"
+              className="relative h-14 w-14 cursor-pointer overflow-hidden rounded-full bg-zinc-800 transition-shadow duration-200 hover:ring-2 hover:ring-primary hover:ring-offset-2 hover:ring-offset-zinc-900"
             >
               {user?.profilePicture ? (
                 <Image

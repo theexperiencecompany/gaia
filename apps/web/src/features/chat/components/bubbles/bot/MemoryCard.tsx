@@ -116,8 +116,8 @@ function AddSection({
         </Chip>
       </div>
       <div className="flex flex-col gap-1.5">
-        {item.memories.map((m, i) => (
-          <MemoryRow key={m.id ?? i} memory={m} />
+        {item.memories.map((m) => (
+          <MemoryRow key={m.id ?? `${m.content}-${m.version}`} memory={m} />
         ))}
       </div>
     </div>
@@ -155,8 +155,8 @@ function SearchSection({
       </div>
       {item.memories.length > 0 ? (
         <div className="flex flex-col gap-1.5">
-          {item.memories.map((m, i) => (
-            <MemoryRow key={m.id ?? i} memory={m} />
+          {item.memories.map((m) => (
+            <MemoryRow key={m.id ?? `${m.content}-${m.version}`} memory={m} />
           ))}
         </div>
       ) : (
@@ -182,8 +182,8 @@ function UpdateSection({
         </span>
       </div>
       <div className="flex flex-col gap-1.5">
-        {item.memories.map((m, i) => (
-          <MemoryRow key={m.id ?? i} memory={m} />
+        {item.memories.map((m) => (
+          <MemoryRow key={m.id ?? `${m.content}-${m.version}`} memory={m} />
         ))}
       </div>
     </div>
@@ -224,9 +224,9 @@ function JournalSection({
               {ep.date}
             </p>
             <div className="flex flex-col gap-1">
-              {ep.entries.map((entry, i) => (
+              {ep.entries.map((entry) => (
                 <div
-                  key={`${entry.time ?? i}-${entry.text.slice(0, 20)}`}
+                  key={`${entry.time}-${entry.text.slice(0, 20)}`}
                   className="flex gap-2"
                 >
                   {entry.time && (
@@ -310,14 +310,14 @@ function DocumentSection({
 export default function MemoryCard({ items: rawItems }: MemoryCardProps) {
   // The agent may call the same memory tool repeatedly in one turn (e.g.
   // re-reading a document); identical payloads collapse to one section.
-  const items = rawItems
-    .filter(
-      (item, index, all) =>
-        all.findIndex(
-          (other) => JSON.stringify(other) === JSON.stringify(item),
-        ) === index,
-    )
-    .map((item, index) => ({ item, index }));
+  const seen = new Set<string>();
+  const items: { item: MemoryData; index: number }[] = [];
+  for (const item of rawItems) {
+    const key = JSON.stringify(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push({ item, index: items.length });
+  }
   if (items.length === 0) return null;
 
   return (

@@ -52,7 +52,12 @@ export function TriggerAutocomplete({
       // so it doesn't appear as a ghost selection
       setFilterValue("");
     }
-  }, [selectedTrigger, selectedSchema?.slug, triggerSchemas]);
+  }, [
+    selectedTrigger,
+    selectedSchema?.name,
+    selectedSchema?.slug,
+    triggerSchemas,
+  ]);
 
   const fuse = useMemo(() => {
     if (!triggerSchemas) return null;

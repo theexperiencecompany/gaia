@@ -1,0 +1,63 @@
+{
+  // React Doctor config — apps/web only (the rest of the monorepo is out of scope).
+  //
+  // ONLY evidenced, deliberate keeps are suppressed below, scoped to the exact
+  // rule + files, so real findings in those files still surface:
+  //   - deslop/unused-file false positives: files that ARE reachable or are
+  //     deliberately maintained but not entry-point-reachable:
+  //       1. dev-only routes (*.dev.tsx / dev/) — routable in dev via
+  //          next.config.mjs pageExtensions
+  //       2. the parked Calendar feature — knip.config.ts:114-118 documents
+  //          "TODO(team): re-enable the route or remove the feature"
+  //       3. SEO content source-of-truth entries — human-edited, kept
+  //          (knip.config.ts:107-113, sonar-project.properties)
+  //       4. image-loader.ts — referenced from next.config.mjs loaderFile
+  "ignore": {
+    "overrides": [
+      {
+        "files": [
+          "src/**/*.dev.tsx",
+          "src/**/*.dev.ts",
+          "src/**/dev/**",
+          "src/features/wake-word/**",
+          "src/config/openui/examples/**"
+        ],
+        "rules": ["deslop/unused-file"]
+      },
+      {
+        "files": [
+          "src/features/calendar/**",
+          "src/components/layout/sidebar/variants/CalendarSidebar.tsx",
+          "src/components/layout/sidebar/right-variants/CalendarRightSidebar.tsx",
+          "src/components/layout/sidebar/right-variants/CalendarEventAIActions.tsx",
+          "src/components/ui/calendar.tsx",
+          "src/components/ui/label.tsx",
+          "src/components/ui/popover.tsx"
+        ],
+        "rules": ["deslop/unused-file"]
+      },
+      {
+        "files": [
+          "src/features/alternatives/data/entries/**",
+          "src/features/comparisons/data/entries/**",
+          "src/features/integrations/data/combosData-*.ts"
+        ],
+        "rules": ["deslop/unused-file"]
+      },
+      {
+        "files": [
+          "src/utils/date/dateTimeLocalUtils.ts"
+        ],
+        "rules": ["deslop/unused-file"]
+      },
+      {
+        "files": ["image-loader.ts"],
+        "rules": ["deslop/unused-file"]
+      }
+    ]
+  },
+  // Project graph (Maintainability) rules run opt-in; they are enabled as
+  // `error` once the baseline is genuinely clean (see
+  // https://www.react.doctor/docs/overview/react-maintainability).
+  // "rules": { ... } is appended by the maintainability-as-error commit.
+}

@@ -30,16 +30,7 @@ interface MessagesRegionProps {
 }
 
 function MessagesRegionImpl({ state, stage }: MessagesRegionProps) {
-  const messages = useMemo(
-    () => getMessages(state),
-    [
-      state.responses,
-      state.questionIndex,
-      state.clarifyAnswers,
-      state.clarifyQuestions,
-      state.clarifySubmitted,
-    ],
-  );
+  const messages = useMemo(() => getMessages(state), [state]);
 
   // Gmail path also shows the checklist while the user picks integrations —
   // the early pipeline (scan/style/triage/todos) is already running; only

@@ -190,6 +190,8 @@ Happy writing! 🚀`,
     });
   };
 
+  const selectedAuthorIds = new Set(selectedAuthors.map((author) => author.id));
+
   return (
     <div className="container mx-auto max-w-4xl px-4 py-8">
       <Card className="shadow-lg">
@@ -268,30 +270,27 @@ Happy writing! 🚀`,
                   if (key) handleAuthorSelect(key as string);
                 }}
               >
-                {teamMembers
-                  .filter(
-                    (member) =>
-                      !selectedAuthors.find(
-                        (selected) => selected.id === member.id,
-                      ),
-                  )
-                  .map((member) => (
-                    <AutocompleteItem key={member.id}>
-                      <div className="flex items-center gap-2">
-                        <Avatar
-                          src={member.avatar}
-                          name={member.name}
-                          size="sm"
-                        />
-                        <div>
-                          <div className="font-medium">{member.name}</div>
-                          <div className="text-xs text-foreground-500">
-                            {member.role}
+                {teamMembers.flatMap((member) =>
+                  selectedAuthorIds.has(member.id)
+                    ? []
+                    : [
+                        <AutocompleteItem key={member.id}>
+                          <div className="flex items-center gap-2">
+                            <Avatar
+                              src={member.avatar}
+                              name={member.name}
+                              size="sm"
+                            />
+                            <div>
+                              <div className="font-medium">{member.name}</div>
+                              <div className="text-xs text-foreground-500">
+                                {member.role}
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </div>
-                    </AutocompleteItem>
-                  ))}
+                        </AutocompleteItem>,
+                      ],
+                )}
               </Autocomplete>
 
               {/* Selected Authors */}

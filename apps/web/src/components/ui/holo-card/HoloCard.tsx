@@ -18,6 +18,17 @@ import {
 import type { HoloCardProps } from "./types";
 import { calculateBackgroundPosition } from "./utils";
 
+// Use CSS `border` not mask-composite: html-to-image drops the mask and downloads it as a filled rectangle.
+const STAMP_BORDER_STYLE = {
+  position: "absolute" as const,
+  inset: 22,
+  border: "4px solid rgba(255, 255, 255, 0.92)",
+  borderRadius: 0,
+  pointerEvents: "none" as const,
+  zIndex: 4,
+  boxSizing: "border-box" as const,
+};
+
 export const HoloCard = ({
   data,
   height = 446,
@@ -171,16 +182,7 @@ export const HoloCard = ({
   };
 
   // Use CSS `border` not mask-composite: html-to-image drops the mask and downloads it as a filled rectangle.
-  const stampBorderStyle = {
-    position: "absolute" as const,
-    inset: 22,
-    border: "4px solid rgba(255, 255, 255, 0.92)",
-    borderRadius: 0,
-    pointerEvents: "none" as const,
-    zIndex: 4,
-    boxSizing: "border-box" as const,
-  };
-  const StampBorder = () => <div aria-hidden style={stampBorderStyle} />;
+  const StampBorder = () => <div aria-hidden style={STAMP_BORDER_STYLE} />;
 
   return (
     <div

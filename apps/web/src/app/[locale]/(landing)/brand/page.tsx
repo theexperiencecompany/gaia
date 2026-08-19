@@ -38,29 +38,30 @@ export const metadata: Metadata = generatePageMetadata({
   image: "/og-image.webp",
 });
 
-export default function BrandPage() {
-  const brandSchema = {
-    "@context": "https://schema.org" as const,
-    "@type": "WebPage" as const,
-    name: "Brand Guidelines & Press Kit",
-    description:
-      "Official brand assets and press kit for The Experience Company and GAIA",
-    url: `${siteConfig.url}/brand`,
-    about: [
-      {
-        "@type": "Organization" as const,
-        name: "The Experience Company",
-        url: siteConfig.url,
-      },
-      {
-        "@type": "Organization" as const,
-        name: "GAIA",
-        alternateName: "General-purpose AI Assistant",
-        url: siteConfig.url,
-      },
-    ],
-  };
+/** Static JSON-LD for the /brand page — hoisted so it isn't rebuilt per render. */
+const brandSchema = {
+  "@context": "https://schema.org" as const,
+  "@type": "WebPage" as const,
+  name: "Brand Guidelines & Press Kit",
+  description:
+    "Official brand assets and press kit for The Experience Company and GAIA",
+  url: `${siteConfig.url}/brand`,
+  about: [
+    {
+      "@type": "Organization" as const,
+      name: "The Experience Company",
+      url: siteConfig.url,
+    },
+    {
+      "@type": "Organization" as const,
+      name: "GAIA",
+      alternateName: "General-purpose AI Assistant",
+      url: siteConfig.url,
+    },
+  ],
+};
 
+export default function BrandPage() {
   return (
     <>
       <JsonLd data={brandSchema} />

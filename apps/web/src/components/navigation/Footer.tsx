@@ -15,15 +15,17 @@ export default function Footer() {
     name: "Footer Navigation",
     url: siteConfig.url,
     hasPart: footerSections.flatMap((section) =>
-      section.links
-        .filter((link) => !link.external)
-        .map(
-          (link): WebPage => ({
-            "@type": "WebPage",
-            name: link.label,
-            url: `${siteConfig.url}${link.href}`,
-          }),
-        ),
+      section.links.flatMap((link): WebPage[] =>
+        link.external
+          ? []
+          : [
+              {
+                "@type": "WebPage",
+                name: link.label,
+                url: `${siteConfig.url}${link.href}`,
+              },
+            ],
+      ),
     ),
   };
 

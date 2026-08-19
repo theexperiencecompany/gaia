@@ -310,8 +310,13 @@ export default function Tired() {
   // Use refs so observers don't re-create on state changes
   const hasAnimatedRef = useRef(false);
   const isLeavingRef = useRef(false);
-  hasAnimatedRef.current = hasAnimated;
-  isLeavingRef.current = isLeaving;
+
+  useEffect(() => {
+    hasAnimatedRef.current = hasAnimated;
+  }, [hasAnimated]);
+  useEffect(() => {
+    isLeavingRef.current = isLeaving;
+  }, [isLeaving]);
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {

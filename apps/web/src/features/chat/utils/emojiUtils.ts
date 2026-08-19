@@ -30,6 +30,30 @@ export const isOnlyEmojis = (text: string | null | undefined): boolean => {
   );
 };
 
+/** Matches a single grapheme run that is entirely emoji characters. */
+const emojiRunRegex =
+  /^(?:\p{Extended_Pictographic}|\p{Emoji_Presentation}|\p{Emoji_Modifier_Base}|\p{Emoji_Modifier}|\u200d|\ufe0f|\u20e3)+$/u;
+
+/** Non-anchored variant used by the no-Intl.Segmenter fallback. */
+const emojiMatchRegex =
+  /(?:\p{Extended_Pictographic}|\p{Emoji_Presentation}|\p{Emoji_Modifier_Base}|\p{Emoji_Modifier}|\u200d|\ufe0f|\u20e3)+/gu;
+
+let graphemeSegmenter: Intl.Segmenter | null | undefined;
+
+/** Lazily-instantiated grapheme segmenter (unsupported engines degrade to regex). */
+const getGraphemeSegmenter = (): Intl.Segmenter | null => {
+  if (graphemeSegmenter === undefined) {
+    try {
+      graphemeSegmenter = new Intl.Segmenter("en", {
+        granularity: "grapheme",
+      });
+    } catch {
+      graphemeSegmenter = null;
+    }
+  }
+  return graphemeSegmenter;
+};
+
 /**
  * Counts the number of visually distinct emojis in the text.
  * Uses Intl.Segmenter for grapheme clustering to handle compound emojis correctly.
@@ -37,24 +61,19 @@ export const isOnlyEmojis = (text: string | null | undefined): boolean => {
 export const getEmojiCount = (text: string | null | undefined): number => {
   if (!text) return 0;
 
-  try {
-    const segmenter = new Intl.Segmenter("en", { granularity: "grapheme" });
-    const emojiRegex =
-      /^(?:\p{Extended_Pictographic}|\p{Emoji_Presentation}|\p{Emoji_Modifier_Base}|\p{Emoji_Modifier}|\u200d|\ufe0f|\u20e3)+$/u;
-    let count = 0;
-    for (const { segment } of segmenter.segment(text)) {
-      // Only count if the segment matches emoji patterns
-      if (emojiRegex.test(segment)) {
-        count++;
-      }
-    }
-    return count;
-  } catch {
-    // Fallback if Intl.Segmenter is not available
-    // Use regex to match emoji sequences
-    const emojiRegex =
-      /(?:\p{Extended_Pictographic}|\p{Emoji_Presentation}|\p{Emoji_Modifier_Base}|\p{Emoji_Modifier}|\u200d|\ufe0f|\u20e3)+/gu;
-    const matches = text.match(emojiRegex);
+  const segmenter = getGraphemeSegmenter();
+  if (!segmenter) {
+    // Fallback if Intl.Segmenter is not available: regex-match emoji sequences.
+    const matches = text.match(emojiMatchRegex);
     return matches ? matches.length : 0;
   }
+
+  let count = 0;
+  for (const { segment } of segmenter.segment(text)) {
+    // Only count if the segment matches emoji patterns
+    if (emojiRunRegex.test(segment)) {
+      count++;
+    }
+  }
+  return count;
 };

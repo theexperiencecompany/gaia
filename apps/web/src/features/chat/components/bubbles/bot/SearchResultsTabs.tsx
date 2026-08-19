@@ -171,7 +171,7 @@ function ImageItem({
   return (
     <m.div
       onClick={onImageClick}
-      className="relative h-32 w-32 shrink-0 cursor-pointer overflow-hidden rounded-2xl shadow-zinc-950 transition-all duration-200 hover:scale-105 hover:z-10"
+      className="relative h-32 w-32 shrink-0 cursor-pointer overflow-hidden rounded-2xl shadow-zinc-950 transition-transform duration-200 hover:scale-105 hover:z-10"
       style={{ rotate: rotation, zIndex: index }}
       initial={{ scale: 0.6, filter: "blur(10px)" }}
       animate={{ scale: 1, filter: "blur(0px)" }}
@@ -250,9 +250,9 @@ function NewsResults({ news }: NewsResultsProps) {
       {news.map((article) => (
         <div
           key={article.url + article.title}
-          className="max-w-(--breakpoint-sm) overflow-hidden rounded-lg bg-zinc-800 p-4 shadow-md transition-all hover:shadow-lg"
+          className="max-w-(--breakpoint-sm) overflow-hidden rounded-lg bg-zinc-800 p-4 shadow-md transition-shadow hover:shadow-lg"
         >
-          <div className="flex flex-row items-center gap-2 text-primary transition-all hover:text-white">
+          <div className="flex flex-row items-center gap-2 text-primary transition-colors hover:text-white">
             <NewsIcon
               height={20}
               width={20}
@@ -285,7 +285,7 @@ function WebResults({ web }: WebResultsProps) {
     <div className="max-h-80 w-full max-w-lg overflow-y-auto rounded-2xl bg-zinc-800/70 backdrop-blur-2xl">
       {web.map((result) => (
         <div
-          className="w-full border-b-1 border-b-zinc-700 p-4 pb-3 transition-all hover:bg-white/5"
+          className="w-full border-b-1 border-b-zinc-700 p-4 pb-3 transition-colors hover:bg-white/5"
           key={result.url + result.title}
         >
           <a

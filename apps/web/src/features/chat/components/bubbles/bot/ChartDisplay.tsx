@@ -268,6 +268,23 @@ const ChartModal: React.FC<{
 );
 
 // Main component
+async function downloadChart(chart: ChartData) {
+  try {
+    const response = await fetch(chart.url);
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${chart.title || chart.text || "chart"}.png`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  } catch (error) {
+    console.error("Failed to download chart:", error);
+  }
+}
+
 const ChartDisplay: React.FC<ChartDisplayProps> = ({ charts }) => {
   const [selectedChart, setSelectedChart] = useState<ChartData | null>(null);
   const [viewMode, setViewMode] = useState<"static" | "dynamic">("static");
@@ -281,23 +298,6 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({ charts }) => {
   ); // Only charts with valid URLs
   const dynamicCharts = charts.filter((chart) => chart.chart_data); // Only charts with interactive data
   const hasAnyInteractiveData = dynamicCharts.length > 0;
-
-  const handleDownload = async (chart: ChartData) => {
-    try {
-      const response = await fetch(chart.url);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${chart.title || chart.text || "chart"}.png`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (error) {
-      console.error("Failed to download chart:", error);
-    }
-  };
 
   return (
     <>
@@ -348,7 +348,7 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({ charts }) => {
                       key={chart.id}
                       chart={chart}
                       onFullscreen={() => setSelectedChart(chart)}
-                      onDownload={() => handleDownload(chart)}
+                      onDownload={() => downloadChart(chart)}
                     />
                   ))
                 : // Show only dynamic charts
@@ -369,7 +369,7 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({ charts }) => {
                 key={chart.id}
                 chart={chart}
                 onFullscreen={() => setSelectedChart(chart)}
-                onDownload={() => handleDownload(chart)}
+                onDownload={() => downloadChart(chart)}
               />
             ))}
           </div>
@@ -380,7 +380,7 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({ charts }) => {
         <ChartModal
           chart={selectedChart}
           onClose={() => setSelectedChart(null)}
-          onDownload={handleDownload}
+          onDownload={downloadChart}
         />
       )}
     </>

@@ -57,16 +57,20 @@ export default async function UseCasesPage() {
     { name: "Home", url: siteConfig.url },
     { name: "Use Cases", url: `${siteConfig.url}/use-cases` },
   ]);
-  const itemListSchema = generateItemListSchema(
-    communityWorkflows
-      .filter((workflow) => !!workflow.slug)
-      .map((workflow) => ({
-        name: workflow.title,
-        url: `${siteConfig.url}/use-cases/${workflow.slug}`,
-        description: workflow.description || "",
-      })),
-    "Article",
-  );
+  const workflowItems: Array<{
+    name: string;
+    url: string;
+    description: string;
+  }> = [];
+  for (const workflow of communityWorkflows) {
+    if (!workflow.slug) continue;
+    workflowItems.push({
+      name: workflow.title,
+      url: `${siteConfig.url}/use-cases/${workflow.slug}`,
+      description: workflow.description || "",
+    });
+  }
+  const itemListSchema = generateItemListSchema(workflowItems, "Article");
 
   const faqSchema = generateFAQSchema(useCasesFAQs);
 

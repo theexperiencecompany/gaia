@@ -93,8 +93,10 @@ function userGroupToIMessage(
   // Consecutive utterances within one turn (e.g. a pause then more speech) are
   // shown as paragraph breaks in the same bubble.
   const content = Array.from(group.transcriptionTexts.values())
-    .map((t) => t.trim())
-    .filter(Boolean)
+    .flatMap((t) => {
+      const trimmed = t.trim();
+      return trimmed ? [trimmed] : [];
+    })
     .join("\n\n");
   return {
     id: group.localId,
@@ -151,7 +153,10 @@ export function useVoiceMessages(
   // Stash the latest conversationId in a ref so the bot-stream handler closure
   // (registered once) always reads the current value.
   const conversationIdRef = useRef(conversationId);
-  conversationIdRef.current = conversationId;
+
+  useEffect(() => {
+    conversationIdRef.current = conversationId;
+  }, [conversationId]);
 
   // Reset internal state on remount (new voice session).
   useEffect(() => {
@@ -385,8 +390,10 @@ export function useVoiceMessages(
         conversationId: null,
         role: "user",
         content: Array.from(group.transcriptionTexts.values())
-          .map((t) => t.trim())
-          .filter(Boolean)
+          .flatMap((t) => {
+            const trimmed = t.trim();
+            return trimmed ? [trimmed] : [];
+          })
           .join("\n\n"),
         createdAt: group.createdAt,
       });

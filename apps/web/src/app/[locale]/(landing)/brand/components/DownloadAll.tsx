@@ -3,16 +3,16 @@
 import { Button } from "@heroui/button";
 import { Download01Icon } from "@icons";
 
-export function DownloadAll() {
-  const handleDownloadAll = () => {
-    const link = document.createElement("a");
-    link.href = "/brand/brand-assets.zip";
-    link.download = "the-experience-company-brand-assets.zip";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
+function handleDownloadAll() {
+  const link = document.createElement("a");
+  link.href = "/brand/brand-assets.zip";
+  link.download = "the-experience-company-brand-assets.zip";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
 
+export function DownloadAll() {
   return (
     <Button
       onPress={handleDownloadAll}

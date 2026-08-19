@@ -18,6 +18,9 @@ import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import type { EnrichedSubagentGroup } from "./UnifiedToolThread";
 
+/** Lower-cases a label and strips separators for content-based comparison. */
+const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+
 // ── Animation config (matches LoadingIndicator) ─────────────────────────────
 
 const expandTransition = {
@@ -157,7 +160,6 @@ function ToolCallRow({
   // Hide the secondary when it adds nothing — e.g. "retrieve_tools" under
   // "Retrieve tools". Compares with separators stripped so a tool name only
   // shows when it genuinely differs from the primary label.
-  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
   const normPrimary = normalize(primaryLabel);
   const normSecondary = normalize(secondaryLabel);
   const hasCategoryText =

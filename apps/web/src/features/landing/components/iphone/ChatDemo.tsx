@@ -69,6 +69,20 @@ const DEMO_TYPING_ID = "demo-typing";
 const DEMO_TYPING_DELAY_MS = 250;
 const DEMO_REPLY_DELAY_MS = 1000;
 
+// Stable React key for a demo message: prefer its real id, else fall back to a
+// memoized per-object id so id-less demo rows never rely on a positional index.
+const messageKeyCache = new WeakMap<ChatMessageItem, string>();
+let messageKeySeq = 0;
+function demoMessageKey(message: ChatMessageItem): string {
+  if (message.id != null) return `id-${message.id}`;
+  let key = messageKeyCache.get(message);
+  if (!key) {
+    key = `auto-${messageKeySeq++}`;
+    messageKeyCache.set(message, key);
+  }
+  return key;
+}
+
 const DEMO_CTA: Record<
   ChatPlatform,
   { label: string; href: string; accent: string; darkText?: boolean }
@@ -256,11 +270,15 @@ function useDemoChat(base: ChatMessageItem[]) {
     timers.current.push(
       window.setTimeout(() => {
         setExtra((prev) => [
-          ...prev
-            .filter((m) => m.id !== DEMO_TYPING_ID)
-            .map((m) =>
-              m.id === `demo-me-${seq}` ? { ...m, status: "read" as const } : m,
-            ),
+          ...prev.flatMap((m) =>
+            m.id === DEMO_TYPING_ID
+              ? []
+              : [
+                  m.id === `demo-me-${seq}`
+                    ? { ...m, status: "read" as const }
+                    : m,
+                ],
+          ),
           {
             id: `demo-reply-${seq}`,
             from: "them",
@@ -674,7 +692,7 @@ function IMessageDemo({
                   const isLast = i === group.items.length - 1;
                   const isMe = group.from === "me";
                   return (
-                    <Fragment key={m.id ?? `${gi}-${i}`}>
+                    <Fragment key={demoMessageKey(m)}>
                       <CurvedBubble
                         className="chat-bubble-pop"
                         from={group.from}
@@ -945,7 +963,7 @@ function WhatsAppDemo({
                 const isLast = i === group.items.length - 1;
                 const showMeta = !m.typing && (m.time || (isMe && m.status));
                 return (
-                  <Fragment key={m.id ?? `${gi}-${i}`}>
+                  <Fragment key={demoMessageKey(m)}>
                     <CurvedBubble
                       className="chat-bubble-pop"
                       from={group.from}
@@ -1296,7 +1314,7 @@ function TelegramDemo({
               style={{ gap: 2 }}
             >
               {group.items.map((m, i) => (
-                <Fragment key={m.id ?? `${gi}-${i}`}>
+                <Fragment key={demoMessageKey(m)}>
                   <TelegramBubble
                     m={m}
                     from={group.from}
@@ -1574,7 +1592,7 @@ function SlackDemo({
               </div>
               <div className="flex flex-col" style={{ gap: 2 }}>
                 {g.items.map((m, i) => (
-                  <Fragment key={m.id ?? `${gi}-${i}`}>
+                  <Fragment key={demoMessageKey(m)}>
                     <div
                       style={{
                         fontSize: 15,
@@ -1883,11 +1901,20 @@ function SlackToolbarSeparator({ dark }: { dark: boolean }) {
 
 function renderSlackText(text: string, dark: boolean) {
   const parts = text.split(/(@\w+|#\w+|`[^`]+`)/g);
+  // Stable keys for split tokens: content + per-part occurrence count, so the
+  // key is deterministic and collision-free instead of a raw array index.
+  const partCounts = new Map<string, number>();
+  const tokenKeys = parts.map((part) => {
+    const n = partCounts.get(part) ?? 0;
+    partCounts.set(part, n + 1);
+    return `${part}::${n}`;
+  });
   return parts.map((p, i) => {
+    const key = tokenKeys[i];
     if (/^@\w+/.test(p)) {
       return (
         <span
-          key={i}
+          key={key}
           style={{
             background: dark ? "rgba(29,155,209,0.18)" : "#E8F5FA",
             color: dark ? "#1D9BD1" : "#1264A3",
@@ -1903,7 +1930,7 @@ function renderSlackText(text: string, dark: boolean) {
     if (/^#\w+/.test(p)) {
       return (
         <span
-          key={i}
+          key={key}
           style={{ color: dark ? "#1D9BD1" : "#1264A3", fontWeight: 600 }}
         >
           {p}
@@ -1913,7 +1940,7 @@ function renderSlackText(text: string, dark: boolean) {
     if (/^`[^`]+`$/.test(p)) {
       return (
         <code
-          key={i}
+          key={key}
           style={{
             background: dark ? "#222529" : "#F8F8F8",
             border: `1px solid ${dark ? "#3a3d42" : "#E8E8E8"}`,
@@ -1928,7 +1955,7 @@ function renderSlackText(text: string, dark: boolean) {
         </code>
       );
     }
-    return <span key={i}>{p}</span>;
+    return <span key={key}>{p}</span>;
   });
 }
 
@@ -2106,7 +2133,7 @@ function DiscordDemo({
               </div>
               <div className="flex flex-col" style={{ gap: 4 }}>
                 {g.items.map((m, i) => (
-                  <Fragment key={m.id ?? `${gi}-${i}`}>
+                  <Fragment key={demoMessageKey(m)}>
                     <div
                       style={{
                         fontSize: 15,
@@ -2238,11 +2265,20 @@ function DiscordCircleButton({
 
 function renderDiscordText(text: string) {
   const parts = text.split(/(@\w+|#\w+|`[^`]+`|:\w+:)/g);
+  // Stable keys for split tokens: content + per-part occurrence count, so the
+  // key is deterministic and collision-free instead of a raw array index.
+  const partCounts = new Map<string, number>();
+  const tokenKeys = parts.map((part) => {
+    const n = partCounts.get(part) ?? 0;
+    partCounts.set(part, n + 1);
+    return `${part}::${n}`;
+  });
   return parts.map((p, i) => {
+    const key = tokenKeys[i];
     if (/^@\w+/.test(p)) {
       return (
         <span
-          key={i}
+          key={key}
           style={{
             background: "rgba(88,101,242,0.3)",
             color: "#C9CDFB",
@@ -2257,7 +2293,7 @@ function renderDiscordText(text: string) {
     }
     if (/^#\w+/.test(p)) {
       return (
-        <span key={i} style={{ color: "#00A8FC", fontWeight: 500 }}>
+        <span key={key} style={{ color: "#00A8FC", fontWeight: 500 }}>
           {p}
         </span>
       );
@@ -2265,7 +2301,7 @@ function renderDiscordText(text: string) {
     if (/^`[^`]+`$/.test(p)) {
       return (
         <code
-          key={i}
+          key={key}
           style={{
             background: "#2B2D31",
             borderRadius: 3,
@@ -2278,7 +2314,7 @@ function renderDiscordText(text: string) {
         </code>
       );
     }
-    return <span key={i}>{p}</span>;
+    return <span key={key}>{p}</span>;
   });
 }
 

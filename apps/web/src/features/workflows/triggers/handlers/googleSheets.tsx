@@ -40,6 +40,29 @@ interface GroupedOption {
   options: OptionItem[];
 }
 
+function renderSelectedCount(
+  items: Array<{ textValue?: string }>,
+  singular: string,
+  plural: string,
+): string {
+  const count = items.length;
+  if (count === 0) return `Select ${plural}`;
+  if (count === 1) return items[0]?.textValue || `1 ${singular}`;
+  return `${count} ${plural} selected`;
+}
+
+function renderSheetValue(
+  items: { key?: React.Key; textValue?: string }[],
+): string {
+  return renderSelectedCount(items, "sheet", "sheets");
+}
+
+function renderSpreadsheetValue(
+  items: { key: string; textValue: string }[],
+): string {
+  return renderSelectedCount(items, "spreadsheet", "spreadsheets");
+}
+
 // =============================================================================
 // GOOGLE SHEETS SETTINGS COMPONENT
 // =============================================================================
@@ -112,10 +135,10 @@ function GoogleSheetsSettings({
 
   // ============ DERIVED DATA ============
   const spreadsheetOptions = (spreadsheetsData || []) as OptionItem[];
-  const groupedSheetOptions = (sheetsData || []) as (
-    | OptionItem
-    | GroupedOption
-  )[];
+  const groupedSheetOptions = useMemo(
+    () => (sheetsData || []) as (OptionItem | GroupedOption)[],
+    [sheetsData],
+  );
 
   const hasGroupedSheets =
     groupedSheetOptions.length > 0 &&
@@ -150,24 +173,6 @@ function GoogleSheetsSettings({
       // Store the composite keys directly
       setSheetKeys(Array.from(keys).map((key) => String(key)));
     }
-  };
-
-  const renderSheetValue = (
-    items: { key?: React.Key; textValue?: string }[],
-  ) => {
-    const count = items.length;
-    if (count === 0) return "Select sheets";
-    if (count === 1) return items[0]?.textValue || "1 sheet";
-    return `${count} sheets selected`;
-  };
-
-  const renderSpreadsheetValue = (
-    items: { key: string; textValue: string }[],
-  ) => {
-    const count = items.length;
-    if (count === 0) return "Select spreadsheets";
-    if (count === 1) return items[0]?.textValue || "1 spreadsheet";
-    return `${count} spreadsheets selected`;
   };
 
   if (!isConnected) {

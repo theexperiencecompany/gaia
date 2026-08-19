@@ -113,9 +113,9 @@ export default function MobileMenu() {
             {/* Authentication links */}
             <div className="mt-8 flex flex-col gap-2">
               {isAuthenticated
-                ? auth
-                    .filter((link) => link.requiresAuth)
-                    .map((link) => (
+                ? auth.map((link) => {
+                    if (!link.requiresAuth) return null;
+                    return (
                       <button
                         key={link.href}
                         type="button"
@@ -131,10 +131,11 @@ export default function MobileMenu() {
                       >
                         {link.label}
                       </button>
-                    ))
-                : auth
-                    .filter((link) => link.guestOnly)
-                    .map((link) => (
+                    );
+                  })
+                : auth.map((link) => {
+                    if (!link.guestOnly) return null;
+                    return (
                       <Link
                         key={link.href}
                         href={link.href}
@@ -149,7 +150,8 @@ export default function MobileMenu() {
                       >
                         {link.label}
                       </Link>
-                    ))}
+                    );
+                  })}
             </div>
           </SheetDescription>
         </SheetHeader>

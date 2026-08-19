@@ -325,7 +325,11 @@ export default function GaiaOrb({
 }: Readonly<GaiaOrbProps>) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef<GaiaOrbState>(state);
-  stateRef.current = state;
+  // Sync after every render (not during render) so the render loop always
+  // reads the latest state without the effect below registering a dependency.
+  useEffect(() => {
+    stateRef.current = state;
+  });
 
   useEffect(() => {
     const canvas = canvasRef.current;

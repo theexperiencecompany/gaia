@@ -1,7 +1,7 @@
 "use client";
 
 import { isToday, isYesterday, subDays } from "date-fns";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   Accordion,
@@ -117,7 +117,7 @@ export default function ChatsList() {
   const isLoading = conversations.length === 0 && !initialSyncCompleted;
 
   // Calculate which accordions should be open - controlled state
-  const getAccordionValues = () => {
+  const getAccordionValues = useCallback(() => {
     const values: string[] = [];
 
     // Add system conversations if they exist
@@ -137,7 +137,7 @@ export default function ChatsList() {
     values.push(...timeFrameValues);
 
     return values;
-  };
+  }, [systemConversations, starredConversations, sortedTimeFrames]);
 
   // Use controlled state for accordion values that updates with conversations
   const [openAccordions, setOpenAccordions] = useState<string[]>([]);
@@ -145,11 +145,7 @@ export default function ChatsList() {
   // Update open accordions whenever conversations change
   useEffect(() => {
     setOpenAccordions(getAccordionValues());
-  }, [
-    systemConversations.length,
-    starredConversations.length,
-    sortedTimeFrames.length,
-  ]);
+  }, [getAccordionValues]);
 
   // Direct scroll listener for infinite scroll - throttled with requestAnimationFrame
   useEffect(() => {

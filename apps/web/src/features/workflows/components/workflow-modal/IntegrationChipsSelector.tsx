@@ -158,8 +158,12 @@ function measurePillRows(
   }
   const baseTop = children[0].offsetTop;
   const rowTops: number[] = [];
+  const seenRowTops = new Set<number>();
   for (const child of children) {
-    if (!rowTops.includes(child.offsetTop)) rowTops.push(child.offsetTop);
+    if (!seenRowTops.has(child.offsetTop)) {
+      seenRowTops.add(child.offsetTop);
+      rowTops.push(child.offsetTop);
+    }
   }
   rowTops.sort((a, b) => a - b);
   const rowByPosition = children.map((c) => rowTops.indexOf(c.offsetTop));

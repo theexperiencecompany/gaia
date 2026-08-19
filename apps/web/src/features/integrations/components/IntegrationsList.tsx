@@ -36,7 +36,7 @@ const IntegrationRow: React.FC<{
 
   return (
     <div
-      className="flex min-h-16 cursor-pointer items-center gap-4 overflow-hidden rounded-2xl bg-zinc-800/0 px-4 py-3 hover:bg-zinc-800 transition-all duration-200"
+      className="flex min-h-16 cursor-pointer items-center gap-4 overflow-hidden rounded-2xl bg-zinc-800/0 px-4 py-3 hover:bg-zinc-800 transition-colors duration-200"
       onClick={handleClick}
     >
       <div className="shrink-0">

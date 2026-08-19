@@ -115,7 +115,7 @@ function OnboardingTodoCardsImpl({
                 <div className="flex size-5 shrink-0 items-center justify-center">
                   {completed ? (
                     <m.div
-                      initial={{ scale: 0 }}
+                      initial={{ scale: 0.95 }}
                       animate={{ scale: 1 }}
                       transition={{
                         type: "spring",

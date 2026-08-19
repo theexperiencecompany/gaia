@@ -2,6 +2,33 @@
  * Calendar date formatting utilities - centralized and deduplicated
  */
 
+const allDayDateFormatter = new Intl.DateTimeFormat("en-US", {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+  weekday: "long",
+});
+
+const timedEventDateFormatter = new Intl.DateTimeFormat("en-US", {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+  hour: "numeric",
+  minute: "numeric",
+  hour12: true,
+});
+
+const allDayMonthDayFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+});
+
+const allDayMonthDayYearFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+
 /**
  * Format date with relative labels (Today, Tomorrow, Yesterday)
  */
@@ -81,12 +108,7 @@ export const formatTimeRange = (startTime: string, endTime: string): string => {
 export const formatAllDayDate = (dateString: string): string => {
   try {
     const date = new Date(dateString);
-    return new Intl.DateTimeFormat("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      weekday: "long",
-    }).format(date);
+    return allDayDateFormatter.format(date);
   } catch (error) {
     console.error("Error formatting all-day date:", error);
     return dateString;
@@ -101,14 +123,7 @@ export const formatTimedEventDate = (isoString: string): string => {
     const withoutTimezone = isoString.replace(/([+-]\d{2}:\d{2})$/, "");
     const date = new Date(withoutTimezone);
 
-    return new Intl.DateTimeFormat("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "numeric",
-      minute: "numeric",
-      hour12: true,
-    }).format(date);
+    return timedEventDateFormatter.format(date);
   } catch (error) {
     console.error("Error formatting timed event date:", error);
     return isoString;
@@ -130,16 +145,9 @@ export const formatAllDayDateRange = (
       return formatAllDayDate(startDate);
     }
 
-    const startFormatted = new Intl.DateTimeFormat("en-US", {
-      month: "short",
-      day: "numeric",
-    }).format(start);
+    const startFormatted = allDayMonthDayFormatter.format(start);
 
-    const endFormatted = new Intl.DateTimeFormat("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    }).format(end);
+    const endFormatted = allDayMonthDayYearFormatter.format(end);
 
     return `${startFormatted} - ${endFormatted}`;
   } catch (error) {

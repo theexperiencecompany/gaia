@@ -48,6 +48,13 @@ interface DownloadSectionLayoutProps {
   extraContent?: ReactNode;
 }
 
+/** Static alignment class map — hoisted so it isn't rebuilt per render. */
+const contentAlignmentClasses = {
+  left: "md:items-start md:text-left",
+  right: "md:items-end md:text-right",
+  center: "md:items-center md:text-center",
+};
+
 function DownloadSectionLayout({
   webpSrc,
   pngSrc,
@@ -61,12 +68,6 @@ function DownloadSectionLayout({
   actions,
   extraContent,
 }: DownloadSectionLayoutProps) {
-  const contentAlignmentClasses = {
-    left: "md:items-start md:text-left",
-    right: "md:items-end md:text-right",
-    center: "md:items-center md:text-center",
-  };
-
   return (
     <section className="relative z-10 w-full max-w-5xl px-4 sm:px-6 py-16">
       <div className="grid grid-cols-1 items-center gap-8 md:grid-cols-2">

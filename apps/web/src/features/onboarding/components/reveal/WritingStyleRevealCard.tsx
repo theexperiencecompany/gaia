@@ -66,7 +66,7 @@ export function WritingStyleRevealCard({
           setIsRegenerating(false);
         });
     }
-  }, []);
+  }, [currentExample, isRegenerating, summaryValue, profession]);
 
   const isTooShort = summaryValue.trim().length < MIN_LENGTH;
   const showError = touched && isTooShort;
@@ -214,12 +214,13 @@ export function WritingStyleRevealCard({
               {currentExample?.greeting.trim() && (
                 <p>{currentExample.greeting}</p>
               )}
-              {currentExample?.body
-                .filter((p) => p.trim())
-                .map((paragraph, idx) => (
-                  // biome-ignore lint/suspicious/noArrayIndexKey: paragraphs are rendered immutably from a single LLM response
-                  <p key={idx}>{paragraph}</p>
-                ))}
+              {/* Single pass: blank lines are skipped inline, paragraphs are
+                  keyed by their (stable) trimmed content — never the index. */}
+              {currentExample?.body.map((paragraph) => {
+                const trimmed = paragraph.trim();
+                if (!trimmed) return null;
+                return <p key={trimmed}>{paragraph}</p>;
+              })}
               {(currentExample?.signoff.trim() ||
                 currentExample?.name.trim()) && (
                 <div>

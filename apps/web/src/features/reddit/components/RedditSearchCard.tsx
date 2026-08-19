@@ -15,6 +15,11 @@ interface RedditSearchCardProps {
   isCollapsible?: boolean;
 }
 
+const SHORT_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+});
+
 // Format timestamp to relative time
 function formatTime(timestamp: number): string {
   const date = new Date(timestamp * 1000);
@@ -26,7 +31,7 @@ function formatTime(timestamp: number): string {
   if (diffInSeconds < 604800)
     return `${Math.floor(diffInSeconds / 86400)}d ago`;
 
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return SHORT_DATE_FORMATTER.format(date);
 }
 
 // Format number for display

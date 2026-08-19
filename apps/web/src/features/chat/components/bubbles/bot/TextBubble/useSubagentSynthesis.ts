@@ -214,11 +214,11 @@ function inferNestingForRootSpawned(
     g.nested_subagents.push(rootSpawned[spawnIdx++]);
   }
 
-  const nestedIds = new Set(
-    finalGroups
-      .filter((g) => g.agent_type === "handoff")
-      .flatMap((g) => g.nested_subagents.map((n) => n.subagent_id)),
-  );
+  const nestedIds = new Set<string>();
+  for (const g of finalGroups) {
+    if (g.agent_type !== "handoff") continue;
+    for (const n of g.nested_subagents) nestedIds.add(n.subagent_id);
+  }
   return finalGroups.filter((g) => !nestedIds.has(g.subagent_id));
 }
 

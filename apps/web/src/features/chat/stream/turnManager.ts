@@ -217,15 +217,14 @@ class TurnManager {
         (args) => args.options.optimisticUserId,
       ),
     );
-    const restored = messages
-      .filter(
-        (message) =>
-          message.role === "user" &&
-          message.optimistic === true &&
-          message.status === "queued" &&
-          !inMemory.has(message.id),
-      )
-      .map(buildSendArgsFromRecord);
+    const restored = messages.flatMap((message) =>
+      message.role === "user" &&
+      message.optimistic === true &&
+      message.status === "queued" &&
+      !inMemory.has(message.id)
+        ? [buildSendArgsFromRecord(message)]
+        : [],
+    );
     if (restored.length === 0) return;
 
     const queue = this.queues.get(conversationId) ?? [];

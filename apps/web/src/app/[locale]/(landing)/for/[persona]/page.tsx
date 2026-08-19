@@ -538,7 +538,7 @@ export default async function PersonaPage({ params }: PageProps) {
                 <Link
                   key={slug}
                   href={`/compare/${slug}`}
-                  className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+                  className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
                 >
                   <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
                     GAIA vs{" "}
@@ -566,7 +566,7 @@ export default async function PersonaPage({ params }: PageProps) {
           <div className="grid gap-4 sm:grid-cols-2">
             <Link
               href="/compare"
-              className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+              className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
                 {t("personas.see_how_compares")}
@@ -577,7 +577,7 @@ export default async function PersonaPage({ params }: PageProps) {
             </Link>
             <Link
               href="/learn"
-              className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+              className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
                 {t("personas.learn_ai_concepts")}

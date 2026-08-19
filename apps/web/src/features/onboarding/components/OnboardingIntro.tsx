@@ -42,7 +42,10 @@ export function OnboardingIntro({ onComplete }: OnboardingIntroProps) {
   const [scene, setScene] = useState<1 | 2 | 3>(1);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const onCompleteRef = useRef(onComplete);
-  onCompleteRef.current = onComplete;
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
 
   const scene1Duration = useMemo(sumScene1, []);
   const scene2Duration = useMemo(sumScene2, []);

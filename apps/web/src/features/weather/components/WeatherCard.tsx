@@ -47,10 +47,14 @@ const celsiusToFahrenheit = (celsius: number): number => {
   return (celsius * 9) / 5 + 32;
 };
 
+const weekdayFormatter = new Intl.DateTimeFormat("en-US", {
+  weekday: "long",
+});
+
 // Helper function to get day of week from date string
 const getDayOfWeek = (dateStr: string): string => {
   const date = new Date(dateStr);
-  return date.toLocaleDateString("en-US", { weekday: "long" });
+  return weekdayFormatter.format(date);
 };
 
 // Helper function to get weather icon component based on weather condition
@@ -284,12 +288,13 @@ const getWeatherTheme = (weatherData: WeatherData): WeatherTheme | null => {
 
 export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
   const [useFahrenheit, setUseFahrenheit] = useState(false);
+  const forecastCount = weatherData.forecast?.length ?? 0;
 
   useEffect(() => {
     trackEvent(ANALYTICS_EVENTS.WEATHER_QUERIED, {
-      has_forecast: (weatherData.forecast?.length ?? 0) > 0,
+      has_forecast: forecastCount > 0,
     });
-  }, []);
+  }, [forecastCount]);
 
   // Determine the weather theme based on weather conditions
   const weatherTheme = useMemo(

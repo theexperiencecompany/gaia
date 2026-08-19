@@ -27,6 +27,51 @@ import { usePricingModalStore } from "@/stores/pricingModalStore";
 import { NotificationStatus } from "@/types/features/notificationTypes";
 import { SidebarPromo } from "./SidebarPromo";
 
+const NAV_BUTTONS = [
+  {
+    route: "/dashboard",
+    icon: <Home11Icon />,
+    label: "Home",
+  },
+  // Temporarily disabled — Calendar feature is not yet ready.
+  // {
+  //   route: "/calendar",
+  //   icon: <Calendar03Icon />,
+  //   label: "Calendar",
+  // },
+  {
+    route: "/todos",
+    icon: <CheckListIcon />,
+    label: "Tasks",
+  },
+  {
+    route: "/integrations",
+    icon: <ConnectIcon />,
+    label: "Integrations",
+  },
+  // {
+  //   route: "/mail",
+  //   icon: <Mail01Icon />,
+  //   label: "Mail",
+  // },
+  {
+    route: "/workflows",
+    icon: <ZapIcon />,
+    label: "Workflows",
+  },
+  {
+    route: "/c",
+    icon: <MessageMultiple02Icon />,
+    label: "Chats",
+  },
+
+  // {
+  //   route: "/browser",
+  //   icon: <AiBrowserIcon height={23} width={23} />,
+  //   label: "Use Browser",
+  // },
+];
+
 export default function SidebarTopButtons() {
   const pathname = usePathname();
   const { data: subscriptionStatus } = useUserSubscriptionStatus();
@@ -53,51 +98,6 @@ export default function SidebarTopButtons() {
     return pathname === route;
   };
 
-  const buttonData = [
-    {
-      route: "/dashboard",
-      icon: <Home11Icon />,
-      label: "Home",
-    },
-    // Temporarily disabled — Calendar feature is not yet ready.
-    // {
-    //   route: "/calendar",
-    //   icon: <Calendar03Icon />,
-    //   label: "Calendar",
-    // },
-    {
-      route: "/todos",
-      icon: <CheckListIcon />,
-      label: "Tasks",
-    },
-    {
-      route: "/integrations",
-      icon: <ConnectIcon />,
-      label: "Integrations",
-    },
-    // {
-    //   route: "/mail",
-    //   icon: <Mail01Icon />,
-    //   label: "Mail",
-    // },
-    {
-      route: "/workflows",
-      icon: <ZapIcon />,
-      label: "Workflows",
-    },
-    {
-      route: "/c",
-      icon: <MessageMultiple02Icon />,
-      label: "Chats",
-    },
-
-    // {
-    //   route: "/browser",
-    //   icon: <AiBrowserIcon height={23} width={23} />,
-    //   label: "Use Browser",
-    // },
-  ];
-
   return (
     <div className="flex flex-col">
       {/* Only show Upgrade to Pro button when user doesn't have an active subscription */}
@@ -106,7 +106,7 @@ export default function SidebarTopButtons() {
       )}
 
       <div className="flex w-full flex-col gap-0.5">
-        {buttonData.map(({ route, icon, label }) => {
+        {NAV_BUTTONS.map(({ route, icon, label }) => {
           const shortcut = getNavigationShortcut(route);
 
           return (

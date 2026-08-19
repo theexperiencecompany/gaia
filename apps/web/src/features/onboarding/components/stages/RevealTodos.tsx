@@ -18,7 +18,7 @@
 import { Button } from "@heroui/button";
 import * as m from "motion/react-m";
 import type { Dispatch } from "react";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import {
   REVEAL_TODOS_INTRO_GMAIL,
   REVEAL_TODOS_INTRO_NO_GMAIL,
@@ -61,7 +61,10 @@ export function RevealTodosComposer({
 }
 
 export function RevealTodos({ state, dispatch, chat }: RevealTodosProps) {
-  const todos = state.server?.onboarding_todos ?? [];
+  const todos = useMemo(
+    () => state.server?.onboarding_todos ?? [],
+    [state.server?.onboarding_todos],
+  );
 
   const handleExecute = useCallback(
     (todoId: string) => {

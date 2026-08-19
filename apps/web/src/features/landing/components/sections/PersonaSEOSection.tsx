@@ -132,7 +132,7 @@ export default function PersonaSEOSection({
             <a
               key={relatedRole.href}
               href={relatedRole.href}
-              className="group rounded-2xl bg-zinc-800/60 p-5 transition-all hover:bg-zinc-700/50"
+              className="group rounded-2xl bg-zinc-800/60 p-5 transition-colors hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-base font-medium text-white transition-colors group-hover:text-primary">
                 {relatedRole.label}

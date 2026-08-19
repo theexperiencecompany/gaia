@@ -23,6 +23,16 @@ function serializeSchema(schema: WithContext<Thing>): string | null {
   }
 }
 
+/** Deterministic, stable content fingerprint used as a React key. */
+function contentKey(content: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < content.length; i++) {
+    hash ^= content.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
+}
+
 /**
  * Renders JSON-LD structured data for SEO
  * Automatically stringifies and safely injects the schema
@@ -33,13 +43,12 @@ export default function JsonLd({ data }: JsonLdProps) {
 
   return (
     <>
-      {schemaArray.map((schema, index) => {
+      {schemaArray.map((schema) => {
         const json = serializeSchema(schema);
         if (!json) return null;
         return (
           <script
-            // biome-ignore lint/suspicious/noArrayIndexKey: mapping json ld is fine
-            key={`jsonld-${baseId}-${index}`}
+            key={`jsonld-${baseId}-${contentKey(json)}`}
             type="application/ld+json"
             dangerouslySetInnerHTML={{ __html: json }}
           />

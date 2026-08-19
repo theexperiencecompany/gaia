@@ -12,6 +12,13 @@ interface RedditCommentCardProps {
   isCollapsible?: boolean;
 }
 
+// Format timestamps with a fixed locale via a hoisted, deterministic formatter
+// so server and client render identically (no hydration mismatch).
+const commentDateFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+});
+
 // Format timestamp to relative time
 function formatTime(timestamp: number): string {
   const date = new Date(timestamp * 1000);
@@ -23,7 +30,7 @@ function formatTime(timestamp: number): string {
   if (diffInSeconds < 604800)
     return `${Math.floor(diffInSeconds / 86400)}d ago`;
 
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return commentDateFormatter.format(date);
 }
 
 // Format number for display

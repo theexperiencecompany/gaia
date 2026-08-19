@@ -203,7 +203,7 @@ export default function UnifiedToolThread({
               if (item.kind === "tool") {
                 return (
                   <StepRow
-                    key={`tc-${item.data.tool_call_id || idx}`}
+                    key={`tc-${item.data.tool_call_id}`}
                     call={item.data}
                     isLast={isLast}
                     getIconUrl={getIconUrl}

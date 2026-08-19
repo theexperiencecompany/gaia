@@ -59,6 +59,29 @@ const GaiaOrbLazy = nextDynamic(() => import("@/components/ui/orb/GaiaOrb"), {
 });
 
 /**
+ * Scrolls a message into view and plays a brief focus pulse. Pure DOM
+ * helper — no component state, so it lives at module scope.
+ */
+const scrollToMessage = (messageId: string) => {
+  if (!messageId) return;
+
+  const messageElement = document.getElementById(messageId);
+
+  if (!messageElement) return;
+
+  messageElement.scrollIntoView({ behavior: "smooth", block: "start" });
+  messageElement.style.transition = "all 0.3s ease";
+
+  setTimeout(() => {
+    messageElement.style.scale = "1.07";
+
+    setTimeout(() => {
+      messageElement.style.scale = "1";
+    }, 300);
+  }, 700);
+};
+
+/**
  * Bubble keys that have already played their entrance. Module-level so
  * list remounts (conversation-id swap, optimistic→real id transitions)
  * don't replay the animation — replaying makes existing bubbles flash
@@ -244,7 +267,11 @@ export default function ChatRenderer({
   // ref to keep `handleRetry` — and therefore messagePropsOptions and the whole
   // memoized message list — stable across streaming tokens.
   const retryMessageRef = useRef(retryMessage);
-  retryMessageRef.current = retryMessage;
+
+  // Keep the ref current outside the render body — render must stay pure.
+  useEffect(() => {
+    retryMessageRef.current = retryMessage;
+  });
   const handleRetry = useCallback((msgId: string) => {
     // Use the store's active conversation id, NOT the route param. New
     // conversations rewrite the URL via history.replaceState, which does not
@@ -419,25 +446,6 @@ export default function ChatRenderer({
     [messagesWithDeduplicatedToolCalls, rendersAsBotBubble],
   );
 
-  const scrollToMessage = (messageId: string) => {
-    if (!messageId) return;
-
-    const messageElement = document.getElementById(messageId);
-
-    if (!messageElement) return;
-
-    messageElement.scrollIntoView({ behavior: "smooth", block: "start" });
-    messageElement.style.transition = "all 0.3s ease";
-
-    setTimeout(() => {
-      messageElement.style.scale = "1.07";
-
-      setTimeout(() => {
-        messageElement.style.scale = "1";
-      }, 300);
-    }, 700);
-  };
-
   return (
     <>
       <title id="chat_title">{`${conversations.find((convo) => convo.conversation_id === convoIdParam)?.description || "New chat"} | GAIA`}</title>
@@ -473,7 +481,7 @@ export default function ChatRenderer({
             // math it owns — replaces the old per-bubble inline hack that
             // fought scroll restoration. User messages are turn anchors.
             <MessageScrollerItem
-              key={message.message_id || index}
+              key={message.message_id}
               messageId={String(message.message_id || index)}
               scrollAnchor={message.type === "user"}
             >

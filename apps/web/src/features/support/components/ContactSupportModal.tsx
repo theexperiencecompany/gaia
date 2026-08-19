@@ -33,6 +33,38 @@ interface ContactSupportModalProps {
   };
 }
 
+function validateFile(file: File): boolean {
+  // Check file type - only images allowed
+  if (
+    !ALLOWED_FILE_TYPES.includes(
+      file.type as (typeof ALLOWED_FILE_TYPES)[number],
+    )
+  ) {
+    toast.error(
+      `Only image files are supported. Please use: JPG, PNG, or WebP`,
+    );
+    return false;
+  }
+
+  // Check file size
+  if (file.size > FORM_VALIDATION.MAX_FILE_SIZE) {
+    toast.error(
+      `Image size too large. Maximum size is ${FORM_VALIDATION.MAX_FILE_SIZE / (1024 * 1024)}MB`,
+    );
+    return false;
+  }
+
+  return true;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return "0 Bytes";
+  const k = 1024;
+  const sizes = ["Bytes", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / k ** i).toFixed(2))} ${sizes[i]}`;
+}
+
 export default function ContactSupportModal({
   isOpen,
   onOpenChange,
@@ -51,30 +83,6 @@ export default function ContactSupportModal({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
-
-  const validateFile = (file: File): boolean => {
-    // Check file type - only images allowed
-    if (
-      !ALLOWED_FILE_TYPES.includes(
-        file.type as (typeof ALLOWED_FILE_TYPES)[number],
-      )
-    ) {
-      toast.error(
-        `Only image files are supported. Please use: JPG, PNG, or WebP`,
-      );
-      return false;
-    }
-
-    // Check file size
-    if (file.size > FORM_VALIDATION.MAX_FILE_SIZE) {
-      toast.error(
-        `Image size too large. Maximum size is ${FORM_VALIDATION.MAX_FILE_SIZE / (1024 * 1024)}MB`,
-      );
-      return false;
-    }
-
-    return true;
-  };
 
   const handleFiles = (files: FileList | null) => {
     if (!files) return;
@@ -120,14 +128,6 @@ export default function ContactSupportModal({
     handleFiles(e.target.files);
     // Reset input value to allow selecting the same file again
     e.target.value = "";
-  };
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return "0 Bytes";
-    const k = 1024;
-    const sizes = ["Bytes", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${parseFloat((bytes / k ** i).toFixed(2))} ${sizes[i]}`;
   };
 
   const handleSubmit = async () => {

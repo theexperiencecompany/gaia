@@ -248,28 +248,37 @@ async function getPersonaPages(baseUrl: string): Promise<FeedItem[]> {
 
 async function getGlossaryPages(baseUrl: string): Promise<FeedItem[]> {
   const all = await getAllGlossaryTerms();
-  return all
-    .filter((term) => !term.canonicalSlug)
-    .map((term) => ({
-      title: term.metaTitle || term.term,
-      link: `${baseUrl}/learn/${term.slug}`,
-      description: term.metaDescription || term.definition,
-      pubDate: BUILD_DATE,
-      category: "Glossary",
-    }));
+  return all.flatMap((term) =>
+    term.canonicalSlug
+      ? []
+      : [
+          {
+            title: term.metaTitle || term.term,
+            link: `${baseUrl}/learn/${term.slug}`,
+            description: term.metaDescription || term.definition,
+            pubDate: BUILD_DATE,
+            category: "Glossary",
+          },
+        ],
+  );
 }
 
 async function getComboPages(baseUrl: string): Promise<FeedItem[]> {
   const all = await getAllCombos();
-  return all
-    .filter((combo) => !combo.canonicalSlug)
-    .map((combo) => ({
-      title: combo.metaTitle || `${combo.toolA} + ${combo.toolB} Automation`,
-      link: `${baseUrl}/automate/${combo.slug}`,
-      description: combo.metaDescription || combo.tagline,
-      pubDate: BUILD_DATE,
-      category: "Automation Combos",
-    }));
+  return all.flatMap((combo) =>
+    combo.canonicalSlug
+      ? []
+      : [
+          {
+            title:
+              combo.metaTitle || `${combo.toolA} + ${combo.toolB} Automation`,
+            link: `${baseUrl}/automate/${combo.slug}`,
+            description: combo.metaDescription || combo.tagline,
+            pubDate: BUILD_DATE,
+            category: "Automation Combos",
+          },
+        ],
+  );
 }
 
 async function getIntegrationItems(baseUrl: string): Promise<FeedItem[]> {
@@ -356,14 +365,12 @@ async function getWorkflowItems(baseUrl: string): Promise<FeedItem[]> {
 
     const allWorkflows = [...explore.workflows, ...community.workflows];
     const seen = new Set<string>();
+    const items: FeedItem[] = [];
 
-    return allWorkflows
-      .filter((wf) => {
-        if (seen.has(wf.slug)) return false;
-        seen.add(wf.slug);
-        return true;
-      })
-      .map((wf) => ({
+    for (const wf of allWorkflows) {
+      if (seen.has(wf.slug)) continue;
+      seen.add(wf.slug);
+      items.push({
         title: wf.title,
         link: `${baseUrl}/use-cases/${wf.slug}`,
         description:
@@ -373,7 +380,10 @@ async function getWorkflowItems(baseUrl: string): Promise<FeedItem[]> {
         category: wf.categories?.includes("featured")
           ? "Featured Workflows"
           : "Community Workflows",
-      }));
+      });
+    }
+
+    return items;
   } catch (error) {
     console.error("Error fetching workflows for RSS feed:", error);
     return [];

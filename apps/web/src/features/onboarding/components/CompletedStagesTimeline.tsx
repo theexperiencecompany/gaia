@@ -44,16 +44,14 @@ export function CompletedStagesTimeline({
   const showWorkflows = state.workflowsConfirmed && workflows.length > 0;
   const showPlatforms = state.platformsConfirmed;
 
-  const cardTodos = useMemo(
-    () =>
-      todos.map((t) => ({
-        id: t.id,
-        title: t.title,
-        description: t.description ?? undefined,
-        source_email: t.source_email ?? undefined,
-      })),
-    [todos],
-  );
+  // No useMemo here: `todos` is rebuilt every render from server state, so a
+  // memoized mapping would never cache — map directly instead.
+  const cardTodos = todos.map((t) => ({
+    id: t.id,
+    title: t.title,
+    description: t.description ?? undefined,
+    source_email: t.source_email ?? undefined,
+  }));
 
   const executedTodoIds = useMemo(
     () =>

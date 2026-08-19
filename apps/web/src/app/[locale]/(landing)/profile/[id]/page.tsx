@@ -14,6 +14,13 @@ import {
 } from "@/features/onboarding/api/holoCardApi";
 import { toast } from "@/lib/toast";
 
+const handleShare = () => {
+  if (typeof window === "undefined") return;
+  const url = window.location.href;
+  navigator.clipboard.writeText(url);
+  toast.success("Profile link copied to clipboard!");
+};
+
 export default function ProfilePage() {
   const params = useParams();
   const cardId = params.id as string;
@@ -43,13 +50,6 @@ export default function ProfilePage() {
 
     fetchProfile();
   }, [cardId]);
-
-  const handleShare = () => {
-    if (typeof window === "undefined") return;
-    const url = window.location.href;
-    navigator.clipboard.writeText(url);
-    toast.success("Profile link copied to clipboard!");
-  };
 
   const displayData: HoloCardDisplayData | null = holoCardData
     ? {

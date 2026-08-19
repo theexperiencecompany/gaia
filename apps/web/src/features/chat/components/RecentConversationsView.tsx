@@ -19,6 +19,8 @@ import { useConversationList } from "@/features/chat/hooks/useConversationList";
 import { useSyncStatus } from "@/hooks/useBackgroundSync";
 import { useAppendToInput } from "@/stores/composerStore";
 
+const updatedAtFormatter = new Intl.DateTimeFormat();
+
 const RecentConversationsView = memo(() => {
   const router = useRouter();
   const appendToInput = useAppendToInput();
@@ -150,7 +152,7 @@ const RecentConversationsView = memo(() => {
                     <Calendar03Icon width={15} height={15} className="mx-1" />
                   }
                 >
-                  {new Date(conversation.updated_at).toLocaleDateString()}
+                  {updatedAtFormatter.format(new Date(conversation.updated_at))}
                 </Chip>
 
                 {conversation.is_system_generated && (

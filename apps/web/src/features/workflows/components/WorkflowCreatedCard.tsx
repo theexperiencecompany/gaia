@@ -10,7 +10,7 @@ import {
   FlowIcon,
   PencilEdit01Icon,
 } from "@icons";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { WorkflowCreatedData } from "@/types/features/toolDataTypes";
 
 import type { Workflow } from "../api/workflowApi";
@@ -97,9 +97,16 @@ export default function WorkflowCreatedCard({
     }
   };
 
+  // Read the latest workflow via a ref so a post-close refresh doesn't re-fire
+  // this effect (setFullWorkflow would change the object identity every fetch).
+  const fullWorkflowRef = useRef(fullWorkflow);
+  useEffect(() => {
+    fullWorkflowRef.current = fullWorkflow;
+  });
+
   // Refresh workflow after modal closes (in case of edits)
   useEffect(() => {
-    if (!isModalOpen && fullWorkflow) {
+    if (!isModalOpen && fullWorkflowRef.current) {
       // Refresh the workflow data
       workflowApi
         .getWorkflow(workflow.id, { silent: true })
@@ -116,7 +123,7 @@ export default function WorkflowCreatedCard({
 
   return (
     <>
-      <div className="group relative z-1 flex w-full max-w-md flex-col gap-3 rounded-3xl bg-zinc-800/40 p-4 outline-1 outline-zinc-800/50 backdrop-blur-lg transition-all">
+      <div className="group relative z-1 flex w-full max-w-md flex-col gap-3 rounded-3xl bg-zinc-800/40 p-4 outline-1 outline-zinc-800/50 backdrop-blur-lg transition-colors">
         {/* Header with workflow icon and success indicator */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">

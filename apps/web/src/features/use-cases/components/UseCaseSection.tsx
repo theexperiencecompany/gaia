@@ -211,10 +211,7 @@ export default function UseCaseSection({
       system_workflow_key: w.system_workflow_key,
       source_integration: w.source_integration,
       trigger_config: w.trigger_config,
-      integrations:
-        w.steps
-          ?.map((s) => s.category)
-          .filter((v, i, a) => a.indexOf(v) === i) || [],
+      integrations: Array.from(new Set(w.steps?.map((s) => s.category) ?? [])),
       categories: w.categories || ["featured"],
       published_id: w.id,
       slug: w.slug ?? undefined,
@@ -362,7 +359,7 @@ export default function UseCaseSection({
               {sliceUseCases(filteredUseCases, slicePerTab, rows, columns).map(
                 (useCase: UseCase, index: number) => (
                   <m.div
-                    key={useCase.published_id || index}
+                    key={useCase.published_id}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{

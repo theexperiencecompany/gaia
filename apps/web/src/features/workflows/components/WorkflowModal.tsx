@@ -344,6 +344,35 @@ export default function WorkflowModal({
   // Platform detection for keyboard shortcuts
   const { modifierKeyName } = usePlatform();
 
+  // Check if form has actual changes for edit mode
+  const hasFormChanges = useCallback(() => {
+    if (mode === "create") return true;
+
+    if (!existingWorkflow) return true;
+
+    const currentFormData = workflowToFormData(existingWorkflow);
+
+    const persistedSlugs = [...(existingWorkflow.integration_ids ?? [])]
+      .sort((a, b) => a.localeCompare(b))
+      .join(",");
+    const currentSlugs = [...selectedIntegrationSlugs]
+      .sort((a, b) => a.localeCompare(b))
+      .join(",");
+
+    return (
+      formData.title !== currentFormData.title ||
+      formData.description !== currentFormData.description ||
+      formData.prompt !== currentFormData.prompt ||
+      formData.icon !== currentFormData.icon ||
+      formData.icon_color !== currentFormData.icon_color ||
+      formData.activeTab !== currentFormData.activeTab ||
+      formData.selectedTrigger !== currentFormData.selectedTrigger ||
+      JSON.stringify(formData.trigger_config) !==
+        JSON.stringify(currentFormData.trigger_config) ||
+      persistedSlugs !== currentSlugs
+    );
+  }, [mode, existingWorkflow, formData, selectedIntegrationSlugs]);
+
   // Check if save button should be disabled (used for hotkey and button)
   const isSaveDisabled = useCallback(() => {
     if (!formData.title.trim() || !formData.prompt?.trim()) {
@@ -388,7 +417,14 @@ export default function WorkflowModal({
     }
 
     return false;
-  }, [formData, mode, isCreating, existingWorkflow, missingTriggerIntegration]);
+  }, [
+    formData,
+    mode,
+    isCreating,
+    existingWorkflow,
+    missingTriggerIntegration,
+    hasFormChanges,
+  ]);
 
   // Keyboard shortcut: Escape to close modal
   useHotkeys(
@@ -460,35 +496,6 @@ export default function WorkflowModal({
     setIsActivated,
     setCreationPhase,
   ]);
-
-  // Check if form has actual changes for edit mode
-  const hasFormChanges = () => {
-    if (mode === "create") return true;
-
-    if (!existingWorkflow) return true;
-
-    const currentFormData = workflowToFormData(existingWorkflow);
-
-    const persistedSlugs = [...(existingWorkflow.integration_ids ?? [])]
-      .sort((a, b) => a.localeCompare(b))
-      .join(",");
-    const currentSlugs = [...selectedIntegrationSlugs]
-      .sort((a, b) => a.localeCompare(b))
-      .join(",");
-
-    return (
-      formData.title !== currentFormData.title ||
-      formData.description !== currentFormData.description ||
-      formData.prompt !== currentFormData.prompt ||
-      formData.icon !== currentFormData.icon ||
-      formData.icon_color !== currentFormData.icon_color ||
-      formData.activeTab !== currentFormData.activeTab ||
-      formData.selectedTrigger !== currentFormData.selectedTrigger ||
-      JSON.stringify(formData.trigger_config) !==
-        JSON.stringify(currentFormData.trigger_config) ||
-      persistedSlugs !== currentSlugs
-    );
-  };
 
   // Create a brand-new workflow (optionally with predefined community steps).
   const handleCreate = async (data: WorkflowFormData) => {

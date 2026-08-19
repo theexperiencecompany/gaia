@@ -22,6 +22,16 @@ const RANGES = [
 
 type RangeKey = (typeof RANGES)[number]["key"];
 
+/** Static X-axis config for the day-by-day charts — hoisted so it isn't rebuilt. */
+const xAxis = {
+  dataKey: "label",
+  tickLine: false,
+  axisLine: false,
+  tickMargin: 8,
+  minTickGap: 36,
+  tick: { fill: "#71717a", fontSize: 11 },
+} as const;
+
 /** Seconds between automatic rotations of the token-scale line. */
 const ROTATE_MS = 6000;
 
@@ -218,15 +228,6 @@ export function DayByDay({ activity }: { activity: UsageActivity }) {
   const fillId = `dayByDay-${seriesKey}`;
   // Fewer days, fatter bars — a week of hairlines looks broken.
   const barWidth = range === "week" ? 28 : 10;
-
-  const xAxis = {
-    dataKey: "label",
-    tickLine: false,
-    axisLine: false,
-    tickMargin: 8,
-    minTickGap: 36,
-    tick: { fill: "#71717a", fontSize: 11 },
-  } as const;
 
   const yAxis = {
     width: 34,

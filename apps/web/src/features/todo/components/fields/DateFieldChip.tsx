@@ -7,6 +7,16 @@ import { format, isToday, isTomorrow, isYesterday } from "date-fns";
 import { getBrowserTimezone } from "@/lib/timezone";
 import BaseFieldChip from "./BaseFieldChip";
 
+function formatDisplayDate(dateString: string) {
+  const date = new Date(dateString);
+
+  if (isToday(date)) return "Today";
+  if (isTomorrow(date)) return "Tomorrow";
+  if (isYesterday(date)) return "Yesterday";
+
+  return format(date, "MMM d");
+}
+
 interface DateFieldChipProps {
   value?: string; // ISO date string
   onChange: (date?: string, timezone?: string) => void;
@@ -24,16 +34,6 @@ export default function DateFieldChip({
   // Handle empty string as "auto-detect"
   const userTimezone =
     timezone && timezone.trim() !== "" ? timezone : getBrowserTimezone();
-  const formatDisplayDate = (dateString: string) => {
-    const date = new Date(dateString);
-
-    if (isToday(date)) return "Today";
-    if (isTomorrow(date)) return "Tomorrow";
-    if (isYesterday(date)) return "Yesterday";
-
-    return format(date, "MMM d");
-  };
-
   const displayValue = value ? formatDisplayDate(value) : undefined;
 
   const handleDateInputChange = (

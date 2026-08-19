@@ -451,7 +451,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
                   }
                 }}
                 disabled={isSaving}
-                className="cursor-pointer rounded-lg bg-zinc-800/50 p-2.5 text-red-400 transition-all hover:bg-red-500/10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                className="cursor-pointer rounded-lg bg-zinc-800/50 p-2.5 text-red-400 transition-[background-color,transform,opacity] hover:bg-red-500/10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Delete event"
               >
                 <Delete02Icon className="size-4" />

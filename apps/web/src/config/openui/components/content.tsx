@@ -368,10 +368,9 @@ export function MapBlockView(props: z.infer<typeof mapBlockSchema>) {
               <MarkerContent />
             </MapMarker>
           )}
-          {markers?.map((mk, i) => (
+          {markers?.map((mk) => (
             <MapMarker
-              // biome-ignore lint/suspicious/noArrayIndexKey: marker list has no stable id
-              key={`marker-${i}`}
+              key={`${mk.lng}-${mk.lat}-${mk.label ?? ""}`}
               longitude={mk.lng}
               latitude={mk.lat}
             >
@@ -387,10 +386,11 @@ export function MapBlockView(props: z.infer<typeof mapBlockSchema>) {
               {mk.popup && <MarkerPopup>{mk.popup}</MarkerPopup>}
             </MapMarker>
           ))}
-          {routes?.map((rt, i) => (
+          {routes?.map((rt) => (
             <MapRoute
-              // biome-ignore lint/suspicious/noArrayIndexKey: route list has no stable id
-              key={`route-${i}`}
+              key={`${rt.color ?? ""}-${rt.width ?? ""}-${rt.points
+                .map((p) => `${p.lng},${p.lat}`)
+                .join("|")}`}
               coordinates={rt.points.map((p) => [p.lng, p.lat])}
               color={rt.color ?? "#3b82f6"}
               width={rt.width ?? 3}

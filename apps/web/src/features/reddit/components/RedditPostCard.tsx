@@ -6,6 +6,17 @@ import { ArrowUp02Icon, BubbleChatIcon, LinkSquare02Icon } from "@icons";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import type { RedditPostData } from "@/types/features/redditTypes";
 
+const postDateFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+});
+
+const postDateWithYearFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+
 interface RedditPostCardProps {
   post: RedditPostData;
 }
@@ -24,11 +35,11 @@ function formatTime(timestamp: number): string {
   if (diffInSeconds < 604800)
     return `${Math.floor(diffInSeconds / 86400)} days ago`;
 
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
-  });
+  return (
+    date.getFullYear() !== now.getFullYear()
+      ? postDateWithYearFormatter
+      : postDateFormatter
+  ).format(date);
 }
 
 // Format number for display (e.g., 1.2k, 3.4k)
@@ -54,7 +65,7 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
   };
 
   return (
-    <div className="group w-full max-w-2xl overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-800 text-white transition-all hover:border-orange-600/50 hover:shadow-lg hover:shadow-orange-600/10">
+    <div className="group w-full max-w-2xl overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-800 text-white transition-[border-color,box-shadow] hover:border-orange-600/50 hover:shadow-lg hover:shadow-orange-600/10">
       <div className="space-y-3 p-4">
         {/* Header */}
         <div className="flex items-start justify-between gap-3">

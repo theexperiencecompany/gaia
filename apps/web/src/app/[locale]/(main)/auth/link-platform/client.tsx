@@ -5,7 +5,7 @@ import { CheckmarkCircle02Icon, Link01Icon } from "@icons";
 import confetti from "canvas-confetti";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
 import {
   BOT_PLATFORM_ICONS,
@@ -55,13 +55,16 @@ export default function LinkPlatformClient({
   // giving the store one full cycle to rehydrate before the auth check runs.
   const [hasMounted, setHasMounted] = useState(false);
 
-  const config =
-    platform && isBotPlatform(platform)
-      ? {
-          name: BOT_PLATFORM_LABELS[platform],
-          iconSrc: BOT_PLATFORM_ICONS[platform],
-        }
-      : null;
+  const config = useMemo(
+    () =>
+      platform && isBotPlatform(platform)
+        ? {
+            name: BOT_PLATFORM_LABELS[platform],
+            iconSrc: BOT_PLATFORM_ICONS[platform],
+          }
+        : null,
+    [platform],
+  );
 
   useEffect(() => {
     setHasMounted(true);

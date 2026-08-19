@@ -37,7 +37,7 @@ export default function BlogPostClient({
         title: blog.title,
       });
     }
-  }, [blog?.slug]);
+  }, [blog?.slug, blog?.title]);
 
   if (!blog) {
     return (

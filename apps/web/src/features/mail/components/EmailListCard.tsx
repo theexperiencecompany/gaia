@@ -8,6 +8,17 @@ import { Gmail } from "@/components/shared/icons";
 import { useAppendToInput } from "@/stores/composerStore";
 import type { EmailFetchData } from "@/types/features/mailTypes";
 
+const listTimeFormatter = new Intl.DateTimeFormat("en-US", {
+  hour: "numeric",
+  minute: "2-digit",
+  hour12: true,
+});
+
+const listDateFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+});
+
 interface EmailListProps {
   emails?: EmailFetchData[] | null;
   backgroundColor?: string;
@@ -48,18 +59,11 @@ function formatTime(time: string | null): string {
   const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
 
   if (diffInHours < 24) {
-    return date.toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
+    return listTimeFormatter.format(date);
   } else if (diffInHours < 48) {
     return "Yesterday";
   } else {
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    });
+    return listDateFormatter.format(date);
   }
 }
 

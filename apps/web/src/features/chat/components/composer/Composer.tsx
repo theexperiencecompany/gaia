@@ -287,37 +287,42 @@ const Composer: React.FC<MainSearchbarProps> = ({
 
   // Store paste handler in a ref to avoid re-subscribing the event listener
   // whenever dependencies change (advanced-event-handler-refs pattern).
-  const handlePasteRef = useRef((_e: ClipboardEvent) => {
-    /* placeholder: replaced with the real handler on the next line */
+  const handlePasteRef = useRef<(e: ClipboardEvent) => void>(() => {
+    /* placeholder: replaced with the real handler in an effect below */
   });
-  handlePasteRef.current = (e: ClipboardEvent) => {
-    // Only react to pastes inside the composer input — an image pasted into
-    // any other element while Composer is mounted must not be captured.
-    if (e.target !== inputRef.current) return;
 
-    const items = e.clipboardData?.items;
-    if (!items) return;
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].type.indexOf("image") !== -1) {
-        const file = items[i].getAsFile();
-        if (file) {
-          e.preventDefault();
-          attachFiles([file]);
-          return;
+  // Keep the paste handler current outside the render body — render must stay
+  // pure. Runs after every render so the ref always holds the latest handler.
+  useEffect(() => {
+    handlePasteRef.current = (e: ClipboardEvent) => {
+      // Only react to pastes inside the composer input — an image pasted into
+      // any other element while Composer is mounted must not be captured.
+      if (e.target !== inputRef.current) return;
+
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf("image") !== -1) {
+          const file = items[i].getAsFile();
+          if (file) {
+            e.preventDefault();
+            attachFiles([file]);
+            return;
+          }
         }
       }
-    }
 
-    // Large text pasted into the composer becomes a .txt attachment instead of
-    // inline text — keeps the input responsive and rides the file pipeline.
-    const text = e.clipboardData?.getData("text/plain");
-    if (text && text.length > LARGE_PASTE_THRESHOLD_CHARS) {
-      e.preventDefault();
-      attachFiles([
-        new File([text], PASTED_TEXT_FILENAME, { type: "text/plain" }),
-      ]);
-    }
-  };
+      // Large text pasted into the composer becomes a .txt attachment instead of
+      // inline text — keeps the input responsive and rides the file pipeline.
+      const text = e.clipboardData?.getData("text/plain");
+      if (text && text.length > LARGE_PASTE_THRESHOLD_CHARS) {
+        e.preventDefault();
+        attachFiles([
+          new File([text], PASTED_TEXT_FILENAME, { type: "text/plain" }),
+        ]);
+      }
+    };
+  });
 
   // Add paste event listener for images (stable subscription)
   useEffect(() => {
@@ -346,7 +351,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
 
   return (
     <div className="searchbar_container relative flex w-full flex-col justify-center pb-1">
-      <div className="searchbar relative transition-all z-2 rounded-3xl bg-zinc-800 px-1 pt-1 pb-2">
+      <div className="searchbar relative transition-[width] z-2 rounded-3xl bg-zinc-800 px-1 pt-1 pb-2">
         <IntegrationsBanner
           integrations={integrations}
           isLoading={integrationsLoading}

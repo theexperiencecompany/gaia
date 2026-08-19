@@ -32,7 +32,7 @@ export function QuestionsComposer({ state, dispatch }: QuestionsProps) {
     ) {
       dispatch({ type: "draftText", value: user.name });
     }
-  }, []);
+  }, [currentQuestion, state.responses, state.draftText, user?.name, dispatch]);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {

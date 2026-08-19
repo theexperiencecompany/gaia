@@ -46,32 +46,33 @@ export const useLogout = () => {
     try {
       const databases = await indexedDB.databases();
 
-      const deletePromises = databases
-        .filter((dbInfo) => dbInfo.name) // Filter out undefined names
-        .map(
-          (dbInfo) =>
-            new Promise<void>((resolve, reject) => {
-              const request = indexedDB.deleteDatabase(dbInfo.name!);
+      const deletePromises = databases.flatMap((dbInfo) =>
+        dbInfo.name // Filter out undefined names
+          ? [
+              new Promise<void>((resolve, reject) => {
+                const request = indexedDB.deleteDatabase(dbInfo.name!);
 
-              request.onerror = () => {
-                console.error(
-                  `Error deleting database: ${dbInfo.name}`,
-                  request.error,
-                );
-                reject(request.error);
-              };
+                request.onerror = () => {
+                  console.error(
+                    `Error deleting database: ${dbInfo.name}`,
+                    request.error,
+                  );
+                  reject(request.error);
+                };
 
-              request.onblocked = () => {
-                console.warn(`Blocked deleting database: ${dbInfo.name}`);
-                // Still resolve because we tried
-                resolve();
-              };
+                request.onblocked = () => {
+                  console.warn(`Blocked deleting database: ${dbInfo.name}`);
+                  // Still resolve because we tried
+                  resolve();
+                };
 
-              request.onsuccess = () => {
-                resolve();
-              };
-            }),
-        );
+                request.onsuccess = () => {
+                  resolve();
+                };
+              }),
+            ]
+          : [],
+      );
 
       await Promise.allSettled(deletePromises);
     } catch (error) {

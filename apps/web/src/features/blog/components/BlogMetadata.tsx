@@ -27,7 +27,7 @@ export default function BlogMetadata({
   return (
     <div className={`flex items-center justify-center space-x-4 ${className}`}>
       <div className="flex -space-x-2">
-        {(authors || []).map((author, index) => {
+        {(authors || []).map((author) => {
           const authorData: Author = {
             name: author.name,
             avatar:
@@ -38,7 +38,7 @@ export default function BlogMetadata({
           };
           return (
             <AuthorTooltip
-              key={author.id || author.name || index}
+              key={author.id || author.name}
               author={authorData}
               avatarSize="md"
               avatarClassName="h-10 w-10 cursor-help border-2 border-background"

@@ -389,13 +389,17 @@ async function getGlossaryPages(
   baseUrl: string,
 ): Promise<MetadataRoute.Sitemap> {
   const terms = await getAllGlossaryTerms();
-  return terms
-    .filter((term) => !term.canonicalSlug)
-    .map((term) => ({
-      url: `${baseUrl}/learn/${term.slug}`,
-      changeFrequency: "monthly" as const,
-      priority: 0.7,
-    }));
+  return terms.flatMap((term) =>
+    term.canonicalSlug
+      ? []
+      : [
+          {
+            url: `${baseUrl}/learn/${term.slug}`,
+            changeFrequency: "monthly" as const,
+            priority: 0.7,
+          },
+        ],
+  );
 }
 
 /**
@@ -419,13 +423,17 @@ async function getIntegrationComboPages(
   baseUrl: string,
 ): Promise<MetadataRoute.Sitemap> {
   const allCombos = await getAllCombos();
-  return allCombos
-    .filter((c) => !c.canonicalSlug)
-    .map((combo) => ({
-      url: `${baseUrl}/automate/${combo.slug}`,
-      changeFrequency: "monthly" as const,
-      priority: 0.7,
-    }));
+  return allCombos.flatMap((combo) =>
+    combo.canonicalSlug
+      ? []
+      : [
+          {
+            url: `${baseUrl}/automate/${combo.slug}`,
+            changeFrequency: "monthly" as const,
+            priority: 0.7,
+          },
+        ],
+  );
 }
 
 /**
@@ -460,13 +468,17 @@ async function getNativeIntegrationPages(
     const data = (await response.json()) as {
       integrations?: ConfigIntegration[];
     };
-    return (data.integrations ?? [])
-      .filter((i) => i.source === "platform" && i.available !== false)
-      .map((i) => ({
-        url: `${baseUrl}/marketplace/${i.slug}`,
-        changeFrequency: "weekly" as const,
-        priority: 0.8,
-      }));
+    return (data.integrations ?? []).flatMap((i) =>
+      i.source !== "platform" || i.available === false
+        ? []
+        : [
+            {
+              url: `${baseUrl}/marketplace/${i.slug}`,
+              changeFrequency: "weekly" as const,
+              priority: 0.8,
+            },
+          ],
+    );
   } catch (error) {
     console.error("Error fetching native integrations for sitemap:", error);
     return [];

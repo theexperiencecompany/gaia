@@ -22,6 +22,47 @@ import { EventContent } from "./CalendarEventContent";
 
 type EventStatus = "idle" | "loading" | "completed";
 
+const timeFormatter = new Intl.DateTimeFormat("en-US", {
+  hour: "numeric",
+  minute: "2-digit",
+  hour12: true,
+});
+
+function getDisplayTime(event: CalendarEvent | SameDayEvent): string {
+  if ("start" in event && typeof event.start === "object") {
+    const sameDayEvent = event as SameDayEvent;
+    if (sameDayEvent.start?.dateTime && sameDayEvent.end?.dateTime) {
+      return formatTimeRange(
+        sameDayEvent.start.dateTime,
+        sameDayEvent.end.dateTime,
+      );
+    }
+    if (sameDayEvent.start?.date) return "All day";
+    return "No time";
+  }
+
+  const calEvent = event as CalendarEvent;
+  if ("start" in calEvent && "end" in calEvent && calEvent.start) {
+    const timedEvent = calEvent as TimedEvent;
+    const startStr = timedEvent.start;
+    const endStr = timedEvent.end;
+    if (startStr?.includes("T") && endStr?.includes("T")) {
+      return formatTimeRange(startStr, endStr);
+    }
+    return "All day";
+  }
+
+  if ("time" in calEvent && calEvent.time) {
+    const singleTimeEvent = calEvent as SingleTimeEvent;
+    if (singleTimeEvent.time.includes("T")) {
+      return timeFormatter.format(new Date(singleTimeEvent.time));
+    }
+    return "All day";
+  }
+
+  return "No time";
+}
+
 export default function CalendarEventSection({
   calendar_options,
 }: {
@@ -158,9 +199,9 @@ export default function CalendarEventSection({
 
   const handleAddAll = async () => {
     setIsConfirmingAll(true);
-    const pendingEvents = calendarEvents
-      .map((event, index) => ({ event, index }))
-      .filter(({ index }) => eventStatuses[index] !== "completed");
+    const pendingEvents = calendarEvents.flatMap((event, index) =>
+      eventStatuses[index] === "completed" ? [] : [{ event, index }],
+    );
 
     try {
       await Promise.all(
@@ -174,53 +215,13 @@ export default function CalendarEventSection({
     }
   };
 
-  const allCompleted = calendarEvents.every(
-    (_, index) => eventStatuses[index] === "completed",
-  );
+  const allCompleted =
+    calendarEvents.length === Object.keys(eventStatuses).length &&
+    calendarEvents.every((_, index) => eventStatuses[index] === "completed");
 
   const hasCompletedEvents = calendarEvents.some(
     (_, index) => eventStatuses[index] === "completed",
   );
-
-  const getDisplayTime = (event: CalendarEvent | SameDayEvent): string => {
-    if ("start" in event && typeof event.start === "object") {
-      const sameDayEvent = event as SameDayEvent;
-      if (sameDayEvent.start?.dateTime && sameDayEvent.end?.dateTime) {
-        return formatTimeRange(
-          sameDayEvent.start.dateTime,
-          sameDayEvent.end.dateTime,
-        );
-      }
-      if (sameDayEvent.start?.date) return "All day";
-      return "No time";
-    }
-
-    const calEvent = event as CalendarEvent;
-    if ("start" in calEvent && "end" in calEvent && calEvent.start) {
-      const timedEvent = calEvent as TimedEvent;
-      const startStr = timedEvent.start;
-      const endStr = timedEvent.end;
-      if (startStr?.includes("T") && endStr?.includes("T")) {
-        return formatTimeRange(startStr, endStr);
-      }
-      return "All day";
-    }
-
-    if ("time" in calEvent && calEvent.time) {
-      const singleTimeEvent = calEvent as SingleTimeEvent;
-      if (singleTimeEvent.time.includes("T")) {
-        const date = new Date(singleTimeEvent.time);
-        return date.toLocaleTimeString("en-US", {
-          hour: "numeric",
-          minute: "2-digit",
-          hour12: true,
-        });
-      }
-      return "All day";
-    }
-
-    return "No time";
-  };
 
   return (
     <div className="w-full max-w-md rounded-3xl bg-zinc-800 p-4 text-white">

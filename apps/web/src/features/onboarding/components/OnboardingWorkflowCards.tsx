@@ -16,6 +16,20 @@ import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedW
 import type { Workflow } from "@/types/features/workflowTypes";
 import { EASE_OUT_QUART } from "../constants/motion";
 
+// Stable key for a suggested workflow: prefer its real id, else a memoized
+// per-object id so id-less rows never rely on a positional index.
+const workflowKeyCache = new WeakMap<OnboardingWorkflow, string>();
+let workflowKeySeq = 0;
+function workflowKey(workflow: OnboardingWorkflow): string {
+  if (workflow.id != null) return `workflow-${workflow.id}`;
+  let key = workflowKeyCache.get(workflow);
+  if (!key) {
+    key = `workflow-auto-${workflowKeySeq++}`;
+    workflowKeyCache.set(workflow, key);
+  }
+  return key;
+}
+
 const WorkflowModal = dynamic(
   () => import("@/features/workflows/components/WorkflowModal"),
   { ssr: false },
@@ -96,7 +110,7 @@ function OnboardingWorkflowCardsImpl({
 
           return (
             <m.div
-              key={workflow.id ?? `workflow-${index}`}
+              key={workflowKey(workflow)}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{

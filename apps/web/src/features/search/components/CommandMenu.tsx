@@ -25,6 +25,7 @@ import {
   COMMAND_MENU_STYLES,
   MENU_SECTIONS,
   type MenuItemConfig,
+  type MenuSectionConfig,
 } from "../config/commandMenuConfig";
 
 interface CommandMenuProps {
@@ -84,11 +85,15 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
   }, [search, handleSearch]);
 
   const openRef = useRef(open);
-  openRef.current = open;
   const onOpenChangeRef = useRef(onOpenChange);
-  onOpenChangeRef.current = onOpenChange;
   const routerRef = useRef(router);
-  routerRef.current = router;
+
+  // Keep the refs current outside the render body — render must stay pure.
+  useEffect(() => {
+    openRef.current = open;
+    onOpenChangeRef.current = onOpenChange;
+    routerRef.current = router;
+  });
 
   // Keyboard shortcuts — registered once, reads latest values via refs
   useEffect(() => {
@@ -177,22 +182,30 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
 
   // Get filtered menu sections
   const menuSections = useMemo(() => {
-    return MENU_SECTIONS.map((section) => ({
-      ...section,
-      items: section.items
-        .filter((item) => {
-          // Filter out upgrade if subscribed
-          if (item.hideWhenSubscribed && subscriptionStatus?.is_subscribed) {
-            return false;
+    const sections: Array<
+      Omit<MenuSectionConfig, "items"> & {
+        items: (MenuItemConfig & { onSelect: () => void })[];
+      }
+    > = [];
+    for (const section of MENU_SECTIONS) {
+      const items: (MenuItemConfig & { onSelect: () => void })[] = [];
+      for (const item of section.items) {
+        // Filter out upgrade if subscribed
+        if (item.hideWhenSubscribed && subscriptionStatus?.is_subscribed) {
+          continue;
+        }
+        // Filter by search
+        if (search) {
+          if (!item.label.toLowerCase().includes(search.toLowerCase())) {
+            continue;
           }
-          // Filter by search
-          if (search) {
-            return item.label.toLowerCase().includes(search.toLowerCase());
-          }
-          return true;
-        })
-        .map(buildMenuItem),
-    })).filter((section) => section.items.length > 0);
+        }
+        items.push(buildMenuItem(item));
+      }
+      if (items.length === 0) continue;
+      sections.push({ ...section, items });
+    }
+    return sections;
   }, [search, subscriptionStatus, buildMenuItem]);
 
   return (
