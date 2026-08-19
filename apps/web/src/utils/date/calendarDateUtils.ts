@@ -2,13 +2,6 @@
  * Calendar date formatting utilities - centralized and deduplicated
  */
 
-const allDayDateFormatter = new Intl.DateTimeFormat("en-US", {
-  year: "numeric",
-  month: "long",
-  day: "numeric",
-  weekday: "long",
-});
-
 /**
  * Format date with relative labels (Today, Tomorrow, Yesterday)
  */
@@ -80,19 +73,6 @@ export const formatTimeRange = (startTime: string, endTime: string): string => {
   }
 
   return `${startStr} – ${endStr}`;
-};
-
-/**
- * Format date for all-day events
- */
-export const formatAllDayDate = (dateString: string): string => {
-  try {
-    const date = new Date(dateString);
-    return allDayDateFormatter.format(date);
-  } catch (error) {
-    console.error("Error formatting all-day date:", error);
-    return dateString;
-  }
 };
 
 /**

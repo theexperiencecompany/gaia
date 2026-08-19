@@ -53,6 +53,14 @@
       {
         "files": ["image-loader.ts"],
         "rules": ["deslop/unused-file"]
+      },
+      {
+        // GAIA_COMPONENT_SPECS is the prompt vocabulary consumed by
+        // scripts/openui/generate-prompt.ts outside the web scope — the
+        // web scan correctly reports it as unused inside apps/web, but it
+        // is a deliberate keep (single source for prompt + renderer).
+        "files": ["src/config/openui/promptSpecs.ts"],
+        "rules": ["deslop/unused-export"]
       }
     ]
   },

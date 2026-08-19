@@ -151,7 +151,7 @@ export {
   type ToolCallEntry,
 } from "@shared/chat";
 
-export const TOOL_REGISTRY = {
+const TOOL_REGISTRY = {
   search_results: null as unknown as SearchResults,
   deep_research_results: null as unknown as DeepResearchResults,
   weather_data: null as unknown as WeatherData,
@@ -213,9 +213,6 @@ export const TOOLS_MESSAGE_SCHEMA: ToolsMessageSchema = {
 };
 export type ToolsMessageKey = keyof ToolsMessageSchema;
 export type ToolsMessageData = ToolsMessageSchema;
-export const TOOLS_MESSAGE_KEYS = Object.keys(
-  TOOLS_MESSAGE_SCHEMA,
-) as ToolsMessageKey[];
 
 // Tools that should merge multiple calls into one component
 // Add any tool name here - its data will be accumulated into an array
