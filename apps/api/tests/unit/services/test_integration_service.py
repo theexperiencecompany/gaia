@@ -86,7 +86,7 @@ SERVER_URL = "https://mcp.example.com/v1"
 
 def _make_oauth_integration(
     *,
-    id: str = "platform-int",
+    integration_id: str = "platform-int",
     name: str = "Platform Integration",
     description: str = "A platform integration",
     category: str = "productivity",
@@ -100,7 +100,7 @@ def _make_oauth_integration(
     display_priority: int = 0,
 ) -> OAuthIntegration:
     return OAuthIntegration(
-        id=id,
+        id=integration_id,
         name=name,
         description=description,
         category=category,
@@ -168,7 +168,9 @@ class TestIntegrationResolverResolve:
     @patch("app.services.integrations.integration_resolver.get_integration_by_id")
     async def test_resolve_platform_integration_with_mcp_config(self, mock_get_by_id, mock_repo):
         mcp_cfg = MCPConfig(server_url=SERVER_URL, requires_auth=True, auth_type="oauth")
-        oauth_int = _make_oauth_integration(id="github", managed_by="mcp", mcp_config=mcp_cfg)
+        oauth_int = _make_oauth_integration(
+            integration_id="github", managed_by="mcp", mcp_config=mcp_cfg
+        )
         mock_get_by_id.return_value = oauth_int
 
         result = await IntegrationResolver.resolve("github")
@@ -188,7 +190,7 @@ class TestIntegrationResolverResolve:
     async def test_resolve_platform_with_composio_config(self, mock_get_by_id, mock_repo):
         composio_cfg = ComposioConfig(auth_config_id="auth_123", toolkit="slack_toolkit")
         oauth_int = _make_oauth_integration(
-            id="slack", managed_by="composio", composio_config=composio_cfg
+            integration_id="slack", managed_by="composio", composio_config=composio_cfg
         )
         mock_get_by_id.return_value = oauth_int
 
@@ -202,7 +204,9 @@ class TestIntegrationResolverResolve:
     @patch("app.services.integrations.integration_resolver.integration_repository")
     @patch("app.services.integrations.integration_resolver.get_integration_by_id")
     async def test_resolve_platform_self_managed(self, mock_get_by_id, mock_repo):
-        oauth_int = _make_oauth_integration(id="gcal", managed_by="self", provider="google")
+        oauth_int = _make_oauth_integration(
+            integration_id="gcal", managed_by="self", provider="google"
+        )
         mock_get_by_id.return_value = oauth_int
 
         result = await IntegrationResolver.resolve("gcal")
@@ -217,7 +221,9 @@ class TestIntegrationResolverResolve:
     async def test_resolve_platform_no_auth(self, mock_get_by_id, mock_repo):
         """Platform integration with no mcp, composio, or self — requires no auth."""
         mcp_cfg = MCPConfig(server_url=SERVER_URL, requires_auth=False)
-        oauth_int = _make_oauth_integration(id="public-tool", managed_by="mcp", mcp_config=mcp_cfg)
+        oauth_int = _make_oauth_integration(
+            integration_id="public-tool", managed_by="mcp", mcp_config=mcp_cfg
+        )
         mock_get_by_id.return_value = oauth_int
 
         result = await IntegrationResolver.resolve("public-tool")
@@ -390,7 +396,7 @@ class TestGetUserAvailableToolNamespaces:
     @patch(
         "app.services.integrations.integration_service.OAUTH_INTEGRATIONS",
         [
-            _make_oauth_integration(id="todos", managed_by="internal", available=True),
+            _make_oauth_integration(integration_id="todos", managed_by="internal", available=True),
         ],
     )
     async def test_includes_internal_integrations(
@@ -427,7 +433,7 @@ class TestGetUserAvailableToolNamespaces:
             system_prompt="You are a github agent.",
         )
         platform_int = _make_oauth_integration(
-            id="github", managed_by="mcp", subagent_config=subagent
+            integration_id="github", managed_by="mcp", subagent_config=subagent
         )
         mock_get_by_id.return_value = platform_int
 
@@ -493,7 +499,9 @@ class TestGetUserAvailableToolNamespaces:
     @patch(
         "app.services.integrations.integration_service.OAUTH_INTEGRATIONS",
         [
-            _make_oauth_integration(id="reminders", managed_by="internal", available=False),
+            _make_oauth_integration(
+                integration_id="reminders", managed_by="internal", available=False
+            ),
         ],
     )
     async def test_unavailable_internal_integrations_excluded(
@@ -523,7 +531,7 @@ class TestGetUserAvailableToolNamespaces:
         mock_status.return_value = {"some-int": True}
         # get_integration_by_id returns an integration but without subagent_config
         platform_int = _make_oauth_integration(
-            id="some-int", managed_by="mcp", subagent_config=None
+            integration_id="some-int", managed_by="mcp", subagent_config=None
         )
         mock_get_by_id.return_value = platform_int
         mock_server_url.return_value = "https://some-server.com"
@@ -1661,11 +1669,11 @@ class TestBuildIntegrationsConfig:
         "app.services.integrations.integration_connection_service.OAUTH_INTEGRATIONS",
         [
             _make_oauth_integration(
-                id="github",
+                integration_id="github",
                 managed_by="mcp",
                 mcp_config=MCPConfig(server_url=SERVER_URL, requires_auth=True),
             ),
-            _make_oauth_integration(id="todos", managed_by="internal"),
+            _make_oauth_integration(integration_id="todos", managed_by="internal"),
         ],
     )
     def test_excludes_internal_integrations(self):
@@ -1680,7 +1688,7 @@ class TestBuildIntegrationsConfig:
         "app.services.integrations.integration_connection_service.OAUTH_INTEGRATIONS",
         [
             _make_oauth_integration(
-                id="no-auth-mcp",
+                integration_id="no-auth-mcp",
                 managed_by="mcp",
                 mcp_config=MCPConfig(server_url=SERVER_URL, requires_auth=False),
             ),
@@ -1696,7 +1704,7 @@ class TestBuildIntegrationsConfig:
         "app.services.integrations.integration_connection_service.OAUTH_INTEGRATIONS",
         [
             _make_oauth_integration(
-                id="oauth-mcp",
+                integration_id="oauth-mcp",
                 managed_by="mcp",
                 mcp_config=MCPConfig(server_url=SERVER_URL, requires_auth=True),
             ),
@@ -1711,7 +1719,7 @@ class TestBuildIntegrationsConfig:
     @patch(
         "app.services.integrations.integration_connection_service.OAUTH_INTEGRATIONS",
         [
-            _make_oauth_integration(id="no-mcp", managed_by="self"),
+            _make_oauth_integration(integration_id="no-mcp", managed_by="self"),
         ],
     )
     def test_auth_type_none_when_no_mcp_config(self):
@@ -2179,7 +2187,7 @@ class TestDisconnectIntegration:
         self, mock_resolve, mock_get_composio, mock_invalidate
     ):
         platform_int = _make_oauth_integration(
-            id="slack",
+            integration_id="slack",
             managed_by="composio",
             provider="slack",
             composio_config=ComposioConfig(auth_config_id="cfg-slack", toolkit="slack"),
@@ -2253,7 +2261,9 @@ class TestDisconnectIntegration:
     async def test_disconnect_self_managed_integration(
         self, mock_resolve, mock_token_repo, mock_invalidate
     ):
-        platform_int = _make_oauth_integration(id="gcal", managed_by="self", provider="google")
+        platform_int = _make_oauth_integration(
+            integration_id="gcal", managed_by="self", provider="google"
+        )
         mock_resolve.return_value = ResolvedIntegration(
             integration_id="gcal",
             name="Google Calendar",
@@ -2329,7 +2339,9 @@ class TestDisconnectIntegration:
             requires_auth=True,
             auth_type="oauth",
             mcp_config=MCPConfig(server_url=SERVER_URL),
-            platform_integration=_make_oauth_integration(id="perplexity", managed_by="mcp"),
+            platform_integration=_make_oauth_integration(
+                integration_id="perplexity", managed_by="mcp"
+            ),
             custom_doc=None,
         )
         mock_client = AsyncMock()
@@ -2415,7 +2427,7 @@ class TestInvalidateCaches:
             _invalidate_caches,
         )
 
-        mock_get_by_id.return_value = _make_oauth_integration(id="gcal")
+        mock_get_by_id.return_value = _make_oauth_integration(integration_id="gcal")
 
         await _invalidate_caches(USER_ID, "gcal", "self")
 

@@ -109,4 +109,4 @@ async def upload_user_picture(image_bytes: bytes, public_id: str) -> str:
             error_type=type(e).__name__,
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail="Image upload failed")
+        raise HTTPException(status_code=500, detail="Image upload failed") from e

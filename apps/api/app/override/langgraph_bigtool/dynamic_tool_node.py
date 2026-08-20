@@ -185,6 +185,8 @@ class DynamicToolNode(ToolNode):
 
     def _func(
         self,
+        # `input` mirrors langgraph's ToolNode._func signature exactly (see
+        # langgraph/prebuilt/tool_node.py) since this overrides it.
         input: list[AnyMessage] | dict[str, Any] | BaseModel,
         config: RunnableConfig,
         runtime: "Runtime",
@@ -200,6 +202,8 @@ class DynamicToolNode(ToolNode):
 
     async def _afunc(
         self,
+        # `input` mirrors langgraph's ToolNode._afunc signature exactly (see
+        # langgraph/prebuilt/tool_node.py) since this overrides it.
         input: list[AnyMessage] | dict[str, Any] | BaseModel,
         config: RunnableConfig,
         runtime: "Runtime",
@@ -231,7 +235,7 @@ class DynamicToolNode(ToolNode):
 
     async def _afunc_with_middleware(
         self,
-        input: list[AnyMessage] | dict[str, Any] | BaseModel,
+        node_input: list[AnyMessage] | dict[str, Any] | BaseModel,
         config: RunnableConfig,
         runtime: "Runtime",
     ) -> Any:
@@ -250,18 +254,18 @@ class DynamicToolNode(ToolNode):
         Only regular tool calls go through the middleware wrap_tool_call chain
         (e.g. WorkspaceCompactionMiddleware).
         """
-        tool_calls, _ = self._parse_input(input)
+        tool_calls, _ = self._parse_input(node_input)
         all_parent_routed = all(self._needs_parent_routing(tc.get("name", "")) for tc in tool_calls)
         if all_parent_routed:
-            return await super()._afunc(input, config, runtime)
-        delegate_state = self._extract_state(input, config)
+            return await super()._afunc(node_input, config, runtime)
+        delegate_state = self._extract_state(node_input, config)
         middleware_state = self._coerce_middleware_state(delegate_state)
 
         # Get store from runtime if available
         store: BaseStore | None = getattr(runtime, "store", None)
         middleware_executor = self._middleware_executor
         if middleware_executor is None:
-            return await super()._afunc(input, config, runtime)
+            return await super()._afunc(node_input, config, runtime)
 
         results: list[ToolMessage | Command] = []
         for tool_call in tool_calls:

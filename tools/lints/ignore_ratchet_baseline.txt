@@ -9,8 +9,6 @@
 # This list may only shrink. Deleting lines is the ratchet turning and always
 # passes. Adding one is a deliberate loosening: it must arrive in its own commit
 # (regenerate with `--update`) so a reviewer sees the hole being re-opened.
-ignore	A001
-ignore	A002
 ignore	ARG003
 ignore	ARG004
 ignore	ARG005
@@ -18,7 +16,6 @@ ignore	ASYNC109
 ignore	B007
 ignore	B008
 ignore	B017
-ignore	B904
 ignore	B905
 ignore	BLE001
 ignore	C408
@@ -98,7 +95,6 @@ ignore	S301
 ignore	S311
 ignore	S603
 ignore	S607
-ignore	S608
 ignore	SIM102
 ignore	SIM103
 ignore	SIM108
@@ -206,6 +202,7 @@ per-file-ignores	apps/api/app/api/v1/endpoints/workflows.py	ARG001
 per-file-ignores	apps/api/app/config/settings.py	ANN401
 per-file-ignores	apps/api/app/core/app_factory.py	ARG001
 per-file-ignores	apps/api/app/core/lazy_loader.py	ANN401
+per-file-ignores	apps/api/app/db/chroma/noop_embedding.py	A002
 per-file-ignores	apps/api/app/db/mongodb/collections.py	PLC0415
 per-file-ignores	apps/api/app/db/mongodb/indexes.py	ANN401
 per-file-ignores	apps/api/app/db/mongodb/mongodb.py	PLC0415
@@ -219,6 +216,7 @@ per-file-ignores	apps/api/app/models/reminder_models.py	PLC0415
 per-file-ignores	apps/api/app/models/scheduler_models.py	PLC0415
 per-file-ignores	apps/api/app/models/workflow_models.py	ANN401
 per-file-ignores	apps/api/app/override/langgraph_bigtool/create_agent.py	ARG001
+per-file-ignores	apps/api/app/override/langgraph_bigtool/dynamic_tool_node.py	A002
 per-file-ignores	apps/api/app/override/langgraph_bigtool/dynamic_tool_node.py	ANN401
 per-file-ignores	apps/api/app/patches/composio_custom_tool_schema_patch.py	ANN401
 per-file-ignores	apps/api/app/patches/composio_custom_tool_schema_patch.py	PLC0415
@@ -283,6 +281,8 @@ per-file-ignores	apps/api/app/workers/tasks/user_tasks.py	ARG001
 per-file-ignores	apps/api/app/workers/tasks/user_tasks.py	PLC0415
 per-file-ignores	apps/api/app/workers/tasks/workflow_tasks.py	ARG001
 per-file-ignores	apps/api/app/workers/tasks/workflow_tasks.py	PLC0415
+per-file-ignores	apps/api/tests/integration/db/test_chroma_store.py	A002
+per-file-ignores	apps/api/tests/integration/test_tool_registry_retrieval.py	A002
 per-file-ignores	apps/voice-agent/src/__main__.py	PLC0415
 per-file-ignores	apps/voice-agent/src/__main__.py	T20
 per-file-ignores	libs/shared/py/secrets.py	PLC0415

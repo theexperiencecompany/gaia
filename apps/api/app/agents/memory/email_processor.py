@@ -277,7 +277,7 @@ async def fetch_emails_for_onboarding(
                 query=query,
                 max_results=remaining,
                 page_token=page_token,
-                format=fmt,
+                output_format=fmt,
                 include_payload=not metadata_mode,
                 verbose=not metadata_mode,
             )

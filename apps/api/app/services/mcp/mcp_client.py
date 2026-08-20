@@ -1428,7 +1428,7 @@ class MCPClient:
                 error=str(e),
                 error_type=type(e).__name__,
             )
-            raise ValueError(f"Dynamic Client Registration failed: {e}")
+            raise ValueError(f"Dynamic Client Registration failed: {e}") from e
 
     async def handle_oauth_callback(
         self,

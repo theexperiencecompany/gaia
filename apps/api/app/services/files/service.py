@@ -229,7 +229,7 @@ class FileService:
                 conversation_id=conversation_id,
                 exc_info=True,
             )
-            raise HTTPException(status_code=500, detail=f"Failed to upload file: {e!s}")
+            raise HTTPException(status_code=500, detail=f"Failed to upload file: {e!s}") from e
 
     @staticmethod
     async def get_descriptions(file_ids: list[str], user_id: str) -> dict[str, str]:
@@ -350,7 +350,7 @@ class FileService:
                     conversation_id=conversation_id,
                     exc_info=True,
                 )
-                raise HTTPException(status_code=500, detail=f"Failed to process file: {e!s}")
+                raise HTTPException(status_code=500, detail=f"Failed to process file: {e!s}") from e
 
         description_updated = "description" in set_fields
         # updated_at is stamped by the repository.

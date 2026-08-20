@@ -305,14 +305,14 @@ def register_notion_custom_tools(composio: Composio) -> list[str]:
 
         except AppError as e:
             log.error(f"{LogTag.TOOL} Notion API error", error_type=type(e).__name__)
-            raise RuntimeError(f"Failed to fetch {request.fetch_type}: {e.message}")
+            raise RuntimeError(f"Failed to fetch {request.fetch_type}: {e.message}") from e
         except Exception as e:
             log.error(
                 f"{LogTag.TOOL} Error fetching from Notion",
                 fetch_type=request.fetch_type,
                 error_type=type(e).__name__,
             )
-            raise RuntimeError(f"Failed to fetch {request.fetch_type}: {e!s}")
+            raise RuntimeError(f"Failed to fetch {request.fetch_type}: {e!s}") from e
 
     @composio.tools.custom_tool(toolkit="NOTION")
     def CUSTOM_GATHER_CONTEXT(

@@ -132,7 +132,7 @@ async def _upload_single_attachment(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to upload image {attachment.filename}",
-        )
+        ) from e
 
 
 async def create_support_request(
@@ -231,7 +231,7 @@ async def create_support_request(
             raise HTTPException(
                 status_code=500,
                 detail="Failed to send email notifications. Support request was not created. Please try again.",
-            )
+            ) from email_error
 
         # Create response object
         support_request_response = SupportRequestResponse.model_validate(created.model_dump())
@@ -273,7 +273,9 @@ async def create_support_request(
             error_type=type(e).__name__,
             user_id=user_id,
         )
-        raise HTTPException(status_code=500, detail=f"Failed to create support request: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to create support request: {e!s}"
+        ) from e
 
 
 async def create_support_request_with_attachments(
@@ -461,7 +463,7 @@ async def create_support_request_with_attachments(
             raise HTTPException(
                 status_code=500,
                 detail="Failed to send email notifications. Support request was not created. Please try again.",
-            )
+            ) from email_error
 
         # Create response object
         support_request_response = SupportRequestResponse.model_validate(created.model_dump())
@@ -524,7 +526,9 @@ async def create_support_request_with_attachments(
                     user_id=user_id,
                 )
 
-        raise HTTPException(status_code=500, detail=f"Failed to create support request: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to create support request: {e!s}"
+        ) from e
 
 
 async def _send_support_email_notifications(
@@ -583,4 +587,4 @@ async def get_user_support_requests(
             error_type=type(e).__name__,
             user_id=user_id,
         )
-        raise HTTPException(status_code=500, detail="Failed to fetch support requests")
+        raise HTTPException(status_code=500, detail="Failed to fetch support requests") from e

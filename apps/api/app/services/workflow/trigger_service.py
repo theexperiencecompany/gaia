@@ -131,7 +131,7 @@ class TriggerService:
             log.error(f"{LogTag.WORKFLOW} Error registering triggers", error_type=type(e).__name__)
             log.exception(f"{LogTag.WORKFLOW} Full traceback")
             if raise_on_failure:
-                raise TriggerRegistrationError(error_msg, trigger_name)
+                raise TriggerRegistrationError(error_msg, trigger_name) from e
             return []
 
     @staticmethod

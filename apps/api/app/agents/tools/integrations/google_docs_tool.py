@@ -210,7 +210,7 @@ def register_google_docs_custom_tools(composio: Composio) -> list[str]:
                 document_id=request.document_id,
                 error_type=type(e).__name__,
             )
-            raise RuntimeError(f"Failed to delete document: {e.status_code} - {e.message}")
+            raise RuntimeError(f"Failed to delete document: {e.status_code} - {e.message}") from e
 
         return {
             "successful": True,

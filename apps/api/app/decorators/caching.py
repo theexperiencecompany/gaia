@@ -394,6 +394,6 @@ def _pattern_to_key(pattern: str, arguments: dict[str, Any]) -> str:
     try:
         return pattern.format(**arguments)
     except KeyError as e:
-        raise ValueError(f"Missing key in pattern: {e}")
+        raise ValueError(f"Missing key in pattern: {e}") from e
     except Exception as e:
-        raise ValueError(f"Error generating key from pattern: {e}")
+        raise ValueError(f"Error generating key from pattern: {e}") from e

@@ -224,7 +224,7 @@ def with_rate_limiting(
                             feature=actual_feature_key,
                             detail=detail_dict,
                             reset_time=reset_time,
-                        )
+                        ) from e
                     except Exception as e:
                         log.error(
                             f"{LogTag.API} Rate limiting failed",

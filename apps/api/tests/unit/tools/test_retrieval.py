@@ -7,12 +7,12 @@ import pytest
 
 
 def _make_subagent_mock(
-    id: str, managed_by: str = "internal", name: str | None = None
+    subagent_id: str, managed_by: str = "internal", name: str | None = None
 ) -> MagicMock:
     """Build a Subagent-shaped MagicMock for retrieval tests."""
     sa = MagicMock()
-    sa.id = id
-    sa.name = name or id.title()
+    sa.id = subagent_id
+    sa.name = name or subagent_id.title()
     sa.managed_by = managed_by
     return sa
 

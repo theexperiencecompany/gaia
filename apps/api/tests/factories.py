@@ -51,11 +51,11 @@ def make_state(**overrides) -> dict:
     return defaults
 
 
-def make_tool_call(name: str, args: dict | None = None, id: str | None = None) -> dict:
+def make_tool_call(name: str, args: dict | None = None, call_id: str | None = None) -> dict:
     return {
         "name": name,
         "args": args or {},
-        "id": id or f"call_{uuid4().hex[:24]}",
+        "id": call_id or f"call_{uuid4().hex[:24]}",
         "type": "tool_call",
     }
 

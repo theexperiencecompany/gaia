@@ -256,7 +256,7 @@ class RecordingFakeModel(BindableToolsFakeModel):
 SCRIPTED_ACCEPTANCE_CRITERIA = ["scripted e2e hand-off"]
 
 
-def call(name: str, args: dict[str, Any] | None = None, id: str = "c1") -> dict[str, Any]:
+def call(name: str, args: dict[str, Any] | None = None, call_id: str = "c1") -> dict[str, Any]:
     """One scripted tool call.
 
     Lived in four e2e modules as identical copies until `acceptance_criteria`
@@ -265,7 +265,7 @@ def call(name: str, args: dict[str, Any] | None = None, id: str = "c1") -> dict[
     call_args = dict(args or {})
     if name == "call_executor" and "acceptance_criteria" not in call_args:
         call_args["acceptance_criteria"] = list(SCRIPTED_ACCEPTANCE_CRITERIA)
-    return {"name": name, "args": call_args, "id": id}
+    return {"name": name, "args": call_args, "id": call_id}
 
 
 def scripted_model(script: Sequence[Any]) -> RecordingFakeModel:

@@ -293,8 +293,8 @@ class CalendarEventsQueryRequest(BaseModel):
                 raise ValueError(f"Invalid date format: {v}. Use YYYY-MM-DD format.")
             try:
                 datetime.fromisoformat(v)
-            except ValueError:
-                raise ValueError(f"Invalid date: {v}")
+            except ValueError as e:
+                raise ValueError(f"Invalid date: {v}") from e
         return v
 
 
@@ -377,10 +377,10 @@ class RecurrenceRule(BaseModel):
                 # Both a bare date and a full datetime (with or without a Z
                 # suffix) are ISO 8601, and fromisoformat parses all of them.
                 datetime.fromisoformat(self.until)
-            except ValueError:
+            except ValueError as e:
                 raise ValueError(
                     "Invalid 'until' date format. Use ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS±HH:MM)"
-                )
+                ) from e
 
         if self.frequency == "MONTHLY" and self.by_day and self.by_month_day:
             raise ValueError(
@@ -440,8 +440,8 @@ class RecurrenceRule(BaseModel):
                     raise ValueError(f"Invalid date format: {date}. Use YYYY-MM-DD format.")
                 try:
                     datetime.fromisoformat(date)
-                except ValueError:
-                    raise ValueError(f"Invalid date: {date}")
+                except ValueError as e:
+                    raise ValueError(f"Invalid date: {date}") from e
         return v
 
     model_config = {"extra": "forbid"}
@@ -726,10 +726,10 @@ class EventCreateRequest(BaseCalendarEvent):
             # If not ISO datetime, check if it's a valid date (YYYY-MM-DD)
             try:
                 datetime.strptime(v, "%Y-%m-%d")
-            except ValueError:
+            except ValueError as e:
                 raise ValueError(
                     f"{field_name} must be in ISO format (YYYY-MM-DDTHH:MM:SS) or date format (YYYY-MM-DD)"
-                )
+                ) from e
 
         return v
 

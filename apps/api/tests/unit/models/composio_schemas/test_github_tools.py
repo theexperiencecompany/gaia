@@ -48,10 +48,10 @@ class TestGitHubListRepositoriesInput:
         with pytest.raises(ValidationError):
             GitHubListRepositoriesInput(sort=sort)
 
-    @pytest.mark.parametrize("type", ["starred", "forked", ""])
-    def test_invalid_type_literal(self, type):
+    @pytest.mark.parametrize("repo_type", ["starred", "forked", ""])
+    def test_invalid_type_literal(self, repo_type):
         with pytest.raises(ValidationError):
-            GitHubListRepositoriesInput(type=type)
+            GitHubListRepositoriesInput(type=repo_type)
 
     @pytest.mark.parametrize("visibility", ["internal", ""])
     def test_invalid_visibility_literal(self, visibility):

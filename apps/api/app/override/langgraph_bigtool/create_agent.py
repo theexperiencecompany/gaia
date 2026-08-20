@@ -149,7 +149,7 @@ def create_agent(
     tool_registry: Mapping[str, BaseTool],
     *,
     limit: int = 2,
-    filter: dict[str, Any] | None = None,
+    metadata_filter: dict[str, Any] | None = None,
     namespace_prefix: tuple[str, ...] = ("tools",),
     retrieve_tools_function: Callable[..., RetrieveToolsResponse] | None = None,
     retrieve_tools_coroutine: Callable[..., Awaitable[RetrieveToolsResponse]] | None = None,
@@ -172,15 +172,15 @@ def create_agent(
         llm: Language model to use for the agent.
         tool_registry: a dict mapping string IDs to BaseTool instances.
         limit: Maximum number of tools to retrieve with each tool selection step.
-        filter: Optional key-value pairs with which to filter results.
+        metadata_filter: Optional key-value pairs with which to filter results.
         namespace_prefix: Hierarchical path prefix to search within the Store. Defaults
             to ("tools",).
         retrieve_tools_function: Optional function to use for retrieving tools. This
             function should return a list of tool IDs. If not specified, uses semantic
-            against the Store with limit, filter, and namespace_prefix set above.
+            against the Store with limit, metadata_filter, and namespace_prefix set above.
         retrieve_tools_coroutine: Optional coroutine to use for retrieving tools. This
             function should return a list of tool IDs. If not specified, uses semantic
-            against the Store with limit, filter, and namespace_prefix set above.
+            against the Store with limit, metadata_filter, and namespace_prefix set above.
         initial_tool_ids: Optional list of tool IDs to bind directly without using retrieve_tools.
             If provided, these tools will be bound from the start and no retrieve_tools mechanism
             will be used. This improves performance by eliminating the tool retrieval step.
@@ -214,7 +214,7 @@ def create_agent(
     if not disable_retrieve_tools:
         if retrieve_tools_function is None and retrieve_tools_coroutine is None:
             retrieve_tools_function, retrieve_tools_coroutine = get_default_retrieval_tool(
-                namespace_prefix, limit=limit, filter=filter
+                namespace_prefix, limit=limit, filter=metadata_filter
             )
         retrieve_tools = StructuredTool.from_function(
             func=retrieve_tools_function, coroutine=retrieve_tools_coroutine
@@ -236,10 +236,14 @@ def create_agent(
         # Skip unknown ids (a stale id in the append-only selected_tool_ids must
         # not crash the model invocation) rather than indexing blindly.
         initial_tools = [
-            tool_registry[id] for id in (initial_tool_ids or []) if id in tool_registry
+            tool_registry[tool_id]
+            for tool_id in (initial_tool_ids or [])
+            if tool_id in tool_registry
         ]
         selected_tools = [
-            tool_registry[id] for id in state["selected_tool_ids"] if id in tool_registry
+            tool_registry[tool_id]
+            for tool_id in state["selected_tool_ids"]
+            if tool_id in tool_registry
         ]
         tools_to_bind: list[BaseTool] = []
         if retrieve_tools is not None:

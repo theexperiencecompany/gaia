@@ -164,10 +164,16 @@ ignore = [
   "TRY300",  # consider moving statement to else (too pedantic)
   "TRY301",  # raise inside try (too pedantic)
   "TRY002",  # custom-exception-only (we use generic Exception in many places)
-  "PLR0911", # too many return statements
-  "PLR0912", # too many branches
-  "PLR0913", # too many arguments
-  "PLR0915", # too many statements
+  # PLR0911/0912/0913/0915 (too-many-returns/branches/arguments/statements) are
+  # NOT off — they are enforced by tools/lints/check_plr_complexity.py, a
+  # touch-to-fix ratchet: new complexity anywhere fails immediately, and a
+  # grandfathered file re-fails the moment a PR touches it. They are listed
+  # here only so the main `ruff check` lane doesn't double-report a debt the
+  # dedicated script already owns; do not treat this as "these rules are off".
+  "PLR0911",
+  "PLR0912",
+  "PLR0913",
+  "PLR0915",
   "PLR2004", # magic-value-comparison (too noisy)
   "PLW2901", # redefined loop name
   "PLW0603", # global statement (used intentionally for caches)
@@ -192,8 +198,6 @@ ignore = [
   "ARG003",  # unused class-method argument
   "ARG004",  # unused static-method argument
   "ARG005",  # unused lambda argument
-  # raise X from None / from err — too noisy, often intentional.
-  "B904",
   # Implicit namespace packages — used legitimately in some test layouts.
   "INP001",
   # Logging f-strings — we use loguru which evaluates lazily.
@@ -211,9 +215,6 @@ ignore = [
   "SIM102",
   # RET504 — unnecessary assign before return; reads more clearly with named values.
   "RET504",
-  # Shadowing builtins (id, type, filter) — common in REST handlers.
-  "A001",
-  "A002",
   # StrEnum migration — codebase is on Enum, migration is out of scope.
   "UP042",
   # ASYNC230 (blocking open() in an async def) is enforced — it is the rule form
@@ -247,7 +248,6 @@ ignore = [
   "S112",   # try-except-continue
   "S603",   # subprocess input
   "S607",   # partial-path subprocess
-  "S608",   # SQL injection (false positives on f-strings with constants)
   # Datetime tzinfo — we standardize on UTC via wrappers; existing call sites are safe.
   "DTZ001",
   "DTZ005",
@@ -338,6 +338,14 @@ unfixable = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# A002: chromadb's EmbeddingFunction protocol calls
+# `self._embedding_function(input=input)` by keyword (see
+# chromadb/api/models/CollectionCommon.py) — every implementation, including
+# these test doubles that stand in for the same registered embedding_function,
+# must keep the exact parameter name `input`.
+"apps/api/app/db/chroma/noop_embedding.py" = ["A002"]
+"apps/api/tests/integration/db/test_chroma_store.py" = ["A002"]
+"apps/api/tests/integration/test_tool_registry_retrieval.py" = ["A002"]
 # ARG001: Composio's Modifier.apply() always calls before/after/schema hooks
 # positionally as modifier(tool, toolkit, data) — every @register_*_hook function
 # must keep that exact 3-arg shape regardless of whether a given hook branches on
@@ -426,7 +434,11 @@ unfixable = [
 # verified against each library's real signature, not assumed.
 "apps/api/app/agents/llm/client.py" = ["ANN401"]
 "apps/api/app/agents/middleware/summarization.py" = ["ANN401"]
-"apps/api/app/override/langgraph_bigtool/dynamic_tool_node.py" = ["ANN401"]
+# A002: DynamicToolNode._func / ._afunc override langgraph's
+# ToolNode._func / ._afunc exactly (langgraph/prebuilt/tool_node.py) and
+# delegate to super()._func(input, ...) / super()._afunc(input, ...) --
+# renaming `input` would break the override's positional call contract.
+"apps/api/app/override/langgraph_bigtool/dynamic_tool_node.py" = ["A002", "ANN401"]
 "apps/api/app/services/mcp/langchain_adapter.py" = ["ANN401"]
 # ARG002: overrides abstract ActionHandler.execute / ChannelAdapter.can_handle,
 # dispatched polymorphically from one call site -- every implementation keeps
@@ -573,9 +585,10 @@ known-first-party = ["app", "shared", "apps", "libs"]
 ban-relative-imports = "parents"
 
 [tool.ruff.lint.pylint]
-max-args = 8
-max-branches = 16
+max-args = 6
+max-branches = 10
 max-returns = 8
+max-statements = 50
 
 [tool.ruff.format]
 quote-style = "double"

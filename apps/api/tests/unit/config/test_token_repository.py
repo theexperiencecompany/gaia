@@ -34,11 +34,11 @@ def _make_token_record(
     scopes: str | None = "openid email",
     expires_at: datetime | None = None,
     updated_at: datetime | None = None,
-    id: int = 1,
+    record_id: int = 1,
 ) -> MagicMock:
     """Create a mock OAuthToken database record."""
     record = MagicMock()
-    record.id = id
+    record.id = record_id
     record.user_id = user_id
     record.provider = provider
     record.access_token = access_token

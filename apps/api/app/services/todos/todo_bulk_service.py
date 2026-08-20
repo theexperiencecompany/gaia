@@ -76,7 +76,7 @@ async def bulk_complete_todos(todo_ids: list[str], user_id: str) -> list[TodoRes
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to bulk complete todos: {e!s}",
-        )
+        ) from e
 
 
 async def bulk_move_todos(todo_ids: list[str], project_id: str, user_id: str) -> list[TodoResponse]:
@@ -125,7 +125,7 @@ async def bulk_move_todos(todo_ids: list[str], project_id: str, user_id: str) ->
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to bulk move todos: {e!s}",
-        )
+        ) from e
 
 
 async def bulk_delete_todos(todo_ids: list[str], user_id: str) -> None:
@@ -172,4 +172,4 @@ async def bulk_delete_todos(todo_ids: list[str], user_id: str) -> None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to bulk delete todos: {e!s}",
-        )
+        ) from e

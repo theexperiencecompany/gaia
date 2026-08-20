@@ -436,7 +436,7 @@ def _timed_bounds(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid datetime format: {e!s}")
+        raise HTTPException(status_code=400, detail=f"Invalid datetime format: {e!s}") from e
 
 
 def _create_recurrence_rules(
@@ -460,7 +460,7 @@ def _create_recurrence_rules(
 
         return rules
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid recurrence rule format: {e!s}")
+        raise HTTPException(status_code=400, detail=f"Invalid recurrence rule format: {e!s}") from e
 
 
 async def create_calendar_event(
@@ -690,7 +690,9 @@ async def delete_calendar_event(
         return EventDeleteResponse(success=True, message="Event deleted successfully")
     except HTTPException as exc:
         if exc.status_code == 404:
-            raise HTTPException(status_code=404, detail="Event not found or already deleted")
+            raise HTTPException(
+                status_code=404, detail="Event not found or already deleted"
+            ) from exc
         raise
 
 
@@ -704,7 +706,7 @@ def _update_recurrence_rules(
         return event.recurrence.to_google_calendar_format()
     except Exception as e:
         log.error("Error processing recurrence rules", error=str(e), error_type=type(e).__name__)
-        raise HTTPException(status_code=400, detail=f"Invalid recurrence rule format: {e!s}")
+        raise HTTPException(status_code=400, detail=f"Invalid recurrence rule format: {e!s}") from e
 
 
 def _merged_all_day_bounds(
@@ -735,7 +737,7 @@ def _merged_timed_bounds(
             GoogleCalendarEventDateTime(dateTime=_with_utc_suffix(end_time), timeZone=timezone),
         )
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid datetime format: {e!s}")
+        raise HTTPException(status_code=400, detail=f"Invalid datetime format: {e!s}") from e
 
 
 def _merge_event_bounds(
@@ -770,7 +772,7 @@ async def update_calendar_event(
         )
     except HTTPException as exc:
         if exc.status_code == 404:
-            raise HTTPException(status_code=404, detail=_EVENT_NOT_FOUND_DETAIL)
+            raise HTTPException(status_code=404, detail=_EVENT_NOT_FOUND_DETAIL) from exc
         raise
 
     recurrence_rules = _update_recurrence_rules(event, existing_event)
@@ -798,7 +800,7 @@ async def update_calendar_event(
         )
     except HTTPException as exc:
         if exc.status_code == 404:
-            raise HTTPException(status_code=404, detail=_EVENT_NOT_FOUND_DETAIL)
+            raise HTTPException(status_code=404, detail=_EVENT_NOT_FOUND_DETAIL) from exc
         raise
 
     updated_event.calendarId = calendar_id
