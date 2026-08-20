@@ -398,6 +398,87 @@ class TestComposioCallback:
             {"integration_id": "gmail", "provider": integration.provider},
         )
 
+    @patch("app.api.v1.endpoints.oauth.capture_event")
+    @patch("app.api.v1.endpoints.oauth.handle_oauth_connection", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.oauth.get_integration_by_config")
+    @patch("app.api.v1.endpoints.oauth.get_composio_service")
+    @patch("app.api.v1.endpoints.oauth.user_integration_repository")
+    @patch(
+        "app.api.v1.endpoints.oauth.validate_and_consume_oauth_state",
+        new_callable=AsyncMock,
+    )
+    async def test_a_callback_without_the_account_id_uses_the_one_minted_at_initiate(
+        self,
+        mock_state: AsyncMock,
+        mock_repo: MagicMock,
+        mock_composio: MagicMock,
+        mock_config: MagicMock,
+        mock_handle: AsyncMock,
+        mock_capture: MagicMock,
+        client: AsyncClient,
+    ):
+        """Composio's hosted Connect Link redirects back WITHOUT `connectedAccountId`
+        — the parameter the retired initiate() flow appended and that is documented
+        nowhere. Failing on its absence rejected connections that had succeeded, so
+        the user saw "failed" after authorising the provider."""
+        mock_state.return_value = {
+            "redirect_path": "/integrations",
+            "user_id": "uid1",
+            "integration_id": "gmail",
+        }
+        record = MagicMock()
+        record.connected_account_id = "acc_from_initiate"
+        mock_repo.get_for_user = AsyncMock(return_value=record)
+
+        account = MagicMock()
+        account.auth_config.id = "config1"
+        account.user_id = "uid1"
+        mock_composio.return_value.get_connected_account_by_id.return_value = account
+        integration = MagicMock()
+        integration.id = "gmail"
+        mock_config.return_value = integration
+
+        response = await client.get(
+            f"{OAUTH_BASE}/composio/callback?status=success&state=tok",
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 307
+        assert "oauth_success=true" in response.headers["location"]
+        mock_repo.get_for_user.assert_awaited_once_with("uid1", "gmail")
+        # The stored id is what the rest of the flow resolves the account by.
+        mock_composio.return_value.get_connected_account_by_id.assert_called_once_with(
+            "acc_from_initiate"
+        )
+
+    @patch("app.api.v1.endpoints.oauth.user_integration_repository")
+    @patch(
+        "app.api.v1.endpoints.oauth.validate_and_consume_oauth_state",
+        new_callable=AsyncMock,
+    )
+    async def test_no_account_id_anywhere_still_fails_the_connection(
+        self,
+        mock_state: AsyncMock,
+        mock_repo: MagicMock,
+        client: AsyncClient,
+    ):
+        """With nothing minted and nothing in the callback there is no account to
+        resolve — that must still fail rather than proceed on a None."""
+        mock_state.return_value = {
+            "redirect_path": "/integrations",
+            "user_id": "uid1",
+            "integration_id": "gmail",
+        }
+        mock_repo.get_for_user = AsyncMock(return_value=None)
+
+        response = await client.get(
+            f"{OAUTH_BASE}/composio/callback?status=success&state=tok",
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 307
+        assert "oauth_error=failed" in response.headers["location"]
+
     @patch(
         "app.api.v1.endpoints.oauth.validate_and_consume_oauth_state",
         new_callable=AsyncMock,
