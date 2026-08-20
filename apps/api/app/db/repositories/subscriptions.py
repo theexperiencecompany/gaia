@@ -28,6 +28,14 @@ class SubscriptionsRepository(MongoRepository[SubscriptionDocument, Subscription
         )
         return found[0] if found else None
 
+    async def list_for_user(self, user_id: str) -> list[SubscriptionDocument]:
+        """Every subscription this user has ever had, newest first.
+
+        Not filtered by status: payment history must still show the charges from a
+        subscription that has since been cancelled or expired.
+        """
+        return await self._find({"user_id": user_id}, sort=[("created_at", -1)])
+
     async def get_by_dodo_id(self, dodo_subscription_id: str) -> SubscriptionDocument | None:
         return await self._find_one({"dodo_subscription_id": dodo_subscription_id})
 

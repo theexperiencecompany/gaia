@@ -40,6 +40,8 @@ async def read_manual(topic: ManualTopic) -> str:
       manage them; how skills extend GAIA.
     - ``documents`` — generate downloadable files (PDF, Word, slides,
       spreadsheets, CSV) from a request and its data.
+    - ``billing`` — the user's plan and payment history; handing them a checkout
+      link to upgrade to Pro; what to say when they hit a usage limit.
 
     Pass one of the topic names above; returns that topic's full doc. Passing an
     unknown topic returns the list of valid topics.

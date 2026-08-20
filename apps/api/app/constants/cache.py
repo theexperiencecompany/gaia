@@ -31,6 +31,11 @@ SUBSCRIPTION_PLAN_CACHE_TTL = FIVE_MINUTES_TTL
 ACTIVE_PLANS_CACHE_KEY = "plans:active"
 ALL_PLANS_CACHE_KEY = "plans:all"
 PLANS_CACHE_KEYS = (ACTIVE_PLANS_CACHE_KEY, ALL_PLANS_CACHE_KEY)
+# A minted Dodo checkout session, per user and billing cycle. Reused rather than
+# re-minted so a user who asks to upgrade twice — or hits a limit repeatedly —
+# doesn't leave a trail of abandoned sessions in Dodo.
+UPGRADE_LINK_CACHE_PREFIX = "upgrade_link:"
+UPGRADE_LINK_CACHE_TTL = ONE_HOUR_TTL
 # The tracked-todo summary injected into comms context. Deliberately short: the
 # list changes as the agent works, and a stale pin is worse than the lookup it
 # saves. Keyed by user alone, so only the unpinned summary may use it.
