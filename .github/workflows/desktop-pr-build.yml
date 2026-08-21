@@ -39,15 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          version: 10.17.1
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: "pnpm"
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-node-pnpm
       - uses: ./.github/actions/restore-nextjs-cache
       - name: Build web (standalone)
         run: pnpm nx build web --skip-nx-cache
@@ -88,17 +80,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          version: 10.17.1
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: "pnpm"
-      # Installs electron-builder + the per-OS app-builder binaries + the
-      # desktop runtime deps that get packaged into the app.
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-node-pnpm
       - name: Download packaging payload
         uses: actions/download-artifact@v8
         with:

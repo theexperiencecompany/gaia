@@ -15,8 +15,9 @@
       "!{projectRoot}/**/*.test.ts"
     ],
     "python": [
+      "{workspaceRoot}/pyproject.toml",
+      "{workspaceRoot}/uv.lock",
       "{workspaceRoot}/apps/api/pyproject.toml",
-      "{workspaceRoot}/apps/api/uv.lock",
       "{workspaceRoot}/libs/shared/py/**/*"
     ]
   },

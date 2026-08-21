@@ -22,6 +22,7 @@ runs:
       with:
         node-version: "22.15.1"
         cache: "pnpm"
+        cache-dependency-path: pnpm-lock.yaml
 
     - name: Install dependencies
       shell: bash

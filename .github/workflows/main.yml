@@ -139,9 +139,9 @@ jobs:
         uses: actions/cache@v5
         with:
           path: apps/api/.pytest_cache
-          key: pytest-split-${{ runner.os }}-${{ hashFiles('apps/api/tests/**/*.py') }}-${{ matrix.shard }}
+          key: pytest-split-${{ runner.os }}-${{ hashFiles('apps/api/tests/**/*.py','apps/api/pyproject.toml','uv.lock') }}-${{ matrix.shard }}
           restore-keys: |
-            pytest-split-${{ runner.os }}-${{ hashFiles('apps/api/tests/**/*.py') }}-
+            pytest-split-${{ runner.os }}-${{ hashFiles('apps/api/tests/**/*.py','apps/api/pyproject.toml','uv.lock') }}-
             pytest-split-${{ runner.os }}-
       - name: Run Python tests (shard ${{ matrix.shard }}/2)
         working-directory: apps/api
@@ -162,7 +162,7 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: apps/api/.pytest_cache
-          key: pytest-split-${{ runner.os }}-${{ hashFiles('apps/api/tests/**/*.py') }}-${{ matrix.shard }}-${{ github.run_id }}
+          key: pytest-split-${{ runner.os }}-${{ hashFiles('apps/api/tests/**/*.py','apps/api/pyproject.toml','uv.lock') }}-${{ matrix.shard }}-${{ github.run_id }}
       - name: Upload shard coverage + junit
         if: always()
         uses: actions/upload-artifact@v7
@@ -359,6 +359,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "22.15.1"
+          cache: "pnpm"
+          cache-dependency-path: pnpm-lock.yaml
       - name: Regenerate changelog sub-pages
         run: node docs/scripts/generate-changelog-pages.js
       - name: Open fix PR if generated files are out of date
