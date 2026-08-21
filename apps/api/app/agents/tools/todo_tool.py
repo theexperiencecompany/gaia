@@ -899,7 +899,7 @@ async def get_all_labels(config: RunnableConfig) -> LabelListResult:
             return {"error": "User authentication required", "labels": []}
 
         results = await get_all_labels_service(user_id)
-        return {"labels": [label.model_dump(mode="json") for label in results], "error": None}
+        return {"labels": [label.model_dump() for label in results], "error": None}
 
     except Exception as e:
         error_msg = f"Error getting labels: {e!s}"

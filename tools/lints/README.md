@@ -309,7 +309,10 @@ ISO strings would break scheduling silently.
 Mongo write rather than the model/stream boundary, that logic belongs in the
 service/repository layer anyway (see `repository-boundaries`).
 
-**Allowlist:** empty by design — the thirteen bare dumps that existed when the
-rule landed were all string-only payloads fixed in the same PR as the rule.
-Like every allowlist here it is a ratchet: entries may be removed when their
-site is fixed, never added.
+**Allowlist:** keyed `<path>::<enclosing function>`, grandfathering thirteen
+sites whose models the #917 audit verified are string-only (`ImageData`,
+`SearchResultItem`/`WebSearchResult`, the calendar wire models,
+`TodoLabelCount`) — both dump modes produce identical output there, so the flip
+is unobservable and the mutation gate correctly rejects it as untestable. Like
+every allowlist here it is a ratchet: an entry comes out when its model gains a
+datetime field and the call takes `mode="json"`, never added for new code.

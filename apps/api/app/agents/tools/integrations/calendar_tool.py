@@ -161,9 +161,9 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
         calendar_list = _run_sync(calendar_service.list_calendars(user_id))
         summaries = calendar_service.to_calendar_summaries(calendar_list)
         calendars = (
-            [summary.model_dump(mode="json") for summary in summaries]
+            [summary.model_dump() for summary in summaries]
             if request.short
-            else [entry.model_dump(mode="json") for entry in calendar_list.items]
+            else [entry.model_dump() for entry in calendar_list.items]
         )
 
         writer = get_stream_writer()
@@ -228,13 +228,11 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
         try:
             color_map, name_map = _run_sync(calendar_service.get_calendar_metadata_map(user_id))
             formatted_events = [
-                calendar_service.format_event_for_frontend(event, color_map, name_map).model_dump(
-                    mode="json"
-                )
+                calendar_service.format_event_for_frontend(event, color_map, name_map).model_dump()
                 for event in events
             ]
         except Exception:
-            formatted_events = [event.model_dump(mode="json") for event in events]
+            formatted_events = [event.model_dump() for event in events]
 
         busy_minutes: float = 0.0
         for event in events:
@@ -263,7 +261,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                     try:
                         event_start = datetime.fromisoformat(start_time)
                         if event_start > now:
-                            next_event = event.model_dump(mode="json")
+                            next_event = event.model_dump()
                             break
                     except (ValueError, TypeError) as e:
                         log.debug(
@@ -316,13 +314,11 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
         try:
             color_map, name_map = _run_sync(calendar_service.get_calendar_metadata_map(user_id))
             calendar_fetch_data = [
-                calendar_service.format_event_for_frontend(event, color_map, name_map).model_dump(
-                    mode="json"
-                )
+                calendar_service.format_event_for_frontend(event, color_map, name_map).model_dump()
                 for event in events
             ]
         except Exception:
-            calendar_fetch_data = [event.model_dump(mode="json") for event in events]
+            calendar_fetch_data = [event.model_dump() for event in events]
 
         writer = get_stream_writer()
         if calendar_fetch_data:
@@ -353,14 +349,12 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
             )
         )
 
-        events = [event.model_dump(mode="json") for event in result.matching_events]
+        events = [event.model_dump() for event in result.matching_events]
 
         try:
             color_map, name_map = _run_sync(calendar_service.get_calendar_metadata_map(user_id))
             calendar_search_data = [
-                calendar_service.format_event_for_frontend(event, color_map, name_map).model_dump(
-                    mode="json"
-                )
+                calendar_service.format_event_for_frontend(event, color_map, name_map).model_dump()
                 for event in result.matching_events
             ]
         except Exception:

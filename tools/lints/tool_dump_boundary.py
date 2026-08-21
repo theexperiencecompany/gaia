@@ -41,12 +41,25 @@ def _missing_json_mode(call: ast.Call) -> bool:
     return True
 
 
-#: Sites that predate this rule, as ``<path>::<enclosing function>``. Empty on
-#: purpose: the thirteen bare dumps that existed when the rule landed were all
-#: fixed in the same PR (#917) — every one was a string-only payload where the
-#: explicit mode changes nothing. This is a ratchet like the other lints': an
-#: entry may be removed when its site is fixed, never added.
-ALLOWLIST: frozenset[str] = frozenset()
+#: Sites that predate this rule, as ``<path>::<enclosing function>``. Each dumps
+#: a model the #917 audit verified is string-only (``ImageData``,
+#: ``SearchResultItem``/``WebSearchResult``, ``CalendarEventDisplay`` and the
+#: Google calendar wire models, ``TodoLabelCount``), so both dump modes produce
+#: identical output — flipping them is unobservable, which is also why the
+#: mutation gate rejects the flip as untestable. This is a ratchet like the one
+#: in ``no_silent_fallback``: remove an entry when its model gains a datetime
+#: field (add ``mode="json"`` at that point), never add one.
+ALLOWLIST: frozenset[str] = frozenset(
+    {
+        "app/agents/tools/image_tool.py::generate_image",
+        "app/agents/tools/webpage_tool.py::web_search_tool",
+        "app/agents/tools/integrations/calendar_tool.py::CUSTOM_LIST_CALENDARS",
+        "app/agents/tools/integrations/calendar_tool.py::CUSTOM_GET_DAY_SUMMARY",
+        "app/agents/tools/integrations/calendar_tool.py::CUSTOM_FETCH_EVENTS",
+        "app/agents/tools/integrations/calendar_tool.py::CUSTOM_FIND_EVENT",
+        "app/agents/tools/todo_tool.py::get_all_labels",
+    }
+)
 
 
 def _calls_by_function(tree: ast.AST) -> list[tuple[ast.Call, str]]:
