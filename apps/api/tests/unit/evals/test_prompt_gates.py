@@ -24,11 +24,11 @@ from scripts.evals.core.prompt_gates import (
     banned_bot_phrases,
     banned_dashes,
     banned_phrases,
+    channel_tags,
     dash_discipline,
     internal_machinery,
-    internal_markers,
+    internal_tags,
     internal_terms,
-    routing_markers,
 )
 from scripts.evals.core.types import CaseRun
 
@@ -44,7 +44,7 @@ def _clear_caches() -> Iterator[None]:
         banned_phrases,
         banned_dashes,
         internal_terms,
-        routing_markers,
+        channel_tags,
     )
     for cache in caches:
         cache.cache_clear()
@@ -89,12 +89,12 @@ def test_banned_phrases_come_from_the_prompt_including_ones_that_wrap() -> None:
     assert not any("\n" in phrase for phrase in phrases)
 
 
-def test_dashes_and_markers_come_from_the_prompt() -> None:
+def test_dashes_and_tags_come_from_the_prompt() -> None:
     assert set(banned_dashes()) == {EM_DASH, EN_DASH}
-    assert set(routing_markers()) == {
-        "[EXECUTOR_RESULT]",
-        "[EXECUTOR_ERROR]",
-        "[RETURNED_TO_FRONTEND]",
+    assert set(channel_tags()) == {
+        "<executor_result>",
+        "<executor_error>",
+        "<returned_to_frontend>",
     }
 
 
@@ -238,17 +238,28 @@ def test_internal_machinery_does_not_fire_on_ordinary_words() -> None:
         assert value == 1.0, f"{reply!r} was wrongly flagged: {why}"
 
 
-def test_internal_markers_catches_a_leaked_routing_tag() -> None:
-    value, why = internal_markers(
-        _run(("user", "any mail?"), ("assistant", "[EXECUTOR_RESULT] you have 3 unread"))
+def test_internal_tags_catches_a_leaked_channel_tag() -> None:
+    value, why = internal_tags(
+        _run(("user", "any mail?"), ("assistant", "<executor_result> you have 3 unread"))
     )
 
     assert value == 0.0
-    assert "[EXECUTOR_RESULT]" in why
+    assert "<executor_result>" in why
 
 
-def test_internal_markers_passes_a_clean_reply() -> None:
-    value, why = internal_markers(
+def test_internal_tags_catches_a_leaked_closing_tag() -> None:
+    """A model that echoes only the closing tag has still leaked the plumbing —
+    the opening-tag-only check this replaces scored that reply a clean 1.0."""
+    value, why = internal_tags(
+        _run(("user", "any mail?"), ("assistant", "you have 3 unread</executor_result>"))
+    )
+
+    assert value == 0.0
+    assert "<executor_result>" in why
+
+
+def test_internal_tags_passes_a_clean_reply() -> None:
+    value, why = internal_tags(
         _run(("user", "any mail?"), ("assistant", "3 unread, all newsletters"))
     )
 

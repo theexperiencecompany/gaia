@@ -4,6 +4,10 @@ import { Button, ButtonGroup } from "@heroui/button";
 import { Skeleton } from "@heroui/skeleton";
 import { Tooltip } from "@heroui/tooltip";
 import { Copy01Icon, LinkSquare02Icon } from "@icons";
+import {
+  CONNECT_ACTION_LABEL,
+  integrationConnectionState,
+} from "@shared/utils";
 import { useEffect, useState } from "react";
 import { HoloCardEditor } from "@/components/ui/holo-card/HoloCardEditor";
 import type { HoloCardDisplayData } from "@/components/ui/holo-card/types";
@@ -20,6 +24,9 @@ export default function ProfileCardSettings() {
   const [holoCardData, setHoloCardData] = useState<HoloCardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { connectIntegration, getIntegrationStatus } = useIntegrations();
+  const gmailState = integrationConnectionState(
+    getIntegrationStatus("gmail")?.status,
+  );
 
   useEffect(() => {
     const fetchData = async () => {
@@ -125,9 +132,10 @@ export default function ProfileCardSettings() {
               (displayData.user_bio.startsWith("Connect your Gmail") ||
                 displayData.user_bio.startsWith("Processing")) &&
               // Only show button if Gmail is not connected
-              getIntegrationStatus("gmail")?.connected !== true && (
+              gmailState !== "connected" && (
                 <Button color="primary" onPress={handleConnectGmail}>
-                  Connect Gmail for a more personalized bio
+                  {CONNECT_ACTION_LABEL[gmailState]} Gmail for a more
+                  personalized bio
                 </Button>
               )}
           </div>

@@ -8,6 +8,7 @@
  */
 
 export type {
+  IntegrationConnectionData,
   IntegrationStatusRecord as IntegrationStatus,
   IntegrationToolsResponse,
   MyIntegrationsResponse,
@@ -41,7 +42,9 @@ export interface Integration {
   name: string;
   description: string;
   category: IntegrationCategoryValue;
-  status: "connected" | "not_connected" | "created" | "error";
+  status: "connected" | "not_connected" | "created" | "expired" | "error";
+  /** ISO timestamp of when the upstream grant died. Only set when `status` is `expired`. */
+  expiredAt?: string;
   displayPriority?: number;
   isFeatured?: boolean;
   managedBy?: "self" | "composio" | "mcp" | "internal";
@@ -93,15 +96,6 @@ export interface CreateCustomIntegrationResponse {
   integrationId: string;
   name: string;
   connection?: ConnectionTestResult;
-}
-
-/**
- * Integration connection types for chat messages
- * (Merged from types/features/integrationTypes.ts)
- */
-export interface IntegrationConnectionData {
-  integration_id: string;
-  message: string;
 }
 
 /**

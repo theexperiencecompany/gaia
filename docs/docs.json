@@ -70,6 +70,7 @@
               "guides/web-app",
               "guides/desktop-app",
               "guides/whatsapp-bot",
+              "guides/imessage-bot",
               "guides/telegram-bot",
               "guides/slack-bot",
               "guides/discord-bot",
@@ -140,6 +141,7 @@
             "pages": [
               "bots/overview",
               "bots/whatsapp",
+              "bots/imessage",
               "bots/telegram",
               "bots/slack",
               "bots/discord"

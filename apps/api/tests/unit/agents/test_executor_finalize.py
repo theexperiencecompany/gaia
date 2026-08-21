@@ -28,9 +28,11 @@ from app.agents.core.background.session import (
     create_session,
     get_session,
 )
+from app.constants.agents import AgentTag, wrap_agent_payload
 
 # The task text the finalize step now receives; forwarded to comms on a cancel.
 TASK = "run the standup summary"
+CARD_NOTE = wrap_agent_payload(AgentTag.RETURNED_TO_FRONTEND, "todo_data (1 todo)")
 
 
 @pytest.fixture(autouse=True)
@@ -157,13 +159,11 @@ class TestCompletedRouting:
     async def test_completed_queued_run_delivers_and_closes_stream(self, boundaries) -> None:
         run = _run(RunKind.QUEUED)
         create_session("s1", RunKind.QUEUED)
-        boundaries.note.return_value = "[RETURNED_TO_FRONTEND] cards"
+        boundaries.note.return_value = CARD_NOTE
 
         await er._finalize_executor_run(run, TASK, "result", "final")
 
-        boundaries.deliver.assert_awaited_once_with(
-            run, "result", "final", "[RETURNED_TO_FRONTEND] cards"
-        )
+        boundaries.deliver.assert_awaited_once_with(run, "result", "final", CARD_NOTE)
         # A completed run narrates and delivers — it never records a cancellation.
         boundaries.record_cancel.assert_not_awaited()
         boundaries.persist_cancelled.assert_not_awaited()

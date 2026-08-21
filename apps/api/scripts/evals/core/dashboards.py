@@ -159,7 +159,7 @@ SCORE_MEANINGS: dict[str, str] = {
     "dash_discipline": "no em dash or en dash anywhere in the assistant's output",
     "banned_bot_phrases": "none of the phrases the prompt lists as 'they scream chatbot'",
     "internal_machinery": "internal machinery is never named to the user (the ONE ENTITY rule)",
-    "internal_markers": "the internal routing tags never appear in a user-facing reply",
+    "internal_tags": "the internal channel tags never appear in a user-facing reply",
 }
 
 _HAS_CATEGORY: dict[str, str] = {

@@ -82,7 +82,7 @@ async def run_executor_background(
     """Run (or resume) the executor agent in background and hand its result to delivery.
 
     Designed for asyncio.create_task(). Never raises — all exceptions
-    caught and routed through comms as an [EXECUTOR_ERROR] message.
+    caught and routed through comms as an ``<executor_error>`` message.
 
     Tool events stream live to the SSE consumer during execution. When
     execution finishes, _finalize_executor_run signals completion, delivers
