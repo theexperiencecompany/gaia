@@ -2,9 +2,7 @@
 
 # GAIA
 
-**The open-source AI assistant that works for you.**
-
-It runs your inbox, calendar and todos while you're not looking.
+**The open-source AI assistant that doesn't wait to be asked.**
 
 [![Documentation](https://img.shields.io/badge/Documentation-00bbff?style=flat&logo=gitbook&logoColor=white)](https://docs.heygaia.io) [![Discord](https://discord-live-members-count-badge.vercel.app/api/discord-members?guildId=585464664650022914&color=5c6af3&label=Discord)](https://discord.heygaia.io) [![WhatsApp](https://img.shields.io/badge/WhatsApp-25D366?logo=whatsapp&logoColor=fff&style=flat)](https://whatsapp.heygaia.io) [![Status](https://uptime.betterstack.com/status-badges/v3/monitor/1zjmp.svg)](https://uptime.betterstack.com/?utm_source=status_badge) [![License](https://img.shields.io/badge/license-PolyForm%20NC-121212?style=flat)](LICENSE.md)
 
@@ -13,13 +11,11 @@ It runs your inbox, calendar and todos while you're not looking.
 
 </div>
 
-Most AI assistants wait for you to open a tab and type. You do the work of driving it.
+Connect Gmail and GAIA triages your inbox every morning, drafts your replies and turns emails into todos. Connect your calendar and it briefs you before every meeting.
 
-GAIA works the other way round. Connect your Gmail and it starts triaging your inbox every morning, drafting your replies and turning emails into todos — on its own, from day one. Connect your calendar and it briefs you before every meeting.
+You set none of that up. It's running the moment you connect.
 
-When something needs you, it texts you. iMessage, WhatsApp, Telegram, Slack or Discord.
-
-**Sign up and it's already working.** Nothing to configure.
+And when something needs you, it comes to you — on iMessage, WhatsApp, Telegram, Slack or Discord.
 
 ## Choose a starting point
 
