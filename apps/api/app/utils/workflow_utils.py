@@ -423,7 +423,7 @@ async def apply_workflow_edit(
                 user_id=user_id,
             )
 
-    writer({"workflow_data": {"action": "updated", "workflow": updated.model_dump()}})
+    writer({"workflow_data": {"action": "updated", "workflow": updated.model_dump(mode="json")}})
 
     message = f"Workflow '{updated.title}' updated."
     if needs_editor:

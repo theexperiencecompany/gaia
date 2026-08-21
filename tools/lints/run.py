@@ -21,6 +21,7 @@ import no_service_classes
 import no_silent_fallback
 import repository_boundaries
 import route_contract
+import tool_dump_boundary
 import wide_events_logging
 
 RULES = (
@@ -29,6 +30,7 @@ RULES = (
     wide_events_logging,
     repository_boundaries,
     no_silent_fallback,
+    tool_dump_boundary,
 )
 
 
