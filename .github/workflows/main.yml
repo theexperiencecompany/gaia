@@ -136,7 +136,7 @@ jobs:
       # Also exports the suite's service env (URLs, ENV, USE_REAL_SERVICES).
       - uses: ./.github/actions/setup-python-test-env
       - name: Restore pytest-split cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: apps/api/.pytest_cache
           key: pytest-split-${{ runner.os }}-${{ hashFiles('apps/api/tests/**/*.py') }}-${{ matrix.shard }}
@@ -159,7 +159,7 @@ jobs:
           echo "### Python tests shard ${{ matrix.shard }}/3 — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
       - name: Save pytest-split cache
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: apps/api/.pytest_cache
           key: pytest-split-${{ runner.os }}-${{ hashFiles('apps/api/tests/**/*.py') }}-${{ matrix.shard }}-${{ github.run_id }}

@@ -85,7 +85,7 @@ jobs:
       - uses: ./.github/actions/restore-nextjs-cache
 
       - name: Restore Nx cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .nx/cache
           key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','nx.json','**/project.json') }}-${{ hashFiles('apps/web/**','libs/shared/ts/**') }}
@@ -129,7 +129,7 @@ jobs:
           du -sh apps/web/.open-next/assets/* 2>/dev/null | head -n 5 || du -sh apps/web/.open-next/assets 2>/dev/null | head -n 5 || true
 
       - name: Upload bundle artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: open-next
           path: apps/web/.open-next/**/*
@@ -157,7 +157,7 @@ jobs:
 
       - name: Save Nx cache
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: .nx/cache
           key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','nx.json','**/project.json') }}-${{ hashFiles('apps/web/**','libs/shared/ts/**') }}
@@ -180,7 +180,7 @@ jobs:
         id: t0
         run: echo "epoch=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: open-next
           path: apps/web/.open-next
@@ -238,7 +238,7 @@ jobs:
         id: t0
         run: echo "epoch=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: open-next
           path: apps/web/.open-next
