@@ -48,6 +48,7 @@ from app.models.workflow_models import (
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
 from app.services.notification_service import notification_service
+from app.services.triggers.batching import drain_trigger_batch
 from app.services.user_service import get_user_by_id
 from app.services.workflow.conversation_service import (
     add_workflow_execution_messages,
@@ -494,6 +495,22 @@ async def execute_workflow_by_id(
 
         if not workflow:
             return f"Workflow {workflow_id} not found"
+
+        # A coalesced trigger run carries its events in Redis rather than in the
+        # job payload, so that concurrent enqueues could dedup down to this one
+        # job. Collect them now — an empty batch means another run already took
+        # them and there is nothing left to do.
+        batch_key = context.get("trigger_batch_key") if context else None
+        if batch_key:
+            events = await drain_trigger_batch(str(batch_key))
+            log.set_ns("workflow", trigger_batch_size=len(events))
+            if not events:
+                log.info(
+                    f"{LogTag.WORKER} Trigger batch already drained; skipping empty run",
+                    workflow_id=workflow_id,
+                )
+                return f"Workflow {workflow_id} skipped — trigger batch empty"
+            context = {**(context or {}), "trigger_data": {"events": events, "count": len(events)}}
 
         # Determine trigger type from context. An explicit trigger_type always
         # wins; only an ABSENT one falls back — to "integration" when the
