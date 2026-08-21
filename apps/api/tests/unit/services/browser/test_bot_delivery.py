@@ -39,6 +39,29 @@ def delivery_no_screenshots():
     )
 
 
+class TestBotProgressDeliveryInit:
+    def test_stores_all_constructor_args_verbatim(self):
+        delivery = BotProgressDelivery(
+            platform=ConversationSource.WHATSAPP,
+            user_id="user-42",
+            conversation_id="conv-99",
+            stream_screenshots=True,
+        )
+        assert delivery._platform == ConversationSource.WHATSAPP
+        assert delivery._user_id == "user-42"
+        assert delivery._conversation_id == "conv-99"
+        assert delivery._stream_screenshots is True
+
+    def test_stream_screenshots_false_is_stored_as_false(self):
+        delivery = BotProgressDelivery(
+            platform=ConversationSource.TELEGRAM,
+            user_id="user-1",
+            conversation_id="conv-1",
+            stream_screenshots=False,
+        )
+        assert delivery._stream_screenshots is False
+
+
 class TestIsBlankTab:
     def test_none_is_blank(self):
         assert _is_blank_tab(None) is True
@@ -106,6 +129,16 @@ class TestStepCaption:
 
     def test_goal_stripped(self):
         assert _step_caption(1, "  Hello world  ", None) == "Step 1 · Hello world"
+
+    def test_truncation_rstrips_trailing_space_before_ellipsis(self):
+        # 88 "A"s then a space then filler — the 90-char slice cuts right after
+        # the space, so the truncated label must have it trimmed before the
+        # ellipsis is appended, not "A"*88 + " …".
+        goal = "A" * 88 + " " + "B" * 20
+        result = _step_caption(1, goal, None)
+        label = result.split(" · ", 1)[1]
+        assert label == "A" * 88 + "…"
+        assert len(label) == 89
 
 
 class TestBotProgressDeliverySession:
@@ -231,6 +264,8 @@ class TestBotProgressDeliveryStep:
             await delivery.step(snap)
             mock_photo.assert_awaited_once()
             mock_text.assert_awaited_once()
+            text_msg = mock_text.call_args[0][2][0]
+            assert text_msg == "Step 2 · Clicking"
 
     async def test_inline_data_url_falls_back_to_text(self, delivery):
         snap = BrowserStepSnapshot(
@@ -247,6 +282,7 @@ class TestBotProgressDeliveryStep:
             await delivery.step(snap)
             mp.assert_not_awaited()
             mm.assert_awaited_once()
+            assert mm.call_args[0][2][0] == "Step 1 · Open"
 
     async def test_no_screenshot_falls_back_to_text(self, delivery):
         snap = BrowserStepSnapshot(index=1, goal="Open", url="https://example.com", screenshot=None)
@@ -261,6 +297,7 @@ class TestBotProgressDeliveryStep:
             await delivery.step(snap)
             mp.assert_not_awaited()
             mm.assert_awaited_once()
+            assert mm.call_args[0][2][0] == "Step 1 · Open"
 
     async def test_stream_screenshots_disabled_always_text(self, delivery_no_screenshots):
         snap = BrowserStepSnapshot(
@@ -277,6 +314,7 @@ class TestBotProgressDeliveryStep:
             await delivery_no_screenshots.step(snap)
             mp.assert_not_awaited()
             mm.assert_awaited_once()
+            assert mm.call_args[0][2][0] == "Step 1 · Open"
 
     async def test_chrome_newtab_skipped(self, delivery):
         snap = BrowserStepSnapshot(
@@ -293,6 +331,16 @@ class TestBotProgressDeliveryStep:
             await delivery.step(snap)
             mp.assert_not_awaited()
             mm.assert_not_awaited()
+
+
+class TestBotProgressDeliveryText:
+    async def test_forwards_platform_user_and_message_as_single_part_list(self, delivery):
+        with patch(
+            "app.services.browser.bot_delivery.publish_outbound_message",
+            new=AsyncMock(return_value="published"),
+        ) as mp:
+            await delivery._text("hello there")
+            mp.assert_awaited_once_with(ConversationSource.TELEGRAM, "user-1", ["hello there"])
 
 
 class TestBotProgressDeliveryHandoff:
@@ -315,9 +363,11 @@ class TestBotProgressDeliveryHandoff:
             await delivery.handoff(snap)
             mock_link.assert_awaited_once_with("sess-1", "user-1")
             msg = mock_pub.call_args[0][2][0]
-            assert "Payment needed" in msg
-            assert "https://live.example.com/link" in msg
-            assert "done" in msg.lower()
+            assert msg == (
+                "I need you to take over for this step:\nPayment needed\n\n"
+                "Reply *done* when you've finished, or *stop* to cancel."
+                "\n\nOpen the live browser: https://live.example.com/link"
+            )
 
     async def test_pending_without_session_no_link(self, delivery):
         snap = BrowserHandoffSnapshot(
@@ -331,7 +381,11 @@ class TestBotProgressDeliveryHandoff:
         ):
             await delivery.handoff(snap)
             ml.assert_not_awaited()
-            assert "Need creds" in mp.call_args[0][2][0]
+            msg = mp.call_args[0][2][0]
+            assert msg == (
+                "I need you to take over for this step:\nNeed creds\n\n"
+                "Reply *done* when you've finished, or *stop* to cancel."
+            )
 
     async def test_non_pending_does_nothing(self, delivery):
         for status in (HandoffStatus.COMPLETED, HandoffStatus.CANCELLED, HandoffStatus.TIMEOUT):
@@ -359,7 +413,7 @@ class TestBotProgressDeliveryResult:
         ) as mp:
             await delivery.result(snap)
             msg = mp.call_args[0][2][0]
-            assert "✅ Done." in msg
+            assert msg == "✅ Done."
 
     async def test_failure_message(self, delivery):
         snap = BrowserResultSnapshot(status="failed", success=False, summary="Failed", steps=2)
@@ -368,7 +422,7 @@ class TestBotProgressDeliveryResult:
         ) as mp:
             await delivery.result(snap)
             msg = mp.call_args[0][2][0]
-            assert "didn't fully complete" in msg
+            assert msg == "⚠️ The browser task didn't fully complete."
 
     async def test_with_replay_url_appended(self, delivery):
         snap = BrowserResultSnapshot(
@@ -383,8 +437,9 @@ class TestBotProgressDeliveryResult:
         ) as mp:
             await delivery.result(snap)
             msg = mp.call_args[0][2][0]
-            assert "https://cdn.example.com/replay" in msg
-            assert "recap" in msg.lower()
+            assert msg == (
+                "✅ Done.\n\n📽 Here's a recap you can watch: https://cdn.example.com/replay"
+            )
 
     async def test_without_replay_url_no_extra(self, delivery):
         snap = BrowserResultSnapshot(status="completed", success=True, summary="Done", steps=1)
@@ -393,7 +448,7 @@ class TestBotProgressDeliveryResult:
         ) as mp:
             await delivery.result(snap)
             msg = mp.call_args[0][2][0]
-            assert "recap" not in msg.lower()
+            assert msg == "✅ Done."
 
     async def test_failed_with_replay_url(self, delivery):
         snap = BrowserResultSnapshot(
@@ -408,5 +463,7 @@ class TestBotProgressDeliveryResult:
         ) as mp:
             await delivery.result(snap)
             msg = mp.call_args[0][2][0]
-            assert "didn't fully complete" in msg
-            assert "https://cdn/replay" in msg
+            assert msg == (
+                "⚠️ The browser task didn't fully complete."
+                "\n\n📽 Here's a recap you can watch: https://cdn/replay"
+            )

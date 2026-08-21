@@ -80,6 +80,10 @@ class TestDescribeAction:
     def test_search_whitespace_only(self, name):
         assert describe_action(name, {"query": "   "}) == "Searching"
 
+    @pytest.mark.parametrize("name", ["search", "search_page"])
+    def test_search_trims_whitespace(self, name):
+        assert describe_action(name, {"query": "  hello world  "}) == 'Searching "hello world"'
+
     def test_search_query_none_falls_back_to_text(self):
         assert describe_action("search", {"query": None, "text": "t"}) == 'Searching "t"'
 
@@ -112,6 +116,9 @@ class TestDescribeAction:
 
     def test_select_dropdown_with_text(self):
         assert describe_action("select_dropdown", {"text": "Option A"}) == 'Choosing "Option A"'
+
+    def test_select_dropdown_trims_whitespace(self):
+        assert describe_action("select_dropdown", {"text": "  Option A  "}) == 'Choosing "Option A"'
 
     def test_select_dropdown_empty(self):
         assert describe_action("select_dropdown", {"text": ""}) == "Choosing an option"
@@ -296,6 +303,14 @@ class TestCaptionFromActionSummary:
 
     def test_parentheses_in_params_do_not_break_name(self):
         assert caption_from_action_summary("click((nested))") == "Clicking"
+
+    def test_space_before_parenthesis_is_trimmed_from_name(self):
+        # The name is re-stripped after splitting on "(" so a space before the
+        # parenthesis doesn't leak into the action name lookup.
+        assert caption_from_action_summary("click (x)") == "Clicking"
+
+    def test_tab_before_parenthesis_is_trimmed_from_name(self):
+        assert caption_from_action_summary("navigate\t(https://example.com)") == "Opening the page"
 
     def test_read_variants(self):
         for name in ("extract", "read_file", "read_long_content", "find_text", "find_elements"):

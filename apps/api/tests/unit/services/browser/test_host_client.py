@@ -256,6 +256,32 @@ class TestCreateSession:
             with pytest.raises(BrowserUnavailableError):
                 await host_client.create_session(storage_state=None)
 
+    async def test_at_capacity_message_is_exact(self, monkeypatch):
+        monkeypatch.setattr(host_client.settings, "BROWSER_HOST_URL", "http://browser-host:8930")
+        monkeypatch.setattr(host_client.settings, "BROWSER_HOST_KEY", None)
+        resp = _mock_response(status_code=429)
+        inner, cm, cls_mock = _patch_async_client(None, resp, verb="post")
+        with patch.object(host_client.httpx, "AsyncClient", cls_mock):
+            with pytest.raises(BrowserConcurrencyLimit) as exc_info:
+                await host_client.create_session(storage_state=None)
+        assert str(exc_info.value) == "The browser host is at capacity; try again shortly."
+
+    async def test_http_error_message_includes_exception_text(self, monkeypatch):
+        monkeypatch.setattr(host_client.settings, "BROWSER_HOST_URL", "http://my-host:9999")
+        monkeypatch.setattr(host_client.settings, "BROWSER_HOST_KEY", None)
+        inner = AsyncMock()
+        inner.post = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=inner)
+        cm.__aexit__ = AsyncMock(return_value=False)
+        cls_mock = MagicMock(return_value=cm)
+        with patch.object(host_client.httpx, "AsyncClient", cls_mock):
+            with pytest.raises(BrowserUnavailableError) as exc_info:
+                await host_client.create_session(storage_state=None)
+        assert str(exc_info.value) == (
+            "Could not reach the browser host at http://my-host:9999: connection refused"
+        )
+
 
 # ---------------------------------------------------------------------------
 # delete_session
@@ -313,6 +339,31 @@ class TestDeleteSession:
         with patch.object(host_client.httpx, "AsyncClient", cls_mock):
             with pytest.raises(BrowserUnavailableError):
                 await host_client.delete_session("missing")
+
+    async def test_success_client_constructed_with_base_url(self, monkeypatch):
+        monkeypatch.setattr(host_client.settings, "BROWSER_HOST_URL", "http://browser-host:8930")
+        monkeypatch.setattr(host_client.settings, "BROWSER_HOST_KEY", None)
+        resp = _mock_response(status_code=200, json_data={"storage_state": {}})
+        inner, cm, cls_mock = _patch_async_client(None, resp, verb="delete")
+        with patch.object(host_client.httpx, "AsyncClient", cls_mock):
+            await host_client.delete_session("sess-1")
+        assert cls_mock.call_args[1]["base_url"] == "http://browser-host:8930"
+
+    async def test_http_error_message_is_exact(self, monkeypatch):
+        monkeypatch.setattr(host_client.settings, "BROWSER_HOST_URL", "http://my-host:9999")
+        monkeypatch.setattr(host_client.settings, "BROWSER_HOST_KEY", None)
+        inner = AsyncMock()
+        inner.delete = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=inner)
+        cm.__aexit__ = AsyncMock(return_value=False)
+        cls_mock = MagicMock(return_value=cm)
+        with patch.object(host_client.httpx, "AsyncClient", cls_mock):
+            with pytest.raises(BrowserUnavailableError) as exc_info:
+                await host_client.delete_session("s1")
+        assert str(exc_info.value) == (
+            "Could not reach the browser host at http://my-host:9999: connection refused"
+        )
 
 
 # ---------------------------------------------------------------------------

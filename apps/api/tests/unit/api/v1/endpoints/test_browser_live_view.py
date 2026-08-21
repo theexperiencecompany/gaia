@@ -612,3 +612,319 @@ class TestRouter:
 
     def test_ws_route_exists(self) -> None:
         assert any(getattr(r, "path", None) == "/live/{code}" for r in blv.router.routes)
+
+
+# ---------------------------------------------------------------------------
+# Exact log calls, exception details, and seam call arguments — closes the
+# remaining surviving mutants (string literals, dict keys, argument order).
+# ---------------------------------------------------------------------------
+
+
+class TestReplayPageDetails:
+    async def test_not_found_detail_message(self) -> None:
+        with patch.object(blv, "resolve_replay_code", new=AsyncMock(return_value=None)):
+            with pytest.raises(HTTPException) as exc:
+                await blv.replay_page("badcode")
+            assert exc.value.detail == "Recap not found or expired"
+
+    async def test_logs_operation_and_session_id_and_calls_resolve_with_code(self) -> None:
+        record = ReplayRecord(session_id="s1", steps=1, shots=["https://cdn/1.png"])
+        with (
+            patch.object(
+                blv, "resolve_replay_code", new=AsyncMock(return_value=record)
+            ) as mock_resolve,
+            patch.object(blv, "render_replay_page", return_value="<html>"),
+            patch.object(blv, "log") as mock_log,
+        ):
+            await blv.replay_page("code123")
+            mock_resolve.assert_called_once_with("code123")
+            mock_log.set.assert_any_call(browser={"operation": "replay_page"})
+            mock_log.set.assert_any_call(browser={"session_id": "s1"})
+            mock_log.info.assert_called_once_with(
+                f"{blv.LogTag.BROWSER} browser replay page served"
+            )
+
+
+class TestLiveViewPageDetails:
+    async def test_forbidden_detail_message(self) -> None:
+        with (
+            patch.object(blv, "_resolve_target_page", new=AsyncMock(return_value=("sess1", "u1"))),
+            patch.object(blv.registry, "session_owner", new=AsyncMock(return_value="other")),
+        ):
+            req = _make_request()
+            with pytest.raises(HTTPException) as exc:
+                await blv.live_view_page("code123", req, t=None)
+            assert exc.value.detail == "Not authorized for this session"
+
+    async def test_logs_operation_before_resolution(self) -> None:
+        with (
+            patch.object(blv, "_resolve_target_page", new=AsyncMock(return_value=("sess1", "u1"))),
+            patch.object(blv.registry, "session_owner", new=AsyncMock(return_value=None)),
+            patch.object(blv, "log") as mock_log,
+        ):
+            req = _make_request()
+            with pytest.raises(HTTPException):
+                await blv.live_view_page("code123", req, t=None)
+            mock_log.set.assert_called_once_with(browser={"operation": "live_view_page"})
+
+    async def test_success_renders_with_session_id_and_logs(self) -> None:
+        with (
+            patch.object(blv, "_resolve_target_page", new=AsyncMock(return_value=("sess1", "u1"))),
+            patch.object(blv.registry, "session_owner", new=AsyncMock(return_value="u1")),
+            patch.object(
+                blv, "render_live_view_page", return_value="<html>live</html>"
+            ) as mock_render,
+            patch.object(blv, "log") as mock_log,
+        ):
+            req = _make_request()
+            resp = await blv.live_view_page("code123", req, t=None)
+            mock_render.assert_called_once_with("sess1")
+            assert resp.body.decode() == "<html>live</html>"
+            mock_log.set.assert_any_call(browser={"session_id": "sess1"})
+            mock_log.info.assert_called_once_with(
+                f"{blv.LogTag.BROWSER} browser live view page served"
+            )
+
+
+class TestResolveTargetPageArgs:
+    async def test_authorize_page_called_with_exact_args(self) -> None:
+        with (
+            patch.object(blv, "resolve_live_code", new=AsyncMock(return_value=None)),
+            patch.object(blv, "_authorize_page", new=AsyncMock(return_value="u2")) as mock_auth,
+        ):
+            req = _make_request()
+            sid, uid = await blv._resolve_target_page("sess-raw", req, "tok")
+            mock_auth.assert_called_once_with(req, "sess-raw", "tok")
+            assert sid == "sess-raw"
+            assert uid == "u2"
+
+
+class TestAuthorizePageDetails:
+    async def test_verify_scoped_token_called_with_exact_args(self) -> None:
+        claims: dict[str, object] = {"session_id": "sess1", "user_id": "u1", "exp": 9999999999.0}
+        with patch.object(blv, "_verify_scoped_token", return_value=claims) as mock_verify:
+            await blv._authorize_page(_make_request(), "sess1", token="tok123")
+            mock_verify.assert_called_once_with("tok123", "sess1")
+
+    async def test_missing_user_id_detail_message(self) -> None:
+        req = _make_request()
+        with patch.object(blv, "get_current_user", new=AsyncMock(return_value={"user_id": None})):
+            with pytest.raises(HTTPException) as exc:
+                await blv._authorize_page(req, "sess1", token=None)
+            assert exc.value.detail == "User id required"
+
+    async def test_empty_string_user_id_raises_400(self) -> None:
+        req = _make_request()
+        with patch.object(blv, "get_current_user", new=AsyncMock(return_value={"user_id": ""})):
+            with pytest.raises(HTTPException) as exc:
+                await blv._authorize_page(req, "sess1", token=None)
+            assert exc.value.status_code == status.HTTP_400_BAD_REQUEST
+
+    async def test_non_string_user_id_converted_to_str(self) -> None:
+        req = _make_request()
+        with patch.object(blv, "get_current_user", new=AsyncMock(return_value={"user_id": 42})):
+            uid = await blv._authorize_page(req, "sess1", token=None)
+            assert uid == "42"
+            assert isinstance(uid, str)
+
+
+class TestVerifyScopedTokenDetails:
+    async def test_invalid_token_detail_message(self) -> None:
+        with patch.object(blv, "verify_takeover_token", side_effect=JWTError("bad")):
+            with pytest.raises(HTTPException) as exc:
+                blv._verify_scoped_token("bad", "sess1")
+            assert exc.value.detail == "Invalid or expired link"
+
+    async def test_mismatch_detail_message(self) -> None:
+        claims: dict[str, object] = {"session_id": "other", "user_id": "u1", "exp": 9999999999.0}
+        with patch.object(blv, "verify_takeover_token", return_value=claims):
+            with pytest.raises(HTTPException) as exc:
+                blv._verify_scoped_token("tok", "sess1")
+            assert exc.value.detail == "Link does not match this session"
+
+    def test_matching_session_returns_claims_unmodified(self) -> None:
+        claims: dict[str, object] = {"session_id": "sess1", "user_id": "u1", "exp": 123.0}
+        with patch.object(blv, "verify_takeover_token", return_value=claims):
+            out = blv._verify_scoped_token("tok", "sess1")
+            assert out == claims
+
+
+class TestResolveTargetWsArgs:
+    async def test_authorize_ws_called_with_exact_args(self) -> None:
+        ws = _make_ws()
+        with (
+            patch.object(blv, "resolve_live_code", new=AsyncMock(return_value=None)),
+            patch.object(
+                blv, "_authorize_ws", new=AsyncMock(return_value=("u1", 100.0))
+            ) as mock_auth,
+        ):
+            result = await blv._resolve_target_ws(ws, "sess-raw", "tok")
+            mock_auth.assert_called_once_with(ws, "sess-raw", "tok")
+            assert result == ("sess-raw", "u1", 100.0)
+
+
+class TestAuthorizeWsDetails:
+    async def test_invalid_token_warns_with_message(self) -> None:
+        with patch.object(blv, "verify_takeover_token", side_effect=JWTError("bad")):
+            ws = _make_ws()
+            with patch.object(blv, "log") as mock_log:
+                await blv._authorize_ws(ws, "sess1", token="bad")
+                mock_log.warning.assert_called_once_with(
+                    f"{blv.LogTag.BROWSER} browser live view rejected invalid takeover token"
+                )
+
+    async def test_session_mismatch_warns_with_message(self) -> None:
+        claims: dict[str, object] = {"session_id": "other", "user_id": "u1", "exp": 9999999999.0}
+        with patch.object(blv, "verify_takeover_token", return_value=claims):
+            ws = _make_ws()
+            with patch.object(blv, "log") as mock_log:
+                await blv._authorize_ws(ws, "sess1", token="tok")
+                mock_log.warning.assert_called_once_with(
+                    f"{blv.LogTag.BROWSER} browser live view token session mismatch"
+                )
+
+    async def test_cookie_non_string_user_id_converted_to_str(self) -> None:
+        ws = _make_ws()
+        with patch.object(blv, "get_current_user_ws", new=AsyncMock(return_value={"user_id": 7})):
+            result = await blv._authorize_ws(ws, "sess1", token=None)
+            assert result == ("7", None)
+
+
+class TestLiveViewWsDetails:
+    async def test_logs_operation_before_resolution(self) -> None:
+        ws = _make_ws()
+        with (
+            patch.object(blv, "_resolve_target_ws", new=AsyncMock(return_value=None)),
+            patch.object(blv, "log") as mock_log,
+        ):
+            await blv.live_view_ws(ws, "sess1", t="bad")
+            mock_log.set.assert_called_once_with(browser={"operation": "live_view_ws"})
+
+    async def test_ownership_denied_warns_with_exact_session_id(self) -> None:
+        ws = _make_ws()
+        with (
+            patch.object(
+                blv, "_resolve_target_ws", new=AsyncMock(return_value=("sess1", "u1", None))
+            ),
+            patch.object(blv.registry, "get_session_entry", new=AsyncMock(return_value=None)),
+            patch.object(blv, "log") as mock_log,
+        ):
+            await blv.live_view_ws(ws, "sess1", t=None)
+            mock_log.set.assert_any_call(browser={"session_id": "sess1"})
+            mock_log.warning.assert_called_once_with(
+                f"{blv.LogTag.BROWSER} browser live view ownership denied", session_id="sess1"
+            )
+
+    async def test_no_host_stream_warns_with_exact_session_id(self) -> None:
+        ws = _make_ws()
+        entry = SessionRegistryEntry(owner="u1", live_ws=None)
+        with (
+            patch.object(
+                blv, "_resolve_target_ws", new=AsyncMock(return_value=("sess1", "u1", None))
+            ),
+            patch.object(blv.registry, "get_session_entry", new=AsyncMock(return_value=entry)),
+            patch.object(blv, "log") as mock_log,
+        ):
+            await blv.live_view_ws(ws, "sess1", t=None)
+            mock_log.warning.assert_called_once_with(
+                f"{blv.LogTag.BROWSER} browser live view has no host stream", session_id="sess1"
+            )
+
+    async def test_success_logs_proxy_opened(self) -> None:
+        ws = _make_ws()
+        entry = SessionRegistryEntry(owner="u1", live_ws="ws://host/live/1")
+        with (
+            patch.object(
+                blv, "_resolve_target_ws", new=AsyncMock(return_value=("sess1", "u1", None))
+            ),
+            patch.object(blv.registry, "get_session_entry", new=AsyncMock(return_value=entry)),
+            patch.object(blv, "_proxy_live_view", new=AsyncMock()),
+            patch.object(blv, "log") as mock_log,
+        ):
+            await blv.live_view_ws(ws, "sess1", t=None)
+            mock_log.info.assert_called_once_with(
+                f"{blv.LogTag.BROWSER} browser live view proxy opened"
+            )
+
+
+class TestProxyLiveViewDetails:
+    async def test_pumps_called_with_correct_argument_order(self) -> None:
+        client_ws = _make_ws()
+        client_ws.close = AsyncMock()
+        mock_host_ws = AsyncMock()
+        mock_host_ws.__aenter__ = AsyncMock(return_value=mock_host_ws)
+        mock_host_ws.__aexit__ = AsyncMock(return_value=False)
+        with (
+            patch.object(blv.websockets, "connect", return_value=mock_host_ws),
+            patch.object(blv, "_pump_host_to_client", new=MagicMock()) as mock_h2c,
+            patch.object(blv, "_pump_client_to_host", new=MagicMock()) as mock_c2h,
+            patch.object(blv, "pump_until_first_close", new=AsyncMock()) as mock_pump,
+        ):
+            await blv._proxy_live_view(client_ws, "ws://host/live/1", None)
+            mock_h2c.assert_called_once_with(mock_host_ws, client_ws)
+            mock_c2h.assert_called_once_with(client_ws, mock_host_ws)
+            assert mock_pump.call_args[0] == (
+                mock_h2c.return_value,
+                mock_c2h.return_value,
+            )
+
+    async def test_ttl_direction_appended_last(self) -> None:
+        client_ws = _make_ws()
+        client_ws.close = AsyncMock()
+        mock_host_ws = AsyncMock()
+        mock_host_ws.__aenter__ = AsyncMock(return_value=mock_host_ws)
+        mock_host_ws.__aexit__ = AsyncMock(return_value=False)
+        with (
+            patch.object(blv.websockets, "connect", return_value=mock_host_ws),
+            patch.object(blv, "_expire_after", new=MagicMock()) as mock_expire,
+            patch.object(blv, "pump_until_first_close", new=AsyncMock()) as mock_pump,
+        ):
+            await blv._proxy_live_view(client_ws, "ws://host/live/1", 60.0)
+            mock_expire.assert_called_once_with(60.0)
+            assert len(mock_pump.call_args[0]) == 3
+            assert mock_pump.call_args[0][2] is mock_expire.return_value
+
+    async def test_host_unreachable_logs_exact_error_type(self) -> None:
+        client_ws = _make_ws()
+        client_ws.close = AsyncMock()
+        with (
+            patch.object(blv.websockets, "connect", side_effect=OSError("refused")),
+            patch.object(blv, "log") as mock_log,
+        ):
+            await blv._proxy_live_view(client_ws, "ws://host/live/1", None)
+            mock_log.warning.assert_called_once_with(
+                f"{blv.LogTag.BROWSER} browser live view host unreachable", error_type="OSError"
+            )
+
+    async def test_host_unreachable_websocket_exception_logs_exact_error_type(self) -> None:
+        client_ws = _make_ws()
+        client_ws.close = AsyncMock()
+        with (
+            patch.object(
+                blv.websockets,
+                "connect",
+                side_effect=websockets.exceptions.WebSocketException("boom"),
+            ),
+            patch.object(blv, "log") as mock_log,
+        ):
+            await blv._proxy_live_view(client_ws, "ws://host/live/1", None)
+            mock_log.warning.assert_called_once_with(
+                f"{blv.LogTag.BROWSER} browser live view host unreachable",
+                error_type="WebSocketException",
+            )
+
+    async def test_logs_proxy_closed_on_success(self) -> None:
+        client_ws = _make_ws()
+        client_ws.close = AsyncMock()
+        mock_host_ws = AsyncMock()
+        mock_host_ws.__aenter__ = AsyncMock(return_value=mock_host_ws)
+        mock_host_ws.__aexit__ = AsyncMock(return_value=False)
+        with (
+            patch.object(blv.websockets, "connect", return_value=mock_host_ws),
+            patch.object(blv, "pump_until_first_close", new=AsyncMock()),
+            patch.object(blv, "log") as mock_log,
+        ):
+            await blv._proxy_live_view(client_ws, "ws://host/live/1", None)
+            mock_log.info.assert_called_once_with(
+                f"{blv.LogTag.BROWSER} browser live view proxy closed"
+            )

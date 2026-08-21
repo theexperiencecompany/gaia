@@ -298,6 +298,174 @@ class TestToolWrapper:
 
 
 # ---------------------------------------------------------------------------
+# _initialize_categories() — exercised for real (no stub)
+#
+# Every other test in this module patches _initialize_categories out (see
+# _patch_initialize_categories below) so the production wiring inside it is
+# never actually run. These tests call the real method so its category
+# metadata, integration flags, and HIL destructive-tool classification are
+# genuinely asserted.
+# ---------------------------------------------------------------------------
+
+# name -> (space, require_integration, integration_name, is_delegated, internal)
+_EXPECTED_CATEGORY_METADATA: dict[str, tuple[str, bool, str | None, bool, bool]] = {
+    "search": ("general", False, None, False, False),
+    "documents": ("general", False, None, False, False),
+    "notifications": ("general", False, None, False, False),
+    "tracked_todos": ("tasks", False, None, False, False),
+    "todos": ("todos", False, "todos", True, False),
+    "reminders": ("reminders", False, "reminders", True, False),
+    "skills": ("skills", False, "skills", True, False),
+    "workflows": ("general", False, None, False, False),
+    "control": ("general", False, None, False, True),
+    "support": ("general", False, None, False, False),
+    "manual": ("general", False, None, False, False),
+    "memory": ("general", False, None, False, False),
+    "integrations": ("general", False, None, False, False),
+    "integration_instructions": ("general", False, None, False, True),
+    "development": ("general", False, None, False, True),
+    "creative": ("general", False, None, False, False),
+    "weather": ("general", False, None, False, False),
+    "browser": ("general", False, None, False, False),
+    "context": ("general", False, None, False, False),
+    "desktop": ("desktop", False, None, False, False),
+}
+
+# The three HIL-reviewed built-ins that must come out marked destructive,
+# per the docstring on _initialize_categories.
+_EXPECTED_DESTRUCTIVE_TOOL_NAMES = {
+    "send_notification",
+    "execute_workflow",
+    "connect_integration",
+    "browser_task",
+}
+
+
+@pytest.fixture(scope="module")
+def initialized_registry() -> ToolRegistry:
+    """A registry built by the real _initialize_categories() body, not the stub."""
+    registry = ToolRegistry()
+    registry._initialize_categories()
+    return registry
+
+
+@pytest.fixture(scope="module")
+def expected_category_tool_names() -> dict[str, set[str]]:
+    """Expected tool-name membership per category, read from the same tool
+    modules _initialize_categories() itself imports."""
+    from app.agents.tools import (
+        browser_tool,
+        coding,
+        context_tool,
+        desktop_tools,
+        download_tool,
+        file_tools,
+        finish_task_tool,
+        flowchart_tool,
+        image_tool,
+        integration_instructions_tools,
+        integration_tool,
+        manual_tool,
+        memory_tools,
+        notification_tool,
+        reminder_tool,
+        research_tool,
+        skill_tools,
+        support_tool,
+        todo_tool,
+        tracked_todo_tools,
+        weather_tool,
+        webpage_tool,
+        workflow_tool,
+    )
+
+    return {
+        "search": {
+            webpage_tool.web_search_tool.name,
+            webpage_tool.fetch_webpages.name,
+            research_tool.deep_research.name,
+            *(t.name for t in download_tool.tools),
+        },
+        "documents": {file_tools.search_uploaded_files.name},
+        "notifications": {t.name for t in notification_tool.tools},
+        "tracked_todos": {t.name for t in tracked_todo_tools.tools},
+        "todos": {t.name for t in todo_tool.tools},
+        "reminders": {t.name for t in reminder_tool.tools},
+        "skills": {t.name for t in skill_tools.tools},
+        "workflows": {t.name for t in workflow_tool.tools},
+        "control": {finish_task_tool.finish_task.name},
+        "support": {support_tool.create_support_ticket.name},
+        "manual": {t.name for t in manual_tool.tools},
+        "memory": {t.name for t in memory_tools.tools},
+        "integrations": {t.name for t in integration_tool.tools},
+        "integration_instructions": {t.name for t in integration_instructions_tools.tools},
+        "development": {t.name for t in coding.tools},
+        "creative": {image_tool.generate_image.name, flowchart_tool.create_flowchart.name},
+        "weather": {weather_tool.get_weather.name},
+        "browser": {browser_tool.browser_task.name},
+        "context": {context_tool.gather_context.name},
+        "desktop": {t.name for t in desktop_tools.tools},
+    }
+
+
+class TestInitializeCategoriesReal:
+    def test_category_names_match_expected_set(self, initialized_registry: ToolRegistry):
+        assert set(initialized_registry._categories.keys()) == set(
+            _EXPECTED_CATEGORY_METADATA.keys()
+        )
+
+    @pytest.mark.parametrize("name", list(_EXPECTED_CATEGORY_METADATA.keys()))
+    def test_category_metadata_matches_expected(
+        self, initialized_registry: ToolRegistry, name: str
+    ):
+        space, require_integration, integration_name, is_delegated, internal = (
+            _EXPECTED_CATEGORY_METADATA[name]
+        )
+        category = initialized_registry.get_category(name)
+
+        assert category is not None
+        assert category.space == space
+        assert category.require_integration is require_integration
+        assert category.integration_name == integration_name
+        assert category.is_delegated is is_delegated
+        assert category.internal is internal
+
+    def test_no_tool_is_left_unclassified(self, initialized_registry: ToolRegistry):
+        """HIL invariant from the docstring: every internal category passes an
+        explicit destructive_tools set, so no tool from _initialize_categories
+        should ever be left with destructive=None (unreviewed)."""
+        all_tools = [
+            tool
+            for category in initialized_registry._categories.values()
+            for tool in category.tools
+        ]
+        assert all_tools, "expected _initialize_categories to register tools"
+        assert all(tool.destructive is not None for tool in all_tools)
+
+    def test_destructive_tools_are_exactly_the_reviewed_set(
+        self, initialized_registry: ToolRegistry
+    ):
+        destructive_names = {
+            tool.name
+            for category in initialized_registry._categories.values()
+            for tool in category.tools
+            if tool.destructive
+        }
+        assert destructive_names == _EXPECTED_DESTRUCTIVE_TOOL_NAMES
+
+    @pytest.mark.parametrize("name", list(_EXPECTED_CATEGORY_METADATA.keys()))
+    def test_category_tool_membership_matches_source_modules(
+        self,
+        initialized_registry: ToolRegistry,
+        expected_category_tool_names: dict[str, set[str]],
+        name: str,
+    ):
+        category = initialized_registry.get_category(name)
+        assert category is not None
+        assert {tool.name for tool in category.tools} == expected_category_tool_names[name]
+
+
+# ---------------------------------------------------------------------------
 # Helpers shared by async tests
 # ---------------------------------------------------------------------------
 

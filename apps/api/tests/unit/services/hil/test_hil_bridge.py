@@ -32,12 +32,15 @@ from app.services.hil.bridge import (
     remember_declined_call,
 )
 from app.services.hil.utils import GatedCall
+from app.utils.general_utils import ELLIPSIS
 
 from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID, make_record
 
 MODULE = "app.services.hil.bridge"
 
 TOOL_CALL = GatedCall(id="call-1", name="send_email", args={"to": "bob@example.com"})
+
+EM_DASH = "— "  # the em dash + space between a summary's label/lead-in and its content
 
 
 @pytest.fixture
@@ -377,3 +380,100 @@ class TestSummary:
 
     def test_a_call_with_no_arguments_still_reads_as_a_sentence(self) -> None:
         assert build_summary("delete_everything", {}, None) == "Delete everything"
+
+    def test_multi_word_tool_names_get_every_underscore_swapped(self) -> None:
+        assert build_summary("list_all_todos", {}, None) == "List all todos"
+
+    def test_the_integration_name_is_parenthesized_after_the_label(self) -> None:
+        assert build_summary("send_email", {}, "Gmail") == "Send email (Gmail)"
+
+    def test_with_no_integration_the_label_carries_no_parentheses(self) -> None:
+        assert build_summary("send_email", {}, None) == "Send email"
+
+    def test_the_label_and_arguments_are_joined_by_an_em_dash(self) -> None:
+        assert build_summary("send_email", {"to": "bob"}, None) == f"Send email {EM_DASH}to: bob"
+
+    def test_multiple_arguments_are_comma_separated_in_order(self) -> None:
+        summary = build_summary("send_email", {"to": "bob", "cc": "al"}, None)
+
+        assert summary == f"Send email {EM_DASH}to: bob, cc: al"
+
+    def test_an_argument_value_at_the_clip_boundary_is_shown_in_full(self) -> None:
+        value = "a" * HIL_SUMMARY_MAX_ARG_CHARS
+
+        summary = build_summary("send_email", {"note": value}, None)
+
+        assert summary == f"Send email {EM_DASH}note: {value}"
+        assert ELLIPSIS not in summary
+
+    def test_an_argument_value_one_over_the_boundary_is_clipped_with_an_ellipsis(self) -> None:
+        value = "a" * (HIL_SUMMARY_MAX_ARG_CHARS + 1)
+
+        summary = build_summary("send_email", {"note": value}, None)
+
+        assert summary == f"Send email {EM_DASH}note: {'a' * HIL_SUMMARY_MAX_ARG_CHARS}{ELLIPSIS}"
+
+    def test_boolean_and_numeric_arguments_are_shown_as_scalars(self) -> None:
+        summary = build_summary("set_reminder", {"urgent": True, "count": 3}, None)
+
+        assert summary == f"Set reminder {EM_DASH}urgent: True, count: 3"
+
+
+class TestBrowserTaskSummary:
+    """``browser_task`` gets a bespoke summary: the LLM's ``task`` argument, not the
+    tool name — so the card reads as what will happen, not the internal tool it calls."""
+
+    def test_a_missing_task_argument_falls_back_to_a_generic_line(self) -> None:
+        assert build_summary("browser_task", {}, None) == "Start a browser task"
+
+    def test_a_whitespace_only_task_falls_back_to_a_generic_line(self) -> None:
+        assert build_summary("browser_task", {"task": "   "}, None) == "Start a browser task"
+
+    def test_the_task_is_stripped_of_surrounding_whitespace(self) -> None:
+        summary = build_summary("browser_task", {"task": "  Book a flight  "}, None)
+
+        assert summary == f"Start a browser task {EM_DASH}Book a flight"
+
+    def test_only_the_first_sentence_is_used_and_its_period_is_dropped(self) -> None:
+        summary = build_summary("browser_task", {"task": "Book a flight. Then find a hotel."}, None)
+
+        assert summary == f"Start a browser task {EM_DASH}Book a flight"
+
+    def test_a_task_with_no_sentence_break_is_used_whole_when_short(self) -> None:
+        summary = build_summary("browser_task", {"task": "Book a flight to Tokyo"}, None)
+
+        assert summary == f"Start a browser task {EM_DASH}Book a flight to Tokyo"
+
+    def test_a_lead_in_exactly_at_the_clip_boundary_is_kept_whole(self) -> None:
+        task = "y" * 140  # no ". " in it, so `first` == the whole (stripped) task
+
+        summary = build_summary("browser_task", {"task": task}, None)
+
+        assert summary == f"Start a browser task {EM_DASH}{task}"
+        assert ELLIPSIS not in summary
+
+    def test_a_lead_in_one_over_the_clip_boundary_is_clipped_with_an_ellipsis(self) -> None:
+        task = "y" * 141
+
+        summary = build_summary("browser_task", {"task": task}, None)
+
+        assert summary == f"Start a browser task {EM_DASH}{'y' * 140}{ELLIPSIS}"
+
+    def test_a_long_task_with_no_sentence_break_is_clipped_from_the_full_task(self) -> None:
+        task = "x" * 200
+
+        summary = build_summary("browser_task", {"task": task}, None)
+
+        assert summary == f"Start a browser task {EM_DASH}{'x' * 140}{ELLIPSIS}"
+
+    def test_an_empty_lead_in_before_the_first_period_falls_back_to_the_full_task(self) -> None:
+        # task.split(". ", 1)[0] is "" here, so the "0 < len(first)" guard must reject
+        # it and fall through to clipping the whole task, not render an empty lead-in.
+        summary = build_summary("browser_task", {"task": ". rest of the task"}, None)
+
+        assert summary == f"Start a browser task {EM_DASH}. rest of the task"
+
+    def test_only_the_first_period_space_is_treated_as_a_sentence_break(self) -> None:
+        summary = build_summary("browser_task", {"task": "First. Second. Third."}, None)
+
+        assert summary == f"Start a browser task {EM_DASH}First"

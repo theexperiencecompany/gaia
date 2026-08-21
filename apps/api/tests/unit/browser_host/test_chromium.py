@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import time
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -242,3 +243,83 @@ async def test_healthz_reports_responsive_when_cdp_probe_succeeds() -> None:
         "chromium_up": True,
         "cdp_responsive": True,
     }
+
+
+# --- BUG 5: an idle sweep must not reap a session that is still inside its TTL ---
+
+
+@pytest.mark.unit
+async def test_reap_idle_keeps_a_session_sitting_exactly_on_the_ttl_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The TTL is the point at which a session becomes reapable, not before it."""
+    monkeypatch.setattr(settings, "BROWSER_HOST_IDLE_TTL_SECONDS", 60)
+    monkeypatch.setattr(chromium, "time", SimpleNamespace(monotonic=lambda: 1000.0))
+    host = _make_host(_FakeCDP())
+    on_the_line = HostSession(
+        session_id="edge",
+        context_id="ctx-edge",
+        target_id="t1",
+        created_at=0.0,
+        last_activity_at=940.0,  # idle for exactly the TTL
+    )
+    just_over = HostSession(
+        session_id="over",
+        context_id="ctx-over",
+        target_id="t2",
+        created_at=0.0,
+        last_activity_at=939.0,
+    )
+    host._sessions = {"edge": on_the_line, "over": just_over}
+
+    await host._reap_idle()
+
+    assert set(host._sessions) == {"edge"}
+
+
+@pytest.mark.unit
+async def test_reap_idle_spares_a_session_someone_is_watching(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A live viewer holds the context open however long the tab sits idle."""
+    monkeypatch.setattr(settings, "BROWSER_HOST_IDLE_TTL_SECONDS", 60)
+    monkeypatch.setattr(chromium, "time", SimpleNamespace(monotonic=lambda: 1000.0))
+    host = _make_host(_FakeCDP())
+    watched = HostSession(
+        session_id="watched",
+        context_id="ctx-watched",
+        target_id="t1",
+        created_at=0.0,
+        last_activity_at=0.0,
+        viewer_count=1,
+    )
+    host._sessions = {"watched": watched}
+
+    await host._reap_idle()
+
+    assert set(host._sessions) == {"watched"}
+
+
+# --- BUG 6: a crash-recovered session must be marked dead, not silently forgotten ---
+
+
+@pytest.mark.unit
+async def test_recover_crash_marks_every_session_dead_before_dropping_it() -> None:
+    """A caller still holding a session must be able to tell it did not survive."""
+    host = _make_host(_FakeCDP())
+    session = HostSession(
+        session_id="s1",
+        context_id="ctx1",
+        target_id="t1",
+        created_at=0.0,
+        last_activity_at=0.0,
+    )
+    host._sessions = {"s1": session}
+    host._shutdown_chromium = AsyncMock()
+    host._launch = AsyncMock()
+
+    await host._recover_crash()
+
+    assert session.dead is True
+    assert host._sessions == {}
+    assert host.get("s1") is None

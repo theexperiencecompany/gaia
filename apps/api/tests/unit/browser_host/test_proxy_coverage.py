@@ -783,6 +783,362 @@ async def test_run_cdp_proxy_rewrites_create_target_and_filters_gettargets() -> 
 
 
 @pytest.mark.unit
+async def test_run_cdp_proxy_connects_with_root_url_and_unbounded_kwargs() -> None:
+    """The proxy must dial Chromium's own root socket with no size/ping limits.
+
+    ``max_size=None`` and ``ping_interval=None`` are load-bearing: a CDP frame
+    (e.g. a full-page screenshot) can exceed websockets' 1MB default, and a
+    ping interval would race the browser-use client's own idle handling.
+    """
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.browser_host import proxy as proxy_mod
+    from app.browser_host.chromium import HostSession
+
+    host = MagicMock()
+    host.root_ws_url = "ws://chromium-root/devtools/browser/abc-123"
+    host.touch = MagicMock()
+    session = HostSession(
+        session_id="s1", context_id="ctx-1", target_id="t1", created_at=0, last_activity_at=0
+    )
+    client_ws = MagicMock()
+    client_ws.receive_text = AsyncMock(side_effect=[_WSDisconnect()])
+    client_ws.send_text = AsyncMock()
+
+    class FakeWS:
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            raise StopAsyncIteration
+
+    fake = FakeWS()
+    mock_ctx = MagicMock()
+    mock_ctx.__aenter__ = AsyncMock(return_value=fake)
+    mock_ctx.__aexit__ = AsyncMock(return_value=False)
+    with patch.object(proxy_mod.websockets, "connect", return_value=mock_ctx) as mock_connect:
+        await proxy_mod.run_cdp_proxy(host, session, client_ws)
+
+    mock_connect.assert_called_once_with(
+        "ws://chromium-root/devtools/browser/abc-123", max_size=None, ping_interval=None
+    )
+
+
+@pytest.mark.unit
+async def test_run_cdp_proxy_touches_session_id_on_both_directions() -> None:
+    """``host.touch`` must key off the session id — not the context id or anything
+    else — on every frame in either direction, so the idle reaper leaves an
+    in-use session alone."""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, call, patch
+
+    from app.browser_host import proxy as proxy_mod
+    from app.browser_host.chromium import HostSession
+
+    host = MagicMock()
+    host.root_ws_url = "ws://fake"
+    host.touch = MagicMock()
+    session = HostSession(
+        session_id="sess-XYZ",
+        context_id="ctx-ABC",
+        target_id="t1",
+        created_at=0,
+        last_activity_at=0,
+    )
+    client_ws = MagicMock()
+    client_ws.receive_text = AsyncMock(
+        side_effect=[
+            json.dumps({"id": 1, "method": "Page.enable", "params": {}}),
+            _WSDisconnect(),
+        ]
+    )
+    client_ws.send_text = AsyncMock()
+
+    class FakeChromium:
+        def __init__(self) -> None:
+            self._sent = False
+
+        async def send(self, data: str) -> None:
+            pass
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self._sent:
+                self._sent = True
+                return json.dumps({"method": "Page.frameNavigated", "params": {}})
+            await asyncio.sleep(0.2)
+            raise StopAsyncIteration
+
+    fake = FakeChromium()
+    mock_ctx = MagicMock()
+    mock_ctx.__aenter__ = AsyncMock(return_value=fake)
+    mock_ctx.__aexit__ = AsyncMock(return_value=False)
+    with patch.object(proxy_mod.websockets, "connect", return_value=mock_ctx):
+        await proxy_mod.run_cdp_proxy(host, session, client_ws)
+
+    # One touch for the client->chromium frame, one for the chromium->client frame,
+    # both keyed by the session id (never the context id).
+    assert host.touch.call_args_list == [call("sess-XYZ"), call("sess-XYZ")]
+
+
+@pytest.mark.unit
+async def test_run_cdp_proxy_rewrites_upstream_using_context_id_not_session_id() -> None:
+    """``_rewrite_upstream`` must be called with ``session.context_id`` — pinning a
+    new target to the session id (or anything else) would create the tab in the
+    wrong browser context."""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.browser_host import proxy as proxy_mod
+    from app.browser_host.chromium import HostSession
+
+    host = MagicMock()
+    host.root_ws_url = "ws://fake"
+    host.touch = MagicMock()
+    session = HostSession(
+        session_id="sess-XYZ",
+        context_id="ctx-ABC",
+        target_id="t1",
+        created_at=0,
+        last_activity_at=0,
+    )
+    client_ws = MagicMock()
+    client_ws.receive_text = AsyncMock(
+        side_effect=[
+            json.dumps(
+                {"id": 1, "method": "Target.createTarget", "params": {"url": "https://x.com"}}
+            ),
+            _WSDisconnect(),
+        ]
+    )
+    client_ws.send_text = AsyncMock()
+
+    class FakeChromium:
+        def __init__(self) -> None:
+            self.sent: list[str] = []
+
+        async def send(self, data: str) -> None:
+            self.sent.append(data)
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            await asyncio.sleep(0.2)
+            raise StopAsyncIteration
+
+    fake = FakeChromium()
+    mock_ctx = MagicMock()
+    mock_ctx.__aenter__ = AsyncMock(return_value=fake)
+    mock_ctx.__aexit__ = AsyncMock(return_value=False)
+    with patch.object(proxy_mod.websockets, "connect", return_value=mock_ctx):
+        await proxy_mod.run_cdp_proxy(host, session, client_ws)
+
+    assert len(fake.sent) == 1
+    sent = json.loads(fake.sent[0])
+    assert sent["params"]["browserContextId"] == "ctx-ABC"
+
+
+@pytest.mark.unit
+async def test_run_cdp_proxy_decodes_real_bytes_frame_from_chromium() -> None:
+    """Chromium's websocket may yield ``bytes`` frames; the proxy must decode
+    them before filtering/forwarding, not pass raw bytes through."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.browser_host import proxy as proxy_mod
+    from app.browser_host.chromium import HostSession
+
+    host = MagicMock()
+    host.root_ws_url = "ws://fake"
+    host.touch = MagicMock()
+    session = HostSession(
+        session_id="s1", context_id="ctx-1", target_id="t1", created_at=0, last_activity_at=0
+    )
+    client_ws = MagicMock()
+    client_ws.receive_text = AsyncMock(side_effect=[_WSDisconnect()])
+    client_ws.send_text = AsyncMock()
+
+    payload = {"method": "Page.frameNavigated", "params": {"frameId": "abc"}}
+
+    class FakeChromiumBytes:
+        def __init__(self) -> None:
+            self._sent = False
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self._sent:
+                self._sent = True
+                return json.dumps(payload).encode()
+            raise StopAsyncIteration
+
+    fake = FakeChromiumBytes()
+    mock_ctx = MagicMock()
+    mock_ctx.__aenter__ = AsyncMock(return_value=fake)
+    mock_ctx.__aexit__ = AsyncMock(return_value=False)
+    with patch.object(proxy_mod.websockets, "connect", return_value=mock_ctx):
+        await proxy_mod.run_cdp_proxy(host, session, client_ws)
+
+    client_ws.send_text.assert_called_once()
+    forwarded = json.loads(client_ws.send_text.call_args_list[0][0][0])
+    assert forwarded == payload
+
+
+@pytest.mark.unit
+async def test_run_cdp_proxy_logs_refusal_with_reason_and_session_id() -> None:
+    """The refusal warning must carry the actual session id and the actual
+    refusal reason, not a generic message."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.browser_host import proxy as proxy_mod
+    from app.browser_host.chromium import HostSession
+
+    host = MagicMock()
+    host.root_ws_url = "ws://fake"
+    host.touch = MagicMock()
+    session = HostSession(
+        session_id="sess-warn",
+        context_id="ctx-1",
+        target_id="t1",
+        created_at=0,
+        last_activity_at=0,
+    )
+    client_ws = MagicMock()
+    client_ws.receive_text = AsyncMock(
+        side_effect=[
+            json.dumps(
+                {"id": 1, "method": "Browser.setDownloadBehavior", "params": {"behavior": "allow"}}
+            ),
+            _WSDisconnect(),
+        ]
+    )
+    client_ws.send_text = AsyncMock()
+
+    class FakeWS:
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            raise StopAsyncIteration
+
+    fake = FakeWS()
+    mock_ctx = MagicMock()
+    mock_ctx.__aenter__ = AsyncMock(return_value=fake)
+    mock_ctx.__aexit__ = AsyncMock(return_value=False)
+    with (
+        patch.object(proxy_mod.websockets, "connect", return_value=mock_ctx),
+        patch.object(proxy_mod.log, "warning") as mock_warning,
+    ):
+        await proxy_mod.run_cdp_proxy(host, session, client_ws)
+
+    mock_warning.assert_called_once()
+    _, kwargs = mock_warning.call_args
+    assert kwargs["error_type"] == "RefusedCdpCommand"
+    assert kwargs["browser"]["session_id"] == "sess-warn"
+    assert "downloads are denied" in kwargs["browser"]["reason"]
+
+
+@pytest.mark.unit
+async def test_run_cdp_proxy_logs_closure_with_session_id_and_operation() -> None:
+    """The closing log line must name this session and the ``cdp_proxy_closed``
+    operation, so a reader can tell which session's proxy exited from logs alone."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.browser_host import proxy as proxy_mod
+    from app.browser_host.chromium import HostSession
+
+    host = MagicMock()
+    host.root_ws_url = "ws://fake"
+    host.touch = MagicMock()
+    session = HostSession(
+        session_id="sess-closed",
+        context_id="ctx-1",
+        target_id="t1",
+        created_at=0,
+        last_activity_at=0,
+    )
+    client_ws = MagicMock()
+    client_ws.receive_text = AsyncMock(side_effect=[_WSDisconnect()])
+    client_ws.send_text = AsyncMock()
+
+    class FakeWS:
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            raise StopAsyncIteration
+
+    fake = FakeWS()
+    mock_ctx = MagicMock()
+    mock_ctx.__aenter__ = AsyncMock(return_value=fake)
+    mock_ctx.__aexit__ = AsyncMock(return_value=False)
+    with (
+        patch.object(proxy_mod.websockets, "connect", return_value=mock_ctx),
+        patch.object(proxy_mod.log, "set") as mock_set,
+        patch.object(proxy_mod.log, "info") as mock_info,
+    ):
+        await proxy_mod.run_cdp_proxy(host, session, client_ws)
+
+    mock_set.assert_called_once_with(
+        browser={"session_id": "sess-closed", "operation": "cdp_proxy_closed"}
+    )
+    mock_info.assert_called_once()
+    assert "cdp proxy closed" in mock_info.call_args[0][0]
+
+
+@pytest.mark.unit
+async def test_run_cdp_proxy_never_forwards_dropped_downstream_frame() -> None:
+    """When every downstream frame is filtered out (``_filter_downstream`` returns
+    ``None`` for all of them), the client socket must receive nothing at all."""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.browser_host import proxy as proxy_mod
+    from app.browser_host.chromium import HostSession
+
+    host = MagicMock()
+    host.root_ws_url = "ws://fake"
+    host.touch = MagicMock()
+    session = HostSession(
+        session_id="s1", context_id="ctx-1", target_id="t1", created_at=0, last_activity_at=0
+    )
+    client_ws = MagicMock()
+    client_ws.receive_text = AsyncMock(side_effect=[_WSDisconnect()])
+    client_ws.send_text = AsyncMock()
+
+    class FakeChromium:
+        def __init__(self) -> None:
+            self._sent = False
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self._sent:
+                self._sent = True
+                return json.dumps(
+                    {
+                        "method": "Target.attachedToTarget",
+                        "params": {"targetInfo": {"browserContextId": "other-ctx"}},
+                    }
+                )
+            await asyncio.sleep(0.2)
+            raise StopAsyncIteration
+
+    fake = FakeChromium()
+    mock_ctx = MagicMock()
+    mock_ctx.__aenter__ = AsyncMock(return_value=fake)
+    mock_ctx.__aexit__ = AsyncMock(return_value=False)
+    with patch.object(proxy_mod.websockets, "connect", return_value=mock_ctx):
+        await proxy_mod.run_cdp_proxy(host, session, client_ws)
+
+    client_ws.send_text.assert_not_called()
+
+
+@pytest.mark.unit
 async def test_run_cdp_proxy_handles_non_int_refusal_id() -> None:
     import asyncio
     from unittest.mock import AsyncMock, MagicMock, patch

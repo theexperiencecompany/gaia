@@ -1,11 +1,37 @@
 """Tests for browser_session lifecycle — including the registry-write gate."""
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from app.services.browser import session as session_mod
 from app.services.browser.exceptions import BrowserUnavailableError
+
+
+class _FakeLog:
+    """Records structured-logging calls so tests can pin exact fields."""
+
+    def __init__(self) -> None:
+        self.set_calls: list[dict[str, Any]] = []
+        self.info_calls: list[tuple[str, dict[str, Any]]] = []
+        self.warning_calls: list[tuple[str, dict[str, Any]]] = []
+
+    def set(self, **kwargs: Any) -> None:
+        self.set_calls.append(kwargs)
+
+    def info(self, message: str, /, **kwargs: Any) -> None:
+        self.info_calls.append((message, kwargs))
+
+    def warning(self, message: str, /, **kwargs: Any) -> None:
+        self.warning_calls.append((message, kwargs))
+
+
+@pytest.fixture
+def fake_log(monkeypatch: pytest.MonkeyPatch) -> _FakeLog:
+    fl = _FakeLog()
+    monkeypatch.setattr(session_mod, "log", fl)
+    return fl
 
 
 def _make_session_fakes(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
@@ -51,3 +77,213 @@ async def test_registry_write_success_yields_and_releases(
         assert s.session_id == "s1"
     session_mod.host_client.delete_session.assert_awaited_once()
     session_mod.unregister_session.assert_awaited_once()
+
+
+async def test_registration_failure_message_is_exact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _make_session_fakes(monkeypatch)
+    monkeypatch.setattr(session_mod, "register_session", AsyncMock(return_value=False))
+
+    with pytest.raises(BrowserUnavailableError) as exc_info:
+        async with session_mod.browser_session(user_id="u1", start_url="https://x"):
+            pytest.fail("browser_session yielded despite the failed registration")
+
+    assert str(exc_info.value) == "Could not register the browser session (storage unavailable)."
+
+
+async def test_domain_derived_from_start_url_feeds_storage_lookup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``domain_of(start_url)`` — not ``start_url`` itself — is what gets looked up."""
+    _make_session_fakes(monkeypatch)
+
+    async with session_mod.browser_session(user_id="u42", start_url="https://Example.com/page"):
+        pass
+
+    session_mod.load_storage_state.assert_awaited_once_with("u42", "example.com")
+
+
+async def test_none_start_url_looks_up_with_none_domain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _make_session_fakes(monkeypatch)
+
+    async with session_mod.browser_session(user_id="u1", start_url=None):
+        pass
+
+    session_mod.load_storage_state.assert_awaited_once_with("u1", None)
+
+
+async def test_create_session_receives_the_loaded_storage_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    host = _make_session_fakes(monkeypatch)
+    sentinel_state = {"cookies": ["loaded"]}
+    monkeypatch.setattr(session_mod, "load_storage_state", AsyncMock(return_value=sentinel_state))
+
+    async with session_mod.browser_session(user_id="u1", start_url="https://x"):
+        pass
+
+    session_mod.host_client.create_session.assert_awaited_once_with(sentinel_state)
+    assert host is session_mod.host_client.create_session.return_value
+
+
+async def test_session_fields_are_mapped_from_the_host_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each ``BrowserHostSession`` field must come from the matching host attribute —
+    not a swapped one — and the live-view URL is derived from the session id."""
+    _make_session_fakes(monkeypatch)
+    host = MagicMock(
+        session_id="sid-x",
+        context_id="ctx-y",
+        cdp_ws="ws://cdp-endpoint",  # NOSONAR
+        live_ws="ws://live-endpoint",  # NOSONAR
+    )
+    monkeypatch.setattr(session_mod.host_client, "create_session", AsyncMock(return_value=host))
+    live_view_calls: list[str] = []
+    monkeypatch.setattr(
+        session_mod,
+        "live_view_url",
+        lambda session_id: live_view_calls.append(session_id) or f"LV:{session_id}",
+    )
+
+    async with session_mod.browser_session(user_id="u1", start_url="https://x") as s:
+        assert s.session_id == "sid-x"
+        assert s.cdp_url == "ws://cdp-endpoint"
+        assert s.context_id == "ctx-y"
+        assert s.live_view_url == "LV:sid-x"
+    assert live_view_calls == ["sid-x"]
+
+
+async def test_register_session_called_with_session_id_user_id_and_live_ws(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    host = _make_session_fakes(monkeypatch)
+
+    async with session_mod.browser_session(user_id="user-77", start_url="https://x"):
+        pass
+
+    session_mod.register_session.assert_awaited_once_with(
+        host.session_id, "user-77", live_ws=host.live_ws
+    )
+
+
+async def test_host_create_failure_skips_all_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If the host never created a session, there is nothing to release — the
+    finally block (register/delete/save/unregister) must not run at all."""
+    _make_session_fakes(monkeypatch)
+    monkeypatch.setattr(
+        session_mod.host_client,
+        "create_session",
+        AsyncMock(side_effect=BrowserUnavailableError("host unreachable")),
+    )
+
+    with pytest.raises(BrowserUnavailableError, match="host unreachable"):
+        async with session_mod.browser_session(user_id="u1", start_url="https://x"):
+            pytest.fail("browser_session yielded despite the host create failure")
+
+    session_mod.register_session.assert_not_awaited()
+    session_mod.host_client.delete_session.assert_not_awaited()
+    session_mod.save_storage_state.assert_not_awaited()
+    session_mod.unregister_session.assert_not_awaited()
+
+
+async def test_body_exception_propagates_and_release_still_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _make_session_fakes(monkeypatch)
+
+    with pytest.raises(ValueError, match="body boom"):
+        async with session_mod.browser_session(user_id="u1", start_url="https://x"):
+            raise ValueError("body boom")
+
+    session_mod.host_client.delete_session.assert_awaited_once()
+    session_mod.unregister_session.assert_awaited_once()
+
+
+async def test_delete_session_called_with_this_sessions_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    host = _make_session_fakes(monkeypatch)
+
+    async with session_mod.browser_session(user_id="u1", start_url="https://x"):
+        pass
+
+    session_mod.host_client.delete_session.assert_awaited_once_with(host.session_id)
+
+
+async def test_save_storage_state_called_with_user_domain_and_returned_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _make_session_fakes(monkeypatch)
+    returned_state = {"cookies": ["returned"]}
+    monkeypatch.setattr(
+        session_mod.host_client, "delete_session", AsyncMock(return_value=returned_state)
+    )
+
+    async with session_mod.browser_session(user_id="u42", start_url="https://foo.example.com/x"):
+        pass
+
+    session_mod.save_storage_state.assert_awaited_once_with(
+        "u42", "foo.example.com", returned_state
+    )
+
+
+async def test_release_failure_is_caught_logged_and_unregister_still_runs(
+    monkeypatch: pytest.MonkeyPatch, fake_log: _FakeLog
+) -> None:
+    """A release-time failure must not propagate out of the context manager (the
+    body's own outcome should not be masked by a cleanup error), must be logged
+    with the actual exception type, and unregister must still run."""
+    _make_session_fakes(monkeypatch)
+    monkeypatch.setattr(
+        session_mod.host_client,
+        "delete_session",
+        AsyncMock(side_effect=RuntimeError("host down")),
+    )
+
+    async with session_mod.browser_session(user_id="u1", start_url="https://x"):
+        pass
+
+    session_mod.save_storage_state.assert_not_awaited()
+    session_mod.unregister_session.assert_awaited_once()
+    assert len(fake_log.warning_calls) == 1
+    message, kwargs = fake_log.warning_calls[0]
+    assert message == "[BROWSER] Failed to release browser session"
+    assert kwargs["error_type"] == "RuntimeError"
+    assert kwargs["browser"] == {"session_id": "s1", "operation": "release_failed"}
+
+
+async def test_save_storage_state_failure_is_also_caught(
+    monkeypatch: pytest.MonkeyPatch, fake_log: _FakeLog
+) -> None:
+    _make_session_fakes(monkeypatch)
+    monkeypatch.setattr(
+        session_mod, "save_storage_state", AsyncMock(side_effect=ValueError("disk full"))
+    )
+
+    async with session_mod.browser_session(user_id="u1", start_url="https://x"):
+        pass
+
+    session_mod.unregister_session.assert_awaited_once()
+    assert len(fake_log.warning_calls) == 1
+    _, kwargs = fake_log.warning_calls[0]
+    assert kwargs["error_type"] == "ValueError"
+
+
+async def test_log_set_and_info_calls_on_create_and_release(
+    monkeypatch: pytest.MonkeyPatch, fake_log: _FakeLog
+) -> None:
+    _make_session_fakes(monkeypatch)
+
+    async with session_mod.browser_session(user_id="u1", start_url="https://x"):
+        pass
+
+    assert {"browser": {"session_id": "s1", "operation": "create"}} in fake_log.set_calls
+    messages = [message for message, _ in fake_log.info_calls]
+    assert "[BROWSER] Browser session created" in messages
+    assert "[BROWSER] Browser session released" in messages

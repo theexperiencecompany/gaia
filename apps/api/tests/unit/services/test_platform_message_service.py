@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.constants.general import NEW_MESSAGE_BREAKER
 from app.models.chat_models import (
     BOT_CONVERSATION_SOURCES,
     ConversationSource,
@@ -67,6 +68,42 @@ class TestDeliverMessageToPlatform:
             ok = await pms.deliver_message_to_platform("whatsapp", "user-1", "   ")
         assert ok is False
         pub.assert_not_awaited()
+
+    async def test_breaker_splits_text_into_stripped_parts(self) -> None:
+        """NEW_MESSAGE_BREAKER-delimited text is split and each part stripped."""
+        text = f"  first bubble  {NEW_MESSAGE_BREAKER}  second bubble  "
+        with patch.object(
+            pms,
+            "publish_outbound_message",
+            new_callable=AsyncMock,
+            return_value=OutboundResult.PUBLISHED,
+        ) as pub:
+            ok = await pms.deliver_message_to_platform("whatsapp", "user-1", text)
+        assert ok is True
+        pub.assert_awaited_once_with(
+            ConversationSource.WHATSAPP, "user-1", ["first bubble", "second bubble"]
+        )
+
+    async def test_breaker_only_whitespace_parts_are_not_published(self) -> None:
+        """Splitting on the breaker can leave only blank parts, which must not publish."""
+        text = f"   {NEW_MESSAGE_BREAKER}   "
+        with patch.object(pms, "publish_outbound_message", new_callable=AsyncMock) as pub:
+            ok = await pms.deliver_message_to_platform("whatsapp", "user-1", text)
+        assert ok is False
+        pub.assert_not_awaited()
+
+    async def test_breaker_drops_blank_parts_but_keeps_real_ones(self) -> None:
+        """A blank bubble alongside a real one is dropped, not published as empty text."""
+        text = f"   {NEW_MESSAGE_BREAKER}real bubble"
+        with patch.object(
+            pms,
+            "publish_outbound_message",
+            new_callable=AsyncMock,
+            return_value=OutboundResult.PUBLISHED,
+        ) as pub:
+            ok = await pms.deliver_message_to_platform("whatsapp", "user-1", text)
+        assert ok is True
+        pub.assert_awaited_once_with(ConversationSource.WHATSAPP, "user-1", ["real bubble"])
 
 
 class TestBotPlatformConsistency:

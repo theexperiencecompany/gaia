@@ -11,7 +11,7 @@ duplicate script; a brand-new tab must get its own injection).
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -93,3 +93,81 @@ async def test_injection_failure_is_swallowed_and_retried(monkeypatch):
     # ...and because it failed, the target is not marked done — the next call retries.
     await patch_module._get_or_create_cdp_session(self, target_id="t1")
     assert _add_script(cdp).await_count == 2
+
+
+@pytest.mark.unit
+async def test_injection_failure_logs_the_target_and_error_type(monkeypatch):
+    self = SimpleNamespace()
+    cdp = _fake_cdp_session("t1")
+    _add_script(cdp).side_effect = RuntimeError("cdp down")
+    _patch_original(monkeypatch, {"t1": cdp})
+    warning = MagicMock()
+    monkeypatch.setattr(patch_module.log, "warning", warning)
+
+    await patch_module._get_or_create_cdp_session(self, target_id="t1")
+
+    warning.assert_called_once_with(
+        "browser stealth init-script injection failed",
+        error_type="RuntimeError",
+        target_id="t1",
+    )
+
+
+@pytest.mark.unit
+async def test_forwards_target_id_and_focus_to_the_original_accessor(monkeypatch):
+    self = SimpleNamespace()
+    cdp = _fake_cdp_session("t1")
+    calls: list[tuple[str | None, bool]] = []
+
+    async def _fake_original(self_arg: SimpleNamespace, target_id=None, focus=True):
+        calls.append((target_id, focus))
+        return cdp
+
+    monkeypatch.setattr(patch_module, "_original_get_or_create_cdp_session", _fake_original)
+
+    await patch_module._get_or_create_cdp_session(self, target_id="t1", focus=False)
+
+    assert calls == [("t1", False)]
+
+
+@pytest.mark.unit
+async def test_defaults_target_id_none_and_focus_true(monkeypatch):
+    self = SimpleNamespace()
+    cdp = _fake_cdp_session("t1")
+    calls: list[tuple[str | None, bool]] = []
+
+    async def _fake_original(self_arg: SimpleNamespace, target_id=None, focus=True):
+        calls.append((target_id, focus))
+        return cdp
+
+    monkeypatch.setattr(patch_module, "_original_get_or_create_cdp_session", _fake_original)
+
+    await patch_module._get_or_create_cdp_session(self)
+
+    assert calls == [(None, True)]
+
+
+@pytest.mark.unit
+def test_apply_binds_the_wrapper_onto_browser_session():
+    real_browser_session = patch_module.BrowserSession
+    previous = real_browser_session.get_or_create_cdp_session
+    try:
+        # Reset to the pre-patch accessor to prove apply() is what rebinds it.
+        type.__setattr__(
+            real_browser_session,
+            "get_or_create_cdp_session",
+            patch_module._original_get_or_create_cdp_session,
+        )
+        assert (
+            real_browser_session.get_or_create_cdp_session
+            is not patch_module._get_or_create_cdp_session
+        )
+
+        patch_module.apply()
+
+        assert (
+            real_browser_session.get_or_create_cdp_session
+            is patch_module._get_or_create_cdp_session
+        )
+    finally:
+        type.__setattr__(real_browser_session, "get_or_create_cdp_session", previous)

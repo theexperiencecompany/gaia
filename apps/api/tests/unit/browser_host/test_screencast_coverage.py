@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -24,6 +25,22 @@ from app.browser_host.screencast import (
     _send_frames,
     _start_screencast,
 )
+
+
+def _make_host_and_session() -> tuple[MagicMock, MagicMock]:
+    host = MagicMock()
+    host.root_ws_url = "ws://fake"
+    session = MagicMock(session_id="sess-1")
+    host.focused_target_id = AsyncMock(return_value="target-1")
+    return host, session
+
+
+def _make_cdp() -> MagicMock:
+    mock_cdp = MagicMock()
+    mock_cdp.start = AsyncMock()
+    mock_cdp.stop = AsyncMock()
+    mock_cdp._event_registry = MagicMock()
+    return mock_cdp
 
 
 @pytest.mark.unit
@@ -599,3 +616,310 @@ async def test_run_live_view_cancels_background_tasks() -> None:
         bg_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await bg_task
+
+
+@pytest.mark.unit
+async def test_run_live_view_cdp_call_sequence_and_exact_args() -> None:
+    """Every CDP call run_live_view makes, in order, with exact method/params/session_id."""
+    host, session = _make_host_and_session()
+    mock_cdp = _make_cdp()
+    calls: list[tuple[str, dict[str, Any] | None, str | None]] = []
+
+    async def fake_cdp_call(
+        cdp: Any,
+        method: str,
+        params: dict[str, Any] | None = None,
+        *,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        calls.append((method, params, session_id))
+        if method == "Target.attachToTarget":
+            return {"sessionId": "page-sess"}
+        if method == "Target.getTargetInfo":
+            return {"targetInfo": {"url": "https://example.com", "title": "Example"}}
+        return {}
+
+    with (
+        patch.object(screencast, "CDPClient", return_value=mock_cdp) as mock_ctor,
+        patch.object(screencast, "cdp_call", new=AsyncMock(side_effect=fake_cdp_call)),
+        patch.object(screencast, "pump_until_first_close", new=AsyncMock()),
+    ):
+        await screencast.run_live_view(host, session, MagicMock())
+
+    mock_ctor.assert_called_once_with("ws://fake")
+    host.focused_target_id.assert_awaited_once_with("sess-1")
+    assert calls == [
+        ("Target.attachToTarget", {"targetId": "target-1", "flatten": True}, None),
+        ("Page.enable", {}, "page-sess"),
+        ("Target.getTargetInfo", {"targetId": "target-1"}, None),
+        (
+            "Page.startScreencast",
+            {"format": "jpeg", "maxWidth": 1280, "maxHeight": 800, "quality": 72},
+            "page-sess",
+        ),
+    ]
+
+
+@pytest.mark.unit
+async def test_run_live_view_registers_handlers_with_expected_args() -> None:
+    host, session = _make_host_and_session()
+    mock_cdp = _make_cdp()
+    with (
+        patch.object(screencast, "CDPClient", return_value=mock_cdp),
+        patch.object(
+            screencast,
+            "cdp_call",
+            new=AsyncMock(side_effect=[{"sessionId": "page-sess"}, {}, {"targetInfo": {}}, {}]),
+        ),
+        patch.object(screencast, "_register_frame_handler") as mock_frame,
+        patch.object(screencast, "_register_nav_handler") as mock_nav,
+        patch.object(screencast, "_start_screencast", new=AsyncMock()) as mock_start,
+        patch.object(screencast, "pump_until_first_close", new=AsyncMock()),
+    ):
+        await screencast.run_live_view(host, session, MagicMock())
+
+    mock_frame.assert_called_once()
+    frame_args = mock_frame.call_args[0]
+    assert frame_args[0] is mock_cdp
+    assert frame_args[1] == "page-sess"
+    assert isinstance(frame_args[2], asyncio.Queue)
+    assert frame_args[2].maxsize == _FRAME_QUEUE_SIZE
+    assert frame_args[3] == set()
+
+    mock_nav.assert_called_once()
+    nav_args = mock_nav.call_args[0]
+    assert nav_args[0] is mock_cdp
+    assert nav_args[1] == "target-1"
+    assert isinstance(nav_args[2], _PageMeta)
+    assert nav_args[3] is frame_args[3]  # same background set shared by both handlers
+
+    mock_start.assert_awaited_once_with(
+        mock_cdp, "page-sess", _DEFAULT_MAX_WIDTH, _DEFAULT_MAX_HEIGHT
+    )
+
+
+@pytest.mark.unit
+async def test_run_live_view_pump_uses_send_frames_and_apply_input_with_correct_args() -> None:
+    host, session = _make_host_and_session()
+    mock_cdp = _make_cdp()
+    client_ws = MagicMock()
+
+    with (
+        patch.object(screencast, "CDPClient", return_value=mock_cdp),
+        patch.object(
+            screencast,
+            "cdp_call",
+            new=AsyncMock(side_effect=[{"sessionId": "page-sess"}, {}, {"targetInfo": {}}, {}]),
+        ),
+        patch.object(screencast, "_send_frames", new=AsyncMock()) as mock_send,
+        patch.object(screencast, "_apply_input", new=AsyncMock()) as mock_apply,
+    ):
+        await screencast.run_live_view(host, session, client_ws)
+
+    mock_send.assert_awaited_once()
+    send_args = mock_send.call_args[0]
+    assert send_args[0] is client_ws
+    assert isinstance(send_args[1], asyncio.Queue)
+    assert isinstance(send_args[2], _PageMeta)
+
+    mock_apply.assert_awaited_once()
+    apply_args = mock_apply.call_args[0]
+    assert apply_args[0] is host
+    assert apply_args[1] is session
+    assert apply_args[2] is mock_cdp
+    assert apply_args[3] is client_ws
+    assert apply_args[4] == "page-sess"
+
+
+@pytest.mark.unit
+async def test_run_live_view_add_viewer_before_body_and_removed_when_start_fails() -> None:
+    """add_viewer runs before the try; a failure inside still hits the finally teardown."""
+    host, session = _make_host_and_session()
+    mock_cdp = _make_cdp()
+    mock_cdp.start = AsyncMock(side_effect=RuntimeError("boom"))
+
+    with patch.object(screencast, "CDPClient", return_value=mock_cdp):
+        with pytest.raises(RuntimeError, match="boom"):
+            await screencast.run_live_view(host, session, MagicMock())
+
+    host.add_viewer.assert_called_once_with("sess-1")
+    host.remove_viewer.assert_called_once_with("sess-1")
+    mock_cdp.stop.assert_awaited_once()
+
+
+@pytest.mark.unit
+async def test_run_live_view_logs_closed_event_with_session_id() -> None:
+    host, session = _make_host_and_session()
+    mock_cdp = _make_cdp()
+
+    with (
+        patch.object(screencast, "CDPClient", return_value=mock_cdp),
+        patch.object(
+            screencast,
+            "cdp_call",
+            new=AsyncMock(side_effect=[{"sessionId": "page-sess"}, {}, {"targetInfo": {}}, {}]),
+        ),
+        patch.object(screencast, "pump_until_first_close", new=AsyncMock()),
+        patch.object(screencast, "log") as mock_log,
+    ):
+        await screencast.run_live_view(host, session, MagicMock())
+
+    mock_log.set.assert_called_once_with(
+        browser={"session_id": "sess-1", "operation": "live_view_closed"}
+    )
+    mock_log.info.assert_called_once()
+    assert "browser live view closed" in mock_log.info.call_args[0][0]
+
+
+@pytest.mark.unit
+async def test_run_live_view_teardown_warning_has_exact_error_type() -> None:
+    host, session = _make_host_and_session()
+    mock_cdp = _make_cdp()
+    mock_cdp.stop = AsyncMock(side_effect=RuntimeError("socket dead"))
+
+    with (
+        patch.object(screencast, "CDPClient", return_value=mock_cdp),
+        patch.object(
+            screencast,
+            "cdp_call",
+            new=AsyncMock(side_effect=[{"sessionId": "page-sess"}, {}, {"targetInfo": {}}, {}]),
+        ),
+        patch.object(screencast, "pump_until_first_close", new=AsyncMock()),
+        patch.object(screencast, "log") as mock_log,
+    ):
+        await screencast.run_live_view(host, session, MagicMock())
+
+    mock_log.warning.assert_called_once()
+    assert "browser live view teardown failed" in mock_log.warning.call_args[0][0]
+    assert mock_log.warning.call_args.kwargs == {"error_type": "RuntimeError"}
+
+
+# ---------------------------------------------------------------------------
+# _register_frame_handler — exact ack args and background auto-discard
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+async def test_register_frame_handler_ack_uses_exact_cdp_call_args() -> None:
+    fake_cdp = MagicMock()
+    registry = MagicMock()
+    fake_cdp._event_registry = registry
+    frames: asyncio.Queue[str] = asyncio.Queue(maxsize=_FRAME_QUEUE_SIZE)
+    background: set[asyncio.Task] = set()
+
+    with patch.object(screencast, "cdp_call", new=AsyncMock(return_value=None)) as mock_call:
+        _register_frame_handler(fake_cdp, "page-sess", frames, background)
+        handler = registry.register.call_args[0][1]
+        handler({"data": "abc", "sessionId": "frame-sess"}, None)
+        # one tick runs the ack coroutine to completion; a second lets its
+        # add_done_callback (scheduled via call_soon) actually fire
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+        mock_call.assert_awaited_once_with(
+            fake_cdp,
+            "Page.screencastFrameAck",
+            {"sessionId": "frame-sess"},
+            session_id="page-sess",
+        )
+        # the done callback discards the finished ack task from `background`
+        assert background == set()
+
+
+@pytest.mark.unit
+async def test_register_nav_handler_refresh_uses_exact_args() -> None:
+    fake_cdp = MagicMock()
+    registry = MagicMock()
+    fake_cdp._event_registry = registry
+    meta = _PageMeta()
+    background: set[asyncio.Task] = set()
+
+    with patch.object(screencast, "_refresh_meta", new=AsyncMock()) as mock_refresh:
+        _register_nav_handler(fake_cdp, "target-1", meta, background)
+        handler = registry.register.call_args[0][1]
+        handler({"frame": {"parentId": None}}, None)
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+        mock_refresh.assert_awaited_once_with(fake_cdp, "target-1", meta)
+        # the done callback discards the finished refresh task from `background`
+        assert background == set()
+
+
+# ---------------------------------------------------------------------------
+# _start_screencast — exact params dict, no stray keys
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+async def test_start_screencast_params_dict_has_exactly_expected_keys() -> None:
+    fake_cdp = MagicMock()
+    with patch.object(screencast, "cdp_call", new=AsyncMock()) as mock_call:
+        await _start_screencast(fake_cdp, "sess-1", 1280, 800)
+        params = mock_call.call_args[0][2]
+        assert params == {"format": "jpeg", "maxWidth": 1280, "maxHeight": 800, "quality": 72}
+
+
+# ---------------------------------------------------------------------------
+# _apply_input — exact session_id kwarg and int() coercion on resize
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+async def test_apply_input_mouse_uses_exact_session_id_kwarg() -> None:
+    host = MagicMock()
+    session = MagicMock(session_id="s1")
+    fake_cdp = MagicMock()
+    client_ws = MagicMock()
+    client_ws.receive_text = AsyncMock(
+        side_effect=[
+            json.dumps({"type": "mouse", "event": "mouseMoved", "x": 10, "y": 20}),
+            asyncio.CancelledError,
+        ]
+    )
+    with patch.object(screencast, "cdp_call", new=AsyncMock()) as mock_call:
+        with pytest.raises(asyncio.CancelledError):
+            await _apply_input(host, session, fake_cdp, client_ws, "page-sess")
+        assert mock_call.call_args.kwargs["session_id"] == "page-sess"
+        assert mock_call.call_args[0][0] is fake_cdp
+
+
+@pytest.mark.unit
+async def test_apply_input_key_uses_exact_session_id_kwarg() -> None:
+    host = MagicMock()
+    session = MagicMock(session_id="s1")
+    fake_cdp = MagicMock()
+    client_ws = MagicMock()
+    client_ws.receive_text = AsyncMock(
+        side_effect=[
+            json.dumps({"type": "key", "event": "keyDown", "key": "a"}),
+            asyncio.CancelledError,
+        ]
+    )
+    with patch.object(screencast, "cdp_call", new=AsyncMock()) as mock_call:
+        with pytest.raises(asyncio.CancelledError):
+            await _apply_input(host, session, fake_cdp, client_ws, "page-sess")
+        assert mock_call.call_args.kwargs["session_id"] == "page-sess"
+
+
+@pytest.mark.unit
+async def test_apply_input_resize_coerces_string_dimensions_to_int() -> None:
+    """width/height arrive as JSON numbers but the handler must int()-coerce them."""
+    host = MagicMock()
+    session = MagicMock(session_id="s1")
+    fake_cdp = MagicMock()
+    client_ws = MagicMock()
+    client_ws.receive_text = AsyncMock(
+        side_effect=[
+            json.dumps({"type": "resize", "width": "999", "height": "555"}),
+            asyncio.CancelledError,
+        ]
+    )
+    with patch.object(screencast, "_start_screencast", new=AsyncMock()) as mock_screencast:
+        with pytest.raises(asyncio.CancelledError):
+            await _apply_input(host, session, fake_cdp, client_ws, "page-sess")
+        args = mock_screencast.call_args[0]
+        assert args[2] == 999
+        assert isinstance(args[2], int)
+        assert args[3] == 555
+        assert isinstance(args[3], int)

@@ -73,6 +73,18 @@ async def test_load_none_when_nothing_saved(monkeypatch: pytest.MonkeyPatch) -> 
     assert await load_storage_state("u1", "example.com") is None
 
 
+async def test_load_none_without_user_or_domain(monkeypatch: pytest.MonkeyPatch) -> None:
+    get_for_domain = AsyncMock()
+    monkeypatch.setattr(sp.browser_profile_repository, "get_for_domain", get_for_domain)
+
+    # Missing user_id alone is enough to short-circuit, even with a valid domain.
+    assert await load_storage_state("", "example.com") is None
+    # Missing domain alone is enough to short-circuit, even with a valid user_id.
+    assert await load_storage_state("u1", None) is None
+
+    get_for_domain.assert_not_awaited()
+
+
 async def test_save_noop_without_user_or_domain(monkeypatch: pytest.MonkeyPatch) -> None:
     upsert = AsyncMock()
     monkeypatch.setattr(sp.browser_profile_repository, "upsert_storage_state_blob", upsert)
@@ -92,15 +104,25 @@ async def test_save_noop_when_persistence_opted_out(monkeypatch: pytest.MonkeyPa
 def test_missing_key_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sp.settings, "BROWSER_STATE_ENCRYPTION_KEY", None)
     sp._cipher = None
-    with pytest.raises(ValueError, match="BROWSER_STATE_ENCRYPTION_KEY not configured"):
+    with pytest.raises(ValueError) as exc_info:
         sp._get_cipher()
+    assert str(exc_info.value) == "BROWSER_STATE_ENCRYPTION_KEY not configured in Infisical"
+    # No cipher gets cached on the failure path.
+    assert sp._cipher is None
 
 
 def test_invalid_key_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sp.settings, "BROWSER_STATE_ENCRYPTION_KEY", "not-a-fernet-key")
     sp._cipher = None
-    with pytest.raises(ValueError, match="not a valid Fernet key"):
+    with pytest.raises(ValueError) as exc_info:
         sp._get_cipher()
+    assert str(exc_info.value) == (
+        "BROWSER_STATE_ENCRYPTION_KEY is not a valid Fernet key "
+        "(must be 32 url-safe base64-encoded bytes): "
+        "Fernet key must be 32 url-safe base64-encoded bytes."
+    )
+    # No cipher gets cached on the failure path.
+    assert sp._cipher is None
 
 
 async def test_forget_deletes_and_returns_count(monkeypatch: pytest.MonkeyPatch) -> None:

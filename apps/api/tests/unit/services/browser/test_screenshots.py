@@ -89,6 +89,8 @@ class TestR2Client:
             result = shots._r2_client()
             assert result is mock_client
             mock_boto.assert_called_once()
+            # The service name is passed positionally — must be exactly "s3".
+            assert mock_boto.call_args[0] == ("s3",)
             kwargs = mock_boto.call_args[1]
             assert kwargs["endpoint_url"] == "https://acct123.r2.cloudflarestorage.com"
             assert kwargs["aws_access_key_id"] == "akid"
@@ -106,11 +108,23 @@ class TestR2Client:
         monkeypatch.setattr(shots.settings, "R2_ACCESS_KEY_ID", "k")
         monkeypatch.setattr(shots.settings, "R2_SECRET_ACCESS_KEY", "s")
         monkeypatch.setattr(shots.settings, "R2_PUBLIC_BASE_URL", "https://cdn.example.com")
-        mock_client = MagicMock()
-        with patch.object(shots.boto3, "client", return_value=mock_client):
+        # boto3.client returns a *different* mock on each call, so this only
+        # proves caching (rather than trivially passing because the mock's
+        # return_value happened to be identical either way).
+        first_client = MagicMock()
+        second_client = MagicMock()
+        with patch.object(
+            shots.boto3, "client", side_effect=[first_client, second_client]
+        ) as mock_boto:
             a = shots._r2_client()
             b = shots._r2_client()
-            assert a is b
+            assert a is first_client
+            assert b is first_client
+            mock_boto.assert_called_once()
+
+    def test_lru_cache_maxsize_is_one(self):
+        # The decorator argument itself, independent of any call behaviour.
+        assert shots._r2_client.cache_info().maxsize == 1
 
 
 # ---------------------------------------------------------------------------
@@ -174,6 +188,16 @@ class TestUploadStepScreenshot:
             result = await shots.upload_step_screenshot(b"x", "c1", 1)
         assert result == "https://cdn.example.com/browser_steps/c1/step_1.png"
 
+    async def test_rstrip_only_strips_slash_not_other_trailing_chars(self, monkeypatch):
+        # Pins the exact character set passed to rstrip(): it must strip "/"
+        # only. A base URL ending in a non-slash character right before the
+        # slash(es) must keep that character intact.
+        monkeypatch.setattr(shots, "_r2_configured", lambda: True)
+        monkeypatch.setattr(shots.settings, "R2_PUBLIC_BASE_URL", "https://cdn.example.comX/")
+        with patch.object(shots.asyncio, "to_thread", AsyncMock(return_value=None)):
+            result = await shots.upload_step_screenshot(b"x", "c1", 1)
+        assert result == "https://cdn.example.comX/browser_steps/c1/step_1.png"
+
     async def test_no_trailing_slash_unchanged(self, monkeypatch):
         monkeypatch.setattr(shots, "_r2_configured", lambda: True)
         monkeypatch.setattr(shots.settings, "R2_PUBLIC_BASE_URL", "https://cdn.example.com")
@@ -199,11 +223,12 @@ class TestUploadStepScreenshot:
             result = await shots.upload_step_screenshot(b"x", "c1", 1)
         assert result is None
         mock_warn.assert_called_once()
-        # Verify log message mentions fallback and error_type is captured
+        # Exact message (not a loose substring check — a mutated literal that
+        # merely gets padded would still contain any substring we look for).
         call_args = mock_warn.call_args
         assert (
-            "inline fallback" in call_args[0][0].lower()
-            or "upload failed" in call_args[0][0].lower()
+            call_args[0][0]
+            == f"{shots.LogTag.BROWSER} Browser screenshot upload failed; using inline fallback"
         )
         assert call_args[1].get("error_type") == "RuntimeError"
 
