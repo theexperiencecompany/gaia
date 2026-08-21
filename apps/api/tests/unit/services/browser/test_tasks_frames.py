@@ -30,7 +30,6 @@ def _doc(**kw: object) -> BrowserTaskDocument:
 
 
 @pytest.mark.unit
-@pytest.mark.regression
 def test_a_step_whose_upload_failed_has_no_frame() -> None:
     doc = _doc(step_screenshots=["https://cdn/1.png", "", "https://cdn/3.png"])
 
@@ -40,7 +39,6 @@ def test_a_step_whose_upload_failed_has_no_frame() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.regression
 def test_no_frames_at_all_when_every_upload_failed() -> None:
     assert _frames(_doc(step_screenshots=["", "", ""])) == []
 

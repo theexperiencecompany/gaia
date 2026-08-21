@@ -14,7 +14,6 @@ from app.services.browser.replay import render_replay_page
 
 
 @pytest.mark.unit
-@pytest.mark.regression
 def test_page_shows_only_the_screenshots_that_uploaded() -> None:
     record = ReplayRecord(
         session_id="s1", steps=3, shots=["https://cdn/1.png", "https://cdn/3.png"]

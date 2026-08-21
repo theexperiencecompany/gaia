@@ -17,7 +17,6 @@ from app.browser_host.proxy import _refusal_reason, _refused_navigation_url
 
 
 @pytest.mark.unit
-@pytest.mark.regression
 @pytest.mark.parametrize(
     ("method", "url", "expected_refusal"),
     [
@@ -47,7 +46,6 @@ def test_refused_navigation_url(method: str, url: str | None, expected_refusal: 
 
 
 @pytest.mark.unit
-@pytest.mark.regression
 @pytest.mark.parametrize(
     "method",
     ["Browser.setDownloadBehavior", "Page.setDownloadBehavior"],

@@ -91,7 +91,6 @@ async def _cancel(*tasks: asyncio.Task[Any]) -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.regression
 async def test_cdp_call_raises_cdptimeouterror_instead_of_hanging_forever() -> None:
     """``cdp_use``'s ``send_raw`` awaits its future with no timeout of its own."""
     fake_cdp = _FakeCDP(hang_on="Target.getTargets", hang_call_count=1)
@@ -110,7 +109,6 @@ async def test_cdp_call_raises_cdptimeouterror_instead_of_hanging_forever() -> N
 
 
 @pytest.mark.unit
-@pytest.mark.regression
 async def test_create_context_second_call_is_not_blocked_by_a_hung_first_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -132,7 +130,6 @@ async def test_create_context_second_call_is_not_blocked_by_a_hung_first_call(
 
 
 @pytest.mark.unit
-@pytest.mark.regression
 async def test_reserve_slot_counts_in_flight_creates_toward_capacity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -155,7 +152,6 @@ async def test_reserve_slot_counts_in_flight_creates_toward_capacity(
 
 
 @pytest.mark.unit
-@pytest.mark.regression
 async def test_create_context_failure_releases_its_reserved_slot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -183,7 +179,6 @@ async def test_create_context_failure_releases_its_reserved_slot(
 
 
 @pytest.mark.unit
-@pytest.mark.regression
 async def test_dispose_context_removes_session_when_storage_dump_raises() -> None:
     """The registry slot must free even when the storage_state dump blows up."""
     host = ChromiumHost()
@@ -216,7 +211,6 @@ async def test_dispose_context_removes_session_when_storage_dump_raises() -> Non
 
 
 @pytest.mark.unit
-@pytest.mark.regression
 async def test_healthz_reports_unresponsive_when_cdp_probe_times_out(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
