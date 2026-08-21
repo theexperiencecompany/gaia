@@ -65,8 +65,8 @@ _summarization_llm: BaseChatModel | None = None
 
 
 def get_summarization_llm() -> BaseChatModel | None:
-    """The cached summarization model, or None when no summarizer can be built
-    (summarization middleware and the compaction LLM digest are then dropped).
+    """The cached summarization model, or None when the default model is not
+    configured (summarization middleware is then dropped).
 
     Availability is decided by CALLING the factory and catching its refusal, not
     by checking a provider key here. A key check is a second copy of "what does
@@ -75,11 +75,6 @@ def get_summarization_llm() -> BaseChatModel | None:
     the other way round — a missing key silently dropped compaction from the
     graph while the model itself was perfectly reachable. Long conversations
     then blow the context window with nothing in the logs pointing here.
-
-    When the default (OpenRouter) model is unconfigured, development falls back
-    to the env-defined custom endpoint (DEV_LLM_* settings) if it is registered,
-    so native dev environments without an OpenRouter key still get working
-    summarization instead of silently losing both middlewares.
     """
     global _summarization_llm
 
@@ -91,19 +86,50 @@ def get_summarization_llm() -> BaseChatModel | None:
         # summarization/compaction fractional triggers below require to build.
         _summarization_llm = get_default_llm()
     except LLMNotConfiguredError as exc:
+        log.set(error=str(exc))
+        log.error(
+            f"{LogTag.AGENT} Default model not configured. Summarization middleware disabled."
+        )
+        return None
+    return _summarization_llm
+
+
+_compaction_summary_llm: BaseChatModel | None = None
+
+
+def get_compaction_summary_llm() -> BaseChatModel | None:
+    """The cached model that digests oversized tool outputs, or None when none
+    can be built (compaction then keeps the deterministic tiers).
+
+    Deliberately NOT :func:`get_summarization_llm`: whole-history summarization
+    rewrites the conversation the user reads, so it only ever runs on the
+    default model and is dropped when that is unconfigured. The tool-output
+    digest is bulk internal work where a cheap lane is fine — so when the
+    default model is unconfigured AND this is development with the DEV_LLM_*
+    custom endpoint registered, that endpoint serves digests instead of losing
+    the tier entirely in native dev environments.
+    """
+    global _compaction_summary_llm
+
+    if _compaction_summary_llm is not None:
+        return _compaction_summary_llm
+
+    try:
+        _compaction_summary_llm = get_default_llm()
+    except LLMNotConfiguredError as exc:
         dev_llm = _get_dev_custom_llm()
         if dev_llm is None:
             log.set(error=str(exc))
             log.error(
-                f"{LogTag.AGENT} Default model not configured. Summarization middleware disabled."
+                f"{LogTag.AGENT} Default model not configured; compaction keeps the deterministic tiers."
             )
             return None
         log.warning(
-            f"{LogTag.AGENT} Default model not configured; summarization uses the DEV_LLM_* custom endpoint",
+            f"{LogTag.AGENT} Default model not configured; compaction digests use the DEV_LLM_* custom endpoint",
             error=str(exc),
         )
-        _summarization_llm = dev_llm
-    return _summarization_llm
+        _compaction_summary_llm = dev_llm
+    return _compaction_summary_llm
 
 
 def _get_dev_custom_llm() -> BaseChatModel | None:
@@ -247,16 +273,15 @@ def create_middleware_stack(
             max_output_chars=max_output_chars,
             context_window=DEFAULT_MAX_TOKENS,
             excluded_tools=compaction_excluded_tools,
-            # Same accessor as history summarization: one canonical auxiliary
-            # model, resolving to the DEV_LLM_* custom endpoint in dev when the
-            # default is unconfigured. None keeps the deterministic tiers.
-            summary_llm=get_summarization_llm(),
+            # Dedicated accessor: unlike history summarization (default model
+            # only), the digest may ride the DEV_LLM_* custom endpoint in dev.
+            summary_llm=get_compaction_summary_llm(),
         )
         middleware.append(compaction)
         log.debug(
             f"{LogTag.AGENT} Compaction middleware enabled",
             compaction_threshold=compaction_threshold,
-            llm_summary=bool(get_summarization_llm()),
+            llm_summary=bool(get_compaction_summary_llm()),
         )
 
     # Media description — a lane that can't see pixels gets prose for any tool
