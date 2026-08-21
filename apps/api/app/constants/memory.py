@@ -67,15 +67,19 @@ EMBEDDING_SIDECAR_MAX_TEXT_CHARS = int(os.getenv("MEMORY_SIDECAR_MAX_TEXT_CHARS"
 # How many times a transiently-failing sidecar call (503/429/connection reset)
 # is retried before giving up — memory saves must survive a brief overload
 # window instead of being dropped, while persistent failures still fail loud.
-EMBEDDING_SIDECAR_RETRIES = int(os.getenv("MEMORY_SIDECAR_RETRIES", "2"))
-# Cap on how long a single retry waits regardless of a larger Retry-After.
-EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS = float(
-    os.getenv("MEMORY_SIDECAR_RETRY_MAX_WAIT_SECONDS", "5")
+# Clamped at the floor: a negative budget would retry forever, which no
+# misconfiguration should be able to cause.
+EMBEDDING_SIDECAR_RETRIES = max(0, int(os.getenv("MEMORY_SIDECAR_RETRIES", "2")))
+# Fixed backoff between retry attempts.
+EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS = max(
+    0.0, float(os.getenv("MEMORY_SIDECAR_RETRY_MAX_WAIT_SECONDS", "5"))
 )
 
 # How long a sidecar request may wait for a free inference slot before failing
 # with 503 instead of queueing invisibly until the client's own timeout.
-EMBEDDING_SIDECAR_SLOT_WAIT_SECONDS = float(os.getenv("MEMORY_SIDECAR_SLOT_WAIT_SECONDS", "20"))
+EMBEDDING_SIDECAR_SLOT_WAIT_SECONDS = max(
+    0.0, float(os.getenv("MEMORY_SIDECAR_SLOT_WAIT_SECONDS", "20"))
+)
 
 # Persistent on-disk cache for the fastembed model weights. Set in prod (on the
 # embedding sidecar) to a mounted volume so the ~1.85GB download happens ONCE

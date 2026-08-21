@@ -24,7 +24,7 @@ from collections.abc import Awaitable
 import os
 import threading
 import time
-from typing import Any, TypeVar, cast
+from typing import Any, TypedDict, TypeVar, cast
 
 from fastembed import TextEmbedding
 from fastembed.rerank.cross_encoder import TextCrossEncoder
@@ -58,6 +58,18 @@ _http_client: tuple[asyncio.AbstractEventLoop, httpx.AsyncClient] | None = None
 _http_client_lock = threading.Lock()
 
 _T = TypeVar("_T")
+
+
+class EmbedQueryResponse(TypedDict):
+    vector: list[float]
+
+
+class EmbedBatchResponse(TypedDict):
+    vectors: list[list[float]]
+
+
+class RerankResponse(TypedDict):
+    scores: list[float]
 
 
 def chunk_texts(texts: list[str], max_texts: int, max_chars: int) -> list[list[str]]:
@@ -247,7 +259,7 @@ async def embed_query(text: str) -> list[float]:
         result = await _observed(
             "embed_query", "sidecar", 1, _sidecar_post("/embed_query", {"text": text})
         )
-        return cast(list[float], result["vector"])
+        return cast(EmbedQueryResponse, result)["vector"]
     return await _observed("embed_query", "local", 1, asyncio.to_thread(_embed_query_sync, text))
 
 
@@ -261,7 +273,7 @@ async def _sidecar_embed(texts: list[str]) -> list[list[float]]:
         result = await _observed(
             "embed", "sidecar", len(chunk), _sidecar_post("/embed", {"texts": chunk})
         )
-        vectors.extend(cast(list[list[float]], result["vectors"]))
+        vectors.extend(cast(EmbedBatchResponse, result)["vectors"])
     return vectors
 
 
@@ -280,8 +292,11 @@ async def rerank(query: str, documents: list[str]) -> list[float]:
         return []
     if _sidecar_url():
         scores: list[float] = []
+        # The query is sent with every chunk, so it consumes char budget too.
         for chunk in chunk_texts(
-            documents, EMBEDDING_SIDECAR_MAX_BATCH_TEXTS, EMBEDDING_SIDECAR_MAX_BATCH_CHARS
+            documents,
+            EMBEDDING_SIDECAR_MAX_BATCH_TEXTS,
+            EMBEDDING_SIDECAR_MAX_BATCH_CHARS - len(query),
         ):
             result = await _observed(
                 "rerank",
@@ -289,7 +304,7 @@ async def rerank(query: str, documents: list[str]) -> list[float]:
                 len(chunk),
                 _sidecar_post("/rerank", {"query": query, "documents": chunk}),
             )
-            scores.extend(cast(list[float], result["scores"]))
+            scores.extend(cast(RerankResponse, result)["scores"])
         return scores
     return await _observed(
         "rerank", "local", len(documents), asyncio.to_thread(_rerank_sync, query, documents)

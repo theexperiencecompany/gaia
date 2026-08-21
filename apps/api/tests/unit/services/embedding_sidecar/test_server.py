@@ -20,6 +20,7 @@ import httpx
 from httpx import ASGITransport, AsyncClient
 import pytest
 
+from app.memory import embeddings
 from app.services.embedding_sidecar import server
 
 TEXTS = ["first passage", "second passage"]
@@ -258,12 +259,10 @@ class TestSaturationBackpressure:
     ) -> None:
         """The 503's shape is a contract clients rely on: exact status, detail
         text, and Retry-After header name/value."""
-        from fastapi import HTTPException as FastAPIHTTPException
-
         monkeypatch.setattr(server, "_slot_wait_seconds", 0.0)
         monkeypatch.setattr(server, "_inference_slots", asyncio.Semaphore(1))
         async with server._inference_slots:
-            with pytest.raises(FastAPIHTTPException) as exc_info:
+            with pytest.raises(server.HTTPException) as exc_info:
                 await server.embed(server.EmbedRequest(texts=TEXTS))
 
         exc = exc_info.value
@@ -289,8 +288,6 @@ class TestClientRetryContract:
     ) -> None:
         """Second home for the chunked-rerank contract so the mutation lane
         attributes it from both covering files."""
-        from app.memory import embeddings
-
         calls: list[dict] = []
 
         async def fake_post(path: str, payload: dict) -> dict:
@@ -318,8 +315,6 @@ class TestClientRetryContract:
     async def test_exhausted_budget_raises_after_exact_attempts(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from app.memory import embeddings
-
         attempts: list[httpx.Request] = []
         sleeps: list[float] = []
 
@@ -346,8 +341,6 @@ class TestClientRetryContract:
         assert sleeps == [max_wait, max_wait]
 
     async def test_retry_succeeds_within_budget(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from app.memory import embeddings
-
         attempts: list[httpx.Request] = []
 
         async def fake_sleep(delay: float) -> None:

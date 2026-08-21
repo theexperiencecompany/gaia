@@ -29,6 +29,7 @@ import os
 from pathlib import Path
 import platform
 import random
+import socket
 import sys
 import threading
 import time
@@ -40,6 +41,16 @@ RESULTS_DIR = Path(__file__).parent / "results"
 API_ROOT = Path(__file__).resolve().parents[2]
 PORT = 8201
 BASE_URL = f"http://127.0.0.1:{PORT}"
+
+
+def _free_port() -> int:
+    """A currently-free loopback port, so concurrent benchmark runs never
+    fight over a fixed one."""
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
 EMBED_PATH = "/embed"
 RERANK_PATH = "/rerank"
 
@@ -184,6 +195,7 @@ class Sidecar:
         self.tag = tag
         self.threads = threads
         self.concurrency = concurrency
+        self.port = _free_port()
         self.proc: asyncio.subprocess.Process | None = None
         self.monitor: RssMonitor | None = None
 
@@ -202,7 +214,7 @@ class Sidecar:
             "--host",
             "127.0.0.1",
             "--port",
-            str(PORT),
+            str(self.port),
             "--log-level",
             "warning",
         ]
@@ -214,6 +226,8 @@ class Sidecar:
             stderr=asyncio.subprocess.STDOUT,
         )
         assert self.proc.pid is not None
+        global BASE_URL
+        BASE_URL = f"http://127.0.0.1:{self.port}"
         self.monitor = RssMonitor(self.proc.pid)
         deadline = time.monotonic() + 600  # first boot downloads ~1.85GB of weights
         async with httpx.AsyncClient() as client:
@@ -232,10 +246,13 @@ class Sidecar:
 
     async def warmup(self) -> None:
         async with httpx.AsyncClient(timeout=120.0) as client:
-            await client.post(f"{BASE_URL}/embed", json={"texts": make_texts(8, 400)})
-            await client.post(
+            embed = await client.post(f"{BASE_URL}/embed", json={"texts": make_texts(8, 400)})
+            rerank = await client.post(
                 f"{BASE_URL}/rerank", json={"query": "q", "documents": make_texts(4, 200)}
             )
+        # A failed warmup would poison every measurement after it — fail now.
+        embed.raise_for_status()
+        rerank.raise_for_status()
 
     async def stop(self) -> None:
         if self.monitor:
@@ -254,8 +271,8 @@ class Sidecar:
 @asynccontextmanager
 async def running_sidecar(tag: str, threads: int, concurrency: int) -> AsyncIterator[Sidecar]:
     sidecar = Sidecar(tag, threads, concurrency)
-    await sidecar.start()
     try:
+        await sidecar.start()
         await sidecar.warmup()
         yield sidecar
     finally:
@@ -363,17 +380,21 @@ async def scenario_concurrency_sweep(tag: str) -> dict:
                 assert monitor is not None
                 monitor.reset_peak()
                 latencies: list[float] = []
+                failures: list[Exception] = []
 
                 async def worker(
                     queue: asyncio.Queue,
                     client: httpx.AsyncClient,
                     out_latencies: list[float],
+                    out_failures: list[Exception],
                 ) -> None:
                     while True:
                         payload = await queue.get()
                         try:
                             ms, _ = await timed_post(client, EMBED_PATH, payload)
                             out_latencies.append(ms)
+                        except Exception as exc:  # keep draining; reported after join
+                            out_failures.append(exc)
                         finally:
                             queue.task_done()
 
@@ -385,11 +406,14 @@ async def scenario_concurrency_sweep(tag: str) -> dict:
                     timeout=300.0, limits=httpx.Limits(max_connections=conc + 4)
                 ) as client:
                     workers = [
-                        asyncio.create_task(worker(queue, client, latencies)) for _ in range(conc)
+                        asyncio.create_task(worker(queue, client, latencies, failures))
+                        for _ in range(conc)
                     ]
                     await queue.join()
                     for task in workers:
                         task.cancel()
+                if failures:
+                    raise failures[0]
                 wall_s = time.perf_counter() - wall_start
                 row = {
                     "threads": threads,
@@ -497,6 +521,10 @@ async def scenario_equivalence() -> dict:
         for start in range(0, len(texts), 32):
             _, body = await timed_post(client, EMBED_PATH, {"texts": texts[start : start + 32]})
             chunked_vectors.extend(body["vectors"])
+    if len(whole["vectors"]) != len(chunked_vectors):
+        raise AssertionError(
+            f"vector count mismatch: whole={len(whole['vectors'])} chunked={len(chunked_vectors)}"
+        )
     max_abs = 0.0
     min_cos = 1.0
     for whole_vec, chunk_vec in zip(whole["vectors"], chunked_vectors):
@@ -506,11 +534,13 @@ async def scenario_equivalence() -> dict:
         norm_a = sum(a * a for a in whole_vec) ** 0.5
         norm_b = sum(b * b for b in chunk_vec) ** 0.5
         min_cos = min(min_cos, dot / (norm_a * norm_b))
+    if min_cos <= 0.999999:
+        raise AssertionError(f"equivalence FAILED: min cosine {min_cos}")
     result = {
         "n": len(texts),
         "max_abs_diff": max_abs,
         "min_cosine": round(min_cos, 9),
-        "pass": bool(min_cos > 0.999999),
+        "pass": True,
     }
     print(result)
     return result
