@@ -156,7 +156,11 @@ class TestTriggerDeliveryToQueuedExecution:
     a queued workflow execution carrying the payload and the integration stamp."""
 
     async def test_a_signed_delivery_queues_the_matched_workflow(
-        self, unauthenticated_client: AsyncClient, _webhook_secret: None, _redis: MagicMock, _spawned: list
+        self,
+        unauthenticated_client: AsyncClient,
+        _webhook_secret: None,
+        _redis: MagicMock,
+        _spawned: list,
     ) -> None:
         queue = AsyncMock()
         body = _gmail_delivery()
@@ -178,7 +182,9 @@ class TestTriggerDeliveryToQueuedExecution:
             patch.object(WorkflowQueueService, "queue_workflow_execution", queue),
         ):
             response = await unauthenticated_client.post(
-                ENDPOINT, content=json.dumps(body).encode(), headers=_signed_headers(body, "wh-e2e-1")
+                ENDPOINT,
+                content=json.dumps(body).encode(),
+                headers=_signed_headers(body, "wh-e2e-1"),
             )
             await _drain(_spawned)
 
@@ -197,12 +203,19 @@ class TestTriggerDeliveryToQueuedExecution:
         assert context["tracked_todos_context"] == "todo context"
 
     async def test_a_bad_signature_is_refused_and_never_reaches_the_handler(
-        self, unauthenticated_client: AsyncClient, _webhook_secret: None, _redis: MagicMock, _spawned: list
+        self,
+        unauthenticated_client: AsyncClient,
+        _webhook_secret: None,
+        _redis: MagicMock,
+        _spawned: list,
     ) -> None:
         queue = AsyncMock()
         body = _gmail_delivery()
         with (
-            patch(f"{GMAIL_HANDLER_MODULE}.workflow_repository.find_active_integration_workflows", AsyncMock()),
+            patch(
+                f"{GMAIL_HANDLER_MODULE}.workflow_repository.find_active_integration_workflows",
+                AsyncMock(),
+            ),
             patch.object(WorkflowQueueService, "queue_workflow_execution", queue),
         ):
             response = await unauthenticated_client.post(
@@ -218,7 +231,11 @@ class TestTriggerDeliveryToQueuedExecution:
         queue.assert_not_awaited()
 
     async def test_a_redelivered_webhook_id_is_processed_exactly_once(
-        self, unauthenticated_client: AsyncClient, _webhook_secret: None, _redis: MagicMock, _spawned: list
+        self,
+        unauthenticated_client: AsyncClient,
+        _webhook_secret: None,
+        _redis: MagicMock,
+        _spawned: list,
     ) -> None:
         # First delivery claims the key; Composio's retry finds it taken.
         _redis.client.set = AsyncMock(side_effect=[True, None])
@@ -242,9 +259,13 @@ class TestTriggerDeliveryToQueuedExecution:
             ),
             patch.object(WorkflowQueueService, "queue_workflow_execution", queue),
         ):
-            first = await unauthenticated_client.post(ENDPOINT, content=json.dumps(body).encode(), headers=headers)
+            first = await unauthenticated_client.post(
+                ENDPOINT, content=json.dumps(body).encode(), headers=headers
+            )
             await _drain(_spawned)
-            second = await unauthenticated_client.post(ENDPOINT, content=json.dumps(body).encode(), headers=headers)
+            second = await unauthenticated_client.post(
+                ENDPOINT, content=json.dumps(body).encode(), headers=headers
+            )
 
         assert first.json()["message"] == "Webhook accepted"
         assert second.json()["message"] == "Duplicate webhook ignored"
@@ -256,7 +277,11 @@ class TestConnectionExpiryDelivery:
     through the real oauth_config and run the shared expiry transition."""
 
     async def test_an_expired_calendar_account_runs_the_expiry_transition(
-        self, unauthenticated_client: AsyncClient, _webhook_secret: None, _redis: MagicMock, _spawned: list
+        self,
+        unauthenticated_client: AsyncClient,
+        _webhook_secret: None,
+        _redis: MagicMock,
+        _spawned: list,
     ) -> None:
         pause = AsyncMock(return_value=3)
         expire = AsyncMock()
@@ -266,7 +291,9 @@ class TestConnectionExpiryDelivery:
             patch(f"{MODULE}.expire_user_integration", expire),
         ):
             response = await unauthenticated_client.post(
-                ENDPOINT, content=json.dumps(body).encode(), headers=_signed_headers(body, "wh-e2e-exp")
+                ENDPOINT,
+                content=json.dumps(body).encode(),
+                headers=_signed_headers(body, "wh-e2e-exp"),
             )
             await _drain(_spawned)
 
@@ -285,7 +312,11 @@ class TestConnectionExpiryDelivery:
         )
 
     async def test_an_unrecognised_toolkit_is_acked_without_touching_any_user(
-        self, unauthenticated_client: AsyncClient, _webhook_secret: None, _redis: MagicMock, _spawned: list
+        self,
+        unauthenticated_client: AsyncClient,
+        _webhook_secret: None,
+        _redis: MagicMock,
+        _spawned: list,
     ) -> None:
         pause = AsyncMock()
         expire = AsyncMock()
@@ -297,7 +328,9 @@ class TestConnectionExpiryDelivery:
             patch(f"{MODULE}.expire_user_integration", expire),
         ):
             response = await unauthenticated_client.post(
-                ENDPOINT, content=json.dumps(body).encode(), headers=_signed_headers(body, "wh-e2e-unk")
+                ENDPOINT,
+                content=json.dumps(body).encode(),
+                headers=_signed_headers(body, "wh-e2e-unk"),
             )
             await _drain(_spawned)
 
