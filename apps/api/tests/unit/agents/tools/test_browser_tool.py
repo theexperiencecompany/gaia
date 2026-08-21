@@ -601,6 +601,26 @@ async def test_missing_identifiers_degrade_to_blank_and_none(
     assert h.session_kwargs == {"user_id": "", "start_url": None}
 
 
+async def test_a_config_with_no_configurable_key_still_degrades_cleanly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Same degradation as above, for a config missing ``configurable`` entirely.
+
+    Called through the raw coroutine rather than ``ainvoke``: LangChain's
+    ``ensure_config`` injects ``configurable`` into every config it normalises, so
+    the tool's own ``config.get("configurable", {})`` fallback is unreachable via
+    the public path — and a fallback nothing exercises is one nothing would notice
+    losing. Without the ``{}`` the next line would raise AttributeError on None.
+    """
+    h = _install(monkeypatch)
+
+    await browser_task.coroutine(config={}, task="x")
+
+    assert h.runner_kwargs["conversation_id"] == ""
+    assert h.runner_kwargs["user_id"] is None
+    assert h.session_kwargs == {"user_id": "", "start_url": None}
+
+
 # ---------------------------------------------------------------------------
 # browser_task — cancellation seam
 # ---------------------------------------------------------------------------
@@ -865,7 +885,7 @@ async def test_every_snapshot_kind_is_mirrored_to_its_own_delivery_channel(
 ) -> None:
     step = BrowserStepSnapshot(index=1, goal="g")
     session = BrowserSessionSnapshot(task="x", status=BrowserSessionStatus.RUNNING)
-    handoff = BrowserHandoffSnapshot(handoff_id="h1", reason="r")
+    handoff = BrowserHandoffSnapshot(handoff_id="h1", reason="r", status=HandoffStatus.PENDING)
     final = _result(BrowserSessionStatus.COMPLETED, True, "done")
 
     async def body(h: Harness) -> BrowserResultSnapshot:

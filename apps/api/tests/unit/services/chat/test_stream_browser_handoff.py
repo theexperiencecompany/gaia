@@ -49,7 +49,11 @@ def published(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     """Chunks published to the client, in order."""
     chunks: list[str] = []
 
-    async def capture(_stream_id: str, chunk: str) -> None:
+    async def capture(stream_id: str, chunk: str) -> None:
+        # Invariant for every test in this file, so it is enforced here rather
+        # than restated in each: a chunk published to the wrong stream (or to
+        # None) is a reply the user's browser never receives.
+        assert stream_id == STREAM_ID
         chunks.append(chunk)
 
     monkeypatch.setattr(chat_stream.stream_manager, "publish_chunk", AsyncMock(side_effect=capture))
@@ -228,6 +232,10 @@ class TestContinueResolution:
 
         assert result is True
         assert published[0] == format_sse_response(BROWSER_HANDOFF_ACK_CONTINUE)
+        # Pins the destination stream, not just the payload — a mutant that
+        # publishes the ack to the wrong stream (e.g. None) leaves the payload
+        # assertion above green while the user's browser never sees the reply.
+        assert chat_stream.stream_manager.publish_chunk.await_args_list[0].args[0] == STREAM_ID
 
     async def test_state_is_stamped_with_the_ack_and_completion_time(
         self, published: list[str], persist: AsyncMock
@@ -263,6 +271,9 @@ class TestContinueResolution:
         assert result is True
         persist.assert_awaited_once_with(STREAM_ID, body, user, CONVERSATION_ID, state)
         assert published[-1] == "data: [DONE]\n\n"
+        # Pins the destination stream of the closing [DONE] chunk — a mutant
+        # that sends it to None instead of STREAM_ID never reaches the client.
+        assert chat_stream.stream_manager.publish_chunk.await_args_list[-1].args[0] == STREAM_ID
         chat_stream.stream_manager.complete_stream.assert_awaited_once_with(STREAM_ID)
 
 
@@ -310,6 +321,11 @@ class TestCancelResolution:
             MainResponseCompleteFrame(main_response_complete=True).model_dump()
         )
         assert published[2] == "data: [DONE]\n\n"
+        # Every publish in the turn must target the resolved stream, not just
+        # carry the right payload — a mutant swapping the stream_id argument
+        # for None on any of these three calls silently drops the chunk.
+        call_args_list = chat_stream.stream_manager.publish_chunk.await_args_list
+        assert [call.args[0] for call in call_args_list] == [STREAM_ID, STREAM_ID, STREAM_ID]
 
 
 @pytest.mark.unit

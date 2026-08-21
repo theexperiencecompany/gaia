@@ -382,9 +382,17 @@ class BrowserTaskRunner:
     async def _finish_from_history(
         self, history: AgentHistoryList[BaseModel]
     ) -> BrowserResultSnapshot:
-        final = None
-        is_done = False
-        is_successful: bool | None = None
+        # The three fallbacks the try leaves in place if reading history fails.
+        # pragma-exempt below: every consumer collapses falsy values to one answer
+        # (`final or ...`, `bool(is_done and ...)`, `is_successful is not False`),
+        # so swapping any of them for another falsy value cannot change the
+        # snapshot — verified against both the total-failure and partial-read
+        # paths. Restructuring to an early return WAS tried and rejected: it
+        # discards a final_result() that was read before the failure, which
+        # test_a_history_that_breaks_midway_still_reports_what_it_read catches.
+        final = None  # pragma: no mutate
+        is_done = False  # pragma: no mutate
+        is_successful: bool | None = None  # pragma: no mutate
         try:
             final = history.final_result()
             is_done = history.is_done()

@@ -371,6 +371,7 @@ def test_init_derives_timeouts_and_starts_from_a_clean_slate() -> None:
     # the wall clock allows every permitted handoff to run its full duration.
     assert runner._step_timeout == 240
     assert runner._wall_clock_timeout == 300 + MAX_HANDOFFS_PER_TASK * 60
+    assert runner._conversation_id == "c1"
     assert runner._max_steps == 7
     assert runner._max_actions_per_step == 3
     assert runner._task_timeout == 300
@@ -900,13 +901,49 @@ class _BrokenHistory(_History):
         raise RuntimeError("history unreadable")
 
 
+class _HalfReadableHistory(_History):
+    """Reads the result and the done flag, then breaks — so the success flag keeps
+    whatever the runner initialised it to."""
+
+    def is_successful(self):
+        raise RuntimeError("success flag unreadable")
+
+
 async def test_unreadable_history_reports_an_honest_failure() -> None:
-    _, emit = _collector()
+    """A history that cannot be read falls back to a complete, honest FAILED
+    snapshot — every field of it, so the fallbacks the ``try`` leaves in place
+    stay pinned."""
+    events, emit = _collector()
     result = await _make_runner(emit=emit)._finish_from_history(_BrokenHistory())
 
-    assert result.status == BrowserSessionStatus.FAILED
-    assert result.success is False
-    assert result.summary == "Could not complete the browser task."
+    assert result.model_dump() == {
+        "kind": BrowserEventKind.RESULT,
+        "status": BrowserSessionStatus.FAILED,
+        "success": False,
+        "summary": "Could not complete the browser task.",
+        "steps": 0,
+        "replay_url": None,
+    }
+    assert events == [result]
+
+
+async def test_a_history_that_breaks_midway_still_reports_what_it_read() -> None:
+    """``is_done`` succeeded and ``is_successful`` raised: the run is judged done
+    and the final result it did read becomes the summary."""
+    events, emit = _collector()
+    result = await _make_runner(emit=emit)._finish_from_history(
+        _HalfReadableHistory(result="Booked seat 14C.")
+    )
+
+    assert result.model_dump() == {
+        "kind": BrowserEventKind.RESULT,
+        "status": BrowserSessionStatus.COMPLETED,
+        "success": True,
+        "summary": "Booked seat 14C.",
+        "steps": 0,
+        "replay_url": None,
+    }
+    assert events == [result]
 
 
 async def test_a_finished_history_without_a_final_result_gets_a_default_summary() -> None:

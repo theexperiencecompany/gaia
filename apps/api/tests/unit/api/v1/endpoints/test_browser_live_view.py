@@ -86,13 +86,24 @@ class TestReplayPage:
 class TestLiveViewPage:
     async def test_via_live_code_success(self) -> None:
         with (
-            patch.object(blv, "_resolve_target_page", new=AsyncMock(return_value=("sess1", "u1"))),
-            patch.object(blv.registry, "session_owner", new=AsyncMock(return_value="u1")),
+            patch.object(
+                blv, "_resolve_target_page", new=AsyncMock(return_value=("sess1", "u1"))
+            ) as mock_resolve,
+            patch.object(
+                blv.registry, "session_owner", new=AsyncMock(return_value="u1")
+            ) as mock_owner,
             patch.object(blv, "render_live_view_page", return_value="<html>live</html>"),
         ):
             req = _make_request()
-            resp = await blv.live_view_page("code123", req, t=None)
+            resp = await blv.live_view_page("code123", req, t="tok")
             assert isinstance(resp, HTMLResponse)
+            # Regression: a mutant replacing `request` with None in the call to
+            # _resolve_target_page would pass every existing test silently.
+            mock_resolve.assert_awaited_once_with("code123", req, "tok")
+            # Regression: a mutant replacing `session_id` with None here would still
+            # pass tests that only assert the return value, but would break the
+            # ownership check that stops one user opening another user's session.
+            mock_owner.assert_awaited_once_with("sess1")
 
     async def test_via_live_code_owner_mismatch_403(self) -> None:
         with (
@@ -164,9 +175,14 @@ class TestAuthorizePage:
 
     async def test_with_cookie_success(self) -> None:
         req = _make_request()
-        with patch.object(blv, "get_current_user", new=AsyncMock(return_value={"user_id": "u1"})):
+        with patch.object(
+            blv, "get_current_user", new=AsyncMock(return_value={"user_id": "u1"})
+        ) as mock_get_user:
             uid = await blv._authorize_page(req, "sess1", token=None)
             assert uid == "u1"
+            # Regression: a mutant replacing `request` with None here would still
+            # return "u1" from the mocked call, but would break auth in production.
+            mock_get_user.assert_awaited_once_with(req)
 
     async def test_with_cookie_missing_user_id_raises_400(self) -> None:
         req = _make_request()

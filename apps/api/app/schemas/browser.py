@@ -56,7 +56,9 @@ class BrowserHandoffSnapshot(BaseModel):
     reason: str
     session_id: str | None = None
     live_view_url: str | None = None
-    status: HandoffStatus = HandoffStatus.PENDING
+    #: Required, not defaulted: a snapshot that forgot to say it had been
+    #: resolved would silently render as still-pending to the user.
+    status: HandoffStatus
 
 
 class BrowserResultSnapshot(BaseModel):

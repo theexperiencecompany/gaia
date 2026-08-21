@@ -191,8 +191,8 @@ def _storage_state_cookie_to_cdp(cookie: StorageStateCookie) -> dict[str, Any]:
         "secure": cookie.get("secure", False),
         "httpOnly": cookie.get("httpOnly", False),
     }
-    expires = cookie.get("expires", -1)
-    if expires and expires > 0:
+    expires = cookie.get("expires")
+    if expires is not None and expires > 0:
         out["expires"] = expires
     same_site = cookie.get("sameSite")
     if same_site:
@@ -310,10 +310,9 @@ class ChromiumHost:
     async def dispose_context(self, session_id: str) -> StorageState:
         """Dump the context's ``storage_state``, then dispose it. Returns the dump."""
         session = self._get(session_id)
-        dumped = False
+        state: StorageState | None = None
         try:
             state = await self._dump_storage_state(session)
-            dumped = True
             return state
         finally:
             # Release the slot and the Chromium context even when the dump fails
@@ -324,7 +323,7 @@ class ChromiumHost:
                 self._sessions.pop(session_id, None)
             await self._dispose_context_id(session.context_id)
             log.set(browser={"session_id": session_id, "operation": "dispose"})
-            if dumped:
+            if state is not None:
                 log.info(f"{LogTag.BROWSER} browser context disposed")
             else:
                 # The context is gone either way, but the user's saved login went
@@ -577,8 +576,7 @@ class ChromiumHost:
                 # so read defensively and keep polling instead of crashing the
                 # whole launch with an IndexError/ValueError on a partial write.
                 port_lines = port_file.read_text().splitlines()
-                first_line = port_lines[0].strip() if port_lines else ""
-                if first_line.isdigit():
+                if port_lines and (first_line := port_lines[0].strip()).isdigit():
                     return int(first_line)
             await asyncio.sleep(_CDP_READY_POLL_SECONDS)
         raise RuntimeError("Chromium did not write DevToolsActivePort in time")
