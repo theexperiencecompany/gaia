@@ -1,0 +1,166 @@
+"""Regression tests for #917's class — workflow payloads carried native datetimes.
+
+``get/pause/resume_workflow``, ``apply_workflow_edit``, and the workflow tool
+returns serialized ``Workflow`` models in python mode, whose ``BaseScheduledTask``
+base always carries ``created_at``/``updated_at`` native datetimes. The
+stream-writer payload is JSON-encoded with stdlib ``json.dumps`` downstream
+(``redis_writer.py``), so every emission crashed with "Object of type datetime
+is not JSON serializable", and ``get_workflow``'s return value degraded to
+Python reprs inside the ToolMessage. These tests pin the boundary contract:
+whatever crosses into a stream frame or a tool return is JSON-safe.
+"""
+
+from datetime import UTC, datetime, timedelta
+import json
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
+
+# ---------------------------------------------------------------------------
+# Module-level patch for rate limiting
+# ---------------------------------------------------------------------------
+_rl_patch = patch(
+    "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
+    new_callable=AsyncMock,
+    return_value={},
+)
+_rl_patch.start()
+
+# Pre-import to break circular dependency chain (same as test_workflow_tool.py):
+# workflow_tool -> workflow_utils -> workflow.subagent_output -> workflow.__init__ -> service
+import app.services.workflow.service  # noqa: F401
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+FAKE_USER_ID = "507f1f77bcf86cd799439011"
+MODULE = "app.agents.tools.workflow_tool"
+
+
+def _cfg() -> dict[str, Any]:
+    return {
+        "configurable": {
+            "user_id": FAKE_USER_ID,
+            "thread_id": "thread-123",
+            "user_timezone": "+05:30",
+        },
+        "metadata": {"user_id": FAKE_USER_ID},
+    }
+
+
+def _workflow() -> Workflow:
+    """A real document — its python-mode dump carries native datetimes."""
+    return Workflow(
+        user_id=FAKE_USER_ID,
+        title="Morning digest",
+        steps=[],
+        trigger_config=TriggerConfig(
+            type=TriggerType.SCHEDULE,
+            cron_expression="0 9 * * *",
+            next_run=datetime.now(UTC) + timedelta(hours=12),
+        ),
+        scheduled_at=datetime.now(UTC) + timedelta(hours=12),
+    )
+
+
+def _writer_mock() -> MagicMock:
+    return MagicMock()
+
+
+def _emitted_payloads(writer_mock: MagicMock) -> list[Any]:
+    return [call.args[0] for call in writer_mock.call_args_list if call.args]
+
+
+def _assert_json_safe(payload: Any) -> None:
+    """Stream frames are stdlib-json-encoded downstream — datetimes crash there."""
+    json.dumps(payload)
+    assert "datetime.datetime(" not in str(payload), (
+        f"Python datetime repr leaked into stream payload: {payload!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.regression
+class TestWorkflowToolSerialization917:
+    async def test_get_workflow_emits_json_safe_frames(self) -> None:
+        from app.agents.tools.workflow_tool import get_workflow
+
+        writer = _writer_mock()
+        with (
+            patch(f"{MODULE}.get_stream_writer", return_value=writer),
+            patch(f"{MODULE}.WorkflowService") as mock_service,
+        ):
+            mock_service.get_workflow = AsyncMock(return_value=_workflow())
+
+            result = await get_workflow.coroutine(config=_cfg(), workflow_id="wf_1")  # type: ignore[attr-defined]
+
+        for payload in _emitted_payloads(writer):
+            _assert_json_safe(payload)
+        _assert_json_safe(result)
+
+    async def test_pause_workflow_emits_json_safe_frames(self) -> None:
+        from app.agents.tools.workflow_tool import pause_workflow
+
+        writer = _writer_mock()
+        with (
+            patch(f"{MODULE}.get_stream_writer", return_value=writer),
+            patch(f"{MODULE}.WorkflowService") as mock_service,
+        ):
+            mock_service.deactivate_workflow = AsyncMock(return_value=_workflow())
+
+            result = await pause_workflow.coroutine(config=_cfg(), workflow_id="wf_1")  # type: ignore[attr-defined]
+
+        assert result["success"] is True
+        for payload in _emitted_payloads(writer):
+            _assert_json_safe(payload)
+
+    async def test_resume_workflow_emits_json_safe_frames(self) -> None:
+        from app.agents.tools.workflow_tool import resume_workflow
+
+        writer = _writer_mock()
+        with (
+            patch(f"{MODULE}.get_stream_writer", return_value=writer),
+            patch(f"{MODULE}.WorkflowService") as mock_service,
+        ):
+            mock_service.activate_workflow = AsyncMock(return_value=_workflow())
+
+            result = await resume_workflow.coroutine(config=_cfg(), workflow_id="wf_1")  # type: ignore[attr-defined]
+
+        assert result["success"] is True
+        for payload in _emitted_payloads(writer):
+            _assert_json_safe(payload)
+
+    async def test_apply_workflow_edit_emits_json_safe_frames(self) -> None:
+        from app.services.workflow.subagent_output import FinalizedOutput
+        from app.utils.workflow_utils import apply_workflow_edit
+
+        workflow = _workflow()
+        draft = FinalizedOutput(
+            type="finalized",
+            title="Morning digest — edited",
+            description="digest",
+            prompt="prompt",
+            trigger_type="scheduled",
+            cron_expression="0 9 * * *",
+        )
+        writer = _writer_mock()
+        with patch(
+            "app.services.workflow.WorkflowService.update_workflow", new_callable=AsyncMock
+        ) as mock_update:
+            mock_update.return_value = _workflow()
+
+            await apply_workflow_edit(
+                draft=draft, workflow=workflow, user_id=FAKE_USER_ID, writer=writer
+            )
+
+        mock_update.assert_awaited_once()
+        for payload in _emitted_payloads(writer):
+            _assert_json_safe(payload)

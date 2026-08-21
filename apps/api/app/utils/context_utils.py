@@ -62,7 +62,8 @@ def execute_tool(
     if output_model:
         try:
             validated = output_model.model_validate(data)
-            return validated.model_dump()
+            # Tool returns cross into text; python-mode keeps native datetimes.
+            return validated.model_dump(mode="json")
         except Exception as e:
             log.warning(
                 f"{LogTag.AGENT} Schema validation warning for",
