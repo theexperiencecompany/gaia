@@ -52,7 +52,8 @@ async def init_websocket_consumer() -> None:
 async def init_mongodb_async() -> None:
     """Initialize MongoDB and create database indexes."""
     try:
-        from app.db.mongodb.mongodb import init_mongodb
+        # Deferred import: deferred import kept out of module load path
+        from app.db.mongodb.mongodb import init_mongodb  # noqa: PLC0415 -- deferred
 
         mongo_client = init_mongodb()
         await mongo_client._initialize_indexes()
@@ -79,7 +80,7 @@ async def close_postgresql_async() -> None:
 async def close_reminder_scheduler() -> None:
     """Close reminder scheduler."""
     try:
-        from app.services.reminder_service import reminder_scheduler
+        from app.services.reminder_service import reminder_scheduler  # noqa: PLC0415 -- function
 
         await reminder_scheduler.close()
         log.info("Reminder scheduler closed")

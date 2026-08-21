@@ -49,7 +49,9 @@ def apply() -> None:
         return
 
     try:
-        from composio.core.models.custom_tools import CustomTool
+        from composio.core.models.custom_tools import (  # noqa: PLC0415 -- upstream import stays inside apply() so failures log instead of breaking app import
+            CustomTool,
+        )
 
         # Name-mangled private attribute (CustomTool.__parse_info) isn't a
         # public attribute mypy can resolve on the class; the cast to Any

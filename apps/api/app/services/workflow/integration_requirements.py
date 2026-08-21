@@ -90,7 +90,10 @@ async def compute_missing_integrations(
     if not required:
         return []
     # Deferred to avoid circular import: oauth_service → provisioner → service → here
-    from app.services.oauth.oauth_service import get_all_integrations_status
+    # Deferred import: breaks circular chain: oauth_service -> provisioner -> service -> here
+    from app.services.oauth.oauth_service import (  # noqa: PLC0415 -- deferred
+        get_all_integrations_status,
+    )
 
     status_map = await get_all_integrations_status(user_id)
     return build_integration_refs(required, status_map)[1]
@@ -107,7 +110,9 @@ async def compute_integration_refs(
     if not required:
         return [], []
     # Deferred to avoid circular import: oauth_service → provisioner → service → here
-    from app.services.oauth.oauth_service import get_all_integrations_status
+    from app.services.oauth.oauth_service import (  # noqa: PLC0415 -- breaks c
+        get_all_integrations_status,
+    )
 
     status_map = await get_all_integrations_status(user_id)
     return build_integration_refs(required, status_map)

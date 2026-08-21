@@ -24,7 +24,7 @@ from app.models.trigger_config import TriggerConfig
 # not only where an entrypoint remembers to `import app.patches`. Without the
 # user_id-injection patch, custom tools 500 with "Missing user_id in
 # auth_credentials".
-import app.patches  # noqa: F401
+import app.patches  # noqa: F401 -- applies monkeypatches on import; must run before the patched SDKs are used
 from app.services.composio.custom_tools.registry import custom_tools_registry
 from app.services.composio.langchain_composio_service import (
     LangchainProvider,
@@ -45,7 +45,8 @@ COMPOSIO_SOCIAL_CONFIGS = get_composio_social_configs()
 
 class ComposioService:
     def __init__(self, api_key: str):
-        from app.config.oauth_config import OAUTH_INTEGRATIONS
+        # Deferred import: constructor-local lookup; oauth_config is already fully imported at module top level
+        from app.config.oauth_config import OAUTH_INTEGRATIONS  # noqa: PLC0415 -- const
 
         toolkit_versions: dict[str, str] = {}
         for integration in OAUTH_INTEGRATIONS:

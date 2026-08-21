@@ -45,11 +45,11 @@ repos:
         pass_filenames: false
         priority: 0
 
-      - id: gaia-ignore-ratchet
-        name: Ruff ignore-list ratchet (ignore / per-file-ignores may only shrink)
+      - id: gaia-ignore-whys
+        name: Ruff/mypy escape hatches must carry a why-comment
         language: system
-        entry: python3 tools/lints/check_ignore_ratchet.py
-        files: ^(pyproject\.toml|tools/lints/(check_ignore_ratchet\.py|ignore_ratchet_baseline\.txt))$
+        entry: python3 tools/lints/check_ignore_whys.py
+        files: ^(pyproject\.toml|tools/lints/(check_ignore_whys\.py|test_check_ignore_whys\.py))$
         pass_filenames: false
         priority: 0
 

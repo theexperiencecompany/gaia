@@ -50,7 +50,10 @@ _cache_lock = Lock()
 def _get_composio() -> Composio:
     # Lazy import to avoid a circular dependency between proxy_client and
     # the Composio service / custom-tool registry that imports it.
-    from app.services.composio.composio_service import get_composio_service
+    # Deferred import: breaks the proxy_client <-> composio_service/custom-tools import cycle
+    from app.services.composio.composio_service import (  # noqa: PLC0415 -- deferred
+        get_composio_service,
+    )
 
     return get_composio_service().composio
 

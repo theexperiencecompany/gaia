@@ -208,12 +208,12 @@ ignore = [
   # whether it still applies. Both are at zero.
   # SIM117 / SIM102 — nested with/if can be more readable than combined.
   "SIM117",
-  "SIM102",
+  "SIM102",  # nested with inside with mirrors the handler's setup/teardown shape
   # RET504 — unnecessary assign before return; reads more clearly with named values.
   "RET504",
   # Shadowing builtins (id, type, filter) — common in REST handlers.
   "A001",
-  "A002",
+  "A002",  # shadowing builtin `filter`/`type` params — REST handlers use them as nouns
   # StrEnum migration — codebase is on Enum, migration is out of scope.
   "UP042",
   # ASYNC230 (blocking open() in an async def) is enforced — it is the rule form
@@ -250,9 +250,9 @@ ignore = [
   "S608",   # SQL injection (false positives on f-strings with constants)
   # Datetime tzinfo — we standardize on UTC via wrappers; existing call sites are safe.
   "DTZ001",
-  "DTZ005",
-  "DTZ006",
-  "DTZ007",
+  "DTZ005",  # datetime.now() without tz — UTC wrappers standardize call sites
+  "DTZ006",  # datetime.fromtimestamp() naive — same UTC-wrapper migration
+  "DTZ007",  # fromisoformat() naive input — parsed values normalized upstream
   # Performance suggestions that hurt readability.
   "PERF401", # use list.extend
   # Whitespace-only lines (mostly in docstrings/quotes).
@@ -278,8 +278,8 @@ ignore = [
   "S108",
   # S105 — hardcoded passwords in non-secret contexts.
   "S105",
-  "S106",
-  "S107",
+  "S106",  # hardcoded password arg — test fixtures and non-secret placeholders
+  "S107",  # hardcoded password default — real values arrive via process env
   "S301",   # pickle.loads — used for trusted internal data
   # TRY rules that don't add value at scale.
   "TRY004",  # wrong-type-error
@@ -287,12 +287,12 @@ ignore = [
   "TRY203",  # use-error-message
   # SIM rules — readability differs from style preference.
   "SIM103",  # needless-bool
-  "SIM108",  # ternary
+  "SIM108",  # ternary — explicit if/else branches carry logging and comments
   "SIM118",  # use `in` instead of `keys()`
   # Unicode in strings/docs (intentional in many places).
   "RUF001",
-  "RUF002",
-  "RUF043",
+  "RUF002",  # ambiguous unicode in docstrings — intentional arrows/dashes in prose
+  "RUF043",  # pattern passed to match= — intentional API-shape strings
   # Other naming / misc.
   "N803",   # arg name should be snake_case (pydantic-camelCase passthroughs)
   "N806",   # variable in function should be snake_case
@@ -305,7 +305,7 @@ ignore = [
   "C408",
   # PERF102 / 401 / 403 — readability matters more than micro-perf.
   "PERF102",
-  "PERF403",
+  "PERF403",  # dict-comprehension rewrite would split log-and-collect loops
   # Whitespace at line end (formatter handles it).
   "W291",
   # Pylint refactor-style suggestions.
@@ -343,37 +343,37 @@ unfixable = [
 # must keep that exact 3-arg shape regardless of whether a given hook branches on
 # tool/toolkit, so unused params here are a framework contract, not dead code.
 "apps/api/app/utils/composio_hooks/gmail_hooks.py" = ["ARG001"]
-"apps/api/app/utils/composio_hooks/reddit_hooks.py" = ["ARG001"]
-"apps/api/app/utils/composio_hooks/slack_hooks.py" = ["ARG001"]
-"apps/api/app/utils/composio_hooks/twitter_hooks.py" = ["ARG001"]
+"apps/api/app/utils/composio_hooks/reddit_hooks.py" = ["ARG001"]  # Composio's Modifier.apply() calls hooks positionally; params are framework contract
+"apps/api/app/utils/composio_hooks/slack_hooks.py" = ["ARG001"]  # Composio's Modifier.apply() calls hooks positionally; params are framework contract
+"apps/api/app/utils/composio_hooks/twitter_hooks.py" = ["ARG001"]  # Composio's Modifier.apply() calls hooks positionally; params are framework contract
 # ARG001: LangChain injects `config: RunnableConfig` / `store: BaseStore` into
 # @tool-decorated functions via the tool call signature regardless of whether a
 # given tool implementation reads them — framework contract, not dead code.
 "apps/api/app/agents/tools/flowchart_tool.py" = ["ARG001"]
-"apps/api/app/agents/tools/image_tool.py" = ["ARG001"]
-"apps/api/app/agents/tools/todo_tools.py" = ["ARG001"]
+"apps/api/app/agents/tools/image_tool.py" = ["ARG001"]  # LangChain injects config/store via the tool-call signature regardless of body usage
+"apps/api/app/agents/tools/todo_tools.py" = ["ARG001"]  # LangChain injects config/store via the tool-call signature regardless of body usage
 # ARG001: slowapi's @limiter.limit(...) introspects the handler signature and
 # requires a `request: Request` param even when the body doesn't use it; other
 # FastAPI route params here are Depends()-injected for auth/side-effects only.
 "apps/api/app/api/v1/endpoints/payments.py" = ["ARG001"]
-"apps/api/app/api/v1/endpoints/search.py" = ["ARG001"]
-"apps/api/app/api/v1/endpoints/support.py" = ["ARG001"]
-"apps/api/app/api/v1/endpoints/tools.py" = ["ARG001"]
-"apps/api/app/api/v1/endpoints/workflows.py" = ["ARG001"]
-"apps/api/app/api/v1/endpoints/integrations/config.py" = ["ARG001"]
-"apps/api/app/agents/tools/weather_tool.py" = ["ARG001"]
-"apps/api/app/agents/tools/webpage_tool.py" = ["ARG001"]
+"apps/api/app/api/v1/endpoints/search.py" = ["ARG001"]  # slowapi requires request param; other args are Depends()-injected by name
+"apps/api/app/api/v1/endpoints/support.py" = ["ARG001"]  # slowapi requires request param; other args are Depends()-injected by name
+"apps/api/app/api/v1/endpoints/tools.py" = ["ARG001"]  # slowapi requires request param; other args are Depends()-injected by name
+"apps/api/app/api/v1/endpoints/workflows.py" = ["ARG001"]  # slowapi requires request param; other args are Depends()-injected by name
+"apps/api/app/api/v1/endpoints/integrations/config.py" = ["ARG001"]  # slowapi requires request param; other args are Depends()-injected by name
+"apps/api/app/agents/tools/weather_tool.py" = ["ARG001"]  # LangChain injects config/store via the tool-call signature regardless of body usage
+"apps/api/app/agents/tools/webpage_tool.py" = ["ARG001"]  # LangChain injects config/store via the tool-call signature regardless of body usage
 # ARG002: TriggerHandler.get_config_options is a polymorphic interface called
 # generically (app/api/v1/endpoints/triggers.py) and exercised in tests via
 # keyword arguments (tests/unit/services/test_trigger_service.py), so every
 # concrete handler must keep the full parameter list even when it only
 # branches on a subset -- verified per-file against body + test call sites.
 "apps/api/app/services/triggers/base.py" = ["ARG002"]
-"apps/api/app/services/triggers/handlers/github.py" = ["ARG002"]
-"apps/api/app/services/triggers/handlers/linear.py" = ["ARG002"]
-"apps/api/app/services/triggers/handlers/notion.py" = ["ARG002"]
-"apps/api/app/services/triggers/handlers/google_sheets.py" = ["ARG002"]
-"apps/api/app/services/triggers/handlers/slack.py" = ["ARG002"]
+"apps/api/app/services/triggers/handlers/github.py" = ["ARG002"]  # TriggerHandler.get_config_options is a polymorphic interface; full signature kept
+"apps/api/app/services/triggers/handlers/linear.py" = ["ARG002"]  # TriggerHandler.get_config_options is a polymorphic interface; full signature kept
+"apps/api/app/services/triggers/handlers/notion.py" = ["ARG002"]  # TriggerHandler.get_config_options is a polymorphic interface; full signature kept
+"apps/api/app/services/triggers/handlers/google_sheets.py" = ["ARG002"]  # TriggerHandler.get_config_options is a polymorphic interface; full signature kept
+"apps/api/app/services/triggers/handlers/slack.py" = ["ARG002"]  # TriggerHandler.get_config_options is a polymorphic interface; full signature kept
 # ANN401: passes through unchanged to pymongo.Collection.create_index(**kwargs),
 # whose own upstream signature is Any (heterogeneous index options: unique,
 # name, expireAfterSeconds, partialFilterExpression, ...). Verified against
@@ -387,15 +387,10 @@ unfixable = [
 # positionally to every registered custom tool handler regardless of whether
 # a given handler needs it.
 "apps/api/app/services/composio/custom_tools/gmail_tools.py" = ["ARG001"]
-# ARG001: rate_limiting.py's `count_tokens` kwarg is a public decorator
-# parameter with real keyword callers elsewhere (image.py, tiered_rate_limiter.py)
-# -- cannot rename/delete. Its enforcement body is separately known to be
-# dead code (a no-op today), tracked as a follow-up, not fixed here.
-"apps/api/app/decorators/rate_limiting.py" = ["ARG001"]
 # ANN401: generic decorator/proxy/settings surfaces that genuinely accept or
 # return arbitrary data -- Any is the correct type here, not a shortcut.
 "apps/api/app/db/redis.py" = ["ANN401"]
-"apps/api/app/config/settings.py" = ["ANN401"]
+"apps/api/app/config/settings.py" = ["ANN401"]  # from_env() forwards **kwargs into pydantic's typed __init__; bag cannot be object
 # ANN401: the same two shapes, in the shared package. wide_events is the
 # structured-logging sink -- log.set()/warning()/error() take an arbitrary bag of
 # JSON-serializable event fields that is only stored and serialized, never
@@ -405,7 +400,7 @@ unfixable = [
 # from_env() forwards **kwargs into pydantic's per-field typed __init__
 # (ENV is a Literal, SHOW_MISSING_KEY_WARNINGS a bool), so the bag cannot be object.
 "libs/shared/py/wide_events.py" = ["ANN401"]
-"libs/shared/py/settings/base.py" = ["ANN401"]
+"libs/shared/py/settings/base.py" = ["ANN401"]  # shared from_env() twin: forwards **kwargs into pydantic's typed __init__
 # ANN401: StructuredTool.run overrides LangChain BaseTool.run and forwards
 # *args/**kwargs straight through (BaseTool.run itself returns Any); the wrapped
 # action fn takes the tool-argument bag, whose signature is synthesized at
@@ -425,33 +420,33 @@ unfixable = [
 # (LangChain Runnable, LangGraph Runtime/ToolNode/hooks, MCP adapters) --
 # verified against each library's real signature, not assumed.
 "apps/api/app/agents/llm/client.py" = ["ANN401"]
-"apps/api/app/agents/middleware/summarization.py" = ["ANN401"]
-"apps/api/app/override/langgraph_bigtool/dynamic_tool_node.py" = ["ANN401"]
-"apps/api/app/services/mcp/langchain_adapter.py" = ["ANN401"]
+"apps/api/app/agents/middleware/summarization.py" = ["ANN401"]  # overrides LangChain Runnable methods typed Any upstream
+"apps/api/app/override/langgraph_bigtool/dynamic_tool_node.py" = ["ANN401"]  # mirrors LangGraph ToolNode methods typed Any upstream
+"apps/api/app/services/mcp/langchain_adapter.py" = ["ANN401"]  # adapts MCP client (untyped upstream) into LangChain tools
 # ARG002: overrides abstract ActionHandler.execute / ChannelAdapter.can_handle,
 # dispatched polymorphically from one call site -- every implementation keeps
 # the full interface signature even where it only needs a subset.
 "apps/api/app/utils/notification/actions.py" = ["ARG002"]
-"apps/api/app/utils/notification/channels/external.py" = ["ARG002"]
-"apps/api/app/utils/notification/channels/inapp.py" = ["ARG002"]
+"apps/api/app/utils/notification/channels/external.py" = ["ARG002"]  # overrides abstract ChannelAdapter interface dispatched polymorphically
+"apps/api/app/utils/notification/channels/inapp.py" = ["ARG002"]  # overrides abstract ChannelAdapter interface dispatched polymorphically
 # ARG001: every pre/post-model hook is called positionally as
 # (state, config, store) by execute_hooks() (app/override/langgraph_bigtool/hooks.py),
 # regardless of whether a given node reads config/store.
 "apps/api/app/agents/core/nodes/adapt_media.py" = ["ARG001"]
-"apps/api/app/agents/core/nodes/executor_status.py" = ["ARG001"]
-"apps/api/app/agents/core/nodes/filter_messages.py" = ["ARG001"]
-"apps/api/app/agents/core/nodes/follow_up_actions_node.py" = ["ARG001"]
-"apps/api/app/agents/core/nodes/manage_system_prompts.py" = ["ARG001"]
-"apps/api/app/agents/core/nodes/memory_node.py" = ["ARG001"]
+"apps/api/app/agents/core/nodes/executor_status.py" = ["ARG001"]  # execute_hooks() calls nodes positionally (state, config, store)
+"apps/api/app/agents/core/nodes/filter_messages.py" = ["ARG001"]  # execute_hooks() calls nodes positionally (state, config, store)
+"apps/api/app/agents/core/nodes/follow_up_actions_node.py" = ["ARG001"]  # execute_hooks() calls nodes positionally (state, config, store)
+"apps/api/app/agents/core/nodes/manage_system_prompts.py" = ["ARG001"]  # execute_hooks() calls nodes positionally (state, config, store)
+"apps/api/app/agents/core/nodes/memory_node.py" = ["ARG001"]  # execute_hooks() calls nodes positionally (state, config, store)
 # ARG001: Starlette calls exception handlers positionally as handler(conn, exc)
 # regardless of body usage (verified against starlette/_exception_handler.py).
 "apps/api/app/core/app_factory.py" = ["ARG001"]
 # ARG001: ARQ's mandated first positional param on every registered task
 # (app/worker.py's WorkerSettings.functions/cron_jobs).
 "apps/api/app/workers/tasks/cleanup_tasks.py" = ["ARG001"]
-"apps/api/app/workers/tasks/hil_sweep_tasks.py" = ["ARG001"]
-"apps/api/app/workers/tasks/memory_backfill_tasks.py" = ["ARG001"]
-"apps/api/app/workers/tasks/memory_email_tasks.py" = ["ARG001"]
+"apps/api/app/workers/tasks/hil_sweep_tasks.py" = ["ARG001"]  # ARQ injects ctx as first positional arg on every registered task
+"apps/api/app/workers/tasks/memory_backfill_tasks.py" = ["ARG001"]  # ARQ injects ctx as first positional arg on every registered task
+"apps/api/app/workers/tasks/memory_email_tasks.py" = ["ARG001"]  # ARQ injects ctx as first positional arg on every registered task
 # ARG001: ARQ injects the job context (`ctx`) into every task function; the
 # nurture task doesn't use it.
 # ANN401: ARQ's job API is dynamically typed — enqueue_worker_job forwards an
@@ -459,78 +454,34 @@ unfixable = [
 # arq's ArqRedis), and task_envelope's wrapper mirrors the registered task's own
 # signature, which ARQ calls positionally regardless of how the task is typed.
 "apps/api/app/workers/queue.py" = ["ANN401"]
-"apps/api/app/workers/task_envelope.py" = ["ANN401"]
+"apps/api/app/workers/task_envelope.py" = ["ANN401"]  # ARQ job API dynamically typed; wrapper mirrors registered task signatures
 # ANN401: _iso() accepts an arbitrary decoded JSON value from a log line (a
 # field that is typed as JSON, so str/int/float/None are all reachable) and
 # str()-normalizes it before the ISO check — object would force a cast for
 # zero benefit.
 "tools/logcheck/logcheck.py" = ["ANN401"]
-"apps/api/app/workers/tasks/nurture_tasks.py" = ["ARG001"]
+"apps/api/app/workers/tasks/nurture_tasks.py" = ["ARG001"]  # ARQ injects ctx as first positional arg on every registered task
 # ANN401: recursively processes arbitrary JSON-serializable data (dict, list,
 # str, or scalar) for an MCP-UI iframe payload -- not dict-shaped.
 "apps/api/app/helpers/agent_helpers.py" = ["ANN401"]
 # PLC0415 (no inline imports) ratchet: enforced everywhere; the files below are
 # grandfathered legacy offenders. SHRINK this list when you touch a file — never
 # add to it. Tests defer app imports by design (root conftest env-ordering).
-"apps/api/app/agents/core/background/result_delivery.py" = ["PLC0415"]
-"apps/api/app/agents/core/subagents/subagent_helpers.py" = ["PLC0415"]
-"apps/api/app/agents/skills/registry.py" = ["PLC0415"]
-"apps/api/app/agents/tools/core/registry.py" = ["PLC0415"]
-"apps/api/app/api/v1/endpoints/health.py" = ["PLC0415"]
-"apps/api/app/api/v1/endpoints/platform_auth.py" = ["PLC0415"]
-"apps/api/app/api/v1/endpoints/reminders.py" = ["PLC0415"]
-"apps/api/app/api/v1/endpoints/todos.py" = ["PLC0415", "ARG001"]
-"apps/api/app/db/mongodb/collections.py" = ["PLC0415"]
-"apps/api/app/db/mongodb/mongodb.py" = ["PLC0415"]
-"apps/api/app/helpers/lifespan_helpers.py" = ["PLC0415"]
-"apps/api/app/helpers/mcp_helpers.py" = ["PLC0415"]
-"apps/api/app/memory/management.py" = ["PLC0415"]
-"apps/api/app/models/reminder_models.py" = ["PLC0415"]
-"apps/api/app/models/scheduler_models.py" = ["PLC0415"]
-"apps/api/app/patches/composio_custom_tool_schema_patch.py" = ["PLC0415", "ANN401"]
-"apps/api/app/patches/composio_langchain_patch.py" = ["PLC0415", "ANN401"]
-"apps/api/app/services/composio/composio_service.py" = ["PLC0415"]
+"apps/api/app/api/v1/endpoints/todos.py" = ["ARG001"]
+"apps/api/app/patches/composio_custom_tool_schema_patch.py" = ["ANN401"]  # patches Composio schema builder typed Any upstream
+"apps/api/app/patches/composio_langchain_patch.py" = ["ANN401"]  # patches Composio/LangChain boundary typed Any upstream
 # ANN401: proxy_request_sync/proxy_request front every provider in the
 # codebase and return the provider's own parsed JSON, so the concrete type
 # only exists at the call site -- callers validate what they receive.
-"apps/api/app/services/composio/proxy_client.py" = ["PLC0415", "ANN401"]
-"apps/api/app/services/device_token_service.py" = ["PLC0415"]
-"apps/api/app/services/mcp/mcp_client_pool.py" = ["PLC0415"]
-"apps/api/app/services/mcp/mcp_client.py" = ["PLC0415"]
-"apps/api/app/services/mcp/mcp_token_store.py" = ["PLC0415"]
-"apps/api/app/services/reminder_service.py" = ["PLC0415"]
-"apps/api/app/services/storage/sessions/lifecycle.py" = ["PLC0415"]
-"apps/api/app/services/todos/todo_bulk_service.py" = ["PLC0415"]
-"apps/api/app/services/todos/todo_service.py" = ["PLC0415"]
-"apps/api/app/services/triggers/handlers/calendar.py" = ["PLC0415"]
-"apps/api/app/services/workflow/context_extractor.py" = ["PLC0415"]
-"apps/api/app/services/workflow/generation_service.py" = ["PLC0415"]
-"apps/api/app/services/workflow/integration_requirements.py" = ["PLC0415"]
-"apps/api/app/services/workflow/scheduler.py" = ["PLC0415"]
-"apps/api/app/services/workflow/service.py" = ["PLC0415"]
-"apps/api/app/services/workflow/trigger_search.py" = ["PLC0415"]
-"apps/api/app/services/workflow/workflow_subagent.py" = ["PLC0415"]
-"apps/api/app/utils/agent_utils.py" = ["PLC0415"]
-"apps/api/app/utils/context_utils.py" = ["PLC0415"]
-"apps/api/app/utils/general_utils.py" = ["PLC0415"]
-"apps/api/app/utils/google_docs_utils.py" = ["PLC0415"]
-"apps/api/app/utils/redis_utils.py" = ["PLC0415"]
-"apps/api/app/utils/todo_vector_utils.py" = ["PLC0415"]
-"apps/api/app/utils/weather_utils.py" = ["PLC0415"]
-"apps/api/app/utils/workflow_utils.py" = ["PLC0415"]
-"apps/api/app/workers/tasks/maintenance_sweep_tasks.py" = ["PLC0415"]
-"apps/api/app/workers/tasks/onboarding_tasks.py" = ["PLC0415"]
-"apps/api/app/workers/tasks/reminder_tasks.py" = ["PLC0415", "ARG001"]
-"apps/api/app/workers/tasks/tracked_todo_tasks.py" = ["PLC0415"]
-"apps/api/app/workers/tasks/user_tasks.py" = ["PLC0415", "ARG001"]
-"apps/api/app/workers/tasks/workflow_tasks.py" = ["PLC0415", "ARG001"]
+"apps/api/app/services/composio/proxy_client.py" = ["ANN401"]
+"apps/api/app/workers/tasks/reminder_tasks.py" = ["ARG001"]  # ARQ injects ctx as first positional arg on every registered task
+"apps/api/app/workers/tasks/user_tasks.py" = ["ARG001"]  # ARQ injects ctx as first positional arg on every registered task
+"apps/api/app/workers/tasks/workflow_tasks.py" = ["ARG001"]  # ARQ injects ctx as first positional arg on every registered task
 # Lazy per-command CLI import (heavy agent module loaded only when needed).
 # T20: this is the CLI dispatcher — usage text and unknown-command errors belong
 # on stdout, before any logging sink is configured.
-"apps/voice-agent/src/__main__.py" = ["PLC0415", "T20"]
-# Optional-dependency import inside try (infisical_sdk not always installed).
-"libs/shared/py/secrets.py" = ["PLC0415"]
-"**/tests/**/*.py" = [
+"apps/voice-agent/src/__main__.py" = ["T20"]
+"**/tests/**/*.py" = [  # tests defer app imports until conftest env setup; asserts/magic values are the point
   "PLC0415", # tests must defer app imports until conftest env setup ran
   "ANN",     # tests can skip annotations
   "ARG",     # fixtures often pass unused args
@@ -553,16 +504,16 @@ unfixable = [
 # and renaming it would change the generated OpenAPI operationId that
 # clients are built against.
 "apps/api/app/api/v1/endpoints/mcp.py" = ["PT028"]
-"**/conftest.py" = ["ANN", "INP001", "ARG", "S101", "PLC0415"]
-"**/scripts/**/*.py" = ["T20", "INP001", "PLR2004", "S603", "S606", "S607", "PLC0415"]
+"**/conftest.py" = ["ANN", "INP001", "ARG", "S101", "PLC0415"]  # fixtures skip annotations and import lazily by design
+"**/scripts/**/*.py" = ["T20", "INP001", "PLR2004", "S603", "S606", "S607", "PLC0415"]  # developer CLIs print to stdout; subprocess use is deliberate
 # T20: developer-facing command line tools — printing to stdout is their output,
 # not a debugging leftover. The lint rules and the llm-stub both run as CLIs, and
 # wake-word training is a standalone ML pipeline outside the app entirely.
 "tools/**/*.py" = ["T20"]
-"libs/wake-word/**/*.py" = ["T20"]
-"**/migrations/**/*.py" = ["INP001", "N999", "ANN"]
-"**/__init__.py" = ["F401"]
-"**/patches.py" = ["F401", "PLC", "ANN", "ARG"]
+"libs/wake-word/**/*.py" = ["T20"]  # standalone ML pipeline outside the app; prints are its output
+"**/migrations/**/*.py" = ["INP001", "N999", "ANN"]  # migration runners are not namespace packages and skip annotations
+"**/__init__.py" = ["F401"]  # re-export modules intentionally re-export imported names
+"**/patches.py" = ["F401", "PLC", "ANN", "ARG"]  # monkeypatch modules import heavily for side effects
 
 [tool.ruff.lint.isort]
 combine-as-imports = true

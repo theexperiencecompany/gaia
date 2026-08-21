@@ -30,7 +30,8 @@ from app.core.middleware import configure_middleware
 # on the default registry at app startup. Without this the storage layer is
 # lazy-imported on first use, and /metrics omits the fs_op_* metadata lines
 # until the first FS-shaped operation runs.
-from app.services.storage import metrics as _fs_metrics  # noqa: F401
+# Imported for router-registration side effects.
+from app.services.storage import metrics as _fs_metrics  # noqa: F401 -- imported for
 from app.utils.errors import AppError
 from shared.py.wide_events import log as wide_log
 

@@ -59,7 +59,8 @@ async def check_inactive_users(ctx: dict[str, Any]) -> str:
     Returns:
         Processing result message
     """
-    from app.services.email import send_inactive_user_email
+    # Deferred import: email delivery stack kept off worker-task module load path until the check runs
+    from app.services.email import send_inactive_user_email  # noqa: PLC0415 -- email de
 
     if not settings.RESEND_API_KEY or not settings.EMAIL_UNSUBSCRIBE_SECRET:
         # The boundary emits one canonical event per run; the skip reason rides

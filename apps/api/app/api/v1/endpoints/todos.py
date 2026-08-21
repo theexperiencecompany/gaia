@@ -429,7 +429,10 @@ async def generate_workflow(
     This endpoint returns immediately with 'generating' status. The frontend should
     display a skeleton and listen for the 'workflow.generated' WebSocket event.
     """
-    from app.services.workflow.queue_service import WorkflowQueueService
+    # Deferred import: heavy workflow service/queue stack loads only when this route runs
+    from app.services.workflow.queue_service import (  # noqa: PLC0415 -- deferred
+        WorkflowQueueService,
+    )
 
     log.set(
         user={"id": user_id},
@@ -503,8 +506,13 @@ async def get_workflow_status(
         todo={"operation": "get_workflow_status", "id": todo_id},
     )
     try:
-        from app.services.workflow.queue_service import WorkflowQueueService
-        from app.services.workflow.service import WorkflowService
+        # Heavy workflow service/queue stack loads only when this route runs.
+        from app.services.workflow.queue_service import (  # noqa: PLC0415 -- heavy
+            WorkflowQueueService,
+        )
+        from app.services.workflow.service import (  # noqa: PLC0415 -- heavy workflow
+            WorkflowService,
+        )
 
         wf_cache_key = f"workflow_status:{user_id}:{todo_id}"
         cached_wf: TodoWorkflowStatusResponse | None = await get_cache(

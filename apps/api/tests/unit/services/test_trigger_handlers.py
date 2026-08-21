@@ -27,7 +27,7 @@ if "app.services.workflow" not in sys.modules:
 
 if "app.services.workflow.queue_service" not in sys.modules:
     _qs_mod = types.ModuleType("app.services.workflow.queue_service")
-    _qs_mod.WorkflowQueueService = MagicMock()  # type: ignore[attr-defined]
+    _qs_mod.WorkflowQueueService = MagicMock()  # type: ignore[attr-defined]  # stub module gains the service attribute for patching
     sys.modules["app.services.workflow.queue_service"] = _qs_mod
 
 from app.services.triggers.handlers.google_sheets import (

@@ -102,7 +102,7 @@ def _prepare_fallback(
     falling back to itself)."""
     if fallback_llm is None or is_default_model_config(model_configurations):
         return None
-    return lambda: fallback_llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
+    return lambda: fallback_llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]  # Runnable protocol lacks bind_tools; fallback_llm is always a chat model
 
 
 def create_agent(
@@ -231,7 +231,7 @@ def create_agent(
         _llm = llm.with_config(configurable=config.get("configurable", {}))
         model_configurations = agent_configurable(config)
         tools_to_bind = build_tools_to_bind(state)
-        llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
+        llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]  # LanguageModelLike union omits bind_tools; every concrete member supports it
         fallback = _prepare_fallback(fallback_llm, tools_to_bind, model_configurations)
         state = _maybe_inject_wrapup(state)
         response = invoke_llm(
@@ -248,7 +248,7 @@ def create_agent(
         if isinstance(response.content, str) and agent_name == "comms_agent":
             response.content = response.content + NEW_MESSAGE_BREAKER
 
-        return {"messages": [*tombstones, response]}  # type: ignore[return-value]
+        return {"messages": [*tombstones, response]}  # type: ignore[return-value]  # LangGraph nodes return partial updates merged by the messages reducer
 
     def _maybe_inject_wrapup(state: State) -> State:
         """Warn the model to finish when the recursion budget is nearly spent.
@@ -286,7 +286,7 @@ def create_agent(
         model_configurations = agent_configurable(config)
 
         tools_to_bind = build_tools_to_bind(state)
-        llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
+        llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]  # LanguageModelLike union omits bind_tools; every concrete member supports it
         fallback = _prepare_fallback(fallback_llm, tools_to_bind, model_configurations)
         invoke_fn = functools.partial(
             ainvoke_llm, llm_with_tools, fallback=fallback, config=config, label=agent_name
@@ -312,7 +312,7 @@ def create_agent(
                 tool for tool in tools_to_bind
             ]
             response = await middleware_executor.wrap_model_invocation(
-                model=_llm,  # type: ignore[arg-type]
+                model=_llm,  # type: ignore[arg-type]  # wrap_model_call expects BaseChatModel; LanguageModelLike union is broader
                 state=state,
                 config=config,
                 store=store,
@@ -329,7 +329,7 @@ def create_agent(
             response.content = response.content + NEW_MESSAGE_BREAKER
 
         # Build updated state with response for after_model hooks
-        updated_state: State = dict(state)  # type: ignore[assignment]
+        updated_state: State = dict(state)  # type: ignore[assignment]  # shallow copy erases the TypedDict literal type; contents unchanged
         updated_state["messages"] = list(state.get("messages", [])) + [response]
 
         # Execute middleware after_model hooks
@@ -348,7 +348,7 @@ def create_agent(
         for key, value in updated_state.items():
             if key not in base_keys:
                 result[key] = value
-        return result  # type: ignore[return-value]
+        return result  # type: ignore[return-value]  # dynamically assembled partial update; conforms to State at runtime
 
     def select_tools(tool_calls: list[dict], config: RunnableConfig, *, store: BaseStore) -> State:
         if retrieve_tools is None:
@@ -392,9 +392,9 @@ def create_agent(
             selected_tools[tool_call["id"]] = dedupe_str_list(filtered_bind)
             response_tools[tool_call["id"]] = dedupe_str_list(response)
 
-        tool_messages, _ = format_selected_tools(response_tools, tool_registry)  # type: ignore[arg-type]
-        _, bind_ids = format_selected_tools(selected_tools, tool_registry)  # type: ignore[arg-type]
-        return {"messages": tool_messages, "selected_tool_ids": bind_ids}  # type: ignore[return-value]
+        tool_messages, _ = format_selected_tools(response_tools, tool_registry)  # type: ignore[arg-type]  # helper params declared bare dict; tool_registry arrives as Mapping
+        _, bind_ids = format_selected_tools(selected_tools, tool_registry)  # type: ignore[arg-type]  # helper params declared bare dict; tool_registry arrives as Mapping
+        return {"messages": tool_messages, "selected_tool_ids": bind_ids}  # type: ignore[return-value]  # node returns a channel subset; LangGraph merges into full State
 
     async def aselect_tools(
         tool_calls: list[dict], config: RunnableConfig, *, store: BaseStore
@@ -441,9 +441,9 @@ def create_agent(
             selected_tools[tool_call["id"]] = dedupe_str_list(filtered_bind)
             response_tools[tool_call["id"]] = dedupe_str_list(response)
 
-        tool_messages, _ = format_selected_tools(response_tools, tool_registry)  # type: ignore[arg-type]
-        _, bind_ids = format_selected_tools(selected_tools, tool_registry)  # type: ignore[arg-type]
-        return {"messages": tool_messages, "selected_tool_ids": bind_ids}  # type: ignore[return-value]
+        tool_messages, _ = format_selected_tools(response_tools, tool_registry)  # type: ignore[arg-type]  # helper params declared bare dict; tool_registry arrives as Mapping
+        _, bind_ids = format_selected_tools(selected_tools, tool_registry)  # type: ignore[arg-type]  # helper params declared bare dict; tool_registry arrives as Mapping
+        return {"messages": tool_messages, "selected_tool_ids": bind_ids}  # type: ignore[return-value]  # node returns a channel subset; LangGraph merges into full State
 
     def execute_end_graph_hooks_node(
         state: State, config: RunnableConfig, *, store: BaseStore
@@ -490,7 +490,7 @@ def create_agent(
             )
             for call in tool_calls
         ]
-        return {"messages": messages}  # type: ignore[return-value]
+        return {"messages": messages}  # type: ignore[return-value]  # partial state update per LangGraph's node contract
 
     async def areject_unbound_tools(tool_calls: list[dict], *, store: BaseStore) -> State:
         """Async twin of ``reject_unbound_tools`` for the async graph path."""
@@ -599,7 +599,7 @@ def create_agent(
                     name=FINISH_TASK_NAME,
                 )
             )
-        return {"messages": messages}  # type: ignore[return-value]
+        return {"messages": messages}  # type: ignore[return-value]  # partial state update per LangGraph's node contract
 
     async def afinish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State:
         """Async twin of ``finish_task_node`` for the async graph path."""
@@ -611,9 +611,9 @@ def create_agent(
         if retrieve_tools_function is not None and retrieve_tools_coroutine is not None:
             select_tools_node = RunnableCallable(select_tools, aselect_tools)
         elif retrieve_tools_function is not None and retrieve_tools_coroutine is None:
-            select_tools_node = select_tools  # type: ignore[assignment]
+            select_tools_node = select_tools  # type: ignore[assignment]  # add_node accepts a bare sync callable despite the pair-typed first branch
         elif retrieve_tools_coroutine is not None and retrieve_tools_function is None:
-            select_tools_node = aselect_tools  # type: ignore[assignment]
+            select_tools_node = aselect_tools  # type: ignore[assignment]  # add_node accepts a bare async callable despite the pair-typed first branch
         else:
             raise ValueError(
                 "One of retrieve_tools_function or retrieve_tools_coroutine must be provided."

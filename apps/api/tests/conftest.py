@@ -152,7 +152,7 @@ for p in _patches:
 # future refactor that binds or resolves inject_infisical_secrets at import
 # time inside settings.py would silently defeat every patch above. These
 # asserts pin the two bindings that matter. importlib (not a top-level
-# import) so the E402 suppression-ratchet stays clean: a from-import here
+# import) so the E402 rule stays clean: a from-import here
 # would also be a module-level import after the patch loop.
 _secrets_module = importlib.import_module("app.config.secrets")
 _settings_module = importlib.import_module("app.config.settings")

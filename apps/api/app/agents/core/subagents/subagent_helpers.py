@@ -242,7 +242,9 @@ async def create_agent_context_message(
         return ""
 
     async def _fetch_skills() -> str:
-        from app.agents.workspace.system_docs import integration_skills_block
+        from app.agents.workspace.system_docs import (  # noqa: PLC0415 -- avoids cycle: system_docs imports skill_loader which imports subagents registry
+            integration_skills_block,
+        )
 
         block = ""
         if skills_text is not None:

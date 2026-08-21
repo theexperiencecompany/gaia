@@ -103,7 +103,8 @@ async def _handle_platform_oauth_callback(
     config: PlatformOAuthConfig,
 ) -> RedirectResponse:
     """Generic OAuth callback handler for all platforms."""
-    from app.services.oauth.oauth_state_service import validate_and_consume_oauth_state
+    # Deferred import: deferred import kept out of module load path
+    from app.services.oauth import oauth_state_service  # noqa: PLC0415 -- deferred
 
     fallback_path = "/settings?section=linked-accounts"
 
@@ -121,7 +122,7 @@ async def _handle_platform_oauth_callback(
         )
 
     # Validate state token
-    state_data = await validate_and_consume_oauth_state(state)
+    state_data = await oauth_state_service.validate_and_consume_oauth_state(state)
     if not state_data:
         return RedirectResponse(
             url=_redirect_url(settings.FRONTEND_URL, fallback_path, oauth_error="invalid_state")

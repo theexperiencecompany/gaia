@@ -101,7 +101,25 @@ jobs:
             pnpm exec biome check $FILES
           fi
           echo "::endgroup::"
-          echo "Biome: OK (0 errors; warnings shown above are non-blocking)"
+          # Dead-suppression gate: biome emits `suppressions/unused` as a
+          # fixed-severity WARNING (not a configurable rule), so warnings stay
+          # non-blocking — except this one category. A suppression comment that
+          # no longer masks anything is exactly the rot the suppression-hygiene
+          # lane exists to prevent; grep biome's own verdict for it.
+          if [ "$FILES" = "__FULL__" ]; then
+            BIOME_TARGETS="."
+          elif [ -z "$FILES" ]; then
+            BIOME_TARGETS=""
+          else
+            BIOME_TARGETS="$FILES"
+          fi
+          if [ -n "$BIOME_TARGETS" ]; then
+            if pnpm exec biome check $BIOME_TARGETS 2>&1 | grep -q "suppressions/unused"; then
+              echo "::error::dead biome-ignore found — delete it or fix what it suppressed"
+              exit 1
+            fi
+          fi
+          echo "Biome: OK (0 errors; dead-suppression gate passed)"
 
   # --- Workspace dependency hygiene ---------------------------------------
   deps:
@@ -365,14 +383,15 @@ jobs:
           python3 tools/lints/run.py apps/api/app
           echo "::endgroup::"
           echo "Custom lints: OK (4 rules pass)"
-      - name: Ruff ignore-list ratchet (ignore / per-file-ignores may only shrink)
-        # Also a pre-commit hook, but that one is bypassable with --no-verify and
-        # the lists it guards are exactly what a red build tempts you to edit.
+      - name: Ruff escape-hatch whys (ignore / per-file-ignores must be justified)
+        # Also a pre-commit hook. Every rule switched off in pyproject.toml
+        # must carry a why-comment beside it — an exemption without a stated
+        # reason is a hole, not a decision.
         run: |
-          echo "::group::ignore ratchet"
-          python3 tools/lints/check_ignore_ratchet.py
+          echo "::group::ignore whys"
+          python3 tools/lints/check_ignore_whys.py
           echo "::endgroup::"
-          echo "ignore-ratchet: OK (no ruff rule was switched off)"
+          echo "ignore-whys: OK (every ruff/mypy escape hatch is documented)
 
   # --- Python mypy --------------------------------------------------------
   python-mypy:
@@ -796,25 +815,26 @@ jobs:
           echo "::endgroup::"
           echo "promtool: OK (all per-rule firing + quiet tests pass)"
 
-  # --- Suppression baseline (no NEW inline lint-suppression comments) -----
-  # Checked-in baseline, not a git-history diff: config/suppressions-baseline.json
-  # records a count per (file, kind) and the tree may only ever match or shrink
-  # it. No fetch-depth, no base ref, no merge-base needed — the whole check is a
-  # working-tree scan, so it is reproducible locally with the exact command below.
-  suppression-ratchet:
-    name: "Suppression baseline (no new # noqa / # type: ignore / biome-ignore)"
+  # --- Suppression hygiene (every inline suppression carries its reason) ---
+  # Stateless: there is no baseline and no memory. A suppression may only exist
+  # inline, at the offending line, WITH a written why — reviewed in the diff,
+  # dying with the code. Staleness is hunted by the compilers themselves:
+  # mypy's warn_unused_ignores, ruff's RUF100, and biome's suppressions/unused
+  # all fail the build when a suppression no longer masks anything.
+  suppression-hygiene:
+    name: "Suppression hygiene (every # noqa / # type: ignore / biome-ignore has a why)"
     needs: [changes]
     if: needs.changes.outputs.has_typescript == 'true' || needs.changes.outputs.has_python == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
-      - name: Scan the tree for suppressions not covered by the checked-in baseline
+      - name: Fail on any inline suppression without a same-line reason
         run: |
-          echo "::group::suppression baseline"
+          echo "::group::suppression hygiene"
           python3 tools/lints/check_suppressions.py
           echo "::endgroup::"
-          echo "Suppression baseline: OK (no new inline suppression comments; baseline is tight)"
+          echo "Suppression hygiene: OK (all inline suppressions carry a why)"
 
   # --- Secret scanning (gitleaks, diff-scoped) -----------------------------
   # gitleaks-action is free for personal-account repos but requires a (free,
@@ -943,7 +963,7 @@ jobs:
       - wide-event-conformance
       - dead-code
       - alert-rules
-      - suppression-ratchet
+      - suppression-hygiene
       - gitleaks
       - semgrep
       - test-mutation
@@ -973,7 +993,7 @@ jobs:
           WIDE_EVENT_CONFORMANCE: ${{ needs.wide-event-conformance.result }}
           DEAD_CODE: ${{ needs.dead-code.result }}
           ALERT_RULES: ${{ needs.alert-rules.result }}
-          SUPPRESSION_RATCHET: ${{ needs.suppression-ratchet.result }}
+          SUPPRESSION_HYGIENE: ${{ needs.suppression-hygiene.result }}
           GITLEAKS: ${{ needs.gitleaks.result }}
           SEMGREP: ${{ needs.semgrep.result }}
           MUTATION: ${{ needs.test-mutation.result }}
@@ -1003,7 +1023,7 @@ jobs:
             [wide-event-conformance]="$WIDE_EVENT_CONFORMANCE"
             [dead-code]="$DEAD_CODE"
             [alert-rules]="$ALERT_RULES"
-            [suppression-ratchet]="$SUPPRESSION_RATCHET"
+            [suppression-hygiene]="$SUPPRESSION_HYGIENE"
             [gitleaks]="$GITLEAKS"
             [semgrep]="$SEMGREP"
             [test-mutation]="$MUTATION"
@@ -1012,7 +1032,7 @@ jobs:
                  duplicates package-hygiene type-check \
                  python-ruff python-mypy python-interrogate python-xenon python-security \
                  observability wide-event-conformance \
-                 dead-code alert-rules suppression-ratchet gitleaks semgrep test-mutation)
+                 dead-code alert-rules suppression-hygiene gitleaks semgrep test-mutation)
 
           echo "::group::Per-lane results"
           for lane in "${LANES[@]}"; do

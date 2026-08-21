@@ -6,9 +6,9 @@ from shared.py.wide_events import log
 
 def apply() -> None:
     try:
-        from composio.utils import shared
-        from langchain_core.tools import base as lc_base
-        from pydantic import ValidationError
+        from composio.utils import shared  # noqa: PLC0415 -- patched symbols resolve in apply()
+        from langchain_core.tools import base as lc_base  # noqa: PLC0415 -- resolves in apply()
+        from pydantic import ValidationError  # noqa: PLC0415 -- grouped with the patch body
 
         # Patch 1: Composio flattening anyOf items in arrays
         original_json_schema_to_pydantic_type = shared.json_schema_to_pydantic_type
@@ -27,10 +27,10 @@ def apply() -> None:
                     return valid_types[0]
                 if len(valid_types) == 0:
                     return str
-                from functools import reduce
+                from functools import reduce  # noqa: PLC0415 -- used once, kept at call site
 
                 cast_types = [t.cast(type, ptype) for ptype in valid_types]
-                return reduce(lambda a, b: t.Union[a, b], cast_types)  # type: ignore[arg-type,return-value]
+                return reduce(lambda a, b: t.Union[a, b], cast_types)  # type: ignore[arg-type,return-value]  # Union constructed dynamically via reduce; typeshed can't express it
 
             return original_json_schema_to_pydantic_type(json_schema)
 

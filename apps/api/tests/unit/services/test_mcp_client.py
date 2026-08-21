@@ -2000,7 +2000,7 @@ class TestResilientLangChainAdapter:
                 raise Exception("Invalid schema")
             return good_lc_tool
 
-        adapter._convert_single_tool = mock_convert  # type: ignore[method-assign]
+        adapter._convert_single_tool = mock_convert
 
         with patch(
             "app.services.mcp.resilient_adapter.patch_tool_schema",
@@ -2029,7 +2029,7 @@ class TestResilientLangChainAdapter:
         async def always_fail(tool, connector):
             raise Exception("Schema error")
 
-        adapter._convert_single_tool = always_fail  # type: ignore[method-assign]
+        adapter._convert_single_tool = always_fail
 
         with patch(
             "app.services.mcp.resilient_adapter.patch_tool_schema",
@@ -2060,7 +2060,7 @@ class TestResilientLangChainAdapter:
         async def mock_convert(tool, connector):
             return lc_tool
 
-        adapter._convert_single_tool = mock_convert  # type: ignore[method-assign]
+        adapter._convert_single_tool = mock_convert
 
         with patch(
             "app.services.mcp.resilient_adapter.patch_tool_schema",
@@ -2095,7 +2095,7 @@ class TestResilientLangChainAdapter:
         async def mock_convert(t, c):
             return lc_tool
 
-        adapter._convert_single_tool = mock_convert  # type: ignore[method-assign]
+        adapter._convert_single_tool = mock_convert
 
         with patch(
             "app.services.mcp.resilient_adapter.patch_tool_schema",
@@ -2128,7 +2128,7 @@ class TestResilientLangChainAdapter:
         async def mock_convert(t, c):
             return lc_tool
 
-        adapter._convert_single_tool = mock_convert  # type: ignore[method-assign]
+        adapter._convert_single_tool = mock_convert
 
         with patch(
             "app.services.mcp.resilient_adapter.patch_tool_schema",

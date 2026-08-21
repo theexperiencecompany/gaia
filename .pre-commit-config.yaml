@@ -46,3 +46,10 @@ repos:
         language: system
         files: \.(js|jsx|ts|tsx|json|css|html)$
         exclude: ^(apps/api/|apps/voice-agent/|infra/|docs/)
+
+      - id: suppression-hygiene
+        name: Every inline lint suppression carries a why
+        language: system
+        entry: python3 tools/lints/check_suppressions.py
+        files: \.(py|ts|tsx|js|jsx|mjs|cjs)$
+        pass_filenames: false

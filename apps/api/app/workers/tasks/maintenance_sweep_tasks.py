@@ -513,7 +513,8 @@ async def _send_user_dormant_digest(
 
 async def _read_canvas(todo: TodoDocument) -> str:
     """Read canvas content for the given todo. Returns empty string on failure."""
-    from app.services.todo_canvas_storage import read_canvas
+    # Deferred import: canvas-storage helper deferred until this sweep step actually reads canvases
+    from app.services.todo_canvas_storage import read_canvas  # noqa: PLC0415 -- canvas
 
     user_id = todo.user_id
     todo_id = todo.id

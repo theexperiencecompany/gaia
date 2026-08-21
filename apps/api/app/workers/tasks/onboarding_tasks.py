@@ -15,7 +15,7 @@ from shared.py.wide_events import log
 async def process_onboarding_intelligence_task(ctx: dict[str, Any], user_id: str) -> str:
     """ARQ background task for the full onboarding intelligence pipeline."""
     log.set(user_id=user_id, user={"id": user_id})
-    from app.services.onboarding.intelligence_service import (
+    from app.services.onboarding.intelligence_service import (  # noqa: PLC0415 -- heavy onboarding intelligence pipeline kept off worker-task module load path
         process_onboarding_intelligence,
     )
 
@@ -72,7 +72,7 @@ async def process_onboarding_intelligence_task(ctx: dict[str, Any], user_id: str
 async def process_onboarding_workflows_task(ctx: dict[str, Any], user_id: str) -> str:
     """ARQ background task for the split-pipeline workflows phase."""
     log.set(user_id=user_id, user={"id": user_id})
-    from app.services.onboarding.intelligence_service import (
+    from app.services.onboarding.intelligence_service import (  # noqa: PLC0415 -- heavy onboarding intelligence pipeline kept off worker-task module load path
         process_onboarding_workflows_phase,
     )
 

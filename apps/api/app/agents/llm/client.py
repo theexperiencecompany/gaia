@@ -569,7 +569,7 @@ def invoke_llm(
 SILENT_LLM_CONFIG: RunnableConfig = {
     "silent": True,
     "metadata": {"silent": True},
-}  # type: ignore[typeddict-unknown-key]
+}  # type: ignore[typeddict-unknown-key]  # custom key consumed by GAIA's stream helpers, not part of RunnableConfig
 
 
 def metered_config(user_id: str) -> RunnableConfig:

@@ -136,7 +136,7 @@ class ChromaClient:
 
         providers.register(
             name=provider_name,
-            loader_func=_loader,  # type: ignore[arg-type]
+            loader_func=_loader,  # type: ignore[arg-type]  # langchain’s collection-loader callback param is untyped upstream
             required_keys=[settings.CHROMADB_HOST, settings.CHROMADB_PORT],
             strategy=MissingKeyStrategy.ERROR,
             auto_initialize=True,

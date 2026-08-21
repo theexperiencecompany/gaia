@@ -671,7 +671,10 @@ class MCPClient:
         # integrations out of this user's tool set, but this is the hard gate —
         # a mixed-up or leaked integration_id can't cross the user boundary,
         # and a revoked device can't be reached on a stale integration doc.
-        from app.services.device.device_service import get_active_device
+        # Deferred import: device-service stack deferred until a paired-device tunnel is actually built
+        from app.services.device.device_service import (  # noqa: PLC0415 -- deferred
+            get_active_device,
+        )
 
         device = await get_active_device(device_id)
         if device is None or device.user_id != self.user_id:
@@ -1020,7 +1023,7 @@ class MCPClient:
         corrupts retrieve_tools for the other integration via the
         chroma:indexed:{namespace} cache.
         """
-        from app.config.oauth_config import get_integration_by_id
+        from app.config.oauth_config import get_integration_by_id  # noqa: PLC0415 -- heavy oa
 
         integration = get_integration_by_id(integration_id)
         namespace = (
@@ -1104,7 +1107,7 @@ class MCPClient:
 
                 if resolved_name:
                     # Local import to avoid circular dependency
-                    from app.agents.core.subagents.handoff_tools import (
+                    from app.agents.core.subagents.handoff_tools import (  # noqa: PLC0415 -- breaks circular dependency with the agent handoff tools module
                         index_custom_mcp_as_subagent,
                     )
 

@@ -92,7 +92,8 @@ async def get_workflow_subagent() -> CompiledStateGraph:
     log.info(f"{LogTag.WORKFLOW} Creating workflow subagent graph")
 
     # Register workflow tools in the registry under 'workflow_subagent' space
-    from app.agents.tools.core.registry import get_tool_registry
+    # Deferred import: tool registry pulls the composio/MCP config stack; deferred until the subagent graph is first built
+    from app.agents.tools.core.registry import get_tool_registry  # noqa: PLC0415 -- deferred
 
     tool_registry = await get_tool_registry()
 
@@ -317,9 +318,9 @@ class WorkflowSubagentRunner:
 
                 if stream_mode == "updates":
                     for _node_name, state_update in payload.items():
-                        from app.utils.stream_utils import extract_tool_entries_from_update
+                        from app.utils import stream_utils  # noqa: PLC0415 -- stream_u
 
-                        entries = await extract_tool_entries_from_update(
+                        entries = await stream_utils.extract_tool_entries_from_update(
                             state_update=state_update,
                             emitted_tool_calls=emitted_tool_calls,
                         )

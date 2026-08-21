@@ -41,7 +41,7 @@ def _make_fake_datetime(target: datetime) -> type:
 
     class _FakeDatetime(datetime):
         @classmethod
-        def now(cls, tz: tzinfo | None = None) -> datetime:  # type: ignore[override]
+        def now(cls, tz: tzinfo | None = None) -> datetime:  # type: ignore[override]  # fake-clock subclass intentionally widens now() to the base class
             return target.replace(tzinfo=tz) if tz is not None else target
 
     return _FakeDatetime

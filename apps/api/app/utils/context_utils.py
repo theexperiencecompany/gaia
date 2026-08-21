@@ -43,7 +43,10 @@ def execute_tool(
     Raises:
         Exception: If the tool execution fails.
     """
-    from app.services.composio.composio_service import get_composio_service
+    # Deferred import: heavy Composio SDK service stack loads only when context enrichment executes a tool
+    from app.services.composio.composio_service import (  # noqa: PLC0415 -- deferred
+        get_composio_service,
+    )
 
     log.set(tool_name=tool_name, user_id=user_id)
     composio_service = get_composio_service()
@@ -152,7 +155,7 @@ async def resolve_providers(
     if requested:
         return [p.lower() for p in requested if p.lower() in provider_tools]
 
-    from app.services.integrations.integration_service import (
+    from app.services.integrations.integration_service import (  # noqa: PLC0415 -- integration-service stack deferred until provider auto-detection actually runs
         get_user_available_tool_namespaces,
     )
 

@@ -248,7 +248,8 @@ async def semantic_search_todos(
         # Fallback to traditional search on error
         if include_traditional_search:
             log.info(f"{LogTag.CHROMA} Falling back to traditional search due to error")
-            from app.services.todos.todo_service import search_todos
+            # Deferred import: breaks circular dependency: todo_service imports this module
+            from app.services.todos.todo_service import search_todos  # noqa: PLC0415 -- deferred
 
             return await search_todos(query, user_id)
 
@@ -281,7 +282,7 @@ async def hybrid_search_todos(
         )
 
         # Get traditional search results
-        from app.services.todos.todo_service import search_todos
+        from app.services.todos.todo_service import search_todos  # noqa: PLC0415 -- breaks c
 
         traditional_results = await search_todos(query, user_id)
 

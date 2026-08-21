@@ -18,11 +18,15 @@ def main() -> None:
     command = sys.argv[1]
 
     if command == "start":
-        from src.agent import start_worker
+        from src.agent import (  # noqa: PLC0415 -- heavy livekit agent module loads only when this command runs
+            start_worker,
+        )
 
         start_worker()
     elif command == "download-files":
-        from src.agent import download_files
+        from src.agent import (  # noqa: PLC0415 -- agent module needed only for this subcommand
+            download_files,
+        )
 
         download_files()
     else:

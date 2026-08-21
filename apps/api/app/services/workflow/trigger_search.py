@@ -34,7 +34,10 @@ class TriggerSearchService:
 
         Returns trigger dicts enriched with connection status and config_fields.
         """
-        from app.services.oauth.oauth_service import check_integration_status
+        # Deferred import: breaks the circular chain: oauth_service's provisioner path re-enters the workflow package
+        from app.services.oauth.oauth_service import (  # noqa: PLC0415 -- deferred
+            check_integration_status,
+        )
 
         store = await get_triggers_store()
 

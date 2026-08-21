@@ -298,7 +298,7 @@ class TestGetIntegrationDetails:
 
             result = await get_integration_details("gmail")
 
-        assert result.creator == {"name": "Creator", "picture": "https://pic.com"}  # type: ignore[union-attr]
+        assert result.creator == {"name": "Creator", "picture": "https://pic.com"}
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}.user_repository")

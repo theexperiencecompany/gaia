@@ -31,7 +31,7 @@ def _make_request(**overrides) -> MessageRequestWithHistory:
         "replyToMessage": None,
     }
     defaults.update(overrides)
-    return MessageRequestWithHistory(**defaults)  # type: ignore[arg-type]
+    return MessageRequestWithHistory(**defaults)  # type: ignore[arg-type]  # fixture spreads an untyped defaults dict into the model
 
 
 def _make_user(**overrides) -> dict:
