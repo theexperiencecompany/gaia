@@ -1,6 +1,6 @@
 """Unit tests for app.agents.tools.workflow_tool."""
 
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.constants.log_tags import LogTag
@@ -491,7 +491,7 @@ class TestCreateWorkflowPins:
         ):
             mock_writer_factory.return_value = _writer_mock()
             mock_runner.execute = AsyncMock(return_value="out")
-            await create_workflow.coroutine(  # type: ignore[attr-defined]
+            await cast(Any, create_workflow).coroutine(
                 config=_make_config(), user_request="every morning"
             )
 
@@ -501,7 +501,7 @@ class TestCreateWorkflowPins:
     async def test_empty_whitespace_request_returns_exact_error(self) -> None:
         from app.agents.tools.workflow_tool import create_workflow
 
-        result = await create_workflow.coroutine(  # type: ignore[attr-defined]
+        result = await cast(Any, create_workflow).coroutine(
             config=_make_config(), user_request="   "
         )
         assert result["success"] is False
@@ -522,7 +522,7 @@ class TestCreateWorkflowPins:
         ):
             mock_writer_factory.return_value = writer = _writer_mock()
             mock_runner.execute = AsyncMock(return_value="out")
-            await create_workflow.coroutine(  # type: ignore[attr-defined]
+            await cast(Any, create_workflow).coroutine(
                 config=_make_config(), user_request="daily digest"
             )
 
@@ -544,7 +544,7 @@ class TestCreateWorkflowPins:
         ):
             mock_writer_factory.return_value = _writer_mock()
             mock_runner.execute = AsyncMock(return_value="out")
-            await create_workflow.coroutine(  # type: ignore[attr-defined]
+            await cast(Any, create_workflow).coroutine(
                 config=_make_config(), user_request="weekly report"
             )
 

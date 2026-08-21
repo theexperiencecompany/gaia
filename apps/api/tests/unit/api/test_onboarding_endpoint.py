@@ -9,6 +9,7 @@ Tests cover:
 """
 
 from datetime import UTC, datetime
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException
@@ -17,6 +18,7 @@ import pytest
 
 from app.api.v1.endpoints.onboarding import get_onboarding_personalization
 from app.models.user_models import (
+    AuthenticatedUser,
     OnboardingPreferences,
     OnboardingStatusResponse,
     UserDocument,
@@ -575,14 +577,14 @@ class TestGetPersonalizationPins:
             response = await client.get(PERSONALIZATION_URL)
         # The auth dependency normally injects the id; drive the guard directly.
         with pytest.raises(HTTPException) as exc:
-            await get_onboarding_personalization(user={"user_id": 12345})  # type: ignore[arg-type]
+            await get_onboarding_personalization(user=cast(AuthenticatedUser, {"user_id": 12345}))
         assert exc.value.status_code == 400
         assert exc.value.detail == "Invalid user_id"
         _ = response
 
     async def test_missing_user_id_key_returns_exact_400(self):
         with pytest.raises(HTTPException) as exc:
-            await get_onboarding_personalization(user={})  # type: ignore[arg-type]
+            await get_onboarding_personalization(user=cast(AuthenticatedUser, {}))
         assert exc.value.status_code == 400
         assert exc.value.detail == "Invalid user_id"
 

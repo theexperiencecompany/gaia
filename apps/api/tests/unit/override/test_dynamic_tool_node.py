@@ -88,9 +88,7 @@ class TestMiddlewareDispatchPins:
         node, executor = _make_node()
         # InjectedState args make "echo" parent-routed for this node.
         object.__setattr__(node, "_injected_args", {"echo": MagicMock(state={"messages": True})})
-        with patch.object(
-            DynamicToolNode.__bases__[0], "_afunc", new_callable=AsyncMock
-        ) as parent:
+        with patch.object(DynamicToolNode.__bases__[0], "_afunc", new_callable=AsyncMock) as parent:
             parent.return_value = {"messages": [ToolMessage(content="parent", tool_call_id="c1")]}
             result = await node._afunc(_input_with_echo_call(), {}, MagicMock())
 
