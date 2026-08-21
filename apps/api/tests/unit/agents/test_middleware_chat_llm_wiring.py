@@ -145,9 +145,7 @@ class TestStackConfigurationPropagation:
         from app.agents.middleware.accounting import LLMAccountingMiddleware
 
         stack = create_middleware_stack(**kwargs)
-        accounting = next(
-            (mw for mw in stack if isinstance(mw, LLMAccountingMiddleware)), None
-        )
+        accounting = next((mw for mw in stack if isinstance(mw, LLMAccountingMiddleware)), None)
         summarizer = next(
             (mw for mw in stack if isinstance(mw, WorkspaceArchivingSummarizationMiddleware)),
             None,
@@ -243,7 +241,6 @@ class TestBuildGraphChatLlmPassThrough:
         if not providers.is_initialized("tool_registry"):
             init_tool_registry()
 
-
         from langgraph.store.memory import InMemoryStore
 
         llm = scripted_model(["hi"])
@@ -253,9 +250,7 @@ class TestBuildGraphChatLlmPassThrough:
             patch.object(bg, "create_agent", new=MagicMock(return_value=MagicMock())),
             patch.object(bg, "create_comms_middleware", new=spy),
         ):
-            async with bg.build_comms_graph(
-                chat_llm=llm, in_memory_checkpointer=True
-            ) as _:
+            async with bg.build_comms_graph(chat_llm=llm, in_memory_checkpointer=True) as _:
                 pass
 
         assert captured["chat_llm"] is llm
