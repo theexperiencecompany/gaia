@@ -3,6 +3,7 @@ subagents). Centralized here so build_graph.py and base_subagent.py share one
 configuration."""
 
 from collections.abc import Mapping
+from typing import cast
 
 from langchain.agents.middleware.summarization import ContextSize
 from langchain_core.language_models import BaseChatModel, LanguageModelLike
@@ -10,6 +11,7 @@ from langchain_core.tools import BaseTool
 
 from app.agents.llm.client import get_default_llm
 from app.agents.llm.exceptions import LLMNotConfiguredError
+from app.agents.llm.types import LLMProviderKey
 from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
 from app.agents.middleware.hil_approval import HILApprovalMiddleware
@@ -21,6 +23,7 @@ from app.agents.middleware.summarization import (
     WorkspaceArchivingSummarizationMiddleware,
 )
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
+from app.config.settings import settings
 from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
     DEFAULT_MAX_TOKENS,
@@ -33,6 +36,7 @@ from app.constants.summarization import (
     SUMMARIZATION_KEEP_TOKENS,
     SUMMARIZATION_TRIGGER_FRACTION,
 )
+from app.core.lazy_loader import providers
 from app.models.agent_models import AgentMiddlewareStack
 from shared.py.wide_events import log
 
@@ -61,8 +65,8 @@ _summarization_llm: BaseChatModel | None = None
 
 
 def get_summarization_llm() -> BaseChatModel | None:
-    """The cached summarization model, or None when the default model is not
-    configured (summarization middleware is then dropped).
+    """The cached summarization model, or None when no summarizer can be built
+    (summarization middleware and the compaction LLM digest are then dropped).
 
     Availability is decided by CALLING the factory and catching its refusal, not
     by checking a provider key here. A key check is a second copy of "what does
@@ -71,6 +75,11 @@ def get_summarization_llm() -> BaseChatModel | None:
     the other way round — a missing key silently dropped compaction from the
     graph while the model itself was perfectly reachable. Long conversations
     then blow the context window with nothing in the logs pointing here.
+
+    When the default (OpenRouter) model is unconfigured, development falls back
+    to the env-defined custom endpoint (DEV_LLM_* settings) if it is registered,
+    so native dev environments without an OpenRouter key still get working
+    summarization instead of silently losing both middlewares.
     """
     global _summarization_llm
 
@@ -82,12 +91,33 @@ def get_summarization_llm() -> BaseChatModel | None:
         # summarization/compaction fractional triggers below require to build.
         _summarization_llm = get_default_llm()
     except LLMNotConfiguredError as exc:
-        log.set(error=str(exc))
-        log.error(
-            f"{LogTag.AGENT} Default model not configured. Summarization middleware disabled."
+        dev_llm = _get_dev_custom_llm()
+        if dev_llm is None:
+            log.set(error=str(exc))
+            log.error(
+                f"{LogTag.AGENT} Default model not configured. Summarization middleware disabled."
+            )
+            return None
+        log.warning(
+            f"{LogTag.AGENT} Default model not configured; summarization uses the DEV_LLM_* custom endpoint",
+            error=str(exc),
         )
-        return None
+        _summarization_llm = dev_llm
     return _summarization_llm
+
+
+def _get_dev_custom_llm() -> BaseChatModel | None:
+    """The DEV_LLM_* custom-endpoint instance when this is development AND the
+    endpoint is configured/registered; None otherwise. Never resolves outside
+    development because ``register_llm_providers`` only registers it there."""
+    if settings.ENV != "development":
+        return None
+    if not providers.is_available(LLMProviderKey.CUSTOM):
+        return None
+    instance = providers.get(LLMProviderKey.CUSTOM)
+    if instance is None:
+        return None
+    return cast("BaseChatModel", instance)
 
 
 def create_middleware_stack(
@@ -217,11 +247,16 @@ def create_middleware_stack(
             max_output_chars=max_output_chars,
             context_window=DEFAULT_MAX_TOKENS,
             excluded_tools=compaction_excluded_tools,
+            # Same accessor as history summarization: one canonical auxiliary
+            # model, resolving to the DEV_LLM_* custom endpoint in dev when the
+            # default is unconfigured. None keeps the deterministic tiers.
+            summary_llm=get_summarization_llm(),
         )
         middleware.append(compaction)
         log.debug(
             f"{LogTag.AGENT} Compaction middleware enabled",
             compaction_threshold=compaction_threshold,
+            llm_summary=bool(get_summarization_llm()),
         )
 
     # Media description — a lane that can't see pixels gets prose for any tool

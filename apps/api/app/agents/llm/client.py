@@ -242,19 +242,24 @@ def init_custom_llm() -> LanguageModelLike:
     """
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
-    return _openrouter_wire_configurables(
-        without_sdk_retry(
-            ChatOpenRouter(
-                model=PROVIDER_MODELS[LLMProviderName.CUSTOM],
-                temperature=DEFAULT_LLM_TEMPERATURE,
-                streaming=True,
-                stream_usage=True,
-                max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
-                api_key=settings.DEV_LLM_API_KEY,
-                base_url=settings.DEV_LLM_BASE_URL,
-            )
+    llm = without_sdk_retry(
+        ChatOpenRouter(
+            model=PROVIDER_MODELS[LLMProviderName.CUSTOM],
+            temperature=DEFAULT_LLM_TEMPERATURE,
+            streaming=True,
+            stream_usage=True,
+            max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
+            api_key=settings.DEV_LLM_API_KEY,
+            base_url=settings.DEV_LLM_BASE_URL,
         )
     )
+    # Fractional-window middleware (the summarization/compaction triggers)
+    # resolves the context window from the model's profile at graph-build time
+    # and raises without it — same contract _build_default_llm satisfies for the
+    # default model and _sim_llm for the stub. The DEV_LLM_* model is env-defined
+    # and has no curated registry entry, so pin the shared default window here.
+    llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
+    return _openrouter_wire_configurables(llm)
 
 
 def init_llm(

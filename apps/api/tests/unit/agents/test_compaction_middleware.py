@@ -7,11 +7,12 @@ boundary (write_session_file → JuiceFS) and exercise the real decision and
 persistence logic.
 """
 
+import asyncio
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.types import Command
 import pytest
 
@@ -19,15 +20,18 @@ from app.agents.middleware.compaction import (
     COMPACTION_TRUNCATED_MARKER,
     WorkspaceCompactionMiddleware,
     _summarize_output,
+    _summary_input_sample,
     should_compact_output,
 )
 from app.constants.offload import OFFLOAD_KEY
 from app.constants.summarization import (
     COMPACTION_FALLBACK_HEAD_CHARS,
     COMPACTION_FALLBACK_TAIL_CHARS,
+    COMPACTION_SUMMARY_MAX_CHARS,
     MIN_COMPACTION_SIZE,
 )
 from app.services.storage import JuiceFSUnavailable
+from tests.helpers import create_fake_llm
 
 WROTE = (
     "/mnt/jfs/users/u1/sessions/conv1/tool_outputs/x.json",
@@ -361,3 +365,183 @@ class TestSummary:
         summary = _summarize_output("z" * 2000, "bash")
         assert summary.endswith("...")
         assert len(summary) < 2000
+
+
+class _BrokenModel:
+    """Stands in for an unreachable summarizer endpoint."""
+
+    async def ainvoke(self, _messages: object) -> object:
+        raise RuntimeError("endpoint down")
+
+
+class _SlowModel:
+    """Stands in for an endpoint that answers after the compaction timeout."""
+
+    def __init__(self, delay: float) -> None:
+        self.delay = delay
+
+    async def ainvoke(self, _messages: object) -> object:
+        await asyncio.sleep(self.delay)
+        return AIMessage(content="too late")
+
+
+class TestLLMSummary:
+    """The digest tier: the LLM summary IS the compacted payload; the JuiceFS
+    pointer is an optional add-on, never a requirement (issue #916)."""
+
+    def _mw(self, llm: object) -> WorkspaceCompactionMiddleware:
+        return WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=llm)  # type: ignore[arg-type]
+
+    @staticmethod
+    def _request_without_identity() -> SimpleNamespace:
+        return SimpleNamespace(
+            tool_call={"name": "search", "id": "call_1", "args": {}},
+            runtime=SimpleNamespace(config={"configurable": {}}),
+            state={"messages": []},
+        )
+
+    async def test_digest_stands_alone_without_a_workspace(self) -> None:
+        """No user/conversation id → nowhere to spill; the summary alone must
+        carry the substance instead of degrading to lossy truncation."""
+        mw = self._mw(create_fake_llm(["Found 3000 rows; all status=shipped."]))
+        big = json.dumps([{"row": i, "status": "shipped"} for i in range(1500)])
+
+        async def handler(_req):
+            return _tool_msg(big)
+
+        with patch(
+            "app.agents.middleware.compaction.write_session_file", new_callable=AsyncMock
+        ) as mock_write:
+            result = await mw.awrap_tool_call(self._request_without_identity(), handler)
+
+        mock_write.assert_not_awaited()
+        assert isinstance(result, ToolMessage)
+        assert "Found 3000 rows; all status=shipped." in result.content
+        assert len(result.content) < len(big) / 10
+        assert result.additional_kwargs["compacted"] is True
+        assert result.additional_kwargs["compaction_strategy"] == "llm_summary"
+        # nothing spilled, so there is no file to mine and no marker to bind on
+        assert OFFLOAD_KEY not in result.additional_kwargs
+
+    async def test_digest_with_spill_keeps_pointer_and_binds_miners(self) -> None:
+        mw = self._mw(create_fake_llm(["Digest: 500 records, ids 0-499."]))
+        big = json.dumps([{"i": i} for i in range(500)])
+
+        async def handler(_req):
+            return _tool_msg(big)
+
+        with patch(
+            "app.agents.middleware.compaction.write_session_file",
+            new_callable=AsyncMock,
+            return_value=WROTE,
+        ):
+            result = await mw.awrap_tool_call(_request(), handler)
+
+        # the offload marker must still bind query_json/grep — lossless recovery
+        # survives even though the agent no longer NEEDS the file
+        assert isinstance(result, Command)
+        message = result.update["messages"][0]
+        assert "Digest: 500 records, ids 0-499." in message.content
+        assert WROTE[1] in message.content
+        assert message.additional_kwargs["compaction_strategy"] == "llm_summary_workspace_spill"
+        assert message.additional_kwargs["workspace_path"] == WROTE[1]
+
+    async def test_digest_failure_degrades_to_legacy_spill_body_without_double_write(
+        self,
+    ) -> None:
+        """When the summarizer is unreachable but the workspace exists, today's
+        preview-plus-pointer body is kept — and the raw output is written ONCE."""
+        mw = self._mw(_BrokenModel())
+        big = "x" * 5000
+
+        async def handler(_req):
+            return _tool_msg(big)
+
+        with patch(
+            "app.agents.middleware.compaction.write_session_file",
+            new_callable=AsyncMock,
+            return_value=WROTE,
+        ) as mock_write:
+            result = await mw.awrap_tool_call(_request(), handler)
+
+        assert mock_write.await_count == 1
+        assert isinstance(result, Command)
+        message = result.update["messages"][0]
+        assert "stored at:" in message.content
+        assert message.additional_kwargs["compaction_strategy"] == "workspace_spill"
+
+    async def test_digest_failure_without_a_workspace_truncates_in_context(self) -> None:
+        mw = self._mw(_BrokenModel())
+        big = "HEAD" + ("x" * 200_000) + "TAIL"
+
+        async def handler(_req):
+            return _tool_msg(big)
+
+        with patch("app.agents.middleware.compaction.write_session_file", new_callable=AsyncMock):
+            result = await mw.awrap_tool_call(self._request_without_identity(), handler)
+
+        assert isinstance(result, ToolMessage)
+        assert result.content.startswith(COMPACTION_TRUNCATED_MARKER)
+        assert result.additional_kwargs["compaction_strategy"] == "in_context_truncation"
+
+    async def test_empty_digest_falls_back(self) -> None:
+        mw = self._mw(create_fake_llm(["   "]))
+        big = "y" * 200_000
+
+        async def handler(_req):
+            return _tool_msg(big)
+
+        with patch(
+            "app.agents.middleware.compaction.write_session_file",
+            new_callable=AsyncMock,
+            return_value=WROTE,
+        ):
+            result = await mw.awrap_tool_call(_request(), handler)
+
+        assert isinstance(result, Command)
+        message = result.update["messages"][0]
+        assert message.additional_kwargs["compaction_strategy"] == "workspace_spill"
+
+    async def test_digest_is_hard_capped_even_when_the_model_rambles(self) -> None:
+        rambler = create_fake_llm(["z" * 50_000])
+        mw = self._mw(rambler)
+        big = "x" * 5000
+
+        async def handler(_req):
+            return _tool_msg(big)
+
+        with patch("app.agents.middleware.compaction.write_session_file", new_callable=AsyncMock):
+            result = await mw.awrap_tool_call(self._request_without_identity(), handler)
+
+        assert isinstance(result, ToolMessage)
+        # digest cap + strategy header + truncation suffix stay bounded
+        assert len(result.content) < COMPACTION_SUMMARY_MAX_CHARS + 300
+
+    async def test_slow_endpoint_times_out_and_falls_back(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            "app.agents.middleware.compaction.COMPACTION_SUMMARY_TIMEOUT_SECONDS", 0.05
+        )
+        mw = self._mw(_SlowModel(delay=1.0))
+        big = "x" * 200_000
+
+        async def handler(_req):
+            return _tool_msg(big)
+
+        with patch("app.agents.middleware.compaction.write_session_file", new_callable=AsyncMock):
+            result = await mw.awrap_tool_call(self._request_without_identity(), handler)
+
+        assert isinstance(result, ToolMessage)
+        assert result.additional_kwargs["compaction_strategy"] == "in_context_truncation"
+
+    def test_summary_input_sample_keeps_head_and_tail(self) -> None:
+        sampled = _summary_input_sample("A" * 50_000 + "MIDDLE" + "Z" * 50_000)
+        assert sampled.startswith("AAAA")
+        assert sampled.endswith("ZZZZ")
+        assert "middle chars omitted" in sampled
+        assert len(sampled) < 40_000
+
+    def test_summary_input_sample_passes_short_content_through(self) -> None:
+        short = "compact already"
+        assert _summary_input_sample(short) == short
