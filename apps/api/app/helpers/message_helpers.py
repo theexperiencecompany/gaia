@@ -29,7 +29,7 @@ from app.models.message_models import (
     SelectedWorkflowData,
 )
 from app.models.user_models import OnboardingPhase
-from app.services.workflow import WorkflowService
+from app.services.workflow.service import WorkflowService
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 

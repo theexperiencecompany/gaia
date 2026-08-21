@@ -334,8 +334,7 @@ export {
 } from "./chat";
 export {
   CLI_COMMAND_DESCRIPTIONS,
-  REQUIRED_DOC_COMMANDS,
-  REQUIRED_INSTALL_COMMANDS,
+  CLI_INSTALL_COMMANDS,
 } from "./cli";
 export {
   USAGE_DANGER_THRESHOLD,
@@ -431,6 +430,7 @@ export type {
   Integration,
   IntegrationAuthType,
   IntegrationCategory,
+  IntegrationConnectionData,
   IntegrationCreator,
   IntegrationManagedBy,
   IntegrationStatusRecord,
@@ -514,6 +514,7 @@ export {
 export type {
   ContentSegment,
   DueChipTone,
+  IntegrationConnectionState,
   JwtPayload,
   OpenUIActionEventLike,
   OpenUIActionHandlers,
@@ -528,6 +529,8 @@ export type {
   TokenStorage,
 } from "./utils";
 export {
+  CONNECT_ACTION_LABEL,
+  connectionPromptState,
   DEFAULT_SIMILARITY_CONFIG,
   dispatchOpenUIAction,
   extractUrls,
@@ -551,6 +554,8 @@ export {
   getRelevantThinkingMessage,
   getSimpleTimeGreeting,
   getTriggerLabel,
+  INTEGRATION_STATE_ORDER,
+  integrationConnectionState,
   isOverdue,
   isTokenExpired,
   NEW_MESSAGE_BREAK_TOKEN,
