@@ -198,17 +198,15 @@ def _get_http_client() -> httpx.AsyncClient:
     """The process-wide sidecar connection pool (per running loop)."""
     global _http_client
     loop = asyncio.get_running_loop()
-    current = _http_client
-    if current is None or current[0] is not loop or current[1].is_closed:
-        with _http_client_lock:
-            current = _http_client
-            if current is None or current[0] is not loop or current[1].is_closed:
-                _http_client = (
-                    loop,
-                    httpx.AsyncClient(timeout=EMBEDDING_SIDECAR_TIMEOUT_SECONDS),
-                )
-                if current is not None:
-                    _retire_client(current[1], current[0])
+    with _http_client_lock:
+        stale = _http_client is None or _http_client[0] is not loop or _http_client[1].is_closed
+        if stale:
+            if _http_client is not None:
+                _retire_client(_http_client[1], _http_client[0])
+            _http_client = (
+                loop,
+                httpx.AsyncClient(timeout=EMBEDDING_SIDECAR_TIMEOUT_SECONDS),
+            )
     return _http_client[1]
 
 

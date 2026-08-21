@@ -281,20 +281,19 @@ class TestTransientRetry:
 
     async def test_connection_error_is_retried(self, monkeypatch: pytest.MonkeyPatch) -> None:
         sleeps: list[float] = []
+        failures_left = 1
 
         async def fake_sleep(delay: float) -> None:
             sleeps.append(delay)
 
-        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
-        failed_once = False
-
         def handler(request: httpx.Request) -> httpx.Response:
-            nonlocal failed_once
-            if not failed_once:
-                failed_once = True
+            nonlocal failures_left
+            if failures_left > 0:
+                failures_left -= 1
                 raise httpx.ConnectError("sidecar restarting", request=request)
             return httpx.Response(200, json={"ok": True})
 
+        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
         monkeypatch.setattr(
             embeddings,
             "_get_http_client",
@@ -306,6 +305,70 @@ class TestTransientRetry:
 
         assert result == {"ok": True}
         assert sleeps == [embeddings.EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS]
+
+    async def test_transport_budget_is_consumed_per_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Two connection errors must consume exactly two budget units: a third
+        error would exceed the budget and fail loudly, while the retry that
+        follows still succeeds. This pins the countdown, not just 'it retried'."""
+        sleeps: list[float] = []
+        failures_left = 2
+
+        async def fake_sleep(delay: float) -> None:
+            sleeps.append(delay)
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal failures_left
+            if failures_left > 0:
+                failures_left -= 1
+                raise httpx.ConnectError("sidecar restarting", request=request)
+            return httpx.Response(200, json={"ok": True})
+
+        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+        monkeypatch.setattr(
+            embeddings,
+            "_get_http_client",
+            lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        )
+        monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar.test")
+
+        result = await embeddings._sidecar_post("/embed_query", {"text": "q"})
+
+        assert result == {"ok": True}
+        assert sleeps == [
+            embeddings.EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS,
+            embeddings.EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS,
+        ]
+
+    async def test_transport_budget_exhaustion_fails_loud(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Three consecutive connection errors exhaust the default budget of
+        two retries: the original connection error propagates instead of the
+        operation being silently dropped."""
+        failures_left = 99
+
+        async def fake_sleep(delay: float) -> None:
+            pass
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal failures_left
+            if failures_left > 0:
+                failures_left -= 1
+                raise httpx.ConnectError("sidecar restarting", request=request)
+            return httpx.Response(200, json={"ok": True})
+
+        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+        monkeypatch.setattr(
+            embeddings,
+            "_get_http_client",
+            lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        )
+        monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar.test")
+
+        with pytest.raises(httpx.ConnectError):
+            await embeddings._sidecar_post("/embed_query", {"text": "q"})
 
 
 class TestPooledClientThroughPublicApi:
