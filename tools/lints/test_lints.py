@@ -327,7 +327,7 @@ def test_json_mode_model_dump_in_tool_is_clean(tmp_path: Path) -> None:
     src = (
         "async def search(config, query):\n"
         "    doc = await get_doc()\n"
-        "    return doc.model_dump(mode=\"json\")\n"
+        '    return doc.model_dump(mode="json")\n'
     )
     path = _write(tmp_path, f"{_TOOL_DIR}/reminder_tool.py", src)
     assert tool_dump_boundary.check([path]) == []
@@ -357,10 +357,7 @@ def test_dynamic_mode_kwargs_in_tool_is_flagged(tmp_path: Path) -> None:
 
 def test_bare_model_dump_outside_tools_scope_is_clean(tmp_path: Path) -> None:
     # Service/repository dumps persist as BSON dates — python mode is correct there.
-    src = (
-        "async def create(doc):\n"
-        "    return await repo.insert(doc.model_dump())\n"
-    )
+    src = "async def create(doc):\n    return await repo.insert(doc.model_dump())\n"
     path = _write(tmp_path, "app/services/reminders/service.py", src)
     assert tool_dump_boundary.check([path]) == []
 
