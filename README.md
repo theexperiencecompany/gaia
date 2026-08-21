@@ -58,33 +58,6 @@ Build your own from the **Workflows** page:
 - **Or on an event** — new email, calendar change, Slack message, GitHub commit, Linear issue, Notion edit, new row in a sheet
 - **Chain steps across tools** — fetch, summarise, post to Slack
 
-## What else it does
-
-### Remembers you
-
-- Learns as you talk — you never have to say "remember this"
-- Keeps the people, projects and preferences that come up, plus a journal of recent days
-- All of it visible on the **Memory** page as a list or a graph
-- Edit, export or delete any of it in a click
-
-### Listens
-
-- Say **"Hey GAIA"** and start talking
-- The wake word runs on your device — no audio leaves your machine until you say it, and [the model is right here](libs/wake-word) if you want to check
-- Calls are real-time and interruptible, with background noise filtered out
-
-### Puts everything in one place
-
-- Your **inbox**, **calendar**, **todos** and **workflows**, with a **dashboard** over the top
-- Whatever GAIA did while you were gone waits in **notifications** — approve it, edit it, or dismiss it
-
-### Does real work, not just chat
-
-- **Writes and runs real code.** Every user gets a sandboxed Linux workspace. GAIA can analyse a dataset, run the script, and hand back a PDF, Word doc, deck or spreadsheet.
-- **Researches properly.** Multi-source web research, not a single search box.
-- **Learns new abilities.** 37 built-in skills on the open [Agent Skills spec](https://agentskills.io), plus any you install from GitHub or write yourself.
-- **Runs on any model.** OpenAI, Gemini, Grok and OpenRouter — which covers Claude and most everything else. Self-hosters swap freely.
-
 ## Use GAIA from anywhere
 
 | | Platform | How |
@@ -111,6 +84,33 @@ gaia bridge login          # approve the pairing in your browser
 gaia bridge fs ~/projects  # share a folder
 gaia bridge up             # connect
 ```
+
+## What else it does
+
+### Remembers you
+
+- Learns as you talk — you never have to say "remember this"
+- Keeps the people, projects and preferences that come up, plus a journal of recent days
+- All of it visible on the **Memory** page as a list or a graph
+- Edit, export or delete any of it in a click
+
+### Listens
+
+- Say **"Hey GAIA"** and start talking
+- The wake word runs on your device — no audio leaves your machine until you say it, and [the model is right here](libs/wake-word) if you want to check
+- Calls are real-time and interruptible, with background noise filtered out
+
+### Puts everything in one place
+
+- Your **inbox**, **calendar**, **todos** and **workflows**, with a **dashboard** over the top
+- Whatever GAIA did while you were gone waits in **notifications** — approve it, edit it, or dismiss it
+
+### Does real work, not just chat
+
+- **Writes and runs real code.** Every user gets a sandboxed Linux workspace. GAIA can analyse a dataset, run the script, and hand back a PDF, Word doc, deck or spreadsheet.
+- **Researches properly.** Multi-source web research, not a single search box.
+- **Learns new abilities.** 37 built-in skills on the open [Agent Skills spec](https://agentskills.io), plus any you install from GitHub or write yourself.
+- **Runs on any model.** OpenAI, Gemini, Grok and OpenRouter — which covers Claude and most everything else. Self-hosters swap freely.
 
 ## Getting started
 
@@ -172,6 +172,51 @@ GAIA touches your email, your calendar and your files, so we take reports seriou
 
 Found a vulnerability? Email **security@heygaia.io** — please don't open a public issue. Our full policy is in [SECURITY.md](.github/SECURITY.md).
 
+## FAQ
+
+<details>
+<summary><b>What does GAIA store about me, and does it read my email?</b></summary>
+
+Your actual content is never copied into GAIA's database. Email bodies, calendar events and documents are fetched when a request needs them, used, and not kept. GAIA only touches threads relevant to what you asked for, within the scopes you granted on the provider's consent screen.
+
+What *is* stored is under your control:
+
+- **Memory** — everything on the Memory page as a list or graph. Delete items or clear it all. Export as PNG or SVG.
+- **Chat history** — one-click clear in Preferences.
+- **Workflows, todos, reminders** — managed from their own pages.
+- **Integration tokens** — encrypted, and revoked the moment you disconnect from `/integrations`.
+
+</details>
+
+<details>
+<summary><b>Can I use my own API keys and models?</b></summary>
+
+**Self-hosted:** yes. Providers are set via environment variables and the model catalogue is database-driven, so you can swap freely.
+
+**Cloud:** no — models are managed for you and usage follows your plan. You can still pick between the available models in the composer.
+
+</details>
+
+<details>
+<summary><b>How do I add an integration that isn't in the list?</b></summary>
+
+Add it as an MCP server from `/integrations`. Paste the server URL, connect it privately, and its tools are available right away. You can publish it to the community marketplace if you want to share it.
+
+For tools running on your own machine, use `gaia bridge` instead.
+
+</details>
+
+<details>
+<summary><b>What does self-hosting cost?</b></summary>
+
+The code is free under PolyForm Noncommercial, so you pay for model API usage, any paid integrations you opt into, and hosting. See [Self-host](#self-host) above for sizing.
+
+</details>
+
+## Documentation
+
+**[docs.heygaia.io](https://docs.heygaia.io)** — [Quick Start](https://docs.heygaia.io/quick-start) · [Bots](https://docs.heygaia.io/bots/overview) · [Self-Hosting](https://docs.heygaia.io/self-hosting/overview) · [Developers](https://docs.heygaia.io/developers/introduction)
+
 ## Repository
 
 Full-stack Nx monorepo.
@@ -220,61 +265,6 @@ Every service and file path is mapped in **[ARCHITECTURE.md](./ARCHITECTURE.md)*
 
 </details>
 
-## Roadmap
-
-We build in the open. **[View the roadmap](https://gaia.featurebase.app/roadmap)** · **[Request a feature](https://gaia.featurebase.app)**
-
-## FAQ
-
-<details>
-<summary><b>What does GAIA store about me, and does it read my email?</b></summary>
-
-Your actual content is never copied into GAIA's database. Email bodies, calendar events and documents are fetched when a request needs them, used, and not kept. GAIA only touches threads relevant to what you asked for, within the scopes you granted on the provider's consent screen.
-
-What *is* stored is under your control:
-
-- **Memory** — everything on the Memory page as a list or graph. Delete items or clear it all. Export as PNG or SVG.
-- **Chat history** — one-click clear in Preferences.
-- **Workflows, todos, reminders** — managed from their own pages.
-- **Integration tokens** — encrypted, and revoked the moment you disconnect from `/integrations`.
-
-</details>
-
-<details>
-<summary><b>Can I use my own API keys and models?</b></summary>
-
-**Self-hosted:** yes. Providers are set via environment variables and the model catalogue is database-driven, so you can swap freely.
-
-**Cloud:** no — models are managed for you and usage follows your plan. You can still pick between the available models in the composer.
-
-</details>
-
-<details>
-<summary><b>How do I add an integration that isn't in the list?</b></summary>
-
-Add it as an MCP server from `/integrations`. Paste the server URL, connect it privately, and its tools are available right away. You can publish it to the community marketplace if you want to share it.
-
-For tools running on your own machine, use `gaia bridge` instead.
-
-</details>
-
-<details>
-<summary><b>What does self-hosting cost?</b></summary>
-
-The code is free under PolyForm Noncommercial, so you pay for model API usage, any paid integrations you opt into, and hosting. See [Self-host](#self-host) above for sizing.
-
-</details>
-
-## Documentation
-
-**[docs.heygaia.io](https://docs.heygaia.io)** — [Quick Start](https://docs.heygaia.io/quick-start) · [Bots](https://docs.heygaia.io/bots/overview) · [Self-Hosting](https://docs.heygaia.io/self-hosting/overview) · [Developers](https://docs.heygaia.io/developers/introduction)
-
-## Community
-
-- **[Discord](https://discord.heygaia.io)** — chat with the team and other users
-- **[Twitter](https://twitter.com/trygaia)** — news and updates
-- **[WhatsApp](https://whatsapp.heygaia.io)** — direct support from our team
-
 ## Contributing
 
 <a href="https://github.com/theexperiencecompany/gaia/graphs/contributors">
@@ -288,6 +278,16 @@ Bug fixes, features, docs, tests — all welcome.
 [Contributing Guidelines](https://docs.heygaia.io/developers/contributing) · [Development Setup](https://docs.heygaia.io/developers/development-setup) · [Code Style](https://docs.heygaia.io/configuration/code-style) · [Conventional Commits](https://docs.heygaia.io/configuration/conventional-commits) · [Pull Requests](https://docs.heygaia.io/configuration/pull-requests)
 
 Found a bug? [Open an issue](https://github.com/theexperiencecompany/gaia/issues).
+
+## Community
+
+- **[Discord](https://discord.heygaia.io)** — chat with the team and other users
+- **[Twitter](https://twitter.com/trygaia)** — news and updates
+- **[WhatsApp](https://whatsapp.heygaia.io)** — direct support from our team
+
+## Roadmap
+
+We build in the open. **[View the roadmap](https://gaia.featurebase.app/roadmap)** · **[Request a feature](https://gaia.featurebase.app)**
 
 ## License
 
