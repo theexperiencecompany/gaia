@@ -17,24 +17,40 @@ You set none of that up. It's running the moment you connect.
 
 And when something needs you, it comes to you — on iMessage, WhatsApp, Telegram, Slack or Discord.
 
-## Choose a starting point
+## The work that isn't work
 
-| If you want to… | Go here |
+Triaging mail. Prepping for a meeting. Chasing an update. Copying a task from one tool into another. Writing the same status post every Friday.
+
+None of it is your job. Each one costs two minutes. Together they cost your afternoon — and the focus you needed for the thing you were actually hired to do.
+
+**GAIA does that whole layer for you.** Not by giving you another app to drive, but by doing the work and telling you when it's done.
+
+## Your day, handled
+
+| | |
 | --- | --- |
-| Just use it | **[heygaia.io](https://heygaia.io)** — sign up, nothing to install |
-| Text it from your phone | [iMessage](https://docs.heygaia.io/guides/imessage-bot) · [WhatsApp](https://wa.me/12762088737) · [Telegram](https://t.me/heygaia_bot) · [Slack](https://heygaia.io/slack-bot) · [Discord](https://heygaia.io/discord-bot) |
-| Run it on your own machines | `npm i -g @heygaia/cli && gaia init` — or the [guide](https://docs.heygaia.io/self-hosting/overview) |
-| Contribute | [Development Setup](https://docs.heygaia.io/developers/development-setup) |
-| See how it's built | [ARCHITECTURE.md](./ARCHITECTURE.md) |
+| **08:00** | Your inbox is already triaged. Newsletters and receipts filtered out, the three things that need you pulled to the top, todos created for each. One briefing waiting. |
+| **08:50** | A brief lands for your 9am — who you're meeting, what you shipped together last, what's still open between you. |
+| **08:55** | Heads-up ten minutes out, join link attached. |
+| **11:20** | Your 2pm cancels. Your afternoon replans itself around what's still pending. |
+| **14:00** | Drafts are waiting on the four emails you've been avoiding. You read them, you approve, they send. |
+| **17:30** | The Friday digest is in #eng-updates — merged PRs, closed issues, channel highlights. You didn't write it. |
+| **22:40** | "Anything from the investor?" It's been watching all week. The text arrives the moment it lands. |
+
+That's a normal day. You didn't open GAIA once.
+
+**$1 a day to never do busywork again.**
 
 ## Things people actually ask it
 
+The day above runs on its own. This is what you ask it directly.
+
 - **"Summarise my 47 unread emails and draft replies for the 3 that need one."** Reads every thread end to end, ranks by what matters, drafts in your voice.
-- **"Watch my inbox for anything from our investor and ping me on Telegram."** Keeps watching in the background. You get a text the moment it lands.
-- **"When my 2pm gets cancelled, rewrite my todo list to use the freed time."** Notices the change itself and replans your afternoon.
-- **"Post a Friday digest of my GitHub, Linear and Slack activity to #eng-updates."** Merged PRs, closed issues, channel highlights — gathered, written up, posted.
-- **"Before my 1:1 with Alex, brief me on what we shipped this sprint."** Pulls the PRs, issues and threads into one prep doc, ready before you sit down.
-- **"Clean up this CSV, chart the outliers, and send me the deck."** Writes real Python, runs it in a real sandbox, hands back a real `.pptx`.
+- **"Turn this call transcript into action items, assign owners and add them to Linear."** Pulls out the decisions, matches them to projects, files the issues.
+- **"Draft follow-ups to every email I sent three days ago that nobody answered."** Sweeps your sent mail, writes a personalised nudge per thread.
+- **"Research these 10 companies into a table with pricing, team size and funding."** Multi-source research, structured output, ready to paste.
+- **"Clean up this CSV, chart the outliers and send me the deck."** Writes real Python, runs it in a real sandbox, hands back a real `.pptx`.
+- **"Now run that every Monday at 9am."** Any of the above becomes a standing job — which is the next section.
 
 ## Things it does without being asked
 
@@ -53,6 +69,8 @@ You'll never open a settings screen for those. Build your own from the **Workflo
 - **Run it on a schedule** — "every weekday at 9am"
 - **Or on an event** — new email, calendar change, Slack message, GitHub commit, Linear issue, Notion edit, new row in a sheet
 - **Chain steps across tools** — fetch, summarise, post to Slack
+
+People automate email triage and follow-ups, meeting briefings, action items out of transcripts, todo creation and replanning, Friday digests pulled from GitHub, Linear and Slack, competitor research into a table, and the spreadsheet clean-up they'd otherwise do by hand at 6pm.
 
 ## Use GAIA from anywhere
 
@@ -107,6 +125,16 @@ gaia bridge up             # connect
 - **Researches properly.** Multi-source web research, not a single search box.
 - **Learns new abilities.** 37 built-in skills on the open [Agent Skills spec](https://agentskills.io), plus any you install from GitHub or write yourself.
 - **Runs on any model.** OpenAI, Gemini, Grok and OpenRouter — which covers Claude and most everything else. Self-hosters swap freely.
+
+## Choose a starting point
+
+| If you want to… | Go here |
+| --- | --- |
+| Just use it | **[heygaia.io](https://heygaia.io)** — sign up, nothing to install |
+| Text it from your phone | [iMessage](https://docs.heygaia.io/guides/imessage-bot) · [WhatsApp](https://wa.me/12762088737) · [Telegram](https://t.me/heygaia_bot) · [Slack](https://heygaia.io/slack-bot) · [Discord](https://heygaia.io/discord-bot) |
+| Run it on your own machines | `npm i -g @heygaia/cli && gaia init` — or the [guide](https://docs.heygaia.io/self-hosting/overview) |
+| Contribute | [Development Setup](https://docs.heygaia.io/developers/development-setup) |
+| See how it's built | [ARCHITECTURE.md](./ARCHITECTURE.md) |
 
 ## Getting started
 
