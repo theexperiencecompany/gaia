@@ -29,8 +29,10 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 
 from _common import Violation, report_rule
 
@@ -51,7 +53,6 @@ _RUFF = [
     "ruff@0.14.13",
     "check",
     "--no-cache",
-    "--isolated",
     "--output-format",
     "concise",
 ]
@@ -87,13 +88,39 @@ _FINDING_RE = re.compile(r"^\S+:\d+:\d+: [A-Z]+\d+")
 
 
 def fires(entry: Entry) -> bool:
-    """True when the rule still fires somewhere in the file WITHOUT the exemption."""
+    """True when the rule still fires somewhere in the file WITHOUT the exemption.
+
+    Runs against a temp copy of pyproject.toml with only THIS entry stripped,
+    so every other setting (line-length, target-version, select, sibling
+    entries) stays exactly as configured — config-faithful, unlike --isolated,
+    which drops the repo config wholesale and misjudges settings-dependent rules.
+    """
     path = REPO_ROOT / entry.glob
     if not path.exists():
         return True  # vanished files are reported as live so humans look at them
-    r = subprocess.run(
-        [*_RUFF, "--select", entry.rule, str(path)], capture_output=True, text=True, check=False
+    source = PYPROJECT.read_text(encoding="utf-8")
+    pattern = re.compile(
+        rf'^"{re.escape(entry.glob)}"\s*=\s*\[[^\]]*"{re.escape(entry.rule)}"[^\]]*\](?:\s*#.*)?$',
+        re.MULTILINE,
     )
+    stripped = pattern.sub("", source)
+    if stripped == source:
+        return True  # could not strip the entry — treat as live, never false-delete
+    # Ruff treats a config file as pyproject-style ([tool.ruff] wrapped) ONLY
+    # when it is literally named pyproject.toml — any other name must carry
+    # bare settings. Name it right, then clean up the whole temp dir.
+    tmpdir = tempfile.mkdtemp()
+    tmp_path = Path(tmpdir) / "pyproject.toml"
+    tmp_path.write_text(stripped, encoding="utf-8")
+    try:
+        r = subprocess.run(
+            [*_RUFF, "--config", str(tmp_path), "--select", entry.rule, str(path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
     # concise output: one "path:line:col: RULE msg" line per finding. Success
     # also prints to stdout ("All checks passed!"), so match finding shapes only.
     return any(_FINDING_RE.match(line) for line in r.stdout.splitlines())
@@ -120,9 +147,9 @@ def main(argv: list[str]) -> int:
         lines = PYPROJECT.read_text(encoding="utf-8").splitlines()
         located: list[Violation] = []
         for v in violations:
-            needle = v.detail.split(" masks")[0] + " ="
+            needle = v.detail.split(" masks")[0].split(" =")[0]
             for i, ln in enumerate(lines):
-                if needle in ln:
+                if ln.strip().startswith(needle):
                     located.append(Violation(v.path, i + 1, v.detail, v.fix))
                     break
             else:

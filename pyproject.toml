@@ -155,9 +155,12 @@ select = [
   "ANN401", # disallow explicit `Any` in type annotations
 ]
 ignore = [
+  "ASYNC109",  # objects to async functions having a timeout param — reworking 17 signatures for style
+  "C414",  # list() inside sorted() — readability
+  "FURB162",  # timezone replacement with zero offset (intentional for utcoffset checks)
+  "SIM222",  # bool simplification (`x or True`)
   # Conflicts with formatter (ruff format) or actively unhelpful.
   "COM812",  # missing trailing comma (handled by formatter)
-  "ISC001",  # implicit string concat on one line (formatter conflict)
   "E501",    # line too long — formatter manages this
   # Stylistic preferences we don't enforce.
   "TRY003",  # long messages in exceptions
@@ -197,9 +200,6 @@ ignore = [
   # Implicit namespace packages — used legitimately in some test layouts.
   "INP001",
   # Logging f-strings — we use loguru which evaluates lazily.
-  "G004",    # logging-f-string
-  "G002",    # logging-percent-format
-  "G201",    # logging-exc-info
   # RUF059: unused tuple unpack — common in test helpers.
   "RUF059",
   # PGH003/PGH004 are both enforced. A blanket `# type: ignore` silences every
@@ -215,13 +215,11 @@ ignore = [
   "A001",
   "A002",  # shadowing builtin `filter`/`type` params — REST handlers use them as nouns
   # StrEnum migration — codebase is on Enum, migration is out of scope.
-  "UP042",
   # ASYNC230 (blocking open() in an async def) is enforced — it is the rule form
   # of "all I/O must be async" in apps/api/CLAUDE.md. ASYNC109 is not: it objects
   # to an async function *having* a `timeout` parameter, which would mean
   # reworking 17 public signatures (bash_tool, wait_for_subagents, mcp oauth) to
   # satisfy a style preference, with no bug behind it.
-  "ASYNC109",
   # PT is on for the rules that catch a real test defect (PT012 — extra
   # statements inside a pytest.raises block can make the wrong line raise;
   # PT022 useless yield fixture; PT028 default in a test parameter). The
@@ -232,8 +230,6 @@ ignore = [
             # only an unsafe autofix available — worth its own pass)
   # Allow non-pathlib stdlib usage in legacy modules.
   "PTH123", # open() vs Path.open()
-  "PTH103", # os.makedirs
-  "PTH107", # os.remove
   "PTH110", # os.path.exists
   "PTH118", # os.path.join
   "PTH120", # os.path.dirname
@@ -260,7 +256,6 @@ ignore = [
   # Ruff misc.
   "RUF003",  # ambiguous unicode in comments
   "RUF005",  # consider iterable unpacking
-  "RUF006",  # asyncio.create_task ref
   "RUF013",  # implicit Optional
   "RUF015",  # access first element via index
   # FURB — mostly readability improvements, leave for future PRs.
@@ -312,20 +307,16 @@ ignore = [
   "PLR1714", # use `in` for multiple comparisons (readability is fine as-is)
   "PLC0206", # extract dict value via .items() (readability)
   # FURB micro-rules.
-  "FURB162", # timezone replacement with zero offset (intentional for utcoffset checks)
   "FURB132", # set.remove → set.discard
   # Datetime extras — codebase has legacy date.today() / datetime.today() calls.
   "DTZ002",  # datetime.today()
-  "DTZ003",  # datetime.utcnow()
   "DTZ011",  # date.today()
   # Comprehension micro-rules.
-  "C414",    # list() in sorted()
   "C416",    # unnecessary comprehension
   # Function in loop captures variable.
   # Module-level import not at top — guarded conditional imports.
   "E402",
   # Combine multiple isinstance calls.
-  "SIM222",  # bool simplification (`x or True`)
   # PLW0108 / N805 / RUF022 — minor.
   "N805",    # first method arg should be self (Pydantic validators use cls)
   "RUF022",  # __all__ unsorted
@@ -339,7 +330,6 @@ unfixable = [
 
 [tool.ruff.lint.per-file-ignores]
 "apps/api/app/agents/core/background/result_delivery.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
-"apps/api/app/agents/tools/coding/bash_tool.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/agents/tools/core/registry.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/api/v1/endpoints/todos.py" = ["ARG001", "PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/patches/composio_langchain_patch.py" = ["ANN401", "PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate

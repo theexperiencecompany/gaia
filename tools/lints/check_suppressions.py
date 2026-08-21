@@ -76,6 +76,10 @@ _DIRECTIVE_PREFIXES = (
     re.compile(r"^#\s*noqa(?::\s*[A-Z]+[0-9]+(?:,\s*[A-Z]+[0-9]+)*)?\s*"),
 )
 
+#: Whole-file kill switches — one comment disables a checker for every line
+#: in the file. They demand a reason like any other suppression.
+_FILE_LEVEL_RE = re.compile(r"^#\s*(?:mypy:\s*ignore-errors|(?:ruff|flake8):\s*noqa)\b")
+
 #: Suffixes that name another tool's directive, not a reason.
 _NON_REASON_SUFFIXES = (re.compile(r"^#\s*NOSONAR\b.*$"),)
 
@@ -130,15 +134,24 @@ def _reason_of(comment: str) -> str | None:
     prefix (``# noqa: B006``, ``# type: ignore[arg-type]``) and any further
     other-tool directives; what remains must be real prose.
     """
-    m = re.search(r"#\s*(?:noqa|type:\s*ignore)\b", comment)
+    m = re.search(
+        r"#\s*(?:noqa|type:\s*ignore|mypy:\s*ignore-errors|(?:ruff|flake8):\s*noqa)\b",
+        comment,
+    )
     if not m:
         return None
     rest = comment[m.start() :]
+    stripped = False
+    level = _FILE_LEVEL_RE.match(rest)
+    if level:
+        rest = rest[level.end() :].lstrip()
+        stripped = True
     for prefix in _DIRECTIVE_PREFIXES:
         if prefix.match(rest):
             rest = prefix.sub("", rest, count=1)
+            stripped = True
             break
-    else:
+    if not stripped:
         return None
     for non_reason in _NON_REASON_SUFFIXES:
         if non_reason.match(rest):
@@ -164,7 +177,9 @@ def _scan_python_comments(path: Path) -> list[Hit]:
             if tok.type != tokenize.COMMENT:
                 continue
             kind = None
-            if _TYPE_IGNORE_RE.search(tok.string):
+            if _FILE_LEVEL_RE.match(tok.string.strip()):
+                kind = "file-level"
+            elif _TYPE_IGNORE_RE.search(tok.string):
                 kind = "type-ignore"
             elif _NOQA_RE.search(tok.string):
                 kind = "noqa"
