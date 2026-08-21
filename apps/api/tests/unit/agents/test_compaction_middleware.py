@@ -678,6 +678,16 @@ class TestDigestComposition:
     def test_error_status_survives_the_digest(self) -> None:
         assert self._build(status="error").status == "error"
 
+    def test_message_fields_carry_the_tool_and_format(self) -> None:
+        from app.agents.workspace.offload import read_offload
+
+        msg = self._build(fmt="json")
+        # the ToolMessage name routes the reply back to the right tool call
+        assert msg.name == "search"
+        info = read_offload(msg)
+        assert info is not None and info["fmt"] == "json"
+        assert f"{9000 / 1024:.1f} KB" in msg.content  # 1024, not 1025
+
     def test_existing_additional_kwargs_are_preserved(self) -> None:
         kw = self._build(extra={"custom": "keep"}).additional_kwargs
         assert kw["custom"] == "keep"
