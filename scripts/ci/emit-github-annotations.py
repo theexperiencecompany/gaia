@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Convert mypy/tsc/ruff/biome output to ::error file,line annotations."""
-import re, sys
+import re
+import sys
+
 patterns = [
     # mypy: path:line: error: msg  or path:line:col: error
     re.compile(r'^(?P<file>[^:]+):(?P<line>\d+):(?:\d+:)?\s*(?:error|warning):'),
@@ -16,7 +18,7 @@ for line in sys.stdin:
         m = pat.match(line.strip())
         if m:
             f = m.group("file").strip()
-            l = m.group("line")
+            line_no = m.group("line")
             # emit GitHub annotation
-            print(f"::error file={f},line={l}::{line.strip()[:500]}")
+            print(f"::error file={f},line={line_no}::{line.strip()[:500]}")
             break

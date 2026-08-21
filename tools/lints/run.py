@@ -12,6 +12,7 @@ Exits non-zero if any rule reports a violation. Stdlib only; wired into the
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import sys
 
@@ -58,9 +59,9 @@ def main(argv: list[str]) -> int:
 
 def _write_summary(ok: bool, total: int, file_count: int) -> None:
     """Minimal human-facing lane summary for $GITHUB_STEP_SUMMARY."""
-    import os as _os
 
-    summary = _os.environ.get("GITHUB_STEP_SUMMARY")
+
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if not summary:
         return
     try:
