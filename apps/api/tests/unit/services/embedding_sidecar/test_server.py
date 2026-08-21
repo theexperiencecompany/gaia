@@ -296,7 +296,10 @@ class TestClientRetryContract:
             calls.append({"q": payload["query"], "n": len(payload["documents"])})
             return {"scores": [float(len(calls))] * len(payload["documents"])}
 
+        observed: list[tuple[str, str, int]] = []
+
         async def fake_observed(operation: str, backend: str, count: int, awaitable):
+            observed.append((operation, backend, count))
             return await awaitable
 
         monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar.test")
@@ -310,6 +313,7 @@ class TestClientRetryContract:
             {"q": "the query", "n": 30},
             {"q": "the query", "n": 15},
         ]
+        assert observed == [("rerank", "sidecar", 30), ("rerank", "sidecar", 15)]
         assert scores == [1.0] * 30 + [2.0] * 15
 
     async def test_exhausted_budget_raises_after_exact_attempts(
