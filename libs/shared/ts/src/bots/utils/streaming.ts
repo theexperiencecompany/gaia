@@ -22,9 +22,9 @@ import type { AnalyticsContext } from "../../analytics";
 import { BOT_EVENTS } from "../../analytics/events/bots";
 import type { ApprovalRequestData } from "../../chat";
 import {
+  containsMessageBreakToken,
   NEW_MESSAGE_BREAK_TOKEN,
   NEW_MESSAGE_BREAK_TOKEN_LENGTH,
-  containsMessageBreakToken,
   normalizeMessageBreakTokens,
   stripPartialBreakToken,
 } from "../../utils/messageBreakUtils";
@@ -292,7 +292,10 @@ async function _handleStream(
         // instead of waiting out the edit interval. Overflow is handled inside
         // flushFinished — detecting it needs a render pass, which is far too
         // expensive to run per streamed token.
-        if (containsMessageBreakToken(pending) || now - lastEditTime >= editIntervalMs) {
+        if (
+          containsMessageBreakToken(pending) ||
+          now - lastEditTime >= editIntervalMs
+        ) {
           lastEditTime = now;
           if (editTimer) {
             clearTimeout(editTimer);
@@ -301,7 +304,9 @@ async function _handleStream(
           enqueue(async () => {
             await flushFinished();
             await previewBubble(
-              stripPartialBreakToken(normalizeMessageBreakTokens(pending)).trim(),
+              stripPartialBreakToken(
+                normalizeMessageBreakTokens(pending),
+              ).trim(),
             );
           });
         } else if (!editTimer) {
@@ -310,11 +315,13 @@ async function _handleStream(
               editTimer = null;
               if (!streamDone) {
                 lastEditTime = Date.now();
-              enqueue(() =>
-                previewBubble(
-                  stripPartialBreakToken(normalizeMessageBreakTokens(pending)).trim(),
-                ),
-              );
+                enqueue(() =>
+                  previewBubble(
+                    stripPartialBreakToken(
+                      normalizeMessageBreakTokens(pending),
+                    ).trim(),
+                  ),
+                );
               }
             },
             editIntervalMs - (now - lastEditTime),
