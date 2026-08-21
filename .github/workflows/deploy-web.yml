@@ -117,6 +117,8 @@ jobs:
           echo "Preflight done (informational only)." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build Cloudflare bundle
+        env:
+          NEXT_PUBLIC_API_BASE_URL: "http://fake-api-for-build.example.com"
         run: |
           echo "::group::opennext build — pnpm --filter ./apps/web cf:build"
           time pnpm --filter ./apps/web cf:build
