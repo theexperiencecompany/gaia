@@ -85,6 +85,10 @@ class TestEmbedBatchSplitsRequests:
             return await awaitable
 
         async def fake_post(path: str, payload: dict) -> dict:
+            if path == "/embed_query":
+                assert set(payload) == {"text"}
+                calls.append({"path": path, "text": payload["text"]})
+                return {"vector": [0.0]}
             if path == "/embed":
                 assert set(payload) == {"texts"}
                 calls.append({"path": path, "n": len(payload["texts"])})
@@ -100,6 +104,20 @@ class TestEmbedBatchSplitsRequests:
         monkeypatch.setattr(embeddings, "_observed", fake_observed)
         monkeypatch.setattr(embeddings, "_sidecar_post", fake_post)
         return calls, observed
+
+    async def test_embed_query_sidecar_call_is_annotated_and_typed(
+        self,
+        recorder: tuple[list[dict], list[tuple[str, str, int]]],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        calls, observed = recorder
+        monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar:8200")
+
+        vector = await embeddings.embed_query("what was decided")
+
+        assert calls == [{"path": "/embed_query", "text": "what was decided"}]
+        assert observed == [("embed_query", "sidecar", 1)]
+        assert vector == [0.0]
 
     @patch.object(embeddings, "_sidecar_url", return_value="http://sidecar:8200")
     async def test_embed_batch_splits_into_bounded_http_calls(
@@ -188,6 +206,8 @@ class TestTransientRetry:
         attempts: list[httpx.Request] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
+            # Strict contract: retried requests must still carry the JSON body.
+            assert request.content.startswith(b'{"')
             attempts.append(request)
             return responses.pop(0) if len(responses) > 1 else responses[0]
 
@@ -200,9 +220,7 @@ class TestTransientRetry:
         monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar.test")
         return attempts
 
-    async def test_503_is_retried_honoring_retry_after(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_503_is_retried_with_backoff(self, monkeypatch: pytest.MonkeyPatch) -> None:
         sleeps: list[float] = []
 
         async def fake_sleep(delay: float) -> None:
@@ -212,7 +230,7 @@ class TestTransientRetry:
         attempts = self._client(
             monkeypatch,
             [
-                httpx.Response(503, headers={"Retry-After": "9"}),
+                httpx.Response(503),
                 httpx.Response(200, json={"ok": True}),
             ],
         )
@@ -221,16 +239,45 @@ class TestTransientRetry:
 
         assert result == {"ok": True}
         assert len(attempts) == 2
-        # Retry-After of 9s is capped at the configured max wait.
         assert sleeps == [embeddings.EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS]
 
     async def test_exhausted_retries_fail_loud(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        sleeps: list[float] = []
+
+        async def fake_sleep(delay: float) -> None:
+            sleeps.append(delay)
+
+        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
         attempts = self._client(monkeypatch, [httpx.Response(503)])
 
         with pytest.raises(httpx.HTTPStatusError):
             await embeddings._sidecar_post("/embed", {"texts": ["a"]})
 
         assert len(attempts) == embeddings.EMBEDDING_SIDECAR_RETRIES + 1
+        assert sleeps == [embeddings.EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS] * (
+            embeddings.EMBEDDING_SIDECAR_RETRIES
+        )
+
+    async def test_429_is_retried_too(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        attempts = self._client(
+            monkeypatch,
+            [
+                httpx.Response(429),
+                httpx.Response(200, json={"ok": True}),
+            ],
+        )
+        sleeps: list[float] = []
+
+        async def fake_sleep(delay: float) -> None:
+            sleeps.append(delay)
+
+        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+
+        result = await embeddings._sidecar_post("/embed", {"texts": ["a"]})
+
+        assert result == {"ok": True}
+        assert len(attempts) == 2
+        assert sleeps == [embeddings.EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS]
 
     async def test_connection_error_is_retried(self, monkeypatch: pytest.MonkeyPatch) -> None:
         sleeps: list[float] = []
@@ -259,3 +306,42 @@ class TestTransientRetry:
 
         assert result == {"ok": True}
         assert sleeps == [embeddings.EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS]
+
+
+class TestPooledClientThroughPublicApi:
+    async def test_embed_query_reuses_one_pooled_client(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The public path must go through the shared pool: one client for
+        repeated calls, our configured timeout, and a fresh client when the
+        previous one was closed."""
+        embeddings._http_client = None
+        made: list[httpx.AsyncClient] = []
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            return httpx.Response(200, json={"vector": [0.0]})
+
+        transport = httpx.MockTransport(handler)
+        real_cls = httpx.AsyncClient
+
+        class Tracking(real_cls):
+            def __init__(self, **kwargs: object) -> None:
+                super().__init__(transport=transport, **kwargs)
+                made.append(self)
+
+        monkeypatch.setattr(embeddings.httpx, "AsyncClient", Tracking)
+        monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar.test")
+
+        await embeddings.embed_query("one")
+        await embeddings.embed_query("two")
+
+        assert len(made) == 1
+        assert calls["n"] == 2
+        assert made[0].timeout == httpx.Timeout(embeddings.EMBEDDING_SIDECAR_TIMEOUT_SECONDS)
+
+        closed = made[0]
+        await closed.aclose()
+        await embeddings.embed_query("three")
+        assert len(made) == 2  # closed pools are replaced, not reused

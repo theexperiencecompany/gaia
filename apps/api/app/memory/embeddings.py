@@ -213,30 +213,27 @@ def _get_http_client() -> httpx.AsyncClient:
 
 
 async def _post_with_retry(client: httpx.AsyncClient, url: str, payload: dict) -> httpx.Response:
-    """POST once per attempt; retry transient failures a bounded number of
-    times. A 503 means the sidecar was overloaded right now (it already waited
-    out its own slot budget) and a connection error means it is mid-restart —
-    dropping the memory operation over either blip would lose data, so honor
-    Retry-After and try again. Exhausted retries still fail loud."""
-    response: httpx.Response | None = None
-    for attempt in range(EMBEDDING_SIDECAR_RETRIES + 1):
-        delay = 0.0
+    """POST until success, a non-retryable status, or the retry budget runs
+    out — with a short fixed backoff between attempts. A 503 means the sidecar
+    was overloaded right now (it already waited out its own slot budget) and a
+    connection error means it is mid-restart; dropping the memory operation
+    over either blip would lose data. Exhausted retries still fail loud."""
+    remaining = EMBEDDING_SIDECAR_RETRIES
+    while True:
         try:
             response = await client.post(url, json=payload)
         except httpx.TransportError:
-            if attempt == EMBEDDING_SIDECAR_RETRIES:
+            if remaining == 0:
                 raise
-            delay = EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS
-        else:
-            if response.status_code not in (429, 503) or attempt == EMBEDDING_SIDECAR_RETRIES:
-                return response
-            retry_after = response.headers.get("Retry-After")
-            delay = min(
-                float(retry_after) if retry_after else 0.0, EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS
-            )
-        if delay > 0:
-            await asyncio.sleep(delay)
-    return response
+            remaining -= 1
+            await asyncio.sleep(EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS)
+            continue
+        if response.status_code not in (429, 503):
+            return response
+        if remaining == 0:
+            return response
+        remaining -= 1
+        await asyncio.sleep(EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS)
 
 
 async def _sidecar_post(path: str, payload: dict) -> dict[str, Any]:

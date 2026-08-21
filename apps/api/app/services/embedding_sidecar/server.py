@@ -18,6 +18,7 @@ call it instead of loading their own copy.
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -63,10 +64,8 @@ async def _inference_slot() -> AsyncIterator[None]:
         _inference_slots.release()
 
 
-_OVERSIZED_RESPONSE = {
+_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     413: {"description": "A text exceeds EMBEDDING_SIDECAR_MAX_TEXT_CHARS."},
-}
-_BUSY_RESPONSE = {
     503: {
         "description": "All inference slots stayed busy for the slot-wait budget.",
         "headers": {"Retry-After": {"schema": {"type": "integer"}}},
@@ -126,7 +125,7 @@ async def health() -> dict[str, str]:
 
 
 # evlog-map-disable-next-line wide-event -- standalone uvicorn app without LoggingMiddleware; log.set() would never be emitted
-@app.post("/embed", responses={**_OVERSIZED_RESPONSE, **_BUSY_RESPONSE})
+@app.post("/embed", responses=_ERROR_RESPONSES)
 async def embed(request: EmbedRequest) -> dict[str, list[list[float]]]:
     """Embed a batch of passage texts."""
     if not request.texts:
@@ -137,7 +136,7 @@ async def embed(request: EmbedRequest) -> dict[str, list[list[float]]]:
 
 
 # evlog-map-disable-next-line wide-event -- standalone uvicorn app without LoggingMiddleware; log.set() would never be emitted
-@app.post("/embed_query", responses={**_OVERSIZED_RESPONSE, **_BUSY_RESPONSE})
+@app.post("/embed_query", responses=_ERROR_RESPONSES)
 async def embed_query(request: EmbedQueryRequest) -> dict[str, list[float]]:
     """Embed a single query with the model's query instruction."""
     _reject_oversized([request.text])
@@ -146,7 +145,7 @@ async def embed_query(request: EmbedQueryRequest) -> dict[str, list[float]]:
 
 
 # evlog-map-disable-next-line wide-event -- standalone uvicorn app without LoggingMiddleware; log.set() would never be emitted
-@app.post("/rerank", responses={**_OVERSIZED_RESPONSE, **_BUSY_RESPONSE})
+@app.post("/rerank", responses=_ERROR_RESPONSES)
 async def rerank(request: RerankRequest) -> dict[str, list[float]]:
     """Score documents against the query, aligned with input order."""
     if not request.documents:
