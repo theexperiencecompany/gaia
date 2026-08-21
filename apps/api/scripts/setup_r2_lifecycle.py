@@ -39,7 +39,12 @@ def main() -> None:
         aws_secret_access_key=settings.R2_SECRET_ACCESS_KEY,
         region_name="auto",
     )
-    client.put_bucket_lifecycle_configuration(
+    # NOSONAR python:S7608 — ExpectedBucketOwner is redundant here, and R2 does not
+    # implement it. The endpoint above is
+    # https://{CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com, so the account is
+    # already pinned by the URL this client talks to: there is no cross-account
+    # bucket this call could reach for the parameter to guard against.
+    client.put_bucket_lifecycle_configuration(  # NOSONAR python:S7608
         Bucket=settings.R2_BUCKET,
         LifecycleConfiguration={
             "Rules": [
