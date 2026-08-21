@@ -4,6 +4,8 @@
 
 **The open-source AI assistant that works for you.**
 
+It runs your inbox, calendar and todos while you're not looking.
+
 [![Documentation](https://img.shields.io/badge/Documentation-00bbff?style=flat&logo=gitbook&logoColor=white)](https://docs.heygaia.io) [![Discord](https://discord-live-members-count-badge.vercel.app/api/discord-members?guildId=585464664650022914&color=5c6af3&label=Discord)](https://discord.heygaia.io) [![WhatsApp](https://img.shields.io/badge/WhatsApp-25D366?logo=whatsapp&logoColor=fff&style=flat)](https://whatsapp.heygaia.io) [![Status](https://uptime.betterstack.com/status-badges/v3/monitor/1zjmp.svg)](https://uptime.betterstack.com/?utm_source=status_badge) [![License](https://img.shields.io/badge/license-PolyForm%20NC-121212?style=flat)](LICENSE.md)
 
 <a href="https://heygaia.io"><img src="apps/web/public/images/readme/cta-try-gaia-free.png" alt="Try GAIA Free" height="48" /></a>
@@ -33,11 +35,11 @@ When something needs you, it texts you. iMessage, WhatsApp, Telegram, Slack, or 
 
 ### Works while you're away
 
-Connect a tool and GAIA sets itself up. No setup screen, no template to pick — the [workflows](#workflows-the-part-that-runs-itself) are already running.
+Connect a tool and GAIA sets itself up. No setup screen, no template to pick — a handful of automated jobs are already running the moment you connect Gmail or Calendar. (Those are [workflows](#workflows-the-part-that-runs-itself), covered below.)
 
 - Watches your tools and tells you when something matters
 - Runs jobs on a schedule, in the background
-- Its todos aren't reminders — they research and finish themselves
+- Its todos aren't reminders — they research the topic and draft the output, ready for you to review
 - Reaches you wherever you actually read your messages
 
 ### Remembers you
@@ -50,7 +52,7 @@ Connect a tool and GAIA sets itself up. No setup screen, no template to pick —
 ### Listens
 
 - Say **"Hey GAIA"** and start talking
-- The wake word runs on your device — no audio leaves your machine until you say it
+- The wake word runs on your device — no audio leaves your machine until you say it, and [the model is right here](libs/wake-word) if you want to check
 - Calls are real-time and interruptible, with background noise filtered out
 
 ### Puts everything in one place
@@ -58,16 +60,10 @@ Connect a tool and GAIA sets itself up. No setup screen, no template to pick —
 - Your **inbox**, **calendar**, **todos** and **workflows**, with a **dashboard** over the top
 - Whatever GAIA did while you were gone waits in **notifications** — approve it, edit it, or dismiss it
 
-### Is yours to run
-
-- Self-host with your own API keys and your own choice of models
-- No usage caps, and your data stays on your disks
-- Monitoring included, so you can see exactly what it's doing
-
 ## Things people actually ask it
 
 - **"Summarize my 47 unread emails and draft replies for the 3 that need one."** Reads every thread end to end, ranks by what matters, drafts in your voice.
-- **"Watch my inbox for anything from our investor and ping me on Telegram."** Runs for weeks without you thinking about it. You get a text within the minute.
+- **"Watch my inbox for anything from our investor and ping me on Telegram."** Keeps watching in the background. You get a text the moment it lands.
 - **"When my 2pm gets cancelled, rewrite my todo list to use the freed time."** Notices the change itself and replans your afternoon.
 - **"Post a Friday digest of my GitHub, Linear and Slack activity to #eng-updates."** Merged PRs, closed issues, channel highlights — gathered, written up, posted.
 - **"Before my 1:1 with Alex, brief me on what we shipped this sprint."** Pulls the PRs, issues and threads into one prep doc, ready before you sit down.
@@ -107,8 +103,8 @@ Build your own from the **Workflows** page:
 
 ## Connect anything
 
-- **The popular ones, one click.** Gmail, Calendar, Slack, Notion, Linear, GitHub, Sheets, Todoist, Trello, HubSpot and ~20 more. Each gets its own specialist agent.
-- **Anything else, via MCP.** Point GAIA at any MCP server and its tools work immediately. No fixed catalogue, no waiting on us to build an integration.
+- **32 services, one click.** Gmail, Calendar, Slack, Notion, Linear, GitHub, Sheets, Todoist, Trello, HubSpot and more. Each gets its own specialist agent.
+- **Anything else, via MCP.** [Model Context Protocol](https://modelcontextprotocol.io) is the open standard for plugging tools into AI models. Point GAIA at any MCP server and its tools work immediately — no fixed catalogue, no waiting on us.
 - **A marketplace.** Browse what the community published, or publish your own.
 - **Tools on your own computer.** `gaia bridge` links your laptop over one outgoing connection — nothing to forward, no ports to open.
 
@@ -133,13 +129,16 @@ gaia bridge up             # connect
 
 Go to **[heygaia.io](https://heygaia.io)**. Free, nothing to install, always up to date.
 
-This is how most people should use GAIA — you skip running six databases yourself.
+This is how most people should use GAIA — you skip standing up Postgres, Mongo, Redis, ChromaDB and RabbitMQ yourself.
 
 ### Self-host
 
 <a href="https://heygaia.io/install"><img src="apps/web/public/images/screenshots/cli.png" alt="GAIA CLI" width="500" /></a>
 
 Prefer your own machines? You get your own keys and models, no caps, and your data on your disks — in exchange for running real infrastructure.
+
+> [!IMPORTANT]
+> The licence is **noncommercial**. Personal and non-profit self-hosting is free; running GAIA inside a business needs an [enterprise licence](https://heygaia.io/contact).
 
 Needs [Docker](https://docs.docker.com/get-docker/) (Engine 20.10+, Compose v2+) and [Node.js](https://nodejs.org) 20+.
 
@@ -160,7 +159,7 @@ gaia start    # bring it back up
 
 Already cloned the repo? Run `gaia setup` inside it. Contributing? Choose **"Developer"** for hot-reload local dev.
 
-A single modest VM handles a small team. The real cost is model API usage — see the [self-hosting guide](https://docs.heygaia.io/self-hosting/overview) for numbers.
+Your ongoing cost is model API usage, not hosting — the [self-hosting guide](https://docs.heygaia.io/self-hosting/overview) has sizing and real numbers.
 
 ## Pricing
 
@@ -237,23 +236,16 @@ We build in the open. **[View the roadmap](https://gaia.featurebase.app/roadmap)
 ## FAQ
 
 <details>
-<summary><b>What does GAIA store about me, and can I delete it?</b></summary>
+<summary><b>What does GAIA store about me, and does it read my email?</b></summary>
 
-All of it is under your control:
+Your actual content is never copied into GAIA's database. Email bodies, calendar events and documents are fetched when a request needs them, used, and not kept. GAIA only touches threads relevant to what you asked for, within the scopes you granted on the provider's consent screen.
 
-- **Memory** — see everything on the Memory page as a list or graph. Delete individual items or clear it all. Export as PNG or SVG.
+What *is* stored is under your control:
+
+- **Memory** — everything on the Memory page as a list or graph. Delete items or clear it all. Export as PNG or SVG.
 - **Chat history** — one-click clear in Preferences.
 - **Workflows, todos, reminders** — managed from their own pages.
-- **Integration tokens** — encrypted, and revoked the moment you disconnect.
-
-Your actual content — email bodies, calendar events, documents — is never copied into GAIA's database. It's fetched when a request needs it and not kept.
-
-</details>
-
-<details>
-<summary><b>Does GAIA read my email?</b></summary>
-
-Only the threads relevant to what you asked it to do, and only within the scopes you granted on Google's consent screen. Nothing is mirrored into a database. Disconnect from `/integrations` and access is revoked immediately.
+- **Integration tokens** — encrypted, and revoked the moment you disconnect from `/integrations`.
 
 </details>
 
@@ -278,7 +270,7 @@ For tools running on your own machine, use `gaia bridge` instead.
 <details>
 <summary><b>What does self-hosting cost?</b></summary>
 
-The code is free under PolyForm Noncommercial. Your real costs are model API usage, any paid integrations you opt into, and hosting. A single modest VM handles a small team. The [self-hosting guide](https://docs.heygaia.io/self-hosting/overview) has numbers.
+The code is free under PolyForm Noncommercial, so you pay for model API usage, any paid integrations you opt into, and hosting. See [Self-host](#self-host) above for sizing.
 
 </details>
 
@@ -319,7 +311,7 @@ GAIA is built on the shoulders of giants. Full credits at **[heygaia.io/thanks](
 
 <div align="center">
 
-If GAIA could save you even an hour a week, consider giving it a ⭐ — it helps more people find the project.
+If GAIA saves you an hour this week, a ⭐ helps someone else find it.
 
 <a href="https://www.star-history.com/#theexperiencecompany/gaia&Date">
  <picture>
