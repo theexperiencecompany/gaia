@@ -96,8 +96,6 @@ jobs:
           echo "Affected Python: $PY"
           echo "Affected TypeScript: $TS"
   # --- Biome lint + format -------------------------------------------------
-  # Wrapped via nx affected -t lint (cache:true) so results cache across PRs.
-  # Falls back to run-many on workflow_dispatch (full scan).
   biome:
     name: Biome lint + format
     needs: [changes]
@@ -108,23 +106,28 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          persist-credentials: false
-      - uses: nrwl/nx-set-shas@v4
-        with:
-          main-branch-name: master
       - uses: ./.github/actions/setup-node-pnpm
-      - name: Lint and format check via nx (cache:true)
+      - name: Lint and format check across all TS/JS/JSON/CSS files
         run: |
-          trap 'echo "::error::repro: pnpm exec nx run-many -t lint"' ERR
-          echo "::group::nx run-many lint"
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            pnpm exec nx run-many -t lint -p tag:scope:typescript --parallel=3 2>&1 | tee /tmp/biome-lint.out; _rc=${PIPESTATUS[0]}; cat /tmp/biome-lint.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
+          echo "::group::Biome check"
+          # Drop top-level paths that biome.json explicitly excludes via `!!`
+          # negation (apps/api, apps/voice-agent, apps/web/public, infra, docs,
+          # .github, etc.). Biome errors out with exit 1 when every input path
+          # is excluded by config, so the lane must not feed it those paths
+          # in the first place. Keep this list in sync with biome.json
+          # `files.includes` negations.
+          FILES=$(scripts/ci/changed-files.sh ts tsx js jsx json jsonc css \
+            | grep -Ev '^(apps/api|apps/voice-agent|apps/web/public|infra|docs|\.github|\.claude|\.agents|\.husky|\.yarn|\.vscode|\.idea|\.mise|\.opencode|\.worktrees|\.jscpd-report)/' || true)
+          if [ "$FILES" = "__FULL__" ]; then
+            pnpm run quality:lint
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
           else
-            pnpm exec nx run-many -t lint -p "${{ needs.changes.outputs.typescript_projects }}" --parallel=3 2>&1 | tee /tmp/biome-lint.out; _rc=${PIPESTATUS[0]}; cat /tmp/biome-lint.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
+            pnpm exec biome check $FILES
           fi
           echo "::endgroup::"
-          echo "### Biome (nx lint) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "Biome: OK (0 errors; warnings shown above are non-blocking)"
+
   # --- Workspace dependency hygiene ---------------------------------------
   deps:
     name: Workspace dependency hygiene
@@ -324,8 +327,6 @@ jobs:
           fi
 
   # --- TypeScript strict type-check ---------------------------------------
-  # Unified to nx-set-shas base (origin/master) — same as detect and main.yml.
-  # Cacheable via nx (cache:true).
   type-check:
     name: TypeScript strict type-check (all workspaces)
     needs: [changes]
@@ -336,27 +337,28 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          persist-credentials: false
-      - uses: nrwl/nx-set-shas@v4
-        with:
-          main-branch-name: master
       - uses: ./.github/actions/setup-node-pnpm
-      - name: tsc --noEmit via nx run-many (cache:true)
+      - name: tsc --noEmit across web, desktop, mobile, cli, bots
         run: |
-          trap 'echo "::error::repro: pnpm exec nx run-many -t type-check"' ERR
-          echo "::group::nx run-many type-check"
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            pnpm exec nx run-many -t type-check -p tag:scope:typescript --parallel=3 2>&1 | tee /tmp/tsc.out; _rc=${PIPESTATUS[0]}; cat /tmp/tsc.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
+          echo "::group::nx type-check"
+          if [ -n "${GITHUB_BASE_REF:-}" ]; then
+            # Timeout + low-speed guard so a stalled HTTPS fetch fails fast instead
+            # of hanging until the job's timeout-minutes cap (which surfaces as a
+            # `cancelled` lane and fails the quality gate). nx affected falls back
+            # to whatever base ref is already local if the fetch is skipped.
+            timeout 60 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 \
+              fetch --no-tags --depth=1 origin "$GITHUB_BASE_REF" 2>/dev/null || true
+            # Exclude Python projects (api, voice-agent): their type-check
+            # runs mypy via uv, which isn't installed in this Node-only job, and
+            # Python typing is already enforced by the dedicated python-mypy lane.
+            pnpm exec nx affected -t type-check --base=origin/$GITHUB_BASE_REF --exclude=api,voice-agent
           else
-            pnpm exec nx run-many -t type-check -p "${{ needs.changes.outputs.typescript_projects }}" --parallel=3 2>&1 | tee /tmp/tsc.out; _rc=${PIPESTATUS[0]}; cat /tmp/tsc.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
-          fied)
-            echo "TypeScript type-check done for affected TS projects"
+            pnpm exec nx run-many -t type-check --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage
           fi
           echo "::endgroup::"
-          echo "### TypeScript type-check — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "TypeScript: OK (all affected workspaces pass strict tsc)"
+
   # --- Python ruff --------------------------------------------------------
-  # Cacheable lint via nx affected -t lint (cache:true). Custom lints + ratchet stay as separate steps.
   python-ruff:
     name: Python ruff (strict rule set)
     needs: [changes]
@@ -367,56 +369,53 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          persist-credentials: false
-      - uses: nrwl/nx-set-shas@v4
-        with:
-          main-branch-name: master
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           version: "0.8.17"
           enable-cache: true
           prune-cache: true
-      - uses: ./.github/actions/setup-node-pnpm
-      - name: ruff via nx run-many (cache:true)
+      - name: ruff check + format (PL, RUF, FAST, S, B, A, COM, C4, DTZ, ISC, RET, SIM, ARG, PTH, TRY, PERF, UP, FURB, LOG, G + more)
+        # Pinned to the uv.lock ruff version — bump both together. Unpinned,
+        # a ruff release can flip this lane red with zero code changes
+        # (0.16.0 shipped ISC004/RUF036 four minutes before a run here).
         run: |
-          trap 'echo "::error::repro: pnpm exec nx run-many -t lint"' ERR
-          echo "::group::nx run-many lint (python)"
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            pnpm exec nx run-many -t lint -p tag:scope:python --parallel=3 2>&1 | tee /tmp/ruff-nx.out; _rc=${PIPESTATUS[0]}; cat /tmp/ruff-nx.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
+          echo "::group::ruff check + format --check"
+          FILES=$(scripts/ci/changed-files.sh py)
+          if [ "$FILES" = "__FULL__" ]; then
+            # Whole repo, not a list of roots. The old list was
+            # "apps/api apps/voice-agent libs/shared/py", which silently excluded
+            # tools/, .agents/skills/, apps/web/scripts/ and docs/scripts/ — and
+            # is how libs/shared/py went unlinted long enough to accumulate 15
+            # findings after a rule was switched on repo-wide. A new app or lib
+            # is now covered the moment it exists instead of when someone
+            # remembers to add it here. Exclusions live in [tool.ruff]
+            # extend-exclude, where they are visible and reviewable.
+            uvx --no-build ruff@0.14.13 check .
+            uvx --no-build ruff@0.14.13 format --check .
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
           else
-            pnpm exec nx run-many -t lint -p "${{ needs.changes.outputs.python_projects }}" --parallel=3 2>&1 | tee /tmp/ruff-nx.out; _rc=${PIPESTATUS[0]}; cat /tmp/ruff-nx.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
+            uvx --no-build ruff@0.14.13 check $FILES
+            uvx --no-build ruff@0.14.13 format --check $FILES
           fi
-          # Also enforce format check via nx affected format:check for python projects that expose it
-          # Fallback raw ruff format check for full coverage including files outside project roots (tools/, scripts/)
-          # Keep raw check as secondary gate for files not owned by a project (e.g. tools/lints).
           echo "::endgroup::"
-          echo "### Python ruff (nx lint) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "ruff: OK (strict rule set passes; every file is already formatted)"
-      - name: ruff format check (workspace-wide, covers tools/ & scripts not in a project)
-        run: |
-          trap 'echo "::error::repro: uvx ruff format --check ."' ERR
-          echo "::group::ruff format --check"
-          uvx --no-build ruff@0.14.13 format --check .
-          echo "::endgroup::"
-          echo "### Python ruff (format) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
       - name: Custom Python AST lints (route contract, no service classes, wide events, repository boundaries)
         run: |
-          trap 'echo "::error::repro: python3 tools/lints/run.py apps/api/app"' ERR
           echo "::group::custom lints"
           python3 tools/lints/run.py apps/api/app
           echo "::endgroup::"
-          echo "### Custom Python lints — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "Custom lints: OK (4 rules pass)"
       - name: Ruff ignore-list ratchet (ignore / per-file-ignores may only shrink)
+        # Also a pre-commit hook, but that one is bypassable with --no-verify and
+        # the lists it guards are exactly what a red build tempts you to edit.
         run: |
-          trap 'echo "::error::repro: python3 tools/lints/check_ignore_ratchet.py"' ERR
           echo "::group::ignore ratchet"
           python3 tools/lints/check_ignore_ratchet.py
           echo "::endgroup::"
-          echo "### Ruff ignore ratchet — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "ignore-ratchet: OK (no ruff rule was switched off)"
+
   # --- Python mypy --------------------------------------------------------
-  # Cacheable via nx affected -t type-check (cache:true). Falls back to run-many on dispatch.
   python-mypy:
     name: Python mypy (staged-strict)
     needs: [changes]
@@ -427,34 +426,68 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          persist-credentials: false
-      - uses: nrwl/nx-set-shas@v4
-        with:
-          main-branch-name: master
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           version: "0.8.17"
           enable-cache: true
           prune-cache: true
-      - uses: ./.github/actions/setup-node-pnpm
       - name: Install api dev + backend dependencies (uv sync)
         run: |
           echo "::group::uv sync"
           uv sync --project apps/api --group backend --group dev
           echo "::endgroup::"
           echo "deps: OK"
-      - name: mypy via nx run-many (cache:true)
+      - name: mypy across api + voice-agent + shared + lint tooling (staged-strict + shared.* strict override)
         run: |
-          trap 'echo "::error::repro: pnpm exec nx run-many -t type-check"' ERR
-          echo "::group::nx run-many type-check (python)"
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            pnpm exec nx run-many -t type-check -p tag:scope:python --parallel=3 2>&1 | tee /tmp/mypy.out; _rc=${PIPESTATUS[0]}; cat /tmp/mypy.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
+          echo "::group::mypy"
+          # mypy needs the whole module graph per project, so it can't be scoped
+          # to individual changed files.
+          #
+          # Still uncovered, deliberately and with the cost measured: apps/api/tests
+          # (759 errors even under the loosened tests override), apps/api/scripts
+          # (45) and tools/llm-stub (27, all missing annotations on a dev fixture).
+          # Named here so the gap stays a decision instead of quietly becoming the
+          # kind of blind spot that let libs/shared/py drift. On PRs we instead detect which Python
+          # projects changed (from the .py diff) and check only those project
+          # roots. libs/shared/py is a dependency of both apps, so any change
+          # there pulls both apps in. On push we check everything.
+          FILES=$(scripts/ci/changed-files.sh py)
+          if [ "$FILES" = "__FULL__" ]; then
+            # --no-build is impossible here, not forgotten. composio pulls pysher, and pysher's
+            # latest release (1.0.8) publishes no wheel at all, so uv refuses the install:
+            # "Wheels are required for `pysher` because building from source is disabled".
+            # No pin of ours can change that — it is upstream's to publish. --frozen already
+            # locks every resolved version from uv.lock, which is the part we do control.
+            # Sonar githubactions:S8541 therefore stays open here; NOSONAR is not honoured by
+            # that analyzer, so it is resolved as Accepted in the SonarCloud UI instead.
+            uv run --project apps/api --frozen --group backend --group dev mypy apps/api/app apps/voice-agent/src libs/shared/py tools/lints --ignore-missing-imports
+          elif [ -z "$FILES" ]; then
+            echo "No changed Python files — skipping."
           else
-            pnpm exec nx run-many -t type-check -p "${{ needs.changes.outputs.python_projects }}" --parallel=3 2>&1 | tee /tmp/mypy.out; _rc=${PIPESTATUS[0]}; cat /tmp/mypy.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
+            TARGETS=""
+            if echo "$FILES" | grep -q '^libs/shared/py/'; then
+              TARGETS="apps/api/app apps/voice-agent/src libs/shared/py"
+            else
+              echo "$FILES" | grep -q '^apps/api/'         && TARGETS="$TARGETS apps/api/app"
+              echo "$FILES" | grep -q '^apps/voice-agent/' && TARGETS="$TARGETS apps/voice-agent/src"
+            fi
+            echo "$FILES" | grep -q '^tools/lints/' && TARGETS="$TARGETS tools/lints"
+            if [ -z "$TARGETS" ]; then
+              echo "No tracked Python project changed — skipping."
+            else
+              # --no-build is impossible here, not forgotten. composio pulls pysher, and pysher's
+              # latest release (1.0.8) publishes no wheel at all, so uv refuses the install:
+              # "Wheels are required for `pysher` because building from source is disabled".
+              # No pin of ours can change that — it is upstream's to publish. --frozen already
+              # locks every resolved version from uv.lock, which is the part we do control.
+              # Sonar githubactions:S8541 therefore stays open here; NOSONAR is not honoured by
+              # that analyzer, so it is resolved as Accepted in the SonarCloud UI instead.
+              uv run --project apps/api --frozen --group backend --group dev mypy $TARGETS --ignore-missing-imports
+            fi
           fi
           echo "::endgroup::"
-          echo "### Python mypy (nx) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "mypy: OK (no type errors)"
+
   # --- Python docstring coverage ------------------------------------------
   python-interrogate:
     name: Python docstring coverage (interrogate ≥ 80%)
