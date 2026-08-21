@@ -267,12 +267,12 @@ class BaseSchedulerService(ABC):
         await self.reschedule_task(task.id, next_run)
         log.info("Rescheduled recurring task for", id=task.id, next_run=next_run)
 
-    def _build_job_args(self, task_id: str, scheduled_at: datetime) -> tuple[object, ...]:  # noqa: ARG002
+    def _build_job_args(self, task_id: str, _scheduled_at: datetime) -> tuple[object, ...]:
         """Positional args passed to the ARQ job. Subclasses may add context.
 
         Heterogeneous by design — ARQ takes opaque ``*args`` and the workflow
         scheduler appends a trigger-context dict (including the armed fire time)
-        after the id. The base itself needs only the id; ``scheduled_at`` is part
+        after the id. The base itself needs only the id; ``_scheduled_at`` is part
         of the seam so subclasses can stamp their jobs with it.
         """
         return (task_id,)

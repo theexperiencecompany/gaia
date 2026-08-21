@@ -21,10 +21,6 @@ import pytest
 
 from app.models.workflow_models import TriggerConfig, TriggerType, WorkflowWithIntegrations
 
-# Pre-import to break circular dependency chain:
-# workflow_tool -> workflow_utils -> workflow.subagent_output -> workflow.__init__ -> service -> workflow_utils
-import app.services.workflow.service  # noqa: F401
-
 MODULE = "app.agents.tools.workflow_tool"
 UTILS_MODULE = "app.utils.workflow_utils"
 
@@ -84,9 +80,9 @@ class TestWorkflowToolPayloadsAreJsonSafe:
             mock_writer_factory.return_value = writer
             mock_service.get_workflow = AsyncMock(return_value=workflow)
 
-            result = await get_workflow.coroutine(  # type: ignore[attr-defined]
+            result = await get_workflow.ainvoke(
+                {"workflow_id": "wf-1"},
                 config=_make_config(),
-                workflow_id="wf-1",
             )
 
         _assert_json_safe(result)
@@ -104,9 +100,9 @@ class TestWorkflowToolPayloadsAreJsonSafe:
             mock_writer_factory.return_value = writer
             mock_service.deactivate_workflow = AsyncMock(return_value=workflow)
 
-            result = await pause_workflow.coroutine(  # type: ignore[attr-defined]
+            result = await pause_workflow.ainvoke(
+                {"workflow_id": "wf-1"},
                 config=_make_config(),
-                workflow_id="wf-1",
             )
 
         assert result["success"] is True
@@ -124,9 +120,9 @@ class TestWorkflowToolPayloadsAreJsonSafe:
             mock_writer_factory.return_value = writer
             mock_service.activate_workflow = AsyncMock(return_value=workflow)
 
-            result = await resume_workflow.coroutine(  # type: ignore[attr-defined]
+            result = await resume_workflow.ainvoke(
+                {"workflow_id": "wf-1"},
                 config=_make_config(),
-                workflow_id="wf-1",
             )
 
         assert result["success"] is True
