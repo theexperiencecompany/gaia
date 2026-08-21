@@ -169,9 +169,7 @@ def create_middleware_stack(
     # Summarization middleware (skipped without a chat LLM)
     if enable_summarization:
         if chat_llm is None:
-            log.warning(
-                f"{LogTag.AGENT} No chat_llm provided; summarization middleware skipped."
-            )
+            log.warning(f"{LogTag.AGENT} No chat_llm provided; summarization middleware skipped.")
         else:
             summarization = WorkspaceArchivingSummarizationMiddleware(
                 # The configurable-alternatives wrapper is a Runnable, not a

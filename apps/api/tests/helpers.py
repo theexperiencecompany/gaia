@@ -6,7 +6,7 @@ import math
 import os
 import re
 import socket
-from typing import Any
+from typing import Any, ClassVar
 
 from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
@@ -103,7 +103,15 @@ class BindableToolsFakeModel(FakeMessagesListChatModel):
     invocation.  FakeMessagesListChatModel raises NotImplementedError for this.
     This subclass returns itself so the fake pre-programmed responses are
     preserved while production code that calls bind_tools() works correctly.
+
+    Every real chat LLM carries a context-window profile (init_*_llm pin it);
+    fractional-token middleware raises without one, so the default here keeps
+    graph-building tests on the same contract.
     """
+
+    def __init__(self, **kwargs: Any) -> None:
+        kwargs.setdefault("profile", {"max_input_tokens": 100_000})
+        super().__init__(**kwargs)
 
     def bind_tools(self, tools: Any, **kwargs: Any) -> "BindableToolsFakeModel":  # type: ignore[override]
         return self
@@ -139,7 +147,14 @@ class PassthroughFakeLLM:
     replay-safe, and ``FakeMessagesListChatModel`` answers from a fixed list
     instead. The shared base is what stops the next reshaping call production
     adds from breaking every one of them separately.
+
+    Carries the two model attributes production middleware reads without
+    invoking: ``_llm_type`` (token-counter selection) and ``profile``
+    (fractional-token triggers) — same invariant every real chat LLM meets.
     """
+
+    _llm_type = "passthrough-fake"
+    profile: ClassVar[dict[str, Any]] = {"max_input_tokens": 100_000}
 
     def with_config(self, **_kwargs: Any) -> "PassthroughFakeLLM":
         return self

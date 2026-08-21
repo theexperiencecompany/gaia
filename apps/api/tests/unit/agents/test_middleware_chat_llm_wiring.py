@@ -9,6 +9,7 @@ tests pin that wiring so a separate resolution path can't creep back in.
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.language_models import BaseChatModel
@@ -51,9 +52,7 @@ class TestChatLlmWiring:
     def test_no_chat_llm_drops_summarization_and_the_digest_tier(self) -> None:
         stack = create_middleware_stack(chat_llm=None)
 
-        assert not any(
-            isinstance(mw, WorkspaceArchivingSummarizationMiddleware) for mw in stack
-        )
+        assert not any(isinstance(mw, WorkspaceArchivingSummarizationMiddleware) for mw in stack)
         compactor = next(mw for mw in stack if isinstance(mw, WorkspaceCompactionMiddleware))
         assert compactor.summary_llm is None
 
@@ -80,20 +79,33 @@ class TestChatLlmWiring:
         assert compactor.summary_llm is llm
 
 
+class ConfigCapturingModel:
+    """Records the configurable passed to with_config(), then delegates.
+
+    Composed (not subclassed) so there is no override to silence; __getattr__
+    forwards everything else — ainvoke included — to the wrapped fake.
+    """
+
+    def __init__(self, inner: BaseChatModel) -> None:
+        self._inner = inner
+        self.captured: dict[str, Any] = {}
+
+    def with_config(self, **kwargs: Any) -> BaseChatModel:
+        self.captured.update(kwargs.get("configurable") or {})
+        return self._inner
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+
 class TestRequestConfigBinding:
     async def test_digest_is_invoked_with_the_request_configurable(self) -> None:
         """awrap_tool_call must bind the request's configurable onto the digest
         call — the same routing the model node performs."""
-        captured: dict = {}
+        inner = BindableToolsFakeModel(responses=[AIMessage(content="digest text")])
+        capturing = ConfigCapturingModel(inner)
 
-        class CapturingFake(BindableToolsFakeModel):
-            def with_config(self, *, configurable=None, **kwargs):  # type: ignore[override]
-                captured.update(configurable or {})
-                return super().with_config(configurable=configurable, **kwargs)
-
-        mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=_fake_llm())
-        # swap in a fresh capturing fake after construction-time token counting
-        mw.summary_llm = CapturingFake(responses=[AIMessage(content="digest text")])
+        mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=capturing)
 
         request = SimpleNamespace(
             tool_call={"name": "search", "id": "call_1", "args": {}},
@@ -119,7 +131,131 @@ class TestRequestConfigBinding:
         ):
             result = await mw.awrap_tool_call(request, handler)
 
-        assert captured["provider"] == "custom"
-        assert captured["user_id"] == "u1"
+        assert capturing.captured["provider"] == "custom"
+        assert capturing.captured["user_id"] == "u1"
         assert isinstance(result, ToolMessage)
         assert result.additional_kwargs["compaction_strategy"] == "llm_summary"
+
+
+class TestStackConfigurationPropagation:
+    """The factory's knobs must land on the middleware that consumes them."""
+
+    @staticmethod
+    def _stack(**kwargs) -> tuple:
+        from app.agents.middleware.accounting import LLMAccountingMiddleware
+
+        stack = create_middleware_stack(**kwargs)
+        accounting = next(
+            (mw for mw in stack if isinstance(mw, LLMAccountingMiddleware)), None
+        )
+        summarizer = next(
+            (mw for mw in stack if isinstance(mw, WorkspaceArchivingSummarizationMiddleware)),
+            None,
+        )
+        compactor = next(
+            (mw for mw in stack if isinstance(mw, WorkspaceCompactionMiddleware)), None
+        )
+        return accounting, summarizer, compactor, stack
+
+    def test_thresholds_and_exclusions_reach_compaction(self) -> None:
+        _, _, compactor, _ = self._stack(
+            chat_llm=_fake_llm(),
+            compaction_threshold=0.77,
+            max_output_chars=4321,
+            compaction_excluded_tools={"tool_a"},
+        )
+        assert compactor.compaction_threshold == 0.77
+        assert compactor.max_output_chars == 4321
+        assert compactor.excluded_tools == {"tool_a"}
+
+    def test_summarization_knobs_reach_summarization(self) -> None:
+        _, summarizer, _, _ = self._stack(
+            chat_llm=_fake_llm(),
+            summarization_trigger=("fraction", 0.42),
+            summarization_keep=("tokens", 123),
+            enable_archive=False,
+            summarization_excluded_tools={"tool_b"},
+        )
+        assert summarizer.trigger == ("fraction", 0.42)
+        assert summarizer.keep == ("tokens", 123)
+        assert summarizer.enable_archive is False
+        assert summarizer.excluded_tools == {"tool_b"}
+
+    def test_accounting_identity_per_agent(self) -> None:
+        from app.agents.middleware.accounting import LLMAccountingMiddleware
+        from app.constants.llm import EXECUTOR_RECURSION_LIMIT
+
+        stack = create_executor_middleware(chat_llm=_fake_llm())
+        accounting = next(mw for mw in stack if isinstance(mw, LLMAccountingMiddleware))
+        assert accounting.agent_name == "executor_agent"
+        assert accounting.recursion_limit == EXECUTOR_RECURSION_LIMIT
+
+    def test_subagent_exclusions_are_the_union(self) -> None:
+        from app.agents.middleware.factory import (
+            CODING_TOOL_NAMES,
+            SELF_OFFLOADING_TOOL_NAMES,
+            SPAWN_SUBAGENT_TOOL,
+        )
+
+        stack = create_subagent_middleware(subagent_llm=_fake_llm(), enable_subagent=False)
+        compactor = next(mw for mw in stack if isinstance(mw, WorkspaceCompactionMiddleware))
+        assert compactor.excluded_tools == (
+            CODING_TOOL_NAMES | SPAWN_SUBAGENT_TOOL | SELF_OFFLOADING_TOOL_NAMES
+        )
+
+    def test_comms_accounting_name(self) -> None:
+        from app.agents.middleware.accounting import LLMAccountingMiddleware
+
+        stack = create_comms_middleware(chat_llm=_fake_llm())
+        accounting = next(mw for mw in stack if isinstance(mw, LLMAccountingMiddleware))
+        assert accounting.agent_name == "comms_agent"
+
+    def test_disabled_flags_leave_no_middleware(self) -> None:
+        _, summarizer, compactor, _ = self._stack(
+            chat_llm=_fake_llm(), enable_summarization=False, enable_compaction=False
+        )
+        assert summarizer is None and compactor is None
+
+
+class TestBuildGraphChatLlmPassThrough:
+    async def test_comms_graph_hands_its_llm_to_the_middleware(self) -> None:
+        """build_comms_graph must forward chat_llm into create_comms_middleware —
+        the summarizer inside comms rides the conversation's model."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app.agents.core.graph_builder import build_graph as bg
+        from tests.e2e._harness.graph_run import scripted_model
+
+        captured: dict = {}
+        real_create_comms = bg.create_comms_middleware
+
+        def spy(chat_llm=None):
+            captured["chat_llm"] = chat_llm
+            return real_create_comms(chat_llm=chat_llm)
+
+        def _capture(**kwargs):
+            captured_mw = kwargs
+            return MagicMock(compile=MagicMock(return_value=MagicMock())), captured_mw
+
+        from app.agents.tools.core.registry import init_tool_registry
+        from app.core.lazy_loader import providers
+
+        if not providers.is_initialized("tool_registry"):
+            init_tool_registry()
+
+
+        from langgraph.store.memory import InMemoryStore
+
+        llm = scripted_model(["hi"])
+        with (
+            patch.object(bg, "get_tools_store", AsyncMock(return_value=InMemoryStore())),
+            patch.object(bg, "get_checkpointer_manager", AsyncMock(return_value=None)),
+            patch.object(bg, "create_agent", new=MagicMock(return_value=MagicMock())),
+            patch.object(bg, "create_comms_middleware", new=spy),
+        ):
+            async with bg.build_comms_graph(
+                chat_llm=llm, in_memory_checkpointer=True
+            ) as _:
+                pass
+
+        assert captured["chat_llm"] is llm

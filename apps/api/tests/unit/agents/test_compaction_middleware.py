@@ -10,9 +10,13 @@ persistence logic.
 import asyncio
 import json
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, patch
 
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.runnables import Runnable
 from langgraph.types import Command
 import pytest
 
@@ -385,12 +389,62 @@ class _SlowModel:
         return AIMessage(content="too late")
 
 
+_DIGEST_CAPTURE: dict = {"messages": None}
+
+
+class _RecordingDigestModel(BaseChatModel):
+    """Captures the prompt messages and returns a stripped-ready reply."""
+
+    @property
+    def _llm_type(self) -> str:
+        return "recording"
+
+    def _generate(self, *a, **k):
+        raise NotImplementedError
+
+    async def _agenerate(self, messages, stop=None, run_manager=None, **k):
+        _DIGEST_CAPTURE["messages"] = messages
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(content="  ok  "))])
+
+
+class _OverCapDigestModel(BaseChatModel):
+    @property
+    def _llm_type(self) -> str:
+        return "overcap"
+
+    def _generate(self, *a, **k):
+        raise NotImplementedError
+
+    async def _agenerate(self, messages, stop=None, run_manager=None, **k):
+        from app.constants.summarization import COMPACTION_SUMMARY_MAX_CHARS
+
+        return ChatResult(
+            generations=[
+                ChatGeneration(message=AIMessage(content="y" * (COMPACTION_SUMMARY_MAX_CHARS + 10)))
+            ]
+        )
+
+
+class _InstantDigestModel(BaseChatModel):
+    @property
+    def _llm_type(self) -> str:
+        return "instant"
+
+    def _generate(self, *a, **k):
+        raise NotImplementedError
+
+    async def _agenerate(self, messages, stop=None, run_manager=None, **k):
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(content="fast"))])
+
+
 class TestLLMSummary:
     """The digest tier: the LLM summary IS the compacted payload; the JuiceFS
     pointer is an optional add-on, never a requirement (issue #916)."""
 
     def _mw(self, llm: object) -> WorkspaceCompactionMiddleware:
-        return WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=llm)  # type: ignore[arg-type]
+        return WorkspaceCompactionMiddleware(
+            max_output_chars=1000, summary_llm=cast("Runnable", llm)
+        )
 
     @staticmethod
     def _request_without_identity() -> SimpleNamespace:
@@ -545,3 +599,179 @@ class TestLLMSummary:
     def test_summary_input_sample_passes_short_content_through(self) -> None:
         short = "compact already"
         assert _summary_input_sample(short) == short
+
+
+class TestDigestComposition:
+    """Pin the digest message's exact observable pieces — header, pointer
+    wording per format, kwargs fields, status passthrough, kwargs merging."""
+
+    def _build(self, *, fmt="json", spilled=True, status="success", extra=None):
+        from app.agents.middleware.compaction import _summarized_compact_message
+
+        path = WROTE[1]
+        msg = _summarized_compact_message(
+            summary="the digest",
+            tool_name="search",
+            tool_call_id="call_1",
+            reason="large_output (9000 chars)",
+            status=status,
+            content_str="z" * 9000,
+            spilled=(fmt, path) if spilled else None,
+            existing_additional_kwargs=extra or {},
+        )
+        return msg
+
+    def test_header_carries_tool_and_reason(self) -> None:
+        assert self._build().content.startswith(
+            "[search compacted — large_output (9000 chars)] the digest"
+        )
+
+    def test_json_pointer_offers_query_json_and_grep(self) -> None:
+        assert "query_json/grep" in self._build(fmt="json").content
+
+    def test_text_pointer_offers_grep_only(self) -> None:
+        body = self._build(fmt="text").content
+        assert "grep" in body
+        assert "query_json" not in body
+
+    def test_pointer_reports_size_in_kb(self) -> None:
+        assert f"{9000 / 1024:.1f} KB" in self._build(spilled=True).content
+
+    def test_no_spill_means_no_pointer_line(self) -> None:
+        assert "saved at" not in self._build(spilled=False).content
+
+    def test_kwargs_fields(self) -> None:
+        kw = self._build(spilled=False).additional_kwargs
+        assert kw["original_length"] == 9000
+        assert kw["compaction_reason"] == "large_output (9000 chars)"
+        assert kw["compacted"] is True
+        assert kw["compaction_strategy"] == "llm_summary"
+
+    def test_spilled_kwargs_add_path_and_strategy(self) -> None:
+        kw = self._build(spilled=True).additional_kwargs
+        assert kw["workspace_path"] == WROTE[1]
+        assert kw["compaction_strategy"] == "llm_summary_workspace_spill"
+
+    def test_error_status_survives_the_digest(self) -> None:
+        assert self._build(status="error").status == "error"
+
+    def test_existing_additional_kwargs_are_preserved(self) -> None:
+        kw = self._build(extra={"custom": "keep"}).additional_kwargs
+        assert kw["custom"] == "keep"
+
+    def test_builder_uses_summary_verbatim(self) -> None:
+        """Capping happens in _llm_summarize_output; the builder renders as-is."""
+        from app.agents.middleware.compaction import _summarized_compact_message
+
+        msg = _summarized_compact_message(
+            summary="a" * 500,
+            tool_name="t",
+            tool_call_id="c",
+            reason="r",
+            status="success",
+            content_str="x",
+            spilled=None,
+            existing_additional_kwargs={},
+        )
+        assert "a" * 500 in msg.content
+
+
+class TestOffloadKwargsFields:
+    def test_every_field_is_set_from_the_inputs(self) -> None:
+        from app.agents.middleware.compaction import _offload_kwargs
+
+        info = _offload_kwargs(
+            sandbox_path="/w/x.json", fmt="json", content_str="héllo", tool_name="t"
+        )
+        assert info["path"] == "/w/x.json"
+        # utf-8 byte count, not char count: é is two bytes
+        assert info["bytes"] == 6
+        assert info["fmt"] == "json"
+        assert info["producer"] == "t"
+        assert info["records"] is None
+
+
+class TestStubSpillBody:
+    def test_stub_body_pieces(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from app.agents.middleware.compaction import _stub_spill_message
+
+        content = json.dumps([{"i": i} for i in range(40)])
+        msg = _stub_spill_message(
+            content_str=content,
+            fmt="json",
+            sandbox_path=WROTE[1],
+            tool_name="search",
+            tool_call_id="call_1",
+            reason="large_output",
+            status="error",
+            existing_additional_kwargs={"pre": 1},
+        )
+        assert "Returned 40 items" in msg.content
+        assert f"{len(content) / 1024:.1f} KB" in msg.content
+        assert WROTE[1] in msg.content
+        assert "query_json" in msg.content
+        assert msg.status == "error"
+        kw = msg.additional_kwargs
+        assert kw["compaction_strategy"] == "workspace_spill"
+        assert kw["original_length"] == len(content)
+        assert kw["pre"] == 1
+
+    def test_stub_text_body_suggests_grep_only(self) -> None:
+        from app.agents.middleware.compaction import _stub_spill_message
+
+        msg = _stub_spill_message(
+            content_str="log line\n" * 300,
+            fmt="text",
+            sandbox_path="/w/x.txt",
+            tool_name="run",
+            tool_call_id="1",
+            reason="r",
+            status="success",
+            existing_additional_kwargs={},
+        )
+        assert "grep" in msg.content
+        assert "query_json" not in msg.content
+
+
+class TestLLMSummarizeInternals:
+    async def test_prompt_carries_tool_name_and_sample(self) -> None:
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        from app.agents.middleware import compaction as cm
+
+        _DIGEST_CAPTURE["messages"] = None
+        result = await cm._llm_summarize_output(
+            _RecordingDigestModel(), "HEAD" + "x" * 100_000 + "TAIL", "my_tool"
+        )
+
+        assert result == "ok"  # stripped
+        system, human = _DIGEST_CAPTURE["messages"]
+        assert isinstance(system, SystemMessage) and "4000" in system.content
+        assert isinstance(human, HumanMessage)
+        assert "Tool: my_tool" in human.content
+        assert "HEAD" in human.content and "TAIL" in human.content
+
+    async def test_over_cap_response_gets_truncation_suffix(self) -> None:
+        from app.agents.middleware import compaction as cm
+        from app.constants.summarization import COMPACTION_SUMMARY_MAX_CHARS
+
+        out = await cm._llm_summarize_output(_OverCapDigestModel(), "content", "tool")
+        assert out is not None
+        assert out.endswith("…[digest truncated]")
+        assert len(out) <= COMPACTION_SUMMARY_MAX_CHARS + len("…[digest truncated]")
+
+    async def test_timeout_is_enforced_per_call(self) -> None:
+        import asyncio
+
+        from app.agents.middleware import compaction as cm
+
+        timeouts: list = []
+        real_wait = asyncio.wait_for
+
+        async def spy_wait_for(coro, timeout):
+            timeouts.append(timeout)
+            return await real_wait(coro, timeout)
+
+        with patch.object(cm.asyncio, "wait_for", side_effect=spy_wait_for):
+            await cm._llm_summarize_output(_InstantDigestModel(), "small", "tool")
+        assert timeouts == [cm.COMPACTION_SUMMARY_TIMEOUT_SECONDS]

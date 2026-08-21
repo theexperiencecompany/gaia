@@ -239,9 +239,7 @@ async def _run_provider_subagent_factory(
             name="provider_agent",
             # A real chat LLM always carries a context-window profile
             # (init_*_llm pin it); fractional-token middleware requires it.
-            llm=BindableToolsFakeModel(
-                responses=[], profile={"max_input_tokens": 1_000_000}
-            ),
+            llm=BindableToolsFakeModel(responses=[], profile={"max_input_tokens": 1_000_000}),
             tool_space="provider_space",
             use_direct_tools=use_direct_tools,
             disable_retrieve_tools=disable_retrieve_tools,
@@ -610,9 +608,7 @@ async def test_base_subagent_wiring_uses_shared_tool_runtime_helpers():
             name="provider_agent",
             # A real chat LLM always carries a context-window profile
             # (init_*_llm pin it); fractional-token middleware requires it.
-            llm=BindableToolsFakeModel(
-                responses=[], profile={"max_input_tokens": 1_000_000}
-            ),
+            llm=BindableToolsFakeModel(responses=[], profile={"max_input_tokens": 1_000_000}),
             tool_space="provider_space",
             use_direct_tools=True,
             disable_retrieve_tools=True,
