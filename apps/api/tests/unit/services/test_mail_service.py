@@ -14,6 +14,8 @@ from app.models.mail_models import (
     GmailToolResult,
 )
 from app.services.mail.mail_service import (
+    EmailContent,
+    LabelChanges,
     _process_attachments,
     apply_labels,
     archive_messages,
@@ -194,8 +196,7 @@ class TestSendEmail:
         result = await send_email(
             user_id=USER_ID,
             to="bob@example.com",
-            subject="Hello",
-            body="Test body",
+            content=EmailContent(subject="Hello", body="Test body"),
         )
 
         assert result.as_payload() == {"successful": True, "messageId": "abc"}
@@ -213,8 +214,7 @@ class TestSendEmail:
         await send_email(
             user_id=USER_ID,
             to="bob@example.com",
-            subject="Re: Hello",
-            body="Reply body",
+            content=EmailContent(subject="Re: Hello", body="Reply body"),
             thread_id="thread_xyz",
         )
 
@@ -232,10 +232,9 @@ class TestSendEmail:
         await send_email(
             user_id=USER_ID,
             to="bob@example.com",
-            subject="Hi",
-            body="Body",
-            cc_list=["cc@example.com"],
-            bcc_list=["bcc@example.com"],
+            content=EmailContent(
+                subject="Hi", body="Body", cc_list=["cc@example.com"], bcc_list=["bcc@example.com"]
+            ),
         )
 
         params = mock_invoke_gmail_tool.call_args[0][2]
@@ -248,8 +247,7 @@ class TestSendEmail:
         await send_email(
             user_id=USER_ID,
             to="bob@example.com",
-            subject="Hi",
-            body="Body",
+            content=EmailContent(subject="Hi", body="Body"),
         )
 
         params = mock_invoke_gmail_tool.call_args[0][2]
@@ -259,7 +257,9 @@ class TestSendEmail:
     async def test_returns_error_dict_on_exception(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.side_effect = Exception("quota exceeded")
 
-        result = await send_email(user_id=USER_ID, to="bob@example.com", subject="Hi", body="Body")
+        result = await send_email(
+            user_id=USER_ID, to="bob@example.com", content=EmailContent(subject="Hi", body="Body")
+        )
 
         assert result.successful is False
         assert result.error is not None
@@ -277,8 +277,7 @@ class TestSendEmail:
         await send_email(
             user_id=USER_ID,
             to="bob@example.com",
-            subject="Hi",
-            body="Body",
+            content=EmailContent(subject="Hi", body="Body"),
             attachments=[upload],
         )
 
@@ -680,7 +679,7 @@ class TestUpdateLabel:
     async def test_updates_label_with_provided_fields(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
 
-        await update_label(USER_ID, label_id="lbl1", name="Updated Name")
+        await update_label(USER_ID, label_id="lbl1", changes=LabelChanges(name="Updated Name"))
 
         args, _ = mock_invoke_gmail_tool.call_args
         assert args[1] == "GMAIL_PATCH_LABEL"
@@ -691,7 +690,7 @@ class TestUpdateLabel:
     async def test_omits_optional_fields_not_provided(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
 
-        await update_label(USER_ID, label_id="lbl1")
+        await update_label(USER_ID, label_id="lbl1", changes=LabelChanges())
 
         params = mock_invoke_gmail_tool.call_args[0][2]
         assert "name" not in params
@@ -700,7 +699,7 @@ class TestUpdateLabel:
     async def test_returns_error_dict_on_exception(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.side_effect = Exception("label not found")
 
-        result = await update_label(USER_ID, label_id="lbl1")
+        result = await update_label(USER_ID, label_id="lbl1", changes=LabelChanges())
 
         assert result.successful is False
 
@@ -941,8 +940,7 @@ class TestUpdateDraft:
             user_id=USER_ID,
             draft_id="draft1",
             to_list=["bob@example.com"],
-            subject="Updated Subject",
-            body="Updated body",
+            content=EmailContent(subject="Updated Subject", body="Updated body"),
         )
 
         args, _ = mock_invoke_gmail_tool.call_args
@@ -960,8 +958,7 @@ class TestUpdateDraft:
             user_id=USER_ID,
             draft_id="draft1",
             to_list=["bob@example.com"],
-            subject="Hi",
-            body="Body",
+            content=EmailContent(subject="Hi", body="Body"),
         )
 
         assert result.successful is False

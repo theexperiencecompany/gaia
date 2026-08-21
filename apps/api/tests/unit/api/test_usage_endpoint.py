@@ -12,10 +12,12 @@ from httpx import AsyncClient
 import pytest
 
 from app.models.payment_models import PlanType
+from app.schemas.usage import ActivityDay, UsageActivityResponse
 from app.services.analytics_service import AnalyticsEvents
 
 SUMMARY_URL = "/api/v1/usage/summary"
 HISTORY_URL = "/api/v1/usage/history"
+ACTIVITY_URL = "/api/v1/usage/activity"
 ANALYTICS_PATCH = "app.api.v1.endpoints.usage.capture_context_event"
 
 
@@ -249,3 +251,58 @@ class TestGetUsageHistory:
             response = await client.get(HISTORY_URL)
 
         assert response.status_code == 500
+
+
+# ---------------------------------------------------------------------------
+# GET /usage/activity
+# ---------------------------------------------------------------------------
+
+
+class TestGetUsageActivity:
+    """Tests for the get usage activity endpoint."""
+
+    async def test_get_activity_returns_200(self, client: AsyncClient):
+        mock_result = UsageActivityResponse(
+            days=[
+                ActivityDay(
+                    date="2025-01-01",
+                    count=3,
+                    tokens=1200,
+                    input_tokens=800,
+                    output_tokens=400,
+                    cached_tokens=0,
+                    reasoning_tokens=0,
+                )
+            ],
+            total=3,
+            total_tokens=1200,
+            streak=1,
+            tier="free",
+        )
+
+        with patch(
+            "app.api.v1.endpoints.usage.get_activity",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        ) as mock_get_activity:
+            response = await client.get(ACTIVITY_URL)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 3
+        assert data["total_tokens"] == 1200
+        assert data["streak"] == 1
+        assert data["days"][0]["date"] == "2025-01-01"
+        # Default trailing window is 365 days.
+        mock_get_activity.assert_awaited_once_with("507f1f77bcf86cd799439011", 365)
+
+    async def test_get_activity_service_error_returns_500(self, client: AsyncClient):
+        with patch(
+            "app.api.v1.endpoints.usage.get_activity",
+            new_callable=AsyncMock,
+            side_effect=Exception("DB error"),
+        ):
+            response = await client.get(ACTIVITY_URL)
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to get usage activity"

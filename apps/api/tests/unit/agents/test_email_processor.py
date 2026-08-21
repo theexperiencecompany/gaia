@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.memory.email_processor import (
+    OnboardingFetchOptions,
     _discover_and_store_linked_profiles,
     _extract_profiles_from_parallel_searches,
     _process_single_platform,
@@ -711,14 +712,20 @@ class TestFetchEmailsForOnboardingScope:
     @patch(_PATCH_SEARCH, new_callable=AsyncMock)
     async def test_include_sent_spans_both_mailboxes(self, mock_search: AsyncMock) -> None:
         mock_search.return_value = GmailMessagesResponse(messages=[])
-        await fetch_emails_for_onboarding(USER_ID, include_sent=True)
+        await fetch_emails_for_onboarding(
+            USER_ID, options=OnboardingFetchOptions(include_sent=True)
+        )
         query = mock_search.await_args.kwargs["query"]
         assert query == "(in:inbox OR in:sent) newer_than:30d"
 
     @patch(_PATCH_SEARCH, new_callable=AsyncMock)
     async def test_months_scales_the_recency_window(self, mock_search: AsyncMock) -> None:
         mock_search.return_value = GmailMessagesResponse(messages=[])
-        await fetch_emails_for_onboarding(USER_ID, months=3, include_sent=True)
+        await fetch_emails_for_onboarding(
+            USER_ID,
+            months=3,
+            options=OnboardingFetchOptions(include_sent=True),
+        )
         assert mock_search.await_args.kwargs["query"] == "(in:inbox OR in:sent) newer_than:90d"
 
 
@@ -753,7 +760,7 @@ class TestFetchEmailsForOnboardingSentLabelSurvives:
                 ),
             ]
             return await fetch_emails_for_onboarding(
-                USER_ID, fmt="full", include_sent=True, max_total=10
+                USER_ID, options=OnboardingFetchOptions(fmt="full", include_sent=True), max_total=10
             )
 
     async def test_sent_label_reaches_ownership_signal(self) -> None:

@@ -15,7 +15,12 @@ from langchain_core.tools import tool
 from langgraph.checkpoint.memory import MemorySaver
 import pytest
 
-from app.override.langgraph_bigtool.create_agent import create_agent
+from app.override.langgraph_bigtool.create_agent import (
+    AgentConfig,
+    HookConfig,
+    ToolRetrievalConfig,
+    create_agent,
+)
 from tests.helpers import (
     BindableToolsFakeModel,
     create_fake_llm,
@@ -45,10 +50,12 @@ def _compile(llm, end_graph_hooks=None):
     builder = create_agent(
         llm=llm,
         tool_registry=_build_registry(),
-        disable_retrieve_tools=True,
-        initial_tool_ids=["add_numbers"],
-        agent_name="tool_execution_test_agent",
-        end_graph_hooks=end_graph_hooks,
+        tools_config=ToolRetrievalConfig(
+            disable_retrieve_tools=True,
+            initial_tool_ids=["add_numbers"],
+        ),
+        agent_config=AgentConfig(agent_name="tool_execution_test_agent"),
+        hooks_config=HookConfig(end_graph_hooks=end_graph_hooks),
     )
     return builder.compile(checkpointer=MemorySaver())
 

@@ -84,36 +84,25 @@ CUSTOM_INTEGRATION_ID = "custom-int-uuid-456"
 SERVER_URL = "https://mcp.example.com/v1"
 
 
-def _make_oauth_integration(
-    *,
-    integration_id: str = "platform-int",
-    name: str = "Platform Integration",
-    description: str = "A platform integration",
-    category: str = "productivity",
-    provider: str = "google",
-    managed_by: str = "self",
-    available: bool = True,
-    mcp_config: MCPConfig | None = None,
-    composio_config: Any | None = None,
-    subagent_config: SubAgentConfig | None = None,
-    is_featured: bool = False,
-    display_priority: int = 0,
-) -> OAuthIntegration:
-    return OAuthIntegration(
-        id=integration_id,
-        name=name,
-        description=description,
-        category=category,
-        provider=provider,
-        scopes=[],
-        available=available,
-        managed_by=managed_by,  # type: ignore[arg-type]
-        mcp_config=mcp_config,
-        composio_config=composio_config,
-        subagent_config=subagent_config,
-        is_featured=is_featured,
-        display_priority=display_priority,
-    )
+def _make_oauth_integration(**overrides: Any) -> OAuthIntegration:
+    """Build an OAuthIntegration with test defaults; override any field by name."""
+    overrides.setdefault("id", overrides.pop("integration_id", "platform-int"))
+    params: dict[str, Any] = {
+        "name": "Platform Integration",
+        "description": "A platform integration",
+        "category": "productivity",
+        "provider": "google",
+        "scopes": [],
+        "available": True,
+        "managed_by": "self",
+        "mcp_config": None,
+        "composio_config": None,
+        "subagent_config": None,
+        "is_featured": False,
+        "display_priority": 0,
+        **overrides,
+    }
+    return OAuthIntegration.model_validate(params)
 
 
 def _make_custom_doc(
@@ -123,7 +112,6 @@ def _make_custom_doc(
     created_by: str = USER_ID,
     server_url: str = SERVER_URL,
     requires_auth: bool = False,
-    auth_type: str = "none",
     is_public: bool = False,
 ) -> dict[str, Any]:
     return {
@@ -136,11 +124,11 @@ def _make_custom_doc(
         "is_public": is_public,
         "created_by": created_by,
         "requires_auth": requires_auth,
-        "auth_type": auth_type,
+        "auth_type": "none",
         "mcp_config": {
             "server_url": server_url,
             "requires_auth": requires_auth,
-            "auth_type": auth_type,
+            "auth_type": "none",
         },
         "tools": [],
         "icon_url": None,
@@ -270,7 +258,7 @@ class TestIntegrationResolverResolve:
     async def test_resolve_custom_with_auth_mismatch_syncs(self, mock_get_by_id, mock_repo):
         """When mcp_config.requires_auth differs from doc-level, mcp_config wins and syncs."""
         mock_get_by_id.return_value = None
-        doc = _make_custom_doc(requires_auth=False, auth_type="none")
+        doc = _make_custom_doc(requires_auth=False)
         doc["mcp_config"]["requires_auth"] = True
         doc["mcp_config"]["auth_type"] = "oauth"
         mock_repo.get = AsyncMock(return_value=Integration.model_validate(doc))
@@ -1199,11 +1187,22 @@ class TestUpdateCustomIntegration:
 
 
 class TestDeleteCustomIntegration:
-    @patch(
-        "app.services.integrations.custom_crud.delete_cache_by_pattern",
-        new_callable=AsyncMock,
-    )
-    @patch("app.services.integrations.custom_crud.delete_cache", new_callable=AsyncMock)
+    @pytest.fixture
+    def _patched_delete_caches(self):
+        """Stub the cache invalidation writes; no delete test asserts on them."""
+        with (
+            patch(
+                "app.services.integrations.custom_crud.delete_cache",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.services.integrations.custom_crud.delete_cache_by_pattern",
+                new_callable=AsyncMock,
+            ),
+        ):
+            yield
+
+    @pytest.mark.usefixtures("_patched_delete_caches")
     @patch(
         "app.services.integrations.custom_crud.cleanup_integration_chroma_data",
         new_callable=AsyncMock,
@@ -1227,8 +1226,6 @@ class TestDeleteCustomIntegration:
         mock_remove_public,
         mock_get_db,
         mock_chroma_cleanup,
-        mock_delete_cache,
-        mock_delete_pattern,
     ):
         doc = _make_custom_integration(created_by=USER_ID, is_public=False)
         mock_repo.get_custom = AsyncMock(return_value=doc)
@@ -1253,11 +1250,7 @@ class TestDeleteCustomIntegration:
         mock_remove_user.assert_awaited_once_with(USER_ID, CUSTOM_INTEGRATION_ID)
         mock_chroma_cleanup.assert_awaited_once()
 
-    @patch(
-        "app.services.integrations.custom_crud.delete_cache_by_pattern",
-        new_callable=AsyncMock,
-    )
-    @patch("app.services.integrations.custom_crud.delete_cache", new_callable=AsyncMock)
+    @pytest.mark.usefixtures("_patched_delete_caches")
     @patch(
         "app.services.integrations.custom_crud.cleanup_integration_chroma_data",
         new_callable=AsyncMock,
@@ -1281,8 +1274,6 @@ class TestDeleteCustomIntegration:
         mock_remove_public,
         mock_get_db,
         mock_chroma_cleanup,
-        mock_delete_cache,
-        mock_delete_pattern,
     ):
         doc = _make_custom_integration(created_by=USER_ID, is_public=True)
         mock_repo.get_custom = AsyncMock(return_value=doc)
@@ -1364,11 +1355,7 @@ class TestDeleteCustomIntegration:
         # User's link is removed via the canonical mutator
         mock_remove_user.assert_awaited_once_with(USER_ID, CUSTOM_INTEGRATION_ID)
 
-    @patch(
-        "app.services.integrations.custom_crud.delete_cache_by_pattern",
-        new_callable=AsyncMock,
-    )
-    @patch("app.services.integrations.custom_crud.delete_cache", new_callable=AsyncMock)
+    @pytest.mark.usefixtures("_patched_delete_caches")
     @patch(
         "app.services.integrations.custom_crud.cleanup_integration_chroma_data",
         new_callable=AsyncMock,
@@ -1387,8 +1374,6 @@ class TestDeleteCustomIntegration:
         mock_remove_public,
         mock_get_db,
         mock_chroma_cleanup,
-        mock_delete_cache,
-        mock_delete_pattern,
     ):
         doc = _make_custom_integration(created_by=USER_ID)
         mock_repo.get_custom = AsyncMock(return_value=doc)

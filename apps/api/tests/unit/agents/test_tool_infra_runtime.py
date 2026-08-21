@@ -27,7 +27,11 @@ from app.agents.tools.core.tool_runtime_config import (
     build_provider_parent_tool_runtime_config,
 )
 from app.constants.general import FINISH_TASK_NAME
-from app.override.langgraph_bigtool.create_agent import create_agent
+from app.override.langgraph_bigtool.create_agent import (
+    AgentConfig,
+    ToolRetrievalConfig,
+    create_agent,
+)
 from tests.helpers import PassthroughFakeLLM
 
 
@@ -285,8 +289,9 @@ async def test_tool_runtime_config_builders_cover_direct_and_dynamic_modes():
     assert executor_child.initial_tool_names == ["read", "bash", "finish_task"]
 
     kwargs = build_create_agent_tool_kwargs(parent_dynamic, tool_space="provider_space")
-    assert "initial_tool_ids" in kwargs
-    assert "retrieve_tools_coroutine" in kwargs
+    tools_config = kwargs["tools_config"]
+    assert tools_config.initial_tool_ids == parent_dynamic.initial_tool_names
+    assert tools_config.retrieve_tools_coroutine is not None
 
 
 async def _spawn_graph_agent_kwargs(
@@ -340,7 +345,7 @@ async def test_spawn_graph_scopes_the_registry_to_what_the_parent_allows():
     bindable = set(captured["tool_registry"])
     assert "spawn_subagent" not in bindable
     assert {"vfs_read", "normal_tool", FINISH_TASK_NAME} <= bindable
-    assert "retrieve_tools_coroutine" in captured
+    assert captured["tools_config"].retrieve_tools_coroutine is not None
 
 
 @pytest.mark.asyncio
@@ -351,8 +356,8 @@ async def test_spawn_graph_disables_retrieve_when_the_parent_did():
         runtime=ToolRuntimeConfig(initial_tool_names=["vfs_read"], enable_retrieve_tools=False),
     )
 
-    assert captured["disable_retrieve_tools"] is True
-    assert "retrieve_tools_coroutine" not in captured
+    assert captured["tools_config"].disable_retrieve_tools is True
+    assert captured["tools_config"].retrieve_tools_coroutine is None
 
 
 @pytest.mark.asyncio
@@ -369,7 +374,7 @@ async def test_spawned_retrieve_cannot_bind_back_an_excluded_tool():
         "app.agents.tools.core.retrieval.get_tool_registry",
         new=AsyncMock(return_value=_RetrieveRegistry(["normal_tool", "vfs_read", "handoff"])),
     ):
-        result = await captured["retrieve_tools_coroutine"](
+        result = await captured["tools_config"].retrieve_tools_coroutine(
             store=MagicMock(),
             config={"configurable": {"user_id": "u1"}},
             exact_tool_names=["subagent:gmail", "handoff", "normal_tool"],
@@ -537,11 +542,11 @@ async def test_create_agent_filters_subagent_from_direct_binding():
     builder = create_agent(
         llm=fake_llm,
         tool_registry={"normal_tool": normal_tool},
-        retrieve_tools_function=_dummy_retrieve_tools,
-        retrieve_tools_coroutine=_dummy_retrieve_tools_async,
-        initial_tool_ids=[],
-        disable_retrieve_tools=False,
-        middleware=[],
+        tools_config=ToolRetrievalConfig(
+            retrieve_tools_function=_dummy_retrieve_tools,
+            retrieve_tools_coroutine=_dummy_retrieve_tools_async,
+        ),
+        agent_config=AgentConfig(middleware=[]),
     )
     graph = builder.compile()
 
@@ -611,10 +616,10 @@ async def test_base_subagent_wiring_uses_shared_tool_runtime_helpers():
             auto_bind_tools=None,
         )
 
-    assert captured_kwargs["disable_retrieve_tools"] is True
-    assert "retrieve_tools_coroutine" not in captured_kwargs
-    assert "read" in captured_kwargs["initial_tool_ids"]
-    assert "normal_tool" in captured_kwargs["initial_tool_ids"]
+    assert captured_kwargs["tools_config"].disable_retrieve_tools is True
+    assert captured_kwargs["tools_config"].retrieve_tools_coroutine is None
+    assert "read" in captured_kwargs["tools_config"].initial_tool_ids
+    assert "normal_tool" in captured_kwargs["tools_config"].initial_tool_ids
 
 
 @pytest.mark.asyncio
@@ -625,12 +630,12 @@ async def test_base_subagent_dynamic_mode_wires_retrieve_and_auto_bind():
         auto_bind_tools=["normal_tool", "missing_tool"],
     )
 
-    assert "retrieve_tools_coroutine" in captured_kwargs
-    assert "disable_retrieve_tools" not in captured_kwargs
-    assert "search_memory" in captured_kwargs["initial_tool_ids"]
-    assert "read" in captured_kwargs["initial_tool_ids"]
-    assert "normal_tool" in captured_kwargs["initial_tool_ids"]
-    assert "missing_tool" not in captured_kwargs["initial_tool_ids"]
+    assert captured_kwargs["tools_config"].retrieve_tools_coroutine is not None
+    assert captured_kwargs["tools_config"].disable_retrieve_tools is False
+    assert "search_memory" in captured_kwargs["tools_config"].initial_tool_ids
+    assert "read" in captured_kwargs["tools_config"].initial_tool_ids
+    assert "normal_tool" in captured_kwargs["tools_config"].initial_tool_ids
+    assert "missing_tool" not in captured_kwargs["tools_config"].initial_tool_ids
     # spawned child for dynamic mode should keep minimal initial tools
     assert mw._tool_runtime_config.initial_tool_names == ["read", "bash", "finish_task"]
     assert mw._tool_runtime_config.enable_retrieve_tools is True
@@ -643,10 +648,10 @@ async def test_base_subagent_direct_mode_propagates_child_direct_runtime():
         disable_retrieve_tools=True,
     )
 
-    assert captured_kwargs["disable_retrieve_tools"] is True
-    assert "retrieve_tools_coroutine" not in captured_kwargs
-    assert "read" in captured_kwargs["initial_tool_ids"]
-    assert "normal_tool" in captured_kwargs["initial_tool_ids"]
+    assert captured_kwargs["tools_config"].disable_retrieve_tools is True
+    assert captured_kwargs["tools_config"].retrieve_tools_coroutine is None
+    assert "read" in captured_kwargs["tools_config"].initial_tool_ids
+    assert "normal_tool" in captured_kwargs["tools_config"].initial_tool_ids
     assert mw._tool_runtime_config.enable_retrieve_tools is False
     assert "normal_tool" in mw._tool_runtime_config.initial_tool_names
     assert "read" in mw._tool_runtime_config.initial_tool_names

@@ -27,6 +27,7 @@ from app.models.user_models import OnboardingPhase
 from app.services.onboarding.first_message_service import default_first_message
 from app.services.onboarding.intelligence_service import (
     InboxScanContext,
+    OnboardingContext,
     OnboardingStage,
     _finalize_onboarding,
     _finish_early_phase,
@@ -251,12 +252,15 @@ class TestSocialThenHolo:
             patch(f"{MODULE}._run_holo_card", AsyncMock()) as holo,
         ):
             await _social_then_holo(
-                USER, "Ann", "ann@x.com", {"_id": USER}, "focus", None, None, [], True
+                OnboardingContext(
+                    user_id=USER, name="Ann", user_email="ann@x.com", focus="focus", has_gmail=True
+                ),
+                {"_id": USER},
             )
 
         assert social.await_args.args == (USER, "Ann", "ann@x.com")
         # The extracted profiles must reach the card, not be recomputed.
-        assert holo.await_args.args[5] is profiles
+        assert holo.await_args.args[2] is profiles
 
     async def test_without_gmail_the_card_is_built_from_no_profiles(self) -> None:
         with (
@@ -264,11 +268,14 @@ class TestSocialThenHolo:
             patch(f"{MODULE}._run_holo_card", AsyncMock()) as holo,
         ):
             await _social_then_holo(
-                USER, "Ann", "ann@x.com", {"_id": USER}, "focus", None, None, [], False
+                OnboardingContext(
+                    user_id=USER, name="Ann", user_email="ann@x.com", focus="focus", has_gmail=False
+                ),
+                {"_id": USER},
             )
 
         assert social.await_count == 0
-        assert holo.await_args.args[5] == []
+        assert holo.await_args.args[2] == []
 
 
 # ---------------------------------------------------------------------------
@@ -287,6 +294,17 @@ def finalize_stack() -> Any:
         repo.set_first_message = AsyncMock()
         repo.set_pipeline_completion = AsyncMock()
         yield message, repo, seed, emit
+
+
+def _finalize_ctx(**overrides: Any) -> OnboardingContext:
+    defaults: dict[str, Any] = {
+        "user_id": USER,
+        "name": "Ann",
+        "profession": "lawyer",
+        "focus": "close Q3",
+    }
+    defaults.update(overrides)
+    return OnboardingContext(**defaults)
 
 
 def _finalize_kwargs(**overrides: Any) -> dict[str, Any]:
@@ -308,7 +326,7 @@ def _finalize_kwargs(**overrides: Any) -> dict[str, Any]:
 
 class TestFinalizeOnboarding:
     async def test_returns_the_seeded_conversation_id(self, finalize_stack: Any) -> None:
-        assert await _finalize_onboarding(USER, **_finalize_kwargs()) == "conv-1"
+        assert await _finalize_onboarding(_finalize_ctx(), **_finalize_kwargs()) == "conv-1"
 
     async def test_first_message_is_persisted_before_anything_else_writes(
         self, finalize_stack: Any
@@ -330,14 +348,16 @@ class TestFinalizeOnboarding:
         async def side_work() -> None:
             order.append("side_work")
 
-        await _finalize_onboarding(USER, **_finalize_kwargs(), concurrent_tasks=(side_work(),))
+        await _finalize_onboarding(
+            _finalize_ctx(), **_finalize_kwargs(), concurrent_tasks=(side_work(),)
+        )
 
         assert order[0] == "persist"
         assert order.index("persist") < order.index("side_work") < order.index("emit")
 
     async def test_complete_carries_the_conversation_id(self, finalize_stack: Any) -> None:
         _, _, _, emit = finalize_stack
-        await _finalize_onboarding(USER, **_finalize_kwargs())
+        await _finalize_onboarding(_finalize_ctx(), **_finalize_kwargs())
 
         stage, payload = emit.await_args.args[1], emit.await_args.args[2]
         assert stage is OnboardingStage.COMPLETE
@@ -347,13 +367,10 @@ class TestFinalizeOnboarding:
         message, _, _, _ = finalize_stack
         triage, style = _triage(), _style()
         await _finalize_onboarding(
-            USER,
+            _finalize_ctx(triage=triage, writing_style=style, has_gmail=True),
             **_finalize_kwargs(
-                triage=triage,
-                writing_style=style,
                 todos=[{"id": "t1"}],
                 workflows=[{"id": "w1"}],
-                has_gmail=True,
             ),
         )
 
@@ -369,7 +386,7 @@ class TestFinalizeOnboarding:
     ) -> None:
         _, repo, _, _ = finalize_stack
         with patch(f"{MODULE}.generate_first_message", AsyncMock(side_effect=RuntimeError("llm"))):
-            await _finalize_onboarding(USER, **_finalize_kwargs())
+            await _finalize_onboarding(_finalize_ctx(), **_finalize_kwargs())
 
         assert repo.set_first_message.await_args.args[1] == default_first_message("Ann")
 
@@ -379,7 +396,9 @@ class TestFinalizeOnboarding:
         async def side_work() -> None:
             ran.set()
 
-        await _finalize_onboarding(USER, **_finalize_kwargs(), concurrent_tasks=(side_work(),))
+        await _finalize_onboarding(
+            _finalize_ctx(), **_finalize_kwargs(), concurrent_tasks=(side_work(),)
+        )
 
         assert ran.is_set()
 
@@ -389,7 +408,7 @@ class TestFinalizeOnboarding:
         # The user must still advance out of the personalization phase.
         _, repo, _, emit = finalize_stack
         with patch(f"{MODULE}._seed_conversation", AsyncMock(return_value=None)):
-            assert await _finalize_onboarding(USER, **_finalize_kwargs()) is None
+            assert await _finalize_onboarding(_finalize_ctx(), **_finalize_kwargs()) is None
 
         assert repo.set_pipeline_completion.await_count == 1
         assert emit.await_args.args[2] == CompletePayload(conversation_id=None)

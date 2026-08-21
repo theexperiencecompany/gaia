@@ -1,6 +1,7 @@
 """Unit tests for the support service (app/services/support_service.py)."""
 
 from datetime import UTC, datetime
+import re
 import threading
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
@@ -648,6 +649,182 @@ class TestCreateSupportRequestWithAttachments:
         stored = mock_support_repo.create.await_args.args[0]
         assert len(stored.attachments) == 2  # both uploads recorded on the document
 
+    async def test_ticket_id_matches_gaia_format(
+        self,
+        mock_support_repo,
+        mock_email_notifications,
+        mock_upload_file_to_cloudinary,
+        sample_request_data,
+    ):
+        """Ticket id is GAIA-<YYYYMMDD>-<8 uppercase hex>."""
+        with patch("app.services.support_service.log"):
+            result = await create_support_request_with_attachments(
+                request_data=sample_request_data,
+                attachments=[],
+                user_id=USER_ID,
+                user_email=USER_EMAIL,
+            )
+
+        assert re.fullmatch(r"GAIA-\d{8}-[0-9A-F]{8}", result.ticket_id)
+
+    async def test_log_context_and_success_logs_are_exact(
+        self,
+        mock_support_repo,
+        mock_email_notifications,
+        mock_upload_file_to_cloudinary,
+        sample_request_data,
+    ):
+        """The wide-event context and the success log lines carry exact values."""
+        attachments = [
+            _make_upload_file("img1.png", "image/png", b"data1"),
+            _make_upload_file("img2.jpg", "image/jpeg", b"data2"),
+        ]
+
+        with patch("app.services.support_service.log") as mock_log:
+            result = await create_support_request_with_attachments(
+                request_data=sample_request_data,
+                attachments=attachments,
+                user_id=USER_ID,
+                user_email=USER_EMAIL,
+                user_name=USER_NAME,
+            )
+
+        mock_log.set.assert_called_once_with(
+            component="support_service",
+            user_id=USER_ID,
+            user_email=USER_EMAIL,
+            attachment_count=2,
+        )
+        db_log = next(
+            call for call in mock_log.info.call_args_list if "created in database" in call.args[0]
+        )
+        assert (
+            db_log.args[0] == "Support request with attachments created in database"
+            and db_log.kwargs["ticket_id"] == result.ticket_id
+        )
+        done_log = next(
+            call for call in mock_log.info.call_args_list if "created successfully" in call.args[0]
+        )
+        assert done_log.args[0] == "Support request with images created successfully: for user"
+        assert done_log.kwargs["processed_attachments_count"] == 2
+        assert done_log.kwargs["ticket_id"] == result.ticket_id
+        assert done_log.kwargs["user_id"] == USER_ID
+
+    async def test_stored_document_fields_are_exact(
+        self,
+        mock_support_repo,
+        mock_email_notifications,
+        mock_upload_file_to_cloudinary,
+        sample_request_data,
+    ):
+        """The stored document carries the with-images source, image count, priority."""
+        attachments = [
+            _make_upload_file("img1.png", "image/png", b"data1"),
+            _make_upload_file("img2.jpg", "image/jpeg", b"data2"),
+        ]
+
+        with patch("app.services.support_service.log"):
+            result = await create_support_request_with_attachments(
+                request_data=sample_request_data,
+                attachments=attachments,
+                user_id=USER_ID,
+                user_email=USER_EMAIL,
+                user_name=USER_NAME,
+            )
+
+        stored = mock_support_repo.create.await_args.args[0]
+        assert stored.metadata == {
+            "source": "web_form_with_images",
+            "user_agent": None,
+            "image_count": 2,
+        }
+        assert stored.priority is SupportRequestPriority.MEDIUM
+        assert stored.type is SupportRequestType.SUPPORT
+        assert stored.title == sample_request_data.title
+        assert stored.description == sample_request_data.description
+        assert [a.filename for a in stored.attachments] == ["img1.png", "img2.jpg"]
+        # The response message names the with-images path exactly.
+        assert (
+            result.message
+            == "Support request with images submitted successfully. You will receive an email confirmation shortly."
+        )
+        assert result.success is True
+
+    async def test_disallowed_content_type_rejected_with_exact_detail(
+        self,
+        mock_support_repo,
+        sample_request_data,
+    ):
+        """A non-image attachment is rejected before any upload happens."""
+        attachments = [_make_upload_file("doc.gif", "image/gif", b"gif")]
+
+        with patch("app.services.support_service.log"):
+            with pytest.raises(HTTPException) as exc_info:
+                await create_support_request_with_attachments(
+                    request_data=sample_request_data,
+                    attachments=attachments,
+                    user_id=USER_ID,
+                    user_email=USER_EMAIL,
+                )
+
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.detail == (
+            "Only image files are supported. File type image/gif not allowed. "
+            "Please use JPG, PNG, or WebP."
+        )
+        mock_support_repo.create.assert_not_awaited()
+
+    async def test_max_attachments_detail_is_exact(self, mock_support_repo, sample_request_data):
+        """More than 5 attachments raises 400 with the exact limit message."""
+        attachments = [_make_upload_file(f"img{i}.png", "image/png", b"data") for i in range(6)]
+
+        with patch("app.services.support_service.log"):
+            with pytest.raises(HTTPException) as exc_info:
+                await create_support_request_with_attachments(
+                    request_data=sample_request_data,
+                    attachments=attachments,
+                    user_id=USER_ID,
+                    user_email=USER_EMAIL,
+                )
+
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.detail == "Maximum 5 images allowed"
+        mock_support_repo.create.assert_not_awaited()
+
+    async def test_email_notification_payload_is_exact(
+        self,
+        mock_support_repo,
+        mock_send_team_notification,
+        mock_send_user_email,
+        mock_upload_file_to_cloudinary,
+        sample_request_data,
+    ):
+        """Team notification receives the full payload incl. uploaded metadata."""
+        attachments = [
+            _make_upload_file("img1.png", "image/png", b"data1"),
+            _make_upload_file("img2.jpg", "image/jpeg", b"data2"),
+        ]
+
+        with patch("app.services.support_service.log"):
+            result = await create_support_request_with_attachments(
+                request_data=sample_request_data,
+                attachments=attachments,
+                user_id=USER_ID,
+                user_email=USER_EMAIL,
+                user_name=None,  # exercises the "User" fallback in the email
+            )
+
+        (notification,) = mock_send_team_notification.await_args.args
+        assert notification.user_name == "User"
+        assert notification.user_email == USER_EMAIL
+        assert notification.ticket_id == result.ticket_id
+        assert notification.type is SupportRequestType.SUPPORT
+        assert notification.title == sample_request_data.title
+        assert notification.description == sample_request_data.description
+        assert notification.support_emails == SUPPORT_EMAILS
+        assert [a.filename for a in notification.attachments] == ["img1.png", "img2.jpg"]
+        mock_send_user_email.assert_awaited_once_with(notification)
+
     async def test_success_with_empty_attachments(
         self,
         mock_support_repo,
@@ -1105,3 +1282,55 @@ class TestGetUserSupportRequests:
         assert len(result.requests) == 3
         for req in result.requests:
             assert isinstance(req, SupportRequestResponse)
+
+    async def test_defaults_are_page_one_and_per_page_ten(self, mock_support_repo):
+        """Calling with only user_id uses page=1, per_page=10 end to end."""
+        mock_support_repo.page_for_user.return_value = []
+        mock_support_repo.count_for_user_status.return_value = 0
+
+        with patch("app.services.support_service.log"):
+            result = await get_user_support_requests(user_id=USER_ID)
+
+        page_call = mock_support_repo.page_for_user.await_args
+        assert page_call.kwargs["skip"] == 0
+        assert page_call.kwargs["limit"] == 10
+        assert result.pagination.page == 1
+        assert result.pagination.per_page == 10
+
+    async def test_second_page_skip_is_exactly_per_page(self, mock_support_repo):
+        """skip == (page - 1) * per_page exactly: page 2 → skip 10."""
+        mock_support_repo.page_for_user.return_value = []
+        mock_support_repo.count_for_user_status.return_value = 0
+
+        with patch("app.services.support_service.log"):
+            await get_user_support_requests(user_id=USER_ID, page=2, per_page=10)
+
+        page_call = mock_support_repo.page_for_user.await_args
+        assert type(page_call.kwargs["skip"]) is int
+        assert page_call.kwargs["skip"] == 10
+
+    async def test_pages_ceil_division_boundaries(self, mock_support_repo):
+        """pages is ceil(total / per_page): exact int at each boundary."""
+        for total, expected_pages in [(1, 1), (9, 1), (10, 1), (11, 2), (20, 2), (21, 3)]:
+            mock_support_repo.page_for_user.return_value = []
+            mock_support_repo.count_for_user_status.return_value = total
+
+            with patch("app.services.support_service.log"):
+                result = await get_user_support_requests(user_id=USER_ID, page=1, per_page=10)
+
+            assert result.pagination.total == total
+            assert result.pagination.pages == expected_pages
+            assert isinstance(result.pagination.pages, int)
+            assert result.pagination.page == 1
+            assert result.pagination.per_page == 10
+
+    async def test_db_error_detail_is_exact(self, mock_support_repo):
+        """Database error raises a 500 with the exact detail string."""
+        mock_support_repo.count_for_user_status.side_effect = Exception("DB error")
+
+        with patch("app.services.support_service.log"):
+            with pytest.raises(HTTPException) as exc_info:
+                await get_user_support_requests(user_id=USER_ID)
+
+        assert exc_info.value.status_code == 500
+        assert exc_info.value.detail == "Failed to fetch support requests"

@@ -24,7 +24,7 @@ from shared.py.wide_events import log
 
 
 @Cacheable(
-    key=DESKTOP_RELEASE_CACHE_KEY,
+    key_pattern=DESKTOP_RELEASE_CACHE_KEY,
     ttl=DESKTOP_RELEASE_CACHE_TTL,
     model=DesktopReleaseResponse,
 )

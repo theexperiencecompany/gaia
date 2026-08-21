@@ -33,7 +33,11 @@ from pydantic import Field
 import pytest
 
 from app.config.settings import settings
-from app.override.langgraph_bigtool.create_agent import create_agent
+from app.override.langgraph_bigtool.create_agent import (
+    AgentConfig,
+    ToolRetrievalConfig,
+    create_agent,
+)
 from tests.helpers import BindableToolsFakeModel
 
 # Fires summarization on the very first model call for a history this size.
@@ -85,8 +89,8 @@ def summarizing_agent_graph():
         builder = create_agent(
             model,
             {},
-            disable_retrieve_tools=True,
-            middleware=middleware,
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            agent_config=AgentConfig(middleware=middleware),
         )
         graph = builder.compile(checkpointer=InMemorySaver(), store=InMemoryStore())
         yield graph, model

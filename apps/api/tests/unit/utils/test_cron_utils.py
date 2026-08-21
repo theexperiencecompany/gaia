@@ -7,7 +7,7 @@ workflows.
 """
 
 from datetime import UTC, datetime, timedelta, timezone
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -287,3 +287,16 @@ class TestCalculateNextOccurrences:
             datetime(2025, 1, 6, 9, 0, 0, tzinfo=UTC),
             datetime(2025, 1, 13, 9, 0, 0, tzinfo=UTC),
         ]
+
+    def test_croniter_failure_raises_cron_error(self) -> None:
+        # A cron that validates but explodes mid-iteration is wrapped in CronError.
+        mock_cron = MagicMock()
+        mock_cron.get_next.side_effect = ValueError("iteration exploded")
+        with (
+            patch("app.utils.cron_utils.croniter", return_value=mock_cron) as mock_croniter,
+            pytest.raises(CronError, match="Failed to calculate next occurrences") as exc_info,
+        ):
+            calculate_next_occurrences("0 8 * * *", count=1, base_time=FROZEN_NOW)
+
+        mock_croniter.assert_any_call("0 8 * * *", FROZEN_NOW)
+        assert isinstance(exc_info.value.__cause__, ValueError)

@@ -389,6 +389,23 @@ class RecurrenceRule(BaseModel):
 
         return self
 
+    def _until_rrule_value(self) -> str:
+        """The UNTIL value in RFC 5545 basic format: a bare date becomes
+        YYYYMMDD, a datetime becomes UTC YYYYMMDDTHHMMSSZ when parseable."""
+        if "T" not in self.until:
+            try:
+                return datetime.fromisoformat(self.until).strftime("%Y%m%d")
+            except ValueError:
+                return self.until.replace("-", "")
+
+        until_value = self.until.replace("+00:00", "Z")
+        if until_value.endswith("Z"):
+            return until_value
+        try:
+            return datetime.fromisoformat(self.until).strftime("%Y%m%dT%H%M%SZ")
+        except ValueError:
+            return self.until
+
     def to_rrule_string(self) -> str:
         """Convert to an RFC 5545 RRULE string."""
         components = [f"FREQ={self.frequency}"]
@@ -400,24 +417,7 @@ class RecurrenceRule(BaseModel):
             components.append(f"COUNT={self.count}")
 
         if self.until is not None:
-            # Format UNTIL value according to RFC 5545
-            if "T" in self.until:  # Contains time component
-                # Ensure it ends with Z for UTC
-                until_value = self.until.replace("+00:00", "Z")
-                if not until_value.endswith("Z"):
-                    try:
-                        dt = datetime.fromisoformat(self.until)
-                        until_value = dt.strftime("%Y%m%dT%H%M%SZ")
-                    except ValueError:
-                        until_value = self.until
-            else:  # Just a date
-                try:
-                    dt = datetime.fromisoformat(self.until)
-                    until_value = dt.strftime("%Y%m%d")
-                except ValueError:
-                    until_value = self.until.replace("-", "")
-
-            components.append(f"UNTIL={until_value}")
+            components.append(f"UNTIL={self._until_rrule_value()}")
 
         if self.by_day:
             components.append(f"BYDAY={','.join(self.by_day)}")

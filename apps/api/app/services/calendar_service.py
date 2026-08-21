@@ -537,16 +537,12 @@ async def update_user_calendar_preferences(
     return CalendarPreferencesUpdateResponse(message="No changes made to calendar preferences")
 
 
-async def search_calendar_events_native(
-    query: str,
+async def _selected_search_calendars(
     user_id: str,
-    time_min: str | None = None,
-    time_max: str | None = None,
-) -> CalendarSearchResult:
-    """Search calendar events using Google Calendar API's native search."""
-    calendars = (await list_calendars(user_id)).items
-
-    user_selected_calendars: list[str] = []
+    calendars: list[GoogleCalendarListEntry],
+) -> list[GoogleCalendarListEntry]:
+    """The calendars a native search covers: stored preferences when present,
+    otherwise every calendar the user has."""
     preferences = await calendar_repository.get_for_user(user_id)
     if preferences is not None and preferences.selected_calendars:
         user_selected_calendars = preferences.selected_calendars
@@ -564,12 +560,23 @@ async def search_calendar_events_native(
 
     if not selected_cal_objs:
         log.info("No selected calendars found, searching all available calendars")
-        selected_cal_objs = calendars
+        return calendars
+    return selected_cal_objs
 
+
+async def _search_calendars(
+    calendars: list[GoogleCalendarListEntry],
+    query: str,
+    user_id: str,
+    time_min: str | None,
+    time_max: str | None,
+) -> tuple[list[GoogleCalendarEventResource], int]:
+    """Run the native search across each calendar, tagging hits with their
+    source; a failing calendar is logged and skipped, not fatal to the search."""
     all_matching_events: list[GoogleCalendarEventResource] = []
     total_events_searched = 0
 
-    for cal in selected_cal_objs:
+    for cal in calendars:
         try:
             result = await search_events_in_calendar(cal.id, query, user_id, time_min, time_max)
             events = result.items
@@ -597,6 +604,23 @@ async def search_calendar_events_native(
                 user_id=user_id,
             )
 
+    return all_matching_events, total_events_searched
+
+
+async def search_calendar_events_native(
+    query: str,
+    user_id: str,
+    time_min: str | None = None,
+    time_max: str | None = None,
+) -> CalendarSearchResult:
+    """Search calendar events using Google Calendar API's native search."""
+    calendars = (await list_calendars(user_id)).items
+    selected_cal_objs = await _selected_search_calendars(user_id, calendars)
+
+    all_matching_events, total_events_searched = await _search_calendars(
+        selected_cal_objs, query, user_id, time_min, time_max
+    )
+
     log.info(
         "Total matching events across all calendars",
         all_matching_events_count=len(all_matching_events),
@@ -604,32 +628,9 @@ async def search_calendar_events_native(
 
     if not all_matching_events and selected_cal_objs != calendars:
         log.info("No events found in selected calendars, searching all calendars...")
-
-        for cal in calendars:
-            try:
-                result = await search_events_in_calendar(cal.id, query, user_id, time_min, time_max)
-                events = result.items
-
-                if events:
-                    log.info(
-                        "Found events in calendar", event_count=len(events), calendar_id=cal.id
-                    )
-
-                    for event in events:
-                        event.calendarId = cal.id
-                        event.calendarTitle = cal.summary or ""
-
-                    filtered_events = filter_events(events)
-                    all_matching_events.extend(filtered_events)
-                    total_events_searched += len(filtered_events)
-            except Exception as e:
-                log.error(
-                    "Error searching events in calendar",
-                    cal_id=cal.id,
-                    error=str(e),
-                    error_type=type(e).__name__,
-                    user_id=user_id,
-                )
+        all_matching_events, total_events_searched = await _search_calendars(
+            calendars, query, user_id, time_min, time_max
+        )
 
     return CalendarSearchResult(
         query=query,

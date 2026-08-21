@@ -7,6 +7,7 @@ end_graph_hook to learn user memories (IDs, preferences, contacts) per user.
 
 import asyncio
 from collections.abc import Mapping
+from typing import Any
 
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.tools import BaseTool
@@ -35,7 +36,11 @@ from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.log_tags import LogTag
-from app.override.langgraph_bigtool.create_agent import create_agent
+from app.override.langgraph_bigtool.create_agent import (
+    AgentConfig,
+    HookConfig,
+    create_agent,
+)
 from shared.py.wide_events import log
 
 
@@ -235,13 +240,14 @@ class SubAgentFactory:
             subagent_mw.set_store(store)
             subagent_mw.set_spawn_graph_provider(get_spawn_graph)
 
-        common_kwargs = {
+        common_kwargs: dict[str, Any] = {
             "llm": llm,
             "tool_registry": scoped_tool_dict,  # Use scoped dict instead of global
-            "agent_name": name,
-            "middleware": middleware,
-            "pre_model_hooks": worker_pre_model_hooks(todo_hook),
-            "end_graph_hooks": [memory_node],
+            "agent_config": AgentConfig(agent_name=name, middleware=middleware),
+            "hook_config": HookConfig(
+                pre_model_hooks=worker_pre_model_hooks(todo_hook),
+                end_graph_hooks=[memory_node],
+            ),
         }
 
         valid_auto_bind: list[str] | None = (
@@ -307,7 +313,7 @@ class SubAgentFactory:
                 tool_runtime_config=child_tool_runtime,
             )
 
-        builder = create_agent(**common_kwargs)  # type: ignore[arg-type]
+        builder = create_agent(**common_kwargs)
 
         try:
             checkpointer_manager = await get_checkpointer_manager()

@@ -8,11 +8,14 @@ Tests cover:
 - GET  /api/v1/onboarding/personalization (get personalization data)
 """
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from fastapi import HTTPException
 from httpx import AsyncClient
 import pytest
 
+from app.api.v1.endpoints.onboarding import get_onboarding_personalization
 from app.models.user_models import (
     OnboardingPreferences,
     OnboardingStatusResponse,
@@ -465,3 +468,97 @@ class TestGetPersonalization:
         data = response.json()
         assert data["has_personalization"] is False
         assert data["house"] == "Bluehaven"
+
+    async def test_get_personalization_defaults_are_pinned(self, client: AsyncClient):
+        """Every fallback literal on an empty onboarding doc, pinned exactly."""
+        user_doc = UserDocument(
+            id="507f1f77bcf86cd799439011",
+            name=None,
+            onboarding={},
+            created_at=datetime(2025, 1, 1, tzinfo=UTC),
+        )
+        mock_composio = MagicMock()
+        mock_composio.check_connection_status = AsyncMock(return_value={"gmail": False})
+        with (
+            patch(_GET_USER, new_callable=AsyncMock, return_value=user_doc),
+            patch(_COUNT_BEFORE, new_callable=AsyncMock, return_value=0),
+            patch(_COMPOSIO_SERVICE, return_value=mock_composio),
+        ):
+            response = await client.get(PERSONALIZATION_URL)
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "phase": "initial",
+            "has_personalization": False,
+            "house": "Bluehaven",
+            "personality_phrase": "Curious Adventurer",
+            # bio_status missing → pending → no gmail connection → setup message
+            "user_bio": "Setting up your profile...",
+            "account_number": 1,
+            "member_since": "Jan 01, 2025",
+            "overlay_color": "rgba(0,0,0,0)",
+            "overlay_opacity": 40,
+            "suggested_workflows": [],
+            "name": "User",
+            "holo_card_id": "507f1f77bcf86cd799439011",
+            "first_message_conversation_id": None,
+            "first_message": None,
+            "writing_style": None,
+            "social_profiles": None,
+            "triage_summary": None,
+            "onboarding_todos": None,
+        }
+
+    async def test_get_personalization_unpersonalized_phase_is_passed_through(
+        self, client: AsyncClient
+    ):
+        """A phase outside the personalized set yields has_personalization=False."""
+        user_doc = _make_user_doc(
+            onboarding={"phase": "email_connected", "bio_status": "completed"}
+        )
+        mock_composio = MagicMock()
+        with (
+            patch(_GET_USER, new_callable=AsyncMock, return_value=user_doc),
+            patch(_COUNT_BEFORE, new_callable=AsyncMock, return_value=5),
+            patch(_COMPOSIO_SERVICE, return_value=mock_composio),
+        ):
+            response = await client.get(PERSONALIZATION_URL)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["phase"] == "email_connected"
+        assert data["has_personalization"] is False
+
+    async def test_get_personalization_social_profile_defaults_missing_keys(
+        self, client: AsyncClient
+    ):
+        """Social profile entries without a url get the empty-string default."""
+        user_doc = _make_user_doc(
+            onboarding={
+                "phase": "personalization_complete",
+                "bio_status": "completed",
+                "social_profiles": [{"platform": "github"}, {"url": "https://x.com/me"}],
+            }
+        )
+        mock_composio = MagicMock()
+        with (
+            patch(_GET_USER, new_callable=AsyncMock, return_value=user_doc),
+            patch(_COUNT_BEFORE, new_callable=AsyncMock, return_value=0),
+            patch(_COMPOSIO_SERVICE, return_value=mock_composio),
+        ):
+            response = await client.get(PERSONALIZATION_URL)
+
+        assert response.status_code == 200
+        assert response.json()["social_profiles"] == [
+            {"platform": "github", "url": ""},
+            {"platform": "", "url": "https://x.com/me"},
+        ]
+
+    async def test_get_personalization_invalid_user_id_returns_400(self) -> None:
+        """Direct invocation: a missing or non-str user_id is rejected with 400."""
+        for user in ({}, {"user_id": None}, {"user_id": 12345}):
+            with pytest.raises(HTTPException) as exc_info:
+                await get_onboarding_personalization(user=user)
+
+            assert exc_info.value.status_code == 400
+            assert exc_info.value.detail == "Invalid user_id"

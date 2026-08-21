@@ -8,7 +8,7 @@ those two seams and assert the shape of each request. Pure helpers
 
 from collections.abc import Iterator
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from fastapi import HTTPException
 import pytest
@@ -25,6 +25,8 @@ from app.models.calendar_models import (
     GoogleCalendarEventDateTime,
     GoogleCalendarEventResource,
     GoogleCalendarEventsPage,
+    RecurrenceData,
+    RecurrenceRule,
 )
 from app.services.calendar_service import (
     create_calendar_event,
@@ -297,6 +299,59 @@ class TestCreateCalendarEvent:
             await create_calendar_event(event, USER_ID)
         assert exc.value.status_code == 400
 
+    @pytest.mark.parametrize("missing", ["start", "end"])
+    async def test_missing_single_bound_for_timed_event_raises(self, mock_proxy, missing):
+        """Both bounds are required individually — dropping either check lets a
+        half-bounded timed event reach Google."""
+        event = EventCreateRequest(
+            summary="x",
+            description="",
+            is_all_day=False,
+            start="2025-01-15T10:00:00Z",
+            end="2025-01-15T11:00:00Z",
+        )
+        setattr(event, missing, None)
+        with pytest.raises(HTTPException) as exc:
+            await create_calendar_event(event, USER_ID)
+        assert exc.value.status_code == 400
+        assert exc.value.detail == "Start and end times are required for time-specific events"
+        mock_proxy.assert_not_awaited()
+
+    async def test_invalid_timezone_for_timed_event_raises(self, mock_proxy):
+        """A timezone that fails GoogleCalendarEventDateTime validation surfaces
+        as a 400 'Invalid datetime format' error."""
+        event = EventCreateRequest(
+            summary="x",
+            description="",
+            is_all_day=False,
+            start="2025-01-15T10:00:00Z",
+            end="2025-01-15T11:00:00Z",
+        )
+        event.timezone = 123  # type-invalid value; set post-construction like above
+        with pytest.raises(HTTPException) as exc:
+            await create_calendar_event(event, USER_ID)
+        assert exc.value.status_code == 400
+        assert str(exc.value.detail).startswith("Invalid datetime format:")
+        mock_proxy.assert_not_awaited()
+
+    async def test_failing_recurrence_conversion_raises_400(self, mock_proxy):
+        event = EventCreateRequest(
+            summary="x",
+            description="",
+            is_all_day=False,
+            start="2025-01-15T10:00:00Z",
+            end="2025-01-15T11:00:00Z",
+            recurrence=RecurrenceData(rrule=RecurrenceRule(frequency="DAILY")),
+        )
+        recurrence = Mock(spec=["to_google_calendar_format"])
+        recurrence.to_google_calendar_format.side_effect = ValueError("boom")
+        event.recurrence = recurrence
+        with pytest.raises(HTTPException) as exc:
+            await create_calendar_event(event, USER_ID)
+        assert exc.value.status_code == 400
+        assert exc.value.detail == "Invalid recurrence rule format: boom"
+        mock_proxy.assert_not_awaited()
+
 
 class TestDeleteCalendarEvent:
     async def test_deletes_event(self, mock_proxy):
@@ -370,6 +425,77 @@ class TestUpdateCalendarEvent:
         get_endpoint = mock_proxy.call_args_list[0].kwargs["endpoint"]
         assert "user@group.calendar.google.com" not in get_endpoint
         assert get_endpoint.endswith("/calendars/user%40group.calendar.google.com/events/evt")
+
+    async def test_get_404_raises_not_found_detail(self, mock_proxy):
+        mock_proxy.side_effect = _http_error(404)
+        with pytest.raises(HTTPException) as exc:
+            await update_calendar_event(
+                EventUpdateRequest(event_id="gone", calendar_id="primary", summary="New"),
+                USER_ID,
+            )
+        assert exc.value.status_code == 404
+        assert exc.value.detail == "Event not found or access denied"
+        assert mock_proxy.await_count == 1
+
+    async def test_put_404_raises_not_found_detail(self, mock_proxy):
+        mock_proxy.side_effect = [
+            {"summary": "Old", "description": "d", "start": {}, "end": {}},
+            _http_error(404),
+        ]
+        with pytest.raises(HTTPException) as exc:
+            await update_calendar_event(
+                EventUpdateRequest(event_id="evt", calendar_id="primary", summary="New"),
+                USER_ID,
+            )
+        assert exc.value.status_code == 404
+        assert exc.value.detail == "Event not found or access denied"
+        assert [call.kwargs["method"] for call in mock_proxy.call_args_list] == ["GET", "PUT"]
+
+    async def test_failing_recurrence_conversion_logs_and_raises_400(self, mock_proxy):
+        existing = {
+            "summary": "Old",
+            "description": "d",
+            "start": {"dateTime": "2025-01-10T09:00:00Z"},
+            "end": {"dateTime": "2025-01-10T10:00:00Z"},
+        }
+        mock_proxy.side_effect = [existing]
+        request = EventUpdateRequest(event_id="evt", calendar_id="primary")
+        recurrence = Mock(spec=["to_google_calendar_format"])
+        recurrence.to_google_calendar_format.side_effect = ValueError("bad rule")
+        request.recurrence = recurrence
+        with (
+            patch("app.services.calendar_service.log") as mock_log,
+            pytest.raises(HTTPException) as exc,
+        ):
+            await update_calendar_event(request, USER_ID)
+        assert exc.value.status_code == 400
+        assert exc.value.detail == "Invalid recurrence rule format: bad rule"
+        mock_log.error.assert_called_once()
+        assert mock_log.error.call_args.kwargs["error_type"] == "ValueError"
+        mock_proxy.assert_awaited_once()
+
+    async def test_invalid_timezone_offset_in_update_raises_400(self, mock_proxy):
+        """A bad timezone on a timed update surfaces as a 400 before any write."""
+        mock_proxy.side_effect = [
+            {
+                "summary": "Old",
+                "description": "d",
+                "start": {"dateTime": "2025-01-10T09:00:00Z"},
+                "end": {"dateTime": "2025-01-10T10:00:00Z"},
+            },
+        ]
+        request = EventUpdateRequest(
+            event_id="evt",
+            calendar_id="primary",
+            start="2025-01-15T10:00:00Z",
+            end="2025-01-15T11:00:00Z",
+        )
+        request.timezone_offset = 123  # type-invalid value; set post-construction
+        with pytest.raises(HTTPException) as exc:
+            await update_calendar_event(request, USER_ID)
+        assert exc.value.status_code == 400
+        assert str(exc.value.detail).startswith("Invalid datetime format:")
+        assert [call.kwargs["method"] for call in mock_proxy.call_args_list] == ["GET"]
 
 
 # ---------------------------------------------------------------------------

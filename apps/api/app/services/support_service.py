@@ -34,6 +34,11 @@ SUPPORT_EMAILS = [
     "aryan@heygaia.io",
 ]
 
+# Attachment constraints
+ALLOWED_ATTACHMENT_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"]
+MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024  # 10MB
+MAX_ATTACHMENTS = 5
+
 
 async def _delete_uploaded_files(attachment_urls: list[str]) -> None:
     """Delete uploaded files from Cloudinary."""
@@ -135,6 +140,100 @@ async def _upload_single_attachment(
         ) from e
 
 
+async def _rollback_created_request(
+    ticket_id: str | None,
+    request_id: str | None,
+    user_id: str,
+    email_error: Exception,
+) -> None:
+    """Best-effort deletion of the stored request after email sending failed."""
+    try:
+        if await support_request_repository.delete(request_id, user_id=user_id):
+            log.info(
+                "Successfully rolled back support request from database",
+                ticket_id=ticket_id,
+            )
+        else:
+            log.error(
+                "Failed to rollback support request from database",
+                ticket_id=ticket_id,
+                error=str(email_error),
+                error_type=type(email_error).__name__,
+                user_id=user_id,
+            )
+    except Exception as rollback_error:
+        log.error(
+            "Error during rollback for ticket",
+            ticket_id=ticket_id,
+            error=str(rollback_error),
+            error_type=type(rollback_error).__name__,
+            user_id=user_id,
+        )
+
+
+async def _process_attachments(
+    attachments: list[UploadFile],
+    ticket_id: str,
+    current_time: datetime,
+) -> tuple[list[str], list[SupportAttachment]]:
+    """Validate and upload all attachments in parallel.
+
+    On any failure, files that were already uploaded are deleted before the
+    error propagates. Returns (uploaded urls, attachment metadata).
+    """
+    if not attachments:
+        return [], []
+
+    if len(attachments) > MAX_ATTACHMENTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum {MAX_ATTACHMENTS} images allowed",
+        )
+
+    attachment_urls: list[str] = []
+    processed_attachments: list[SupportAttachment] = []
+
+    try:
+        upload_tasks = [
+            _upload_single_attachment(
+                attachment=attachment,
+                ticket_id=ticket_id,
+                current_time=current_time,
+                allowed_types=ALLOWED_ATTACHMENT_TYPES,
+                max_file_size=MAX_ATTACHMENT_SIZE,
+            )
+            for attachment in attachments
+        ]
+
+        # Execute all uploads in parallel
+        upload_results = await asyncio.gather(*upload_tasks)
+
+        # Extract URLs and attachment metadata from results
+        for file_url, attachment_metadata in upload_results:
+            attachment_urls.append(file_url)
+            processed_attachments.append(attachment_metadata)
+
+        log.info(
+            "Successfully uploaded files in parallel for ticket",
+            attachment_urls_count=len(attachment_urls),
+            ticket_id=ticket_id,
+        )
+    except Exception:
+        # Clean up any files that were successfully uploaded before the failure
+        if attachment_urls:
+            log.info(
+                "Cleaning up partially uploaded files for ticket",
+                attachment_urls_count=len(attachment_urls),
+                ticket_id=ticket_id,
+            )
+            await _delete_uploaded_files(attachment_urls)
+
+        # Re-raise the original exception (could be HTTPException from validation or upload error)
+        raise
+
+    return attachment_urls, processed_attachments
+
+
 async def create_support_request(
     request_data: SupportRequestCreate,
     user_id: str,
@@ -203,29 +302,7 @@ async def create_support_request(
                 user_id=user_id,
             )
 
-            try:
-                # Delete the support request from database
-                if await support_request_repository.delete(request_id, user_id=user_id):
-                    log.info(
-                        "Successfully rolled back support request from database",
-                        ticket_id=ticket_id,
-                    )
-                else:
-                    log.error(
-                        "Failed to rollback support request from database",
-                        ticket_id=ticket_id,
-                        error=str(email_error),
-                        error_type=type(email_error).__name__,
-                        user_id=user_id,
-                    )
-            except Exception as rollback_error:
-                log.error(
-                    "Error during rollback for ticket",
-                    ticket_id=ticket_id,
-                    error=str(rollback_error),
-                    error_type=type(rollback_error).__name__,
-                    user_id=user_id,
-                )
+            await _rollback_created_request(ticket_id, request_id, user_id, email_error)
 
             # Raise the original email error
             raise HTTPException(
@@ -306,65 +383,10 @@ async def create_support_request_with_attachments(
 
         current_time = datetime.now(UTC)
 
-        # Process attachments
-        processed_attachments: list[SupportAttachment] = []
-
-        if attachments:
-            # Validate file constraints
-            ALLOWED_TYPES = [
-                "image/jpeg",
-                "image/jpg",
-                "image/png",
-                "image/webp",
-            ]
-            MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
-            MAX_ATTACHMENTS = 5
-
-            if len(attachments) > MAX_ATTACHMENTS:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Maximum {MAX_ATTACHMENTS} images allowed",
-                )
-
-            # Upload all files in parallel using asyncio.gather()
-            try:
-                upload_tasks = [
-                    _upload_single_attachment(
-                        attachment=attachment,
-                        ticket_id=ticket_id,
-                        current_time=current_time,
-                        allowed_types=ALLOWED_TYPES,
-                        max_file_size=MAX_FILE_SIZE,
-                    )
-                    for attachment in attachments
-                ]
-
-                # Execute all uploads in parallel
-                upload_results = await asyncio.gather(*upload_tasks)
-
-                # Extract URLs and attachment metadata from results
-                for file_url, attachment_metadata in upload_results:
-                    attachment_urls.append(file_url)
-                    processed_attachments.append(attachment_metadata)
-
-                log.info(
-                    "Successfully uploaded files in parallel for ticket",
-                    attachment_urls_count=len(attachment_urls),
-                    ticket_id=ticket_id,
-                )
-
-            except Exception:
-                # Clean up any files that were successfully uploaded before the failure
-                if attachment_urls:
-                    log.info(
-                        "Cleaning up partially uploaded files for ticket",
-                        attachment_urls_count=len(attachment_urls),
-                        ticket_id=ticket_id,
-                    )
-                    await _delete_uploaded_files(attachment_urls)
-
-                # Re-raise the original exception (could be HTTPException from validation or upload error)
-                raise
+        # Process attachments (helper cleans up partial uploads before re-raising)
+        attachment_urls, processed_attachments = await _process_attachments(
+            attachments, ticket_id, current_time
+        )
 
         # Create support request document
         support_request = SupportRequestDocument(
@@ -436,28 +458,7 @@ async def create_support_request_with_attachments(
                     )
 
             # Rollback: Delete the support request from database
-            try:
-                if await support_request_repository.delete(request_id, user_id=user_id):
-                    log.info(
-                        "Successfully rolled back support request from database",
-                        ticket_id=ticket_id,
-                    )
-                else:
-                    log.error(
-                        "Failed to rollback support request from database",
-                        ticket_id=ticket_id,
-                        error=str(email_error),
-                        error_type=type(email_error).__name__,
-                        user_id=user_id,
-                    )
-            except Exception as rollback_error:
-                log.error(
-                    "Error during database rollback for ticket",
-                    ticket_id=ticket_id,
-                    error=str(rollback_error),
-                    error_type=type(rollback_error).__name__,
-                    user_id=user_id,
-                )
+            await _rollback_created_request(ticket_id, request_id, user_id, email_error)
 
             # Raise the original email error
             raise HTTPException(

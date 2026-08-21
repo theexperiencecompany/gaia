@@ -74,7 +74,7 @@ def _current_violations() -> dict[tuple[str, str], int]:
     -- if a file has several violations of the same rule, this keeps the
     first line encountered, which is enough to make a failure clickable.
     """
-    proc = subprocess.run(
+    proc = subprocess.run(  # nosec B603 - pinned ruff argv, no shell
         [
             *_RUFF_CMD,
             "check",
@@ -103,7 +103,7 @@ def _current_violations() -> dict[tuple[str, str], int]:
 
 def _touched_files() -> set[str] | None:
     """Files this PR changed, or ``None`` on a full/push scan (no diff to check)."""
-    proc = subprocess.run(
+    proc = subprocess.run(  # nosec B603 - fixed repo script argv, no shell
         [str(CHANGED_FILES_SCRIPT), "py"],
         cwd=REPO_ROOT,
         capture_output=True,

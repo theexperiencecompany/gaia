@@ -10,7 +10,6 @@ from shared.py.wide_events import log
     key_pattern="chat_models:model_by_id:{model_id}",
     ttl=3600,
     model=ModelConfig,
-    ignore_none=True,
 )
 async def get_model_by_id(model_id: str) -> ModelConfig | None:
     """
