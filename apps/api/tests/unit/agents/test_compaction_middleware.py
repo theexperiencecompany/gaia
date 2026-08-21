@@ -641,7 +641,13 @@ class TestDigestComposition:
         )
 
     def test_json_pointer_offers_query_json_and_grep(self) -> None:
-        assert "query_json/grep" in self._build(fmt="json").content
+        body = self._build(fmt="json").content
+        assert "query_json/grep" in body
+        # a corrupted wording must fail this test, not hide inside a substring
+        assert "XXquery_json/grepXX" not in body
+
+    def test_jsonl_pointer_also_offers_query_json(self) -> None:
+        assert "query_json/grep" in self._build(fmt="jsonl").content
 
     def test_text_pointer_offers_grep_only(self) -> None:
         body = self._build(fmt="text").content
@@ -729,6 +735,10 @@ class TestStubSpillBody:
         assert kw["compaction_strategy"] == "workspace_spill"
         assert kw["original_length"] == len(content)
         assert kw["pre"] == 1
+        from app.agents.workspace.offload import read_offload
+
+        info = read_offload(msg)
+        assert info is not None and info["producer"] == "search"
 
     def test_stub_text_body_suggests_grep_only(self) -> None:
         from app.agents.middleware.compaction import _stub_spill_message
@@ -773,6 +783,65 @@ class TestLLMSummarizeInternals:
         assert out is not None
         assert out.endswith("…[digest truncated]")
         assert len(out) <= COMPACTION_SUMMARY_MAX_CHARS + len("…[digest truncated]")
+
+    async def test_digest_at_exactly_the_cap_is_not_truncated(self) -> None:
+        from langchain_core.messages import AIMessage
+
+        from app.agents.middleware import compaction as cm
+        from app.constants.summarization import COMPACTION_SUMMARY_MAX_CHARS
+
+        class Exactly(BaseChatModel):
+            @property
+            def _llm_type(self) -> str:
+                return "exactly"
+
+            def _generate(self, *a, **k):
+                raise NotImplementedError
+
+            async def _agenerate(self, messages, stop=None, run_manager=None, **k):
+                return ChatResult(
+                    generations=[
+                        ChatGeneration(
+                            message=AIMessage(content="x" * COMPACTION_SUMMARY_MAX_CHARS)
+                        )
+                    ]
+                )
+
+        out = await cm._llm_summarize_output(Exactly(), "content", "tool")
+        assert out is not None
+        # >= instead of > here would append the truncation suffix at the cap
+        assert not out.endswith("[digest truncated]")
+
+    async def test_cap_slice_rstrips_trailing_whitespace(self) -> None:
+        from langchain_core.messages import AIMessage
+
+        from app.agents.middleware import compaction as cm
+        from app.constants.summarization import (
+            COMPACTION_SUMMARY_MAX_CHARS as MAX,
+        )
+
+        class Spaced(BaseChatModel):
+            @property
+            def _llm_type(self) -> str:
+                return "spaced"
+
+            def _generate(self, *a, **k):
+                raise NotImplementedError
+
+            async def _agenerate(self, messages, stop=None, run_manager=None, **k):
+                # the cap lands exactly on the two spaces, so rstrip() vs
+                # lstrip() produces visibly different tails
+                content = "a" * (MAX - 2) + "  " + "b" * 5
+                return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
+
+        out = await cm._llm_summarize_output(Spaced(), "content", "tool")
+        assert out is not None
+        # lstrip() instead of rstrip() would leave leading whitespace of the
+        # slice and cut the 'a's instead
+        expected = ("a" * (MAX - 5)).rstrip() if False else "a" * (MAX - 5)
+        head, _, _ = out.partition("…[digest truncated]")
+        assert head.endswith("aaaa")  # rstrip removed the spaces after the a's
+        assert not head.endswith(" ")
 
     async def test_timeout_is_enforced_per_call(self) -> None:
         import asyncio

@@ -199,7 +199,14 @@ def test_init_openrouter_llm_pins_context_window_profile(monkeypatch):
     middleware reads it at graph build and raises otherwise."""
     from app.agents.llm import client
     from app.agents.llm.client import PROVIDER_MODELS
-    from app.constants.llm import DEFAULT_MAX_TOKENS
+    from app.constants.llm import (
+        DEFAULT_MAX_TOKENS,
+        DEFAULT_LLM_TEMPERATURE,
+        OPENROUTER_APP_CATEGORIES,
+        OPENROUTER_APP_TITLE,
+        OPENROUTER_MAX_OUTPUT_TOKENS,
+        OPENROUTER_REASONING,
+    )
 
     captured: dict[str, object] = {}
     monkeypatch.setattr(client, "ChatOpenRouter", _fake_chat_openrouter(captured))
@@ -210,6 +217,12 @@ def test_init_openrouter_llm_pins_context_window_profile(monkeypatch):
     llm = client.init_openrouter_llm().loader_func()
 
     assert captured["model"] == PROVIDER_MODELS["openrouter"]
+    assert captured["temperature"] == DEFAULT_LLM_TEMPERATURE
+    assert captured["max_tokens"] == OPENROUTER_MAX_OUTPUT_TOKENS
+    assert captured["app_url"] == client.settings.FRONTEND_URL
+    assert captured["app_title"] == OPENROUTER_APP_TITLE
+    assert captured["app_categories"] == OPENROUTER_APP_CATEGORIES
+    assert captured["reasoning"] == OPENROUTER_REASONING
     assert captured["streaming"] is True
     assert captured["stream_usage"] is True
     assert llm.profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
