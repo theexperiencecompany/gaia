@@ -160,8 +160,12 @@ class TestWorkflowToolSerialization917:
         )
         updated = _workflow()
         writer = _writer_mock()
+        # Patch the concrete defining module, not the package re-export: the
+        # mutants/ workdir copies modules in an order where resolving
+        # app.services.workflow.WorkflowService as a package attribute can fail.
         with patch(
-            "app.services.workflow.WorkflowService.update_workflow", new_callable=AsyncMock
+            "app.services.workflow.service.WorkflowService.update_workflow",
+            new_callable=AsyncMock,
         ) as mock_update:
             mock_update.return_value = updated
 
