@@ -29,7 +29,7 @@ from app.constants.log_tags import LogTag
 from app.decorators import with_rate_limiting
 from app.models.agent_models import agent_configurable
 from app.models.workflow_models import WorkflowExecutionRequest
-from app.services.workflow import WorkflowService
+from app.services.workflow.service import WorkflowService
 from app.services.workflow.subagent_output import parse_subagent_response
 from app.services.workflow.workflow_subagent import WorkflowSubagentRunner
 from app.utils.timezone import home_timezone_from_config

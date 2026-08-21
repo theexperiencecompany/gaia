@@ -38,6 +38,14 @@ paths = [
   # re-attribute the blob — so the path stays. It is the narrowest form
   # available here precisely because no file exists at it any more.
   "apps/api/scripts/harness_triage_demo.py",
+  # apps/api/app/config/oauth_config.py carries Composio auth_config_id values
+# (ac_...) for every integration. These are provider-side resource identifiers,
+# not credentials — they authenticate nothing on their own and are committed
+# deliberately, one per integration. The generic-api-key rule reads the
+# `auth_config_id=` keyword as a secret, so any edit adding or rotating an id
+# fails the scan; the path is allowlisted rather than each line carrying
+# `# pragma: allowlist secret` forever.
+"apps/api/app/config/oauth_config.py",
   '''^apps/api/scripts/evals/data/''',
   '''(^|/)\.mutation-[0-9]+/''',
 ]

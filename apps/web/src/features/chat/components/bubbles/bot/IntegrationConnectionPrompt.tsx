@@ -1,6 +1,7 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { AlertCircleIcon } from "@icons";
+import { CONNECT_ACTION_LABEL, connectionPromptState } from "@shared/utils";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -13,7 +14,7 @@ interface IntegrationConnectionPromptProps {
 export default function IntegrationConnectionPrompt({
   integration_connection_required,
 }: IntegrationConnectionPromptProps) {
-  const { integration_id, message } = integration_connection_required;
+  const { integration_id, message, expired } = integration_connection_required;
   const { integrations, connectIntegration } = useIntegrations();
 
   const integration = integrations.find((i) => i.id === integration_id);
@@ -22,7 +23,8 @@ export default function IntegrationConnectionPrompt({
     return null;
   }
 
-  const isConnected = integration.status === "connected";
+  const state = connectionPromptState(expired, integration.status);
+  const isConnected = state === "connected";
   const isAvailable = integration.source === "custom" || integration.available;
 
   const handleConnect = async () => {
@@ -54,8 +56,12 @@ export default function IntegrationConnectionPrompt({
                   Connected
                 </Chip>
               ) : (
-                <Chip size="sm" variant="flat" color="warning">
-                  Not Connected
+                <Chip
+                  size="sm"
+                  variant="flat"
+                  color={state === "expired" ? "danger" : "warning"}
+                >
+                  {state === "expired" ? "Disconnected" : "Not Connected"}
                 </Chip>
               )}
             </div>
@@ -82,8 +88,11 @@ export default function IntegrationConnectionPrompt({
             )}
 
             {isAvailable && !isConnected && (
-              <Button color="primary" onPress={handleConnect}>
-                Connect
+              <Button
+                color={state === "expired" ? "warning" : "primary"}
+                onPress={handleConnect}
+              >
+                {CONNECT_ACTION_LABEL[state]}
               </Button>
             )}
           </div>
@@ -101,7 +110,9 @@ export default function IntegrationConnectionPrompt({
         showBackground: false,
       })}
       count={1}
-      label="Integration Required"
+      label={
+        state === "expired" ? "Reconnect Required" : "Integration Required"
+      }
       isCollapsible={true}
     >
       {content}

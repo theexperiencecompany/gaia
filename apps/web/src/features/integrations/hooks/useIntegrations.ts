@@ -3,7 +3,6 @@ import { useCallback, useMemo, useRef } from "react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
-
 import { integrationsApi } from "../api/integrationsApi";
 import { integrationKeys, toolKeys } from "../api/queryKeys";
 import type {
@@ -12,6 +11,11 @@ import type {
   Integration,
   IntegrationStatus,
 } from "../types";
+import {
+  byConnectionStateThenName,
+  findIntegrationStatus,
+  toIntegration,
+} from "../utils/catalog";
 
 export interface UseIntegrationsReturn {
   // Data
@@ -64,47 +68,10 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   });
 
   // Map the personalized catalog into the Integration shape the app consumes,
-  // sorted by status (created → connected → not_connected) then name.
+  // sorted by state (expired → created → connected → not_connected) then name.
   const integrations = useMemo((): Integration[] => {
     const items = myIntegrationsData?.integrations ?? [];
-
-    const mapped: Integration[] = items.map((item) => ({
-      id: item.id,
-      name: item.name,
-      description: item.description,
-      category: item.category as Integration["category"],
-      status: item.status,
-      managedBy: item.managedBy,
-      source: item.source,
-      requiresAuth: item.requiresAuth,
-      authType: item.authType ?? undefined,
-      isFeatured: item.isFeatured,
-      displayPriority: item.displayPriority,
-      available: item.available,
-      toolCount: item.toolCount,
-      iconUrl: item.iconUrl ?? undefined,
-      isPublic: item.isPublic ?? undefined,
-      createdBy: item.createdBy ?? undefined,
-      creator: item.creator ?? undefined,
-      slug: item.slug ?? "",
-    }));
-
-    const statusPriority: Record<string, number> = {
-      created: 0,
-      connected: 1,
-      not_connected: 2,
-    };
-
-    return mapped.toSorted((a, b) => {
-      const priorityA = statusPriority[a.status] ?? 3;
-      const priorityB = statusPriority[b.status] ?? 3;
-
-      if (priorityA !== priorityB) {
-        return priorityA - priorityB;
-      }
-
-      return a.name.localeCompare(b.name);
-    });
+    return items.map(toIntegration).toSorted(byConnectionStateThenName);
   }, [myIntegrationsData]);
 
   // Read the latest integrations inside callbacks without making the callbacks
@@ -115,16 +82,11 @@ export const useIntegrations = (): UseIntegrationsReturn => {
 
   // Get status for a specific integration, derived from the /me catalog.
   const getIntegrationStatus = useCallback(
-    (integrationId: string): IntegrationStatus | undefined => {
-      const item = myIntegrationsData?.integrations.find(
-        (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
-      );
-      if (!item) return undefined;
-      return {
-        integrationId: item.id,
-        connected: item.status === "connected",
-      };
-    },
+    (integrationId: string): IntegrationStatus | undefined =>
+      findIntegrationStatus(
+        myIntegrationsData?.integrations ?? [],
+        integrationId,
+      ),
     [myIntegrationsData],
   );
 

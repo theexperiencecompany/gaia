@@ -1,3 +1,8 @@
+import {
+  CONNECT_ACTION_LABEL,
+  connectionPromptState,
+  type IntegrationConnectionData,
+} from "@gaia/shared";
 import { Button, Chip } from "heroui-native";
 import { useCallback, useRef } from "react";
 import { View } from "react-native";
@@ -12,18 +17,10 @@ import {
 } from "@/features/integrations/components/BearerTokenSheet";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 
-// Web-aligned shape: server payload only carries integration_id + message.
 // All visual fields (name, description, status, available, authType) are
 // resolved from the live integrations list, mirroring web's
 // IntegrationConnectionPrompt behaviour.
-export interface IntegrationConnectionData {
-  integration_id: string;
-  message: string;
-  // Optional fields tolerated for backward compat with older payloads
-  integration_name?: string;
-  icon_url?: string;
-  connect_url?: string;
-}
+export type { IntegrationConnectionData };
 
 interface IntegrationConnectionCardProps {
   data: IntegrationConnectionData;
@@ -35,7 +32,7 @@ export function IntegrationConnectionCard({
   data,
   onConnect,
 }: IntegrationConnectionCardProps) {
-  const { integration_id, message } = data;
+  const { integration_id, message, expired } = data;
   const { integrations, connect } = useIntegrations();
   const bearerSheetRef = useRef<BearerTokenSheetRef>(null);
 
@@ -67,7 +64,8 @@ export function IntegrationConnectionCard({
     return null;
   }
 
-  const isConnected = integration.status === "connected";
+  const state = connectionPromptState(expired, integration.status);
+  const isConnected = state === "connected";
   const isAvailable =
     integration.source === "custom" || !!integration.available;
 
@@ -82,7 +80,9 @@ export function IntegrationConnectionCard({
         customIcon={headerIcon ?? undefined}
         icon={headerIcon ? undefined : ConnectIcon}
         iconSize={20}
-        title={(open) => `${open ? "Hide" : "Show"} 1 Integration Required`}
+        title={(open) =>
+          `${open ? "Hide" : "Show"} 1 ${state === "expired" ? "Reconnect" : "Integration"} Required`
+        }
         titleTone="muted"
       >
         <View className="rounded-2xl bg-zinc-900 p-3">
@@ -113,10 +113,12 @@ export function IntegrationConnectionCard({
                   <Chip
                     size="sm"
                     variant="soft"
-                    color="warning"
+                    color={state === "expired" ? "danger" : "warning"}
                     animation="disable-all"
                   >
-                    <Chip.Label>Not Connected</Chip.Label>
+                    <Chip.Label>
+                      {state === "expired" ? "Disconnected" : "Not Connected"}
+                    </Chip.Label>
                   </Chip>
                 )}
               </View>
@@ -146,7 +148,7 @@ export function IntegrationConnectionCard({
                   void handleConnect();
                 }}
               >
-                <Button.Label>Connect</Button.Label>
+                <Button.Label>{CONNECT_ACTION_LABEL[state]}</Button.Label>
               </Button>
             </View>
           ) : null}
