@@ -185,14 +185,7 @@ jobs:
           name: open-next
           path: apps/web/.open-next
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          version: 10.17.1
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22.15.1"
+      - uses: ./.github/actions/setup-node-pnpm
 
       - name: Verify bundle present
         run: |
@@ -202,12 +195,11 @@ jobs:
           du -sh apps/web/.open-next
 
       - name: Deploy to Cloudflare Workers (production)
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy --config apps/web/wrangler.jsonc
-          packageManager: npm
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          pnpm exec wrangler deploy --config apps/web/wrangler.jsonc
 
       - name: Report deploy duration
         if: always()
@@ -251,14 +243,7 @@ jobs:
           name: open-next
           path: apps/web/.open-next
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          version: 10.17.1
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22.15.1"
+      - uses: ./.github/actions/setup-node-pnpm
 
       - name: Verify bundle present
         run: |
@@ -268,12 +253,11 @@ jobs:
           du -sh apps/web/.open-next
 
       - name: Upload preview version (alias pr-${{ github.event.number }})
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: versions upload --preview-alias pr-${{ github.event.number }} --config apps/web/wrangler.jsonc
-          packageManager: npm
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          pnpm exec wrangler versions upload --preview-alias pr-${{ github.event.number }} --config apps/web/wrangler.jsonc
 
       - name: Report preview duration
         if: always()
