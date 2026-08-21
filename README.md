@@ -15,9 +15,9 @@ It runs your inbox, calendar and todos while you're not looking.
 
 Most AI assistants wait for you to open a tab and type. You do the work of driving it.
 
-GAIA works the other way round. Connect your Gmail and it starts triaging your inbox every morning, drafting your replies, and turning emails into todos — on its own, from day one. Connect your calendar and it briefs you before every meeting.
+GAIA works the other way round. Connect your Gmail and it starts triaging your inbox every morning, drafting your replies and turning emails into todos — on its own, from day one. Connect your calendar and it briefs you before every meeting.
 
-When something needs you, it texts you. iMessage, WhatsApp, Telegram, Slack, or Discord.
+When something needs you, it texts you. iMessage, WhatsApp, Telegram, Slack or Discord.
 
 **Sign up and it's already working.** Nothing to configure.
 
@@ -33,7 +33,7 @@ When something needs you, it texts you. iMessage, WhatsApp, Telegram, Slack, or 
 
 ## Things people actually ask it
 
-- **"Summarize my 47 unread emails and draft replies for the 3 that need one."** Reads every thread end to end, ranks by what matters, drafts in your voice.
+- **"Summarise my 47 unread emails and draft replies for the 3 that need one."** Reads every thread end to end, ranks by what matters, drafts in your voice.
 - **"Watch my inbox for anything from our investor and ping me on Telegram."** Keeps watching in the background. You get a text the moment it lands.
 - **"When my 2pm gets cancelled, rewrite my todo list to use the freed time."** Notices the change itself and replans your afternoon.
 - **"Post a Friday digest of my GitHub, Linear and Slack activity to #eng-updates."** Merged PRs, closed issues, channel highlights — gathered, written up, posted.
@@ -94,7 +94,7 @@ gaia bridge up             # connect
 - All of it visible on the **Memory** page as a list or a graph
 - Edit, export or delete any of it in a click
 
-### Listens
+### Listens to you
 
 - Say **"Hey GAIA"** and start talking
 - The wake word runs on your device — no audio leaves your machine until you say it, and [the model is right here](libs/wake-word) if you want to check
@@ -103,11 +103,11 @@ gaia bridge up             # connect
 ### Puts everything in one place
 
 - Your **inbox**, **calendar**, **todos** and **workflows**, with a **dashboard** over the top
-- Whatever GAIA did while you were gone waits in **notifications** — approve it, edit it, or dismiss it
+- Whatever it did while you were gone waits in **notifications** — approve it, edit it, or dismiss it
 
-### Does real work, not just chat
+### Gets real work done
 
-- **Writes and runs real code.** Every user gets a sandboxed Linux workspace. GAIA can analyse a dataset, run the script, and hand back a PDF, Word doc, deck or spreadsheet.
+- **Writes and runs real code.** Every user gets a sandboxed Linux workspace. It can analyse a dataset, run the script and hand back a PDF, Word doc, deck or spreadsheet.
 - **Researches properly.** Multi-source web research, not a single search box.
 - **Learns new abilities.** 37 built-in skills on the open [Agent Skills spec](https://agentskills.io), plus any you install from GitHub or write yourself.
 - **Runs on any model.** OpenAI, Gemini, Grok and OpenRouter — which covers Claude and most everything else. Self-hosters swap freely.
@@ -122,7 +122,7 @@ Go to **[heygaia.io](https://heygaia.io)**. Free, nothing to install, always up 
 
 This is how most people should use GAIA — you skip standing up Postgres, Mongo, Redis, ChromaDB and RabbitMQ yourself.
 
-### Self-host
+### Self-host — full control
 
 <a href="https://heygaia.io/install"><img src="apps/web/public/images/screenshots/cli.png" alt="GAIA CLI" width="500" /></a>
 
