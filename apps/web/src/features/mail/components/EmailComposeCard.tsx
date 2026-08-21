@@ -586,9 +586,10 @@ export default function EmailComposeCard({
           {!isCollapsed && (
             <m.div
               key="compose-body"
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
+              layout
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               transition={{ duration: 0.2, ease: "easeInOut" }}
               className="overflow-hidden"
             >

@@ -42,9 +42,11 @@ const SelectedToolIndicator: React.FC<SelectedToolIndicatorProps> = ({
     iconUrl ?? integrations.find((i) => i.id === toolCategory)?.iconUrl ?? null;
 
   const onRemoveRef = useRef(onRemove);
-  onRemoveRef.current = onRemove;
   const isSlashCommandOpenRef = useRef(isSlashCommandDropdownOpen);
-  isSlashCommandOpenRef.current = isSlashCommandDropdownOpen;
+  useEffect(() => {
+    onRemoveRef.current = onRemove;
+    isSlashCommandOpenRef.current = isSlashCommandDropdownOpen;
+  });
 
   // Handle Escape key to close the indicator
   useEffect(() => {

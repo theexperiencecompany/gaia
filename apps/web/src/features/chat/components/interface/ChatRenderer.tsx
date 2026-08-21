@@ -222,6 +222,40 @@ export default function ChatRenderer({
   // (see `suppressForBusy` below) — finished turns keep their follow-ups.
   const isConversationBusy = isConversationStreaming || isLoading;
   const scrolledToMessageRef = useRef<string | null>(null);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<
+    string | null
+  >(null);
+  const [poppedMessageId, setPoppedMessageId] = useState<string | null>(null);
+
+  // Two-phase scroll-to-message highlight, split into two effects so each timer
+  // is owned by its own cleanup. Phase 1 pops the element (scale 1.07) after a
+  // short delay; phase 2 resets it (scale 1) once it has popped.
+  useEffect(() => {
+    if (!highlightedMessageId) return;
+    const messageElement = document.getElementById(highlightedMessageId);
+    if (!messageElement) return;
+
+    messageElement.style.transition = "all 0.3s ease";
+
+    const popTimer = setTimeout(() => {
+      messageElement.style.scale = "1.07";
+      setPoppedMessageId(highlightedMessageId);
+    }, 700);
+
+    return () => clearTimeout(popTimer);
+  }, [highlightedMessageId]);
+
+  useEffect(() => {
+    if (!poppedMessageId) return;
+    const messageElement = document.getElementById(poppedMessageId);
+    if (!messageElement) return;
+
+    const resetTimer = setTimeout(() => {
+      messageElement.style.scale = "1";
+    }, 300);
+
+    return () => clearTimeout(resetTimer);
+  }, [poppedMessageId]);
   const { retryMessage, isRetrying } = useRetryMessage();
   const [imageData, setImageData] = useState<SetImageDataType>({
     src: "",
@@ -244,7 +278,9 @@ export default function ChatRenderer({
   // ref to keep `handleRetry` — and therefore messagePropsOptions and the whole
   // memoized message list — stable across streaming tokens.
   const retryMessageRef = useRef(retryMessage);
-  retryMessageRef.current = retryMessage;
+  useEffect(() => {
+    retryMessageRef.current = retryMessage;
+  });
   const handleRetry = useCallback((msgId: string) => {
     // Use the store's active conversation id, NOT the route param. New
     // conversations rewrite the URL via history.replaceState, which does not
@@ -427,15 +463,7 @@ export default function ChatRenderer({
     if (!messageElement) return;
 
     messageElement.scrollIntoView({ behavior: "smooth", block: "start" });
-    messageElement.style.transition = "all 0.3s ease";
-
-    setTimeout(() => {
-      messageElement.style.scale = "1.07";
-
-      setTimeout(() => {
-        messageElement.style.scale = "1";
-      }, 300);
-    }, 700);
+    setHighlightedMessageId(messageId);
   };
 
   return (

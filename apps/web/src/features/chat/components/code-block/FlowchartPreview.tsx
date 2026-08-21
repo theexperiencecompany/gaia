@@ -47,9 +47,14 @@ const FlowchartPreview: React.FC<FlowchartPreviewProps> = ({ children }) => {
   const mermaidRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1.5);
   const [position, setPosition] = useState({ x: 0, y: 0 });
+  const positionRef = useRef(position);
   const [isDragging, setIsDragging] = useState(false);
   const isDraggingRef = useRef(false);
   const startPositionRef = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    positionRef.current = position;
+  }, [position]);
 
   // Load mermaid SDK once on mount and re-render the diagram when content
   // changes. This used to live in CodeBlock.tsx, which forced the mermaid
@@ -73,13 +78,11 @@ const FlowchartPreview: React.FC<FlowchartPreviewProps> = ({ children }) => {
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     isDraggingRef.current = true;
     setIsDragging(true);
-    setPosition((prev) => {
-      startPositionRef.current = {
-        x: e.clientX - prev.x,
-        y: e.clientY - prev.y,
-      };
-      return prev;
-    });
+    const prev = positionRef.current;
+    startPositionRef.current = {
+      x: e.clientX - prev.x,
+      y: e.clientY - prev.y,
+    };
   }, []);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
@@ -136,6 +139,7 @@ const FlowchartPreview: React.FC<FlowchartPreviewProps> = ({ children }) => {
 
   return (
     <div className="relative h-[50vh] overflow-hidden bg-white p-4">
+      {/* Pan/drag surface — mouse-driven only; not a button (no click action). */}
       <div
         className={`absolute top-0 left-0 h-full w-full ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
         onMouseDown={handleMouseDown}

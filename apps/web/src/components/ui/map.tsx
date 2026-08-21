@@ -251,7 +251,9 @@ const MapView = forwardRef<MapRef, MapProps>(function MapView(
   const isControlled = viewport !== undefined && onViewportChange !== undefined;
 
   const onViewportChangeRef = useRef(onViewportChange);
-  onViewportChangeRef.current = onViewportChange;
+  useEffect(() => {
+    onViewportChangeRef.current = onViewportChange;
+  });
 
   const mapStyles = useMemo(() => {
     // Explicit styles win. Otherwise `blank` opts into the transparent
@@ -467,19 +469,24 @@ function MapMarker({
     onDrag,
     onDragEnd,
   });
-  callbacksRef.current = {
-    onClick,
-    onMouseEnter,
-    onMouseLeave,
-    onDragStart,
-    onDrag,
-    onDragEnd,
-  };
+  useEffect(() => {
+    callbacksRef.current = {
+      onClick,
+      onMouseEnter,
+      onMouseLeave,
+      onDragStart,
+      onDrag,
+      onDragEnd,
+    };
+  });
 
   const marker = useMemo(() => {
     const markerInstance = new MapLibreGL.Marker({
       ...markerOptions,
-      element: document.createElement("div"),
+      element:
+        typeof document !== "undefined"
+          ? document.createElement("div")
+          : undefined,
       draggable,
     }).setLngLat([longitude, latitude]);
 
@@ -628,23 +635,25 @@ function MarkerPopup({
   ...popupOptions
 }: MarkerPopupProps) {
   const { marker, map } = useMarkerContext();
-  const container = useMemo(() => document.createElement("div"), []);
+  const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const { offset, maxWidth } = popupOptions;
+
+  useEffect(() => {
+    setContainer(document.createElement("div"));
+  }, []);
 
   const popup = useMemo(() => {
     const popupInstance = new MapLibreGL.Popup({
       offset: 16,
       ...popupOptions,
       closeButton: false,
-    })
-      .setMaxWidth("none")
-      .setDOMContent(container);
+    }).setMaxWidth("none");
 
     return popupInstance;
   }, []);
 
   useEffect(() => {
-    if (!map) return;
+    if (!map || !container) return;
 
     popup.setDOMContent(container);
     marker.setPopup(popup);
@@ -652,7 +661,7 @@ function MarkerPopup({
     return () => {
       marker.setPopup(null);
     };
-  }, [map]);
+  }, [map, container]);
 
   // Sync popup options when they change.
   useEffect(() => {
@@ -661,6 +670,8 @@ function MarkerPopup({
   }, [popup, offset, maxWidth]);
 
   const handleClose = () => popup.remove();
+
+  if (!container) return null;
 
   return createPortal(
     <div
@@ -690,8 +701,12 @@ function MarkerTooltip({
   ...popupOptions
 }: MarkerTooltipProps) {
   const { marker, map } = useMarkerContext();
-  const container = useMemo(() => document.createElement("div"), []);
+  const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const { offset, maxWidth } = popupOptions;
+
+  useEffect(() => {
+    setContainer(document.createElement("div"));
+  }, []);
 
   const tooltip = useMemo(() => {
     const tooltipInstance = new MapLibreGL.Popup({
@@ -705,30 +720,35 @@ function MarkerTooltip({
   }, []);
 
   useEffect(() => {
-    if (!map) return;
+    if (!map || !container) return;
 
     tooltip.setDOMContent(container);
+
+    const element = marker.getElement();
+    if (!element) return;
 
     const handleMouseEnter = () => {
       tooltip.setLngLat(marker.getLngLat()).addTo(map);
     };
     const handleMouseLeave = () => tooltip.remove();
 
-    marker.getElement()?.addEventListener("mouseenter", handleMouseEnter);
-    marker.getElement()?.addEventListener("mouseleave", handleMouseLeave);
+    element.addEventListener("mouseenter", handleMouseEnter);
+    element.addEventListener("mouseleave", handleMouseLeave);
 
     return () => {
-      marker.getElement()?.removeEventListener("mouseenter", handleMouseEnter);
-      marker.getElement()?.removeEventListener("mouseleave", handleMouseLeave);
+      element.removeEventListener("mouseenter", handleMouseEnter);
+      element.removeEventListener("mouseleave", handleMouseLeave);
       tooltip.remove();
     };
-  }, [map]);
+  }, [map, container]);
 
   // Sync tooltip options when they change.
   useEffect(() => {
     tooltip.setOffset(offset ?? 16);
     tooltip.setMaxWidth(maxWidth ?? "none");
   }, [tooltip, offset, maxWidth]);
+
+  if (!container) return null;
 
   return createPortal(
     <div
@@ -1016,8 +1036,13 @@ function MapPopup({
 }: MapPopupProps) {
   const { map } = useMap();
   const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-  const container = useMemo(() => document.createElement("div"), []);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+  const [container, setContainer] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    setContainer(document.createElement("div"));
+  }, []);
   const { offset, maxWidth } = popupOptions;
 
   const popup = useMemo(() => {
@@ -1033,7 +1058,7 @@ function MapPopup({
   }, []);
 
   useEffect(() => {
-    if (!map) return;
+    if (!map || !container) return;
 
     const onCloseProp = () => onCloseRef.current?.();
 
@@ -1048,7 +1073,7 @@ function MapPopup({
         popup.remove();
       }
     };
-  }, [map]);
+  }, [map, container]);
 
   // Sync popup position and options when they change.
   useEffect(() => {
@@ -1063,6 +1088,8 @@ function MapPopup({
   const handleClose = () => {
     popup.remove();
   };
+
+  if (!container) return null;
 
   return createPortal(
     <div
@@ -1361,7 +1388,9 @@ function MapGeoJSON<
     [defaults.line, linePaint],
   );
   const latestRef = useRef({ onClick, onHover });
-  latestRef.current = { onClick, onHover };
+  useEffect(() => {
+    latestRef.current = { onClick, onHover };
+  });
 
   // Add source on mount.
   useEffect(() => {
@@ -1699,7 +1728,9 @@ function MapArc<T extends MapArcDatum = MapArcDatum>({
   );
 
   const latestRef = useRef({ data, onClick, onHover });
-  latestRef.current = { data, onClick, onHover };
+  useEffect(() => {
+    latestRef.current = { data, onClick, onHover };
+  });
 
   // Add source and layers on mount.
   useEffect(() => {

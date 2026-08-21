@@ -50,13 +50,14 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
 
   // Reset and focus
   useEffect(() => {
-    if (open) {
-      trackEvent(ANALYTICS_EVENTS.SEARCH_GLOBAL_OPENED);
-      setTimeout(() => inputRef.current?.focus(), 50);
-    } else {
+    if (!open) {
       setSearch("");
       setSearchResults({ conversations: [], messages: [], notes: [] });
+      return;
     }
+    trackEvent(ANALYTICS_EVENTS.SEARCH_GLOBAL_OPENED);
+    const focusTimer = setTimeout(() => inputRef.current?.focus(), 50);
+    return () => clearTimeout(focusTimer);
   }, [open]);
 
   // SearchIcon with debouncing
@@ -91,11 +92,13 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
   }, [search, handleSearch]);
 
   const openRef = useRef(open);
-  openRef.current = open;
   const onOpenChangeRef = useRef(onOpenChange);
-  onOpenChangeRef.current = onOpenChange;
   const routerRef = useRef(router);
-  routerRef.current = router;
+  useEffect(() => {
+    openRef.current = open;
+    onOpenChangeRef.current = onOpenChange;
+    routerRef.current = router;
+  });
 
   // Keyboard shortcuts — registered once, reads latest values via refs
   useEffect(() => {

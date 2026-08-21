@@ -100,12 +100,13 @@ const RecentConversationsView = memo(() => {
     >
       <div className="space-y-0">
         {displayConversations.map((conversation) => (
-          <div
+          <button
+            type="button"
             key={conversation.conversation_id}
             onClick={() =>
               handleConversationClick(conversation.conversation_id)
             }
-            className="flex cursor-pointer items-start gap-3 p-4 transition-colors hover:bg-zinc-700/30"
+            className="flex w-full cursor-pointer items-start gap-3 p-4 text-left transition-colors hover:bg-zinc-700/30"
           >
             <div className="min-w-0 flex-1 flex justify-between">
               <div>
@@ -173,7 +174,7 @@ const RecentConversationsView = memo(() => {
                 )}
               </div>
             </div>
-          </div>
+          </button>
         ))}
       </div>
     </BaseCardView>

@@ -5,7 +5,7 @@ import { Skeleton } from "@heroui/skeleton";
 import { Tooltip } from "@heroui/tooltip";
 import { Share08Icon } from "@icons";
 import { useParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { HoloCard } from "@/components/ui/holo-card/HoloCard";
 import type { HoloCardDisplayData } from "@/components/ui/holo-card/types";
 import {
@@ -21,6 +21,13 @@ export default function ProfilePage() {
     null,
   );
   const [isLoading, setIsLoading] = useState(true);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (holoCardData) {
@@ -32,12 +39,16 @@ export default function ProfilePage() {
     const fetchProfile = async () => {
       try {
         const data = await holoCardApi.getPublicHoloCard(cardId);
+        if (!mountedRef.current) return;
         setHoloCardData(data);
       } catch (error) {
         console.error("Failed to fetch profile:", error);
+        if (!mountedRef.current) return;
         toast.error("Failed to load profile");
       } finally {
-        setIsLoading(false);
+        if (mountedRef.current) {
+          setIsLoading(false);
+        }
       }
     };
 

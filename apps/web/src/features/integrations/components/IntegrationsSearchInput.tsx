@@ -15,6 +15,7 @@ export const IntegrationsSearchInput = forwardRef<
   IntegrationsSearchInputProps
 >(({ value, onChange, endContent, onEnter }, ref) => {
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.nativeEvent.isComposing) return;
     if (e.key === "Enter" && onEnter) {
       e.preventDefault();
       onEnter();

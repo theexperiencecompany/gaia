@@ -48,9 +48,6 @@ export function useWakeWordBase<C extends WakeWordControllerLike>(
     setError(null);
     const controller = createController();
     controllerRef.current = controller;
-    controller.on("detection", setLastDetection);
-    controller.on("state", setState);
-    controller.on("error", setError);
     onCreate?.(controller);
     try {
       await controller.start();
@@ -84,6 +81,23 @@ export function useWakeWordBase<C extends WakeWordControllerLike>(
     // responsibility (memoize upstream) to avoid restarting on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);
+
+  // Wire controller events to state setters inside an effect so the cleanup
+  // is structurally guaranteed. The effect re-runs when the controller ref
+  // changes (start/stop), and each `on` returns an unsubscribe that the
+  // cleanup calls — no listener outlives the controller.
+  useEffect(() => {
+    const controller = controllerRef.current;
+    if (!controller) return;
+    const offDetection = controller.on("detection", setLastDetection);
+    const offState = controller.on("state", setState);
+    const offError = controller.on("error", setError);
+    return () => {
+      offDetection();
+      offState();
+      offError();
+    };
+  });
 
   return { state, lastDetection, error, start, stop };
 }

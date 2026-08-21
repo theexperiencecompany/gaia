@@ -56,7 +56,9 @@ export default function KeyboardShortcutsProvider({
 
   const createActionRef = useRef<(() => void) | null>(null);
   const routerRef = useRef(router);
-  routerRef.current = router;
+  useEffect(() => {
+    routerRef.current = router;
+  });
 
   const openShortcutsModal = useCallback(() => setIsModalOpen(true), []);
   const closeShortcutsModal = useCallback(() => setIsModalOpen(false), []);

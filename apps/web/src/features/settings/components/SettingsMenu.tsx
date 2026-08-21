@@ -185,7 +185,7 @@ export default function SettingsMenu({
     ),
     action: () => {
       if (platform.downloadUrl) {
-        window.open(platform.downloadUrl, "_blank");
+        window.open(platform.downloadUrl, "_blank", "noopener,noreferrer");
       } else {
         router.push("/download");
       }

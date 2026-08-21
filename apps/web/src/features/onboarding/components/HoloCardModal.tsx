@@ -73,19 +73,20 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
 
   // Trigger confetti only after card is revealed
   useEffect(() => {
-    if (isCardRevealed && !hasShownConfetti.current) {
-      hasShownConfetti.current = true;
+    if (!isCardRevealed || hasShownConfetti.current) return;
+    hasShownConfetti.current = true;
 
-      // Small delay to let the card animation complete
-      setTimeout(() => {
-        confetti({
-          particleCount: 300,
-          spread: 500,
-          origin: { y: 0.4 },
-          colors: ["#00bbff", "#a855f7", "#ec4899", "#f59e0b"],
-        });
-      }, 200);
-    }
+    // Small delay to let the card animation complete
+    const confettiTimer = setTimeout(() => {
+      confetti({
+        particleCount: 300,
+        spread: 500,
+        origin: { y: 0.4 },
+        colors: ["#00bbff", "#a855f7", "#ec4899", "#f59e0b"],
+      });
+    }, 200);
+
+    return () => clearTimeout(confettiTimer);
   }, [isCardRevealed]);
 
   const handleShare = (platform: "twitter" | "linkedin" | "copy") => {

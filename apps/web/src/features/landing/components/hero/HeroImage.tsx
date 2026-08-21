@@ -35,11 +35,15 @@ export default function HeroImage({
   const rafRef = useRef<number | null>(null);
 
   const [previousTime, setPreviousTime] = useState<TimeOfDay | null>(null);
-  const lastTimeRef = useRef<TimeOfDay>(timeOfDay);
+  const [lastTime, setLastTime] = useState<TimeOfDay>(timeOfDay);
 
-  if (timeOfDay !== lastTimeRef.current) {
-    setPreviousTime(lastTimeRef.current);
-    lastTimeRef.current = timeOfDay;
+  // Adjust state when the prop changes (the documented "adjusting state on prop
+  // change" pattern) so the crossfade can render the outgoing wallpaper while
+  // the new one animates in. Calling setState during render re-runs immediately
+  // before commit; a ref mutation here is unsafe (React can discard the render).
+  if (timeOfDay !== lastTime) {
+    setPreviousTime(lastTime);
+    setLastTime(timeOfDay);
   }
 
   const [shouldPreloadOthers, setShouldPreloadOthers] = useState(false);

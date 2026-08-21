@@ -250,7 +250,7 @@ const PLATFORMS: Platform[] = [
 
 function BotsShowcaseDemo() {
   const [activeId, setActiveId] = useState<ChatPlatform>(PLATFORMS[0].id);
-  const [autoRotate, setAutoRotate] = useState(true);
+  const [userPaused, setUserPaused] = useState(false);
   const active = PLATFORMS.find((p) => p.id === activeId) ?? PLATFORMS[0];
 
   const sectionRef = useRef<HTMLDivElement>(null);
@@ -263,13 +263,17 @@ function BotsShowcaseDemo() {
   const phoneRef = useRef<HTMLDivElement>(null);
   const isCtaFloating = useFloatingCta(phoneRef);
 
+  // Auto-rotate resumes whenever the section is out of view; while in view it
+  // respects the user's pause toggle (set by any manual navigation action).
+  const autoRotate = !inView || !userPaused;
+
   const handleSelect = useCallback((id: ChatPlatform) => {
     setActiveId(id);
-    setAutoRotate(false);
+    setUserPaused(true);
   }, []);
 
   const handlePrev = useCallback(() => {
-    setAutoRotate(false);
+    setUserPaused(true);
     setActiveId((current) => {
       const idx = PLATFORMS.findIndex((p) => p.id === current);
       return PLATFORMS[(idx - 1 + PLATFORMS.length) % PLATFORMS.length].id;
@@ -277,17 +281,12 @@ function BotsShowcaseDemo() {
   }, []);
 
   const handleNext = useCallback(() => {
-    setAutoRotate(false);
+    setUserPaused(true);
     setActiveId((current) => {
       const idx = PLATFORMS.findIndex((p) => p.id === current);
       return PLATFORMS[(idx + 1) % PLATFORMS.length].id;
     });
   }, []);
-
-  useEffect(() => {
-    if (inView) return;
-    setAutoRotate(true);
-  }, [inView]);
 
   useEffect(() => {
     if (!inView || !autoRotate) return;

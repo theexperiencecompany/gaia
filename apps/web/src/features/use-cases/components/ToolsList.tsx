@@ -76,9 +76,10 @@ export default function ToolsList({ tools }: ToolsListProps) {
           // Expanded state - stacked list of all tools
           <m.div
             key="expanded"
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
+            layout
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
             className="flex min-w-[240px] flex-col gap-2"
           >

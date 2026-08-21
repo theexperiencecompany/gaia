@@ -79,7 +79,7 @@ const MainChat = React.memo(function MainChat() {
     useWorkflowSelectionStore.getState().clearSelectedWorkflow();
     useChatStore.getState().setActiveConversationId(null);
 
-    setTimeout(() => {
+    const sendTimer = setTimeout(() => {
       sendMessage("Run this workflow", {
         selectedWorkflow: workflow,
         selectedTool: null,
@@ -87,6 +87,8 @@ const MainChat = React.memo(function MainChat() {
         conversationId: null,
       });
     }, 0);
+
+    return () => clearTimeout(sendTimer);
   }, [selectedWorkflow, autoSend, sendMessage]);
 
   useEffect(() => {

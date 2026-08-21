@@ -44,8 +44,9 @@ function TwitterCard({ tweet }: { tweet: TwitterTweetData }) {
   };
 
   return (
-    <div
-      className="group relative flex w-full flex-col gap-2 rounded-xl border border-default-200 bg-content1/50 p-4 backdrop-blur-sm transition-all hover:border-default-300 hover:bg-content1/70"
+    <button
+      type="button"
+      className="group relative flex w-full cursor-pointer flex-col gap-2 rounded-xl border border-default-200 bg-content1/50 p-4 text-left backdrop-blur-sm transition-all hover:border-default-300 hover:bg-content1/70"
       onClick={handleOpenTweet}
     >
       {/* Author Row */}
@@ -106,7 +107,7 @@ function TwitterCard({ tweet }: { tweet: TwitterTweetData }) {
           <ShareIcon className="h-4 w-4" />
         </div>
       </div>
-    </div>
+    </button>
   );
 }
 

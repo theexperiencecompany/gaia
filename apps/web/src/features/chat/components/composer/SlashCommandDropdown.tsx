@@ -93,8 +93,9 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
         className="absolute top-0 left-0 w-full"
         style={baseStyle}
       >
-        <div
-          className={`relative mx-2 mb-1 cursor-pointer rounded-xl border-none transition-all duration-150 ${isSelected ? "bg-zinc-700/40" : "hover:bg-white/5"}`}
+        <button
+          type="button"
+          className={`relative mx-2 mb-1 block w-full cursor-pointer rounded-xl border-none text-left transition-all duration-150 ${isSelected ? "bg-zinc-700/40" : "hover:bg-white/5"}`}
           onClick={() => {
             trackEvent(ANALYTICS_EVENTS.CHAT_SLASH_COMMAND_SELECTED, {
               tool_name: match.tool.name,
@@ -132,7 +133,7 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
               </div>
             </div>
           </div>
-        </div>
+        </button>
       </div>
     );
   }

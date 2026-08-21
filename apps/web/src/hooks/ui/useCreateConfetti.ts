@@ -1,6 +1,10 @@
 import confetti from "canvas-confetti";
 
-export default function UseCreateConfetti(duration: number = 4000): void {
+export default function UseCreateConfetti(
+  duration: number = 4000,
+): number | null {
+  if (typeof window === "undefined") return null;
+
   const animationEnd = Date.now() + duration;
   const defaults: confetti.Options = {
     startVelocity: 30,
@@ -16,7 +20,8 @@ export default function UseCreateConfetti(duration: number = 4000): void {
     const timeLeft = animationEnd - Date.now();
 
     if (timeLeft <= 0) {
-      return clearInterval(interval);
+      window.clearInterval(interval);
+      return;
     }
 
     const particleCount = 50 * (timeLeft / duration);
@@ -34,4 +39,6 @@ export default function UseCreateConfetti(duration: number = 4000): void {
       zIndex: 100,
     });
   }, 250);
+
+  return interval;
 }

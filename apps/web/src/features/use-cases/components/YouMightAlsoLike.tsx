@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { CommunityWorkflow } from "@/features/workflows/api/workflowApi";
 import { workflowApi } from "@/features/workflows/api/workflowApi";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
+
+const EMPTY_CATEGORIES: string[] = [];
 
 interface YouMightAlsoLikeProps {
   currentId: string;
@@ -13,9 +15,10 @@ interface YouMightAlsoLikeProps {
 
 export default function YouMightAlsoLike({
   currentId,
-  categories = [],
+  categories = EMPTY_CATEGORIES,
 }: YouMightAlsoLikeProps) {
   const [items, setItems] = useState<CommunityWorkflow[]>([]);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
     const fetchItems = async () => {
@@ -68,14 +71,22 @@ export default function YouMightAlsoLike({
             .slice(0, 6);
         }
 
-        setItems(workflows);
+        if (mountedRef.current) {
+          setItems(workflows);
+        }
       } catch (error) {
         console.error("Error fetching similar items:", error);
-        setItems([]);
+        if (mountedRef.current) {
+          setItems([]);
+        }
       }
     };
 
     fetchItems();
+
+    return () => {
+      mountedRef.current = false;
+    };
   }, [currentId, categories]);
 
   if (items.length === 0) return null;

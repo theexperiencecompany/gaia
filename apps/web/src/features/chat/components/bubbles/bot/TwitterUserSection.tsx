@@ -47,12 +47,19 @@ function TwitterUserCard({
   };
 
   return (
-    <div
-      className="group relative flex w-full flex-col gap-3 rounded-xl border border-default-200 bg-content1/50 p-4 backdrop-blur-sm transition-all hover:border-default-300 hover:bg-content1/70 cursor-pointer"
-      onClick={handleOpenProfile}
-    >
+    <div className="group relative flex w-full flex-col gap-3 rounded-xl border border-default-200 bg-content1/50 p-4 backdrop-blur-sm transition-all hover:border-default-300 hover:bg-content1/70">
+      {/* Card-level action as a stretched overlay button: the card contains a
+          nested Follow button, so the card itself cannot be a <button>. The
+          overlay covers everything; the Follow row is raised above it. */}
+      <button
+        type="button"
+        aria-label={`Open @${user.username} profile on X`}
+        className="absolute inset-0 z-10 cursor-pointer rounded-xl"
+        onClick={handleOpenProfile}
+      />
+
       {/* Header Row */}
-      <div className="flex items-start justify-between">
+      <div className="relative z-20 flex items-start justify-between">
         <div className="flex items-start gap-3">
           <Avatar className="h-12 w-12 shrink-0 rounded-full overflow-hidden">
             <AvatarImage
@@ -80,11 +87,8 @@ function TwitterUserCard({
 
         {onFollow && (
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onFollow(user.id);
-            }}
             type="button"
+            onClick={() => onFollow(user.id)}
             className="rounded-full bg-foreground text-background px-4 py-1.5 text-sm font-semibold hover:bg-foreground/90 transition-colors"
           >
             Follow

@@ -183,8 +183,9 @@ export const HoloCard = ({
   const StampBorder = () => <div aria-hidden style={stampBorderStyle} />;
 
   return (
-    <div
-      className={forceSide ? "" : "perspective-1000"}
+    <button
+      type="button"
+      className={`block w-full ${forceSide ? "" : "perspective-1000"}`}
       onClick={handleCardClick}
       style={containerStyle}
     >
@@ -376,6 +377,6 @@ export const HoloCard = ({
           )}
         </div>
       </div>
-    </div>
+    </button>
   );
 };

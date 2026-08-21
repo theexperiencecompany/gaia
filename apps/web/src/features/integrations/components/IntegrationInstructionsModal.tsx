@@ -115,7 +115,9 @@ export const IntegrationInstructionsModal = ({
   // stable while always reading the latest state. (Escape is handled by the
   // Modal's built-in dismiss.)
   const saveShortcutRef = useRef({ isMac, canSave, handleSave });
-  saveShortcutRef.current = { isMac, canSave, handleSave };
+  useEffect(() => {
+    saveShortcutRef.current = { isMac, canSave, handleSave };
+  });
 
   useEffect(() => {
     if (!isOpen) return;

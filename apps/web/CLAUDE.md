@@ -152,7 +152,7 @@ Always use HeroUI over raw HTML or custom implementations. HeroUI handles access
 
 **Raw `<button>` is a documented exception, never a default.** A raw `<button>` is allowed ONLY where HeroUI `<Button>` provably cannot reproduce the required layout/styling without fighting the component. Every such instance must be listed here so the exception stays auditable:
 
-- _(none currently — all interactive buttons use HeroUI `<Button>`.)_
+- Clickable card/list-row/chip containers converted from `div[role="button"]` to raw `<button type="button">` during the React Doctor a11y sweep (calendar event bars/cards/rows, chat tool-card rows like Todo/Twitter sections, composer items like LockedToolItem/SlashCommandDropdown/SelectedReplyIndicator, HoloCard flip container) — HeroUI `<Button>` cannot reproduce these full-card layouts; the native element supplies click + Enter/Space semantics.
 
 **Do not override HeroUI default styling.** Use variant/color props (`variant="flat"`, `color="primary"`, etc.) first. Custom `classNames` / `className` / inline `style` are acceptable only for one-off layout adjustments (`w-full`, `max-w-*`) or when the user explicitly asks for a visual customisation — never to override HeroUI's internal color or shape tokens. Overrides make components fragile across theme changes and upgrades.
 

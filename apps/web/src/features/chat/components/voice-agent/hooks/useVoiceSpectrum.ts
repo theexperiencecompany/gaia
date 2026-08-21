@@ -436,11 +436,11 @@ export function useVoiceSpectrum({
       }
     };
 
-    let settleTimer: ReturnType<typeof setTimeout> | null = null;
+    let settleTimer: ReturnType<typeof setTimeout> | undefined;
     const apply = () => {
-      if (settleTimer !== null) {
+      if (settleTimer !== undefined) {
         clearTimeout(settleTimer);
-        settleTimer = null;
+        settleTimer = undefined;
       }
       if (typeof document !== "undefined" && document.hidden) {
         pause();
@@ -462,7 +462,7 @@ export function useVoiceSpectrum({
       document.addEventListener("visibilitychange", apply);
     }
     return () => {
-      if (settleTimer !== null) clearTimeout(settleTimer);
+      clearTimeout(settleTimer);
       if (typeof document !== "undefined") {
         document.removeEventListener("visibilitychange", apply);
       }

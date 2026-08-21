@@ -28,10 +28,13 @@ interface UpcomingEventsViewProps {
   onConnect?: (integrationId: string) => void;
 }
 
+const EMPTY_EVENTS: GoogleCalendarEvent[] = [];
+const EMPTY_CALENDARS: CalendarItem[] = [];
+
 const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
   onEventClick,
-  events = [],
-  calendars = [],
+  events = EMPTY_EVENTS,
+  calendars = EMPTY_CALENDARS,
   isConnected = true,
   onConnect,
 }) => {
@@ -226,9 +229,11 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
                   const isPassed = isEventPassed(event);
 
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={event.id}
-                      className="relative flex cursor-pointer items-start gap-2 rounded-lg p-2 pl-5 transition-colors hover:bg-zinc-700/30"
+                      className="relative flex w-full cursor-pointer items-start gap-2 rounded-lg p-2 pl-5 text-left transition-colors hover:bg-zinc-700/30"
+                      aria-label={`Event ${event.summary}`}
                       onClick={() => onEventClick?.(event)}
                       style={{
                         backgroundColor: `${getEventColor(event, calendars)}10`,
@@ -266,7 +271,7 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
                             : "All day"}
                         </div>
                       </div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>

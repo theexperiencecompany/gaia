@@ -58,7 +58,9 @@ export const BearerTokenModal: React.FC<BearerTokenModalProps> = ({
   };
 
   const keyDownStateRef = useRef({ isLoading, isMac, handleSubmit });
-  keyDownStateRef.current = { isLoading, isMac, handleSubmit };
+  useEffect(() => {
+    keyDownStateRef.current = { isLoading, isMac, handleSubmit };
+  });
 
   useEffect(() => {
     if (!isOpen) return;

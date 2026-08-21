@@ -40,6 +40,7 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
 
   // State
   const [columnWidth, setColumnWidth] = useState(150);
+  const columnWidthRef = useRef(columnWidth);
   const [extendedDates, setExtendedDates] = useState<Date[]>(() =>
     getInitialMonthlyDateRange(new Date()),
   );
@@ -80,6 +81,7 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
 
   // Notify virtualizer when columnWidth or dates change so it recalculates
   useEffect(() => {
+    columnWidthRef.current = columnWidth;
     columnVirtualizer.measure();
   }, [columnWidth, extendedDates.length, columnVirtualizer]);
 
@@ -145,6 +147,7 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
 
   // Effect 1: Scroll to today on initial load
   useEffect(() => {
+    let scrollTimer: ReturnType<typeof setTimeout> | undefined;
     if (
       !hasScrolledToTodayRef.current &&
       extendedDates.length > 0 &&
@@ -153,47 +156,53 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
     ) {
       const todayIndex = getTodayIndex(extendedDates);
       if (todayIndex !== -1) {
-        setTimeout(() => {
+        scrollTimer = setTimeout(() => {
           scrollToDate(new Date(), "auto");
           hasScrolledToTodayRef.current = true;
         }, 100);
       }
     }
+    return () => {
+      if (scrollTimer !== undefined) clearTimeout(scrollTimer);
+    };
   }, [extendedDates, columnWidth, getTodayIndex, scrollToDate]);
-
   // Effect 1b: Handle selectedDate changes (chevron buttons, today button)
   useEffect(() => {
+    let scrollTimer: ReturnType<typeof setTimeout> | undefined;
     // Skip initial load
-    if (!hasScrolledToTodayRef.current) return;
+    if (hasScrolledToTodayRef.current) {
+      if (extendedDates.length > 0 && columnWidth > 0) {
+        const selectedDateStr = selectedDate.toISOString().split("T")[0];
+        const dateIndex = extendedDates.findIndex(
+          (date) => date.toISOString().split("T")[0] === selectedDateStr,
+        );
 
-    if (extendedDates.length > 0 && columnWidth > 0) {
-      const selectedDateStr = selectedDate.toISOString().split("T")[0];
-      const dateIndex = extendedDates.findIndex(
-        (date) => date.toISOString().split("T")[0] === selectedDateStr,
-      );
+        if (dateIndex !== -1) {
+          // Date is in current range, scroll to it
+          scrollToDate(selectedDate, "smooth");
+        } else {
+          // Date is not in range, need to load it
+          // Reset dates to show a range around the selected date
+          const newDates = getInitialMonthlyDateRange(selectedDate);
+          setExtendedDates(newDates);
 
-      if (dateIndex !== -1) {
-        // Date is in current range, scroll to it
-        scrollToDate(selectedDate, "smooth");
-      } else {
-        // Date is not in range, need to load it
-        // Reset dates to show a range around the selected date
-        const newDates = getInitialMonthlyDateRange(selectedDate);
-        setExtendedDates(newDates);
+          // Load events for this range
+          if (selectedCalendars.length > 0) {
+            const start = newDates[0];
+            const end = newDates[newDates.length - 1];
+            loadEvents(selectedCalendars, true, start, end);
+          }
 
-        // Load events for this range
-        if (selectedCalendars.length > 0) {
-          const start = newDates[0];
-          const end = newDates[newDates.length - 1];
-          loadEvents(selectedCalendars, true, start, end);
+          // Scroll to the date after dates are updated
+          scrollTimer = setTimeout(() => {
+            scrollToDate(selectedDate, "auto");
+          }, 100);
         }
-
-        // Scroll to the date after dates are updated
-        setTimeout(() => {
-          scrollToDate(selectedDate, "auto");
-        }, 100);
       }
     }
+    return () => {
+      if (scrollTimer !== undefined) clearTimeout(scrollTimer);
+    };
   }, [selectedDate]);
 
   // Effect 2: Initial fetch of events for 3-month range
@@ -229,14 +238,13 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
           const scrollContainer = scrollContainerRef.current;
           const prevScrollLeft = scrollContainer?.scrollLeft || 0;
 
-          setExtendedDates((prev) => {
-            requestAnimationFrame(() => {
-              if (scrollContainer) {
-                scrollContainer.scrollLeft =
-                  prevScrollLeft + newDates.length * columnWidth;
-              }
-            });
-            return [...newDates, ...prev];
+          setExtendedDates((prev) => [...newDates, ...prev]);
+
+          requestAnimationFrame(() => {
+            if (scrollContainer) {
+              scrollContainer.scrollLeft =
+                prevScrollLeft + newDates.length * columnWidth;
+            }
           });
         }
       });
@@ -285,35 +293,33 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
   // Effect 7: Calculate dynamic column width based on container size
   useEffect(() => {
     const updateColumnWidth = () => {
-      if (containerRef.current && scrollContainerRef.current) {
-        const containerWidth = containerRef.current.offsetWidth;
-        const timeColumnWidth = 80; // w-20
-        const availableWidth = containerWidth - timeColumnWidth;
-        const calculatedWidth = Math.floor(availableWidth / daysToShow);
-        const newColumnWidth = Math.max(calculatedWidth, 120); // min 120px per column
+      if (!containerRef.current || !scrollContainerRef.current) return;
+      const containerWidth = containerRef.current.offsetWidth;
+      const timeColumnWidth = 80; // w-20
+      const availableWidth = containerWidth - timeColumnWidth;
+      const calculatedWidth = Math.floor(availableWidth / daysToShow);
+      const newColumnWidth = Math.max(calculatedWidth, 120); // min 120px per column
 
-        setColumnWidth((prevWidth) => {
-          if (prevWidth === newColumnWidth) return prevWidth;
+      const prevWidth = columnWidthRef.current;
+      if (prevWidth === newColumnWidth) return;
 
-          // Calculate which column is currently at the left edge of the viewport
-          const currentScrollLeft = scrollContainerRef.current!.scrollLeft;
-          const currentLeftColumn = Math.floor(currentScrollLeft / prevWidth);
+      // Calculate which column is currently at the left edge of the viewport
+      const currentScrollLeft = scrollContainerRef.current.scrollLeft;
+      const currentLeftColumn = Math.floor(currentScrollLeft / prevWidth);
 
-          // After width changes, snap to align columns properly
-          requestAnimationFrame(() => {
-            if (scrollContainerRef.current) {
-              // Snap to the nearest column boundary that fills the viewport
-              const newScrollLeft = currentLeftColumn * newColumnWidth;
-              scrollContainerRef.current.scrollTo({
-                left: newScrollLeft,
-                behavior: "auto",
-              });
-            }
+      setColumnWidth(newColumnWidth);
+
+      // After width changes, snap to align columns properly
+      requestAnimationFrame(() => {
+        if (scrollContainerRef.current) {
+          // Snap to the nearest column boundary that fills the viewport
+          const newScrollLeft = currentLeftColumn * newColumnWidth;
+          scrollContainerRef.current.scrollTo({
+            left: newScrollLeft,
+            behavior: "auto",
           });
-
-          return newColumnWidth;
-        });
-      }
+        }
+      });
     };
 
     updateColumnWidth();

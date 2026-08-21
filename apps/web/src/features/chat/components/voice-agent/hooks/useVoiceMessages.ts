@@ -150,7 +150,9 @@ export function useVoiceMessages(
   // Stash the latest conversationId in a ref so the bot-stream handler closure
   // (registered once) always reads the current value.
   const conversationIdRef = useRef(conversationId);
-  conversationIdRef.current = conversationId;
+  useEffect(() => {
+    conversationIdRef.current = conversationId;
+  });
 
   // Reset internal state on remount (new voice session).
   useEffect(() => {

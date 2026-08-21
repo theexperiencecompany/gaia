@@ -52,6 +52,14 @@ export const HoloCardEditor = ({
   const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Resolved on the client only — reading window during render crashes SSR.
+  const [origin, setOrigin] = useState<string>("");
+  const [href, setHref] = useState<string>("");
+  useEffect(() => {
+    setOrigin(window.location.origin);
+    setHref(window.location.href);
+  }, []);
+
   useEffect(() => {
     setData(initialData);
     if (initialData.overlay_color) setColor(initialData.overlay_color);
@@ -294,8 +302,8 @@ export const HoloCardEditor = ({
   };
 
   const shareUrl = data.holo_card_id
-    ? `${window.location.origin}/profile/${data.holo_card_id}`
-    : window.location.href;
+    ? `${origin}/profile/${data.holo_card_id}`
+    : href;
   const shareTitle = "Check out my Personal Card made using GAIA";
 
   return (

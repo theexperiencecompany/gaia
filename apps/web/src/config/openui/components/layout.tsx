@@ -81,7 +81,19 @@ function FileTreeNodeRow({
       <div
         className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg transition cursor-pointer select-none group/file [&_span]:hover:text-zinc-100"
         style={{ paddingLeft: `${8 + depth * 16}px` }}
+        role={isDir && hasChildren ? "button" : undefined}
+        tabIndex={isDir && hasChildren ? 0 : undefined}
         onClick={isDir && hasChildren ? () => setOpen((o) => !o) : undefined}
+        onKeyDown={
+          isDir && hasChildren
+            ? (e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setOpen((o) => !o);
+                }
+              }
+            : undefined
+        }
       >
         <div className="flex items-center gap-1.5 min-w-0">
           {isDir && hasChildren ? (

@@ -301,7 +301,9 @@ function VoiceSessionInner({
   // the countdown on every transition, so it would never measure "ready within
   // N seconds of joining".
   const agentStateRef = useRef(agentState);
-  agentStateRef.current = agentState;
+  useEffect(() => {
+    agentStateRef.current = agentState;
+  });
   useEffect(() => {
     const timer = setTimeout(() => {
       const state = agentStateRef.current;

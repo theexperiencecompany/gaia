@@ -41,12 +41,16 @@ function formatNumber(num: number): string {
 export default function RedditPostCard({ post }: RedditPostCardProps) {
   const handleOpenPost = () => {
     if (post.permalink) {
-      window.open(`https://reddit.com${post.permalink}`, "_blank");
+      window.open(
+        `https://reddit.com${post.permalink}`,
+        "_blank",
+        "noopener,noreferrer",
+      );
     }
   };
 
   return (
-    <div className="group w-full max-w-2xl overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-800 text-white transition-all hover:border-orange-600/50 hover:shadow-lg hover:shadow-orange-600/10">
+    <div className="group w-full max-w-2xl overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-800 text-white transition-[border-color,box-shadow] hover:border-orange-600/50 hover:shadow-lg hover:shadow-orange-600/10">
       <div className="space-y-3 p-4">
         {/* Header */}
         <div className="flex items-start justify-between gap-3">
