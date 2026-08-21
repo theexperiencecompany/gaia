@@ -40,9 +40,9 @@ When something needs you, it texts you. iMessage, WhatsApp, Telegram, Slack, or 
 - **"Before my 1:1 with Alex, brief me on what we shipped this sprint."** Pulls the PRs, issues and threads into one prep doc, ready before you sit down.
 - **"Clean up this CSV, chart the outliers, and send me the deck."** Writes real Python, runs it in a real sandbox, hands back a real `.pptx`.
 
-## Workflows: the part that runs itself
+## Things it does without being asked
 
-A workflow is a job GAIA does without you. Some are already running the moment you connect a tool.
+The other half, and the reason GAIA isn't a chatbot. These are **workflows** — jobs it runs on its own — and a few switch on by themselves the moment you connect a tool.
 
 | Workflow | Turns on with | What it does |
 | --- | --- | --- |
@@ -51,7 +51,7 @@ A workflow is a job GAIA does without you. Some are already running the moment y
 | **Meeting Briefing** | Calendar | Researches who you're meeting and what it's about, before you walk in |
 | **Meeting Reminder** | Calendar | A heads-up 10 minutes out, join link included |
 
-Build your own from the **Workflows** page:
+You'll never open a settings screen for those. Build your own from the **Workflows** page:
 
 - **Describe it in plain English** — GAIA writes the steps for you
 - **Run it on a schedule** — "every weekday at 9am"
