@@ -95,7 +95,7 @@ Build your own from the **Workflows** page:
 
 | | Platform | How |
 | --- | --- | --- |
-| <img src="apps/web/public/images/icons/macos/imessage.webp" width="26" height="26" /> | **iMessage** | [Register your number](https://heygaia.io/settings/linked-accounts), text `/auth`, then just type. Pro plan. |
+| <img src="apps/web/public/images/icons/macos/imessage.webp" width="26" height="26" /> | **iMessage** | [Register your number](https://heygaia.io/settings/linked-accounts), text `/auth`, then just type. [Pro plan](https://heygaia.io/pricing). |
 | <img src="apps/web/public/images/icons/macos/whatsapp.webp" width="26" height="26" /> | **WhatsApp** | [Message GAIA](https://wa.me/12762088737) |
 | <img src="apps/web/public/images/icons/macos/telegram.webp" width="26" height="26" /> | **Telegram** | [@heygaia_bot](https://t.me/heygaia_bot) — DMs, or `@mention` it in groups |
 | <img src="apps/web/public/images/icons/macos/slack.webp" width="26" height="26" /> | **Slack** | [Add to your workspace](https://heygaia.io/slack-bot) |
@@ -161,6 +161,26 @@ gaia start    # bring it back up
 Already cloned the repo? Run `gaia setup` inside it. Contributing? Choose **"Developer"** for hot-reload local dev.
 
 A single modest VM handles a small team. The real cost is model API usage — see the [self-hosting guide](https://docs.heygaia.io/self-hosting/overview) for numbers.
+
+## Pricing
+
+**$1 a day to never do busywork again.**
+
+| Plan | Cost | What you get |
+| --- | --- | --- |
+| **Free** | $0, forever | Every tool and integration, standard models, a daily usage allowance, 50 saved memories |
+| **Pro** | **$30/month** | Much higher limits, unlimited memories, more powerful models, long-running tasks, priority support, early access to new features |
+| **Enterprise** | [Talk to us](https://heygaia.io/contact) | SSO, SCIM and audit logs, custom integrations, self-host or private cloud, a dedicated engineer and an SLA |
+
+- Pay yearly and two months are free
+- **Self-hosting is free** — you cover your own model API costs instead
+- Full details on the [pricing page](https://heygaia.io/pricing)
+
+## Security
+
+GAIA touches your email, your calendar and your files, so we take reports seriously.
+
+Found a vulnerability? Email **security@heygaia.io** — please don't open a public issue. Our full policy is in [SECURITY.md](.github/SECURITY.md).
 
 ## Repository
 
