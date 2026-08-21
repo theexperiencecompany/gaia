@@ -11,8 +11,7 @@ whatever crosses into a stream frame or a tool return is JSON-safe.
 """
 
 from datetime import UTC, datetime, timedelta
-import json
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -28,10 +27,6 @@ _rl_patch = patch(
     return_value={},
 )
 _rl_patch.start()
-
-# Pre-import to break circular dependency chain (same as test_workflow_tool.py):
-# workflow_tool -> workflow_utils -> workflow.subagent_output -> workflow.__init__ -> service
-import app.services.workflow.service  # noqa: F401
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -75,14 +70,6 @@ def _emitted_payloads(writer_mock: MagicMock) -> list[Any]:
     return [call.args[0] for call in writer_mock.call_args_list if call.args]
 
 
-def _assert_json_safe(payload: Any) -> None:
-    """Stream frames are stdlib-json-encoded downstream — datetimes crash there."""
-    json.dumps(payload)
-    assert "datetime.datetime(" not in str(payload), (
-        f"Python datetime repr leaked into stream payload: {payload!r}"
-    )
-
-
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -93,50 +80,70 @@ class TestWorkflowToolSerialization917:
     async def test_get_workflow_emits_json_safe_frames(self) -> None:
         from app.agents.tools.workflow_tool import get_workflow
 
+        doc = _workflow()
+        expected = doc.model_dump(mode="json")
         writer = _writer_mock()
         with (
             patch(f"{MODULE}.get_stream_writer", return_value=writer),
             patch(f"{MODULE}.WorkflowService") as mock_service,
         ):
-            mock_service.get_workflow = AsyncMock(return_value=_workflow())
+            mock_service.get_workflow = AsyncMock(return_value=doc)
 
-            result = await get_workflow.coroutine(config=_cfg(), workflow_id="wf_1")  # type: ignore[attr-defined]
+            result = await cast(Any, get_workflow).coroutine(config=_cfg(), workflow_id="wf_1")
 
-        for payload in _emitted_payloads(writer):
-            _assert_json_safe(payload)
-        _assert_json_safe(result)
+        assert _emitted_payloads(writer) == [
+            {"workflow_data": {"action": "get", "workflow": expected}}
+        ]
+        # The rate-limiting wrapper may append its own top-level keys; the tool's
+        # own contract is success + the JSON-safe payload.
+        assert result["success"] is True
+        assert result["data"] == expected
 
     async def test_pause_workflow_emits_json_safe_frames(self) -> None:
         from app.agents.tools.workflow_tool import pause_workflow
 
+        doc = _workflow()
+        expected = doc.model_dump(mode="json")
         writer = _writer_mock()
         with (
             patch(f"{MODULE}.get_stream_writer", return_value=writer),
             patch(f"{MODULE}.WorkflowService") as mock_service,
         ):
-            mock_service.deactivate_workflow = AsyncMock(return_value=_workflow())
+            mock_service.deactivate_workflow = AsyncMock(return_value=doc)
 
-            result = await pause_workflow.coroutine(config=_cfg(), workflow_id="wf_1")  # type: ignore[attr-defined]
+            result = await cast(Any, pause_workflow).coroutine(config=_cfg(), workflow_id="wf_1")
 
-        assert result["success"] is True
-        for payload in _emitted_payloads(writer):
-            _assert_json_safe(payload)
+        assert result["data"] == {
+            "workflow_id": doc.id,
+            "title": doc.title,
+            "activated": doc.activated,
+        }
+        assert _emitted_payloads(writer) == [
+            {"workflow_data": {"action": "paused", "workflow": expected}}
+        ]
 
     async def test_resume_workflow_emits_json_safe_frames(self) -> None:
         from app.agents.tools.workflow_tool import resume_workflow
 
+        doc = _workflow()
+        expected = doc.model_dump(mode="json")
         writer = _writer_mock()
         with (
             patch(f"{MODULE}.get_stream_writer", return_value=writer),
             patch(f"{MODULE}.WorkflowService") as mock_service,
         ):
-            mock_service.activate_workflow = AsyncMock(return_value=_workflow())
+            mock_service.activate_workflow = AsyncMock(return_value=doc)
 
-            result = await resume_workflow.coroutine(config=_cfg(), workflow_id="wf_1")  # type: ignore[attr-defined]
+            result = await cast(Any, resume_workflow).coroutine(config=_cfg(), workflow_id="wf_1")
 
-        assert result["success"] is True
-        for payload in _emitted_payloads(writer):
-            _assert_json_safe(payload)
+        assert result["data"] == {
+            "workflow_id": doc.id,
+            "title": doc.title,
+            "activated": doc.activated,
+        }
+        assert _emitted_payloads(writer) == [
+            {"workflow_data": {"action": "resumed", "workflow": expected}}
+        ]
 
     async def test_apply_workflow_edit_emits_json_safe_frames(self) -> None:
         from app.services.workflow.subagent_output import FinalizedOutput
@@ -151,16 +158,18 @@ class TestWorkflowToolSerialization917:
             trigger_type="scheduled",
             cron_expression="0 9 * * *",
         )
+        updated = _workflow()
         writer = _writer_mock()
         with patch(
             "app.services.workflow.WorkflowService.update_workflow", new_callable=AsyncMock
         ) as mock_update:
-            mock_update.return_value = _workflow()
+            mock_update.return_value = updated
 
             await apply_workflow_edit(
                 draft=draft, workflow=workflow, user_id=FAKE_USER_ID, writer=writer
             )
 
         mock_update.assert_awaited_once()
-        for payload in _emitted_payloads(writer):
-            _assert_json_safe(payload)
+        assert _emitted_payloads(writer) == [
+            {"workflow_data": {"action": "updated", "workflow": updated.model_dump(mode="json")}}
+        ]

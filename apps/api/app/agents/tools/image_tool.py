@@ -29,7 +29,7 @@ async def generate_image(
         image_result = await api_generate_image(message=prompt, improve_prompt=False)
 
         # Send image data to frontend via writer
-        writer({"image_data": image_result.model_dump()})
+        writer({"image_data": image_result.model_dump(mode="json")})
 
         # Return simple confirmation message with clear instructions to prevent markdown image rendering
         return {

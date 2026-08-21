@@ -98,7 +98,7 @@ async def web_search_tool(
         # Perform the search with 10 results
         search_result = await perform_search(query=query_text, count=10)
 
-        web_results = [item.model_dump() for item in search_result.web]
+        web_results = [item.model_dump(mode="json") for item in search_result.web]
         # news_results = search_results.get("news", [])
         image_results = search_result.images
         video_results: list[str] = []
@@ -143,7 +143,7 @@ async def web_search_tool(
         # Include explicit URL list so the LLM has a ground-truth set and cannot hallucinate
         real_urls = [item.url for item in search_result.web if item.url]
         return {
-            **search_result.model_dump(),
+            **search_result.model_dump(mode="json"),
             "real_urls_from_search": real_urls,
             "integrity_note": (
                 f"Search query: '{query_text}'. "

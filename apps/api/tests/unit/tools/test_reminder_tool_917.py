@@ -12,7 +12,7 @@ family follows.
 
 from datetime import UTC, datetime, timedelta
 import json
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -83,7 +83,7 @@ class TestSearchRemindersTool917:
 
         from app.agents.tools.reminder_tool import search_reminders_tool
 
-        result = await search_reminders_tool.coroutine(config=_cfg(), query="dentist")  # type: ignore[attr-defined]
+        result = await cast(Any, search_reminders_tool).coroutine(config=_cfg(), query="dentist")
 
         assert isinstance(result, list), f"search failed: {result}"
         assert len(result) == 1
@@ -96,7 +96,7 @@ class TestSearchRemindersTool917:
 
         from app.agents.tools.reminder_tool import search_reminders_tool
 
-        result = await search_reminders_tool.coroutine(config=_cfg(), query="dentist")  # type: ignore[attr-defined]
+        result = await cast(Any, search_reminders_tool).coroutine(config=_cfg(), query="dentist")
 
         assert isinstance(result, list), f"search failed: {result}"
         assert isinstance(result[0]["scheduled_at"], str)
@@ -116,7 +116,7 @@ class TestReminderReadToolsJsonSafePayloads917:
 
         from app.agents.tools.reminder_tool import list_user_reminders_tool
 
-        result = await list_user_reminders_tool.coroutine(config=_cfg())  # type: ignore[attr-defined]
+        result = await cast(Any, list_user_reminders_tool).coroutine(config=_cfg())
 
         assert isinstance(result, list)
         assert isinstance(result[0]["scheduled_at"], str)
@@ -128,7 +128,7 @@ class TestReminderReadToolsJsonSafePayloads917:
 
         from app.agents.tools.reminder_tool import get_reminder_tool
 
-        result = await get_reminder_tool.coroutine(config=_cfg(), reminder_id="rem-917")  # type: ignore[attr-defined]
+        result = await cast(Any, get_reminder_tool).coroutine(config=_cfg(), reminder_id="rem-917")
 
         assert result["id"] == "rem-917"
         assert isinstance(result["scheduled_at"], str)
