@@ -2,7 +2,7 @@
 
 # GAIA
 
-**The open-source AI assistant that works while you don't.**
+**The open-source AI assistant that works for you.**
 
 [![Documentation](https://img.shields.io/badge/Documentation-00bbff?style=flat&logo=gitbook&logoColor=white)](https://docs.heygaia.io) [![Discord](https://discord-live-members-count-badge.vercel.app/api/discord-members?guildId=585464664650022914&color=5c6af3&label=Discord)](https://discord.heygaia.io) [![WhatsApp](https://img.shields.io/badge/WhatsApp-25D366?logo=whatsapp&logoColor=fff&style=flat)](https://whatsapp.heygaia.io) [![Status](https://uptime.betterstack.com/status-badges/v3/monitor/1zjmp.svg)](https://uptime.betterstack.com/?utm_source=status_badge) [![License](https://img.shields.io/badge/license-PolyForm%20NC-121212?style=flat)](LICENSE.md)
 
@@ -11,11 +11,13 @@
 
 </div>
 
-Most AI assistants wait for you to open a tab and type.
+Most AI assistants wait for you to open a tab and type. You do the work of driving it.
 
-GAIA doesn't. It connects to the tools you already use, watches for the things you told it to care about, and does the work in the background. When something needs you, it texts you — on iMessage, WhatsApp, Telegram, Slack, or Discord.
+GAIA works the other way round. Connect your Gmail and it starts triaging your inbox every morning, drafting your replies, and turning emails into todos — on its own, from day one. Connect your calendar and it briefs you before every meeting.
 
-It remembers you between conversations. You can talk to it out loud. And you can run the whole thing on your own hardware.
+When something needs you, it texts you. iMessage, WhatsApp, Telegram, Slack, or Discord.
+
+**Sign up and it's already working.** Nothing to configure.
 
 ## Choose a starting point
 
@@ -31,53 +33,80 @@ It remembers you between conversations. You can talk to it out loud. And you can
 
 ### It works while you're away
 
-This is the whole point. Four things drive it:
+Connect a tool and GAIA sets itself up. Gmail gets you inbox triage and reply drafting. Calendar gets you meeting briefings. No setup screen, no template to pick.
 
-- **It watches your tools.** Real webhook subscriptions on Gmail, Calendar, Slack, GitHub, Linear, Notion, Sheets, Docs, Todoist, and Asana. A new email arrives, a meeting gets moved, an issue gets assigned — GAIA knows.
-- **It runs on a schedule.** "Every Monday at 9am, prep a briefing for each meeting on my calendar."
-- **Its todos do themselves.** Tracked todos don't just remind you. They research, draft, and finish the work.
-- **Then it finds you.** Something worth seeing gets sent to you — in the app, by email, or straight to whichever chat app you actually read.
+From there it watches for what matters, runs on a schedule, and finishes work you never chased. Its todos aren't reminders — they research and complete themselves.
+
+Then it comes to you, wherever you read your messages.
 
 ### It remembers you
 
 Tell it once. It sticks.
 
-GAIA keeps facts about you (people, projects, preferences), a running journal of recent days, and longer documents you've built up together. It learns as you talk, so you never have to say "remember this."
+People, projects, preferences, a journal of recent days. It learns as you talk, so you never have to say "remember this."
 
-You own all of it. The **Memory** page shows everything as a list or an interactive graph — edit it, export it, or delete any of it in a click.
+The **Memory** page shows all of it as a list or a graph. Edit, export, or delete any of it in a click.
 
 ### You can just talk to it
 
-Say **"Hey GAIA"** and start talking. The wake word runs entirely on your device, so no audio leaves your machine until you say it.
+Say **"Hey GAIA"** and start talking. The wake word runs on your device — no audio leaves your machine until you say it.
 
-Voice calls are real-time and interruptible, with natural turn-taking and background noise filtered out.
+Calls are real-time and interruptible, background noise filtered out.
 
 ### Everything lives in one place
 
-GAIA isn't only a chat box. Signing in gets you a real app: your **inbox**, **calendar**, **todos**, and **workflows**, plus a **dashboard** tying them together.
+Your **inbox**, **calendar**, **todos** and **workflows**, with a **dashboard** tying them together.
 
-Anything GAIA does for you in the background shows up in **notifications**, where you approve, edit, or dismiss it. Useful replies can be **pinned** so they're easy to find later.
-
-Stop opening five tabs to run your day.
+Whatever GAIA did while you were gone is waiting in **notifications** — approve it, edit it, or dismiss it.
 
 ### It's genuinely yours
 
-Self-host the whole stack: your own API keys, your own choice of models, no usage caps, and your data on your own disks.
+Self-host the whole stack: your own API keys, your own models, no usage caps, your data on your disks.
 
-The Docker setup brings up everything, monitoring included — there's a Grafana dashboard so you can see exactly what your assistant is doing.
+Monitoring comes with it, so you can see exactly what your assistant is doing.
 
 ## Things people actually ask it
 
 Every one of these works today.
 
-- *"Summarize my 47 unread emails and draft replies for the 3 that need one."*
-- *"Watch my inbox for anything from [investor] and ping me on Telegram within 60 seconds."*
-- *"When my 2pm gets cancelled, rewrite my todo list to use the freed time."*
-- *"Post a Friday digest of my GitHub, Linear, and Slack activity to #eng-updates."*
-- *"Before my 1:1 with Alex, brief me on everything we shipped this sprint."*
-- *"Turn this transcript into action items, assign owners, and add them to Linear."*
-- *"Research these 10 companies into a table with pricing, team size, and funding."*
-- *"Clean up this CSV, chart the outliers, and send me the deck."*
+> *"Summarize my 47 unread emails and draft replies for the 3 that need one."*
+
+Reads every thread end to end, ranks by what matters, writes drafts in your voice.
+
+> *"Watch my inbox for anything from our investor and ping me on Telegram."*
+
+Runs for weeks without you thinking about it. You get a text within the minute.
+
+> *"When my 2pm gets cancelled, rewrite my todo list to use the freed time."*
+
+Notices the change on its own and replans your afternoon around what's still pending.
+
+> *"Post a Friday digest of my GitHub, Linear and Slack activity to #eng-updates."*
+
+Merged PRs, closed issues, channel highlights — gathered, written up, posted without you.
+
+> *"Before my 1:1 with Alex, brief me on everything we shipped this sprint."*
+
+Pulls the PRs, issues and threads into one prep doc, waiting before the meeting starts.
+
+> *"Clean up this CSV, chart the outliers, and send me the deck."*
+
+Writes real Python, runs it in a real sandbox, hands back a real `.pptx`.
+
+## Workflows: the part that runs itself
+
+A workflow is a job GAIA does without you. Some are already running the moment you connect a tool.
+
+| Workflow | Turns on with | What it does |
+| --- | --- | --- |
+| **Inbox Triage** | Gmail | Every morning at 8, sorts the last day's mail, pulls out action items, creates the todos, and hands you one briefing |
+| **Auto-Draft Replies** | Gmail | Spots mail that needs an answer and writes the reply. You approve before anything sends |
+| **Meeting Briefing** | Calendar | Researches who you're meeting and what it's about, before you walk in |
+| **Meeting Reminder** | Calendar | A heads-up 10 minutes out, join link included |
+
+Build your own from the **Workflows** page — describe it in plain English and GAIA writes the steps. Trigger on a schedule ("every weekday at 9am") or on an event: new email, calendar change, Slack message, GitHub commit, Linear issue, Notion edit, new row in a sheet.
+
+Chain steps across tools — *fetch, summarise, post to Slack* — and it runs in the background for as long as you want it to.
 
 ## Use GAIA from anywhere
 
@@ -118,19 +147,21 @@ gaia bridge up             # connect
 
 ## Getting started
 
-> **Just want to use it?** Use the cloud. **Care where your data lives, or want your own keys and no caps?** Self-host. The app is identical either way.
-
-### Cloud
+### Cloud — recommended
 
 <a href="https://heygaia.io"><img src="apps/web/public/images/screenshots/website_tab.png" alt="GAIA web app" width="500" /></a>
 
-Go to **[heygaia.io](https://heygaia.io)**. Free to start, nothing to install.
+Go to **[heygaia.io](https://heygaia.io)** and start. Free, nothing to install, no infrastructure to babysit.
+
+This is the way to use GAIA. You get the same app, always up to date, without running six databases yourself.
 
 ### Self-host
 
 <a href="https://heygaia.io/install"><img src="apps/web/public/images/screenshots/cli.png" alt="GAIA CLI" width="500" /></a>
 
-One command sets up the whole stack. You'll need [Docker](https://docs.docker.com/get-docker/) (Engine 20.10+, Compose v2+) and [Node.js](https://nodejs.org) 20+.
+Want it on your own machines instead? That works too — you get your own keys, your own models, no caps, and your data on your disks. It's real infrastructure though, so expect to maintain it.
+
+You'll need [Docker](https://docs.docker.com/get-docker/) (Engine 20.10+, Compose v2+) and [Node.js](https://nodejs.org) 20+.
 
 ```bash
 npm install -g @heygaia/cli
@@ -204,20 +235,6 @@ Every service and file path is mapped in **[ARCHITECTURE.md](./ARCHITECTURE.md)*
 We build in the open. **[View the roadmap](https://gaia.featurebase.app/roadmap)** · **[Request a feature](https://gaia.featurebase.app)**
 
 ## FAQ
-
-<details>
-<summary><b>How does the proactive part actually work?</b></summary>
-
-Open the **Workflows** page and build one. There are two kinds of triggers:
-
-- **Scheduled** — cron-style and timezone-aware ("every weekday at 9am")
-- **Event-driven** — real webhook subscriptions on Gmail, Google Calendar, Sheets, Docs, Slack, GitHub, Linear, Notion, Todoist, and Asana
-
-Chain steps across your tools ("fetch → summarise → post to Slack") and GAIA runs the whole thing in the background with no prompt from you.
-
-When a run produces something you should see, it lands in your notifications — where you can approve, edit, or dismiss it — and can be pushed to your chat app too.
-
-</details>
 
 <details>
 <summary><b>What does GAIA store about me, and can I delete it?</b></summary>
