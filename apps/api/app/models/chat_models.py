@@ -157,6 +157,22 @@ class ConversationSource(str, Enum):
         except ValueError:
             return None
 
+    @property
+    def display_name(self) -> str:
+        """How this channel is spelled in user-facing copy and in prompts.
+
+        ``.value.capitalize()`` is wrong for half of these ("Whatsapp",
+        "Imessage"), so the ones with real casing are named explicitly.
+        """
+        return _SOURCE_DISPLAY_NAMES.get(self, self.value.capitalize())
+
+
+#: Only the channels whose brand casing differs from ``value.capitalize()``.
+_SOURCE_DISPLAY_NAMES: dict[ConversationSource, str] = {
+    ConversationSource.WHATSAPP: "WhatsApp",
+    ConversationSource.IMESSAGE: "iMessage",
+}
+
 
 class SourceCategory(str, Enum):
     """Generalized origin of a graph invocation.
