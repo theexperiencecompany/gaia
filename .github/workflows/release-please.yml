@@ -49,12 +49,12 @@ jobs:
       desktop_tag_name: ${{ steps.release.outputs['apps/desktop--tag_name'] }}
     steps:
       # Checkout so release-please can inspect manifest + package versions.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Main release orchestration step.
       - name: Run Release Please
         id: release
-        uses: googleapis/release-please-action@v5
+        uses: googleapis/release-please-action@0dfd8538845b8e92600d271a895a5372865d4062 # v5
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: config/release-please-config.json
@@ -90,7 +90,7 @@ jobs:
     steps:
       # Dispatch dedicated publish workflow with resolved tag/version inputs.
       - name: Trigger CLI Publish Workflow
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.0.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |

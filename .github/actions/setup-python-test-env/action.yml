@@ -64,7 +64,7 @@ runs:
     # happens once per key rather than on every run.
     - name: Restore embedding models
       id: model-cache
-      uses: actions/cache/restore@v6
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: /tmp/fastembed_cache
         key: fastembed-${{ runner.os }}-${{ hashFiles('apps/api/app/constants/memory.py', 'uv.lock') }}
@@ -102,7 +102,7 @@ runs:
     # download is never what gets cached for every later run.
     - name: Save embedding models
       if: steps.model-cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v6
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: /tmp/fastembed_cache
         key: fastembed-${{ runner.os }}-${{ hashFiles('apps/api/app/constants/memory.py', 'uv.lock') }}
