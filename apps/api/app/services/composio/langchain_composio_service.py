@@ -179,7 +179,7 @@ class LangchainProvider(
 
     runtime = "langchain"
 
-    def __init__(self, **kwargs: t.Any) -> None:
+    def __init__(self, **kwargs: t.Any) -> None:  # noqa: ANN401 -- forwards LangChain's arbitrary tool-init bag upstream
         super().__init__(**kwargs)
         # The wrapped tool callables are sync and run in an executor thread, so
         # they cannot await the async expiry transition. Hold the loop they were
