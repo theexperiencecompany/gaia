@@ -156,7 +156,8 @@ def mypy_entries(lines: list[str]) -> list[Entry]:
         "no_implicit_reexport",
         "extra_checks",
     }
-    weaken_true = {"ignore_errors", "ignore_missing_imports"}
+    weaken_true = {"ignore_errors", "ignore_missing_imports", "warn_unused_ignores"}
+    # any non-empty disable_error_code list weakens checking
 
     s, e = _section_span(lines, "[tool.mypy]")
     out: list[Entry] = []
@@ -191,6 +192,8 @@ def mypy_entries(lines: list[str]) -> list[Entry]:
                         weakened.add(key)
                     if key in weaken_true and val == "true":
                         weakened.add(key)
+                    if key == "disable_error_code" and val not in ("[]", '""'):
+                        weakened.add("disable_error_code")
             j += 1
         if weakened:
             label = ", ".join(modules[:3])

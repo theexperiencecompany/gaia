@@ -114,10 +114,16 @@ jobs:
             BIOME_TARGETS="$FILES"
           fi
           if [ -n "$BIOME_TARGETS" ]; then
-            if pnpm exec biome check $BIOME_TARGETS 2>&1 | grep -q "suppressions/unused"; then
-              echo "::error::dead biome-ignore found — delete it or fix what it suppressed"
-              exit 1
-            fi
+            # Capture first, grep second: `biome | grep -q` lets grep close the
+            # pipe early, SIGPIPE-kills biome under pipefail, and the false
+            # exit code makes the gate report a pass. No pipes.
+            BIOME_OUT=$(pnpm exec biome check $BIOME_TARGETS 2>&1 || true)
+            echo "$BIOME_OUT"
+            case "$BIOME_OUT" in
+              *"suppressions/unused"*)
+                echo "::error::dead biome-ignore found — delete it or fix what it suppressed"
+                exit 1 ;;
+            esac
           fi
           echo "Biome: OK (0 errors; dead-suppression gate passed)"
 

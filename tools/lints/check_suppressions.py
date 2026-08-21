@@ -69,6 +69,7 @@ _TRACKED_GLOBS = ("*.py", "*.ts", "*.tsx", "*.js", "*.jsx", "*.mjs", "*.cjs")
 _NOQA_RE = re.compile(r"#\s*noqa\b")
 _TYPE_IGNORE_RE = re.compile(r"#\s*type:\s*ignore\b")
 _BIOME_IGNORE_RE = re.compile(r"//\s*biome-ignore\b")
+_BIOME_BLOCK_RE = re.compile(r"/\*?\s*biome-ignore(?:-[a-z]+)?\s+\S+:?\s*([^*]|\*(?!/))*")
 
 #: Stripped off the front of a comment to leave the reason prose behind.
 _DIRECTIVE_PREFIXES = (
@@ -244,8 +245,13 @@ def _scan_ts_comments(path: Path) -> list[Hit]:
     for lineno, line in enumerate(text.splitlines(), start=1):
         blanked = _QUOTED_SPAN_RE.sub(lambda m: " " * len(m.group()), line)
         comment, in_template = _split_comment(blanked, in_template)
-        if comment and _BIOME_IGNORE_RE.search(comment):
-            hits.append(Hit("biome-ignore", lineno, comment.strip()))
+        candidate = comment or blanked  # block form: /* biome-ignore */ or JSX {/* biome-ignore */}
+        if candidate:
+            m2 = _BIOME_BLOCK_RE.search(candidate)
+            if m2 and not comment:
+                candidate = "/" + candidate.lstrip("/{ ")  # normalize to // form for reason parsing
+            if m2:
+                hits.append(Hit("biome-ignore", lineno, candidate.strip()))
     return hits
 
 
