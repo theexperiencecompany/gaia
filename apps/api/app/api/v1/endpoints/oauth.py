@@ -22,6 +22,7 @@ from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.oauth_models import MobileLoginUrlResponse, OAuthClientMetadataResponse
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.composio.composio_service import get_composio_service
 from app.services.oauth.oauth_service import handle_oauth_connection, store_user_info
 from app.services.oauth.oauth_state_service import (
@@ -606,6 +607,19 @@ async def composio_callback(
             actor=str(user_id),
             resource=integration_config.id,
             provider=integration_config.provider,
+        )
+        # capture_event, not capture_context_event: Composio redirects the
+        # browser here without a WorkOS session, so the PostHog context
+        # middleware has nobody to identify. The user id is the one the state
+        # token was validated against — pass it explicitly or the connection
+        # event lands on an anonymous profile.
+        capture_event(
+            str(user_id),
+            AnalyticsEvents.INTEGRATION_CONNECTED,
+            {
+                "integration_id": integration_config.id,
+                "provider": integration_config.provider,
+            },
         )
 
         # Successful connection - redirect to frontend with success indicator

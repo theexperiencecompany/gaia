@@ -1,5 +1,7 @@
 """Shared test utilities for GAIA API tests."""
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 import math
 import os
 import re
@@ -15,6 +17,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
 from app.config.rate_limits import RateLimitConfig
+from shared.py.wide_events import log, log_context
 
 
 def effective_limit(config: RateLimitConfig, period: str) -> float:
@@ -120,6 +123,35 @@ def create_fake_llm_with_tool_calls(
         else:
             messages.append(AIMessage(content=item))
     return BindableToolsFakeModel(responses=messages)
+
+
+class PassthroughFakeLLM:
+    """Base for hand-rolled fake LLMs that ``create_agent`` drives directly.
+
+    ``create_agent`` reshapes the model before every call — ``with_config``,
+    ``bind_tools``, ``bind`` (the OpenRouter sticky-routing key), and
+    ``with_retry`` via ``with_llm_retry`` — and each returns a new runnable in
+    production. A fake only needs them to hand itself back, so they live here
+    once: subclasses write ``ainvoke`` and nothing else.
+
+    Duck-typed rather than a ``BaseChatModel`` subclass on purpose — these
+    fakes answer from the messages they are shown, which is what makes them
+    replay-safe, and ``FakeMessagesListChatModel`` answers from a fixed list
+    instead. The shared base is what stops the next reshaping call production
+    adds from breaking every one of them separately.
+    """
+
+    def with_config(self, **_kwargs: Any) -> "PassthroughFakeLLM":
+        return self
+
+    def bind_tools(self, _tools: Any, **_kwargs: Any) -> "PassthroughFakeLLM":
+        return self
+
+    def bind(self, **_kwargs: Any) -> "PassthroughFakeLLM":
+        return self
+
+    def with_retry(self, **_kwargs: Any) -> "PassthroughFakeLLM":
+        return self
 
 
 def assert_tool_called(messages: list[BaseMessage], tool_name: str) -> None:
@@ -265,3 +297,22 @@ def assert_num_db_calls(expected: int, engine: Any, *, warmup: int = 0) -> Asser
     statements against ``engine``. Attach to a real engine at the repository
     layer — N+1 and accidental-query regressions die here."""
     return AssertNumDbCalls(expected, engine, warmup=warmup)
+
+
+@asynccontextmanager
+async def captured_wide_event(operation: str = "test") -> AsyncIterator[dict[str, Any]]:
+    """Run a block inside a real wide-event boundary, exposing its live fields.
+
+    ``log.warning``/``log.error`` append to the event's ``warnings``/``errors``
+    ONLY inside a boundary — outside one every write is discarded — so this is
+    what a test needs to prove a swallowed failure is actually observable
+    rather than silent. That claim is the entire justification for swallowing,
+    and without a boundary it cannot be asserted at all.
+
+        async with captured_wide_event() as event:
+            await build_core_memory_block(ctx)
+        (warning,) = event["warnings"]
+        assert warning["error_type"] == "RuntimeError"
+    """
+    async with log_context(operation):
+        yield log.get()

@@ -48,7 +48,10 @@ repos:
       - id: gaia-ignore-whys
         name: Ruff/mypy escape hatches must carry a why-comment
         language: system
-        entry: python3 tools/lints/check_ignore_whys.py
+        # The api sub-config runs with cwd=apps/api, but the script lives at
+        # the repo root — neither the relative path nor the system python3
+        # works here.
+        entry: ../../.venv/bin/python ../../tools/lints/check_ignore_whys.py
         files: ^(pyproject\.toml|tools/lints/(check_ignore_whys\.py|test_check_ignore_whys\.py))$
         pass_filenames: false
         priority: 0

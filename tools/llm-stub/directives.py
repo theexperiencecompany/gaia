@@ -51,6 +51,10 @@ from typing import Any
 
 DEFAULT_REPLY = "ok (llm-stub)"
 CALL_EXECUTOR_TOOL = "call_executor"
+# call_executor requires acceptance_criteria, so a scripted hand-off has to send
+# something. Exported rather than inlined so the stub's tests pin the real value
+# instead of a copy that can drift.
+SCRIPTED_CRITERIA = ["scripted directives executed"]
 # The bigtool executor binds tools at inference: when a scripted tool is not yet
 # bound, the stub first emits retrieve_tools(exact_tool_names=[name]) so the
 # graph binds it, then emits the tool itself on the next invocation.
@@ -262,7 +266,11 @@ def resolve_response(
         nxt = tool_dirs[di]
         if nxt.name not in available_tools:
             if CALL_EXECUTOR_TOOL in available_tools:
-                return ToolCallResponse(name=CALL_EXECUTOR_TOOL, args={"task": user_text})
+                # acceptance_criteria became required with the structured handoff.
+                return ToolCallResponse(
+                    name=CALL_EXECUTOR_TOOL,
+                    args={"task": user_text, "acceptance_criteria": SCRIPTED_CRITERIA},
+                )
             if RETRIEVE_TOOLS_TOOL in available_tools:
                 return ToolCallResponse(
                     name=RETRIEVE_TOOLS_TOOL,

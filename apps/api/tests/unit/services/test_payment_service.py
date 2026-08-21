@@ -268,6 +268,7 @@ def mock_webhook_subscription_repository():
         "app.services.payments.payment_webhook_service.subscription_repository"
     ) as mock_repo:
         mock_repo.get_by_dodo_id = AsyncMock(return_value=None)
+        mock_repo.get_user_id_by_dodo_id = AsyncMock(return_value=FAKE_USER_ID)
         mock_repo.create = AsyncMock()
         mock_repo.apply_update_by_dodo_id = AsyncMock(return_value=True)
         yield mock_repo
@@ -1261,23 +1262,24 @@ class TestHandlePaymentSucceeded:
 
         mock_track_payment.assert_called_once()
         call_kwargs = mock_track_payment.call_args[1]
-        assert call_kwargs["user_id"] == FAKE_EMAIL
+        assert call_kwargs["user_id"] == FAKE_USER_ID
         assert call_kwargs["payment_id"] == "pay_001"
 
-    async def test_no_analytics_when_user_email_not_found(
+    async def test_analytics_uses_metadata_user_id_without_db_lookup(
         self,
         webhook_service,
         mock_processed_webhook_repository,
         mock_webhook_users_collection,
         mock_track_payment,
     ):
-        _set_user(mock_webhook_users_collection, None)
-        payload = {**PAYMENT_DATA_PAYLOAD, "metadata": {"user_id": "nonexistent"}}
+        """The metadata user id is the PostHog distinct id — no user lookup."""
+        payload = {**PAYMENT_DATA_PAYLOAD, "metadata": {"user_id": "unresolved-user-id"}}
         event_data = _make_webhook_event("payment.succeeded", payload)
 
         await webhook_service.process_webhook(event_data, "wh_pay_003")
 
-        mock_track_payment.assert_not_called()
+        mock_track_payment.assert_called_once()
+        assert mock_track_payment.call_args[1]["user_id"] == "unresolved-user-id"
 
     async def test_no_analytics_when_no_user_id_in_metadata(
         self,
@@ -1485,7 +1487,7 @@ class TestHandleSubscriptionActive:
 
         mock_track_subscription.assert_called_once()
         call_kwargs = mock_track_subscription.call_args[1]
-        assert call_kwargs["user_id"] == FAKE_EMAIL
+        assert call_kwargs["user_id"] == FAKE_USER_ID
         assert call_kwargs["event_type"] == "subscription:activated"
 
     async def test_insert_failure_raises(
@@ -1588,9 +1590,17 @@ class TestHandleSubscriptionRenewed:
 
         await webhook_service.process_webhook(event_data, "wh_renew_003")
 
+        # WHICH subscription was resolved to a user. Unasserted, the lookup
+        # argument could go null and the renewal would be attributed to
+        # whoever a None lookup happens to return — or to nobody.
+        mock_webhook_subscription_repository.get_user_id_by_dodo_id.assert_awaited_once_with(
+            "sub_xyz789"
+        )
         mock_track_subscription.assert_called_once()
         call_kwargs = mock_track_subscription.call_args[1]
         assert call_kwargs["event_type"] == "subscription:renewed"
+        assert call_kwargs["user_id"] == FAKE_USER_ID
+        assert call_kwargs["subscription_id"] == "sub_xyz789"
 
 
 class TestHandleSubscriptionCancelled:
@@ -1657,9 +1667,17 @@ class TestHandleSubscriptionCancelled:
         event_data = _make_webhook_event("subscription.cancelled", SUBSCRIPTION_DATA_PAYLOAD)
         await webhook_service.process_webhook(event_data, "wh_cancel_sub_004")
 
+        mock_webhook_subscription_repository.get_user_id_by_dodo_id.assert_awaited_once_with(
+            "sub_xyz789"
+        )
         mock_track_subscription.assert_called_once()
         call_kwargs = mock_track_subscription.call_args[1]
         assert call_kwargs["event_type"] == "subscription:cancelled"
+        assert call_kwargs["user_id"] == FAKE_USER_ID
+        assert call_kwargs["properties"] == {
+            "product_id": "prod_abc123",
+            "billing_interval": "month",
+        }
 
     async def test_scheduled_cancel_keeps_status_and_sets_flag(
         self,
@@ -1739,9 +1757,13 @@ class TestHandleSubscriptionExpired:
         event_data = _make_webhook_event("subscription.expired", SUBSCRIPTION_DATA_PAYLOAD)
         await webhook_service.process_webhook(event_data, "wh_expire_002")
 
+        mock_webhook_subscription_repository.get_user_id_by_dodo_id.assert_awaited_once_with(
+            "sub_xyz789"
+        )
         mock_track_subscription.assert_called_once()
         call_kwargs = mock_track_subscription.call_args[1]
         assert call_kwargs["event_type"] == "subscription:expired"
+        assert call_kwargs["user_id"] == FAKE_USER_ID
 
 
 class TestHandleSubscriptionFailed:
@@ -1861,34 +1883,20 @@ class TestSendWelcomeEmail:
         await webhook_service._send_welcome_email(FAKE_USER_ID)
 
 
-class TestGetUserEmailFromMetadata:
-    """Tests for _get_user_email_from_metadata."""
+class TestGetUserIdFromMetadata:
+    """Tests for _get_user_id_from_metadata."""
 
-    async def test_returns_email_when_user_found(
-        self,
-        webhook_service,
-        mock_webhook_users_collection,
-    ):
-        email = await webhook_service._get_user_email_from_metadata({"user_id": FAKE_USER_ID})
-        assert email == FAKE_EMAIL
+    async def test_returns_user_id_when_present(self, webhook_service):
+        user_id = await webhook_service._get_user_id_from_metadata({"user_id": FAKE_USER_ID})
+        assert user_id == FAKE_USER_ID
 
-    async def test_returns_none_when_no_user_id(
-        self,
-        webhook_service,
-        mock_webhook_users_collection,
-    ):
-        email = await webhook_service._get_user_email_from_metadata({})
-        assert email is None
+    async def test_returns_none_when_no_user_id(self, webhook_service):
+        user_id = await webhook_service._get_user_id_from_metadata({})
+        assert user_id is None
 
-    async def test_returns_none_when_user_not_found(
-        self,
-        webhook_service,
-        mock_webhook_users_collection,
-    ):
-        _set_user(mock_webhook_users_collection, None)
-
-        email = await webhook_service._get_user_email_from_metadata({"user_id": FAKE_USER_ID})
-        assert email is None
+    async def test_stringifies_non_string_user_id(self, webhook_service):
+        user_id = await webhook_service._get_user_id_from_metadata({"user_id": 12345})
+        assert user_id == "12345"
 
 
 class TestIsWebhookProcessed:

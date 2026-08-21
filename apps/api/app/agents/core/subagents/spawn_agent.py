@@ -16,7 +16,6 @@ module that composes middleware stacks is also the one that constructs
 
 import asyncio
 from collections.abc import Callable, Mapping, Sequence
-from typing import cast
 
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.tools import BaseTool
@@ -25,9 +24,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph.state import CompiledStateGraph
 
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
-from app.agents.core.nodes import manage_system_prompts_node
-from app.agents.core.nodes.adapt_media import adapt_media_node
-from app.agents.core.nodes.filter_messages import filter_messages_node
+from app.agents.core.nodes.pre_model_hooks import worker_pre_model_hooks
 from app.agents.tools.core.store import get_tools_store
 from app.agents.tools.core.tool_runtime_config import (
     ToolRuntimeConfig,
@@ -38,7 +35,6 @@ from app.constants.general import FINISH_TASK_NAME, SPAWN_AGENT_NAME
 from app.constants.log_tags import LogTag
 from app.models.agent_models import AnyAgentMiddleware
 from app.override.langgraph_bigtool.create_agent import create_agent
-from app.override.langgraph_bigtool.hooks import HookType
 from shared.py.wide_events import log
 
 #: What ``_cache_key`` produces: (model identity, tool space, initial tool names,
@@ -121,11 +117,7 @@ async def _build_spawn_graph(
         # No todo hook and no memory end-hook: a spawn is a one-shot scratch
         # task, not an agent that owns a task list or learns per-integration
         # facts about the user.
-        "pre_model_hooks": [
-            cast(HookType, filter_messages_node),
-            cast(HookType, adapt_media_node),
-            manage_system_prompts_node,
-        ],
+        "pre_model_hooks": worker_pre_model_hooks(),
     }
     kwargs.update(
         build_create_agent_tool_kwargs(

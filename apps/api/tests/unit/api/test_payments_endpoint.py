@@ -16,6 +16,7 @@ from app.models.payment_models import (
     CreateSubscriptionResponse,
     PaymentVerificationResponse,
 )
+from app.services.analytics_service import AnalyticsEvents
 
 PLANS_URL = "/api/v1/payments/plans"
 SUBSCRIPTIONS_URL = "/api/v1/payments/subscriptions"
@@ -154,12 +155,16 @@ class TestCreateSubscription:
                 status="payment_link_created",
             ),
         ) as mock_create:
-            await client.post(
-                SUBSCRIPTIONS_URL,
-                json={"product_id": "prod_abc"},
-            )
+            with patch("app.api.v1.endpoints.payments.capture_context_event") as mock_capture:
+                await client.post(
+                    SUBSCRIPTIONS_URL,
+                    json={"product_id": "prod_abc"},
+                )
 
         mock_create.assert_awaited_once_with("507f1f77bcf86cd799439011", "prod_abc", 1, None)
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.PAYMENT_CHECKOUT_STARTED, {"quantity": 1}
+        )
 
     async def test_create_subscription_forwards_discount_code(self, client: AsyncClient):
         """A code offered in the app (the founder's letter) reaches the checkout session."""
@@ -225,9 +230,11 @@ class TestCancelSubscription:
             new_callable=AsyncMock,
             return_value=mock_status,
         ) as mock_cancel:
-            response = await client.post(SUBSCRIPTIONS_CANCEL_URL)
+            with patch("app.api.v1.endpoints.payments.capture_context_event") as mock_capture:
+                response = await client.post(SUBSCRIPTIONS_CANCEL_URL)
 
         assert response.status_code == 200
+        mock_capture.assert_called_once_with(AnalyticsEvents.SUBSCRIPTION_CANCELLATION_REQUESTED)
         mock_cancel.assert_awaited_once_with("507f1f77bcf86cd799439011")
 
     async def test_cancel_subscription_service_error_returns_500(self, client: AsyncClient):

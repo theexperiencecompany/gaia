@@ -12,7 +12,7 @@
  */
 
 import type { BotCommand, CommandExecuteParams } from "../types";
-import { parseTextArgs, truncateResponse } from "../utils";
+import { parseTextArgs, sendChunked } from "../utils";
 import {
   dispatchTodoSubcommand,
   handleTodoCreate,
@@ -115,8 +115,7 @@ export const todoCommand: BotCommand = {
         priority,
         description,
       });
-      const truncated = truncateResponse(response, target.platform);
-      await target.sendEphemeral(truncated);
+      await sendChunked(target.sendEphemeral, response, target.platform);
       return;
     }
 
@@ -125,8 +124,7 @@ export const todoCommand: BotCommand = {
       const completed =
         typeof args.completed === "boolean" ? args.completed : undefined;
       const response = await handleTodoList(gaia, ctx, completed);
-      const truncated = truncateResponse(response, target.platform);
-      await target.sendEphemeral(truncated);
+      await sendChunked(target.sendEphemeral, response, target.platform);
       return;
     }
 
@@ -141,8 +139,7 @@ export const todoCommand: BotCommand = {
         subcommand,
         subArgs,
       );
-      const truncated = truncateResponse(response, target.platform);
-      await target.sendEphemeral(truncated);
+      await sendChunked(target.sendEphemeral, response, target.platform);
       return;
     }
 
@@ -154,7 +151,6 @@ export const todoCommand: BotCommand = {
       subcommand,
       subArgs,
     );
-    const truncated = truncateResponse(response, target.platform);
-    await target.sendEphemeral(truncated);
+    await sendChunked(target.sendEphemeral, response, target.platform);
   },
 };

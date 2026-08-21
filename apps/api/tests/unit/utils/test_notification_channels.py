@@ -12,6 +12,7 @@ import pytest
 
 from app.constants.notifications import (
     CHANNEL_TYPE_DISCORD,
+    CHANNEL_TYPE_IMESSAGE,
     CHANNEL_TYPE_INAPP,
     CHANNEL_TYPE_SLACK,
     CHANNEL_TYPE_TELEGRAM,
@@ -33,6 +34,7 @@ from app.models.notification.notification_models import (
 )
 from app.services.outbound_delivery import OutboundResult
 from app.utils.notification.channels.discord import DiscordChannelAdapter
+from app.utils.notification.channels.imessage import ImessageChannelAdapter
 from app.utils.notification.channels.inapp import InAppChannelAdapter
 from app.utils.notification.channels.slack import SlackChannelAdapter
 from app.utils.notification.channels.telegram import TelegramChannelAdapter
@@ -247,6 +249,7 @@ class TestExternalAdapterIdentity:
             (SlackChannelAdapter, CHANNEL_TYPE_SLACK, ConversationSource.SLACK),
             (TelegramChannelAdapter, CHANNEL_TYPE_TELEGRAM, ConversationSource.TELEGRAM),
             (DiscordChannelAdapter, CHANNEL_TYPE_DISCORD, ConversationSource.DISCORD),
+            (ImessageChannelAdapter, CHANNEL_TYPE_IMESSAGE, ConversationSource.IMESSAGE),
         ],
     )
     def test_channel_type_and_platform(self, adapter_cls, channel_type, platform) -> None:
@@ -287,12 +290,13 @@ class TestExternalTransformBrutalEdges:
             SlackChannelAdapter,
             TelegramChannelAdapter,
             DiscordChannelAdapter,
+            ImessageChannelAdapter,
         ],
     )
     async def test_transform_emits_commonmark_for_every_platform(self, adapter_cls) -> None:
         # The refactor's core promise: Python emits platform-AGNOSTIC CommonMark.
         # If convert_to_whatsapp_markdown (etc.) is re-added here, WhatsApp's
-        # title becomes *Reminder* — this catches that regression on all four.
+        # title becomes *Reminder* — this catches that regression on all five.
         request = _make_request(title="Reminder", body="Take a break")
         with patch("app.utils.notification.channels.external.settings") as s:
             s.FRONTEND_URL = "https://app.example.com"

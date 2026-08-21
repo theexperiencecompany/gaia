@@ -88,6 +88,12 @@ export interface ExtractedMedia {
   filename?: string;
   /** Pre-resolved CDN URL when Kapso has already mirrored the media. */
   prefetchedUrl?: string;
+  /**
+   * Byte size Kapso reports for the media, when the subscription includes the
+   * `kapso(media_data)` enrichment. Meta's raw webhook carries no size, so this
+   * is absent on a bare passthrough payload.
+   */
+  sizeBytes?: number;
 }
 
 // Batched variant: Kapso wraps multiple events in a data array.

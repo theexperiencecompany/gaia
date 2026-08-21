@@ -7,7 +7,7 @@ from fastapi import HTTPException
 import pytest
 
 from app.models.models_models import ModelConfig, ModelProvider, PlanType
-from app.services.model_service import get_default_model, get_model_by_id
+from app.services.model_service import get_model_by_id
 
 _MOD = "app.services.model_service"
 
@@ -69,27 +69,3 @@ class TestGetModelById:
 
         assert exc_info.value.status_code == 500
         assert exc_info.value.detail == "Failed to fetch model"
-
-
-class TestGetDefaultModel:
-    async def test_returns_default_model(self, mock_repo, mock_redis_cache):
-        model = _model_config()
-        mock_repo.get_default.return_value = model
-
-        result = await get_default_model()
-
-        assert result is model
-
-    async def test_returns_none_when_no_default(self, mock_repo, mock_redis_cache):
-        mock_repo.get_default.return_value = None
-
-        result = await get_default_model()
-
-        assert result is None
-
-    async def test_repository_failure_degrades_to_none(self, mock_repo, mock_redis_cache):
-        mock_repo.get_default.side_effect = RuntimeError("mongo down")
-
-        result = await get_default_model()
-
-        assert result is None

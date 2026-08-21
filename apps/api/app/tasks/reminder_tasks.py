@@ -7,6 +7,7 @@ from app.models.reminder_models import (
     ReminderModel,
     StaticReminderPayload,
 )
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.notification_service import notification_service
 from app.utils.notification.sources import AIProactiveNotificationSource
 from shared.py.wide_events import log
@@ -63,6 +64,11 @@ async def execute_reminder_by_agent(
             raise ValueError(f"Unknown agent type: {reminder.agent}")
 
         log.info("Reminder executed successfully", reminder_id=reminder.id, agent=reminder.agent)
+        capture_event(
+            reminder.user_id,
+            AnalyticsEvents.REMINDER_COMPLETED,
+            {"reminder_id": reminder.id, "agent": reminder.agent.value},
+        )
     except Exception as e:
         log.error(
             "Failed to execute reminder",

@@ -1,5 +1,6 @@
 """Tests for tiered rate limiter middleware."""
 
+from collections.abc import Coroutine
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -14,6 +15,7 @@ from app.config.rate_limits import FeatureInfo, RateLimitPeriod
 from app.decorators import tiered_rate_limit
 from app.models.payment_models import PlanType
 from app.models.usage_models import FeatureUsage, UsagePeriod
+from app.services.limit_upsell import LimitHitOrigin
 
 
 def _noop_create_task(coro, **kwargs):
@@ -571,3 +573,61 @@ class TestTieredRateLimitDecorator:
         await my_endpoint(user={"user_id": "u1"})
         call_args = mock_limiter.check_and_increment.call_args
         assert call_args.kwargs["user_plan"] == PlanType.FREE
+
+
+# ---------------------------------------------------------------------------
+# Upsell side effects on exceed
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestUpsellOnExceed:
+    """The exceed seam must reach the real upsell with the caller's identity."""
+
+    def setup_method(self) -> None:
+        self.limiter = TieredRateLimiter()
+        self.limiter.redis = AsyncMock()
+
+    async def _exceed(self, **kwargs: LimitHitOrigin) -> tuple[MagicMock, AsyncMock, AsyncMock]:
+        """Trip the plan gate for a FREE user, run the spawned upsell inline."""
+        from app.config.rate_limits import RateLimitConfig
+
+        spawned: list[Coroutine[object, object, None]] = []
+        with (
+            patch(
+                "app.api.v1.middleware.tiered_rate_limiter.get_limits_for_plan",
+                return_value=RateLimitConfig(day=0, month=0),
+            ),
+            patch(
+                "app.services.limit_upsell.spawn_background_task",
+                side_effect=spawned.append,
+            ),
+            patch("app.services.limit_upsell.capture_event") as capture,
+            patch("app.services.limit_upsell.send_limit_reached_email") as upsell_email,
+            patch("app.services.limit_upsell.send_workflows_paused_email") as paused_email,
+        ):
+            with pytest.raises(RateLimitExceededException):
+                await self.limiter.check_and_increment(
+                    "user1", "chat_messages", PlanType.FREE, **kwargs
+                )
+            for coro in spawned:
+                await coro
+        return capture, upsell_email, paused_email
+
+    async def test_interactive_exceed_sends_upsell_for_this_user(self) -> None:
+        capture, upsell_email, paused_email = await self._exceed()
+
+        capture.assert_called_once_with(
+            "user1", "rate_limit_hit", {"feature": "chat_messages", "origin": "interactive"}
+        )
+        upsell_email.assert_awaited_once_with("user1", "chat_messages")
+        paused_email.assert_not_awaited()
+
+    async def test_background_exceed_sends_workflows_paused_note(self) -> None:
+        capture, upsell_email, paused_email = await self._exceed(origin=LimitHitOrigin.BACKGROUND)
+
+        capture.assert_called_once_with(
+            "user1", "rate_limit_hit", {"feature": "chat_messages", "origin": "background"}
+        )
+        paused_email.assert_awaited_once_with("user1")
+        upsell_email.assert_not_awaited()

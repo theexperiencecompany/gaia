@@ -110,6 +110,7 @@ class TestNormalizeChannelPreferences:
             "discord": True,
             "whatsapp": True,
             "slack": True,
+            "imessage": True,
             "email": True,
         }
 
@@ -121,6 +122,7 @@ class TestNormalizeChannelPreferences:
             "discord": True,
             "whatsapp": True,
             "slack": True,
+            "imessage": True,
             "email": True,
         }
 
@@ -182,6 +184,7 @@ class TestFetchChannelPreferences:
             "discord": True,
             "whatsapp": True,
             "slack": True,
+            "imessage": True,
             "email": True,
         }
 
@@ -199,6 +202,7 @@ class TestFetchChannelPreferences:
             "discord": True,
             "whatsapp": True,
             "slack": True,
+            "imessage": True,
             "email": True,
         }
 
@@ -217,5 +221,6 @@ class TestFetchChannelPreferences:
             "discord": True,
             "whatsapp": True,
             "slack": True,
+            "imessage": True,
             "email": True,
         }

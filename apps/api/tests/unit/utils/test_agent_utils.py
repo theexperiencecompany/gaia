@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.agents import AgentTag, wrap_agent_payload
 from app.models.integration_models import Integration
 from app.utils.agent_utils import (
     _lookup_custom_integration_name,
@@ -15,6 +16,7 @@ from app.utils.agent_utils import (
     format_tool_call_entry,
     parse_subagent_id,
     process_custom_event_for_tools,
+    strip_internal_agent_tags,
 )
 
 
@@ -408,3 +410,76 @@ class TestProcessCustomEventForTools:
         ):
             result = process_custom_event_for_tools({"x": 1})
         assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# internal agent channel tags
+# ---------------------------------------------------------------------------
+
+
+class TestWrapAgentPayload:
+    def test_body_is_framed_by_an_open_and_close_tag(self) -> None:
+        assert wrap_agent_payload(AgentTag.EXECUTOR_RESULT, "3 unread") == (
+            "<executor_result>\n3 unread\n</executor_result>\n"
+        )
+
+    def test_the_producing_agent_is_named_on_the_opening_tag(self) -> None:
+        assert wrap_agent_payload(AgentTag.SUBAGENT_RESULT, "sent", agent="gmail") == (
+            '<subagent_result agent="gmail">\nsent\n</subagent_result>\n'
+        )
+
+    def test_a_payload_with_no_producing_agent_carries_no_attribute(self) -> None:
+        """Only a subagent result is attributed; an executor result naming an
+        empty agent would be a tag the strip pattern still matches but a reader
+        cannot parse."""
+        assert wrap_agent_payload(AgentTag.EXECUTOR_RESULT, "done", agent=None) == (
+            "<executor_result>\ndone\n</executor_result>\n"
+        )
+
+    def test_consecutive_blocks_concatenate_without_running_together(self) -> None:
+        """Callers build a message by string-joining blocks, so the trailing
+        newline is load-bearing: without it a close tag and the next open tag
+        land on one line and the frame stops reading as structure."""
+        joined = wrap_agent_payload(AgentTag.RETURNED_TO_FRONTEND, "a card is up") + (
+            wrap_agent_payload(AgentTag.EXECUTOR_RESULT, "3 unread")
+        )
+
+        assert joined == (
+            "<returned_to_frontend>\na card is up\n</returned_to_frontend>\n"
+            "<executor_result>\n3 unread\n</executor_result>\n"
+        )
+
+
+class TestStripInternalAgentTags:
+    def test_a_parroted_block_keeps_its_words_and_loses_the_frame(self) -> None:
+        text = wrap_agent_payload(AgentTag.EXECUTOR_RESULT, "you have 3 unread")
+
+        assert strip_internal_agent_tags(text) == "you have 3 unread"
+
+    def test_a_lone_closing_tag_is_stripped(self) -> None:
+        """The common half-leak: the model writes its own reply and then closes
+        the block it was handed."""
+        assert strip_internal_agent_tags("3 unread</executor_result>") == "3 unread"
+
+    def test_an_attributed_tag_is_stripped(self) -> None:
+        assert (
+            strip_internal_agent_tags('<subagent_result agent="gmail">\nsent\n</subagent_result>')
+            == "sent"
+        )
+
+    def test_case_is_ignored(self) -> None:
+        assert strip_internal_agent_tags("<Executor_Result> done") == "done"
+
+    def test_ordinary_markup_in_a_reply_survives(self) -> None:
+        """The pattern names the internal tags exactly — a reply that legitimately
+        contains angle brackets (code, HTML, a comparison) must come through
+        untouched, or the backstop starts eating the answer."""
+        reply = "use `<div>` for that, and 3 < 5 is true"
+
+        assert strip_internal_agent_tags(reply) == reply
+
+    @pytest.mark.parametrize("tag", list(AgentTag))
+    def test_every_declared_tag_is_covered_by_the_strip(self, tag: AgentTag) -> None:
+        """Drift guard: a tag added to ``AgentTag`` extends the backstop for free.
+        A hand-listed pattern would leak the new tag on its first use."""
+        assert strip_internal_agent_tags(wrap_agent_payload(tag, "payload")) == "payload"

@@ -9,9 +9,11 @@ return ``True`` so the authenticated ``client`` fixture from conftest.py
 can reach the endpoint logic.
 """
 
+from typing import ClassVar
 from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
+import pytest
 
 from app.models.calendar_models import (
     CalendarEventPageResponse,
@@ -23,10 +25,26 @@ from app.models.calendar_models import (
     GoogleCalendarEventResource,
     GoogleCalendarListEntry,
 )
+from app.services.analytics_service import AnalyticsEvents
 from tests.conftest import FAKE_USER
 
 API = "/api/v1"
 USER_ID = FAKE_USER["user_id"]
+ANALYTICS_PATCH = "app.api.v1.endpoints.calendar.capture_context_event"
+
+
+@pytest.fixture(autouse=True)
+def _noop_analytics():
+    """Neutralize capture_context_event for every test in this module.
+
+    The test app runs a no-op lifespan, so the PostHog provider is never
+    registered; a bare capture_context_event call would raise KeyError on the
+    missing provider. Tests that assert on captures patch the call site again
+    and assert on their own mock.
+    """
+    with patch(ANALYTICS_PATCH):
+        yield
+
 
 # All calendar endpoints go through require_integration("calendar") which
 # calls check_integration_status.  We patch it globally for this module so
@@ -622,7 +640,8 @@ class TestBatchUpdateEvents:
                 UPDATE_PATCH,
                 new_callable=AsyncMock,
                 return_value=GoogleCalendarEventResource(id="ev-001", summary="Updated"),
-            ),
+            ) as mock_update,
+            patch(ANALYTICS_PATCH) as mock_capture,
         ):
             resp = await client.put(
                 f"{API}/calendar/events/batch",
@@ -631,6 +650,14 @@ class TestBatchUpdateEvents:
         assert resp.status_code == 200
         data = resp.json()
         assert len(data["successful"]) == 1
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.CALENDAR_EVENT_UPDATED,
+            {"batch_size": 1, "success_count": 1, "failure_count": 0},
+        )
+        assert all(
+            len(call.args) == 2 and all(arg is not None for arg in call.args)
+            for call in mock_update.await_args_list
+        )
 
     async def test_batch_update_partial_failure(self, client: AsyncClient) -> None:
         with (
@@ -679,7 +706,8 @@ class TestBatchDeleteEvents:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
-            patch(DELETE_PATCH, new_callable=AsyncMock, return_value=None),
+            patch(DELETE_PATCH, new_callable=AsyncMock, return_value=None) as mock_delete,
+            patch(ANALYTICS_PATCH) as mock_capture,
         ):
             resp = await client.request(
                 "DELETE",
@@ -690,6 +718,14 @@ class TestBatchDeleteEvents:
         data = resp.json()
         assert len(data["successful"]) == 1
         assert data["successful"][0]["event_id"] == "ev-001"
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.CALENDAR_EVENT_DELETED,
+            {"batch_size": 1, "success_count": 1, "failure_count": 0},
+        )
+        assert all(
+            len(call.args) == 2 and all(arg is not None for arg in call.args)
+            for call in mock_delete.await_args_list
+        )
 
     async def test_batch_delete_partial_failure(self, client: AsyncClient) -> None:
         with (
@@ -750,3 +786,160 @@ class TestIntegrationNotConnected:
                 },
             )
         assert resp.status_code == 403
+
+
+class TestCalendarAnalytics:
+    """Analytics captures on calendar event mutation endpoints."""
+
+    _EVENT_JSON: ClassVar[dict[str, str]] = {
+        "summary": "Lunch",
+        "start": "2026-03-20T12:00:00+00:00",
+        "end": "2026-03-20T13:00:00+00:00",
+    }
+
+    async def test_create_event_captures_event_created(self, client: AsyncClient) -> None:
+        with (
+            patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
+            patch(ANALYTICS_PATCH) as mock_capture,
+            patch("app.api.v1.endpoints.calendar.log") as mock_log,
+        ):
+            mock_svc.create_calendar_event.return_value = GoogleCalendarEventResource(
+                id="ev-new", summary="Lunch"
+            )
+            resp = await client.post(f"{API}/calendar/event", json=self._EVENT_JSON)
+
+        assert resp.status_code == 200
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.CALENDAR_EVENT_CREATED,
+            {
+                "is_all_day": False,
+                "has_description": False,
+                "has_recurrence": False,
+                "recurrence_frequency": None,
+            },
+        )
+        assert len(mock_svc.create_calendar_event.await_args.args) == 2
+        assert all(arg is not None for arg in mock_svc.create_calendar_event.await_args.args)
+        mock_log.set.assert_any_call(
+            user={"id": USER_ID},
+            calendar={"operation": "create_event", "calendar_id": None},
+        )
+
+    async def test_create_event_captures_description_and_recurrence(
+        self, client: AsyncClient
+    ) -> None:
+        """The create capture reports the shape of the event, not its content."""
+        with (
+            patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
+            patch(ANALYTICS_PATCH) as mock_capture,
+        ):
+            mock_svc.create_calendar_event.return_value = GoogleCalendarEventResource(
+                id="ev-new", summary="Standup"
+            )
+            resp = await client.post(
+                f"{API}/calendar/event",
+                json={
+                    **self._EVENT_JSON,
+                    "is_all_day": True,
+                    "description": "daily sync",
+                    "recurrence": {"rrule": {"frequency": "WEEKLY", "by_day": ["MO", "WE"]}},
+                },
+            )
+
+        assert resp.status_code == 200
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.CALENDAR_EVENT_CREATED,
+            {
+                "is_all_day": True,
+                "has_description": True,
+                "has_recurrence": True,
+                "recurrence_frequency": "WEEKLY",
+            },
+        )
+
+    async def test_create_event_logs_calendar_id(self, client: AsyncClient) -> None:
+        """A calendar_id on the request is reported in the create log.set."""
+        with (
+            patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
+            patch(ANALYTICS_PATCH),
+            patch("app.api.v1.endpoints.calendar.log") as mock_log,
+        ):
+            mock_svc.create_calendar_event.return_value = GoogleCalendarEventResource(
+                id="ev-new", summary="Lunch"
+            )
+            resp = await client.post(
+                f"{API}/calendar/event",
+                json={**self._EVENT_JSON, "calendar_id": "primary"},
+            )
+
+        assert resp.status_code == 200
+        mock_log.set.assert_any_call(
+            user={"id": USER_ID},
+            calendar={"operation": "create_event", "calendar_id": "primary"},
+        )
+
+    async def test_update_event_captures_event_updated(self, client: AsyncClient) -> None:
+        with (
+            patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
+            patch(UPDATE_PATCH, new_callable=AsyncMock) as mock_update,
+            patch(ANALYTICS_PATCH) as mock_capture,
+            patch("app.api.v1.endpoints.calendar.log") as mock_log,
+        ):
+            mock_update.return_value = GoogleCalendarEventResource(id="ev-1", summary="Lunch")
+            resp = await client.put(
+                f"{API}/calendar/event",
+                json={"event_id": "ev-1", "summary": "Lunch"},
+            )
+
+        assert resp.status_code == 200
+        mock_capture.assert_called_once_with(AnalyticsEvents.CALENDAR_EVENT_UPDATED)
+        assert len(mock_update.await_args.args) == 2
+        assert all(arg is not None for arg in mock_update.await_args.args)
+        mock_log.set.assert_any_call(user={"id": USER_ID}, calendar={"operation": "update_event"})
+
+    async def test_delete_event_captures_event_deleted(self, client: AsyncClient) -> None:
+        with (
+            patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
+            patch(DELETE_PATCH, new_callable=AsyncMock) as mock_delete,
+            patch(ANALYTICS_PATCH) as mock_capture,
+            patch("app.api.v1.endpoints.calendar.log") as mock_log,
+        ):
+            mock_delete.return_value = EventDeleteResponse(success=True, message="Event deleted")
+            resp = await client.request(
+                "DELETE", f"{API}/calendar/event", json={"event_id": "ev-1"}
+            )
+
+        assert resp.status_code == 200
+        mock_capture.assert_called_once_with(AnalyticsEvents.CALENDAR_EVENT_DELETED)
+        assert len(mock_delete.await_args.args) == 2
+        assert all(arg is not None for arg in mock_delete.await_args.args)
+        mock_log.set.assert_any_call(user={"id": USER_ID}, calendar={"operation": "delete_event"})
+
+    async def test_batch_create_captures_counts(self, client: AsyncClient) -> None:
+        with (
+            patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
+            patch(ANALYTICS_PATCH) as mock_capture,
+        ):
+            mock_svc.create_calendar_event.return_value = GoogleCalendarEventResource(
+                id="ev-new", summary="Lunch"
+            )
+            resp = await client.post(
+                f"{API}/calendar/events/batch",
+                json={"events": [self._EVENT_JSON, self._EVENT_JSON]},
+            )
+
+        assert resp.status_code == 200
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.CALENDAR_EVENT_CREATED,
+            {"batch_size": 2, "success_count": 2, "failure_count": 0},
+        )
+        assert mock_svc.create_calendar_event.await_count == 2
+        assert all(
+            arg is not None
+            for call in mock_svc.create_calendar_event.await_args_list
+            for arg in call.args
+        )

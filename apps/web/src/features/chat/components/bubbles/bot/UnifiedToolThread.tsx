@@ -2,6 +2,7 @@
 
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { ToolsIcon } from "@icons";
+import type { ApprovalStatus } from "@shared/chat";
 import { useCallback, useMemo, useState } from "react";
 import { ChevronDown } from "@/components/shared/icons";
 import type {
@@ -37,6 +38,8 @@ interface UnifiedToolThreadProps {
   /** tool_call_ids currently blocked on a HIL approval — the matching row shows
    *  "Waiting for approval" instead of a running spinner. */
   pendingApprovalToolCallIds: Set<string>;
+  /** Settled decisions keyed by tool_call_id — the row carries the outcome chip. */
+  approvalStatusByToolCallId: Map<string, ApprovalStatus>;
 }
 
 const SHOW_ICONS = 10;
@@ -47,6 +50,7 @@ export default function UnifiedToolThread({
   timeline,
   isStreaming,
   pendingApprovalToolCallIds,
+  approvalStatusByToolCallId,
 }: Readonly<UnifiedToolThreadProps>) {
   const [isExpanded, setIsExpanded] = useState(false);
   const { getIntegrationName: lookupName, getIntegrationIconUrl } =
@@ -205,6 +209,7 @@ export default function UnifiedToolThread({
                     getIconUrl={getIconUrl}
                     getIntegrationName={getIntegrationName}
                     pendingApprovalToolCallIds={pendingApprovalToolCallIds}
+                    approvalStatusByToolCallId={approvalStatusByToolCallId}
                   />
                 );
               }
@@ -218,6 +223,7 @@ export default function UnifiedToolThread({
                   getIconUrl={getIconUrl}
                   getIntegrationName={getIntegrationName}
                   pendingApprovalToolCallIds={pendingApprovalToolCallIds}
+                  approvalStatusByToolCallId={approvalStatusByToolCallId}
                 />
               );
             })}

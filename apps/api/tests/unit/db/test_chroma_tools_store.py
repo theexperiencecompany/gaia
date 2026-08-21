@@ -1,5 +1,7 @@
 """Tests for app.db.chroma.chroma_tools_store."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 import hashlib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -20,6 +22,7 @@ from app.db.chroma.chroma_tools_store import (
 )
 from app.models.mcp_config import SubAgentConfig
 from app.models.subagent_models import Subagent
+from shared.py.wide_events import log
 
 # ---------------------------------------------------------------------------
 # _compute_tool_hash
@@ -330,10 +333,20 @@ class TestIndexToolsToStore:
         # Namespace containing "::" is invalid
         await index_tools_to_store([(tool, "bad::ns")])
 
-    async def test_cache_hit_skips_processing(self):
+    async def test_cache_hit_with_an_empty_store_reindexes_anyway(self):
+        """The bug this guard exists for: Redis says indexed, Chroma holds none.
+
+        Trusting the hash alone left the namespace empty forever and tool
+        discovery silently returned nothing.
+        """
         tool = SimpleNamespace(name="t", description="d")
         tools_signature = "t:d"
         expected_hash = hashlib.sha256(tools_signature.encode()).hexdigest()[:16]
+
+        mock_store = AsyncMock()
+        mock_collection = AsyncMock()
+        mock_collection.get.return_value = {"ids": [], "metadatas": []}
+        mock_store._get_collection = AsyncMock(return_value=mock_collection)
 
         with (
             patch(
@@ -341,10 +354,18 @@ class TestIndexToolsToStore:
                 new_callable=AsyncMock,
                 return_value=expected_hash,
             ),
+            patch("app.db.chroma.chroma_tools_store.set_cache", new_callable=AsyncMock),
             patch("app.db.chroma.chroma_tools_store.providers") as mock_providers,
+            patch(
+                "app.db.chroma.chroma_tools_store._execute_batch_operations",
+                new_callable=AsyncMock,
+            ) as mock_execute,
         ):
+            mock_providers.aget = AsyncMock(return_value=mock_store)
             await index_tools_to_store([(tool, "ns")])
-            mock_providers.aget.assert_not_called()
+
+        # Reached the write path instead of returning at the guard.
+        mock_execute.assert_awaited_once()
 
     async def test_skips_when_store_unavailable(self):
         tool = SimpleNamespace(name="t", description="d")
@@ -420,6 +441,107 @@ class TestIndexToolsToStore:
             await index_tools_to_store([(tool, "ns")])
             mock_store.abatch.assert_awaited()
             mock_set_cache.assert_awaited()
+
+
+# ---------------------------------------------------------------------------
+# index_tools_to_store — the verified cache guard
+#
+# The Redis hash only proves that SOME PAST PROCESS believed it indexed this
+# namespace. Trusting it alone made a wiped or recreated ChromaDB permanent:
+# the guard hit forever, the namespace was never re-indexed, and tool discovery
+# silently returned nothing — no error, no retry, no signal. The whole failure
+# mode is invisible, so the warning that announces it is behaviour, and these
+# assert on it via the wide event's structured `warnings[]` rather than on the
+# prose (the same seam tests/unit/middleware/test_accounting.py asserts on).
+# ---------------------------------------------------------------------------
+
+_NAMESPACE = "gmail"
+_TOOL = SimpleNamespace(name="t", description="d")
+_TOOLS_HASH = hashlib.sha256(b"t:d").hexdigest()[:16]
+
+
+def _store_holding(*doc_hashes: str) -> AsyncMock:
+    """A Chroma store whose namespace holds one indexed doc per given tool hash."""
+    collection = AsyncMock()
+    collection.get.return_value = {
+        "ids": [f"{_NAMESPACE}::t{i}" for i in range(len(doc_hashes))],
+        "metadatas": [{"tool_hash": h, "namespace": _NAMESPACE} for h in doc_hashes],
+    }
+    store = AsyncMock()
+    store._get_collection = AsyncMock(return_value=collection)
+    return store
+
+
+@contextmanager
+def _indexing(store: AsyncMock, cached_hash: str | None) -> Iterator[SimpleNamespace]:
+    """Run index_tools_to_store against ``store`` with Redis reporting ``cached_hash``."""
+    with (
+        patch(
+            "app.db.chroma.chroma_tools_store.get_cache",
+            new_callable=AsyncMock,
+            return_value=cached_hash,
+        ) as get_cache,
+        patch("app.db.chroma.chroma_tools_store.set_cache", new_callable=AsyncMock) as set_cache,
+        patch("app.db.chroma.chroma_tools_store.providers") as providers,
+        patch(
+            "app.db.chroma.chroma_tools_store._execute_batch_operations",
+            new_callable=AsyncMock,
+        ) as execute,
+    ):
+        providers.aget = AsyncMock(return_value=store)
+        yield SimpleNamespace(get_cache=get_cache, set_cache=set_cache, execute=execute)
+
+
+def _wiped_store_warnings() -> list[dict]:
+    return [w for w in log.get().get("warnings", []) if "ChromaDB holds 0 docs" in w["msg"]]
+
+
+@pytest.mark.asyncio
+class TestVerifiedCacheGuard:
+    @pytest.fixture(autouse=True)
+    def _fresh_wide_event(self) -> None:
+        # Outside a boundary every wide-event write lands in a throwaway state,
+        # so `warnings[]` would read empty no matter what the code logged.
+        log.reset()
+
+    async def test_the_cache_is_read_once_under_the_namespace_key(self):
+        # The key IS the namespace isolation: one shared key would let a
+        # freshly-indexed namespace suppress the reindex of a different one.
+        with _indexing(_store_holding("h"), _TOOLS_HASH) as mocks:
+            await index_tools_to_store([(_TOOL, _NAMESPACE)])
+
+        mocks.get_cache.assert_awaited_once_with(f"chroma:indexed:{_NAMESPACE}")
+
+    async def test_a_verified_hit_writes_nothing_at_all(self):
+        # The store holds a doc whose hash differs from the incoming tool, so a
+        # run that reaches the diff WOULD write. Reaching it is the failure.
+        with _indexing(_store_holding("stale-hash"), _TOOLS_HASH) as mocks:
+            await index_tools_to_store([(_TOOL, _NAMESPACE)])
+
+        mocks.execute.assert_not_awaited()
+        mocks.set_cache.assert_not_awaited()
+
+    async def test_a_wiped_store_is_announced_with_the_namespace_it_lost(self):
+        # This warning is the ONLY trace the wipe ever happened — without the
+        # namespace and the count, an operator cannot tell which integration
+        # went dark or how much it lost.
+        with _indexing(_store_holding(), _TOOLS_HASH):
+            await index_tools_to_store([(_TOOL, _NAMESPACE)])
+
+        assert len(_wiped_store_warnings()) == 1
+        warning = _wiped_store_warnings()[0]
+        assert warning["namespace"] == _NAMESPACE
+        assert warning["input_count"] == 1
+
+    async def test_a_first_time_index_is_not_mistaken_for_a_wipe(self):
+        # Cache miss + empty store is simply a namespace nobody has indexed yet.
+        # Crying wipe here would train operators to ignore the one alarm that
+        # means a real one.
+        with _indexing(_store_holding(), None) as mocks:
+            await index_tools_to_store([(_TOOL, _NAMESPACE)])
+
+        mocks.execute.assert_awaited_once()
+        assert _wiped_store_warnings() == []
 
 
 # ---------------------------------------------------------------------------

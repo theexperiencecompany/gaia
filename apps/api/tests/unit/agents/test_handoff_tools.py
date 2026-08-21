@@ -1,5 +1,7 @@
 """Tests for app.agents.core.subagents.handoff_tools."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -63,6 +65,28 @@ def _make_subagent(
     )
 
 
+@contextmanager
+def _ui_graph_run(writer: MagicMock) -> Iterator[None]:
+    """Make the connect prompt believe it is running inside a UI chat turn."""
+    with (
+        patch(
+            "app.utils.integration_checker.get_config",
+            return_value={"configurable": {"source_category": "ui"}},
+        ),
+        patch("app.utils.integration_checker.get_stream_writer", return_value=writer),
+    ):
+        yield
+
+
+def _connect_card_ids(writer: MagicMock) -> list[str]:
+    """The integration id of every connect card pushed to the user's stream."""
+    return [
+        call.args[0]["integration_connection_required"]["integration_id"]
+        for call in writer.call_args_list
+        if "integration_connection_required" in call.args[0]
+    ]
+
+
 # ---------------------------------------------------------------------------
 # check_integration_connection
 # ---------------------------------------------------------------------------
@@ -107,24 +131,29 @@ class TestCheckIntegrationConnection:
                 new_callable=AsyncMock,
                 return_value=False,
             ),
-            patch(
-                "app.agents.core.subagents.handoff_tools.get_stream_writer",
-                return_value=mock_writer,
-            ),
+            _ui_graph_run(mock_writer),
         ):
             result = await check_integration_connection("gmail", "user1")
 
         assert result is not None
         assert "needs to be connected" in result
-        assert mock_writer.call_count == 2  # progress + connection_required
+        assert _connect_card_ids(mock_writer) == ["gmail"]
 
-    async def test_returns_none_on_exception(self):
-        with patch(
-            "app.agents.core.subagents.handoff_tools.get_subagent_by_id",
-            side_effect=RuntimeError("boom"),
+    async def test_status_check_failure_propagates(self):
+        """A failed status check must not be swallowed into "connected"."""
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools.get_subagent_by_id",
+                return_value=_make_subagent("gmail"),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.check_integration_status",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("boom"),
+            ),
+            pytest.raises(RuntimeError, match="boom"),
         ):
-            result = await check_integration_connection("bad", "user1")
-        assert result is None
+            await check_integration_connection("gmail", "user1")
 
 
 # ---------------------------------------------------------------------------
@@ -410,9 +439,19 @@ class TestResolveSubagent:
         assert graph is mock_graph
         assert is_custom is False
 
+    @pytest.mark.regression
     async def test_platform_mcp_requires_auth_not_connected(self):
+        """An unconnected auth'd MCP must show the connect card, not just promise one.
+
+        The UI copy tells the agent "a connect button has been shown to the user",
+        so a text-only return here leaves the user hunting a button that never
+        rendered (PostHog: managed_by="mcp", requires_auth=True).
+        """
         mcp_cfg = MCPConfig(server_url="https://example.com", requires_auth=True)
-        subagent = _make_subagent("gmail", "gmail", "Gmail", managed_by="mcp", mcp_config=mcp_cfg)
+        subagent = _make_subagent(
+            "posthog", "posthog", "PostHog", managed_by="mcp", mcp_config=mcp_cfg
+        )
+        mock_writer = MagicMock()
         with (
             patch(
                 "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
@@ -420,13 +459,15 @@ class TestResolveSubagent:
                 return_value=subagent,
             ),
             patch("app.agents.core.subagents.handoff_tools.MCPTokenStore") as mock_ts_cls,
+            _ui_graph_run(mock_writer),
         ):
             mock_ts = AsyncMock()
             mock_ts.is_connected.return_value = False
             mock_ts_cls.return_value = mock_ts
-            graph, name, error, is_custom = await _resolve_subagent("gmail", "user1")
+            graph, name, error, is_custom = await _resolve_subagent("posthog", "user1")
         assert graph is None
         assert "needs to be connected" in error
+        assert _connect_card_ids(mock_writer) == ["posthog"]
 
     async def test_platform_mcp_requires_auth_no_user(self):
         mcp_cfg = MCPConfig(server_url="https://example.com", requires_auth=True)
@@ -530,3 +571,170 @@ class TestResolveSubagent:
             graph, name, error, is_custom = await _resolve_subagent("mcp_int", "user1")
         assert graph is None
         assert "is unavailable" in error
+
+
+# ---------------------------------------------------------------------------
+# check_integration_connection / _resolve_subagent — argument passing
+# ---------------------------------------------------------------------------
+
+
+@contextmanager
+def _bot_graph_run() -> Iterator[None]:
+    """Make the connect prompt believe it is running on a text-only client, where
+    the login-free link is minted instead of a UI card."""
+    with (
+        patch(
+            "app.utils.integration_checker.get_config",
+            return_value={"configurable": {"source_category": "bot"}},
+        ),
+        patch("app.utils.integration_checker.get_stream_writer", return_value=MagicMock()),
+    ):
+        yield
+
+
+@pytest.mark.asyncio
+class TestConnectionChecksUseTheirArguments:
+    """The branch tests above mock with fixed return values, which cannot tell a
+    correct argument from a nulled one — every argument-passing mutation in these
+    two functions survived them. These fakes answer based on what they are handed,
+    so a dropped or swapped argument changes the outcome instead of going
+    unnoticed."""
+
+    @staticmethod
+    @contextmanager
+    def _lookup_only(integration_id: str, subagent: Subagent) -> Iterator[None]:
+        """``get_subagent_by_id`` that recognises exactly one id."""
+        with patch(
+            "app.agents.core.subagents.handoff_tools.get_subagent_by_id",
+            side_effect=lambda requested: subagent if requested == integration_id else None,
+        ):
+            yield
+
+    async def test_the_integration_asked_about_is_the_one_looked_up(self):
+        subagent = _make_subagent("gmail")
+        with (
+            self._lookup_only("gmail", subagent),
+            patch(
+                "app.agents.core.subagents.handoff_tools.check_integration_status",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            _ui_graph_run(MagicMock()),
+        ):
+            result = await check_integration_connection("gmail", "user1")
+
+        assert result is not None
+
+    async def test_the_connection_check_is_scoped_to_this_user_and_integration(self):
+        """Checking the wrong user's connection, or the wrong integration's, would
+        nag a user who is already connected — or worse, wave through one who is
+        not."""
+        subagent = _make_subagent("gmail")
+
+        async def _status(integration_id: str, user_id: str) -> bool:
+            return (integration_id, user_id) == ("gmail", "user1")
+
+        with (
+            self._lookup_only("gmail", subagent),
+            patch(
+                "app.agents.core.subagents.handoff_tools.check_integration_status",
+                new=AsyncMock(side_effect=_status),
+            ),
+        ):
+            assert await check_integration_connection("gmail", "user1") is None
+
+    async def test_the_prompt_names_the_subagent_being_connected(self):
+        """ "None needs to be connected" is what the agent would read out to the
+        user if the display name were lost on the way to the prompt."""
+        subagent = _make_subagent("gmail", name="Gmail")
+        with (
+            self._lookup_only("gmail", subagent),
+            patch(
+                "app.agents.core.subagents.handoff_tools.check_integration_status",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            _ui_graph_run(MagicMock()),
+        ):
+            result = await check_integration_connection("gmail", "user1")
+
+        assert result is not None and result.startswith("Gmail needs to be connected")
+
+    async def test_the_connect_link_is_minted_for_the_asking_user(self):
+        """On a text-only client the prompt carries a single-use login-free link.
+        Minting it for the wrong user hands one person another's connect flow."""
+        subagent = _make_subagent("gmail")
+
+        async def _link(user_id: str, integration_id: str) -> str | None:
+            if (user_id, integration_id) == ("user1", "gmail"):
+                return "https://gaia.test/connect/abc"
+            return None
+
+        with (
+            self._lookup_only("gmail", subagent),
+            patch(
+                "app.agents.core.subagents.handoff_tools.check_integration_status",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
+                "app.utils.integration_checker.build_connect_link_url",
+                new=AsyncMock(side_effect=_link),
+            ),
+            _bot_graph_run(),
+        ):
+            result = await check_integration_connection("gmail", "user1")
+
+        assert result is not None and "https://gaia.test/connect/abc" in result
+
+    async def test_the_mcp_connect_prompt_names_the_subagent(self):
+        mcp_cfg = MCPConfig(server_url="https://example.com", requires_auth=True)
+        subagent = _make_subagent(
+            "posthog", "posthog", "PostHog", managed_by="mcp", mcp_config=mcp_cfg
+        )
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
+                new_callable=AsyncMock,
+                return_value=subagent,
+            ),
+            patch("app.agents.core.subagents.handoff_tools.MCPTokenStore") as mock_ts_cls,
+            _ui_graph_run(MagicMock()),
+        ):
+            mock_ts = AsyncMock()
+            mock_ts.is_connected.return_value = False
+            mock_ts_cls.return_value = mock_ts
+            _graph, _name, error, _is_custom = await _resolve_subagent("posthog", "user1")
+
+        assert error.startswith("PostHog needs to be connected")
+
+    async def test_the_mcp_connect_link_is_minted_for_the_asking_user(self):
+        mcp_cfg = MCPConfig(server_url="https://example.com", requires_auth=True)
+        subagent = _make_subagent(
+            "posthog", "posthog", "PostHog", managed_by="mcp", mcp_config=mcp_cfg
+        )
+
+        async def _link(user_id: str, integration_id: str) -> str | None:
+            if (user_id, integration_id) == ("user1", "posthog"):
+                return "https://gaia.test/connect/xyz"
+            return None
+
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
+                new_callable=AsyncMock,
+                return_value=subagent,
+            ),
+            patch("app.agents.core.subagents.handoff_tools.MCPTokenStore") as mock_ts_cls,
+            patch(
+                "app.utils.integration_checker.build_connect_link_url",
+                new=AsyncMock(side_effect=_link),
+            ),
+            _bot_graph_run(),
+        ):
+            mock_ts = AsyncMock()
+            mock_ts.is_connected.return_value = False
+            mock_ts_cls.return_value = mock_ts
+            _graph, _name, error, _is_custom = await _resolve_subagent("posthog", "user1")
+
+        assert "https://gaia.test/connect/xyz" in error

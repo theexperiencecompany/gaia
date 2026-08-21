@@ -37,7 +37,7 @@ export interface ChatRequest {
   /** The message content to send. */
   message: string;
   /** The platform the message originated from. */
-  platform: "discord" | "slack" | "telegram" | "whatsapp";
+  platform: PlatformName;
   /** The user ID of the sender on the platform. */
   platformUserId: string;
   /** Optional channel ID where the conversation is happening. */
@@ -87,8 +87,22 @@ export interface AuthStatus {
   authenticated: boolean;
   /** The platform name. */
   platform: string;
-  /** The user ID on the platform. */
-  platformUserId: string;
+  /**
+   * The user ID on the platform.
+   *
+   * snake_case because these fields are the API's wire shape verbatim —
+   * `BotAuthStatusResponse` declares no alias generator and `checkAuthStatus`
+   * returns the parsed body untouched. This field was previously typed
+   * `platformUserId`, which is `undefined` at runtime; nothing read it, so the
+   * lie went unnoticed.
+   */
+  platform_user_id: string;
+  /**
+   * Stable GAIA user id when linked, absent otherwise. Bots use it as their
+   * PostHog distinct_id so bot events land on the same profile as the user's
+   * web and API events.
+   */
+  user_id?: string;
 }
 
 export interface BotWorkflow {
@@ -157,7 +171,7 @@ export interface BotConversationListResponse {
 }
 
 export interface BotUserContext {
-  platform: "discord" | "slack" | "telegram" | "whatsapp";
+  platform: PlatformName;
   platformUserId: string;
 }
 
@@ -206,7 +220,12 @@ export type SettingsResponse =
 // ---------------------------------------------------------------------------
 
 /** Supported platform names for bot integrations. */
-export type PlatformName = "discord" | "slack" | "telegram" | "whatsapp";
+export type PlatformName =
+  | "discord"
+  | "slack"
+  | "telegram"
+  | "whatsapp"
+  | "imessage";
 
 /**
  * A message that has been sent to a platform channel.

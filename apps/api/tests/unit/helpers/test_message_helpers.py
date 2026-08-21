@@ -6,8 +6,6 @@ from langchain_core.messages import SystemMessage
 import pytest
 
 from app.helpers.message_helpers import (
-    _get_gaia_knowledge_section,
-    _get_user_memories_section,
     create_system_message,
     format_calendar_event_context,
     format_files_list,
@@ -30,7 +28,7 @@ from app.models.message_models import (
 class TestCreateSystemMessage:
     """The main system prompt must be byte-identical across users/channels so
     implicit LLM caching hits. No `{user_name}` interpolation lives here —
-    dynamic context flows via build_dynamic_context_messages."""
+    per-user context is assembled separately by ``app.agents.context``."""
 
     def test_comms_agent_static_is_per_channel(self) -> None:
         """Different user_name must produce identical content on the same
@@ -64,109 +62,6 @@ class TestCreateSystemMessage:
         comms = create_system_message(agent_type="comms")
         assert isinstance(msg, SystemMessage)
         assert msg.content == comms.content
-
-
-# ---------------------------------------------------------------------------
-# _get_user_memories_section
-# ---------------------------------------------------------------------------
-
-
-class TestGetUserMemoriesSection:
-    @pytest.mark.asyncio
-    async def test_with_memories(self) -> None:
-        mem1 = MagicMock()
-        mem1.content = "User likes coffee"
-        mem2 = MagicMock()
-        mem2.content = "User prefers dark mode"
-        mock_results = MagicMock()
-        mock_results.memories = [mem1, mem2]
-
-        with patch("app.helpers.message_helpers.memory_engine") as mock_svc:
-            mock_svc.recall = AsyncMock(return_value=mock_results)
-            result = await _get_user_memories_section("coffee", "user1")
-
-        assert "User likes coffee" in result
-        assert "User prefers dark mode" in result
-
-    @pytest.mark.asyncio
-    async def test_no_memories(self) -> None:
-        mock_results = MagicMock()
-        mock_results.memories = None
-
-        with patch("app.helpers.message_helpers.memory_engine") as mock_svc:
-            mock_svc.recall = AsyncMock(return_value=mock_results)
-            result = await _get_user_memories_section("query", "user1")
-
-        assert result == ""
-
-    @pytest.mark.asyncio
-    async def test_empty_memories_list(self) -> None:
-        mock_results = MagicMock()
-        mock_results.memories = []
-
-        with patch("app.helpers.message_helpers.memory_engine") as mock_svc:
-            mock_svc.recall = AsyncMock(return_value=mock_results)
-            result = await _get_user_memories_section("q", "u")
-
-        assert result == ""
-
-    @pytest.mark.asyncio
-    async def test_none_results(self) -> None:
-        with patch("app.helpers.message_helpers.memory_engine") as mock_svc:
-            mock_svc.recall = AsyncMock(return_value=None)
-            result = await _get_user_memories_section("q", "u")
-
-        assert result == ""
-
-    @pytest.mark.asyncio
-    async def test_exception_returns_empty(self) -> None:
-        with patch("app.helpers.message_helpers.memory_engine") as mock_svc:
-            mock_svc.recall = AsyncMock(side_effect=RuntimeError("mem fail"))
-            result = await _get_user_memories_section("q", "u")
-
-        assert result == ""
-
-
-# ---------------------------------------------------------------------------
-# _get_gaia_knowledge_section
-# ---------------------------------------------------------------------------
-
-
-class TestGetGaiaKnowledgeSection:
-    @pytest.mark.asyncio
-    async def test_with_results(self) -> None:
-        item = MagicMock()
-        item.content = "Gaia can manage calendar"
-
-        with patch("app.helpers.message_helpers.gaia_knowledge_service") as mock_svc:
-            mock_svc.search_knowledge = AsyncMock(return_value=[item])
-            result = await _get_gaia_knowledge_section("calendar")
-
-        assert "Gaia can manage calendar" in result
-
-    @pytest.mark.asyncio
-    async def test_no_results(self) -> None:
-        with patch("app.helpers.message_helpers.gaia_knowledge_service") as mock_svc:
-            mock_svc.search_knowledge = AsyncMock(return_value=[])
-            result = await _get_gaia_knowledge_section("q")
-
-        assert result == ""
-
-    @pytest.mark.asyncio
-    async def test_none_results(self) -> None:
-        with patch("app.helpers.message_helpers.gaia_knowledge_service") as mock_svc:
-            mock_svc.search_knowledge = AsyncMock(return_value=None)
-            result = await _get_gaia_knowledge_section("q")
-
-        assert result == ""
-
-    @pytest.mark.asyncio
-    async def test_exception_returns_empty(self) -> None:
-        with patch("app.helpers.message_helpers.gaia_knowledge_service") as mock_svc:
-            mock_svc.search_knowledge = AsyncMock(side_effect=RuntimeError("chroma fail"))
-            result = await _get_gaia_knowledge_section("q")
-
-        assert result == ""
 
 
 # ---------------------------------------------------------------------------

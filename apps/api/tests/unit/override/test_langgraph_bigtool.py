@@ -1,11 +1,18 @@
 """Tests for app.override.langgraph_bigtool.create_agent."""
 
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 import pytest
+
+from app.agents.llm import lane as lane_module
+from app.agents.llm.lane import ModelLane
+from app.agents.llm.types import LLMProviderName
+from app.constants.llm import DEFAULT_MAX_TOKENS, LANE_FIELD_ID
+from app.override.langgraph_bigtool.create_agent import _fallback_config, _prepare_fallback
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -74,6 +81,27 @@ class TestCreateAgent:
         from langgraph.graph import StateGraph
 
         assert isinstance(builder, StateGraph)
+
+    def test_the_runtime_context_schema_reaches_the_graph(self) -> None:
+        """Runtime context (the per-run config the tiers read) only arrives if
+        the schema is declared on the StateGraph — dropped, every node sees an
+        empty context and nothing raises to say so."""
+        from dataclasses import dataclass
+
+        from app.override.langgraph_bigtool.create_agent import create_agent
+
+        @dataclass
+        class _Ctx:
+            tenant: str
+
+        builder = create_agent(
+            _make_llm(),
+            _make_tool_registry(dummy_tool_a),
+            disable_retrieve_tools=True,
+            context_schema=_Ctx,
+        )
+
+        assert builder.context_schema is _Ctx
 
     def test_with_retrieve_tools_coroutine(self) -> None:
         from app.override.langgraph_bigtool.create_agent import create_agent
@@ -680,3 +708,165 @@ class TestSelectTools:
 
         result = await select_node.runnable.afunc(tool_calls, config, store=store)  # type: ignore[union-attr]  # langgraph Runnable union exposes .func/.afunc only at runtime
         assert "dummy_tool_a" in result["selected_tool_ids"]
+
+
+class TestBindSessionId:
+    """The OpenRouter sticky-routing key, bound onto the tool-bound runnable.
+
+    It pins a conversation to one upstream provider so the prompt cache chains
+    across turns. Binding the wrong key, or silently not binding at all, costs
+    the cache with nothing failing — so both halves are asserted here rather
+    than through a graph run that would never notice either.
+    """
+
+    def test_a_configured_session_id_is_bound_onto_the_runnable(self) -> None:
+        from app.override.langgraph_bigtool.create_agent import _bind_session_id
+
+        llm = MagicMock()
+        bound = _bind_session_id(
+            llm, {"provider": LLMProviderName.OPENROUTER, "session_id": "conv-1"}
+        )
+
+        llm.bind.assert_called_once_with(session_id="conv-1")
+        assert bound is llm.bind.return_value
+
+    def test_no_session_id_leaves_the_runnable_exactly_as_it_was(self) -> None:
+        from app.override.langgraph_bigtool.create_agent import _bind_session_id
+
+        llm = MagicMock()
+        bound = _bind_session_id(llm, {"provider": LLMProviderName.OPENROUTER})
+
+        llm.bind.assert_not_called()
+        assert bound is llm
+
+    def test_an_empty_session_id_is_not_bound(self) -> None:
+        # Binding "" would pin every conversation to the same routing key.
+        from app.override.langgraph_bigtool.create_agent import _bind_session_id
+
+        llm = MagicMock()
+        bound = _bind_session_id(llm, {"provider": LLMProviderName.OPENROUTER, "session_id": ""})
+
+        llm.bind.assert_not_called()
+        assert bound is llm
+
+    @pytest.mark.parametrize("provider", [LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM])
+    def test_a_sticky_provider_gets_the_key(self, provider: LLMProviderName) -> None:
+        from app.override.langgraph_bigtool.create_agent import _bind_session_id
+
+        llm = MagicMock()
+        _bind_session_id(llm, {"provider": provider, "session_id": "conv-1"})
+
+        llm.bind.assert_called_once_with(session_id="conv-1")
+
+    def test_gemini_is_left_alone(self) -> None:
+        """session_id is an OpenRouter routing hint. Gemini has no stickiness to
+        pin, so sending it there is an unsupported argument on every graph call."""
+        from app.override.langgraph_bigtool.create_agent import _bind_session_id
+
+        llm = MagicMock()
+        bound = _bind_session_id(llm, {"provider": LLMProviderName.GEMINI, "session_id": "conv-1"})
+
+        llm.bind.assert_not_called()
+        assert bound is llm
+
+    def test_an_unrelated_configurable_key_is_not_mistaken_for_it(self) -> None:
+        from app.override.langgraph_bigtool.create_agent import _bind_session_id
+
+        llm = MagicMock()
+        bound = _bind_session_id(llm, {"thread_id": "conv-1", "model_name": "m"})
+
+        llm.bind.assert_not_called()
+        assert bound is llm
+
+
+# ---------------------------------------------------------------------------
+# provider failover
+# ---------------------------------------------------------------------------
+
+
+class TestFallbackPreparation:
+    """The graph's provider failover.
+
+    Falling back to ``get_default_llm()`` was inert in production: it was skipped
+    whenever the run already selected the default model, and since every tier
+    resolves to that model the graph had no fallback at all — one 402 from
+    OpenRouter killed the whole turn on every execution path. The target is a
+    different PROVIDER now, which is what these pin.
+    """
+
+    def _openrouter_lane(self) -> ModelLane:
+        return ModelLane(
+            provider=LLMProviderName.OPENROUTER,
+            model="vendor/dead-model",
+            reasoning={"effort": "low"},
+            provider_pin={"provider": {"only": ["dead-vendor"]}},
+            max_input_tokens=DEFAULT_MAX_TOKENS,
+        )
+
+    def _gemini_lane(self) -> ModelLane:
+        return ModelLane(
+            provider=LLMProviderName.GEMINI,
+            model="gemini-x",
+            reasoning=None,
+            provider_pin=None,
+            max_input_tokens=DEFAULT_MAX_TOKENS,
+        )
+
+    def _next_is_gemini(self) -> Any:
+        return patch.object(
+            lane_module,
+            "next_fallback_provider",
+            lambda _current: (LLMProviderName.GEMINI, "gemini-x"),
+        )
+
+    def test_a_run_with_no_lane_has_no_fallback_to_prepare(self) -> None:
+        assert _prepare_fallback(_make_llm(), [dummy_tool_a], {}) is None
+
+    def test_no_other_configured_provider_means_no_fallback(self) -> None:
+        configurable = {LANE_FIELD_ID: self._openrouter_lane().to_configurable()}
+
+        with patch.object(lane_module, "next_fallback_provider", lambda _current: None):
+            assert _prepare_fallback(_make_llm(), [dummy_tool_a], configurable) is None
+
+    def test_the_fallback_targets_the_next_provider_with_the_same_tools(self) -> None:
+        llm = MagicMock()
+        bound = MagicMock()
+        llm.bind_tools.return_value = bound
+        configurable = {LANE_FIELD_ID: self._openrouter_lane().to_configurable()}
+
+        with self._next_is_gemini():
+            prepared = _prepare_fallback(llm, [dummy_tool_a], configurable)
+
+        assert prepared is not None
+        factory, fallback_lane = prepared
+        assert fallback_lane.provider == LLMProviderName.GEMINI
+        assert fallback_lane.model == "gemini-x"
+        # Zero-arg factory: the per-turn, tool-list-sized binding must not happen
+        # unless the primary actually fails.
+        llm.bind_tools.assert_not_called()
+        assert factory() is bound
+        llm.bind_tools.assert_called_once_with([dummy_tool_a])
+
+    def test_the_fallback_config_clears_the_failed_lanes_keys(self) -> None:
+        """A plain merge restored the just-failed provider — LangChain merges a
+        passed config over a bound one, so the stale keys must be REMOVED."""
+        config = {
+            "configurable": {
+                **self._openrouter_lane().binding_keys(),
+                "user_id": "u1",
+            }
+        }
+
+        rebound = _fallback_config(cast(RunnableConfig, config), self._gemini_lane())
+
+        configurable = rebound["configurable"]
+        assert configurable["provider"] == LLMProviderName.GEMINI
+        assert configurable["model"] == "gemini-x"
+        assert "model_kwargs" not in configurable
+        assert "reasoning" not in configurable
+        assert configurable["user_id"] == "u1"
+
+    def test_a_config_carrying_no_configurable_still_gets_the_fallback_lane(self) -> None:
+        rebound = _fallback_config(cast(RunnableConfig, {}), self._gemini_lane())
+
+        assert rebound["configurable"]["provider"] == LLMProviderName.GEMINI

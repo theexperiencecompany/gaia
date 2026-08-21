@@ -6,6 +6,7 @@ import { Input } from "@heroui/input";
 import { CheckmarkCircle02Icon, ComputerIcon } from "@icons";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import { devicesApi } from "../api/devicesApi";
 import { BRIDGE_UP_COMMAND, PAIRING_CODE_PLACEHOLDER } from "../constants";
@@ -34,6 +35,9 @@ export function ApproveDeviceForm() {
     try {
       const result = await devicesApi.approve(trimmed);
       setApproved(result.name);
+      trackEvent(ANALYTICS_EVENTS.DEVICE_CONNECTED, {
+        source: cameFromCli ? "cli" : "settings",
+      });
     } catch {
       // apiService already surfaced the error toast
     } finally {

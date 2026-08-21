@@ -14,7 +14,6 @@ interface NewChatSectionProps {
     } | null>;
     appendToInputRef: React.RefObject<((text: string) => void) | null>;
     hasMessages: boolean;
-    conversationId?: string;
     voiceModeActive: () => void;
   };
   showUseCases: boolean;

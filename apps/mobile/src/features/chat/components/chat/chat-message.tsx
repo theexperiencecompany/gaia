@@ -1,7 +1,7 @@
 import {
   parseOpenUISegments,
   parseThinkingFromText,
-  splitByBreaksPreservingFences,
+  splitMessageByBreaks,
 } from "@gaia/shared/utils";
 import * as Haptics from "expo-haptics";
 import { PressableFeedback } from "heroui-native";
@@ -220,7 +220,7 @@ function useMessageParts(text: string | undefined): {
     () => parseThinkingFromText(text ?? ""),
     [text],
   );
-  const messageParts = splitByBreaksPreservingFences(parsedContent.cleanText)
+  const messageParts = splitMessageByBreaks(parsedContent.cleanText)
     .filter(Boolean)
     .map((part, index) => ({ part, index }));
   return { parsedContent, messageParts };

@@ -5,11 +5,42 @@ from typing import Any
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
 from app.models.user_models import OnboardingPhase
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.onboarding.intelligence_job import (
     clear_active_intelligence_job,
     clear_active_workflows_job,
 )
 from shared.py.wide_events import log
+
+
+async def _capture_onboarding_completion(user_id: str) -> None:
+    """Capture ONBOARDING_COMPLETED if the pipeline actually completed.
+
+    Task success alone is not completion: aborted runs (user not found) and
+    split-mode early jobs return success without finishing onboarding. Reads the
+    persisted phase; a read failure is logged and the event skipped (best-effort).
+    """
+    try:
+        doc = await user_repository.get(user_id)
+        onboarding = (doc.onboarding if doc else None) or {}
+        if onboarding.get("phase") != OnboardingPhase.PERSONALIZATION_COMPLETE:
+            return
+        capture_event(
+            user_id,
+            AnalyticsEvents.ONBOARDING_COMPLETED,
+            {"pipeline_mode": onboarding.get("pipeline_mode", "full")},
+            # A user completes onboarding once. This task is retryable and the
+            # phase stays PERSONALIZATION_COMPLETE afterwards, so a retry would
+            # otherwise re-emit the milestone every time it ran again.
+            dedupe_key=user_id,
+        )
+    except Exception as get_err:
+        log.warning(
+            f"{LogTag.WORKER} Could not verify onboarding completion for analytics",
+            user_id=user_id,
+            error_type=type(get_err).__name__,
+            error=str(get_err),
+        )
 
 
 async def process_onboarding_intelligence_task(ctx: dict[str, Any], user_id: str) -> str:
@@ -65,6 +96,7 @@ async def process_onboarding_intelligence_task(ctx: dict[str, Any], user_id: str
                     error=str(clear_err),
                 )
 
+    await _capture_onboarding_completion(user_id)
     log.info(f"{LogTag.WORKER} Onboarding intelligence completed", user_id=user_id)
     return f"Onboarding intelligence completed for user {user_id}"
 
@@ -115,5 +147,6 @@ async def process_onboarding_workflows_task(ctx: dict[str, Any], user_id: str) -
                     error=str(clear_err),
                 )
 
+    await _capture_onboarding_completion(user_id)
     log.info(f"{LogTag.WORKER} Onboarding workflows phase completed", user_id=user_id)
     return f"Onboarding workflows phase completed for user {user_id}"

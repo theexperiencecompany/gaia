@@ -20,7 +20,7 @@ from app.agents.core.background.session import (
     teardown_session,
     was_executor_spawned,
 )
-from app.constants.agents import RETURNED_TO_FRONTEND_MARKER
+from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT
 from app.constants.log_tags import LogTag
 from app.models.chat_models import ToolDataEntry, tool_fields
@@ -131,8 +131,8 @@ def build_returned_to_frontend_note(stream_id: str) -> str:
         return ""
 
     body = "\n".join(summary)
-    return (
-        f"{RETURNED_TO_FRONTEND_MARKER}\n"
+    return wrap_agent_payload(
+        AgentTag.RETURNED_TO_FRONTEND,
         "These native cards are already on the user's screen this turn:\n"
         f"{body}\n"
         "They visually render the RAW items, so don't re-type those items "
@@ -157,7 +157,7 @@ def build_returned_to_frontend_note(stream_id: str) -> str:
         "deliverable IN FULL per the long-form rule — every section, point, and "
         "citation — and do NOT compress it to a 'here's the breakdown' summary. "
         "This note never authorizes shrinking a report; it only stops you "
-        "re-typing rows a card already lists.\n"
+        "re-typing rows a card already lists.",
     )
 
 

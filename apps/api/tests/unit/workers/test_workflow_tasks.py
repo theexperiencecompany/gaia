@@ -10,6 +10,7 @@ import pytest
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.models.notification.notification_models import ActionType, NotificationSourceEnum
+from app.services.analytics_service import AnalyticsEvents
 from app.services.workflow.notifications import (
     send_workflow_completion_notification,
     send_workflow_failure_notification,
@@ -22,6 +23,28 @@ from app.workers.tasks.workflow_tasks import (
     process_workflow_generation_task,
     regenerate_workflow_steps,
 )
+
+
+@pytest.fixture(autouse=True)
+def _no_real_analytics():
+    """Keep every test hermetic: WORKFLOW_CREATED events are asserted through
+    this mock and never reach a real PostHog client."""
+    with patch("app.workers.tasks.workflow_tasks.capture_event") as mock_capture:
+        yield mock_capture
+
+
+@pytest.fixture(autouse=True)
+def _onboarded_user():
+    """Default every test's user to a finished-onboarding one, so the
+    system-initiated-run gate stays out of the way. The gate's own tests
+    (test_workflow_tasks_onboarding_gate.py) override this."""
+    user = MagicMock()
+    user.onboarding = {"completed": True}
+    with patch(
+        "app.workers.tasks.workflow_tasks.user_repository.get",
+        AsyncMock(return_value=user),
+    ):
+        yield
 
 
 def _make_workflow(
@@ -59,6 +82,19 @@ def _patch_scheduler(workflow=None):
         "app.workers.tasks.workflow_tasks.workflow_scheduler",
         scheduler,
     )
+
+
+@pytest.fixture(autouse=True)
+def _no_analytics():
+    """Neutralize the analytics capture on workflow-conversation creation.
+
+    The generation task creates the workflow's conversation via
+    ``create_system_conversation``, which captures ``CONVERSATION_CREATED``
+    through ``capture_event`` — the PostHog provider is not registered in this
+    test module's import chain, so the call must be mocked.
+    """
+    with patch("app.services.conversation_service.capture_event"):
+        yield
 
 
 # ---------------------------------------------------------------------------
@@ -280,6 +316,151 @@ class TestExecuteWorkflowById:
 
         mock_scheduler.close.assert_not_awaited()
 
+    async def test_scheduled_execution_captures_workflow_executed(self, ctx, _no_real_analytics):
+        workflow = _make_workflow()
+        mock_execution = MagicMock()
+        mock_execution.execution_id = str(uuid4())
+
+        _, p_scheduler = _patch_scheduler(workflow)
+
+        with (
+            p_scheduler,
+            patch(
+                "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
+                AsyncMock(return_value="conv_123"),
+            ),
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch(
+                "app.workers.tasks.workflow_tasks.create_execution",
+                AsyncMock(return_value=mock_execution),
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.complete_execution",
+                AsyncMock(),
+            ),
+        ):
+            mock_wf_svc.increment_execution_count = AsyncMock()
+            result = await execute_workflow_by_id(
+                ctx, workflow.id, context={"trigger_type": "schedule"}
+            )
+
+        assert "executed successfully" in result
+        _no_real_analytics.assert_called_once_with(
+            workflow.user_id,
+            AnalyticsEvents.WORKFLOW_EXECUTED,
+            {"workflow_id": workflow.id, "trigger_type": "schedule"},
+        )
+
+    async def test_integration_execution_captures_workflow_executed(self, ctx, _no_real_analytics):
+        # Integration triggers pass only ``trigger_data`` — no trigger_type —
+        # so the event must derive its source instead of reading "manual".
+        workflow = _make_workflow()
+        mock_execution = MagicMock()
+        mock_execution.execution_id = str(uuid4())
+
+        _, p_scheduler = _patch_scheduler(workflow)
+
+        with (
+            p_scheduler,
+            patch(
+                "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
+                AsyncMock(return_value="conv_123"),
+            ),
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch(
+                "app.workers.tasks.workflow_tasks.create_execution",
+                AsyncMock(return_value=mock_execution),
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.complete_execution",
+                AsyncMock(),
+            ),
+        ):
+            mock_wf_svc.increment_execution_count = AsyncMock()
+            result = await execute_workflow_by_id(
+                ctx, workflow.id, context={"trigger_data": {"message_id": "m1"}}
+            )
+
+        assert "executed successfully" in result
+        _no_real_analytics.assert_called_once_with(
+            workflow.user_id,
+            AnalyticsEvents.WORKFLOW_EXECUTED,
+            {"workflow_id": workflow.id, "trigger_type": "integration"},
+        )
+
+    async def test_explicit_trigger_type_wins_over_trigger_data(self, ctx, _no_real_analytics):
+        # Integration detection requires trigger_type to be ABSENT — a context
+        # carrying both must stay on its explicit trigger, not flip to
+        # "integration".
+        workflow = _make_workflow()
+        mock_execution = MagicMock()
+        mock_execution.execution_id = str(uuid4())
+
+        _, p_scheduler = _patch_scheduler(workflow)
+
+        with (
+            p_scheduler,
+            patch(
+                "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
+                AsyncMock(return_value="conv_123"),
+            ),
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch(
+                "app.workers.tasks.workflow_tasks.create_execution",
+                AsyncMock(return_value=mock_execution),
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.complete_execution",
+                AsyncMock(),
+            ),
+        ):
+            mock_wf_svc.increment_execution_count = AsyncMock()
+            result = await execute_workflow_by_id(
+                ctx,
+                workflow.id,
+                context={"trigger_type": "schedule", "trigger_data": {"message_id": "m1"}},
+            )
+
+        assert "executed successfully" in result
+        _no_real_analytics.assert_called_once_with(
+            workflow.user_id,
+            AnalyticsEvents.WORKFLOW_EXECUTED,
+            {"workflow_id": workflow.id, "trigger_type": "schedule"},
+        )
+
+    async def test_manual_execution_does_not_capture_workflow_executed(
+        self, ctx, _no_real_analytics
+    ):
+        # Manual runs are captured by the run-now endpoint at queue time, so
+        # the worker must not emit a duplicate event for them.
+        workflow = _make_workflow()
+        mock_execution = MagicMock()
+        mock_execution.execution_id = str(uuid4())
+
+        _, p_scheduler = _patch_scheduler(workflow)
+
+        with (
+            p_scheduler,
+            patch(
+                "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
+                AsyncMock(return_value="conv_123"),
+            ),
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch(
+                "app.workers.tasks.workflow_tasks.create_execution",
+                AsyncMock(return_value=mock_execution),
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.complete_execution",
+                AsyncMock(),
+            ),
+        ):
+            mock_wf_svc.increment_execution_count = AsyncMock()
+            result = await execute_workflow_by_id(ctx, workflow.id)
+
+        assert "executed successfully" in result
+        _no_real_analytics.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # process_workflow_generation_task
@@ -293,7 +474,7 @@ class TestProcessWorkflowGenerationTask:
     def ctx(self) -> dict:
         return {}
 
-    async def test_successful_generation_returns_success_message(self, ctx):
+    async def test_successful_generation_returns_success_message(self, ctx, _no_real_analytics):
         # Must be a valid 24-char hex ObjectId string because production code
         # calls ObjectId(todo_id) before the mocked update_one is invoked.
         todo_id = "507f1f77bcf86cd799439011"
@@ -326,6 +507,15 @@ class TestProcessWorkflowGenerationTask:
         assert "Successfully generated standalone workflow" in result
         assert workflow.id in result
         assert todo_id in result
+
+        _no_real_analytics.assert_called_once()
+        assert _no_real_analytics.call_args.args[0] == user_id
+        assert _no_real_analytics.call_args.args[1] == AnalyticsEvents.WORKFLOW_CREATED
+        assert _no_real_analytics.call_args.args[2] == {
+            "workflow_id": workflow.id,
+            "steps_count": len(workflow.steps),
+            "is_todo_workflow": True,
+        }
 
     async def test_workflow_creation_returns_none_raises(self, ctx):
         todo_id = str(uuid4())

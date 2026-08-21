@@ -7,7 +7,6 @@ end_graph_hook to learn user memories (IDs, preferences, contacts) per user.
 
 import asyncio
 from collections.abc import Mapping
-from typing import cast
 
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.tools import BaseTool
@@ -16,12 +15,8 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph.state import CompiledStateGraph
 
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
-from app.agents.core.nodes import (
-    manage_system_prompts_node,
-    memory_node,
-)
-from app.agents.core.nodes.adapt_media import adapt_media_node
-from app.agents.core.nodes.filter_messages import filter_messages_node
+from app.agents.core.nodes import memory_node
+from app.agents.core.nodes.pre_model_hooks import worker_pre_model_hooks
 from app.agents.core.subagents.spawn_agent import get_spawn_graph
 from app.agents.middleware import SubagentMiddleware, create_subagent_middleware
 from app.agents.tools.coding import bash, grep, query_json, read
@@ -41,7 +36,6 @@ from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.log_tags import LogTag
 from app.override.langgraph_bigtool.create_agent import create_agent
-from app.override.langgraph_bigtool.hooks import HookType
 from shared.py.wide_events import log
 
 
@@ -246,12 +240,7 @@ class SubAgentFactory:
             "tool_registry": scoped_tool_dict,  # Use scoped dict instead of global
             "agent_name": name,
             "middleware": middleware,
-            "pre_model_hooks": [
-                cast(HookType, filter_messages_node),
-                cast(HookType, adapt_media_node),
-                manage_system_prompts_node,
-                *([todo_hook] if todo_hook is not None else []),
-            ],
+            "pre_model_hooks": worker_pre_model_hooks(todo_hook),
             "end_graph_hooks": [memory_node],
         }
 
