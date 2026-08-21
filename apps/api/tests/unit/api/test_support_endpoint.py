@@ -9,7 +9,11 @@ from unittest.mock import AsyncMock, patch
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.api.v1.dependencies.oauth_dependencies import (
+    get_current_user,
+    get_current_user as _get_current_user_dep,
+)
+from app.api.v1.endpoints.support import router
 from app.constants.general import MAX_PAGE_NUMBER
 from app.models.support_models import (
     SupportRequestSubmissionResponse,
@@ -198,3 +202,51 @@ class TestSubmitSupportRequest:
 
             assert resp.status_code == 401
             assert resp.json()["detail"] == "User authentication required"
+
+
+class TestSubmitSupportRequestLogPins:
+    async def test_success_log_calls_are_exact(self, client: AsyncClient) -> None:
+        result = SupportRequestSubmissionResponse(
+            success=True, message="Submitted", ticket_id="T-126"
+        )
+        with (
+            patch(
+                f"{SUPPORT_ENDPOINT}.create_support_request_with_attachments",
+                new_callable=AsyncMock,
+                return_value=result,
+            ),
+            patch(f"{SUPPORT_ENDPOINT}.log") as mock_log,
+        ):
+            resp = await client.post(
+                "/api/v1/support/requests/with-attachments",
+                data={"type": "support", "title": "T", "description": "Something broke badly"},
+            )
+
+        assert resp.status_code == 200
+        mock_log.set.assert_any_call(
+            operation="submit_support_request_with_attachments", category="support"
+        )
+        mock_log.set.assert_any_call(ticket_id="T-126")
+        mock_log.set.assert_any_call(outcome="success")
+
+    async def test_missing_email_returns_exact_401_detail(self, test_app: FastAPI) -> None:
+        """A user without an email address is rejected before anything runs."""
+        from fastapi.testclient import TestClient
+
+        app = FastAPI()
+        app.include_router(router, prefix="/api/v1")
+
+        app.dependency_overrides[_get_current_user_dep] = lambda: {"user_id": "u1"}
+        try:
+            with patch(f"{SUPPORT_ENDPOINT}.log"):
+                with TestClient(app, raise_server_exceptions=False) as c:
+                    resp = c.post(
+                        "/api/v1/support/requests/with-attachments",
+                        data={"type": "support", "title": "T", "description": "Enough text"},
+                    )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 401
+        assert resp.json()["detail"] == "User authentication required"
+        _ = test_app

@@ -107,3 +107,33 @@ class TestTheLaneItInherits:
 
         config = run.stream_turn.call_args.args[2]
         assert config["recursion_limit"] == WORKFLOW_SUBAGENT_RECURSION_LIMIT
+
+
+@pytest.mark.unit
+class TestExecuteLogPins:
+    async def test_execution_log_is_exact(self) -> None:
+        with patch(f"{_MOD}.get_workflow_subagent", new_callable=AsyncMock):
+            with (
+                patch.object(
+                    WorkflowSubagentRunner,
+                    "_stream_turn",
+                    new_callable=AsyncMock,
+                    return_value=('{"title": "x"}', False),
+                ),
+                patch.object(
+                    WorkflowSubagentRunner,
+                    "_draft_correction_needed",
+                    new_callable=AsyncMock,
+                    return_value=None,
+                ),
+                patch("app.services.workflow.workflow_subagent.log") as log,
+            ):
+                await WorkflowSubagentRunner.execute(task="t", user_id="u1", thread_id="t1")
+
+        exec_logs = [
+            c
+            for c in log.info.call_args_list
+            if "Executing workflow subagent task" in str(c.args[0])
+        ]
+        assert len(exec_logs) == 1
+        assert exec_logs[0].kwargs["task_length"] == len("t")

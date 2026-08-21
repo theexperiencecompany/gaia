@@ -412,3 +412,141 @@ class TestToolPlanLabelling:
             await self._run("legacy_plan", writer=writer)
 
         assert writer.call_args.args[0]["tool_data"]["data"]["current_plan"] == "legacy_plan"
+
+
+# ---------------------------------------------------------------------------
+# Exact pins for the extracted helpers: context resolution, the limit-hit
+# conversion, and the enforcement happy path.
+# ---------------------------------------------------------------------------
+
+
+class TestResolveContext:
+    def test_user_context_var_wins_over_the_run_config(self) -> None:
+        rl.user_context.set({"user_id": "ctx-user", "initiator": "backend"})
+        try:
+            ctx = rl._resolve_context({"config": {"metadata": {"user_id": "cfg-user"}}})
+        finally:
+            rl.user_context.set(None)
+        assert ctx == {"user_id": "ctx-user", "initiator": "backend"}
+
+    def test_falls_back_to_the_config_metadata_user(self) -> None:
+        rl.user_context.set(None)
+        ctx = rl._resolve_context({"config": {"metadata": {"user_id": "cfg-user"}}})
+        assert ctx == {"user_id": "cfg-user", "initiator": "frontend"}
+
+    def test_no_context_and_no_config_yields_none(self) -> None:
+        rl.user_context.set(None)
+        assert rl._resolve_context({}) is None
+
+    def test_config_without_metadata_user_yields_none_user_id(self) -> None:
+        rl.user_context.set(None)
+        ctx = rl._resolve_context({"config": {"metadata": {}}})
+        assert ctx == {"user_id": None, "initiator": "frontend"}
+
+
+class TestEnforceFeatureLimit:
+    async def test_happy_path_records_exact_rate_limit_context(self) -> None:
+        usage = {"second": SimpleNamespace(used=1, limit=5, reset_time=RESET_AT)}
+        with (
+            patch(
+                "app.decorators.rate_limiting.payment_service.get_cached_plan_type",
+                new=AsyncMock(return_value=PlanType.PRO),
+            ) as get_plan,
+            patch(
+                "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
+                new=AsyncMock(return_value=usage),
+            ) as check,
+            patch("app.decorators.rate_limiting.log") as log,
+        ):
+            await rl._enforce_feature_limit("user-1", "generate_image")
+
+        get_plan.assert_awaited_once_with("user-1")
+        check.assert_awaited_once_with(
+            user_id="user-1", feature_key="generate_image", user_plan=PlanType.PRO
+        )
+        stored = rl.rate_limit_context.get()
+        assert stored == {
+            "feature_key": "generate_image",
+            "usage_info": usage,
+            "user_plan": "pro",
+        }
+        log.debug.assert_called_once_with(
+            f"{rl.LogTag.API} Rate limit check passed",
+            user_id="user-1",
+            actual_feature_key="generate_image",
+        )
+
+    async def test_a_limiter_failure_is_logged_and_reraised(self) -> None:
+        with (
+            patch(
+                "app.decorators.rate_limiting.payment_service.get_cached_plan_type",
+                new=AsyncMock(return_value=PlanType.FREE),
+            ),
+            patch(
+                "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
+                new=AsyncMock(side_effect=RuntimeError("redis down")),
+            ),
+            patch("app.decorators.rate_limiting.log") as log,
+            pytest.raises(RuntimeError, match="redis down"),
+        ):
+            await rl._enforce_feature_limit("user-1", "generate_image")
+
+        log.error.assert_called_once_with(
+            f"{rl.LogTag.API} Rate limiting failed",
+            user_id="user-1",
+            actual_feature_key="generate_image",
+            error="redis down",
+            error_type="RuntimeError",
+        )
+
+
+class TestLimitHitException:
+    async def _hit(self, plan: PlanType = PlanType.PRO, detail: Any = None) -> Any:
+        exc = RateLimitExceededException(
+            feature="generate_image", reset_time=RESET_AT, plan_required="pro"
+        )
+        if detail is not None:
+            exc.detail = detail
+        writer = MagicMock()
+        with (
+            patch("app.decorators.rate_limiting.capture_event") as capture,
+            patch.object(rl, "get_stream_writer", return_value=writer),
+            patch("app.decorators.rate_limiting.log") as log,
+        ):
+            result = rl._limit_hit_exception("user-1", "generate_image", plan, exc)
+        return result, capture, writer, log
+
+    async def test_paid_plan_hit_captures_an_event_with_exact_props(self) -> None:
+        result, capture, _, _ = await self._hit(plan=PlanType.PRO)
+        capture.assert_called_once_with(
+            "user-1",
+            rl.AnalyticsEvents.RATE_LIMIT_HIT,
+            {"feature": "generate_image", "plan": "pro"},
+        )
+        assert isinstance(result, rl.LangChainRateLimitException)
+
+    async def test_free_plan_hit_captures_no_duplicate_event(self) -> None:
+        _, capture, _, _ = await self._hit(plan=PlanType.FREE)
+        capture.assert_not_called()
+
+    async def test_dict_detail_drives_reset_time_and_card(self) -> None:
+        result, _, writer, _ = await self._hit(detail={"reset_time": RESET_AT})
+        assert result.reset_time == RESET_AT
+        card = writer.call_args.args[0]
+        assert card["tool_data"]["data"]["reset_time"] == RESET_AT.isoformat()
+
+    async def test_string_detail_becomes_the_message(self) -> None:
+        result, _, writer, _ = await self._hit(detail="too many requests")
+        assert result.detail == {"message": "too many requests"}
+        card = writer.call_args.args[0]
+        assert card["tool_data"]["data"]["plan_required"] == "pro"
+
+    async def test_warning_log_is_exact(self) -> None:
+        _, _, _, log = await self._hit()
+        log.warning.assert_called_once_with(
+            f"{rl.LogTag.API} Rate limit exceeded",
+            user_id="user-1",
+            actual_feature_key="generate_image",
+            error=log.warning.call_args.kwargs["error"],
+            error_type="RateLimitExceededException",
+        )

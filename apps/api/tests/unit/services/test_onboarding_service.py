@@ -6,6 +6,7 @@ from bson import ObjectId
 from fastapi import BackgroundTasks, HTTPException
 import pytest
 
+from app.constants.log_tags import LogTag
 from app.models.user_models import (
     BioStatus,
     OnboardingPhase,
@@ -334,3 +335,143 @@ class TestSeedInitialUserData:
             side_effect=Exception("seed error"),
         ):
             await seed_initial_user_data("user1")
+
+
+class TestOnboardingServiceLogPins:
+    """Exact pins for log calls and error paths the flow tests don't assert."""
+
+    async def test_complete_onboarding_success_log_is_exact(
+        self,
+        mock_repo,
+        mock_enqueue_intelligence_job,
+        sample_user_id,
+        sample_onboarding_request,
+        sample_background_tasks,
+        sample_user,
+    ):
+        mock_repo.complete_onboarding.return_value = sample_user
+        with patch("app.services.onboarding.onboarding_service.log") as log:
+            await complete_onboarding(
+                sample_user_id, sample_onboarding_request, sample_background_tasks
+            )
+
+        log.set.assert_called_once_with(auth={"user_id": sample_user_id})
+        log.info.assert_any_call(
+            f"{LogTag.ONBOARDING} Onboarding completed successfully for user",
+            user_id=sample_user_id,
+        )
+
+    async def test_complete_onboarding_replay_log_is_exact(
+        self,
+        mock_repo,
+        mock_enqueue_intelligence_job,
+        sample_user_id,
+        sample_onboarding_request,
+        sample_background_tasks,
+        sample_user,
+    ):
+        mock_repo.complete_onboarding.return_value = None
+        mock_repo.get.return_value = sample_user
+        with patch("app.services.onboarding.onboarding_service.log") as log:
+            await complete_onboarding(
+                sample_user_id, sample_onboarding_request, sample_background_tasks
+            )
+
+        replay_logs = [
+            c
+            for c in log.info.call_args_list
+            if "replay — onboarding already submitted" in str(c.args[0])
+        ]
+        assert len(replay_logs) == 1
+        assert replay_logs[0].kwargs["user_id"] == sample_user_id
+
+    async def test_enqueue_failure_rolls_back_with_exact_error_log(
+        self,
+        mock_repo,
+        sample_user_id,
+        sample_onboarding_request,
+        sample_background_tasks,
+        sample_user,
+    ):
+        mock_repo.complete_onboarding.return_value = sample_user
+        with (
+            patch(
+                "app.services.onboarding.onboarding_service.enqueue_intelligence_job",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("queue down"),
+            ),
+            patch("app.services.onboarding.onboarding_service.log") as log,
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await complete_onboarding(
+                sample_user_id, sample_onboarding_request, sample_background_tasks
+            )
+
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.detail == "Could not start onboarding. Please retry."
+        mock_repo.clear_onboarding.assert_awaited_once_with(sample_user_id)
+        enqueue_errors = [c for c in log.error.call_args_list if "Enqueue failed" in str(c.args[0])]
+        assert len(enqueue_errors) == 1
+        assert enqueue_errors[0].kwargs["error"] == "queue down"
+        assert enqueue_errors[0].kwargs["error_type"] == "RuntimeError"
+
+    async def test_get_status_returns_every_field_from_the_document(
+        self, mock_repo, sample_user_id
+    ):
+        user = UserDocument.model_validate(
+            {
+                "id": sample_user_id,
+                "name": "Alice",
+                "onboarding": {
+                    "completed": True,
+                    "completed_at": "2025-01-01T00:00:00Z",
+                    "phase": OnboardingPhase.PERSONALIZATION_PENDING.value,
+                    "preferences": {"profession": "Engineer", "response_style": "casual"},
+                    "first_message_conversation_id": "conv-9",
+                },
+            }
+        )
+        mock_repo.get.return_value = user
+
+        status = await get_user_onboarding_status(sample_user_id)
+
+        assert status.completed is True
+        assert status.phase == OnboardingPhase.PERSONALIZATION_PENDING
+        assert status.preferences.profession == "Engineer"
+        assert status.first_message_conversation_id == "conv-9"
+
+    async def test_get_status_generic_error_raises_500_with_exact_detail(
+        self, mock_repo, sample_user_id
+    ):
+        mock_repo.get.side_effect = RuntimeError("mongo down")
+        with pytest.raises(HTTPException) as exc_info:
+            await get_user_onboarding_status(sample_user_id)
+
+        assert exc_info.value.status_code == 500
+        assert exc_info.value.detail == "An internal error occurred"
+
+    async def test_update_preferences_success_log_is_exact(self, mock_repo, sample_user_id):
+        updated = UserDocument(id=sample_user_id, name="Alice")
+        mock_repo.update_onboarding_preferences.return_value = updated
+        prefs = OnboardingPreferences(profession="Writer", response_style="formal")
+
+        with patch("app.services.onboarding.onboarding_service.log") as log:
+            await update_onboarding_preferences(sample_user_id, prefs)
+
+        log.info.assert_called_once_with(
+            f"{LogTag.ONBOARDING} Onboarding preferences updated successfully for user",
+            user_id=sample_user_id,
+        )
+        mock_repo.update_onboarding_preferences.assert_awaited_once_with(sample_user_id, prefs)
+
+    async def test_update_preferences_generic_error_raises_500_with_exact_detail(
+        self, mock_repo, sample_user_id
+    ):
+        mock_repo.update_onboarding_preferences.side_effect = RuntimeError("db down")
+        prefs = OnboardingPreferences(profession="Writer", response_style="formal")
+
+        with pytest.raises(HTTPException) as exc_info:
+            await update_onboarding_preferences(sample_user_id, prefs)
+
+        assert exc_info.value.status_code == 500
+        assert exc_info.value.detail == "Failed to update preferences"

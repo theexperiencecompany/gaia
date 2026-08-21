@@ -3,6 +3,8 @@
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.constants.log_tags import LogTag
+
 # Pre-import to break circular dependency chain:
 # workflow_tool -> workflow_utils -> workflow.subagent_output -> workflow.__init__ -> service -> workflow_utils
 import app.services.workflow.service  # noqa: F401
@@ -472,3 +474,80 @@ class TestListWorkflows:
 
         assert result["success"] is False
         assert result["error"] == "fetch_failed"
+
+
+class TestCreateWorkflowPins:
+    """Exact pins for the create_workflow tool's guards, logs, and wiring."""
+
+    async def test_log_context_is_exact(self) -> None:
+        from app.agents.tools.workflow_tool import create_workflow
+
+        parsed = _make_parsed_result(mode="clarifying", questions=["what time?"])
+        with (
+            patch(f"{MODULE}.log") as mock_log,
+            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.parse_subagent_response", return_value=parsed),
+            patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
+        ):
+            mock_writer_factory.return_value = _writer_mock()
+            mock_runner.execute = AsyncMock(return_value="out")
+            await create_workflow.coroutine(  # type: ignore[attr-defined]
+                config=_make_config(), user_request="every morning"
+            )
+
+        mock_log.set.assert_called_once_with(tool={"name": "create_workflow", "action": "create"})
+        mock_log.info.assert_any_call(f"{LogTag.TOOL} create_workflow: Executing")
+
+    async def test_empty_whitespace_request_returns_exact_error(self) -> None:
+        from app.agents.tools.workflow_tool import create_workflow
+
+        result = await create_workflow.coroutine(  # type: ignore[attr-defined]
+            config=_make_config(), user_request="   "
+        )
+        assert result["success"] is False
+        assert result["data"]["status"] == "missing_request"
+        assert (
+            result["data"]["message"]
+            == "user_request is required. Pass the user's words describing what workflow they want."
+        )
+
+    async def test_subagent_receives_the_exact_context(self) -> None:
+        from app.agents.tools.workflow_tool import create_workflow
+
+        parsed = _make_parsed_result(mode="clarifying", questions=["q"])
+        with (
+            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.parse_subagent_response", return_value=parsed),
+            patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
+        ):
+            mock_writer_factory.return_value = writer = _writer_mock()
+            mock_runner.execute = AsyncMock(return_value="out")
+            await create_workflow.coroutine(  # type: ignore[attr-defined]
+                config=_make_config(), user_request="daily digest"
+            )
+
+        kwargs = mock_runner.execute.await_args.kwargs
+        assert kwargs["user_id"] == "507f1f77bcf86cd799439011"
+        assert kwargs["task"] == "daily digest"
+        ctx = kwargs["context"]
+        assert ctx.stream_writer is writer
+
+    async def test_parsed_mode_log_carries_the_mode(self) -> None:
+        from app.agents.tools.workflow_tool import create_workflow
+
+        parsed = _make_parsed_result(mode="finalized", draft=_make_draft())
+        with (
+            patch(f"{MODULE}.log") as mock_log,
+            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.parse_subagent_response", return_value=parsed),
+            patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
+        ):
+            mock_writer_factory.return_value = _writer_mock()
+            mock_runner.execute = AsyncMock(return_value="out")
+            await create_workflow.coroutine(  # type: ignore[attr-defined]
+                config=_make_config(), user_request="weekly report"
+            )
+
+        mode_logs = [c for c in mock_log.info.call_args_list if "parsed mode" in str(c.args[0])]
+        assert len(mode_logs) == 1
+        assert mode_logs[0].kwargs["mode"] == "finalized"

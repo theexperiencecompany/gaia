@@ -9,7 +9,7 @@ executor and every wrap_tool_call hook consume as their view of graph state.
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import tool
@@ -79,3 +79,60 @@ class TestMiddlewareDispatchPath:
         assert len(state["messages"]) == 1
         assert state["messages"][0].tool_calls[0]["name"] == "echo"
         assert state["messages"] is not node_input["messages"]
+
+
+class TestMiddlewareDispatchPins:
+    """Pin the dispatch branches: parent routing, missing executor, Command mix."""
+
+    async def test_all_parent_routed_calls_delegate_to_the_parent_path(self):
+        node, executor = _make_node()
+        # InjectedState args make "echo" parent-routed for this node.
+        object.__setattr__(node, "_injected_args", {"echo": MagicMock(state={"messages": True})})
+        with patch.object(
+            DynamicToolNode.__bases__[0], "_afunc", new_callable=AsyncMock
+        ) as parent:
+            parent.return_value = {"messages": [ToolMessage(content="parent", tool_call_id="c1")]}
+            result = await node._afunc(_input_with_echo_call(), {}, MagicMock())
+
+        executor.wrap_tool_invocation.assert_not_awaited()
+        assert isinstance(result, dict)
+        assert result["messages"][0].content == "parent"
+
+    async def test_mixed_command_results_are_returned_as_a_flat_list(self):
+        from langgraph.types import Command
+
+        node, _ = _make_node()
+        command = Command(update={"messages": [ToolMessage(content="cmd", tool_call_id="c1")]})
+        node._middleware_executor.wrap_tool_invocation = AsyncMock(return_value=command)
+
+        result = await node._afunc(_input_with_echo_call(), {}, MagicMock())
+
+        # Commands must NOT be wrapped in {"messages": ...} — LangGraph handles
+        # a bare list containing Commands itself.
+        assert isinstance(result, list)
+
+    async def test_tool_messages_only_are_returned_under_the_messages_key(self):
+        node, _ = _make_node()
+        result = await node._afunc(_input_with_echo_call(), {}, MagicMock())
+        assert set(result.keys()) == {"messages"}
+
+    async def test_store_from_runtime_reaches_the_executor(self):
+        node, executor = _make_node()
+        store = MagicMock()
+
+        class Runtime:
+            pass
+
+        runtime = Runtime()
+        runtime.store = store
+
+        await node._afunc(_input_with_echo_call(), {}, runtime)
+
+        assert executor.wrap_tool_invocation.await_args.kwargs["store"] is store
+
+    async def test_missing_runtime_store_passes_none(self):
+        node, executor = _make_node()
+
+        await node._afunc(_input_with_echo_call(), {}, MagicMock(spec=[]))
+
+        assert executor.wrap_tool_invocation.await_args.kwargs["store"] is None

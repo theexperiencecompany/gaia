@@ -562,3 +562,65 @@ class TestGetPersonalization:
 
             assert exc_info.value.status_code == 400
             assert exc_info.value.detail == "Invalid user_id"
+
+
+class TestGetPersonalizationPins:
+    """Exact pins for the personalization endpoint's guards and log calls."""
+
+    async def test_invalid_user_id_type_returns_exact_400(self, client: AsyncClient):
+        with patch(
+            "app.api.v1.endpoints.onboarding.get_current_user",
+            return_value={"user_id": 12345},
+        ):
+            response = await client.get(PERSONALIZATION_URL)
+        # The auth dependency normally injects the id; drive the guard directly.
+        with pytest.raises(HTTPException) as exc:
+            await get_onboarding_personalization(user={"user_id": 12345})  # type: ignore[arg-type]
+        assert exc.value.status_code == 400
+        assert exc.value.detail == "Invalid user_id"
+        _ = response
+
+    async def test_missing_user_id_key_returns_exact_400(self):
+        with pytest.raises(HTTPException) as exc:
+            await get_onboarding_personalization(user={})  # type: ignore[arg-type]
+        assert exc.value.status_code == 400
+        assert exc.value.detail == "Invalid user_id"
+
+    async def test_user_not_found_returns_exact_404_detail(self, client: AsyncClient):
+        with (
+            patch("app.api.v1.endpoints.onboarding.log") as log,
+            patch(_GET_USER, new_callable=AsyncMock, return_value=None),
+        ):
+            with pytest.raises(HTTPException) as exc:
+                await get_onboarding_personalization(user={"user_id": "507f1f77bcf86cd799439011"})
+        assert exc.value.status_code == 404
+        assert exc.value.detail == "User not found"
+        info_calls = [
+            c for c in log.info.call_args_list if "Fetching personalization" in str(c.args[0])
+        ]
+        assert len(info_calls) == 1
+        assert info_calls[0].kwargs["user_id"] == "507f1f77bcf86cd799439011"
+
+    async def test_phase_defaults_to_initial_and_is_logged(self, client: AsyncClient):
+        user_doc = UserDocument(
+            id="507f1f77bcf86cd799439011",
+            name="New User",
+            onboarding={},
+            created_at=None,
+        )
+        mock_composio = MagicMock()
+        mock_composio.check_connection_status = AsyncMock(return_value={"gmail": False})
+        with (
+            patch("app.api.v1.endpoints.onboarding.log") as log,
+            patch(_GET_USER, new_callable=AsyncMock, return_value=user_doc),
+            patch(_COUNT_BEFORE, new_callable=AsyncMock, return_value=0),
+            patch(_COMPOSIO_SERVICE, return_value=mock_composio),
+        ):
+            response = await client.get(PERSONALIZATION_URL)
+
+        assert response.status_code == 200
+        state_logs = [
+            c for c in log.info.call_args_list if "User onboarding state" in str(c.args[0])
+        ]
+        assert len(state_logs) == 1
+        assert state_logs[0].kwargs["phase"] == "initial"

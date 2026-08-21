@@ -999,3 +999,190 @@ class TestCollectStorageResultsPins:
         assert result["failed"] == 3
         assert result["processing_complete"] is False
         mock_mark.assert_not_awaited()
+
+
+class TestCollectStorageResultsDirect:
+    """Direct pins on the storage-await helper's counting and logging."""
+
+    def _timer(self) -> Any:
+        from app.agents.memory.email_processor import _StepTimer
+
+        return _StepTimer()
+
+    async def test_no_tasks_returns_zero_without_logging_dispatch(self) -> None:
+        from app.agents.memory.email_processor import _collect_storage_results
+
+        with patch("app.agents.memory.email_processor.log") as log:
+            errors = await _collect_storage_results(USER_ID, [], self._timer())
+        assert errors == 0
+        assert log.info.call_args_list == []
+
+    async def test_failed_batches_are_counted_with_exact_log(self) -> None:
+        from app.agents.memory.email_processor import _collect_storage_results
+
+        async def ok() -> None:
+            await asyncio.sleep(0)
+
+        async def boom() -> None:
+            raise RuntimeError("mongo down")
+
+        tasks = [asyncio.create_task(ok()), asyncio.create_task(boom())]
+        with patch("app.agents.memory.email_processor.log") as log:
+            errors = await _collect_storage_results(USER_ID, tasks, self._timer())
+
+        assert errors == 1
+        warning = log.warning.call_args
+        assert f"{LogTag.MEMORY} Email storage task failed" in warning.args[0]
+        assert warning.kwargs["task_index"] == 2
+        assert warning.kwargs["error_type"] == "RuntimeError"
+        complete = [c for c in log.info.call_args_list if "storage complete" in str(c.args[0])]
+        assert len(complete) == 1
+        assert complete[0].kwargs["successful_batches"] == 1
+        assert complete[0].kwargs["total_batches"] == 2
+        assert complete[0].kwargs["failed_batches"] == 1
+
+    async def test_a_gather_failure_counts_every_task_as_failed(self) -> None:
+        from app.agents.memory.email_processor import _collect_storage_results
+
+        class ExplodingTasks:
+            def __iter__(self):
+                return iter([])
+
+            def __len__(self) -> int:
+                return 3
+
+        # gather() over an empty iterable returns [] without error, so force the
+        # except path via a poisoned timer instead.
+        timer = self._timer()
+        timer.record = MagicMock(side_effect=RuntimeError("clock broke"))
+
+        async def ok() -> None:
+            await asyncio.sleep(0)
+
+        tasks = [asyncio.create_task(ok())]
+        with patch("app.agents.memory.email_processor.log") as log:
+            errors = await _collect_storage_results(USER_ID, tasks, timer)
+
+        assert errors == 1
+        critical = [c for c in log.error.call_args_list if "Critical error" in str(c.args[0])]
+        assert len(critical) == 1
+        assert critical[0].kwargs["error_type"] == "RuntimeError"
+
+
+class TestMarkProcessingCompletePins:
+    async def test_incomplete_processing_skips_the_mark_write_but_stamps_the_time(self) -> None:
+        from app.agents.memory.email_processor import _mark_processing_complete
+
+        timer = MagicMock()
+        with (
+            patch(_PATCH_USERS) as users,
+            patch(_PATCH_MARK_COMPLETE, new_callable=AsyncMock) as mark,
+        ):
+            users.set_gmail_scan_timestamp = AsyncMock()
+            await _mark_processing_complete(USER_ID, False, 0, timer)
+
+        mark.assert_not_awaited()
+        users.set_gmail_scan_timestamp.assert_awaited_once()
+
+    async def test_complete_processing_marks_and_logs_exact_args(self) -> None:
+        from app.agents.memory.email_processor import _mark_processing_complete
+
+        timer = MagicMock()
+        with (
+            patch(_PATCH_USERS) as users,
+            patch(_PATCH_MARK_COMPLETE, new_callable=AsyncMock) as mark,
+            patch("app.agents.memory.email_processor.log") as log,
+        ):
+            users.set_gmail_scan_timestamp = AsyncMock()
+            await _mark_processing_complete(USER_ID, True, 7, timer)
+
+        mark.assert_awaited_once_with(USER_ID, 7)
+        done_logs = [
+            c
+            for c in log.info.call_args_list
+            if "Marked email processing as complete" in str(c.args[0])
+        ]
+        assert len(done_logs) == 1
+        assert done_logs[0].kwargs["user_id"] == USER_ID
+
+    async def test_mark_failure_is_swallowed_and_timestamp_still_written(self) -> None:
+        from app.agents.memory.email_processor import _mark_processing_complete
+
+        timer = MagicMock()
+        with (
+            patch(_PATCH_USERS) as users,
+            patch(
+                _PATCH_MARK_COMPLETE,
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("db down"),
+            ),
+            patch("app.agents.memory.email_processor.log") as log,
+        ):
+            users.set_gmail_scan_timestamp = AsyncMock()
+            await _mark_processing_complete(USER_ID, True, 5, timer)
+
+        users.set_gmail_scan_timestamp.assert_awaited_once()
+        error_logs = [
+            c
+            for c in log.error.call_args_list
+            if "Failed to mark email processing" in str(c.args[0])
+        ]
+        assert len(error_logs) == 1
+        assert error_logs[0].kwargs["error_type"] == "RuntimeError"
+
+
+class TestLatestGmailScanTimestampEdges:
+    def test_non_dict_scan_states_returns_none(self) -> None:
+        user = UserDocument(id=USER_ID)
+        object.__setattr__(user, "integration_scan_states", "not-a-dict")
+        assert _latest_gmail_scan_timestamp(user) is None
+
+    def test_missing_last_scan_key_returns_none(self) -> None:
+        user = UserDocument(id=USER_ID, integration_scan_states={"gmail": {"other": 1}})
+        assert _latest_gmail_scan_timestamp(user) is None
+
+
+class TestProcessGmailToMemoryReturnShape:
+    @patch(_PATCH_USERS)
+    async def test_already_processed_return_dict_is_exact(self, mock_users: MagicMock) -> None:
+        mock_users.get = AsyncMock(
+            return_value=UserDocument(id=USER_ID, email_memory_processed=True, name="T")
+        )
+        result = await process_gmail_to_memory(USER_ID)
+        assert result == {
+            "total": 0,
+            "successful": 0,
+            "already_processed": True,
+            "processing_complete": True,
+        }
+
+    @patch(_PATCH_USERS)
+    @patch(_PATCH_SEARCH, new_callable=AsyncMock)
+    @patch(_PATCH_PROCESS)
+    @patch(_PATCH_MARK_COMPLETE, new_callable=AsyncMock)
+    @patch(_PATCH_EXTRACT_PROFILES, new_callable=AsyncMock)
+    async def test_the_scan_query_is_the_after_timestamp_form(
+        self,
+        mock_profiles: AsyncMock,
+        mock_mark: AsyncMock,
+        mock_process: MagicMock,
+        mock_search: AsyncMock,
+        mock_users: MagicMock,
+    ) -> None:
+        ts = datetime(2026, 3, 1, tzinfo=UTC)
+        mock_users.get = AsyncMock(
+            return_value=UserDocument(
+                id=USER_ID,
+                email_memory_processed=False,
+                name="T",
+                integration_scan_states={"gmail": {"last_scan_timestamp": ts}},
+            )
+        )
+        mock_users.set_gmail_scan_timestamp = AsyncMock()
+        mock_search.return_value = GmailMessagesResponse(messages=[])
+        mock_profiles.return_value = {"profiles_stored": 0}
+
+        await process_gmail_to_memory(USER_ID)
+
+        expected_after = int(ts.timestamp())
+        assert mock_search.await_args.kwargs["query"] == f"in:inbox after:{expected_after}"
