@@ -52,6 +52,14 @@ Say **"Hey GAIA"** and start talking. The wake word runs entirely on your device
 
 Voice calls are real-time and interruptible, with natural turn-taking and background noise filtered out.
 
+### Everything lives in one place
+
+GAIA isn't only a chat box. Signing in gets you a real app: your **inbox**, **calendar**, **todos**, and **workflows**, plus a **dashboard** tying them together.
+
+Anything GAIA does for you in the background shows up in **notifications**, where you approve, edit, or dismiss it. Useful replies can be **pinned** so they're easy to find later.
+
+Stop opening five tabs to run your day.
+
 ### It's genuinely yours
 
 Self-host the whole stack with your own keys, your own models, and no usage caps. There's no "enterprise edition" holding back the good parts.
@@ -79,7 +87,7 @@ Every one of these works today.
 | <img src="apps/web/public/images/icons/macos/slack.webp" width="26" height="26" /> | **Slack** | [Add to your workspace](https://heygaia.io/slack-bot) |
 | <img src="apps/web/public/images/icons/macos/discord.webp" width="26" height="26" /> | **Discord** | [Add the bot](https://heygaia.io/discord-bot) or [join the server](https://discord.heygaia.io) |
 
-There's also a web app, a desktop app for macOS, Windows and Linux, and a mobile app.
+There's also the web app, a [desktop app](https://heygaia.io/download) for macOS, Windows and Linux, and a mobile app.
 
 It's one assistant everywhere, not six disconnected bots. Start something on your laptop, get the answer on your phone.
 
@@ -165,7 +173,29 @@ docs               docs.heygaia.io
 infra/docker       Docker Compose (dev + prod)
 ```
 
-How the agent system actually fits together — every service, every file path — is in **[ARCHITECTURE.md](./ARCHITECTURE.md)**.
+<details>
+<summary><b>How the agent system works</b></summary>
+
+<br />
+
+GAIA runs three tiers of agents. The one you talk to never does the work itself — it hands off, so the conversation stays responsive while long jobs run in the background.
+
+```
+  Comms agent        Talks to you and narrates progress. Deliberately
+      │              cannot do work — it can only delegate.
+      ▼  call_executor(task)   →  returns instantly, runs in background
+  Executor agent     The worker. Shell, files, research, planning, todos,
+      │              and the handoff tool.
+      ▼  handoff(subagent, task)
+  Subagents          One specialist per integration, dispatched in parallel,
+                     each scoped to only its own tools.
+```
+
+Why bother: a single agent holding 30 integrations' worth of tools picks the wrong one and gets slower with every tool you add. Scoping each integration to its own agent keeps tool choice accurate, and running them in parallel keeps it fast.
+
+Every service and file path is mapped in **[ARCHITECTURE.md](./ARCHITECTURE.md)**.
+
+</details>
 
 ## Roadmap
 
