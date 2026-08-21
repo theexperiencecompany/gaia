@@ -44,6 +44,7 @@ from app.agents.workspace.system_docs import integration_skills_block
 from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
 from app.constants.skills import EXECUTOR_SUBAGENT_ID
+from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
 from app.services.integration_instructions_service import get_instructions
 from app.services.provider_metadata_service import get_provider_metadata
 from app.utils.user_preferences_utils import format_user_preferences_for_agent
@@ -69,6 +70,27 @@ class Section:
 
 
 # --- stable sections: change on a preference edit or a connect, not per turn ---
+
+
+async def _platform_banner(ctx: SectionContext) -> str:
+    """Which messaging app comms is replying in.
+
+    The model cannot read ``configurable``, so without this it knows only that it
+    is on "some" messaging platform, not which one — and replies drift toward the
+    web app's voice. Naming the app is what lets them read native to it.
+
+    Bot channels only: on web/mobile/desktop the rich UI is the point, so telling
+    those clients to write plain short text would be actively wrong.
+    """
+    source = ConversationSource.coerce(ctx.source)
+    if source is None or source not in BOT_CONVERSATION_SOURCES:
+        return ""
+    name = source.display_name
+    return (
+        f"You are chatting with the user in their {name} chat right now. "
+        f"Write like a normal {name} message: plain text, short, no markdown "
+        "tables or rich cards."
+    )
 
 
 async def _user_identity(ctx: SectionContext) -> str:
@@ -183,6 +205,13 @@ async def _skills(ctx: SectionContext) -> str:
 #: run banners deliberately sort last so their directives land with recency,
 #: immediately before the conversation begins.
 SECTIONS: tuple[Section, ...] = (
+    Section(
+        "platform_banner",
+        PromptSlot.DYNAMIC_STABLE,
+        frozenset({AgentTier.COMMS}),
+        5,
+        _platform_banner,
+    ),
     Section("user_identity", PromptSlot.DYNAMIC_STABLE, ALL_TIERS, 10, _user_identity),
     Section("user_prefs", PromptSlot.DYNAMIC_STABLE, ALL_TIERS, 20, _user_prefs),
     Section(

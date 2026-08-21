@@ -53,8 +53,6 @@ export const INTEGRATION_LOGO_FILES: Record<string, string> = {
  * Mobile reuses the same URLs verbatim — they are CDN-served already.
  */
 export const INTEGRATION_LOGO_EXTERNAL_URLS: Record<string, string> = {
-  browserbase:
-    "https://www.google.com/s2/favicons?domain=browserbase.com&sz=128",
   agentmail:
     "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://agentmail.to&size=256",
 };

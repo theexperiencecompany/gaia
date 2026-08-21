@@ -44,5 +44,6 @@ printf '%s\n' "$CHANGED_PY" |
   { grep '^apps/api/app/.*\.py$' || true; } |
   { grep -v 'app/main\.py$' || true; } |
   { grep -v 'app/worker\.py$' || true; } |
+  { grep -v '__main__\.py$' || true; } |
   { grep -v '__init__\.py$' || true; } |
   python3 scripts/ci/mutation-matrix.py

@@ -39,6 +39,8 @@ export const iconAliases: Record<string, string> = {
   google_calendar: "googlecalendar",
   planner: "plan_tasks",
   gaia_knowledge_guide: "gaia",
+  // The "browser" tool category reuses the browser_task tool's icon.
+  browser: "browser_task",
 };
 
 export const toolIconConfigs: Record<string, ToolIconConfig> = {
@@ -307,14 +309,6 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
     iconColorRaw: "#ffffff",
     isImage: true,
   },
-  browserbase: {
-    icon: "browserbase",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    bgColorRaw: "#3f3f46",
-    iconColorRaw: "#e4e4e7",
-    isImage: true,
-  },
   posthog: {
     icon: "posthog",
     bgColor: "bg-zinc-700",
@@ -411,6 +405,14 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
     iconColor: "text-purple-400",
     bgColorRaw: "rgba(168, 85, 247, 0.2)",
     iconColorRaw: "#c084fc",
+    isImage: false,
+  },
+  browser_task: {
+    icon: "AiWebBrowsingIcon",
+    bgColor: "bg-[#00bbff]/20 backdrop-blur",
+    iconColor: "text-[#00bbff]",
+    bgColorRaw: "rgba(0, 187, 255, 0.2)",
+    iconColorRaw: "#00bbff",
     isImage: false,
   },
   support: {

@@ -9,6 +9,7 @@
  */
 import type { AxiosInstance } from "axios";
 import type { BotFileData } from "../types";
+import { fetchPublicAsset } from "../utils/public-fetch";
 
 type Headers = Record<string, string>;
 
@@ -99,6 +100,26 @@ export async function downloadArtifactRequest(
     respHeaders["content-type"] ?? "application/octet-stream",
   );
   return { data: Buffer.from(data as ArrayBuffer), contentType };
+}
+
+/**
+ * Downloads bytes directly from a CDN URL (e.g. a signed browser-automation
+ * step screenshot). No GAIA auth is involved — the URL itself is already the
+ * authorization (a signed, short-lived Cloudinary link), so this bypasses the
+ * bot-authenticated client entirely.
+ */
+export async function downloadUrlRequest(
+  url: string,
+): Promise<{ data: Buffer; contentType: string }> {
+  // The URL is the bearer authorization for the asset bytes, so the fetch is
+  // SSRF-guarded on every hop before any byte moves (https-only; no redirect
+  // may dial a private/loopback/link-local/reserved address). Same 100 MB cap
+  // as downloadArtifactRequest so a lower cap never rejects a file before
+  // OUTBOUND_FILE_LIMITS applies the platform-specific limit.
+  return fetchPublicAsset(url, {
+    maxContentLength: 100 * 1024 * 1024,
+    maxBodyLength: 100 * 1024 * 1024,
+  });
 }
 
 /**

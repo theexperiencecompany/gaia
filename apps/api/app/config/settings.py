@@ -172,6 +172,130 @@ class CommonSettings(BaseAppSettings):
         return max(CRAWL4AI_MIN_MAX_BROWSERS, parsed)
 
     # ----------------------------------------------
+    # Browser-Use (autonomous browser automation)
+    # Master switch. Opt-in: new deployments are browser-disabled by default so
+    # the capability only turns on where BROWSER_HOST_URL is configured. When
+    # false the tool is registered but reports unavailable instead of spinning
+    # up a browser.
+    BROWSER_USE_ENABLED: bool = False
+
+    # LLM that drives the browser agent — decoupled from the chat harness so
+    # browser work uses a deliberately-chosen, vision-capable model. Provider:
+    # openai | anthropic | google | openrouter | deepseek. The key is sourced
+    # from the matching GAIA setting (OPENAI_API_KEY / GOOGLE_API_KEY /
+    # OPENROUTER_API_KEY; anthropic and deepseek have no GAIA-wide key) unless
+    # BROWSER_USE_LLM_API_KEY is set. Defaults to a cheap, vision-capable model
+    # to keep per-task token cost low.
+    #
+    # The default below is manually kept equal to VISION_MODEL_PROVIDER /
+    # VISION_MODEL_NAME in app/constants/llm.py (currently gemini / the model
+    # DEFAULT_GEMINI_MODEL_NAME points at) rather than importing that constant:
+    # app.constants.llm imports app.models.models_models -> app.db.repositories.base
+    # -> app.db.redis -> app.config.settings, a real circular import back into this
+    # module (verified — `settings` is not yet bound in this file when that chain
+    # runs). Breaking it means extracting the vision-model constants into a module
+    # with no import path back to settings; that's a change to files outside this
+    # component's scope, so it's called out here rather than made silently.
+    BROWSER_USE_LLM_PROVIDER: str = "google"
+    BROWSER_USE_LLM_MODEL: str = "gemini-3.1-flash-lite"
+    BROWSER_USE_LLM_API_KEY: str | None = None
+    # Browser-Use "flash mode" strips the planner/thinking/next_goal fields from every
+    # step's output schema. Benchmarked as a negligible speed win on typical tasks (the
+    # bottleneck is page loads + per-step LLM latency, not output tokens) while it costs
+    # the model's per-step reasoning — and the recap loses meaningful step captions
+    # ("Search for X" becomes "Clicking"). Off by default; better captions + reasoning
+    # for ~no time cost.
+    BROWSER_USE_FLASH_MODE: bool = False
+    # Cloudflare R2 (S3-compatible, free tier) — the fast edge store for browser step
+    # screenshots. Cloudinary stays the durable store for arbitrary user files. The S3
+    # endpoint is derived from the account id; the public base URL is the bucket's
+    # r2.dev managed domain (use a custom domain in prod — r2.dev is rate-limited).
+    # Optional: any unset → screenshots fall back to inline data URLs. Injected from
+    # Infisical by name in prod; set in apps/api/.env for dev.
+    CLOUDFLARE_ACCOUNT_ID: str | None = None
+    R2_ACCESS_KEY_ID: str | None = None
+    R2_SECRET_ACCESS_KEY: str | None = None
+    R2_BUCKET: str = "gaia-browser-shots"
+    R2_PUBLIC_BASE_URL: str | None = None
+    BROWSER_USE_LLM_BASE_URL: str | None = None
+    # Vision (screenshots to the model) is the biggest cost driver — keep it on
+    # for reliability, but a deployment optimizing cost can disable it.
+    BROWSER_USE_VISION: bool = True
+
+    # Hard limits — everything is bounded so no browser task can run away.
+    BROWSER_USE_MAX_STEPS: int = 25
+    BROWSER_USE_MAX_ACTIONS_PER_STEP: int = 5
+    BROWSER_USE_TASK_TIMEOUT_SECONDS: int = 600
+    BROWSER_USE_HANDOFF_TIMEOUT_SECONDS: int = 600
+    # Active work budget for a single step. The effective per-step timeout adds the
+    # handoff timeout on top, so a step that pauses for a human live-view takeover
+    # is never killed as "stuck" while the user is completing it.
+    BROWSER_USE_STEP_TIMEOUT_SECONDS: int = 180
+    # Stream per-step screenshots into the chat card / bot messages.
+    BROWSER_USE_STREAM_SCREENSHOTS: bool = True
+
+    # There is no automatic CAPTCHA solver: when set, the agent gets an action to
+    # hand a CAPTCHA to the user, who solves it in live-view before it continues.
+    BROWSER_USE_SOLVE_CAPTCHA: bool = True
+
+    # Mid-run sensitive-action policy. Per category: "handoff" (pause → user
+    # completes it in live-view → continue), "proceed" (agent does it), "abort".
+    # Safe defaults hand off. BROWSER_USE_AUTONOMOUS_SENSITIVE=true lets a user
+    # who has set up an agent-usable payment method skip handoffs entirely.
+    BROWSER_USE_AUTONOMOUS_SENSITIVE: bool = False
+    BROWSER_USE_PAYMENT_STRATEGY: str = "handoff"
+    BROWSER_USE_CREDENTIALS_STRATEGY: str = "handoff"
+    BROWSER_USE_IRREVERSIBLE_STRATEGY: str = "handoff"
+
+    # ----------------------------------------------
+    # Browser host (gaia-browser-host — our own low-RAM Chromium host)
+    # ----------------------------------------------
+    # One long-lived Chromium, one isolated browser context per session, a
+    # per-session CDP-filtering proxy, and an authenticated screencast live view.
+    # The API reaches the host by service name on the internal overlay network;
+    # the host port is never published. Locally override to http://localhost:8930.
+    BROWSER_HOST_URL: str = "http://browser-host:8930"  # NOSONAR python:S5332 — internal docker service, plain HTTP on the private network by design (TLS terminates at the edge)
+    # Port the host binds inside its container.
+    BROWSER_HOST_PORT: int = 8930
+    # Address the host binds. All interfaces by default — the host runs in its own
+    # container on the internal overlay network and this port is never published; a
+    # value from settings also makes the bind configurable for local runs.
+    BROWSER_HOST_BIND: str = "0.0.0.0"  # noqa: S104  # nosec B104 — internal overlay only, port never published
+    # Shared secret the API/worker must present to every host endpoint (REST header
+    # X-Host-Key, WS query param ?hk=). Required in production: the host renders
+    # attacker-controlled pages in the SAME container, so a page could otherwise
+    # fetch() the control plane on localhost (a cross-tenant DoS / control surface);
+    # the key must never be reachable by page JS. Generate with: openssl rand -hex 32
+    BROWSER_HOST_KEY: str | None = None
+    # Hard cap on concurrent browser contexts the single Chromium will hold.
+    BROWSER_HOST_MAX_SESSIONS: int = 6
+    # Dispose a context after this many seconds with no activity and no live viewer.
+    BROWSER_HOST_IDLE_TTL_SECONDS: int = 300
+    # Run Chromium headed (under Xvfb) instead of --headless=new, for anti-bot.
+    BROWSER_HOST_HEADED: bool = False
+    # Override the Chromium binary; when unset the host resolves Playwright's bundled one.
+    BROWSER_HOST_CHROMIUM_PATH: str | None = None
+    # Per-renderer V8 heap ceiling. One runaway page must not be able to eat the
+    # whole host's budget and OOM every other user's session with it.
+    BROWSER_HOST_JS_HEAP_MB: int = 512
+
+    # Fernet key (32 url-safe base64 bytes) encrypting each user's saved browser
+    # login (storage_state) at rest in Mongo. Infisical-provided in production;
+    # persistence fails loud if a save/load is attempted while it's unset.
+    BROWSER_STATE_ENCRYPTION_KEY: str | None = None
+    # HMAC secret (>=32 chars) for the short-lived live-view takeover JWT handed
+    # to a user's own bot channel so they can take over a handoff without a web login.
+    BROWSER_TAKEOVER_TOKEN_SECRET: str | None = None
+    # When false, a session's login is never persisted or restored (per-deployment
+    # opt-out of "log in once, reuse next time").
+    BROWSER_PERSIST_LOGINS: bool = True
+    # Public base URL fronting the authenticated live-view route (served at
+    # ``/live/{session_id}``). Set to e.g. https://browser.heygaia.io in prod, where
+    # a vhost reverse-proxies to THIS api service (never the browser host). When
+    # unset, live-view links fall back to ``HOST`` so local dev works unchanged.
+    BROWSER_LIVE_VIEW_BASE_URL: str | None = None
+
+    # ----------------------------------------------
     # Dev-only LLM overrides (honored only when ENV=development)
     # ----------------------------------------------
     # Custom OpenRouter/OpenAI-compatible endpoint for cheap bulk dev/test usage
@@ -402,6 +526,7 @@ class ProductionSettings(CommonSettings):
     # Monitoring & Analytics
     # ----------------------------------------------
     SENTRY_DSN: str
+    POSTHOG_API_KEY: str
 
     # ----------------------------------------------
     # MCP OAuth Credentials
@@ -603,6 +728,7 @@ class DevelopmentSettings(CommonSettings):
     # Monitoring & Analytics
     # ----------------------------------------------
     SENTRY_DSN: str | None = None
+    POSTHOG_API_KEY: str | None = None
 
     # ----------------------------------------------
     # MCP OAuth Credentials

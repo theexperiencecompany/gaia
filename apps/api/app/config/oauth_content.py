@@ -1275,48 +1275,6 @@ AGENTMAIL_CONTENT = IntegrationContent(
     ],
 )
 
-BROWSERBASE_CONTENT = IntegrationContent(
-    use_cases=[
-        "Scrape data from any website and extract structured information with a plain English request",
-        "Automate browser tasks — fill forms, click buttons, and navigate web apps programmatically",
-        "Take screenshots of web pages for monitoring, documentation, or comparison",
-        "Interact with web pages that require JavaScript rendering or login sessions",
-        "Build browser automation workflows — GAIA runs them headlessly in the cloud",
-    ],
-    how_it_works=[
-        IntegrationHowItWorksStep(
-            title="Connect Browserbase to GAIA",
-            body='Open the GAIA Marketplace, find Browserbase, and click "Add to your GAIA". Browserbase connects via MCP and requires a Browserbase API key.',
-        ),
-        IntegrationHowItWorksStep(
-            title="Tell GAIA what to do in the browser",
-            body='Say "scrape the pricing table from this URL" or "go to this web app, log in, and download my latest invoice". GAIA runs a real browser session in the Browserbase cloud.',
-        ),
-        IntegrationHowItWorksStep(
-            title="GAIA automates the web for you",
-            body="Combine Browserbase with other integrations — GAIA can scrape competitor pricing daily and log changes to a Google Sheet, or monitor a web page for changes and notify you on Slack.",
-        ),
-    ],
-    faqs=[
-        IntegrationFAQ(
-            question="Does Browserbase require an API key?",
-            answer="Yes. Browserbase connects via MCP and requires a Browserbase API key. Enter it during the GAIA connection setup.",
-        ),
-        IntegrationFAQ(
-            question="Can GAIA scrape any website with Browserbase?",
-            answer="GAIA can browse and extract data from most public websites. Access to sites behind login walls depends on whether credentials are provided and whether the site's terms of service permit scraping.",
-        ),
-        IntegrationFAQ(
-            question="Where does Browserbase run the browser sessions?",
-            answer="Browserbase runs fully managed cloud browser sessions — no infrastructure to set up on your end. Sessions run in Browserbase's cloud and results are returned to GAIA.",
-        ),
-        IntegrationFAQ(
-            question="Can GAIA take screenshots with Browserbase?",
-            answer="Yes. GAIA can take full-page or viewport screenshots of any URL using Browserbase and return the image or save it to a connected storage integration.",
-        ),
-    ],
-)
-
 POSTHOG_CONTENT = IntegrationContent(
     use_cases=[
         "Query your PostHog analytics data with plain English — 'how many users signed up this week?'",

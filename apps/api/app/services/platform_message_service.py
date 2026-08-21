@@ -10,6 +10,7 @@ RabbitMQ queue, which the bot process consumes and sends to the user's stored
 bots — there is no Python copy.
 """
 
+from app.constants.general import NEW_MESSAGE_BREAKER
 from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
 from app.services.outbound_delivery import OutboundResult, publish_outbound_message
 
@@ -34,5 +35,11 @@ async def deliver_message_to_platform(
         return False
     if not text.strip():
         return False
-    result = await publish_outbound_message(platform, user_id, [text])
+    # The model marks bubble breaks with NEW_MESSAGE_BREAKER; the interactive
+    # stream splits on it, but this proactive path must too or the literal
+    # token leaks into the message.
+    parts = [part.strip() for part in text.split(NEW_MESSAGE_BREAKER) if part.strip()]
+    if not parts:
+        return False
+    result = await publish_outbound_message(platform, user_id, parts)
     return result is OutboundResult.PUBLISHED

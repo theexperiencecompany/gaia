@@ -14,26 +14,42 @@
 import { z } from "zod";
 
 /**
- * A file the bot should deliver. Bytes are NOT inlined — the bot fetches the
- * artifact from the backend (bot-authenticated) and uploads it to the platform.
+ * A file the bot should deliver. Bytes are NOT inlined — the bot fetches them
+ * itself, either from the backend artifact store (bot-authenticated) via
+ * `conversation_id`/`path`, or directly from a CDN `url` (e.g. a signed
+ * browser-automation step screenshot) — exactly one source is set.
  */
-export const outboundAttachmentSchema = z.object({
-  conversation_id: z.string().min(1),
-  /**
-   * Artifact path relative to the session's artifacts/ dir. Rejected at the
-   * queue boundary if absolute or containing a `..` segment, so a malformed
-   * envelope can't turn into arbitrary-file access in the artifact fetch.
-   */
-  path: z
-    .string()
-    .min(1)
-    .refine((p) => !p.startsWith("/") && !p.split("/").includes(".."), {
-      message: "path must be relative to artifacts/ (no leading '/' or '..')",
-    }),
-  filename: z.string().min(1),
-  content_type: z.string().nullish(),
-  caption: z.string().nullish(),
-});
+export const outboundAttachmentSchema = z
+  .object({
+    conversation_id: z.string().min(1).nullish(),
+    /**
+     * Artifact path relative to the session's artifacts/ dir. Rejected at the
+     * queue boundary if absolute or containing a `..` segment, so a malformed
+     * envelope can't turn into arbitrary-file access in the artifact fetch.
+     */
+    path: z
+      .string()
+      .min(1)
+      .refine((p) => !p.startsWith("/") && !p.split("/").includes(".."), {
+        message: "path must be relative to artifacts/ (no leading '/' or '..')",
+      })
+      .nullish(),
+    /** CDN source; fetched directly, no GAIA auth involved. */
+    url: z
+      .string()
+      .refine((u) => u.startsWith("https://"), {
+        message:
+          "url must be an https URL (cleartext would leak the signed asset)",
+      })
+      .nullish(),
+    filename: z.string().min(1),
+    content_type: z.string().nullish(),
+    caption: z.string().nullish(),
+  })
+  .refine((a) => Boolean(a.url) !== Boolean(a.conversation_id && a.path), {
+    message:
+      "attachment requires exactly one of `url` or (`conversation_id` + `path`)",
+  });
 
 export const outboundMessageEnvelopeSchema = z
   .object({

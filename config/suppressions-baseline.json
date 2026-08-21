@@ -68,15 +68,21 @@
     },
     {
       "path": "apps/api/app/config/settings.py",
+      "kind": "noqa",
+      "count": 1,
+      "hash": "e2115173e2dfea71a016dbd0d5a00e62d68f6c43712adb7dee3dcfa40fa3d41b"
+    },
+    {
+      "path": "apps/api/app/config/settings.py",
       "kind": "type-ignore",
       "count": 8,
-      "hash": "a3691e26ee8615a053aa3fa8d054e62a4c71ebf8a141f8ab229779d01f6d6b84"
+      "hash": "e2115173e2dfea71a016dbd0d5a00e62d68f6c43712adb7dee3dcfa40fa3d41b"
     },
     {
       "path": "apps/api/app/core/app_factory.py",
       "kind": "noqa",
       "count": 1,
-      "hash": "77f7923e0952cf52bba99c03a46cc29e44dfe1fb9724330da625d47663ac5de9"
+      "hash": "2bfba08e335ceb6850d2b39c8ee7048a1f6eb64a1f66ca25b5754cae81cc1dca"
     },
     {
       "path": "apps/api/app/db/chroma/chroma_store.py",
@@ -119,6 +125,24 @@
       "kind": "noqa",
       "count": 2,
       "hash": "184a7529fba64d3dd7388798a7564ded3b8a8bfe0825c79cf3b8df9fe6df7cf9"
+    },
+    {
+      "path": "apps/api/app/services/browser/llm.py",
+      "kind": "noqa",
+      "count": 5,
+      "hash": "d4e4f4424e229cba203cc299cc8830d9a37fab4f78284e1ed3851082dd1035a5"
+    },
+    {
+      "path": "apps/api/app/services/browser/runner.py",
+      "kind": "noqa",
+      "count": 1,
+      "hash": "c482aac3df11c313747517533f09f1d1950106063f296ec54002c322ade25157"
+    },
+    {
+      "path": "apps/api/app/services/browser/tools.py",
+      "kind": "noqa",
+      "count": 1,
+      "hash": "2373befe35737e4aad0646ed178d8c34bca8849c8bbf34ee4e08e5230286176b"
     },
     {
       "path": "apps/api/app/services/composio/composio_service.py",
@@ -241,12 +265,6 @@
       "hash": "536e7bcec2c103842673bd4544dece621f575ab951de4a799db03f8af30de11a"
     },
     {
-      "path": "apps/api/tests/unit/agents/test_llm_client.py",
-      "kind": "type-ignore",
-      "count": 2,
-      "hash": "857c29206c88f49ee8a68ffeb065fd74ee6d200500c1f98d60a327fac98db9bf"
-    },
-    {
       "path": "apps/api/tests/unit/agents/test_middleware_executor.py",
       "kind": "type-ignore",
       "count": 1,
@@ -298,7 +316,7 @@
       "path": "apps/api/tests/unit/config/test_rate_limits.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "ea09a94d89fce4d0fdeb0ba01d393b5124eb40095b99489a99dcc38925156fbc"
+      "hash": "dfa36b4435d68b4c7784889cff6820846557a9f3fd5792faca500f994360ff96"
     },
     {
       "path": "apps/api/tests/unit/core/test_bot_auth_middleware.py",
@@ -359,6 +377,12 @@
       "kind": "noqa",
       "count": 1,
       "hash": "457c98a3c14dea99a4e043052ea6d0ec3b82757bcf33ddd84b6459cd232a005e"
+    },
+    {
+      "path": "apps/api/tests/unit/services/browser/test_tasks_frames.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "1b7f1afce32562371de026577085b91fc45eec7307367d1c63f083ab561f54ae"
     },
     {
       "path": "apps/api/tests/unit/services/test_integration_service.py",
@@ -712,7 +736,7 @@
       "path": "apps/web/src/features/chat/utils/toolIcons.tsx",
       "kind": "biome-ignore",
       "count": 1,
-      "hash": "fb375f46d897863a5b89ea6f403be2d7308d414b169619bedaf1b2fee65cdcce"
+      "hash": "80a3f4cbf3087b6bd7fe3d8e3e7814000a803d648906ba218a6a05796d8d5c30"
     },
     {
       "path": "apps/web/src/features/integrations/components/PublicIntegrationCard.tsx",
@@ -730,7 +754,7 @@
       "path": "apps/web/src/features/landing/components/demo/SimpleChatBubbles.tsx",
       "kind": "biome-ignore",
       "count": 1,
-      "hash": "7af33b778b4dea376e237480cc553987efe06d03182f4090631deb487f5cbc7d"
+      "hash": "625a43eabea0c35fe7393f40ff95d2f5ff70563f065755f73456b8c282ec4958"
     },
     {
       "path": "apps/web/src/features/landing/components/iphone/ChatDemo.tsx",

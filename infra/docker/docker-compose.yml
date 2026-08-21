@@ -52,6 +52,12 @@ services:
       MEMORY_EMBEDDING_SIDECAR_URL: http://embedding-sidecar:8200
       # Self-hosted SearXNG — the unlimited last-resort search fallback.
       SEARXNG_BASE_URL: http://searxng:8080
+      # gaia-browser-host — self-hosted Chromium for the browser-automation tool.
+      BROWSER_HOST_URL: http://browser-host:8930
+      # Public base fronting the authenticated live view (served by THIS api at
+      # /live/{id}). Left unset in dev so it falls back to HOST; in prod a
+      # browser.heygaia.io vhost reverse-proxies here (see docker-compose.prod.yml).
+      # BROWSER_LIVE_VIEW_BASE_URL: https://browser.heygaia.io
       # Persistent workspace storage (JuiceFS on Cloudflare R2). Sidecar mount
       # at /mnt/jfs is created on the host (or as a tmpfs in dev when R2 is
       # unset — the storage helper short-circuits gracefully in that case).
@@ -133,6 +139,8 @@ services:
         condition: service_healthy
     networks:
       - gaia_network
+      # Reaches browser-host:8930 on its isolated island.
+      - gaia_browser_net
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:80/health"]
       interval: 30s
@@ -308,6 +316,7 @@ services:
       - LOG_COLORIZE=false
       - MEMORY_EMBEDDING_SIDECAR_URL=http://embedding-sidecar:8200
       - SEARXNG_BASE_URL=http://searxng:8080
+      - BROWSER_HOST_URL=http://browser-host:8930
       - ARQ_METRICS_PORT=9100
       - JUICEFS_HOST_MOUNT_PATH=/mnt/jfs
       - UV_NO_SYNC=1
@@ -347,6 +356,8 @@ services:
         condition: service_healthy
     networks:
       - gaia_network
+      # The worker also drives browser tasks, so it needs the browser island too.
+      - gaia_browser_net
 
   # Embedding + reranking sidecar. Loads the fastembed models ONCE so the
   # backend and worker share a single ~1.8GB copy instead of each loading their
@@ -720,6 +731,62 @@ services:
     mem_limit: 600m
     cpus: "1.0"
 
+  # ---------------------------------------------------------------------------
+  # gaia-browser-host — our own low-RAM Chromium host for browser automation.
+  # One long-lived Chromium, one isolated context per session, a per-session
+  # CDP-filtering proxy, and an authenticated screencast live view. The API +
+  # worker reach it over the internal network at http://browser-host:8930; its
+  # port is never published to the host.
+  #
+  # SECURITY. The agent renders attacker-influenced pages, so this container is
+  # treated as hostile and kept off the data plane: it joins ONLY gaia_browser_net,
+  # never gaia_network, so mongo/redis/postgres do not resolve here at all.
+  # Downloads are denied per browser context and navigation is allowlisted to
+  # http(s) in the CDP proxy (see app/browser_host/).
+  # STILL A DEPLOY REQUIREMENT in production: an egress firewall blocking the
+  # cloud-metadata address 169.254.169.254 (and IMDSv6 fd00:ec2::254). Network
+  # isolation stops container-DNS SSRF; only a firewall stops a raw-IP literal.
+  # ---------------------------------------------------------------------------
+  browser-host:
+    container_name: browser-host
+    # Starts alongside either of its consumers: the API (backend) and the worker
+    # (worker) both drive browser tasks, so the host must exist under both.
+    profiles: ["backend", "worker", "all"]
+    image: gaia
+    working_dir: /app/apps/api
+    command: ["python", "-m", "app.browser_host"]
+    environment:
+      PYTHONUNBUFFERED: 1
+      PYTHONPATH: /app/apps/api
+      UV_NO_SYNC: "1"
+      LOG_FORMAT: json
+      LOG_COLORIZE: "false"
+      # Chromium is installed in the gaia image at this path (see apps/api/Dockerfile).
+      PLAYWRIGHT_BROWSERS_PATH: /opt/browsers
+      BROWSER_HOST_PORT: "8930"
+      # Shared secret the API/worker must present to every host endpoint — the
+      # host renders attacker-controlled pages in-container, so a page could
+      # otherwise hit the control plane on localhost. Empty in dev is allowed.
+      BROWSER_HOST_KEY: ${BROWSER_HOST_KEY:-}
+    # No published ports — internal network only. Deliberately NOT on gaia_network:
+    # the datastores must not be resolvable from the browser (see SECURITY above).
+    networks:
+      - gaia_browser_net
+    # Chromium writes its shared memory to /tmp (--disable-dev-shm-usage), so the
+    # /dev/shm tmpfs only needs to cover any rare force-shared buffers. Keep it
+    # well below mem_limit: the shm tmpfs is charged to the container's memory
+    # cgroup, so shm == mem_limit invites an OOM kill (Chromium + Python heaps +
+    # shm pages together exceed either budget long before one is individually full).
+    shm_size: "1gb"
+    restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- --header=\"X-Host-Key: $BROWSER_HOST_KEY\" http://localhost:8930/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    mem_limit: 3g
+    cpus: "1.5"
+
 volumes:
   chroma_data:
   pgdata:
@@ -737,4 +804,9 @@ volumes:
 
 networks:
   gaia_network:
+    driver: bridge
+  # Browser egress island — keeps the hostile-content browser off the data plane.
+  # Only the API and worker join it, so they still reach browser-host:8930 while
+  # the browser can resolve no datastore. See the browser-host SECURITY note.
+  gaia_browser_net:
     driver: bridge

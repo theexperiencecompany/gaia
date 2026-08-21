@@ -267,6 +267,7 @@ class TestPublishOutboundFile:
         assert envelope["attachment"] == {
             "conversation_id": "conv-1",
             "path": "artifacts/report.pdf",
+            "url": None,
             "filename": "report.pdf",
             "content_type": "application/pdf",
             "caption": "here you go",

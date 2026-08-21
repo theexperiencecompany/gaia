@@ -16,6 +16,7 @@ from typing import Any
 from motor.motor_asyncio import AsyncIOMotorCollection
 from pymongo.errors import OperationFailure
 
+from app.constants.browser import BROWSER_PROFILE_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.integrations import integration_repository
@@ -61,6 +62,8 @@ async def create_all_indexes() -> None:
             create_e2b_sandbox_indexes(),
             create_hil_approvals_indexes(),
             create_pending_platform_registration_indexes(),
+            create_browser_profiles_indexes(),
+            create_browser_tasks_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -93,6 +96,8 @@ async def create_all_indexes() -> None:
             "e2b_sandboxes",
             "hil_approvals",
             "pending_platform_registrations",
+            "browser_profiles",
+            "browser_tasks",
         ]
 
         index_results = {}
@@ -1128,6 +1133,48 @@ async def create_e2b_sandbox_indexes() -> None:
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating e2b sandbox indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_browser_profiles_indexes() -> None:
+    """Create indexes for the browser_profiles collection.
+
+    One saved login per (user_id, domain): the unique index makes the upsert in
+    ``BrowserProfilesRepository.upsert_storage_state_blob`` a get-or-create, and
+    serves the per-task lookup before a session is created.
+    """
+    browser_profiles_collection = get_async_collection("browser_profiles")
+    try:
+        await browser_profiles_collection.create_index([("user_id", 1), ("domain", 1)], unique=True)
+        # Auto-expire session data not used for BROWSER_PROFILE_TTL_DAYS. The clock
+        # is `updated_at`, refreshed on every use, so active sites never expire.
+        await browser_profiles_collection.create_index(
+            [("updated_at", 1)], expireAfterSeconds=BROWSER_PROFILE_TTL_SECONDS
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating browser_profiles indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_browser_tasks_indexes() -> None:
+    """Create indexes for the browser_tasks collection.
+
+    The settings history lists a user's tasks newest-first, so index on
+    (user_id, created_at desc) to serve that query without a scan.
+    """
+    browser_tasks_collection = get_async_collection("browser_tasks")
+    try:
+        await browser_tasks_collection.create_index([("user_id", 1), ("created_at", -1)])
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating browser_tasks indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

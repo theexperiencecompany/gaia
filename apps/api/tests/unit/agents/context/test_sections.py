@@ -48,6 +48,7 @@ def ctx(
     writing_style: dict[str, Any] | None = None,
     subagent_id: str | None = None,
     integration_id: str | None = None,
+    source: str | None = None,
 ) -> SectionContext:
     return SectionContext(
         tier=tier,
@@ -58,6 +59,7 @@ def ctx(
         writing_style=writing_style,
         subagent_id=subagent_id,
         integration_id=integration_id,
+        source=source,
     )
 
 
@@ -98,6 +100,10 @@ class TestTheTableIsWellFormed:
         before the conversation begins, and a reversed or unsorted result still
         satisfies a weaker check on a short list."""
         assert [s.id for s in sections_for(AgentTier.COMMS, PromptSlot.DYNAMIC_STABLE)] == [
+            # Which messaging app comms is replying in — first, so the identity
+            # details below read as detail under it. Comms-only: the worker tiers
+            # never speak to the user.
+            "platform_banner",
             "user_identity",
             "user_prefs",
             "integrations_manifest",
@@ -160,6 +166,56 @@ class TestTheTableIsWellFormed:
         Mirrors ``test_user_prefs_is_scoped_to_the_only_tier_that_populates_it``
         from the other direction."""
         assert AgentTier.COMMS not in section("workspace_session").applies_to
+
+
+@pytest.mark.unit
+class TestPlatformBanner:
+    """The model cannot read ``configurable``, so the channel has to be said out
+    loud or comms writes web-app prose into a Telegram bubble."""
+
+    @pytest.mark.parametrize(
+        ("source", "expected_name"),
+        [
+            ("telegram", "Telegram"),
+            ("whatsapp", "WhatsApp"),
+            ("discord", "Discord"),
+            ("slack", "Slack"),
+            ("imessage", "iMessage"),
+        ],
+    )
+    async def test_it_names_the_messaging_app(self, source: str, expected_name: str) -> None:
+        rendered = await section("platform_banner").fetch(ctx(source=source))
+
+        # Exact, not a substring match: mutmut mutates a string literal by
+        # padding it, so `"their Telegram chat" in rendered` stays true against
+        # a mutated banner and proves nothing about the rest of the sentence.
+        assert rendered == (
+            f"You are chatting with the user in their {expected_name} chat right now. "
+            f"Write like a normal {expected_name} message: plain text, short, no markdown "
+            "tables or rich cards."
+        )
+
+    @pytest.mark.parametrize("source", ["web", "mobile", "desktop", "workflow_system"])
+    async def test_the_rich_clients_get_no_banner(self, source: str) -> None:
+        """Telling the web app to write plain short text would be actively wrong —
+        its whole point is the cards the bots cannot render."""
+        assert await section("platform_banner").fetch(ctx(source=source)) == ""
+
+    @pytest.mark.parametrize("source", [None, "", "not_a_real_channel"])
+    async def test_an_unknown_channel_is_silent_rather_than_guessed(
+        self, source: str | None
+    ) -> None:
+        assert await section("platform_banner").fetch(ctx(source=source)) == ""
+
+    def test_only_comms_receives_it(self) -> None:
+        """The worker tiers never address the user, so channel voice is not theirs
+        to act on — and a section they do not need still costs a fetch."""
+        assert section("platform_banner").applies_to == frozenset({AgentTier.COMMS})
+
+    def test_it_is_stable_not_volatile(self) -> None:
+        """The channel is fixed for a conversation. In MEMORY_RECALL it would sit
+        outside the cacheable prefix for no reason."""
+        assert section("platform_banner").slot is PromptSlot.DYNAMIC_STABLE
 
 
 @pytest.mark.unit

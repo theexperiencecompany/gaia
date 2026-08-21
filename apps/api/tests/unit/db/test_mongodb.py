@@ -393,6 +393,8 @@ _INDEX_CREATORS = [
     "create_e2b_sandbox_indexes",
     "create_hil_approvals_indexes",
     "create_pending_platform_registration_indexes",
+    "create_browser_profiles_indexes",
+    "create_browser_tasks_indexes",
 ]
 
 

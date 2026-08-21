@@ -1593,29 +1593,6 @@ AUTOMATION PATTERNS:
 """,
 )
 
-BROWSERBASE_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
-    provider_name="Browserbase",
-    entity_instructions="""
-## BROWSERBASE-SPECIFIC EXTRACTION:
-
-1. URL PATTERNS:
-   - Common sites visited
-   - Navigation patterns
-
-2. AUTOMATION PATTERNS:
-   - Workflow types
-   - Session configurations
-""",
-    provider_specific_instructions="""
-## BROWSERBASE-SPECIFIC MEMORIES:
-
-BROWSER PATTERNS:
-- Navigation workflows
-- Form filling preferences
-- Screenshot/capture patterns
-""",
-)
-
 POSTHOG_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
     provider_name="PostHog",
     entity_instructions="""

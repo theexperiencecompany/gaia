@@ -22,6 +22,8 @@ from shared.py.wide_events import log
 
 
 class SettingsGroup:
+    """One feature group's required settings and its human-readable name."""
+
     def __init__(
         self,
         name: str,
@@ -57,6 +59,8 @@ class SettingsGroup:
 
 
 class SettingsValidator:
+    """Validates required settings are present for each enabled feature group."""
+
     def __init__(self) -> None:
         self.groups: list[SettingsGroup] = []
         self.missing_groups: list[tuple[SettingsGroup, list[str]]] = []
@@ -254,6 +258,20 @@ class SettingsValidator:
                 description="E2B secure code execution environment",
                 affected_features="Code execution and sandboxed environments",
                 docs_url="https://e2b.dev/docs",
+            )
+        )
+
+        # Browser Automation
+        self.register_group(
+            SettingsGroup(
+                name="Browser Host",
+                keys=["BROWSER_HOST_URL", "BROWSER_HOST_KEY"],
+                description="gaia-browser-host (self-hosted Chromium) + Browser-Use agent",
+                affected_features="Autonomous browser automation (the browser_task tool)",
+                # Opt-in capability: absent until a deployment explicitly enables
+                # BROWSER_USE_ENABLED and points it at a host. A loud CRITICAL for
+                # every box that simply doesn't run the browser is noise.
+                required_in_prod=False,
             )
         )
 

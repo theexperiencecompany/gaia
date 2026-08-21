@@ -55,6 +55,7 @@ ignore_decorators = [
   "@router.*",
   "@app.exception_handler",
   "@composio.tools.custom_tool",
+  "@tools.action",  # Browser-Use custom actions (@tools.action on a Tools() instance)
   "@register_before_hook",
   "@register_after_hook",
   "@register_schema_modifier",
@@ -62,6 +63,7 @@ ignore_decorators = [
   "@*.on",          # LiveKit event handlers (@session.on / @ctx.room.on)
   "@app.get",       # bare-FastAPI route handlers (embedding sidecar)
   "@app.post",      # bare-FastAPI route handlers (embedding sidecar)
+  "@app.websocket", # Starlette websocket handlers — registered via decorator (browser host)
 ]
 ignore_names = [
   "model_config",   # Pydantic v2 config attribute (set on every model)
@@ -655,6 +657,7 @@ warn_no_return = true
 module = [
   "app.db.repositories.*",
   "app.models.notes_models",
+  "app.models.browser_models",
   "app.models.todo_models",
   "app.models.mail_models",
   "app.models.workflow_execution_models",

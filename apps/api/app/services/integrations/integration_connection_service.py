@@ -52,7 +52,7 @@ def build_integrations_config() -> IntegrationsConfigResponse:
         auth_type_literal: Literal["none", "oauth", "bearer"] | None = None
         if integration.mcp_config:
             # Honour an explicitly configured auth_type (e.g. "bearer" for
-            # API-key servers like Browserbase); otherwise derive from requires_auth.
+            # API-key MCP servers); otherwise derive from requires_auth.
             auth_type_literal = integration.mcp_config.auth_type or (
                 "oauth" if integration.mcp_config.requires_auth else "none"
             )

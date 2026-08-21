@@ -1,0 +1,160 @@
+"""Addressing for the API-authenticated browser live view, and the standalone
+viewer page a bot user opens.
+
+The live view is served through our API (never the browser host directly), at a
+short root path: ``{BROWSER_LIVE_VIEW_BASE_URL or HOST}/live/{session_id}``. In
+prod the base is a friendly vhost (browser.heygaia.io) that reverse-proxies to
+THIS api service. A logged-in web user watches it through the chat card's canvas
+(the card fetches a ``?t=`` token because the host-only session cookie is not
+sent cross-origin); a bot user — who has no web session — opens the same URL with
+a ``?t=`` takeover token, which serves the self-contained HTML viewer below. Both
+drive the same WebSocket the API proxies to the host.
+"""
+
+from __future__ import annotations
+
+import base64
+import html
+from pathlib import Path
+
+from app.config.settings import settings
+from app.services.browser.live_code import mint_live_code
+
+_WORDMARK_DATA_URI = "data:image/png;base64," + base64.b64encode(
+    (Path(__file__).parent / "assets" / "gaia_wordmark_white.png").read_bytes()
+).decode("ascii")
+
+_LIVE_VIEW_PATH_TEMPLATE = "/live/{session_id}"
+
+
+def _live_view_base() -> str:
+    """Public base URL fronting the live-view route (friendly vhost, or HOST)."""
+    base: str = settings.BROWSER_LIVE_VIEW_BASE_URL or settings.HOST
+    return base.rstrip("/")
+
+
+def live_view_url(session_id: str) -> str:
+    """The public live-view URL for a session (the base the chat card connects to)."""
+    return f"{_live_view_base()}{_LIVE_VIEW_PATH_TEMPLATE.format(session_id=session_id)}"
+
+
+async def create_live_view_link(session_id: str, user_id: str) -> str:
+    """A short capability link a bot delivers so ``user_id`` can take over without a web
+    login. ``{vhost}/{code}`` when a dedicated live-view vhost is configured (the vhost
+    rewrites ``/{code}`` to the app's ``/live/{code}``), else ``{host}/live/{code}``. The
+    code maps to the session + owner in Redis — no session id or token in the URL."""
+    code = await mint_live_code(session_id, user_id)
+    base = _live_view_base()
+    if settings.BROWSER_LIVE_VIEW_BASE_URL:
+        return f"{base}/{code}"
+    return f"{base}/live/{code}"
+
+
+def render_live_view_page(session_id: str) -> str:
+    """Self-contained HTML viewer served to a bot user opening the tokened link.
+
+    Reads its own URL to open the WebSocket (carrying the ``?t=`` token or the
+    same-origin session cookie), draws each JPEG frame onto a canvas, and forwards
+    pointer/keyboard input as CDP-shaped ``mouse``/``key`` messages.
+    """
+    safe_session = html.escape(session_id)
+    return _VIEWER_TEMPLATE.replace("__SESSION_ID__", safe_session).replace(
+        "__WORDMARK__", _WORDMARK_DATA_URI
+    )
+
+
+# Kept byte-for-byte parallel with the React canvas in BrowserTaskSection.tsx:
+# both translate DOM pointer/key events into the CDP shapes screencast.py applies.
+_VIEWER_TEMPLATE = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GAIA \u2014 Live browser (__SESSION_ID__)</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #09090b; color: #e4e4e7;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  body { display: flex; flex-direction: column; height: 100vh; }
+  header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand img { height: 24px; display: block; }
+  .status { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #a1a1aa; }
+  .status .dot { width: 8px; height: 8px; border-radius: 999px; background: #71717a; }
+  .status.live { color: #d4d4d8; }
+  .status.live .dot { background: #22c55e; }
+  .status.connecting .dot { background: #f59e0b; }
+  .status.ended .dot { background: #ef4444; }
+  main { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 0 14px 14px; }
+  #screen { max-width: 100%; max-height: 100%; border-radius: 10px;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.07); background: #18181b;
+    cursor: crosshair; outline: none; touch-action: none; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><img src="__WORDMARK__" alt="GAIA" /></div>
+  <div id="status" class="status connecting"><span class="dot"></span><span id="statusLabel">Connecting\u2026</span></div>
+</header>
+<main><canvas id="screen" width="1280" height="800" tabindex="0"></canvas></main>
+<script>
+(function () {
+  var canvas = document.getElementById("screen");
+  var ctx = canvas.getContext("2d");
+  var statusEl = document.getElementById("status");
+  var statusLabel = document.getElementById("statusLabel");
+  function setStatus(state, label) { statusEl.className = "status " + state; statusLabel.textContent = label; }
+  var frameW = 1280, frameH = 800;
+  var ws = new WebSocket(location.href.replace(/^http/, "ws"));
+  ws.onopen = function () { setStatus("live", "Live \u2014 you're in control"); canvas.focus(); };
+  ws.onclose = function () { setStatus("ended", "Session ended"); };
+  ws.onerror = function () { setStatus("ended", "Connection error"); };
+  var img = new Image();
+  img.onload = function () {
+    frameW = img.naturalWidth || frameW; frameH = img.naturalHeight || frameH;
+    if (canvas.width !== frameW || canvas.height !== frameH) { canvas.width = frameW; canvas.height = frameH; }
+    ctx.drawImage(img, 0, 0, frameW, frameH);
+  };
+  ws.onmessage = function (ev) {
+    var msg;
+    try { msg = JSON.parse(ev.data); } catch (e) { return; }
+    if (msg.type === "frame") { img.src = "data:image/" + (msg.format || "jpeg") + ";base64," + msg.data; }
+  };
+  function send(obj) { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj)); }
+  function toFramePoint(e) {
+    var r = canvas.getBoundingClientRect();
+    return {
+      x: Math.round((e.clientX - r.left) * (frameW / r.width)),
+      y: Math.round((e.clientY - r.top) * (frameH / r.height))
+    };
+  }
+  var BUTTONS = ["left", "middle", "right"];
+  canvas.addEventListener("mousemove", function (e) {
+    var p = toFramePoint(e); send({ type: "mouse", event: "mouseMoved", x: p.x, y: p.y, buttons: e.buttons });
+  });
+  canvas.addEventListener("mousedown", function (e) {
+    e.preventDefault(); canvas.focus(); var p = toFramePoint(e);
+    send({ type: "mouse", event: "mousePressed", x: p.x, y: p.y, button: BUTTONS[e.button] || "left", buttons: e.buttons, clickCount: e.detail || 1 });
+  });
+  canvas.addEventListener("mouseup", function (e) {
+    e.preventDefault(); var p = toFramePoint(e);
+    send({ type: "mouse", event: "mouseReleased", x: p.x, y: p.y, button: BUTTONS[e.button] || "left", buttons: e.buttons, clickCount: e.detail || 1 });
+  });
+  canvas.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+  canvas.addEventListener("wheel", function (e) {
+    e.preventDefault(); var p = toFramePoint(e);
+    send({ type: "mouse", event: "mouseWheel", x: p.x, y: p.y, deltaX: e.deltaX, deltaY: e.deltaY });
+  }, { passive: false });
+  function keyEvent(kind, e) {
+    var printable = e.key && e.key.length === 1;
+    var msg = { type: "key", event: kind, key: e.key, code: e.code, windowsVirtualKeyCode: e.keyCode, nativeVirtualKeyCode: e.keyCode };
+    if (kind === "keyDown" && printable) msg.text = e.key;
+    send(msg);
+  }
+  canvas.addEventListener("keydown", function (e) { e.preventDefault(); keyEvent("keyDown", e); });
+  canvas.addEventListener("keyup", function (e) { e.preventDefault(); keyEvent("keyUp", e); });
+})();
+</script>
+</body>
+</html>"""

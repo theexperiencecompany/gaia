@@ -11,7 +11,6 @@ from app.agents.prompts.memory_prompts import (
     AGENTMAIL_MEMORY_PROMPT,
     AIRTABLE_MEMORY_PROMPT,
     ASANA_MEMORY_PROMPT,
-    BROWSERBASE_MEMORY_PROMPT,
     CALENDAR_MEMORY_PROMPT,
     CLICKUP_MEMORY_PROMPT,
     CONTEXT7_MEMORY_PROMPT,
@@ -48,7 +47,6 @@ from app.agents.prompts.subagent_prompts import (
     AGENTMAIL_AGENT_SYSTEM_PROMPT,
     AIRTABLE_AGENT_SYSTEM_PROMPT,
     ASANA_AGENT_SYSTEM_PROMPT,
-    BROWSERBASE_AGENT_SYSTEM_PROMPT,
     CALENDAR_AGENT_SYSTEM_PROMPT,
     CLICKUP_AGENT_SYSTEM_PROMPT,
     CONTEXT7_AGENT_SYSTEM_PROMPT,
@@ -85,7 +83,6 @@ from app.config.oauth_content import (
     AGENTMAIL_CONTENT,
     AIRTABLE_CONTENT,
     ASANA_CONTENT,
-    BROWSERBASE_CONTENT,
     CLICKUP_CONTENT,
     CONTEXT7_CONTENT,
     DEEPWIKI_CONTENT,
@@ -1922,42 +1919,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             memory_prompt=AGENTMAIL_MEMORY_PROMPT,
         ),
         content=AGENTMAIL_CONTENT,
-    ),
-    # Browserbase MCP (OAuth via MCP spec discovery)
-    OAuthIntegration(
-        id="browserbase",
-        name="Browserbase",
-        description="Cloud-based headless browser automation for web scraping, testing, and interaction - navigate pages, fill forms, click elements, and extract data at scale.",
-        category="developer",
-        provider="browserbase",
-        scopes=[],
-        available=True,
-        is_featured=True,
-        short_name="browserbase",
-        managed_by="mcp",
-        mcp_config=MCPConfig(
-            # Browserbase has no OAuth (no PRM/AS-metadata/DCR — /register 404s).
-            # It authenticates with the user's API key, so the frontend prompts
-            # for it via the bearer-token modal (auth_type="bearer") instead of
-            # attempting an OAuth flow.
-            server_url="https://mcp.browserbase.com/mcp",
-            requires_auth=True,
-            auth_type="bearer",
-        ),
-        subagent_config=SubAgentConfig(
-            has_subagent=True,
-            agent_name="browserbase_agent",
-            tool_space="browserbase",
-            handoff_tool_name="call_browserbase_agent",
-            domain="browser automation and web scraping",
-            capabilities="navigating web pages, filling forms, clicking elements, extracting data, taking screenshots, running browser automation at scale",
-            use_cases="web scraping, browser testing, form automation, data extraction, web interaction",
-            system_prompt=BROWSERBASE_AGENT_SYSTEM_PROMPT,
-            use_direct_tools=True,
-            disable_retrieve_tools=True,
-            memory_prompt=BROWSERBASE_MEMORY_PROMPT,
-        ),
-        content=BROWSERBASE_CONTENT,
     ),
     # PostHog MCP (OAuth via MCP spec discovery)
     OAuthIntegration(

@@ -335,6 +335,17 @@ class BotContext(TypedDict, total=False):
     operation: str
 
 
+class BrowserContext(TypedDict, total=False):
+    """Browser-automation operation context (the browser_task tool + host)."""
+
+    operation: str
+    session_id: str
+    handoff_id: str
+    domain: str
+    task_id: str
+    snapshot_type: str
+
+
 class FileContext(TypedDict, total=False):
     """User-uploaded file operation context."""
 
@@ -540,6 +551,7 @@ class WideEventFields(TypedDict, total=False):
     integration: IntegrationContext
     image: ImageContext
     bot: BotContext
+    browser: BrowserContext
     file: FileContext
     sandbox: SandboxContext
     mcp: McpContext
