@@ -48,7 +48,7 @@
     "lint": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uvx ruff check src/",
+        "command": "uv run --group dev ruff check src/",
         "cwd": "{projectRoot}"
       },
       "cache": true
@@ -56,7 +56,7 @@
     "format": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uvx ruff format src/",
+        "command": "uv run --group dev ruff format src/",
         "cwd": "{projectRoot}"
       }
     }

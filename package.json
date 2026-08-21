@@ -19,7 +19,7 @@
     "quality:publint": "pnpm --filter @heygaia/cli build && publint packages/cli",
     "quality:py:interrogate": "uvx interrogate -c pyproject.toml apps/api apps/voice-agent libs/shared/py",
     "quality:py:mypy": "uv run --project apps/api --group backend --group dev mypy apps/api/app apps/voice-agent/src libs/shared/py --ignore-missing-imports",
-    "quality:py:ruff": "uvx ruff check apps/api apps/voice-agent libs/shared/py",
+    "quality:py:ruff": "uv run --project apps/api --group dev ruff check apps/api apps/voice-agent libs/shared/py",
     "quality:py:xenon": "uvx xenon --max-absolute F --max-modules E --max-average B apps/api apps/voice-agent libs/shared/py -e 'apps/api/tests/**' -e 'apps/api/scripts/**' -e 'libs/shared/py/tests/**'",
     "quality:size": "node scripts/ci/check-file-sizes.mjs",
     "quality:type": "nx run-many -t type-check",
