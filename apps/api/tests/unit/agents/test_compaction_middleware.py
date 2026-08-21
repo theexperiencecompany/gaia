@@ -600,6 +600,20 @@ class TestLLMSummary:
         short = "compact already"
         assert _summary_input_sample(short) == short
 
+    def test_summary_input_sample_boundary_is_inclusive(self) -> None:
+        """len == head+tail passes through untouched; one more char splits."""
+        from app.constants.summarization import (
+            COMPACTION_SUMMARY_INPUT_HEAD_CHARS as HEAD,
+            COMPACTION_SUMMARY_INPUT_TAIL_CHARS as TAIL,
+        )
+
+        at_limit = "A" * (HEAD + TAIL)
+        assert _summary_input_sample(at_limit) == at_limit
+
+        content = "A" * HEAD + "M" + "Z" * TAIL
+        expected = f"{'A' * HEAD}\n[... 1 middle chars omitted from this sample ...]\n{'Z' * TAIL}"
+        assert _summary_input_sample(content) == expected
+
 
 class TestDigestComposition:
     """Pin the digest message's exact observable pieces — header, pointer
@@ -775,3 +789,64 @@ class TestLLMSummarizeInternals:
         with patch.object(cm.asyncio, "wait_for", side_effect=spy_wait_for):
             await cm._llm_summarize_output(_InstantDigestModel(), "small", "tool")
         assert timeouts == [cm.COMPACTION_SUMMARY_TIMEOUT_SECONDS]
+
+
+class TestDigestWarningPayloads:
+    """The fallback warnings carry the tool name and error type — operators
+    grep for them when a lane degrades; they must not be able to go None."""
+
+    async def test_llm_failure_warning_names_tool_and_error(self) -> None:
+        from app.agents.middleware import compaction as cm
+
+        recorded: list[tuple] = []
+
+        class _StubLog:
+            def warning(self, msg: str, **kw):
+                recorded.append((msg, kw))
+
+            def info(self, *a, **k):
+                pass
+
+            def set(self, *a, **k):
+                pass
+
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(cm, "log", _StubLog())
+        try:
+            out = await cm._llm_summarize_output(_BrokenModel(), "content", "my_tool")
+        finally:
+            monkeypatch.undo()
+
+        assert out is None
+        msgs = [m for m, _ in recorded if "LLM compaction summary failed" in m]
+        assert msgs
+        _, kwargs = next((m, k) for m, k in recorded if "LLM compaction summary failed" in m)
+        assert kwargs["tool_name"] == "my_tool"
+        assert kwargs["error_type"] == "RuntimeError"
+
+    async def test_empty_digest_warning_names_tool(self) -> None:
+        from app.agents.middleware import compaction as cm
+
+        recorded: list[tuple] = []
+
+        class _StubLog:
+            def warning(self, msg: str, **kw):
+                recorded.append((msg, kw))
+
+            def info(self, *a, **k):
+                pass
+
+            def set(self, *a, **k):
+                pass
+
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(cm, "log", _StubLog())
+        try:
+            out = await cm._llm_summarize_output(create_fake_llm(["   "]), "content", "my_tool")
+        finally:
+            monkeypatch.undo()
+
+        assert out is None
+        matches = [(m, k) for m, k in recorded if "LLM compaction summary was empty" in m]
+        assert matches
+        assert matches[0][1]["tool_name"] == "my_tool"

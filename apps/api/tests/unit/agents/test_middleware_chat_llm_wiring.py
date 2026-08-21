@@ -49,12 +49,35 @@ class TestChatLlmWiring:
         assert summarizer.model is llm
         assert compactor.summary_llm is llm
 
-    def test_no_chat_llm_drops_summarization_and_the_digest_tier(self) -> None:
+    def test_no_chat_llm_drops_summarization_and_the_digest_tier(self, monkeypatch) -> None:
+        warnings: list[str] = []
+
+        class _StubLog:
+            def warning(self, msg: str, **kw: object) -> None:
+                warnings.append(msg)
+
+            def error(self, *a: object, **k: object) -> None:
+                pass
+
+            def debug(self, *a: object, **k: object) -> None:
+                pass
+
+            def set(self, *a: object, **k: object) -> None:
+                pass
+
+            def info(self, *a: object, **k: object) -> None:
+                pass
+
+        from app.agents.middleware import factory as factory_mod
+
+        monkeypatch.setattr(factory_mod, "log", _StubLog())
         stack = create_middleware_stack(chat_llm=None)
 
         assert not any(isinstance(mw, WorkspaceArchivingSummarizationMiddleware) for mw in stack)
         compactor = next(mw for mw in stack if isinstance(mw, WorkspaceCompactionMiddleware))
         assert compactor.summary_llm is None
+        # the operator must be told WHY summarization vanished
+        assert any("summarization middleware skipped" in w for w in warnings)
 
     def test_executor_stack_takes_chat_llm(self) -> None:
         llm = _fake_llm()

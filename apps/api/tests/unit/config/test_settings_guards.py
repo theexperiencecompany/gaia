@@ -192,3 +192,52 @@ def test_development_allows_http_dodo_base_url(monkeypatch):
     settings_obj = get_settings()
 
     assert settings_obj.DODO_PAYMENTS_BASE_URL == "http://localhost:8899"
+
+
+def test_init_openrouter_llm_pins_context_window_profile(monkeypatch):
+    """Every chat LLM must carry its context-window profile: fractional-token
+    middleware reads it at graph build and raises otherwise."""
+    from app.agents.llm import client
+    from app.agents.llm.client import PROVIDER_MODELS
+    from app.constants.llm import DEFAULT_MAX_TOKENS
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(client, "ChatOpenRouter", _fake_chat_openrouter(captured))
+    monkeypatch.setattr(client.settings, "ENV", "development")
+    monkeypatch.setattr(client.settings, "GAIA_SIM_MODE", False)
+    monkeypatch.setattr(client.settings, "OPENROUTER_API_KEY", "sk-test")
+
+    llm = client.init_openrouter_llm().loader_func()
+
+    assert captured["model"] == PROVIDER_MODELS["openrouter"]
+    assert captured["streaming"] is True
+    assert captured["stream_usage"] is True
+    assert llm.profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
+
+
+def test_init_gemini_llm_pins_context_window_profile(monkeypatch):
+    from app.agents.llm import client
+    from app.agents.llm.client import PROVIDER_MODELS
+    from app.constants.llm import DEFAULT_MAX_TOKENS
+
+    captured: dict[str, object] = {}
+
+    class _FakeChatGoogle:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        def configurable_fields(self, **kwargs: object) -> "_FakeChatGoogle":
+            captured.update({f"cf_{k}": v for k, v in kwargs.items()})
+            return self
+
+    monkeypatch.setattr(client, "ChatGoogleGenerativeAI", _FakeChatGoogle)
+    monkeypatch.setattr(client.settings, "GAIA_SIM_MODE", False)
+    monkeypatch.setattr(client.settings, "GOOGLE_API_KEY", "g-test", raising=False)
+
+    llm = client.init_gemini_llm().loader_func()
+
+    assert captured["model"] == PROVIDER_MODELS["gemini"]
+    # the model field must stay wired through configurable_fields — dropping
+    # it silently breaks per-request model selection
+    assert captured["cf_model"] is client._MODEL_FIELD
+    assert llm.profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
