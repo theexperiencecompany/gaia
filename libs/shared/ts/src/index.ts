@@ -334,8 +334,7 @@ export {
 } from "./chat";
 export {
   CLI_COMMAND_DESCRIPTIONS,
-  REQUIRED_DOC_COMMANDS,
-  REQUIRED_INSTALL_COMMANDS,
+  CLI_INSTALL_COMMANDS,
 } from "./cli";
 export {
   USAGE_DANGER_THRESHOLD,
