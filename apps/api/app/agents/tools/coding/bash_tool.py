@@ -364,7 +364,7 @@ async def _run_foreground(
         # the SDK raises TimeoutException and stops streaming. A local
         # asyncio.timeout would only cancel our coroutine, not the remote
         # command, which is why S7483 does not apply here.
-        result = await sbx.commands.run(  # type: ignore[attr-defined]  # NOSONAR python:S7483
+        result = await sbx.commands.run(  # type: ignore[attr-defined]  # e2b SDK ships no stubs  # NOSONAR python:S7483
             command,
             cwd=cwd or WORKSPACE_ROOT,
             on_stdout=_on_stdout,
