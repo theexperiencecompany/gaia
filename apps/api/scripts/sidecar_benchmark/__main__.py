@@ -40,6 +40,8 @@ RESULTS_DIR = Path(__file__).parent / "results"
 API_ROOT = Path(__file__).resolve().parents[2]
 PORT = 8201
 BASE_URL = f"http://127.0.0.1:{PORT}"
+EMBED_PATH = "/embed"
+RERANK_PATH = "/rerank"
 
 MODEL = os.getenv("GAIA_EMBEDDING_MODEL", "mixedbread-ai/mxbai-embed-large-v1")
 
@@ -302,7 +304,7 @@ async def scenario_batch_sweep(sidecar: Sidecar) -> dict:
             latencies: list[float] = []
             vectors_len = 0
             for _ in range(2):
-                ms, body = await timed_post(client, "/embed", {"texts": texts})
+                ms, body = await timed_post(client, EMBED_PATH, {"texts": texts})
                 latencies.append(ms)
                 vectors_len = len(body["vectors"])
             rows.append(
@@ -323,7 +325,7 @@ async def scenario_batch_sweep(sidecar: Sidecar) -> dict:
     floor_mb = monitor.reset_peak()
     huge = ["x" * 200_000]
     async with httpx.AsyncClient(timeout=300.0) as client:
-        ms_huge, status = await post_status(client, "/embed", {"texts": huge})
+        ms_huge, status = await post_status(client, EMBED_PATH, {"texts": huge})
     rows.append(
         {
             "texts": 1,
@@ -370,7 +372,7 @@ async def scenario_concurrency_sweep(tag: str) -> dict:
                     while True:
                         payload = await queue.get()
                         try:
-                            ms, _ = await timed_post(client, "/embed", payload)
+                            ms, _ = await timed_post(client, EMBED_PATH, payload)
                             out_latencies.append(ms)
                         finally:
                             queue.task_done()
@@ -420,7 +422,7 @@ async def scenario_rerank_sweep(sidecar: Sidecar) -> dict:
                 (
                     await timed_post(
                         client,
-                        "/rerank",
+                        RERANK_PATH,
                         {"query": "what was decided about the launch", "documents": documents},
                     )
                 )[0]
@@ -457,11 +459,11 @@ async def scenario_soak(sidecar: Sidecar, duration_s: float = 150.0) -> dict:
                     ms, _ = await timed_post(client, "/embed_query", {"text": rng.choice(queries)})
                     stats["embed_query"].append(ms)
                 elif roll < 0.9:
-                    ms, _ = await timed_post(client, "/embed", {"texts": rng.choice(batches)})
+                    ms, _ = await timed_post(client, EMBED_PATH, {"texts": rng.choice(batches)})
                     stats["embed_batch"].append(ms)
                 else:
                     ms, _ = await timed_post(
-                        client, "/rerank", {"query": "launch decision", "documents": rerank_docs}
+                        client, RERANK_PATH, {"query": "launch decision", "documents": rerank_docs}
                     )
                     stats["rerank"].append(ms)
 
@@ -490,10 +492,10 @@ async def scenario_equivalence() -> dict:
     """Vectors embedded whole must match vectors embedded in small chunks."""
     texts = make_texts(200, 400, seed=42)
     async with httpx.AsyncClient(timeout=300.0) as client:
-        _, whole = await timed_post(client, "/embed", {"texts": texts})
+        _, whole = await timed_post(client, EMBED_PATH, {"texts": texts})
         chunked_vectors: list[list[float]] = []
         for start in range(0, len(texts), 32):
-            _, body = await timed_post(client, "/embed", {"texts": texts[start : start + 32]})
+            _, body = await timed_post(client, EMBED_PATH, {"texts": texts[start : start + 32]})
             chunked_vectors.extend(body["vectors"])
     max_abs = 0.0
     min_cos = 1.0

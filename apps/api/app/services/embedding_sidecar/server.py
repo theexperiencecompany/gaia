@@ -63,6 +63,17 @@ async def _inference_slot() -> AsyncIterator[None]:
         _inference_slots.release()
 
 
+_OVERSIZED_RESPONSE = {
+    413: {"description": "A text exceeds EMBEDDING_SIDECAR_MAX_TEXT_CHARS."},
+}
+_BUSY_RESPONSE = {
+    503: {
+        "description": "All inference slots stayed busy for the slot-wait budget.",
+        "headers": {"Retry-After": {"schema": {"type": "integer"}}},
+    },
+}
+
+
 def _reject_oversized(texts: list[str]) -> None:
     """A text beyond EMBEDDING_SIDECAR_MAX_TEXT_CHARS is always a caller bug:
     it truncates to the model's 512-token window anyway while its JSON body,
@@ -115,7 +126,7 @@ async def health() -> dict[str, str]:
 
 
 # evlog-map-disable-next-line wide-event -- standalone uvicorn app without LoggingMiddleware; log.set() would never be emitted
-@app.post("/embed")
+@app.post("/embed", responses={**_OVERSIZED_RESPONSE, **_BUSY_RESPONSE})
 async def embed(request: EmbedRequest) -> dict[str, list[list[float]]]:
     """Embed a batch of passage texts."""
     if not request.texts:
@@ -126,7 +137,7 @@ async def embed(request: EmbedRequest) -> dict[str, list[list[float]]]:
 
 
 # evlog-map-disable-next-line wide-event -- standalone uvicorn app without LoggingMiddleware; log.set() would never be emitted
-@app.post("/embed_query")
+@app.post("/embed_query", responses={**_OVERSIZED_RESPONSE, **_BUSY_RESPONSE})
 async def embed_query(request: EmbedQueryRequest) -> dict[str, list[float]]:
     """Embed a single query with the model's query instruction."""
     _reject_oversized([request.text])
@@ -135,11 +146,11 @@ async def embed_query(request: EmbedQueryRequest) -> dict[str, list[float]]:
 
 
 # evlog-map-disable-next-line wide-event -- standalone uvicorn app without LoggingMiddleware; log.set() would never be emitted
-@app.post("/rerank")
+@app.post("/rerank", responses={**_OVERSIZED_RESPONSE, **_BUSY_RESPONSE})
 async def rerank(request: RerankRequest) -> dict[str, list[float]]:
     """Score documents against the query, aligned with input order."""
     if not request.documents:
         return {"scores": []}
-    _reject_oversized(request.documents)
+    _reject_oversized([request.query, *request.documents])
     async with _inference_slot():
         return {"scores": await asyncio.to_thread(_rerank_sync, request.query, request.documents)}

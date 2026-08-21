@@ -34,6 +34,8 @@ from app.constants.memory import (
     EMBEDDING_MODEL_NAME,
     EMBEDDING_SIDECAR_MAX_BATCH_CHARS,
     EMBEDDING_SIDECAR_MAX_BATCH_TEXTS,
+    EMBEDDING_SIDECAR_RETRIES,
+    EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS,
     EMBEDDING_SIDECAR_TIMEOUT_SECONDS,
     EMBEDDING_SIDECAR_URL_ENV,
     MODEL_CACHE_DIR,
@@ -182,22 +184,64 @@ def _sidecar_url() -> str | None:
     return url.rstrip("/") or None
 
 
+def _retire_client(old: httpx.AsyncClient, old_loop: asyncio.AbstractEventLoop) -> None:
+    """Best-effort close of a replaced client on its own loop; if that loop is
+    gone its sockets died with it and GC finishes the rest."""
+    try:
+        if old_loop.is_running():
+            asyncio.run_coroutine_threadsafe(old.aclose(), old_loop)
+    except RuntimeError:
+        pass
+
+
 def _get_http_client() -> httpx.AsyncClient:
     """The process-wide sidecar connection pool (per running loop)."""
     global _http_client
     loop = asyncio.get_running_loop()
-    if _http_client is None or _http_client[0] is not loop or _http_client[1].is_closed:
+    current = _http_client
+    if current is None or current[0] is not loop or current[1].is_closed:
         with _http_client_lock:
-            if _http_client is None or _http_client[0] is not loop or _http_client[1].is_closed:
+            current = _http_client
+            if current is None or current[0] is not loop or current[1].is_closed:
                 _http_client = (
                     loop,
                     httpx.AsyncClient(timeout=EMBEDDING_SIDECAR_TIMEOUT_SECONDS),
                 )
+                if current is not None:
+                    _retire_client(current[1], current[0])
     return _http_client[1]
 
 
+async def _post_with_retry(client: httpx.AsyncClient, url: str, payload: dict) -> httpx.Response:
+    """POST once per attempt; retry transient failures a bounded number of
+    times. A 503 means the sidecar was overloaded right now (it already waited
+    out its own slot budget) and a connection error means it is mid-restart —
+    dropping the memory operation over either blip would lose data, so honor
+    Retry-After and try again. Exhausted retries still fail loud."""
+    response: httpx.Response | None = None
+    for attempt in range(EMBEDDING_SIDECAR_RETRIES + 1):
+        delay = 0.0
+        try:
+            response = await client.post(url, json=payload)
+        except httpx.TransportError:
+            if attempt == EMBEDDING_SIDECAR_RETRIES:
+                raise
+            delay = EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS
+        else:
+            if response.status_code not in (429, 503) or attempt == EMBEDDING_SIDECAR_RETRIES:
+                return response
+            retry_after = response.headers.get("Retry-After")
+            delay = min(
+                float(retry_after) if retry_after else 0.0, EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS
+            )
+        if delay > 0:
+            await asyncio.sleep(delay)
+    return response
+
+
 async def _sidecar_post(path: str, payload: dict) -> dict[str, Any]:
-    response = await _get_http_client().post(f"{_sidecar_url()}{path}", json=payload)
+    client = _get_http_client()
+    response = await _post_with_retry(client, f"{_sidecar_url()}{path}", payload)
     response.raise_for_status()
     return cast(dict[str, Any], response.json())
 

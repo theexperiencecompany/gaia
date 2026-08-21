@@ -198,6 +198,22 @@ class TestRequestBounds:
         assert response.status_code == 413
         mock_embed_query.assert_not_called()
 
+    @patch.object(server, "_rerank_sync", return_value=SCORES)
+    async def test_oversized_rerank_query_rejected_with_413(
+        self, mock_rerank: MagicMock, sidecar_client: AsyncClient
+    ) -> None:
+        # The query is model input too — an uncapped one must not reach it.
+        response = await sidecar_client.post(
+            "/rerank",
+            json={
+                "query": "x" * (server.EMBEDDING_SIDECAR_MAX_TEXT_CHARS + 1),
+                "documents": DOCUMENTS,
+            },
+        )
+
+        assert response.status_code == 413
+        mock_rerank.assert_not_called()
+
     @patch.object(server, "_embed_sync", return_value=VECTORS)
     async def test_large_batch_passes_through_in_one_call(
         self, mock_embed: MagicMock, sidecar_client: AsyncClient
