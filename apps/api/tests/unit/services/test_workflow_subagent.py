@@ -14,7 +14,7 @@ import pytest
 
 from app.agents.context.assemble import AssembledContext
 from app.constants.llm import WORKFLOW_SUBAGENT_RECURSION_LIMIT
-from app.services.workflow.workflow_subagent import WorkflowSubagentRunner
+from app.services.workflow.workflow_subagent import SubagentRunContext, WorkflowSubagentRunner
 
 _MOD = "app.services.workflow.workflow_subagent"
 
@@ -60,9 +60,9 @@ async def _execute(draft: str, base_configurable: dict | None = None) -> _Run:
             task="every monday, summarize my inbox",
             user_id="u1",
             thread_id="t1",
-            user_name="Dev",
-            user_timezone="UTC",
-            base_configurable=base_configurable,
+            context=SubagentRunContext(
+                user_name="Dev", user_timezone="UTC", base_configurable=base_configurable
+            ),
         )
     return _Run(result=result, build_config=build_config, stream_turn=stream_turn)
 

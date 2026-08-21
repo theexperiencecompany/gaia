@@ -31,7 +31,7 @@ from app.models.agent_models import agent_configurable
 from app.models.workflow_models import WorkflowExecutionRequest
 from app.services.workflow.service import WorkflowService
 from app.services.workflow.subagent_output import parse_subagent_response
-from app.services.workflow.workflow_subagent import WorkflowSubagentRunner
+from app.services.workflow.workflow_subagent import SubagentRunContext, WorkflowSubagentRunner
 from app.utils.timezone import home_timezone_from_config
 from app.utils.workflow_utils import (
     apply_workflow_edit,
@@ -113,10 +113,12 @@ async def create_workflow(
             task=task_description,
             user_id=user_id,
             thread_id=thread_id,
-            user_name=user_name,
-            user_timezone=user_timezone,
-            stream_writer=writer,
-            base_configurable=agent_configurable(config),
+            context=SubagentRunContext(
+                user_name=user_name,
+                user_timezone=user_timezone,
+                stream_writer=writer,
+                base_configurable=agent_configurable(config),
+            ),
         )
 
         # Parse the response
@@ -377,9 +379,11 @@ async def edit_workflow(
             task=task_description,
             user_id=user_id,
             thread_id=thread_id,
-            user_name=user_name,
-            user_timezone=user_timezone,
-            stream_writer=writer,
+            context=SubagentRunContext(
+                user_name=user_name,
+                user_timezone=user_timezone,
+                stream_writer=writer,
+            ),
         )
 
         result = parse_subagent_response(subagent_response)

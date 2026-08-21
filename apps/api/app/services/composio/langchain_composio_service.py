@@ -19,7 +19,7 @@ import pydantic
 
 from app.config.oauth_config import get_integration_by_toolkit
 from app.constants.log_tags import LogTag
-from app.services.integrations.integration_expiry import expire_user_integration
+from app.services.integrations.integration_expiry import ExpiryOptions, expire_user_integration
 from app.utils.integration_checker import request_integration_connection
 from shared.py.wide_events import log, log_context
 
@@ -89,9 +89,7 @@ async def _expire_with_log_boundary(user_id: str, integration_id: str, reason: s
         await expire_user_integration(
             user_id,
             integration_id,
-            reason=reason,
-            trigger="tool_execution",
-            notify=False,
+            ExpiryOptions(reason=reason, trigger="tool_execution", notify=False),
         )
 
 
