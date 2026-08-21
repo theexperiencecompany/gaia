@@ -1,5 +1,9 @@
 name: Publish CLI
 
+concurrency:
+  group: publish-cli-${{ github.ref }}
+  cancel-in-progress: false
+
 # Publishes @heygaia/cli from an explicit release tag/version pair.
 on:
   # Manual dispatch keeps CLI publish intentional and auditable.
@@ -25,6 +29,8 @@ jobs:
       # Checkout repository to read package and release manifest metadata.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # Install Node toolchain for build/publish.
       - name: Setup pnpm
