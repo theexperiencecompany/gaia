@@ -200,8 +200,8 @@ def test_init_openrouter_llm_pins_context_window_profile(monkeypatch):
     from app.agents.llm import client
     from app.agents.llm.client import PROVIDER_MODELS
     from app.constants.llm import (
-        DEFAULT_MAX_TOKENS,
         DEFAULT_LLM_TEMPERATURE,
+        DEFAULT_MAX_TOKENS,
         OPENROUTER_APP_CATEGORIES,
         OPENROUTER_APP_TITLE,
         OPENROUTER_MAX_OUTPUT_TOKENS,
