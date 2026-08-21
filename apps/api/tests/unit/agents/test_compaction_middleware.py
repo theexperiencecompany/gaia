@@ -838,7 +838,6 @@ class TestLLMSummarizeInternals:
         assert out is not None
         # lstrip() instead of rstrip() would leave leading whitespace of the
         # slice and cut the 'a's instead
-        expected = ("a" * (MAX - 5)).rstrip() if False else "a" * (MAX - 5)
         head, _, _ = out.partition("…[digest truncated]")
         assert head.endswith("aaaa")  # rstrip removed the spaces after the a's
         assert not head.endswith(" ")
