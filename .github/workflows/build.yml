@@ -60,6 +60,7 @@ jobs:
 
     steps:
       # Prepare repository + tooling so Nx can calculate affected projects.
+      # keep in sync with docker-web / docker-release — checkout + nx-set-shas + setup-node-pnpm
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -86,13 +87,13 @@ jobs:
 
       - name: Setup Node.js + pnpm
         uses: ./.github/actions/setup-node-pnpm
-        with:
-          nx-cloud-access-token: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
+        # with:
+        #   nx-cloud-access-token: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }} # disabled — local .nx/cache only, no Nx Cloud (cost)
 
       - name: Sync Python dependencies (Nx cached)
         run: pnpm exec nx sync api
-        env:
-          NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
+        # env:
+        #   NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }} # disabled — local .nx/cache only
 
       # Login early so the affected check can query GHCR for missing images.
       - name: Log in to GHCR

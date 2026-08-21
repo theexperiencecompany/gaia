@@ -1,13 +1,13 @@
 // Device pairing flow, reusable by both `gaia bridge login` and the add wizard.
 
 import { hostname, platform } from "node:os";
+import { CLI_VERSION } from "../../lib/version.js";
 import { type PollPairingResponse, pollPairing, startPairing } from "./api.js";
 import {
   apiUrlFromEnvOrCreds,
   loadCredentials,
   saveCredentials,
 } from "./config.js";
-import { VERSION } from "./version.js";
 
 async function sleep(ms: number): Promise<void> {
   await new Promise((r) => setTimeout(r, ms));
@@ -23,7 +23,7 @@ export async function runLogin(
   const apiUrl = apiUrlFromEnvOrCreds(options.api);
   const name = options.name || hostname();
 
-  const started = await startPairing(apiUrl, name, platform(), VERSION);
+  const started = await startPairing(apiUrl, name, platform(), CLI_VERSION);
   console.info("\nTo pair this device, open:\n");
   console.info(`  ${started.verification_url}`);
   console.info(`\nand enter this code:  ${started.user_code}\n`);
