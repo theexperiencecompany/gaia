@@ -931,3 +931,109 @@ class TestDigestWarningPayloads:
         matches = [(m, k) for m, k in recorded if "LLM compaction summary was empty" in m]
         assert matches
         assert matches[0][1]["tool_name"] == "my_tool"
+
+
+class TestKwargPlumbing:
+    """compact_tool_output forwards identity/reason/tool kwargs into the
+    spill write, the log payloads, and the message fields. A None slipped
+    into any of those is invisible in happy-path assertions, so capture
+    everything at every boundary and compare exactly."""
+
+    async def test_spill_write_receives_identity_and_raw_content(self) -> None:
+        import json as _json
+
+        mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=None)
+        content = _json.dumps([{"i": i} for i in range(500)])
+        request = SimpleNamespace(
+            tool_call={"name": "search", "id": "call_1", "args": {}},
+            runtime=SimpleNamespace(
+                config={"configurable": {"user_id": "u-identity", "vfs_session_id": "c-identity"}}
+            ),
+            state={"messages": []},
+        )
+
+        captured: dict = {}
+
+        async def fake_write(**kwargs):
+            captured.update(kwargs)
+            return ("/host/path", "/workspace/sessions/c-identity/x.json")
+
+        async def handler(_req):
+            return ToolMessage(content=content, tool_call_id="call_1", name="search")
+
+        with patch(
+            "app.agents.middleware.compaction.write_session_file",
+            new_callable=AsyncMock,
+            side_effect=fake_write,
+        ):
+            await mw.awrap_tool_call(request, handler)
+
+        assert captured["user_id"] == "u-identity"
+        assert captured["conversation_id"] == "c-identity"
+        # RAW content, not a preview or wrapper
+        assert captured["content"] == content
+        assert captured["relative_path"].startswith("tool_outputs/search_")
+
+    async def test_digest_failure_warning_carries_tool_kwarg(self) -> None:
+        from app.agents.middleware import compaction as cm
+
+        recorded: list[tuple] = []
+
+        class _StubLog:
+            def warning(self, msg: str, **kw):
+                recorded.append((msg, kw))
+
+            def error(self, *a, **k):
+                pass
+
+            def set(self, *a, **k):
+                pass
+
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(cm, "log", _StubLog())
+        try:
+            mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=_BrokenModel())
+
+            async def handler(_req):
+                return ToolMessage(content="x" * 5000, tool_call_id="call_1", name="search")
+
+            await mw.awrap_tool_call(_request(), handler)
+        finally:
+            monkeypatch.undo()
+
+        fails = [(m, k) for m, k in recorded if "LLM compaction summary failed" in m]
+        assert fails, recorded
+        assert fails[0][1]["tool_name"] == "search"
+
+    async def test_no_spill_warning_carries_tool_kwarg(self) -> None:
+        from app.agents.middleware import compaction as cm
+
+        recorded: list[tuple] = []
+
+        class _StubLog:
+            def warning(self, msg: str, **kw):
+                recorded.append((msg, kw))
+
+            def error(self, *a, **k):
+                pass
+
+            def info(self, *a, **k):
+                pass
+
+            def set(self, *a, **k):
+                pass
+
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(cm, "log", _StubLog())
+        try:
+            mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=_BrokenModel())
+
+            async def handler(_req):
+                return ToolMessage(content="x" * 5000, tool_call_id="call_1", name="search")
+
+            await mw.awrap_tool_call(_request(), handler)
+        finally:
+            monkeypatch.undo()
+
+        stops = [m for m, _ in recorded if "No spill and no LLM digest" in m]
+        assert stops, recorded

@@ -45,7 +45,8 @@ def _fake_chat_openrouter(captured: dict[str, object]) -> type:
             captured.update(kwargs)
             self.client = SimpleNamespace(sdk_configuration=SimpleNamespace(retry_config=None))
 
-        def configurable_fields(self, **_: object) -> "_FakeChatOpenRouter":
+        def configurable_fields(self, **kwargs: object) -> "_FakeChatOpenRouter":
+            captured.update({f"cf_{k}": v for k, v in kwargs.items()})
             return self
 
     return _FakeChatOpenRouter
@@ -254,3 +255,29 @@ def test_init_gemini_llm_pins_context_window_profile(monkeypatch):
     # it silently breaks per-request model selection
     assert captured["cf_model"] is client._MODEL_FIELD
     assert llm.profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
+
+
+def test_init_custom_llm_wires_every_kwarg_and_profile(monkeypatch):
+    """The DEV_LLM_* endpoint must receive every construction kwarg intact,
+    including its context-window profile and configurable model field."""
+    from app.agents.llm import client
+    from app.constants.llm import DEFAULT_MAX_TOKENS, DEV_LLM_MAX_OUTPUT_TOKENS
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(client, "ChatOpenRouter", _fake_chat_openrouter(captured))
+    monkeypatch.setattr(client.settings, "ENV", "development")
+    monkeypatch.setattr(client.settings, "GAIA_SIM_MODE", False)
+    monkeypatch.setattr(client.settings, "DEV_LLM_BASE_URL", "http://localhost:9999/v1")
+    monkeypatch.setattr(client.settings, "DEV_LLM_API_KEY", "sk-dev")
+    monkeypatch.setattr(client.settings, "DEV_LLM_MODEL", "deepseek-v4-flash")
+
+    llm = client.init_custom_llm().loader_func()
+
+    assert captured["model"] == "deepseek-v4-flash"
+    assert str(captured["base_url"]) == "http://localhost:9999/v1"
+    assert str(captured["api_key"]) == "sk-dev"
+    assert captured["max_tokens"] == DEV_LLM_MAX_OUTPUT_TOKENS
+    assert captured["streaming"] is True
+    assert captured["stream_usage"] is True
+    assert llm.profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
+    assert captured["cf_model_name"] is client._MODEL_FIELD
