@@ -11,32 +11,24 @@ whatever crosses into a stream frame or a tool return is JSON-safe.
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.runnables.config import RunnableConfig
 import pytest
 
-from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
-
-# ---------------------------------------------------------------------------
-# Module-level patch for rate limiting
-# ---------------------------------------------------------------------------
-_rl_patch = patch(
-    "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
-    new_callable=AsyncMock,
-    return_value={},
+from app.agents.tools.workflow_tool import (
+    get_workflow,
+    pause_workflow,
+    resume_workflow,
 )
-_rl_patch.start()
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 
 FAKE_USER_ID = "507f1f77bcf86cd799439011"
 MODULE = "app.agents.tools.workflow_tool"
 
 
-def _cfg() -> dict[str, Any]:
+def _cfg() -> RunnableConfig:
     return {
         "configurable": {
             "user_id": FAKE_USER_ID,
@@ -66,8 +58,19 @@ def _writer_mock() -> MagicMock:
     return MagicMock()
 
 
-def _emitted_payloads(writer_mock: MagicMock) -> list[Any]:
+def _emitted_payloads(writer_mock: MagicMock) -> list[dict[str, Any]]:
     return [call.args[0] for call in writer_mock.call_args_list if call.args]
+
+
+@pytest.fixture(autouse=True)
+def _no_rate_limiting():
+    """Keep the rate-limit mock scoped to this module's tests."""
+    with patch(
+        "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
+        new_callable=AsyncMock,
+        return_value={},
+    ):
+        yield
 
 
 # ---------------------------------------------------------------------------
@@ -78,8 +81,6 @@ def _emitted_payloads(writer_mock: MagicMock) -> list[Any]:
 @pytest.mark.regression
 class TestWorkflowToolSerialization917:
     async def test_get_workflow_emits_json_safe_frames(self) -> None:
-        from app.agents.tools.workflow_tool import get_workflow
-
         doc = _workflow()
         expected = doc.model_dump(mode="json")
         writer = _writer_mock()
@@ -89,7 +90,7 @@ class TestWorkflowToolSerialization917:
         ):
             mock_service.get_workflow = AsyncMock(return_value=doc)
 
-            result = await cast(Any, get_workflow).coroutine(config=_cfg(), workflow_id="wf_1")
+            result = await get_workflow.ainvoke({"workflow_id": "wf_1"}, config=_cfg())
 
         assert _emitted_payloads(writer) == [
             {"workflow_data": {"action": "get", "workflow": expected}}
@@ -100,8 +101,6 @@ class TestWorkflowToolSerialization917:
         assert result["data"] == expected
 
     async def test_pause_workflow_emits_json_safe_frames(self) -> None:
-        from app.agents.tools.workflow_tool import pause_workflow
-
         doc = _workflow()
         expected = doc.model_dump(mode="json")
         writer = _writer_mock()
@@ -111,7 +110,7 @@ class TestWorkflowToolSerialization917:
         ):
             mock_service.deactivate_workflow = AsyncMock(return_value=doc)
 
-            result = await cast(Any, pause_workflow).coroutine(config=_cfg(), workflow_id="wf_1")
+            result = await pause_workflow.ainvoke({"workflow_id": "wf_1"}, config=_cfg())
 
         assert result["data"] == {
             "workflow_id": doc.id,
@@ -123,8 +122,6 @@ class TestWorkflowToolSerialization917:
         ]
 
     async def test_resume_workflow_emits_json_safe_frames(self) -> None:
-        from app.agents.tools.workflow_tool import resume_workflow
-
         doc = _workflow()
         expected = doc.model_dump(mode="json")
         writer = _writer_mock()
@@ -134,7 +131,7 @@ class TestWorkflowToolSerialization917:
         ):
             mock_service.activate_workflow = AsyncMock(return_value=doc)
 
-            result = await cast(Any, resume_workflow).coroutine(config=_cfg(), workflow_id="wf_1")
+            result = await resume_workflow.ainvoke({"workflow_id": "wf_1"}, config=_cfg())
 
         assert result["data"] == {
             "workflow_id": doc.id,

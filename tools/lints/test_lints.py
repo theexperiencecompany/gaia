@@ -18,6 +18,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from unittest.mock import patch
+
 import no_service_classes
 import repository_boundaries
 import route_contract
@@ -366,3 +368,34 @@ def test_nested_helper_function_still_scoped_by_module(tmp_path: Path) -> None:
     src = "def _serialize(doc):\n    return doc.model_dump()\n"
     path = _write(tmp_path, f"{_TOOL_DIR}/helpers.py", src)
     assert len(tool_dump_boundary.check([path])) == 1
+
+
+def test_allowlisted_function_at_audited_count_is_clean(tmp_path: Path) -> None:
+    src = (
+        "async def generate_image(prompt):\n"
+        "    result = await api_generate_image(prompt)\n"
+        "    return result.model_dump()\n"
+    )
+    path = _write(tmp_path, f"{_TOOL_DIR}/image_tool.py", src)
+    with patch.object(
+        tool_dump_boundary, "ALLOWLIST", {"app/agents/tools/image_tool.py::generate_image": 1}
+    ):
+        assert tool_dump_boundary.check([path]) == []
+
+
+def test_new_bare_dump_in_allowlisted_function_is_flagged(tmp_path: Path) -> None:
+    """The grandfathered count caps the exemption: a NEW bare dump in an
+    allowlisted function pushes the count past the audited number."""
+    src = (
+        "async def generate_image(prompt):\n"
+        "    result = await api_generate_image(prompt)\n"
+        "    emit(result.model_dump())\n"
+        "    return result.model_dump()\n"
+    )
+    path = _write(tmp_path, f"{_TOOL_DIR}/image_tool.py", src)
+    with patch.object(
+        tool_dump_boundary, "ALLOWLIST", {"app/agents/tools/image_tool.py::generate_image": 1}
+    ):
+        violations = tool_dump_boundary.check([path])
+    assert len(violations) == 1
+    assert "beyond the 1 grandfathered" in violations[0].detail

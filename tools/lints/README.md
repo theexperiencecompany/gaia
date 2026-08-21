@@ -309,10 +309,12 @@ ISO strings would break scheduling silently.
 Mongo write rather than the model/stream boundary, that logic belongs in the
 service/repository layer anyway (see `repository-boundaries`).
 
-**Allowlist:** keyed `<path>::<enclosing function>`, grandfathering thirteen
-sites whose models the #917 audit verified are string-only (`ImageData`,
-`SearchResultItem`/`WebSearchResult`, the calendar wire models,
-`TodoLabelCount`) — both dump modes produce identical output there, so the flip
-is unobservable and the mutation gate correctly rejects it as untestable. Like
-every allowlist here it is a ratchet: an entry comes out when its model gains a
-datetime field and the call takes `mode="json"`, never added for new code.
+**Allowlist:** keyed `<path>::<enclosing function>` with an **audited call
+count**, grandfathering thirteen sites whose models the #917 audit verified are
+string-only (`ImageData`, `SearchResultItem`/`WebSearchResult`, the calendar
+wire models, `TodoLabelCount`) — both dump modes produce identical output
+there. The count is the ratchet, not just the entry: a *new* bare dump added to
+an allowlisted function pushes its count past the audited number and is
+reported, so a historical exemption can never absorb new code. An entry comes
+out when its model gains a datetime field and the calls take `mode="json"`;
+never raise a count.

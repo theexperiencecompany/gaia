@@ -12,32 +12,24 @@ family follows.
 
 from datetime import UTC, datetime, timedelta
 import json
-from typing import Any, cast
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.runnables.config import RunnableConfig
 import pytest
 
-from app.models.reminder_models import AgentType, ReminderDocument
-
-# ---------------------------------------------------------------------------
-# Module-level patch for rate limiting
-# ---------------------------------------------------------------------------
-_rl_patch = patch(
-    "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
-    new_callable=AsyncMock,
-    return_value={},
+from app.agents.tools.reminder_tool import (
+    get_reminder_tool,
+    list_user_reminders_tool,
+    search_reminders_tool,
 )
-_rl_patch.start()
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+from app.models.reminder_models import AgentType, ReminderDocument
 
 FAKE_USER_ID = "507f1f77bcf86cd799439011"
 MODULE = "app.agents.tools.reminder_tool"
 
 
-def _cfg() -> dict[str, Any]:
+def _cfg() -> RunnableConfig:
     return {"configurable": {"user_id": FAKE_USER_ID, "user_timezone": "Asia/Kolkata"}}
 
 
@@ -52,6 +44,17 @@ def _reminder_document(
         payload={"title": title, "body": "Six-month cleaning appointment"},
         scheduled_at=datetime.now(UTC) + timedelta(days=2),
     )
+
+
+@pytest.fixture(autouse=True)
+def _no_rate_limiting():
+    """Keep the rate-limit mock scoped to this module's tests."""
+    with patch(
+        "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
+        new_callable=AsyncMock,
+        return_value={},
+    ):
+        yield
 
 
 def _assert_json_safe(payload: Any) -> None:
@@ -81,9 +84,7 @@ class TestSearchRemindersTool917:
         other = _reminder_document(reminder_id="rem-other", title="Car service")
         mock_scheduler.list_user_reminders = AsyncMock(return_value=[doc, other])
 
-        from app.agents.tools.reminder_tool import search_reminders_tool
-
-        result = await cast(Any, search_reminders_tool).coroutine(config=_cfg(), query="dentist")
+        result = await search_reminders_tool.ainvoke({"query": "dentist"}, config=_cfg())
 
         assert isinstance(result, list), f"search failed: {result}"
         assert len(result) == 1
@@ -94,9 +95,7 @@ class TestSearchRemindersTool917:
         doc = _reminder_document()
         mock_scheduler.list_user_reminders = AsyncMock(return_value=[doc])
 
-        from app.agents.tools.reminder_tool import search_reminders_tool
-
-        result = await cast(Any, search_reminders_tool).coroutine(config=_cfg(), query="dentist")
+        result = await search_reminders_tool.ainvoke({"query": "dentist"}, config=_cfg())
 
         assert isinstance(result, list), f"search failed: {result}"
         assert isinstance(result[0]["scheduled_at"], str)
@@ -114,9 +113,7 @@ class TestReminderReadToolsJsonSafePayloads917:
     async def test_list_payload_is_json_safe(self, mock_scheduler: MagicMock) -> None:
         mock_scheduler.list_user_reminders = AsyncMock(return_value=[_reminder_document()])
 
-        from app.agents.tools.reminder_tool import list_user_reminders_tool
-
-        result = await cast(Any, list_user_reminders_tool).coroutine(config=_cfg())
+        result = await list_user_reminders_tool.ainvoke({}, config=_cfg())
 
         assert isinstance(result, list)
         assert isinstance(result[0]["scheduled_at"], str)
@@ -124,11 +121,10 @@ class TestReminderReadToolsJsonSafePayloads917:
 
     @patch(f"{MODULE}.reminder_scheduler")
     async def test_get_payload_is_json_safe(self, mock_scheduler: MagicMock) -> None:
-        mock_scheduler.get_reminder = AsyncMock(return_value=_reminder_document())
+        doc = _reminder_document()
+        mock_scheduler.get_reminder = AsyncMock(return_value=doc)
 
-        from app.agents.tools.reminder_tool import get_reminder_tool
-
-        result = await cast(Any, get_reminder_tool).coroutine(config=_cfg(), reminder_id="rem-917")
+        result = await get_reminder_tool.ainvoke({"reminder_id": "rem-917"}, config=_cfg())
 
         assert result["id"] == "rem-917"
         assert isinstance(result["scheduled_at"], str)
