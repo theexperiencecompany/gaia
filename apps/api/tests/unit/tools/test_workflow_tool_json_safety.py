@@ -149,7 +149,7 @@ class TestWorkflowToolPayloadsAreJsonSafe:
         )
         writer = MagicMock()
 
-        with patch("app.services.workflow.WorkflowService") as mock_service:
+        with patch("app.services.workflow.service.WorkflowService") as mock_service:
             mock_service.update_workflow = AsyncMock(return_value=updated)
 
             result = await apply_workflow_edit(
