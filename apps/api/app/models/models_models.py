@@ -4,6 +4,7 @@ from typing import Any, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.agents.llm.types import LLMProviderName
 from app.db.repositories.base import MongoDocument
 
 
@@ -27,7 +28,9 @@ class DevModelOption(TypedDict):
     bound to — free-form OpenRouter request params, not a shape we own.
     """
 
-    provider: str
+    #: Keyed the same as ``PROVIDER_MODELS``/``PROVIDER_PRIORITY`` — the enum is
+    #: what stops the menu naming a lane the client cannot resolve.
+    provider: LLMProviderName
     model: str
     model_kwargs: dict[str, Any] | None
     reasoning: bool

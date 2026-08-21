@@ -21,6 +21,7 @@ from app.config.rate_limits import RateLimitPeriod
 from app.db.redis import redis_cache
 from app.services import cost_budget
 from app.services.cost_budget import get_cost, get_request_tokens, record_model_call_usage
+from shared.py.wide_events import log
 
 USER = "u-metering"
 REQUEST = "root-req-1"
@@ -48,20 +49,36 @@ class TestChargedSpend:
     """The agent middleware's route: work the user actively asked for."""
 
     async def test_moves_both_budget_windows_and_the_request_counter(self) -> None:
-        await record_model_call_usage(USER, 0.01, REQUEST, 500, charge_to_budget=True)
+        await record_model_call_usage(
+            USER, 0.01, REQUEST, input_tokens=300, output_tokens=200, charge_to_budget=True
+        )
 
         assert await get_cost(USER, RateLimitPeriod.DAY) == pytest.approx(0.01)
         assert await get_cost(USER, RateLimitPeriod.MONTH) == pytest.approx(0.01)
         assert await get_request_tokens(REQUEST) == 500
 
     async def test_is_booked_as_charged_in_the_durable_rollup(self, rollup: AsyncMock) -> None:
-        await record_model_call_usage(USER, 0.01, REQUEST, 500, charge_to_budget=True)
+        await record_model_call_usage(
+            USER, 0.01, REQUEST, input_tokens=300, output_tokens=200, charge_to_budget=True
+        )
 
-        rollup.assert_awaited_once_with(USER, 0.01, charged=True)
+        rollup.assert_awaited_once_with(
+            USER,
+            0.01,
+            charged=True,
+            input_tokens=300,
+            output_tokens=200,
+            cached_tokens=0,
+            reasoning_tokens=0,
+        )
 
     async def test_accumulates_across_calls(self) -> None:
-        await record_model_call_usage(USER, 0.01, REQUEST, 100, charge_to_budget=True)
-        await record_model_call_usage(USER, 0.02, REQUEST, 200, charge_to_budget=True)
+        await record_model_call_usage(
+            USER, 0.01, REQUEST, input_tokens=60, output_tokens=40, charge_to_budget=True
+        )
+        await record_model_call_usage(
+            USER, 0.02, REQUEST, input_tokens=120, output_tokens=80, charge_to_budget=True
+        )
 
         assert await get_cost(USER, RateLimitPeriod.DAY) == pytest.approx(0.03)
         assert await get_request_tokens(REQUEST) == 300
@@ -74,36 +91,56 @@ class TestAuxiliarySpend:
     async def test_never_moves_the_budget_windows_the_wall_reads(self) -> None:
         # The real auxiliary shape: no root_request_id (this work outlives the
         # turn that spawned it), so the pipeline carries no commands at all.
-        await record_model_call_usage(USER, 0.02, None, 700, charge_to_budget=False)
+        await record_model_call_usage(
+            USER, 0.02, None, input_tokens=400, output_tokens=300, charge_to_budget=False
+        )
 
         assert await get_cost(USER, RateLimitPeriod.DAY) == 0.0
         assert await get_cost(USER, RateLimitPeriod.MONTH) == 0.0
 
     async def test_cannot_erode_an_allowance_already_partly_spent(self) -> None:
-        await record_model_call_usage(USER, 0.01, REQUEST, 100, charge_to_budget=True)
+        await record_model_call_usage(
+            USER, 0.01, REQUEST, input_tokens=60, output_tokens=40, charge_to_budget=True
+        )
 
         # A whole memory-ingestion batch runs. The user's remaining allowance
         # must be exactly what it was before it ran.
         for _ in range(20):
-            await record_model_call_usage(USER, 0.004, None, 300, charge_to_budget=False)
+            await record_model_call_usage(
+                USER, 0.004, None, input_tokens=200, output_tokens=100, charge_to_budget=False
+            )
 
         assert await get_cost(USER, RateLimitPeriod.DAY) == pytest.approx(0.01)
         assert await get_cost(USER, RateLimitPeriod.MONTH) == pytest.approx(0.01)
 
     async def test_is_booked_as_uncharged_so_cogs_stays_measurable(self, rollup: AsyncMock) -> None:
-        await record_model_call_usage(USER, 0.02, None, 700, charge_to_budget=False)
+        await record_model_call_usage(
+            USER, 0.02, None, input_tokens=400, output_tokens=300, charge_to_budget=False
+        )
 
-        rollup.assert_awaited_once_with(USER, 0.02, charged=False)
+        rollup.assert_awaited_once_with(
+            USER,
+            0.02,
+            charged=False,
+            input_tokens=400,
+            output_tokens=300,
+            cached_tokens=0,
+            reasoning_tokens=0,
+        )
 
     async def test_leaves_the_request_ceiling_alone_without_a_request_id(self) -> None:
-        await record_model_call_usage(USER, 0.02, None, 700, charge_to_budget=False)
+        await record_model_call_usage(
+            USER, 0.02, None, input_tokens=400, output_tokens=300, charge_to_budget=False
+        )
 
         assert await get_request_tokens(REQUEST) == 0
 
     async def test_still_counts_tokens_when_a_request_id_is_present(self) -> None:
         # An auxiliary call made from inside a turn still bounds that turn's
         # tree against runaway loops — only the money is exempt.
-        await record_model_call_usage(USER, 0.02, REQUEST, 700, charge_to_budget=False)
+        await record_model_call_usage(
+            USER, 0.02, REQUEST, input_tokens=400, output_tokens=300, charge_to_budget=False
+        )
 
         assert await get_request_tokens(REQUEST) == 700
         assert await get_cost(USER, RateLimitPeriod.DAY) == 0.0
@@ -112,14 +149,124 @@ class TestAuxiliarySpend:
 @pytest.mark.unit
 class TestDegradation:
     async def test_a_call_with_nothing_to_record_is_a_no_op(self, rollup: AsyncMock) -> None:
-        await record_model_call_usage(None, 0.0, None, 0, charge_to_budget=True)
+        await record_model_call_usage(
+            None, 0.0, None, input_tokens=0, output_tokens=0, charge_to_budget=True
+        )
 
         rollup.assert_not_awaited()
 
     async def test_redis_being_down_does_not_fail_the_model_call(self, rollup: AsyncMock) -> None:
         with patch.object(redis_cache, "redis", None):
-            await record_model_call_usage(USER, 0.01, REQUEST, 500, charge_to_budget=True)
+            await record_model_call_usage(
+                USER, 0.01, REQUEST, input_tokens=300, output_tokens=200, charge_to_budget=True
+            )
 
         # The durable rollup still ran — losing Redis must not also lose the
         # cost history the usage charts are plotted from.
-        rollup.assert_awaited_once_with(USER, 0.01, charged=True)
+        rollup.assert_awaited_once_with(
+            USER,
+            0.01,
+            charged=True,
+            input_tokens=300,
+            output_tokens=200,
+            cached_tokens=0,
+            reasoning_tokens=0,
+        )
+
+
+@pytest.mark.unit
+class TestTokenOnlyCalls:
+    """A priced-at-zero call still burned real tokens.
+
+    ``record_llm_call`` books ``cost_usd=0`` when the pricing lookup misses, so
+    gating the durable rollup on spend alone would lose the token breakdown for
+    exactly the calls that need re-pricing later. Each of the four counters has
+    to be able to trigger the rollup on its own — the existing tests always send
+    input and output together, so a single ``or`` flipped to ``and`` in that
+    chain changes nothing they can see.
+    """
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("input_tokens", 7),
+            ("output_tokens", 7),
+            ("cached_tokens", 7),
+            ("reasoning_tokens", 7),
+        ],
+    )
+    async def test_any_single_token_counter_books_the_rollup(
+        self, rollup: AsyncMock, field: str, value: int
+    ) -> None:
+        counters = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cached_tokens": 0,
+            "reasoning_tokens": 0,
+        }
+        counters[field] = value
+
+        await record_model_call_usage(USER, 0.0, REQUEST, charge_to_budget=True, **counters)
+
+        assert rollup.await_count == 1
+        assert rollup.await_args.kwargs[field] == value
+
+    async def test_a_call_with_neither_spend_nor_tokens_books_nothing(
+        self, rollup: AsyncMock
+    ) -> None:
+        await record_model_call_usage(
+            USER,
+            0.0,
+            REQUEST,
+            input_tokens=0,
+            output_tokens=0,
+            charge_to_budget=True,
+        )
+
+        rollup.assert_not_awaited()
+
+    async def test_unattributed_token_data_is_not_rolled_up(self, rollup: AsyncMock) -> None:
+        """The rollup is per-user; with no user there is nothing to book it
+        against, and writing it anyway would file another user's spend under a
+        null key."""
+        await record_model_call_usage(
+            None,
+            0.0,
+            REQUEST,
+            input_tokens=10,
+            output_tokens=5,
+            charge_to_budget=True,
+        )
+
+        rollup.assert_not_awaited()
+
+    async def test_unattributed_tokens_still_count_against_the_request_ceiling(self) -> None:
+        """Losing the rollup must not lose the runaway-loop guard with it. That
+        ceiling is keyed on the request tree, not the user, so a call nobody can
+        be billed for still has to move it — otherwise an unattributed loop runs
+        forever."""
+        await record_model_call_usage(
+            None,
+            0.0,
+            REQUEST,
+            input_tokens=10,
+            output_tokens=5,
+            charge_to_budget=True,
+        )
+
+        assert await get_request_tokens(REQUEST) == 15
+
+    async def test_a_failed_rollup_is_named_in_the_warning(self, rollup: AsyncMock) -> None:
+        """Fail-open is only safe if the failure is findable: the operation label
+        is what tells you the durable Mongo write dropped rather than the Redis
+        pipeline."""
+        log.reset()
+        rollup.side_effect = RuntimeError("mongo down")
+
+        await record_model_call_usage(
+            USER, 0.5, REQUEST, input_tokens=10, output_tokens=5, charge_to_budget=True
+        )
+
+        failures = [w for w in log.get().get("warnings", []) if w.get("operation")]
+        assert [w["operation"] for w in failures] == ["mongo_cost_rollup"]
+        assert failures[0]["error_type"] == "RuntimeError"

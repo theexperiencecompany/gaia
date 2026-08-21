@@ -17,16 +17,22 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.agents.core.background import executor_runner as er, session as sess
-from app.agents.core.background.executor_queue import LockState, PreparedQueuedTask
+from app.agents.core.background.executor_queue import (
+    LockState,
+    PreparedQueuedTask,
+    build_run_item,
+)
 from app.agents.core.background.session import (
     ExecutorRun,
     RunKind,
     create_session,
     get_session,
 )
+from app.constants.agents import AgentTag, wrap_agent_payload
 
 # The task text the finalize step now receives; forwarded to comms on a cancel.
 TASK = "run the standup summary"
+CARD_NOTE = wrap_agent_payload(AgentTag.RETURNED_TO_FRONTEND, "todo_data (1 todo)")
 
 
 @pytest.fixture(autouse=True)
@@ -153,13 +159,11 @@ class TestCompletedRouting:
     async def test_completed_queued_run_delivers_and_closes_stream(self, boundaries) -> None:
         run = _run(RunKind.QUEUED)
         create_session("s1", RunKind.QUEUED)
-        boundaries.note.return_value = "[RETURNED_TO_FRONTEND] cards"
+        boundaries.note.return_value = CARD_NOTE
 
         await er._finalize_executor_run(run, TASK, "result", "final")
 
-        boundaries.deliver.assert_awaited_once_with(
-            run, "result", "final", "[RETURNED_TO_FRONTEND] cards"
-        )
+        boundaries.deliver.assert_awaited_once_with(run, "result", "final", CARD_NOTE)
         # A completed run narrates and delivers — it never records a cancellation.
         boundaries.record_cancel.assert_not_awaited()
         boundaries.persist_cancelled.assert_not_awaited()
@@ -367,3 +371,39 @@ class TestQueueLockHandoff:
         # Lock handed off to the next run — must NOT be released or reclaimed.
         boundaries.release.assert_not_awaited()
         boundaries.reclaim.assert_not_awaited()
+
+
+class TestBuildRunItem:
+    """The one serialized run-context shape, written by the queue and by the HIL
+    resume store and read back by ``prepare_run_from_item``. A renamed or dropped
+    key here is invisible on write and only shows when a resumed run silently
+    loses what a queued run kept."""
+
+    def test_every_field_survives_the_round_trip_shape(self) -> None:
+        item = build_run_item(
+            task="triage my inbox",
+            task_id="task-1",
+            configurable={"user_id": "user-1", "thread_id": "conv-1"},
+            conversation_id="conv-1",
+            user_message_id="user-msg-1",
+            bot_message_id="bot-msg-1",
+        )
+
+        assert item["task"] == "triage my inbox"
+        assert item["task_id"] == "task-1"
+        assert item["conversation_id"] == "conv-1"
+        assert item["user_message_id"] == "user-msg-1"
+        assert item["bot_message_id"] == "bot-msg-1"
+
+    def test_a_plain_enqueue_carries_no_bot_message_id(self) -> None:
+        """Only a HIL pause sets it; a queued run must still carry the key, as
+        ``prepare_run_from_item`` reads it unconditionally."""
+        item = build_run_item(
+            task="t",
+            task_id=None,
+            configurable={"user_id": "user-1"},
+            conversation_id="conv-1",
+            user_message_id=None,
+        )
+
+        assert item["bot_message_id"] is None

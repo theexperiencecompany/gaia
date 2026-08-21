@@ -1,9 +1,9 @@
 "use client";
 
-import { ShieldIcon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import type { ReactNode } from "react";
+import { ShieldAlertIcon } from "@/components/shared/icons";
 
 import { WaveSpinnerSquare } from "@/components/shared/WaveSpinnerSquare";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -72,7 +72,7 @@ export function LoadingIndicator({
             repeat: Number.POSITIVE_INFINITY,
           }}
         >
-          <ShieldIcon width={18} height={18} className="text-amber-400" />
+          <ShieldAlertIcon width={18} height={18} className="text-amber-400" />
         </m.span>
         <span className="text-amber-400">Waiting for your approval</span>
       </m.div>

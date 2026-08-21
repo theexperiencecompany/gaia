@@ -144,10 +144,6 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         const result = await integrationsApi.connectIntegration(integrationId);
 
         if (result.status === "connected") {
-          trackEvent(ANALYTICS_EVENTS.INTEGRATION_CONNECTED, {
-            integration: integrationId,
-            source: "integration_settings",
-          });
           toast.success(`Connected to ${result.name}`, { id: toastId });
           // Invalidate (not awaited refetch) so the button/sidebar update in the
           // background instead of blocking on the catalog + tools GETs.
@@ -182,9 +178,6 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     async (integrationId: string): Promise<void> => {
       try {
         await integrationsApi.disconnectIntegration(integrationId);
-        trackEvent(ANALYTICS_EVENTS.INTEGRATION_DISCONNECTED, {
-          integration: integrationId,
-        });
         toast.success("Integration disconnected");
         // Invalidate (not refetch) so the UI updates in the background while
         // the modal closes immediately.

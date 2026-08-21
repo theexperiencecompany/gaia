@@ -31,6 +31,7 @@ from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.types import Command
 import pytest
 
+from app.agents.context.assemble import AssembledContext
 from app.agents.core.subagents import spawn_agent
 from app.agents.core.subagents.spawn_agent import get_spawn_graph
 from app.agents.middleware.factory import create_subagent_middleware
@@ -38,12 +39,13 @@ from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.hil import HIL_RESUME_CONFIG_KEY, LANGGRAPH_INTERRUPT_KEY
+from tests.helpers import PassthroughFakeLLM
 
 TASK_A = "ALPHA: record the meeting note"
 TASK_B = "BETA: publish the status update"
 
 
-class TaskDrivenFakeLLM:
+class TaskDrivenFakeLLM(PassthroughFakeLLM):
     """Chooses its tool from the Task line it is shown, never from a call counter.
 
     Message-driven on purpose: a node replay shows the model the same messages,
@@ -52,15 +54,6 @@ class TaskDrivenFakeLLM:
 
     def __init__(self) -> None:
         self.invocations: list[str] = []
-
-    def with_config(self, **_kwargs: Any) -> "TaskDrivenFakeLLM":
-        return self
-
-    def bind_tools(self, _tools: Any, **_kwargs: Any) -> "TaskDrivenFakeLLM":
-        return self
-
-    def with_retry(self, **_kwargs: Any) -> "TaskDrivenFakeLLM":
-        return self
 
     async def ainvoke(self, messages: Any, **_kwargs: Any) -> AIMessage:
         text = " ".join(str(getattr(m, "content", "")) for m in messages)
@@ -182,8 +175,15 @@ async def test_finished_spawn_is_recovered_not_rerun_when_a_sibling_pauses(
     # ChromaDB in production).
     with (
         patch(
-            "app.agents.core.subagents.subagent_runner.create_agent_context_message",
-            AsyncMock(return_value=SystemMessage(content="ctx")),
+            "app.agents.core.subagents.subagent_runner.assemble_context",
+            AsyncMock(
+                return_value=AssembledContext(
+                    stable=SystemMessage(
+                        content="ctx", additional_kwargs={"dynamic_context": True}
+                    ),
+                    volatile=None,
+                )
+            ),
         ),
         patch(
             "app.agents.core.subagents.spawn_agent.get_tools_store", AsyncMock(return_value=None)

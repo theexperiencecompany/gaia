@@ -38,6 +38,7 @@ from app.models.workflow_models import (
     WorkflowResponse,
     WorkflowStatusResponse,
 )
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.oauth.oauth_service import get_all_integrations_status
 from app.services.system_workflows.provisioner import reset_system_workflow_to_default
 from app.services.workflow import WorkflowService
@@ -91,16 +92,27 @@ async def create_workflow(
         workflow = await WorkflowService.create_workflow(
             request, user["user_id"], user_timezone=user_timezone
         )
+        # The trigger type lives on the REQUEST (the pre-create log above reads
+        # request.trigger_config.type) — the created Workflow model does not
+        # carry a trigger_type attribute, so reading it off the workflow would
+        # always yield None. Both fields are required, so no guard needed.
+        trigger_type = request.trigger_config.type.value
         log.set(
             workflow=WorkflowContext(
                 id=str(workflow.id),
                 title=workflow.title,
                 steps_count=len(workflow.steps) if workflow.steps else None,
-                trigger_type=str(workflow.trigger_type)
-                if hasattr(workflow, "trigger_type") and workflow.trigger_type
-                else None,
+                trigger_type=trigger_type,
             ),
             outcome="success",
+        )
+        capture_context_event(
+            AnalyticsEvents.WORKFLOW_CREATED,
+            {
+                "trigger_type": trigger_type,
+                "steps_count": len(workflow.steps) if workflow.steps else 0,
+                "generated_immediately": request.generate_immediately,
+            },
         )
         return WorkflowResponse(workflow=workflow, message="Workflow created successfully")
 
@@ -173,14 +185,15 @@ async def execute_workflow(
 
     try:
         result = await WorkflowService.execute_workflow(workflow_id, request, user["user_id"])
+        # execute_workflow is typed to return WorkflowExecutionResponse, whose
+        # execution_id is required — the hasattr guard was dead defensive code.
         log.set(
             workflow=WorkflowContext(
-                execution_id=str(result.execution_id)
-                if hasattr(result, "execution_id") and result.execution_id
-                else None,
+                execution_id=str(result.execution_id),
             ),
             outcome="success",
         )
+        capture_context_event(AnalyticsEvents.WORKFLOW_EXECUTED)
         return result
 
     except ValueError as e:
@@ -307,6 +320,7 @@ async def activate_workflow(
             )
 
         log.set(outcome="success")
+        capture_context_event(AnalyticsEvents.WORKFLOW_ACTIVATED)
         return WorkflowResponse(workflow=workflow, message="Workflow activated successfully")
 
     except TriggerRegistrationError as e:
@@ -536,6 +550,7 @@ async def publish_workflow(
             workflow_id=workflow_id,
             user_id=user["user_id"],
         )
+        capture_context_event(AnalyticsEvents.WORKFLOW_PUBLISHED)
 
         return PublishWorkflowResponse(
             message="Workflow published successfully",

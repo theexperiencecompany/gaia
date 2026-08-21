@@ -21,6 +21,7 @@ from app.schemas.integrations.responses import (
     IntegrationToolsResponse,
     MyIntegrationsResponse,
 )
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.connect_link_service import resolve_and_consume_connect_code
 from app.services.integrations.integration_connection_service import (
     build_integrations_config,
@@ -95,6 +96,10 @@ async def disconnect_integration_endpoint(
         )
         result = await disconnect_integration(user_id, integration_id)
         log.set(outcome="success")
+        capture_context_event(
+            AnalyticsEvents.INTEGRATION_DISCONNECTED,
+            {"integration_id": integration_id},
+        )
         return result
     except ValueError as e:
         error_message = str(e)
@@ -176,6 +181,16 @@ async def connect_integration_endpoint(
                 bearer_token=request.bearer_token,
             )
             log.set(outcome="success")
+            # OAuth-managed connects complete at their callback; only a direct
+            # (no-auth / bearer) connect finishes here.
+            if result.status == "connected":
+                capture_context_event(
+                    AnalyticsEvents.INTEGRATION_CONNECTED,
+                    {
+                        "integration_id": integration_id,
+                        "managed_by": resolved.managed_by,
+                    },
+                )
             return result
         if resolved.managed_by == "composio":
             provider = (

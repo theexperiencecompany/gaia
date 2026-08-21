@@ -1,3 +1,5 @@
+import { NEW_MESSAGE_BREAK_TOKEN } from "./messageBreakUtils";
+
 /**
  * Minimal structural type for @openuidev/react-lang's Library.
  * Duck-typed to avoid a hard dep on a specific openui version.
@@ -112,13 +114,16 @@ export function parseOpenUISegments(
 }
 
 /**
- * Split text by NEW_MESSAGE_BREAK while preserving OpenUI fences.
+ * Split assistant text into bubbles on NEW_MESSAGE_BREAK.
  *
- * Breaks inside :::openui / ::: blocks are ignored so a fence is
- * never bisected across two bubbles.
+ * The single splitter every surface uses. Breaks inside :::openui / ::: blocks
+ * are ignored so a fence is never bisected across two bubbles; text with no
+ * fence in it splits on the plain token. It lives here rather than beside the
+ * token constant because fence awareness is what makes it correct, and that
+ * knowledge belongs to this module.
  */
-export function splitByBreaksPreservingFences(content: string): string[] {
-  const BREAK = "<NEW_MESSAGE_BREAK>";
+export function splitMessageByBreaks(content: string): string[] {
+  const BREAK = NEW_MESSAGE_BREAK_TOKEN;
   if (!content?.trim()) return [];
   if (!content.includes(BREAK)) return [content];
   if (!content.includes(OPENUI_OPEN)) {

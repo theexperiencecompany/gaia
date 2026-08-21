@@ -43,8 +43,9 @@ export function useOnboardingAnalytics(state: OnboardingState): void {
     const value = state.responses[q.fieldName];
     if (value == null) return;
 
+    // Never send `response_value` — onboarding responses are user-authored
+    // free text (name, profession, goals). Track only the question answered.
     trackOnboardingStep(answeredIndex + 1, q.fieldName, {
-      response_value: value,
       question_id: q.id,
     });
   }, [state.questionIndex, state.responses]);

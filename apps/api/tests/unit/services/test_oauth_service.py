@@ -284,12 +284,13 @@ class TestStoreUserInfo:
         mock_add_marketing_contact,
     ):
         mock_user_repo.get_by_email.return_value = None
-        mock_user_repo.create.return_value = UserDocument(id=str(ObjectId()))
+        created = UserDocument(id=str(ObjectId()))
+        mock_user_repo.create.return_value = created
 
         await store_user_info("Bob", "bob@test.com", None)
 
         mock_track_signup.assert_called_once_with(
-            user_id="bob@test.com",
+            user_id=created.id,
             email="bob@test.com",
             name="Bob",
             signup_method="workos",

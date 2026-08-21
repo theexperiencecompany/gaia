@@ -2,6 +2,7 @@ import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
 import type { ReactNode } from "react";
 
 import { RaisedButton } from "@/components/ui/raised-button";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 import PublishWorkflowCTA from "./PublishWorkflowCTA";
 import ShareButton from "./ShareButton";
@@ -70,7 +71,12 @@ export default function UseCaseDetailLayout({
             <RaisedButton
               color="#00bbff"
               className="shrink-0 text-black!"
-              onClick={onCreateWorkflow}
+              onClick={() => {
+                trackEvent(ANALYTICS_EVENTS.USE_CASE_CLICKED, {
+                  use_case_id: id,
+                });
+                onCreateWorkflow();
+              }}
               disabled={isCreating}
             >
               {isCreating ? "Creating..." : "Add to your GAIA"}

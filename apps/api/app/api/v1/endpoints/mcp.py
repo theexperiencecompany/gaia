@@ -18,6 +18,7 @@ from app.helpers.mcp_helpers import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.schemas.mcp import MCPConnectionTestResponse
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.user_integrations import invalidate_user_integration_caches
 from app.services.mcp.mcp_client import get_mcp_client
@@ -254,6 +255,13 @@ async def mcp_oauth_callback(
         await invalidate_user_integration_caches(str(user_id))
 
         log.audit("mcp integration connected via oauth", actor=user_id, resource=integration_id)
+        capture_context_event(
+            AnalyticsEvents.INTEGRATION_CONNECTED,
+            {
+                "integration_id": integration_id,
+                "connection_method": "oauth",
+            },
+        )
 
         frontend_url = get_frontend_url()
         log.set(outcome="connected")

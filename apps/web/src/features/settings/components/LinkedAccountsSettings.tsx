@@ -1,13 +1,26 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Chip } from "@heroui/chip";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
+import {
+  BOT_AUTH_COMMAND,
+  BOT_PLATFORM_ICONS,
+  BOT_PLATFORM_LABELS,
+} from "@/config/botPlatforms";
+import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
+import {
+  PhoneLinkModal,
+  type PhoneLinkTarget,
+} from "@/features/settings/components/PhoneLinkModal";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { apiService } from "@/lib/api/service";
 import { toast } from "@/lib/toast";
+import { usePricingModalStore } from "@/stores/pricingModalStore";
 import type { PlatformLink } from "@/types/platform";
 
 interface PlatformConfig {
@@ -17,40 +30,52 @@ interface PlatformConfig {
   color: string;
   description: string;
   connectedDescription: string;
+  premium?: boolean;
+  requiresPhone?: boolean;
 }
 
 const PLATFORMS: PlatformConfig[] = [
   {
-    id: "discord",
-    name: "Discord",
-    image: "/images/icons/macos/discord.webp",
-    color: "#5865F2",
-    description: "Use GAIA directly from Discord servers and DMs",
-    connectedDescription: "Use /gaia in Discord to chat with GAIA",
-  },
-  {
-    id: "slack",
-    name: "Slack",
-    image: "/images/icons/macos/slack.webp",
-    color: "#4A154B",
-    description: "Bring GAIA into your Slack workspace",
-    connectedDescription: "Use /gaia in Slack to chat with GAIA",
-  },
-  {
     id: "telegram",
-    name: "Telegram",
+    name: BOT_PLATFORM_LABELS.telegram,
     description: "Chat with GAIA on Telegram",
-    image: "/images/icons/macos/telegram.webp",
+    image: BOT_PLATFORM_ICONS.telegram,
     color: "#0088cc",
     connectedDescription: "Message your bot on Telegram to chat with GAIA",
   },
   {
     id: "whatsapp",
-    name: "WhatsApp",
-    image: "/images/icons/macos/whatsapp.webp",
+    name: BOT_PLATFORM_LABELS.whatsapp,
+    image: BOT_PLATFORM_ICONS.whatsapp,
     color: "#25D366",
     description: "Connect GAIA to WhatsApp (Beta)",
     connectedDescription: "Message GAIA on WhatsApp",
+  },
+  {
+    id: "imessage",
+    name: BOT_PLATFORM_LABELS.imessage,
+    image: BOT_PLATFORM_ICONS.imessage,
+    color: "#34C759",
+    description: "Text GAIA over iMessage (Pro)",
+    connectedDescription: "Message GAIA from your iPhone or Mac",
+    premium: true,
+    requiresPhone: true,
+  },
+  {
+    id: "slack",
+    name: BOT_PLATFORM_LABELS.slack,
+    image: BOT_PLATFORM_ICONS.slack,
+    color: "#4A154B",
+    description: "Bring GAIA into your Slack workspace",
+    connectedDescription: "Use /gaia in Slack to chat with GAIA",
+  },
+  {
+    id: "discord",
+    name: BOT_PLATFORM_LABELS.discord,
+    image: BOT_PLATFORM_ICONS.discord,
+    color: "#5865F2",
+    description: "Use GAIA directly from Discord servers and DMs",
+    connectedDescription: "Use /gaia in Discord to chat with GAIA",
   },
 ];
 
@@ -62,7 +87,18 @@ export default function LinkedAccountsSettings() {
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(
     null,
   );
+  const [phoneModalPlatform, setPhoneModalPlatform] = useState<string | null>(
+    null,
+  );
+  const [phoneLinkTarget, setPhoneLinkTarget] =
+    useState<PhoneLinkTarget | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Registering a number takes a round trip to Photon. Closing the modal (or
+  // starting over) invalidates that request, so a late reply cannot drop the
+  // previous attempt's number into the session the user is now in.
+  const connectAttemptRef = useRef(0);
+  const { data: subscriptionStatus } = useUserSubscriptionStatus();
+  const openPricingModal = usePricingModalStore((s) => s.openModal);
 
   const clearPollTimer = () => {
     if (pollTimerRef.current) {
@@ -72,36 +108,64 @@ export default function LinkedAccountsSettings() {
   };
 
   useEffect(() => {
-    fetchPlatformLinks();
+    void fetchPlatformLinks();
     return () => {
       clearPollTimer();
     };
   }, []);
 
-  const fetchPlatformLinks = async () => {
+  const fetchPlatformLinks = async (): Promise<Record<
+    string,
+    PlatformLink | null
+  > | null> => {
     try {
       setIsLoading(true);
       const data = await apiService.get<{
         platform_links: Record<string, PlatformLink | null>;
       }>("/platform-links", { silent: true });
       setPlatformLinks(data.platform_links || {});
+      return data.platform_links || {};
     } catch {
       toast.error("Failed to load connected accounts");
+      return null;
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleConnect = async (platformId: string) => {
+  const startConnect = (platform: PlatformConfig) => {
+    if (platform.premium && !subscriptionStatus?.is_subscribed) {
+      openPricingModal();
+      return;
+    }
+    if (platform.requiresPhone) {
+      setPhoneLinkTarget(null);
+      setPhoneModalPlatform(platform.id);
+      return;
+    }
+    handleConnect(platform.id);
+  };
+
+  const handleConnect = async (platformId: string, phoneNumber?: string) => {
+    const attempt = ++connectAttemptRef.current;
     try {
       setConnectingPlatform(platformId);
 
-      const data = await apiService.get<{
+      const wasConnected = platformLinks[platformId]?.platformUserId != null;
+
+      const data = await apiService.post<{
         auth_url?: string;
         instructions?: string;
         action_link?: string;
+        contact_number?: string;
         auth_type: string;
-      }>(`/platform-links/${platformId}/connect`, { silent: true });
+      }>(
+        `/platform-links/${platformId}/connect`,
+        phoneNumber ? { phone: phoneNumber } : {},
+        { silent: true },
+      );
+
+      if (attempt !== connectAttemptRef.current) return;
 
       if (data.auth_url) {
         const width = 600;
@@ -119,10 +183,28 @@ export default function LinkedAccountsSettings() {
         pollTimerRef.current = setInterval(() => {
           if (popup?.closed) {
             clearPollTimer();
-            fetchPlatformLinks();
-            setConnectingPlatform(null);
+            void fetchPlatformLinks().then((links) => {
+              if (
+                !wasConnected &&
+                links?.[platformId]?.platformUserId != null
+              ) {
+                trackEvent(ANALYTICS_EVENTS.BOT_CONNECTED, {
+                  bot_id: platformId,
+                });
+              }
+              setConnectingPlatform(null);
+            });
           }
         }, 500);
+      } else if (data.contact_number) {
+        // An sms: deep link resolves on Apple devices only, so the number and
+        // the command have to be readable (and copyable) on any device.
+        setPhoneLinkTarget({
+          contactNumber: data.contact_number,
+          command: BOT_AUTH_COMMAND,
+          actionLink: data.action_link,
+        });
+        setConnectingPlatform(null);
       } else if (data.auth_type === "manual" && data.instructions) {
         const platformConfig = PLATFORMS.find((p) => p.id === platformId);
         toast.info(`Connect ${platformConfig?.name ?? platformId}`, {
@@ -149,6 +231,7 @@ export default function LinkedAccountsSettings() {
         setConnectingPlatform(null);
       }
     } catch {
+      if (attempt !== connectAttemptRef.current) return;
       toast.error(`Failed to connect ${platformId}`);
       setConnectingPlatform(null);
     }
@@ -159,6 +242,7 @@ export default function LinkedAccountsSettings() {
       await apiService.delete(`/platform-links/${platformId}`, {
         silent: true,
       });
+      trackEvent(ANALYTICS_EVENTS.BOT_DISCONNECTED, { bot_id: platformId });
       toast.success(`Disconnected from ${platformId}`);
       await fetchPlatformLinks();
     } catch {
@@ -203,6 +287,11 @@ export default function LinkedAccountsSettings() {
               }
             >
               <div className="flex items-center gap-3">
+                {platform.premium && !subscriptionStatus?.is_subscribed && (
+                  <Chip size="sm" variant="flat" color="warning">
+                    Pro
+                  </Chip>
+                )}
                 {isConnected && (
                   <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
@@ -216,7 +305,7 @@ export default function LinkedAccountsSettings() {
                   onPress={() =>
                     isConnected
                       ? handleDisconnect(platform.id)
-                      : handleConnect(platform.id)
+                      : startConnect(platform)
                   }
                   isLoading={connectingPlatform === platform.id}
                   isDisabled={isLoading || connectingPlatform != null}
@@ -243,7 +332,8 @@ export default function LinkedAccountsSettings() {
               <code className="rounded bg-zinc-800 px-1 py-0.5 text-xs text-zinc-300">
                 /gaia
               </code>{" "}
-              in Discord or Slack, or just message the Telegram or WhatsApp bot
+              in Discord or Slack, or just message the Telegram, WhatsApp, or
+              iMessage bot
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 text-zinc-600">•</span>
@@ -256,6 +346,25 @@ export default function LinkedAccountsSettings() {
           </ul>
         </div>
       </SettingsSection>
+
+      <PhoneLinkModal
+        isOpen={phoneModalPlatform != null}
+        platformName={
+          PLATFORMS.find((p) => p.id === phoneModalPlatform)?.name ?? "iMessage"
+        }
+        isSubmitting={connectingPlatform === phoneModalPlatform}
+        target={phoneLinkTarget}
+        onSubmit={(phone) => {
+          if (phoneModalPlatform) handleConnect(phoneModalPlatform, phone);
+        }}
+        onClose={() => {
+          connectAttemptRef.current += 1;
+          setConnectingPlatform(null);
+          setPhoneModalPlatform(null);
+          setPhoneLinkTarget(null);
+          fetchPlatformLinks();
+        }}
+      />
     </SettingsPage>
   );
 }

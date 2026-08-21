@@ -525,6 +525,33 @@ services:
     networks:
       - gaia_network
 
+  # iMessage Bot — serves both /health and /webhook on the same port
+  imessage-bot:
+    container_name: imessage-bot
+    profiles: ["bots", "all"]
+    build:
+      context: ../..
+      dockerfile: apps/bots/Dockerfile
+      args:
+        BOT_NAME: imessage
+    env_file:
+      - ../../apps/bots/.env
+    environment:
+      - BOT_SERVER_PORT=3204
+      - LOG_FORMAT=json
+      - LOG_COLORIZE=false
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    ports:
+      - "${IMESSAGE_BOT_PORT:-3204}:3204"
+    restart: on-failure
+    depends_on:
+      gaia-backend:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
   # Voice Agent Worker
   voice-agent-worker:
     container_name: voice-agent-worker
@@ -608,7 +635,7 @@ services:
       # A *dockered* bot writes no such file — the image's WORKDIR is /app so
       # the sink never resolves a directory — and is scraped from container
       # stdout by the `docker` job below instead, which explicitly keeps
-      # discord-bot|slack-bot|telegram-bot|whatsapp-bot.
+      # discord-bot|slack-bot|telegram-bot|whatsapp-bot|imessage-bot.
       - ../../apps/api/logs:/var/log/gaia-api:ro
       - ../../apps/api/logs/worker:/var/log/gaia-worker:ro
       - ../../apps/voice-agent/logs:/var/log/gaia-voice-agent:ro
@@ -616,6 +643,7 @@ services:
       - ../../apps/bots/slack/logs:/var/log/gaia-slack-bot:ro
       - ../../apps/bots/telegram/logs:/var/log/gaia-telegram-bot:ro
       - ../../apps/bots/whatsapp/logs:/var/log/gaia-whatsapp-bot:ro
+      - ../../apps/bots/imessage/logs:/var/log/gaia-imessage-bot:ro
     restart: unless-stopped
     depends_on:
       loki:

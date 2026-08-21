@@ -20,7 +20,16 @@ def _reset_settings_cache():
     get_settings.cache_clear()
 
 
-DEV_OVERRIDE_VARS = ("DEV_AUTH_BYPASS_EMAIL", "OPENROUTER_BASE_URL", "GAIA_SIM_MODE")
+# Every var the production guard rejects. The list must stay complete: the
+# tests below clear it so only the override under test is present, and a
+# missing entry lets a developer's ambient .env fire an earlier guard and
+# fail the wrong assertion (DEV_UNLIMITED_RATE_LIMITS did exactly that).
+DEV_OVERRIDE_VARS = (
+    "DEV_AUTH_BYPASS_EMAIL",
+    "DEV_UNLIMITED_RATE_LIMITS",
+    "OPENROUTER_BASE_URL",
+    "GAIA_SIM_MODE",
+)
 
 
 def _fake_chat_openrouter(captured: dict[str, object]) -> type:

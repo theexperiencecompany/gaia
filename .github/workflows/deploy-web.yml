@@ -226,6 +226,7 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    environment: preview
     permissions:
       contents: read
       pull-requests: write

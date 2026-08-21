@@ -70,7 +70,9 @@ async def generate_follow_up_actions(
                         "memory_message": True,
                     },
                 ),
-                HumanMessage(content=context_text),
+                # The context text already lives in the dynamic-context system
+                # message above — sending it again as the human message was a
+                # pure duplicate (~350 tokens of per-turn uncached weight).
             ],
             label="follow_up_actions",
             config=cast(
@@ -176,10 +178,21 @@ def _delegated_to_executor(messages: list[AnyMessage]) -> bool:
     return False
 
 
+# Bounded follow-up context: the one-shot needs the recent exchange, not
+# megabytes. A giant executor result (up to the 64k output cap) previously
+# flowed verbatim into the follow-up request — measured: a 65k-token follow-up
+# after a maxed-out executor turn, ~2% cache hit. Capping the context keeps
+# the suggestion call small (and its shared prefix meaningful). The NEWEST
+# exchange is what follow-ups react to, so the cap keeps the tail.
+_FOLLOW_UP_CONTEXT_MAX_CHARS = 6_000
+
+
 def _pretty_print_messages(messages: list[AnyMessage], ignore_system_messages: bool = True) -> str:
     pretty = ""
     for message in messages:
         if ignore_system_messages and isinstance(message, SystemMessage):
             continue
         pretty += message.pretty_repr()
-    return pretty
+    # No length guard: slicing the tail of a shorter string already returns it
+    # whole, so the branch only added a boundary nothing can observe.
+    return pretty[-_FOLLOW_UP_CONTEXT_MAX_CHARS:]

@@ -2282,6 +2282,7 @@ source = { editable = "libs" }
 dependencies = [
     { name = "infisicalsdk" },
     { name = "loguru" },
+    { name = "posthog" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "python-dotenv" },
@@ -2297,6 +2298,7 @@ dev = [
 requires-dist = [
     { name = "infisicalsdk", specifier = ">=1.0.7" },
     { name = "loguru", specifier = ">=0.7.3" },
+    { name = "posthog", specifier = ">=7.4.2" },
     { name = "pydantic", specifier = ">=2.10.0" },
     { name = "pydantic-settings", specifier = ">=2.8.1" },
     { name = "python-dotenv", specifier = ">=1.0.0" },

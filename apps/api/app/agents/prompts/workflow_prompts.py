@@ -303,9 +303,10 @@ event IDs, timestamps; quote the key sentences (not whole emails); update Curren
 Timeline entry "- {date}: {what happened}".
 
 This matching step only MATCHES and UPDATES existing tracked todos — do not create a new one
-just because a signal arrived. (Creating still follows the normal rule during the workflow's
-own write actions; a read-only or summary workflow never creates one, since fetching, listing,
-or summarizing data is not trackable work.) If nothing matches, just run the workflow.
+just because a signal arrived. (Creating still follows the normal rule — only when the run
+leaves ongoing work worth coming back to; a read-only or summary workflow never creates one,
+since fetching, listing, or summarizing data is not trackable work.) If nothing matches, just
+run the workflow.
 """
 
 

@@ -1,11 +1,13 @@
 /**
  * Text utilities for bot adapters: argument parsing, platform character
- * limits, single-message truncation, and multi-message chunking.
+ * limits, and multi-message chunking.
  *
  * These live in their own module (rather than the `index.ts` barrel) so that
  * sibling modules like `streaming.ts` can import them directly without creating
  * a barrel <-> module import cycle.
  */
+
+import type { PlatformName } from "../types";
 
 /**
  * Parses whitespace-separated text into a subcommand and remaining args.
@@ -44,66 +46,19 @@ export function extractSubcommandArgs(
 }
 
 /**
- * Per-platform message character limits. Used by truncateResponse and
- * chunkResponse.
+ * Per-platform message character limits. Used by chunkResponse.
  *
  * Slack's hard API limit is ~40k, but messages render cleanly only well below
  * that — we cap at 3000 (not the 4000 block limit) for readable bubbles, the
  * same headroom the per-channel Slack sender used before delivery moved here.
  */
-export const PLATFORM_LIMITS: Record<string, number> = {
+export const PLATFORM_LIMITS: Record<PlatformName, number> = {
   discord: 2000,
   slack: 3000,
   telegram: 4096,
   whatsapp: 4096,
+  imessage: 4096,
 };
-
-/**
- * Truncates a response message to fit within the platform's character limit.
- * Truncates at word boundaries and optionally appends a web app link.
- *
- * @param text - The message text to truncate.
- * @param platform - The target platform (discord, slack, telegram, whatsapp).
- * @param conversationUrl - Optional URL to the full conversation on the web app.
- * @returns The truncated message.
- */
-export function truncateResponse(
-  text: string,
-  platform: "discord" | "slack" | "telegram" | "whatsapp",
-  conversationUrl?: string,
-): string {
-  const limit = PLATFORM_LIMITS[platform];
-  if (text.length <= limit) {
-    return text;
-  }
-
-  const suffix = conversationUrl
-    ? `\n\n[View full response](${conversationUrl})`
-    : "\n\n... (truncated)";
-  const maxLen = limit - suffix.length;
-
-  // Truncate at word boundary, avoiding cuts inside markdown links
-  let truncated = text.slice(0, maxLen);
-  const lastSpace = truncated.lastIndexOf(" ");
-  if (lastSpace > maxLen * 0.8) {
-    truncated = truncated.slice(0, lastSpace);
-  }
-
-  // If we cut inside a markdown link [label](url), backtrack to before the link
-  const lastOpenBracket = truncated.lastIndexOf("[");
-  if (lastOpenBracket > -1) {
-    const closeParen = text.indexOf(")", lastOpenBracket);
-    if (closeParen > -1 && closeParen > truncated.length) {
-      // We're inside an incomplete link — backtrack to before it
-      const beforeLink = truncated.lastIndexOf("\n", lastOpenBracket);
-      if (beforeLink > maxLen * 0.5) {
-        truncated = truncated.slice(0, beforeLink);
-      }
-    }
-  }
-
-  return truncated + suffix;
-}
 
 /**
  * Returns true if cutting ``text`` at index ``idx`` would land inside an
@@ -460,7 +415,7 @@ const MAX_RENDER_SHRINK_ITERS = 6;
  * the 4096-char API limit and the send is rejected.
  *
  * @param text - The full message text.
- * @param platform - The target platform (discord, slack, telegram, whatsapp).
+ * @param platform - The target platform.
  * @param render - Optional platform renderer; when given, chunk sizes are
  *   measured against the rendered output rather than the raw markdown.
  * @returns An array of chunks (raw markdown, in order); each is ≤ the platform
@@ -468,7 +423,7 @@ const MAX_RENDER_SHRINK_ITERS = 6;
  */
 export function chunkResponse(
   text: string,
-  platform: "discord" | "slack" | "telegram" | "whatsapp",
+  platform: PlatformName,
   render?: (chunk: string) => string,
 ): string[] {
   const limit = PLATFORM_LIMITS[platform];

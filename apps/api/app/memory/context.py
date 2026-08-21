@@ -13,7 +13,6 @@ from datetime import UTC, date as date_type, datetime, timedelta
 from app.constants.memory import (
     CORE_CONTEXT_CACHE_KEY,
     CORE_CONTEXT_CACHE_TTL,
-    RECENT_ACTIVITY_ENTRY_CAP,
     MemoryDocType,
 )
 from app.db.redis import delete_cache, get_cache, set_cache
@@ -21,12 +20,18 @@ from app.memory import pg_store
 from app.memory.retrieval import invalidate_recall_cache
 from app.models.memory_db_models import MemoryEpisode
 
+# Public because get_core_context joins the sections into one string and
+# message_helpers has to find the boundaries again to split the volatile
+# agenda/journal out of the cacheable documents. One definition, so a copy
+# edit here cannot silently stop that split from matching.
+AGENDA_HEADING = "## Current agenda"
+RECENT_ACTIVITY_HEADING = "## Recent activity"
+
 _DOC_SECTIONS: list[tuple[MemoryDocType, str]] = [
     (MemoryDocType.USER_MD, "## About the user"),
     (MemoryDocType.MEMORY_MD, "## Assistant conventions"),
-    (MemoryDocType.AGENDA_MD, "## Current agenda"),
+    (MemoryDocType.AGENDA_MD, AGENDA_HEADING),
 ]
-_RECENT_ACTIVITY_HEADING = "## Recent activity"
 
 
 def _strip_leading_h1(content: str) -> str:
@@ -70,7 +75,7 @@ async def get_core_context(user_id: str) -> str:
 
     recent_activity = _format_recent_activity(episodes, today)
     if recent_activity:
-        sections.append(f"{_RECENT_ACTIVITY_HEADING}\n{recent_activity}")
+        sections.append(f"{RECENT_ACTIVITY_HEADING}\n{recent_activity}")
 
     context = "\n\n".join(sections)
     await set_cache(cache_key, context, ttl=CORE_CONTEXT_CACHE_TTL)
@@ -95,10 +100,14 @@ async def invalidate_user_memory_caches(user_id: str) -> None:
 def _format_recent_activity(episodes: list[MemoryEpisode], today: date_type) -> str:
     """Compact journal rendering, bounded so it never dumps a whole day.
 
-    A past day collapses to its one-line rollover summary. Today (not yet
-    summarized) shows only its most recent ``RECENT_ACTIVITY_ENTRY_CAP``
-    entries — enough for continuity without the prompt growing all day. The
-    full journal stays available via ``search_journal``.
+    A past day collapses to its one-line rollover summary. Today emits its
+    NEWEST entries only — the real recency value — with a static no-number
+    note when older ones are dropped. The old anchored-at-day-start window
+    kept only old entries while the newest churned in every turn, and its
+    "+N more entries today" counter changed N every turn; both sat inside the
+    volatile tail where every changed byte costs prompt-cache hit rate. The
+    static note keeps the emitted bytes identical between entry additions.
+    The full journal stays available via ``search_journal``.
     """
     blocks: list[str] = []
     for episode in episodes:
@@ -108,10 +117,14 @@ def _format_recent_activity(episodes: list[MemoryEpisode], today: date_type) -> 
             continue
         if not episode.entries:
             continue
-        recent = episode.entries[-RECENT_ACTIVITY_ENTRY_CAP:]
+        # Emit the NEWEST entries (last-2) — not an anchored-at-start window
+        # (which held only old entries and churned the newest in every turn)
+        # and no numbered counter (N changed every turn). The omitted-note is
+        # byte-identical across turns, so the emitted bytes only change when
+        # a new entry lands.
+        recent = episode.entries[-2:] if len(episode.entries) > 2 else episode.entries
         lines = [f"- {entry.get('time', '')} {entry.get('text', '')}".rstrip() for entry in recent]
-        more = len(episode.entries) - len(recent)
-        if more > 0:
-            lines.insert(0, f"- (+{more} earlier entries today)")
+        if len(episode.entries) > 2:
+            lines.append("- (earlier entries omitted)")
         blocks.append(f"### {label} ({episode.date.isoformat()})\n" + "\n".join(lines))
     return "\n".join(blocks)

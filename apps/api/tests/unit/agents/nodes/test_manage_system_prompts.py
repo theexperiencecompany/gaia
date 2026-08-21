@@ -7,22 +7,18 @@ shatter the implicit-cache prefix, so older ones are dropped. The legacy
 for back-compat with older persisted state.
 """
 
-from typing import Any, ClassVar, cast
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 from langchain_core.messages import (
     AIMessage,
-    AnyMessage,
     HumanMessage,
     SystemMessage,
     ToolMessage,
 )
 from langchain_core.runnables import RunnableConfig
 
-from app.agents.core.nodes.manage_system_prompts import (
-    _is_dynamic_context,
-    manage_system_prompts_node,
-)
+from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.override.langgraph_bigtool.utils import State
 
 
@@ -34,32 +30,15 @@ def _dynamic(content: str, marker: str = "dynamic_context") -> SystemMessage:
     return SystemMessage(content=content, additional_kwargs={marker: True})
 
 
-def _config() -> RunnableConfig:
-    return cast(RunnableConfig, {"configurable": {"user_id": "u1", "thread_id": "t1"}})
+def _config(provider: str | None = None) -> RunnableConfig:
+    cfg: dict[str, Any] = {"user_id": "u1", "thread_id": "t1"}
+    if provider is not None:
+        cfg["provider"] = provider
+    return cast(RunnableConfig, {"configurable": cfg})
 
 
 def _store() -> MagicMock:
     return MagicMock()
-
-
-class TestIsDynamicContext:
-    def test_dynamic_context_marker(self) -> None:
-        msg = SystemMessage(content="ctx", additional_kwargs={"dynamic_context": True})
-        assert _is_dynamic_context(msg) is True
-
-    def test_legacy_memory_message_marker_treated_as_dynamic(self) -> None:
-        msg = SystemMessage(content="ctx", additional_kwargs={"memory_message": True})
-        assert _is_dynamic_context(msg) is True
-
-    def test_marker_in_model_extra(self) -> None:
-        class FakeMsg:
-            additional_kwargs: ClassVar[dict[str, Any]] = {}
-            model_extra: ClassVar[dict[str, Any]] = {"dynamic_context": True}
-
-        assert _is_dynamic_context(cast(AnyMessage, FakeMsg())) is True
-
-    def test_plain_system_message(self) -> None:
-        assert _is_dynamic_context(SystemMessage(content="plain")) is False
 
 
 class TestManageSystemPrompts:
@@ -118,7 +97,8 @@ class TestManageSystemPrompts:
         assert types.count("system") == 1
 
     def test_system_messages_moved_to_front(self) -> None:
-        """Kept system messages must appear BEFORE any human/ai message.
+        """Kept system messages must appear BEFORE any human/ai message for
+        providers that only promote a leading system run (Gemini).
 
         ``langchain-google-genai``'s ``_parse_chat_history`` silently drops any
         ``SystemMessage`` that appears after a non-system message in the list
@@ -140,6 +120,75 @@ class TestManageSystemPrompts:
         # their original relative order.
         assert actual == ["latest prompt", "ctx2", "hello", "reply"]
 
+    def test_volatile_slots_move_to_tail_for_openai_wire(self) -> None:
+        """OpenAI-wire providers (OpenRouter / custom — the production default
+        route) accept system messages anywhere, so the per-turn slots move AFTER
+        the conversation: ``[static, dynamic, ...conversation, todo,
+        memory_recall, time]``. The conversation then joins the provider's
+        implicit-cache prefix instead of re-sending uncached every turn.
+        """
+        msgs = [
+            _static("prompt"),
+            _dynamic("ctx"),
+            SystemMessage(content="todo", additional_kwargs={"todo_context": True}),
+            SystemMessage(content="mem", additional_kwargs={"memory_recall": True}),
+            HumanMessage(content="hello"),
+            AIMessage(content="reply"),
+            HumanMessage(content="time", additional_kwargs={"time_context": True}),
+        ]
+        result = manage_system_prompts_node(
+            cast(State, {"messages": msgs}), _config("openrouter"), _store()
+        )
+        actual = [(m.type, m.content) for m in result["messages"]]
+        assert actual == [
+            ("system", "prompt"),
+            ("system", "ctx"),
+            ("human", "hello"),
+            ("ai", "reply"),
+            ("system", "todo"),
+            ("system", "mem"),
+            ("human", "time"),
+        ]
+
+    def test_leading_layout_preserved_for_gemini(self) -> None:
+        """Gemini only promotes a leading contiguous run of SystemMessages to
+        ``system_instruction`` and silently drops the rest — so on that lane the
+        volatile slots must stay in the leading block even though it costs the
+        conversation its place in the cached prefix."""
+        msgs = [
+            _static("prompt"),
+            _dynamic("ctx"),
+            SystemMessage(content="todo", additional_kwargs={"todo_context": True}),
+            SystemMessage(content="mem", additional_kwargs={"memory_recall": True}),
+            HumanMessage(content="hello"),
+            HumanMessage(content="time", additional_kwargs={"time_context": True}),
+        ]
+        result = manage_system_prompts_node(
+            cast(State, {"messages": msgs}), _config("gemini"), _store()
+        )
+        actual = [(m.type, m.content) for m in result["messages"]]
+        assert actual == [
+            ("system", "prompt"),
+            ("system", "ctx"),
+            ("system", "todo"),
+            ("system", "mem"),
+            ("human", "hello"),
+            ("human", "time"),
+        ]
+
+    def test_missing_provider_defaults_to_leading_layout(self) -> None:
+        """No provider in the config (defensive) must not change today's
+        behavior — the leading layout is the safe default everywhere."""
+        msgs = [
+            _static("prompt"),
+            _dynamic("ctx"),
+            SystemMessage(content="mem", additional_kwargs={"memory_recall": True}),
+            HumanMessage(content="hello"),
+        ]
+        result = manage_system_prompts_node(cast(State, {"messages": msgs}), _config(), _store())
+        types = [m.type for m in result["messages"]]
+        assert types == ["system", "system", "system", "human"]
+
     def test_exception_is_logged_and_state_returned_unmodified(self) -> None:
         """The node runs on every agent turn, so an unexpected failure degrades
         to the untouched input state instead of crashing the graph — but it must
@@ -148,7 +197,7 @@ class TestManageSystemPrompts:
         state = cast(State, {"messages": msgs})
         with (
             patch(
-                "app.agents.core.nodes.manage_system_prompts._is_dynamic_context",
+                "app.agents.core.nodes.manage_system_prompts.slot_of",
                 side_effect=RuntimeError("unexpected failure"),
             ),
             patch("app.agents.core.nodes.manage_system_prompts.log") as mock_log,
@@ -164,3 +213,20 @@ class TestManageSystemPrompts:
         assert "unexpected failure" in kwargs.get("error", ""), (
             f"The swallowed exception must be named in the log, got: {kwargs}"
         )
+
+
+class TestPromptPruningWideEvent:
+    """``tail_layout`` is the field a cache-hit-rate drop is diagnosed with, so
+    both its name and its polarity are part of the node's contract."""
+
+    def _prompt_pruning(self, provider: str | None) -> dict[str, Any]:
+        msgs = [_static("prompt"), _dynamic("ctx"), HumanMessage(content="hello")]
+        with patch("app.agents.core.nodes.manage_system_prompts.log") as mock_log:
+            manage_system_prompts_node(cast(State, {"messages": msgs}), _config(provider), _store())
+        return cast(dict[str, Any], mock_log.set.call_args.kwargs["prompt_pruning"])
+
+    def test_openai_wire_request_is_reported_as_the_tail_layout(self) -> None:
+        assert self._prompt_pruning("openrouter")["tail_layout"] is True
+
+    def test_gemini_request_is_reported_as_the_leading_layout(self) -> None:
+        assert self._prompt_pruning("gemini")["tail_layout"] is False

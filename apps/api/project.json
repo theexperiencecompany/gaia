@@ -137,7 +137,7 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run --group backend --group dev pytest -v --tb=short",
+        "command": "uv run --group backend --group dev pytest -v --tb=short -n auto --maxprocesses=4",
         "cwd": "{projectRoot}"
       },
       "cache": true,
@@ -151,7 +151,7 @@
     "test:real": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "USE_REAL_SERVICES=1 uv run --group backend --group dev pytest tests/integration/real tests/contracts tests/e2e/test_hil_barrier_e2e.py tests/e2e/test_hil_spawn_e2e.py -v --tb=short",
+        "command": "USE_REAL_SERVICES=1 uv run --group backend --group dev pytest tests/integration/real tests/contracts tests/e2e/test_hil_barrier_e2e.py tests/e2e/test_hil_spawn_e2e.py -v --tb=short -n auto --maxprocesses=4",
         "cwd": "{projectRoot}"
       },
       "cache": false
@@ -159,7 +159,7 @@
     "test:contracts": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run --group backend --group dev pytest tests/contracts -v --tb=short",
+        "command": "uv run --group backend --group dev pytest tests/contracts -v --tb=short -n auto --maxprocesses=4",
         "cwd": "{projectRoot}"
       },
       "cache": true,
@@ -174,7 +174,7 @@
     "test:composio": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run --group backend --group dev pytest tests/composio -v --tb=short",
+        "command": "uv run --group backend --group dev pytest tests/composio -v --tb=short -n auto --maxprocesses=4",
         "cwd": "{projectRoot}"
       },
       "cache": false
@@ -182,7 +182,7 @@
     "test:stress": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run --group backend --group dev pytest tests/stress -v --tb=short",
+        "command": "uv run --group backend --group dev pytest tests/stress -v --tb=short -n auto --maxprocesses=4",
         "cwd": "{projectRoot}"
       },
       "cache": false
@@ -190,7 +190,7 @@
     "test:meta": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run --group backend --group dev pytest tests/meta -v --tb=short",
+        "command": "uv run --group backend --group dev pytest tests/meta -v --tb=short -n auto --maxprocesses=4",
         "cwd": "{projectRoot}"
       },
       "cache": true,
@@ -202,7 +202,7 @@
     "test:unit": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run --group backend --group dev pytest tests/unit -v --tb=short",
+        "command": "uv run --group backend --group dev pytest tests/unit -v --tb=short -n auto --maxprocesses=4",
         "cwd": "{projectRoot}"
       },
       "cache": true,
@@ -217,7 +217,7 @@
     "test:integration": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run --group backend --group dev pytest tests/integration --ignore=tests/integration/real -v --tb=short",
+        "command": "uv run --group backend --group dev pytest tests/integration --ignore=tests/integration/real -v --tb=short -n auto --maxprocesses=4",
         "cwd": "{projectRoot}"
       },
       "cache": true,
@@ -232,7 +232,7 @@
     "test:e2e": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run --group backend --group dev pytest tests/e2e -v --tb=short -m e2e",
+        "command": "uv run --group backend --group dev pytest tests/e2e -v --tb=short -m e2e -n auto --maxprocesses=4",
         "cwd": "{projectRoot}"
       },
       "cache": false
@@ -240,7 +240,7 @@
     "test:coverage": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run --group backend --group dev pytest --cov=app --cov-report=html --cov-report=term-missing",
+        "command": "uv run --group backend --group dev pytest --cov=app --cov-report=html --cov-report=term-missing -n auto --maxprocesses=4",
         "cwd": "{projectRoot}"
       },
       "cache": false
