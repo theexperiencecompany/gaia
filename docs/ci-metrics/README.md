@@ -4,8 +4,8 @@ Measured on 100+ runs (baseline) vs 5 manual runs on `fix/ci-improve-all-14` (he
 
 | Metric | Before | After | Saved | % | Method |
 |---|---|---|---|---|---|
-| PR gate (full Python+TS) | 11.5m | 6.2m | 5.3m | -46% | `gh run list` median + `pytest-split` sharding + `.nx/cache` |
-| PR gate (TS only) | 4.9m | 3.0m | 1.9m | -39% | Next cache warm + .nx hit |
+| PR gate (full Python+TS) | 11.5m | 8.2m | 3.3m | -29% | `gh run list` wall median + `4` shards + `.nx/cache` |
+| PR gate (TS only) | 4.9m | 3.0m | 1.9m | -39% | `test-typescript` wall median + `.nx/cache` |
 | Master deploy | 18m | 8.5m | 9.5m | -53% | Docker gha `scope` + `--parallel` + `.nx/cache` |
 | Runners / PR | 30 | 11 | 19 | -63% | Dedupe installs, .nx cache, Docker scope |
 | Cancelled % | 31% | 4% | 27pp | -87% | Coalesce 5 merges → final wins |
