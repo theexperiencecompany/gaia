@@ -186,8 +186,14 @@ class TestPlatformBanner:
     async def test_it_names_the_messaging_app(self, source: str, expected_name: str) -> None:
         rendered = await section("platform_banner").fetch(ctx(source=source))
 
-        assert f"their {expected_name} chat" in rendered
-        assert f"a normal {expected_name} message" in rendered
+        # Exact, not a substring match: mutmut mutates a string literal by
+        # padding it, so `"their Telegram chat" in rendered` stays true against
+        # a mutated banner and proves nothing about the rest of the sentence.
+        assert rendered == (
+            f"You are chatting with the user in their {expected_name} chat right now. "
+            f"Write like a normal {expected_name} message: plain text, short, no markdown "
+            "tables or rich cards."
+        )
 
     @pytest.mark.parametrize("source", ["web", "mobile", "desktop", "workflow_system"])
     async def test_the_rich_clients_get_no_banner(self, source: str) -> None:
