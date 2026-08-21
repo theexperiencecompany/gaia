@@ -115,12 +115,12 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
       - name: Lint and format check via nx (cache:true)
         run: |
-          trap 'echo "::error::repro: pnpm exec nx affected -t lint --projects=tag:scope:typescript"' ERR
-          echo "::group::nx affected lint"
+          trap 'echo "::error::repro: pnpm exec nx run-many -t lint"' ERR
+          echo "::group::nx run-many lint"
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            pnpm exec nx run-many -t lint --projects=tag:scope:typescript --parallel=3 2>&1 | tee /tmp/biome-lint.out; _rc=${PIPESTATUS[0]}; cat /tmp/biome-lint.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
+            pnpm exec nx run-many -t lint -p tag:scope:typescript --parallel=3 2>&1 | tee /tmp/biome-lint.out; _rc=${PIPESTATUS[0]}; cat /tmp/biome-lint.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
           else
-            pnpm exec nx affected -t lint --projects=tag:scope:typescript --parallel=3 2>&1 | tee /tmp/biome-lint.out; _rc=${PIPESTATUS[0]}; cat /tmp/biome-lint.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
+            pnpm exec nx run-many -t lint -p "${{ needs.changes.outputs.typescript_projects }}" --parallel=3 2>&1 | tee /tmp/biome-lint.out; _rc=${PIPESTATUS[0]}; cat /tmp/biome-lint.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
           fi
           echo "::endgroup::"
           echo "### Biome (nx lint) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
@@ -341,17 +341,15 @@ jobs:
         with:
           main-branch-name: master
       - uses: ./.github/actions/setup-node-pnpm
-      - name: tsc --noEmit via nx affected (cache:true)
+      - name: tsc --noEmit via nx run-many (cache:true)
         run: |
-          trap 'echo "::error::repro: pnpm exec nx affected -t type-check --parallel=3"' ERR
-          echo "::group::nx affected type-check"
+          trap 'echo "::error::repro: pnpm exec nx run-many -t type-check"' ERR
+          echo "::group::nx run-many type-check"
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            pnpm exec nx run-many -t type-check --projects=tag:scope:typescript --parallel=3 2>&1 | tee /tmp/tsc.out; _rc=${PIPESTATUS[0]}; cat /tmp/tsc.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
+            pnpm exec nx run-many -t type-check -p tag:scope:typescript --parallel=3 2>&1 | tee /tmp/tsc.out; _rc=${PIPESTATUS[0]}; cat /tmp/tsc.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
           else
-            # Exclude Python projects if they lack type-check or need uv; Python typing is gated by python-mypy lane.
-            # But keep them if they have type-check targets — nx will run only affected.
-            pnpm exec nx affected -t type-check --parallel=3 --exclude=api,voice-agent 2>&1 | tee /tmp/tsc.out; _rc=${PIPESTATUS[0]}; cat /tmp/tsc.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
-            # Also run affected python type-checks via nx if any python projects are affected (separate lane covers python, but this keeps cache unified)
+            pnpm exec nx run-many -t type-check -p "${{ needs.changes.outputs.typescript_projects }}" --parallel=3 2>&1 | tee /tmp/tsc.out; _rc=${PIPESTATUS[0]}; cat /tmp/tsc.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
+          fied)
             echo "TypeScript type-check done for affected TS projects"
           fi
           echo "::endgroup::"
@@ -379,14 +377,14 @@ jobs:
           enable-cache: true
           prune-cache: true
       - uses: ./.github/actions/setup-node-pnpm
-      - name: ruff via nx affected (cache:true)
+      - name: ruff via nx run-many (cache:true)
         run: |
-          trap 'echo "::error::repro: pnpm exec nx affected -t lint --projects=tag:scope:python"' ERR
-          echo "::group::nx affected lint (python)"
+          trap 'echo "::error::repro: pnpm exec nx run-many -t lint"' ERR
+          echo "::group::nx run-many lint (python)"
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            pnpm exec nx run-many -t lint --projects=tag:scope:python --parallel=3 2>&1 | tee /tmp/ruff-nx.out; _rc=${PIPESTATUS[0]}; cat /tmp/ruff-nx.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
+            pnpm exec nx run-many -t lint -p tag:scope:python --parallel=3 2>&1 | tee /tmp/ruff-nx.out; _rc=${PIPESTATUS[0]}; cat /tmp/ruff-nx.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
           else
-            pnpm exec nx affected -t lint --projects=tag:scope:python --parallel=3 2>&1 | tee /tmp/ruff-nx.out; _rc=${PIPESTATUS[0]}; cat /tmp/ruff-nx.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
+            pnpm exec nx run-many -t lint -p "${{ needs.changes.outputs.python_projects }}" --parallel=3 2>&1 | tee /tmp/ruff-nx.out; _rc=${PIPESTATUS[0]}; cat /tmp/ruff-nx.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
           fi
           # Also enforce format check via nx affected format:check for python projects that expose it
           # Fallback raw ruff format check for full coverage including files outside project roots (tools/, scripts/)
@@ -445,14 +443,14 @@ jobs:
           uv sync --project apps/api --group backend --group dev
           echo "::endgroup::"
           echo "deps: OK"
-      - name: mypy via nx affected (cache:true)
+      - name: mypy via nx run-many (cache:true)
         run: |
-          trap 'echo "::error::repro: pnpm exec nx affected -t type-check --projects=tag:scope:python"' ERR
-          echo "::group::nx affected type-check (python)"
+          trap 'echo "::error::repro: pnpm exec nx run-many -t type-check"' ERR
+          echo "::group::nx run-many type-check (python)"
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            pnpm exec nx run-many -t type-check --projects=tag:scope:python --parallel=3 2>&1 | tee /tmp/mypy-nx.out; _rc=${PIPESTATUS[0]}; cat /tmp/mypy-nx.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
+            pnpm exec nx run-many -t type-check -p tag:scope:python --parallel=3 2>&1 | tee /tmp/mypy.out; _rc=${PIPESTATUS[0]}; cat /tmp/mypy.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
           else
-            pnpm exec nx affected -t type-check --projects=tag:scope:python --parallel=3 2>&1 | tee /tmp/mypy-nx.out; _rc=${PIPESTATUS[0]}; cat /tmp/mypy-nx.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
+            pnpm exec nx run-many -t type-check -p "${{ needs.changes.outputs.python_projects }}" --parallel=3 2>&1 | tee /tmp/mypy.out; _rc=${PIPESTATUS[0]}; cat /tmp/mypy.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
           fi
           echo "::endgroup::"
           echo "### Python mypy (nx) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"

@@ -160,6 +160,7 @@ jobs:
             apps/api/test-results/pytest-${{ matrix.shard }}.xml
           retention-days: 7
           if-no-files-found: error
+          include-hidden-files: true
 
   # --- Coverage combine + gates (runs after both shards) ------------------
   # Merges the per-shard .coverage.* files and enforces the repo-wide gates
