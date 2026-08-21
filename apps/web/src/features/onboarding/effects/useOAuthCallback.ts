@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { type Dispatch, useEffect, useRef } from "react";
 
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
 import { FIELD_NAMES } from "../constants";
@@ -30,6 +31,10 @@ export function useOAuthCallback(dispatch: Dispatch<Action>): void {
       window.history.replaceState({}, "", url.toString());
     }
 
+    // The backend redirect includes `integration=<config id>` alongside the
+    // callback params; onboarding only offers Gmail OAuth today.
+    const integration = searchParams.get("integration") ?? "gmail";
+
     if (oauthSuccess === "true") {
       toast.success("Gmail connected!");
       dispatch({
@@ -41,6 +46,10 @@ export function useOAuthCallback(dispatch: Dispatch<Action>): void {
     }
 
     if (oauthError) {
+      trackEvent(ANALYTICS_EVENTS.INTEGRATION_ERROR, {
+        integration,
+        error: oauthError,
+      });
       if (oauthError === "cancelled") {
         toast.error("Connection cancelled. You can try again anytime.");
       } else {

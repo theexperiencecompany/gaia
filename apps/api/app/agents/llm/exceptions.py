@@ -78,10 +78,10 @@ LLM_FALLBACK_EXCEPTIONS: tuple[type[BaseException], ...] = (
     TimeoutError,
 )
 
-# chatbot.py one-shot helper: operational failures degrade to a friendly message;
-# programming bugs (TypeError, KeyError, bare RuntimeError, ...) and CancelledError
-# stay fail-loud.
-CHATBOT_FALLBACK_EXCEPTIONS: tuple[type[BaseException], ...] = (
+# chatbot.py one-shot helper: operational failures are logged and re-raised for the
+# caller to handle (e.g. degrade its own output to a placeholder); programming bugs
+# (TypeError, KeyError, bare RuntimeError, ...) and CancelledError stay fail-loud.
+CHATBOT_OPERATIONAL_EXCEPTIONS: tuple[type[BaseException], ...] = (
     LLMNotConfiguredError,
     *LLM_FALLBACK_EXCEPTIONS,
 )

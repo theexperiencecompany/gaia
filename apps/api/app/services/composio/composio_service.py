@@ -81,10 +81,16 @@ class ComposioService:
                 else settings.COMPOSIO_REDIRECT_URI
             )
 
+            # `link()`, not `initiate()`: the legacy POST /api/v3/connected_accounts
+            # behind initiate() is being retired for Composio-managed OAuth (cutover
+            # 2026-07-03), after which it raises
+            # ComposioLegacyConnectedAccountsEndpointRetiredError. Same return shape
+            # and same allow_multiple semantics; the redirect now points at
+            # Composio's hosted Connect Link rather than straight at the provider.
             loop = asyncio.get_event_loop()
             connection_request = await loop.run_in_executor(
                 None,
-                lambda: self.composio.connected_accounts.initiate(
+                lambda: self.composio.connected_accounts.link(
                     user_id=user_id,
                     auth_config_id=config.auth_config_id,
                     callback_url=callback_url,

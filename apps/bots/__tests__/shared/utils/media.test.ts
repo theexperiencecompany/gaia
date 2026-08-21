@@ -210,6 +210,77 @@ describe("processBotMedia — audio / voice transcription path", () => {
   });
 });
 
+describe("processBotMedia — the size cap is enforced before the download", () => {
+  it("rejects a file whose declared size is over the cap WITHOUT downloading", async () => {
+    const download = vi.fn(async () => new Uint8Array(10));
+    const gaia = makeGaia();
+    const outcome = await processBotMedia(
+      gaia as unknown as Gaia,
+      media({ kind: "image", sizeBytes: BOT_MEDIA_LIMITS.file + 1 }),
+      download,
+      ctx,
+    );
+    expect(download).not.toHaveBeenCalled();
+    expect(gaia.uploadFile).not.toHaveBeenCalled();
+    expect(outcome).toEqual({
+      action: "reply",
+      text: "That file is too large to process (limit: 10 MB). Please share a smaller file.",
+    });
+  });
+
+  it("rejects audio whose declared size is over the cap WITHOUT downloading", async () => {
+    const download = vi.fn(async () => new Uint8Array(10));
+    const gaia = makeGaia();
+    const outcome = await processBotMedia(
+      gaia as unknown as Gaia,
+      media({
+        kind: "audio",
+        isVoiceNote: true,
+        sizeBytes: BOT_MEDIA_LIMITS.audio + 1,
+      }),
+      download,
+      ctx,
+    );
+    expect(download).not.toHaveBeenCalled();
+    expect(gaia.transcribeAudio).not.toHaveBeenCalled();
+    expect(outcome).toEqual({
+      action: "reply",
+      text: "That voice note is too large to transcribe (limit: 25 MB). Please send a shorter message.",
+    });
+  });
+
+  it("downloads when the declared size is exactly at the cap", async () => {
+    const download = vi.fn(async () => new Uint8Array(10));
+    const gaia = makeGaia();
+    await processBotMedia(
+      gaia as unknown as Gaia,
+      media({ kind: "image", sizeBytes: BOT_MEDIA_LIMITS.file }),
+      download,
+      ctx,
+    );
+    expect(download).toHaveBeenCalled();
+    expect(gaia.uploadFile).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["image" as const, BOT_MEDIA_LIMITS.file + 1],
+    ["document" as const, BOT_MEDIA_LIMITS.file + 1],
+    ["audio" as const, BOT_MEDIA_LIMITS.audio + 1],
+  ])(
+    "asks the %s download for at most one byte past the limit",
+    async (kind, cap) => {
+      const download = vi.fn(async () => new Uint8Array(10));
+      await processBotMedia(
+        makeGaia() as unknown as Gaia,
+        media({ kind }),
+        download,
+        ctx,
+      );
+      expect(download).toHaveBeenCalledWith(cap);
+    },
+  );
+});
+
 describe("processBotMedia — unsupported kinds never download", () => {
   it.each(["video", "sticker"] as const)(
     "rejects %s without invoking the download thunk",

@@ -21,6 +21,7 @@ import { type Control, Controller, type FieldErrors } from "react-hook-form";
 import { cn } from "@/lib/utils";
 import type { Workflow } from "../../api/workflowApi";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
+import { NeedsSetupChip } from "../shared/WorkflowCardComponents";
 import WorkflowIconPicker from "./WorkflowIconPicker";
 
 const iconClasses = "size-5 text-default-500 pointer-events-none shrink-0";
@@ -31,6 +32,9 @@ interface WorkflowHeaderProps {
   errors: FieldErrors<WorkflowFormData>;
   currentWorkflow: Workflow | null;
   isActivated: boolean;
+  /** Integrations are missing, so the workflow cannot run whatever its stored
+   *  activation says — the status chip must not claim otherwise. */
+  needsSetup?: boolean;
   isTogglingActivation: boolean;
   onToggleActivation: (activated: boolean) => void;
   isPublic?: boolean;
@@ -46,6 +50,7 @@ export default function WorkflowHeader({
   errors,
   currentWorkflow,
   isActivated,
+  needsSetup = false,
   isTogglingActivation,
   onToggleActivation,
   isPublic,
@@ -91,17 +96,21 @@ export default function WorkflowHeader({
 
         {showMenu && (
           <div className="flex shrink-0 items-center gap-2 pt-1.5">
-            <Chip
-              size="sm"
-              variant="flat"
-              color={isActivated ? "success" : "default"}
-              classNames={{
-                base: isActivated ? "bg-success/15" : "bg-zinc-800",
-                content: "text-xs font-medium",
-              }}
-            >
-              {isActivated ? "Active" : "Paused"}
-            </Chip>
+            {needsSetup ? (
+              <NeedsSetupChip />
+            ) : (
+              <Chip
+                size="sm"
+                variant="flat"
+                color={isActivated ? "success" : "default"}
+                classNames={{
+                  base: isActivated ? "bg-success/15" : "bg-zinc-800",
+                  content: "text-xs font-medium",
+                }}
+              >
+                {isActivated ? "Active" : "Paused"}
+              </Chip>
+            )}
 
             <Dropdown placement="bottom-end" className="w-64">
               <DropdownTrigger>

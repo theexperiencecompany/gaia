@@ -24,7 +24,6 @@ import { MemoryRow } from "@/features/memory/components/MemoryRow";
 import { MEMORY_PAGE_SIZE } from "@/features/memory/constants";
 import { useMemoryActions } from "@/features/memory/hooks/useMemoryActions";
 import { useConfirmation } from "@/hooks/useConfirmation";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
 interface MemoryListProps {
@@ -123,7 +122,6 @@ export function MemoryList({ onChanged }: MemoryListProps) {
       const response = await memoryApi.deleteAllMemories();
       if (response.success) {
         toast.success(response.message || "All memories cleared");
-        trackEvent(ANALYTICS_EVENTS.MEMORY_CLEARED, { memory_count: total });
         setPage(1);
         handleChanged();
       } else {

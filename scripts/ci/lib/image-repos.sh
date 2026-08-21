@@ -8,6 +8,6 @@
 GHCR_NAMESPACE="ghcr.io/theexperiencecompany"
 # nx release group "apps" — one commit produces the same tag for both.
 APPS_IMAGE_REPOS=(gaia gaia-voice-agent)
-# nx release group "bots" — fixed relationship, all four share the tag.
-BOTS_IMAGE_REPOS=(gaia-bot-discord gaia-bot-slack gaia-bot-telegram gaia-bot-whatsapp)
+# nx release group "bots" — fixed relationship, all five share the tag.
+BOTS_IMAGE_REPOS=(gaia-bot-discord gaia-bot-slack gaia-bot-telegram gaia-bot-whatsapp gaia-bot-imessage)
 GRAFANA_IMAGE_REPO="gaia-grafana"

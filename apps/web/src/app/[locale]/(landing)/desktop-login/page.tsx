@@ -13,6 +13,7 @@ import {
   type TimeOfDay,
 } from "@/features/landing/utils/timeOfDay";
 import { useElectron } from "@/hooks/useElectron";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 /**
  * Desktop Login Page
@@ -76,6 +77,11 @@ export default function DesktopLoginPage() {
     const apiBaseUrl =
       process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.heygaia.io/api/v1/";
     const loginUrl = `${apiBaseUrl}oauth/login/workos/desktop`;
+
+    trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
+      location: "desktop_login_page",
+      destination: "workos_oauth",
+    });
 
     try {
       openExternal(loginUrl);

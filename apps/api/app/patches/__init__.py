@@ -6,5 +6,6 @@ from . import (
     composio_custom_tool_patch,
     composio_custom_tool_schema_patch,
     composio_langchain_patch,
+    langchain_merge_dicts_model_name_patch,
     openrouter_tool_multimodal_patch,
 )

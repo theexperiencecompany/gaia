@@ -19,6 +19,7 @@ from app.models.payment_models import (
     UserSubscriptionStatus,
 )
 from app.models.webhook_models import DodoWebhookAckResponse
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.payments.payment_service import payment_service
 from app.services.payments.payment_webhook_service import payment_webhook_service
 from shared.py.wide_events import log
@@ -73,6 +74,10 @@ async def create_subscription_endpoint(
             resource=str(subscription_data.product_id) if subscription_data.product_id else None,
             provider="dodo",
         )
+        capture_context_event(
+            AnalyticsEvents.PAYMENT_CHECKOUT_STARTED,
+            {"quantity": subscription_data.quantity},
+        )
         return result
     except Exception as e:
         log.error(
@@ -109,6 +114,7 @@ async def cancel_subscription_endpoint(
             actor=user_id,
             provider="dodo",
         )
+        capture_context_event(AnalyticsEvents.SUBSCRIPTION_CANCELLATION_REQUESTED)
         return result
     except HTTPException:
         raise

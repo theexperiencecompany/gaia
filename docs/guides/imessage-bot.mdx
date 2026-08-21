@@ -1,0 +1,112 @@
+---
+title: "Using GAIA on iMessage"
+description: "Text GAIA from the Messages app already on your iPhone, no new app to install"
+icon: "/images/icons/imessage.webp"
+---
+
+import { Chat } from "/snippets/chat-bubbles.jsx";
+
+GAIA lives in the blue bubbles you already use. Register your number once, text `/auth`, and from then on it's just a normal conversation in Messages, on your iPhone, iPad, and Mac.
+
+<Note>
+  iMessage is a **Pro** feature. Every other GAIA bot is available on the free plan.
+</Note>
+
+## Getting started
+
+Unlike the other bots, there is no public number to message. Each account is assigned its own GAIA line when you register, so setup starts inside GAIA.
+
+<Steps>
+  <Step title="Register your phone number">
+    Open [Settings → Linked Accounts](https://heygaia.io/settings/linked-accounts), choose **iMessage**, and enter your phone number in E.164 format (for example `+14155550123`).
+
+    GAIA registers you with its iMessage provider and shows you the number to text. It is specific to your account, so copy it from that screen rather than reusing one you saw elsewhere.
+  </Step>
+
+  <Step title="Text /auth to your GAIA number">
+    Open Messages, start a **new conversation** with the number GAIA gave you, and send:
+
+    ```
+    /auth
+    ```
+
+    You'll get a link back. Tap it, sign in, and your account is connected.
+
+    <Chat
+      messages={[
+        { from: "user", text: "/auth" },
+        { from: "gaia", text: "You're connected! Your iMessage account is now linked to GAIA." },
+      ]}
+    />
+  </Step>
+
+  <Step title="Just type">
+    Every message after that goes straight to GAIA. No command prefix, no mention.
+
+    <Chat
+      messages={[
+        { from: "user", text: "What's on my calendar this week?" },
+        { from: "user", text: "Draft a reply to the last email from Sam" },
+      ]}
+    />
+  </Step>
+</Steps>
+
+## Send from your phone number, not your Apple ID
+
+This is the one thing that trips people up.
+
+Apple lets you send iMessages from either your phone number or your Apple ID email. GAIA's shared line only routes messages that arrive from a **phone number** — a message sent from an Apple ID email gets an automated bounce instead of a reply.
+
+If that happens, on your iPhone go to **Settings → Messages → Send & Receive**, set *Start new conversations from* to your phone number, then start a **new** conversation with the GAIA number. An existing thread keeps using whatever address it started with, so the new conversation matters.
+
+## What you can do
+
+Everything the other bots can do. Talk in plain language, or use the same commands:
+
+<Chat
+  messages={[
+    { from: "user", text: "Summarize my unread emails from today" },
+    { from: "user", text: "Add \"renew passport\" to my todos for next week" },
+    { from: "gaia", text: "Added to your todos, due next week." },
+  ]}
+/>
+
+See [Bot Commands](/bots/commands) for the full list.
+
+You can also send **photos and documents**, and GAIA will read them as part of the conversation.
+
+## What's different on iMessage
+
+| | Behavior |
+|---|---|
+| Plan | Pro only |
+| Where it works | Direct messages only, group chats are ignored |
+| Formatting | Plain text, no bold, links, or markdown rendering |
+| Responses | Sent as one complete message once GAIA finishes, no live typing |
+| Attachments | Photos and documents supported |
+| Voice notes | Not supported yet, GAIA will tell you if you send one |
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="I texted the number and got an automated bounce">
+    Your message was sent from your Apple ID email rather than your phone number. Change it under **Settings → Messages → Send & Receive** and start a new conversation, as described above.
+  </Accordion>
+
+  <Accordion title="I get an upgrade prompt instead of a reply">
+    iMessage is Pro-only, and the plan is re-checked on every message. If your subscription lapsed, the bot stops replying until it's active again.
+  </Accordion>
+
+  <Accordion title="GAIA asks me to link my account again">
+    Your link was removed, or you're texting from a different number than the one you registered. Re-register the number you're actually texting from in [Settings → Linked Accounts](https://heygaia.io/settings/linked-accounts).
+  </Accordion>
+
+  <Accordion title="Nothing happens in a group chat">
+    Expected. GAIA only responds in direct messages, group conversations are ignored by design.
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  Want to run your own iMessage bot instead? See [iMessage Bot Development](/bots/imessage).
+</Note>

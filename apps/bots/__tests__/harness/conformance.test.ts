@@ -18,6 +18,7 @@
 
 import {
   buildAuthLinkMessage,
+  buildPlanRequiredMessage,
   type PlatformName,
   renderForPlatform,
 } from "@gaia/shared";
@@ -88,6 +89,7 @@ interface StreamScript {
 }
 
 const AUTH_URL = "https://gaia.example.com/auth?token=conf123";
+const PRICING_URL = "https://gaia.example.com/pricing";
 
 function makeGaia(script: StreamScript) {
   return {
@@ -112,7 +114,7 @@ function makeGaia(script: StreamScript) {
       token: "tok",
       authUrl: script.authUrl ?? AUTH_URL,
     })),
-    getPricingUrl: () => "https://gaia.example.com/pricing",
+    getPricingUrl: () => PRICING_URL,
   };
 }
 
@@ -381,6 +383,19 @@ describe("gaia-sim conformance: harness output matches the real adapter", () => 
       );
       expect(harness.allTexts).toContain(expectedAuth);
       expect(real.allTexts).toContain(expectedAuth);
+    });
+
+    it("plan gate — both deliver the same rendered upgrade prompt", async () => {
+      const script = { error: "plan_required" };
+      const harness = await driveHarness(platform, script);
+      const real = await REAL_DRIVERS[platform](script);
+
+      const expectedUpgrade = renderForPlatform(
+        buildPlanRequiredMessage(PRICING_URL),
+        platform,
+      );
+      expect(harness.allTexts).toContain(expectedUpgrade);
+      expect(real.allTexts).toContain(expectedUpgrade);
     });
   });
 });

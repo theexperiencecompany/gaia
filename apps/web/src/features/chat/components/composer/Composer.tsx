@@ -21,7 +21,6 @@ import { useFileAttachments } from "@/features/chat/hooks/useFileAttachments";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useSendMessage } from "@/hooks/useSendMessage";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import {
   useComposerFiles,
   useComposerIsUploading,
@@ -50,7 +49,6 @@ interface MainSearchbarProps {
   } | null>;
   appendToInputRef?: React.RefObject<((text: string) => void) | null>;
   hasMessages: boolean;
-  conversationId?: string;
   voiceModeActive: () => void;
   /** Hover intent on the voice button — used to prefetch the session token. */
   onVoiceModeHover?: () => void;
@@ -62,7 +60,6 @@ const Composer: React.FC<MainSearchbarProps> = ({
   fileUploadRef,
   appendToInputRef,
   hasMessages,
-  conversationId,
   voiceModeActive,
   onVoiceModeHover,
 }) => {
@@ -93,7 +90,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
   const { autoSend } = useWorkflowSelectionStore();
 
   const sendMessage = useSendMessage();
-  const { attachFiles } = useFileAttachments(conversationId);
+  const { attachFiles } = useFileAttachments();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { integrations, isLoading: integrationsLoading } = useIntegrations();
   const currentMode = useMemo(
@@ -144,18 +141,6 @@ const Composer: React.FC<MainSearchbarProps> = ({
     }
     // Note: Loading state is now set in useSendMessage AFTER user message is persisted
     // This ensures the loading indicator appears AFTER the user message in the UI
-
-    trackEvent(ANALYTICS_EVENTS.CHAT_MESSAGE_SENT, {
-      has_text: !!inputText,
-      has_files: uploadedFiles.length > 0,
-      file_count: uploadedFiles.length,
-      has_tool: !!selectedTool,
-      tool_name: selectedTool,
-      tool_category: selectedToolCategory,
-      has_workflow: !!selectedWorkflow,
-      workflow_name: selectedWorkflow?.title,
-      conversation_id: conversationId,
-    });
 
     sendMessage(inputText, {
       files: uploadedFileData,

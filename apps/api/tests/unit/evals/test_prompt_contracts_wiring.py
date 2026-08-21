@@ -61,7 +61,7 @@ _PROMPT_CACHES = (
     prompt_gates.banned_phrases,
     prompt_gates.banned_dashes,
     prompt_gates.internal_terms,
-    prompt_gates.routing_markers,
+    prompt_gates.channel_tags,
 )
 
 
@@ -241,7 +241,7 @@ def test_quality_scores_every_prompt_derived_gate_on_every_case() -> None:
         ("dash_discipline", "done — took a second"),
         ("banned_bot_phrases", "done. Is there anything else?"),
         ("internal_machinery", "the executor is still working on it"),
-        ("internal_markers", "[EXECUTOR_RESULT] all done"),
+        ("internal_tags", "<executor_result> all done"),
     ],
 )
 def test_each_prompt_gate_can_actually_fail_a_reply(gate_name: str, reply: str) -> None:

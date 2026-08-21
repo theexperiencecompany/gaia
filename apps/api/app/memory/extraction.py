@@ -14,7 +14,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field, ValidationError
 
-from app.agents.llm.client import ainvoke_structured, silent_metered_config
+from app.agents.llm.client import ainvoke_structured_gemini, silent_metered_config
 from app.agents.llm.exceptions import LLM_FALLBACK_EXCEPTIONS, LLMNotConfiguredError
 from app.constants.memory import (
     EXTRACTION_TRANSCRIPT_HEAD_CHARS,
@@ -105,14 +105,21 @@ async def _invoke_structured(
     operation: str,
     user_id: str,
 ) -> _StructuredT | None:
-    """Structured-output call on the default model via the canonical
-    ``ainvoke_structured`` (which owns retry + validation, and meters the spend
-    against ``user_id``). Returns None on any provider failure (or when no
-    provider is configured) so extraction degrades gracefully and never breaks
-    the chat that spawned it. The silent config keeps the structured-output
-    tokens out of the chat stream."""
+    """Structured-output call on the memory lane via the canonical
+    ``ainvoke_structured_gemini`` (which owns provider selection, retry +
+    validation, and meters the spend against ``user_id``). Returns None only
+    when NO provider is configured or every one of them failed, so extraction
+    degrades gracefully and never breaks the chat that spawned it. The silent
+    config keeps the structured-output tokens out of the chat stream.
+
+    Prefers direct Gemini on purpose (see ``ainvoke_structured_gemini``): the
+    extraction is a background task that overlaps the graph's next-turn
+    requests, and concurrent requests on the same provider's cache store wipe
+    each other's cached chains mid-read (measured). When Google is not
+    configured, or Gemini is down, the call runs on the aux lane instead —
+    losing the cache isolation, not the memory."""
     try:
-        return await ainvoke_structured(
+        return await ainvoke_structured_gemini(
             output_model, messages, label=f"memory:{operation}", config=_silent_config(user_id)
         )
     except LLMNotConfiguredError as e:
@@ -154,17 +161,31 @@ async def extract_memories(
         "\n".join(f"- {line}" for line in journaled_today) if journaled_today else "(empty)"
     )
     system_prompt = EXTRACTION_SYSTEM_PROMPT.format(
-        current_date=f"{current_date:%A, %d %B %Y}",
         user_name=user_name,
         folder_tree=folder_tree or "(no folders yet)",
-        recent_facts=recent_facts_section,
-        journal_today=journal_section,
-        extraction_hints=hints_section,
+    )
+    # The volatile context (today's date, recently stored facts, today's
+    # journal) rides in a TRAILING message, NOT inside the system prompt.
+    # The memory lane's cache is a byte-prefix cache: with the facts/journal
+    # churning inside the system prompt the prefix broke there and the whole
+    # (append-only) transcript re-sent uncached every turn — measured ~41%
+    # hit on the lane. With them moved to the tail, the cached prefix extends
+    # through the stable template + the transcript and only this small tail
+    # re-sends uncached.
+    volatile_context = (
+        f"Today is {current_date:%A, %d %B %Y}.\n"
+        f"## Recently stored facts (do NOT re-extract these)\n{recent_facts_section}\n"
+        "## Today's journal so far (do NOT repeat these events, even reworded)\n"
+        f"{journal_section}{hints_section}"
     )
 
     result = await _invoke_structured(
         ExtractedMemoryBatch,
-        [SystemMessage(content=system_prompt), HumanMessage(content=transcript)],
+        [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=transcript),
+            HumanMessage(content=volatile_context),
+        ],
         operation="extraction",
         user_id=user_id,
     )

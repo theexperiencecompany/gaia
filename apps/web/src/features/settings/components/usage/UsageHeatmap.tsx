@@ -1,9 +1,10 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Chip } from "@heroui/chip";
 import { Modal, ModalBody, ModalContent, useDisclosure } from "@heroui/modal";
-import { Share08Icon } from "@icons";
-import type { UsageActivity } from "@shared/types";
+import { Fire02Icon, Share08Icon } from "@icons";
+import type { ActivityDay, UsageActivity } from "@shared/types";
 import { formatCompactNumber, formatDateUTC } from "@shared/utils";
 import confetti from "canvas-confetti";
 import Image from "next/image";
@@ -73,6 +74,25 @@ interface Cell {
   count: number | null;
   /** Prebuilt hover/aria label ("N actions · Mon, Jul 5"); empty for padding cells. */
   label: string;
+}
+
+/** The hover/aria line for one cell. Tokens only join it when there are any —
+ *  a quiet day should not read "0 tokens", and days that predate token
+ *  accounting have none to report. */
+function cellLabel(
+  date: string,
+  day: ActivityDay | undefined,
+  count: number | null,
+): string {
+  if (count === null) return "";
+  const tokens = day?.tokens ?? 0;
+  return [
+    `${count} ${count === 1 ? "action" : "actions"}`,
+    tokens > 0 ? `${formatCompactNumber(tokens)} tokens` : null,
+    formatDateUTC(date, "weekday"),
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function intensity(count: number | null, max: number): string {
@@ -255,7 +275,7 @@ export function UsageHeatmap({ activity }: { activity: UsageActivity }) {
   const { columns, max } = useMemo(() => {
     const days = activity.days;
     if (days.length < 14) return { columns: [] as Cell[][], max: 1 };
-    const byDate = new Map(days.map((d) => [d.date, d.count]));
+    const byDate = new Map(days.map((d) => [d.date, d]));
     const first = new Date(`${days[0].date}T00:00:00Z`);
     const last = new Date(`${days[days.length - 1].date}T00:00:00Z`);
     const cursor = new Date(first);
@@ -266,15 +286,9 @@ export function UsageHeatmap({ activity }: { activity: UsageActivity }) {
       for (let wd = 0; wd < 7; wd++) {
         const key = cursor.toISOString().slice(0, 10);
         const inRange = cursor >= first && cursor <= last;
-        const count = inRange ? (byDate.get(key) ?? 0) : null;
-        col.push({
-          date: key,
-          count,
-          label:
-            count === null
-              ? ""
-              : `${count} ${count === 1 ? "action" : "actions"} · ${formatDateUTC(key, "weekday")}`,
-        });
+        const day = inRange ? byDate.get(key) : undefined;
+        const count = inRange ? (day?.count ?? 0) : null;
+        col.push({ date: key, count, label: cellLabel(key, day, count) });
         cursor.setUTCDate(cursor.getUTCDate() + 1);
       }
       columns.push(col);
@@ -303,7 +317,7 @@ export function UsageHeatmap({ activity }: { activity: UsageActivity }) {
   return (
     <section className="rounded-2xl bg-zinc-900/60 p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
-        <div className="flex items-baseline gap-2">
+        <div className="flex items-center gap-2">
           <p className="text-base font-semibold text-white">
             GAIA&apos;s activity
           </p>
@@ -311,8 +325,23 @@ export function UsageHeatmap({ activity }: { activity: UsageActivity }) {
             <span className="font-medium tabular-nums text-zinc-300">
               {formatCompactNumber(activity.total)}
             </span>{" "}
-            actions &middot; {activity.streak}-day streak
+            actions
           </p>
+          {activity.streak > 0 && (
+            <Chip
+              size="sm"
+              variant="flat"
+              radius="full"
+              classNames={{
+                base: "h-6 bg-orange-500/15",
+                content:
+                  "flex items-center gap-1 px-2 text-xs font-medium text-orange-400",
+              }}
+            >
+              <Fire02Icon size={13} />
+              {activity.streak}-day streak
+            </Chip>
+          )}
         </div>
         <Button
           isIconOnly

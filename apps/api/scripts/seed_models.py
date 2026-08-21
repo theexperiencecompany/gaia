@@ -110,9 +110,9 @@ def get_models_configuration() -> list[dict[str, Any]]:
             "lowest_tier": PlanType.FREE.value,
             "is_active": True,
             "is_default": True,
-            "pricing_per_1k_input_tokens": 0.00009,
-            "pricing_per_1k_output_tokens": 0.00018,
-            "pricing_per_1k_cached_input_tokens": 0.000018,
+            "pricing_per_1k_input_tokens": 0.00014,
+            "pricing_per_1k_output_tokens": 0.00028,
+            "pricing_per_1k_cached_input_tokens": 0.000028,
         },
         # Superseded as the default; kept seeded so the direct-Gemini lane and
         # the dev model menu still resolve pricing for it.
@@ -357,7 +357,8 @@ async def sync_models(dry_run: bool = False, force: bool = False, backup: bool =
     # Confirmation prompt
     if not force:
         total_changes = len(models_to_add) + len(models_to_update) + len(models_to_remove)
-        response = input(f"\n❓ Apply {total_changes} changes? (y/N): ")
+        # A dev CLI, but input() still parks the loop; to_thread keeps ASYNC250 honest.
+        response = await asyncio.to_thread(input, f"\n❓ Apply {total_changes} changes? (y/N): ")
         if response.lower() != "y":
             print("❌ Operation cancelled.")
             return

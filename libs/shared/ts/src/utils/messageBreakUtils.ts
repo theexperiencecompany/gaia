@@ -12,19 +12,3 @@
  */
 export const NEW_MESSAGE_BREAK_TOKEN = "<NEW_MESSAGE_BREAK>";
 export const NEW_MESSAGE_BREAK_TOKEN_LENGTH = NEW_MESSAGE_BREAK_TOKEN.length;
-
-export function splitMessageByBreaks(content: string): string[] {
-  // Return empty array for empty/whitespace content
-  if (!content?.trim()) {
-    return [];
-  }
-
-  if (!content.includes(NEW_MESSAGE_BREAK_TOKEN)) {
-    return [content];
-  }
-
-  return content
-    .split(NEW_MESSAGE_BREAK_TOKEN)
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0);
-}

@@ -31,10 +31,19 @@ _DEFAULT_MIME_TYPE = "text/plain"
 _HTML_MIME_TYPE = "text/html"
 
 
+# The synthesized EmailMessage stores already-DECODED content (set_content
+# manages its own transfer encoding), so the original part's wire encoding
+# must not be copied: an empty part stamped "Content-Transfer-Encoding:
+# base64" sends the stdlib's get_payload(decode=True) down its base64 branch
+# with no payload, crashing on the unbound `bpayload` local (bpo-level quirk).
+_WIRE_ENCODING_HEADER = "content-transfer-encoding"
+
+
 def _copy_headers(part: GmailMessagePart, target: email.message.EmailMessage) -> None:
-    """Copy a Gmail MIME part's headers onto an ``EmailMessage``."""
+    """Copy a Gmail MIME part's headers onto an ``EmailMessage``, minus the
+    transfer encoding set_content owns."""
     for header in part.headers:
-        if header.name and header.value:
+        if header.name and header.value and header.name.lower() != _WIRE_ENCODING_HEADER:
             target[header.name] = header.value
 
 
@@ -53,6 +62,25 @@ def _set_decoded_content(
             target.set_content(decoded_content)
     except Exception:
         target.set_content(body_data)
+
+
+def _decode_part_payload(part: email.message.Message) -> bytes | str | None:
+    """Decode a MIME part's raw payload, or None if the part is malformed.
+
+    ``get_payload(decode=True)`` can raise on a malformed part (the stdlib's
+    unbound-bpayload path) — callers should skip the part, not the whole message.
+    """
+    try:
+        # decode=True only ever yields the leaf's decoded bytes (or the raw str
+        # payload when no Content-Transfer-Encoding header is set) — the stdlib's
+        # broader Message[str, str] return type is for the decode=False overload.
+        return cast("bytes | str | None", part.get_payload(decode=True))
+    except Exception as e:
+        log.warning(
+            "Skipping malformed MIME part during content extraction",
+            error_type=type(e).__name__,
+        )
+        return None
 
 
 class GmailMessageParser:
@@ -221,7 +249,11 @@ class GmailMessageParser:
                     # A text/* part's content manager always yields str.
                     return cast(str, part.get_content())
                 except Exception:
-                    payload = part.get_payload(decode=True)
+                    # get_payload itself can raise on a malformed part — skip
+                    # the part, never the whole message.
+                    payload = _decode_part_payload(part)
+                    if payload is None:
+                        continue
                     if isinstance(payload, bytes):
                         return payload.decode("utf-8", errors="ignore")
                     if isinstance(payload, str):
@@ -253,7 +285,9 @@ class GmailMessageParser:
                 try:
                     return cast(str, part.get_content())
                 except Exception:
-                    payload = part.get_payload(decode=True)
+                    payload = _decode_part_payload(part)
+                    if payload is None:
+                        continue
                     if isinstance(payload, bytes):
                         return payload.decode("utf-8", errors="ignore")
                     if isinstance(payload, str):
@@ -296,7 +330,11 @@ class GmailMessageParser:
                     # ``decode=True`` on a non-multipart part yields the decoded
                     # bytes (or None); typeshed's union also covers the multipart
                     # case, which an "attachment" disposition rules out.
-                    payload_bytes = cast("bytes | None", part.get_payload(decode=True))
+                    try:
+                        payload_bytes = cast("bytes | None", part.get_payload(decode=True))
+                    except Exception:
+                        # Malformed part — list the attachment without content.
+                        payload_bytes = None
                     attachments.append(
                         {
                             "filename": filename,

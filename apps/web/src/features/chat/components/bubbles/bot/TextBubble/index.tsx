@@ -5,10 +5,7 @@ import {
   APPROVAL_REQUEST_TOOL_NAME,
   type ApprovalRequestData,
 } from "@shared/chat";
-import {
-  parseOpenUISegments,
-  splitByBreaksPreservingFences,
-} from "@shared/utils";
+import { parseOpenUISegments, splitMessageByBreaks } from "@shared/utils";
 import * as m from "motion/react-m";
 import dynamic from "next/dynamic";
 import React, { useId } from "react";
@@ -18,7 +15,6 @@ import {
   MESSAGE_BREAK_DURATION_SECONDS,
   MESSAGE_BREAK_EASE_OUT_QUART,
   MESSAGE_BREAK_STAGGER_SECONDS,
-  splitMessageByBreaks,
 } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
@@ -33,6 +29,7 @@ import TodoProgressSection from "../TodoProgressSection";
 import UnifiedToolThread from "../UnifiedToolThread";
 import { getTypedData, renderTool, type ToolDataUnion } from "./ToolRenderers";
 import { useSubagentSynthesis } from "./useSubagentSynthesis";
+import { useToolRenderAudit } from "./useToolRenderAudit";
 
 // OpenUI components use bg-zinc-800 (same as the bubble) and must render
 // OUTSIDE the imessage-bubble — see bubbles/bot/CLAUDE.md.
@@ -392,6 +389,9 @@ export default function TextBubble({
   // and the remaining tool_data entries that render via TOOL_RENDERERS.
   const { timeline, processedTools } = useSubagentSynthesis(tool_data);
 
+  // Dev-only: record what this bubble did with each tool_data entry.
+  useToolRenderAudit(message_id, tool_data);
+
   // Tool calls currently blocked on a HIL approval, keyed by the shared
   // tool_call_id. Lets the tool row/subagent show "Waiting for approval"
   // instead of a generic spinner while the approval card handles the decision.
@@ -407,6 +407,20 @@ export default function TextBubble({
     return ids;
   }, [tool_data]);
 
+  // Settled decisions, keyed the same way — the tool's own row in the thread
+  // carries the outcome as a chip instead of a separate receipts block.
+  const approvalStatusByToolCallId = React.useMemo(() => {
+    const statuses = new Map<string, ApprovalRequestData["status"]>();
+    tool_data?.forEach((entry) => {
+      if (entry.tool_name !== APPROVAL_REQUEST_TOOL_NAME) return;
+      const data = entry.data as ApprovalRequestData | null;
+      if (data?.tool_call_id && data.status !== "pending") {
+        statuses.set(data.tool_call_id, data.status);
+      }
+    });
+    return statuses;
+  }, [tool_data]);
+
   return (
     <ApprovalResolveProvider value={resolveApproval}>
       {parsedContent.thinking && (
@@ -419,6 +433,7 @@ export default function TextBubble({
           timeline={timeline}
           isStreaming={!!loading}
           pendingApprovalToolCallIds={pendingApprovalToolCallIds}
+          approvalStatusByToolCallId={approvalStatusByToolCallId}
         />
       )}
 
@@ -468,9 +483,7 @@ export default function TextBubble({
           // Use cleaned text without thinking tags
           const displayText = parsedContent.cleanText || "";
           // Preserve :::openui fences when splitting so they aren't mangled.
-          const textParts = displayText.includes(":::openui")
-            ? splitByBreaksPreservingFences(displayText)
-            : splitMessageByBreaks(displayText);
+          const textParts = splitMessageByBreaks(displayText);
 
           // Filter empty/whitespace-only parts up front so first/last/single
           // reflect the *visible* list, not the array index. Without this, a

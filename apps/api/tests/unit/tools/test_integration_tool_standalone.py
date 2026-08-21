@@ -1,7 +1,12 @@
 """Unit tests for app.agents.tools.integration_tool."""
 
+from collections.abc import Iterator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from app.db.repositories.user_integrations import user_integration_repository
 
 # ---------------------------------------------------------------------------
 # Module-level patch for rate limiting
@@ -199,6 +204,14 @@ class TestListIntegrations:
 
 
 class TestConnectIntegration:
+    @pytest.fixture(autouse=True)
+    def _never_expired(self) -> Iterator[None]:
+        """The connect prompt reads the stored status to choose its wording. These
+        tests are about the tool's own behaviour, so pin it to the never-connected
+        case — the expired wording is covered in test_integration_checker.py."""
+        with patch.object(user_integration_repository, "is_expired", AsyncMock(return_value=False)):
+            yield
+
     @patch(f"{MODULE}.get_stream_writer")
     @patch(
         f"{MODULE}.check_single_integration_status",
@@ -215,11 +228,20 @@ class TestConnectIntegration:
 
         from app.agents.tools.integration_tool import connect_integration
 
-        result = await connect_integration.coroutine(  # type: ignore[attr-defined]
-            config=_cfg(), integration_ids=["gmail"]
-        )
+        # The card and the copy that promises it now live together in
+        # request_integration_connection, so the writer to watch is that
+        # module's — and a source category has to exist for a card to be sent.
+        with (
+            patch("app.utils.integration_checker.get_stream_writer", return_value=w),
+            patch(
+                "app.utils.integration_checker.get_config",
+                return_value={"configurable": {"source_category": "ui"}},
+            ),
+        ):
+            result = await connect_integration.coroutine(  # type: ignore[attr-defined]
+                config=_cfg(), integration_ids=["gmail"]
+            )
         assert "needs to be connected" in result
-        # Writer should be called with integration_connection_required
         integration_calls = [
             c for c in w.call_args_list if "integration_connection_required" in c[0][0]
         ]
@@ -248,8 +270,9 @@ class TestConnectIntegration:
                 "app.utils.integration_checker.get_config",
                 return_value={"configurable": {"source_category": "bot"}},
             ),
+            patch("app.utils.integration_checker.get_stream_writer", return_value=_writer()),
             patch(
-                "app.agents.tools.integration_tool.build_connect_link_url",
+                "app.utils.integration_checker.build_connect_link_url",
                 new=AsyncMock(return_value="https://app.example.com/connect/test-token"),
             ),
         ):
@@ -270,6 +293,50 @@ class TestConnectIntegration:
         f"{MODULE}.OAUTH_INTEGRATIONS",
         [_make_integration("gmail", "Gmail", short_name="gmail")],
     )
+    async def test_the_connect_request_carries_this_integration_and_user(
+        self, mock_check: AsyncMock, mock_gsw: MagicMock
+    ) -> None:
+        """The sibling tests mint the link from a fixed-return mock, which cannot
+        tell a correct argument from a nulled one. Minting for the wrong user hands
+        one person another's connect flow, and losing the name leaves the agent
+        telling the user that "None" needs connecting."""
+        mock_gsw.return_value = _writer()
+
+        async def _link(user_id: str, integration_id: str) -> str | None:
+            if (user_id, integration_id) == (FAKE_USER_ID, "gmail"):
+                return "https://app.example.com/connect/for-this-user"
+            return None
+
+        from app.agents.tools.integration_tool import connect_integration
+
+        with (
+            patch(
+                "app.utils.integration_checker.get_config",
+                return_value={"configurable": {"source_category": "bot"}},
+            ),
+            patch("app.utils.integration_checker.get_stream_writer", return_value=_writer()),
+            patch(
+                "app.utils.integration_checker.build_connect_link_url",
+                new=AsyncMock(side_effect=_link),
+            ),
+        ):
+            result = await connect_integration.ainvoke(
+                {"integration_ids": ["gmail"]}, config=_cfg()
+            )
+
+        assert "https://app.example.com/connect/for-this-user" in result
+        assert result.startswith("Gmail needs to be connected")
+
+    @patch(f"{MODULE}.get_stream_writer")
+    @patch(
+        f"{MODULE}.check_single_integration_status",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    @patch(
+        f"{MODULE}.OAUTH_INTEGRATIONS",
+        [_make_integration("gmail", "Gmail", short_name="gmail")],
+    )
     async def test_ui_context_points_to_card_without_url(
         self, mock_check: AsyncMock, mock_gsw: MagicMock
     ) -> None:
@@ -278,9 +345,12 @@ class TestConnectIntegration:
 
         from app.agents.tools.integration_tool import connect_integration
 
-        with patch(
-            "app.utils.integration_checker.get_config",
-            return_value={"configurable": {"source_category": "ui"}},
+        with (
+            patch(
+                "app.utils.integration_checker.get_config",
+                return_value={"configurable": {"source_category": "ui"}},
+            ),
+            patch("app.utils.integration_checker.get_stream_writer", return_value=_writer()),
         ):
             result = await connect_integration.coroutine(  # type: ignore[attr-defined]
                 config=_cfg(), integration_ids=["gmail"]
@@ -466,7 +536,7 @@ class TestSuggestIntegrations:
 
         from app.agents.tools.integration_tool import suggest_integrations
 
-        await suggest_integrations.coroutine(config=_cfg(), query="email tools")  # type: ignore[attr-defined]
+        await suggest_integrations.ainvoke({"query": "email tools"}, config=_cfg())
         mock_list.ainvoke.assert_awaited_once()
         # Check it passed search_public_query
         call_args = mock_list.ainvoke.call_args

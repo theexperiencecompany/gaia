@@ -31,6 +31,7 @@ from app.models.chat_models import (
     ConversationSyncItem,
     MessageModel,
     SystemPurpose,
+    ToolDataEntry,
 )
 from app.models.conversation_models import (
     ConversationDocument,
@@ -317,6 +318,62 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             scope=user_id,
             doc_id=conversation_id,
             extra_filter={"user_id": user_id},
+        )
+        return matched > 0
+
+    async def set_message_response(
+        self, conversation_id: str, *, user_id: str, message_id: str, response: str
+    ) -> bool:
+        """Set a message's response text in place. Does not advance ``updatedAt``
+        (matches the legacy delivery write)."""
+        matched = await self._apply_raw_update_unfetched(
+            {"conversation_id": conversation_id, "messages.message_id": message_id},
+            {"$set": {"messages.$.response": response}},
+            scope=user_id,
+            doc_id=conversation_id,
+            extra_filter={"user_id": user_id},
+        )
+        return matched > 0
+
+    async def set_message_tool_data(
+        self, conversation_id: str, *, user_id: str, message_id: str, entries: list[ToolDataEntry]
+    ) -> bool:
+        """Replace a message's tool_data wholesale. Does not advance ``updatedAt``
+        (matches the legacy delivery write)."""
+        matched = await self._apply_raw_update_unfetched(
+            {"conversation_id": conversation_id, "messages.message_id": message_id},
+            {"$set": {"messages.$.tool_data": entries}},
+            scope=user_id,
+            doc_id=conversation_id,
+            extra_filter={"user_id": user_id},
+        )
+        return matched > 0
+
+    async def set_message_approval_status(
+        self, conversation_id: str, *, user_id: str, approval_id: str, status: str
+    ) -> bool:
+        """Settle a persisted approval_request frame's status wherever it lives in
+        the messages array. Returns whether the frame was there to settle. Does not
+        advance ``updatedAt``."""
+        matched = await self._apply_raw_update_unfetched(
+            # The approval belongs in the match, not only in the array filters:
+            # those pick which element is written but never narrow `matched`, so
+            # filtering on the conversation alone reported success for any
+            # approval_id the document never held.
+            {
+                "conversation_id": conversation_id,
+                "messages.tool_data.data.approval_id": approval_id,
+            },
+            {"$set": {"messages.$[msg].tool_data.$[entry].data.status": status}},
+            scope=user_id,
+            doc_id=conversation_id,
+            extra_filter={"user_id": user_id},
+            # Filter BOTH levels: `messages.$[]` would require tool_data on every
+            # message (user messages have none) and Mongo rejects the whole update.
+            array_filters=[
+                {"msg.tool_data": {"$elemMatch": {"data.approval_id": approval_id}}},
+                {"entry.data.approval_id": approval_id},
+            ],
         )
         return matched > 0
 

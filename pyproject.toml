@@ -675,6 +675,7 @@ module = [
   "app.models.sandbox_models",
   "app.models.support_models",
   "app.models.notification.notification_models",
+  "app.models.platform_models",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

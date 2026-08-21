@@ -16,6 +16,7 @@ CHANNEL_TYPE_TELEGRAM = "telegram"
 CHANNEL_TYPE_DISCORD = "discord"
 CHANNEL_TYPE_WHATSAPP = "whatsapp"
 CHANNEL_TYPE_SLACK = "slack"
+CHANNEL_TYPE_IMESSAGE = "imessage"
 CHANNEL_TYPE_EMAIL = "email"
 
 # External channel types that are auto-injected based on platform links
@@ -24,16 +25,18 @@ EXTERNAL_NOTIFICATION_CHANNELS = (
     CHANNEL_TYPE_DISCORD,
     CHANNEL_TYPE_WHATSAPP,
     CHANNEL_TYPE_SLACK,
+    CHANNEL_TYPE_IMESSAGE,
 )
 
 # All channel types that are auto-injected when no channels are explicitly specified.
-# inapp is always available; telegram/discord/whatsapp/slack respect user preferences.
+# inapp is always available; the external platforms respect user preferences.
 ALL_AUTO_INJECTED_CHANNELS = (
     CHANNEL_TYPE_INAPP,
     CHANNEL_TYPE_TELEGRAM,
     CHANNEL_TYPE_DISCORD,
     CHANNEL_TYPE_WHATSAPP,
     CHANNEL_TYPE_SLACK,
+    CHANNEL_TYPE_IMESSAGE,
 )
 
 # Default enabled state for external channels
@@ -42,6 +45,7 @@ DEFAULT_CHANNEL_PREFERENCES: dict[str, bool] = {
     CHANNEL_TYPE_DISCORD: True,
     CHANNEL_TYPE_WHATSAPP: True,
     CHANNEL_TYPE_SLACK: True,
+    CHANNEL_TYPE_IMESSAGE: True,
     CHANNEL_TYPE_EMAIL: True,
 }
 

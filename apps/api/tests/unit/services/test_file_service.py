@@ -15,6 +15,7 @@ from fastapi import HTTPException
 import pytest
 
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel, FileDocument
+from app.services.analytics_service import AnalyticsEvents
 from app.services.files.service import FileService
 from app.services.files.store import index_file, insert_metadata, reindex_file
 from app.services.files.summaries import process_summary
@@ -67,6 +68,18 @@ def _upload_file_mock(
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _no_analytics() -> Iterator[None]:
+    """Neutralize analytics captures for tests not asserting on them.
+
+    ``capture_event`` resolves the PostHog provider at call time, which is not
+    registered in this test module's import chain — capture-specific tests
+    patch the call explicitly and assert on it.
+    """
+    with patch("app.services.files.service.capture_event"):
+        yield
 
 
 @pytest.fixture
@@ -189,6 +202,38 @@ class TestFileServiceUpload:
         assert result.file_id
         mock_mirror.assert_awaited_once()
         mock_sidecar.assert_awaited_once()
+
+    @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
+    @patch("app.services.files.service.capture_event")
+    async def test_captures_file_uploaded(
+        self,
+        mock_capture,
+        mock_del_cache,
+        mock_file_repo,
+        mock_cloudinary_upload,
+        mock_chroma_client,
+        mock_sandbox_mirror,
+    ):
+        mock_cloudinary_upload.return_value = {
+            "secure_url": "https://res.cloudinary.com/test/uploaded.pdf"
+        }
+
+        with _summary("This is a summary"):
+            await FileService.upload(
+                file=_upload_file_mock(),
+                user_id="user-abc",
+                conversation_id="conv-1",
+            )
+
+        mock_capture.assert_called_once_with(
+            "user-abc",
+            AnalyticsEvents.FILE_UPLOADED,
+            {
+                "size_bytes": 100,
+                "resource_type": "raw",
+                "content_type": "application/pdf",
+            },
+        )
 
     async def test_missing_filename_raises_400(self):
         file = _upload_file_mock(filename=None)
