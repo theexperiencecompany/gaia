@@ -94,7 +94,9 @@ class TestPumpUntilFirstClose:
         pending_task_ref: list[asyncio.Task[None]] = []
 
         async def _blocks_and_records(task_holder: list[asyncio.Task[None]]) -> None:
-            task_holder.append(asyncio.current_task())  # type: ignore[arg-type]
+            running = asyncio.current_task()
+            assert running is not None  # we are inside it
+            task_holder.append(running)
             await asyncio.Event().wait()
 
         await asyncio.wait_for(

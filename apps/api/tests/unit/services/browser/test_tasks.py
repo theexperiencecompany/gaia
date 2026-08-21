@@ -24,31 +24,34 @@ from app.services.browser.tasks import (
 
 
 def _result(**kw: object) -> BrowserResultSnapshot:
-    base: dict[str, object] = {
-        "status": BrowserSessionStatus.COMPLETED,
-        "success": True,
-        "summary": "done",
-        "steps": 2,
-        "replay_url": "https://cdn/replay.mp4",
-    }
-    base.update(kw)
-    return BrowserResultSnapshot(**base)  # type: ignore[arg-type]
+    """A valid result snapshot, with any field overridden by ``kw``.
+
+    Constructed field-by-field rather than by unpacking a ``dict[str, object]``:
+    the literal keywords are type-checked against the model, and overrides ride
+    ``model_copy`` instead of needing an ``arg-type`` ignore.
+    """
+    return BrowserResultSnapshot(
+        status=BrowserSessionStatus.COMPLETED,
+        success=True,
+        summary="done",
+        steps=2,
+        replay_url="https://cdn/replay.mp4",
+    ).model_copy(update=kw)
 
 
 def _doc(**kw: object) -> BrowserTaskDocument:
-    base: dict[str, object] = {
-        "user_id": "u1",
-        "conversation_id": "c1",
-        "task": "find a keyboard",
-        "status": BrowserSessionStatus.COMPLETED,
-        "success": True,
-        "session_id": "sess1",
-        "steps": 1,
-        "step_goals": ["Opening"],
-        "step_screenshots": ["https://cdn/1.png"],
-    }
-    base.update(kw)
-    return BrowserTaskDocument(**base)  # type: ignore[arg-type]
+    """A valid task document, with any field overridden by ``kw``."""
+    return BrowserTaskDocument(
+        user_id="u1",
+        conversation_id="c1",
+        task="find a keyboard",
+        status=BrowserSessionStatus.COMPLETED,
+        success=True,
+        session_id="sess1",
+        steps=1,
+        step_goals=["Opening"],
+        step_screenshots=["https://cdn/1.png"],
+    ).model_copy(update=kw)
 
 
 @pytest.mark.unit
