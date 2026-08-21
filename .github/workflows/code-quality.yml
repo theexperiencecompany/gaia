@@ -141,8 +141,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      -   with:
-      -     persist-credentials: false
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - name: All workspace packages agree on dep versions (syncpack)
         run: |
@@ -178,8 +178,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      -   with:
-      -     persist-credentials: false
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - name: Circular dependency scan (Biome)
         run: |
@@ -314,8 +314,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      -   with:
-      -     persist-credentials: false
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - name: publint — validate packages/cli npm metadata
         run: |
@@ -734,8 +734,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      -   with:
-      -     persist-credentials: false
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
@@ -764,8 +764,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      -   with:
-      -     persist-credentials: false
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
@@ -812,8 +812,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      -   with:
-      -     persist-credentials: false
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           version: "0.8.17"
@@ -886,8 +886,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      -   with:
-      -     persist-credentials: false
+        with:
+          persist-credentials: false
       - name: Scan the tree for suppressions not covered by the checked-in baseline
         run: |
           trap 'echo "::error::repro: python3 tools/lints/check_suppressions.py"' ERR
@@ -950,8 +950,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      -   with:
-      -     persist-credentials: false
+        with:
+          persist-credentials: false
       - name: semgrep scan (p/python over apps/api/app)
         # docker form: returntocorp/semgrep-action is deprecated upstream; the
         # image has no ENTRYPOINT, so the command must spell `semgrep`.
@@ -1098,8 +1098,8 @@ jobs:
     timeout-minutes: 2
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      -   with:
-      -     persist-credentials: false
+        with:
+          persist-credentials: false
       - name: Verdict
         env:
           # Lane results passed through env to avoid inline-expansion injection.
