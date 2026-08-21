@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 import re
 from typing import Any, Literal
 
@@ -725,7 +725,7 @@ class EventCreateRequest(BaseCalendarEvent):
         except ValueError:
             # If not ISO datetime, check if it's a valid date (YYYY-MM-DD)
             try:
-                datetime.strptime(v, "%Y-%m-%d")
+                datetime.strptime(v, "%Y-%m-%d").replace(tzinfo=UTC)
             except ValueError:
                 raise ValueError(
                     f"{field_name} must be in ISO format (YYYY-MM-DDTHH:MM:SS) or date format (YYYY-MM-DD)"
@@ -745,7 +745,7 @@ class EventCreateRequest(BaseCalendarEvent):
                     raise ValueError("Start time must be before end time")
             except ValueError as e:
                 if "fromisoformat" not in str(e):
-                    raise e
+                    raise
                 # This means the format validation failed, which is handled by the field validator
 
         return self

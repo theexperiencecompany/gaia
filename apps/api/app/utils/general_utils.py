@@ -1,5 +1,5 @@
 import base64
-from datetime import datetime
+from datetime import UTC, datetime
 import json
 from pathlib import Path
 import tomllib
@@ -84,7 +84,7 @@ def transform_gmail_message(msg: dict[str, Any]) -> dict[str, Any]:
         if m.get("internalDate"):
             try:
                 timestamp = int(m["internalDate"]) / 1000
-                return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")
+                return datetime.fromtimestamp(timestamp, tz=UTC).strftime("%Y-%m-%d %H:%M")
             except Exception:
                 return str(m["internalDate"])
         return ""
@@ -181,7 +181,7 @@ def get_project_info() -> ProjectInfo:
     try:
         # Path to pyproject.toml from this file location
         pyproject_path = Path(__file__).parent.parent.parent / "pyproject.toml"
-        with open(pyproject_path, "rb") as f:
+        with pyproject_path.open("rb") as f:
             pyproject_data = tomllib.load(f)
             project = pyproject_data.get("project", {})
             return ProjectInfo(
