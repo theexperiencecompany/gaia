@@ -76,7 +76,10 @@ async def test_registry_write_success_yields_and_releases(
     async with session_mod.browser_session(user_id="u1", start_url="https://x") as s:
         assert s.session_id == "s1"
     session_mod.host_client.delete_session.assert_awaited_once()
-    session_mod.unregister_session.assert_awaited_once()
+    # With the id, not merely "was called": deregistering the wrong session (or
+    # None) leaves this one's ownership entry behind, and the reaper then never
+    # collects it.
+    session_mod.unregister_session.assert_awaited_once_with("s1")
 
 
 async def test_registration_failure_message_is_exact(
