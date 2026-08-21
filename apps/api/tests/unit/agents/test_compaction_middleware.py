@@ -651,7 +651,10 @@ class TestDigestComposition:
 
     def test_text_pointer_offers_grep_only(self) -> None:
         body = self._build(fmt="text").content
-        assert "grep" in body
+        # exact word: "XXgrepXX" (a corrupted wording) contains "grep" too
+        import re as _re
+
+        assert _re.search(r"(?<!X)grep(?!X)", body)
         assert "query_json" not in body
 
     def test_pointer_reports_size_in_kb(self) -> None:
