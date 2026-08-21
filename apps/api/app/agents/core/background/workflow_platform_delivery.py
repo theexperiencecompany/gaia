@@ -13,9 +13,9 @@ or propagates to the caller — the result is already persisted to the conversat
 """
 
 from datetime import UTC, datetime
+import re
 from uuid import uuid4
 
-from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.models.chat_models import (
     BOT_CONVERSATION_SOURCES,
@@ -30,6 +30,11 @@ from app.services.outbound_delivery import OutboundResult, publish_outbound_mess
 from app.services.platform_link_service import PlatformLinkService
 from app.utils.notification.channel_preferences import fetch_channel_preferences
 from shared.py.wide_events import log
+
+# The model occasionally emits a near-miss spelling of the bubble-break sentinel
+# (e.g. <NEW_LINE_BREAK> instead of <NEW_MESSAGE_BREAK>). Every spelling splits
+# bubbles; none ever ships to a platform as literal text.
+_BREAK_SENTINEL_RE = re.compile(r"<\s*NEW_(?:MESSAGE|LINE)_BREAK\s*>", re.IGNORECASE)
 
 
 async def deliver_workflow_result_to_platforms(
@@ -57,7 +62,7 @@ async def deliver_workflow_result_to_platforms(
 
     # Comms splits its reply into bubbles with the break sentinel;
     # publish_outbound_message strips blanks and sends them as one ordered message.
-    bubbles = notification_text.split(NEW_MESSAGE_BREAKER)
+    bubbles = _BREAK_SENTINEL_RE.split(notification_text)
     for source, platform_user_id in targets:
         await _post_workflow_message(
             user=user,

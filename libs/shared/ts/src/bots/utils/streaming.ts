@@ -24,6 +24,9 @@ import type { ApprovalRequestData } from "../../chat";
 import {
   NEW_MESSAGE_BREAK_TOKEN,
   NEW_MESSAGE_BREAK_TOKEN_LENGTH,
+  containsMessageBreakToken,
+  normalizeMessageBreakTokens,
+  stripPartialBreakToken,
 } from "../../utils/messageBreakUtils";
 import type { GaiaClient } from "../api";
 import { BOT_STREAM_ERROR } from "../api/chat-stream";
@@ -43,22 +46,6 @@ import { chunkResponse, PLATFORM_LIMITS } from "./text";
 import { wideLog, withWideEvent } from "./wide-events";
 
 const logger = createBotLogger("shared", "streaming");
-
-/**
- * Drops a trailing partial ``<NEW_MESSAGE_BREAK>`` from live-preview text.
- *
- * The token arrives split across stream chunks, so a half-received
- * ``<NEW_MESSAG`` would otherwise flash in the bubble as literal text — and on
- * Telegram an unclosed ``<`` makes the whole HTML edit fail to parse.
- */
-function stripPartialBreakToken(text: string): string {
-  for (let n = NEW_MESSAGE_BREAK_TOKEN_LENGTH - 1; n > 0; n -= 1) {
-    if (text.endsWith(NEW_MESSAGE_BREAK_TOKEN.slice(0, n))) {
-      return text.slice(0, -n);
-    }
-  }
-  return text;
-}
 
 /** The approval window is hours, so "360 minutes" is not a usable way to say it. */
 function formatExpiry(seconds: number): string {
@@ -240,6 +227,10 @@ async function _handleStream(
     // drop — whatever arrived in the meantime.
     const finished: string[] = [];
 
+    // Normalize first: the model emits near-miss spellings of the sentinel
+    // (<NEW_LINE_BREAK>), and only the canonical token may be split on.
+    pending = normalizeMessageBreakTokens(pending);
+
     let breakIndex = pending.indexOf(NEW_MESSAGE_BREAK_TOKEN);
     while (breakIndex !== -1) {
       const segment = pending.slice(0, breakIndex).trim();
@@ -263,7 +254,7 @@ async function _handleStream(
 
   /** Delivers the tail as the last bubble, once the stream is over. */
   const flushTail = async (): Promise<void> => {
-    const tail = pending.trim();
+    const tail = normalizeMessageBreakTokens(pending).trim();
     pending = "";
     for (const chunk of chunkResponse(tail, platform, render)) {
       await deliverBubble(chunk);
@@ -301,10 +292,7 @@ async function _handleStream(
         // instead of waiting out the edit interval. Overflow is handled inside
         // flushFinished — detecting it needs a render pass, which is far too
         // expensive to run per streamed token.
-        if (
-          pending.includes(NEW_MESSAGE_BREAK_TOKEN) ||
-          now - lastEditTime >= editIntervalMs
-        ) {
+        if (containsMessageBreakToken(pending) || now - lastEditTime >= editIntervalMs) {
           lastEditTime = now;
           if (editTimer) {
             clearTimeout(editTimer);
@@ -312,7 +300,9 @@ async function _handleStream(
           }
           enqueue(async () => {
             await flushFinished();
-            await previewBubble(stripPartialBreakToken(pending).trim());
+            await previewBubble(
+              stripPartialBreakToken(normalizeMessageBreakTokens(pending)).trim(),
+            );
           });
         } else if (!editTimer) {
           editTimer = setTimeout(
@@ -320,9 +310,11 @@ async function _handleStream(
               editTimer = null;
               if (!streamDone) {
                 lastEditTime = Date.now();
-                enqueue(() =>
-                  previewBubble(stripPartialBreakToken(pending).trim()),
-                );
+              enqueue(() =>
+                previewBubble(
+                  stripPartialBreakToken(normalizeMessageBreakTokens(pending)).trim(),
+                ),
+              );
               }
             },
             editIntervalMs - (now - lastEditTime),

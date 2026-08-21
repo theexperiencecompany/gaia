@@ -272,6 +272,36 @@ describe("handleStreamingChat delivery", () => {
     }
   });
 
+  it("treats the <NEW_LINE_BREAK> variant as a bubble break, never literal text", async () => {
+    // The model sometimes emits <NEW_LINE_BREAK> instead of the canonical
+    // <NEW_MESSAGE_BREAK>. Only the exact token was split on, so the variant
+    // shipped to Telegram as literal text.
+    const { bubbles } = await deliver("telegram", [
+      "Hey there.",
+      "<NEW_LINE_BREAK>",
+      "I checked your calendar.",
+    ]);
+
+    expect(bubbles).toEqual([
+      renderForPlatform("Hey there.", "telegram"),
+      renderForPlatform("I checked your calendar.", "telegram"),
+    ]);
+  });
+
+  it("never shows a partial <NEW_LINE_BREAK> variant", async () => {
+    const { writes } = await deliver("telegram", [
+      "Checking that now.",
+      "<NEW_LINE_BRE",
+      "AK>",
+      "All done.",
+    ]);
+
+    for (const write of writes) {
+      expect(write).not.toContain("NEW_LINE");
+      expect(write).not.toContain("<NEW");
+    }
+  });
+
   it("delivers the full reply on platforms that cannot edit", async () => {
     // WhatsApp/iMessage have no edit API, so each write is a new message.
     const text = body("Alpha", 120);

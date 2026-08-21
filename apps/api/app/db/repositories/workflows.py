@@ -492,19 +492,30 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             {"_id": workflow_id}, {"$set": set_fields}, scope=REPO_GLOBAL_SCOPE
         )
 
-    async def claim_for_execution(self, workflow_id: str) -> bool:
+    async def claim_for_execution(
+        self, workflow_id: str, *, expected_next_run: datetime | None = None
+    ) -> bool:
         """Atomically claim a live, idle workflow for a fire (SCHEDULED -> EXECUTING).
 
         Returns ``False`` — and the caller skips the fire — when the workflow is not
         both ``activated`` and ``status="scheduled"`` (a concurrent recovery scan
         already claimed it, or it was deactivated but a deferred job fired anyway).
+
+        ``expected_next_run`` pins the occurrence the fire was armed for: ARQ has
+        no job cancellation, so after a reschedule the old deferred job still
+        fires — but ``trigger_config.next_run`` has moved on, and the mismatch
+        rejects it. Jobs enqueued before this stamp existed pass ``None`` and
+        claim exactly as before.
         """
+        filter_: dict[str, Any] = {
+            "_id": workflow_id,
+            "activated": True,
+            "status": ScheduledTaskStatus.SCHEDULED.value,
+        }
+        if expected_next_run is not None:
+            filter_["trigger_config.next_run"] = expected_next_run
         result = await self._apply_raw_update(
-            {
-                "_id": workflow_id,
-                "activated": True,
-                "status": ScheduledTaskStatus.SCHEDULED.value,
-            },
+            filter_,
             {"$set": {"status": ScheduledTaskStatus.EXECUTING.value}},
             scope=REPO_GLOBAL_SCOPE,
         )
