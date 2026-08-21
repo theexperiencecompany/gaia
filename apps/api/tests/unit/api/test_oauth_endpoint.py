@@ -13,6 +13,15 @@ from app.services.analytics_service import AnalyticsEvents
 OAUTH_BASE = "/api/v1/oauth"
 
 
+def _oauth_ns(log_mock: MagicMock) -> dict:
+    """Fields folded onto the `oauth` wide-event namespace."""
+    fields: dict = {}
+    for c in log_mock.set_ns.call_args_list:
+        if c.args and c.args[0] == "oauth":
+            fields.update(c.kwargs)
+    return fields
+
+
 def _mock_auth_response(
     email: str = "test@example.com",
     first_name: str = "Test",
@@ -403,6 +412,7 @@ class TestComposioCallback:
     @patch("app.api.v1.endpoints.oauth.get_integration_by_config")
     @patch("app.api.v1.endpoints.oauth.get_composio_service")
     @patch("app.api.v1.endpoints.oauth.user_integration_repository")
+    @patch("app.api.v1.endpoints.oauth.log")
     @patch(
         "app.api.v1.endpoints.oauth.validate_and_consume_oauth_state",
         new_callable=AsyncMock,
@@ -410,6 +420,7 @@ class TestComposioCallback:
     async def test_a_callback_without_the_account_id_uses_the_one_minted_at_initiate(
         self,
         mock_state: AsyncMock,
+        mock_log: MagicMock,
         mock_repo: MagicMock,
         mock_composio: MagicMock,
         mock_config: MagicMock,
@@ -450,8 +461,12 @@ class TestComposioCallback:
         mock_composio.return_value.get_connected_account_by_id.assert_called_once_with(
             "acc_from_initiate"
         )
+        # Composio documents none of this, so the wide event is how we learn which
+        # source actually carried the id on a real delivery.
+        assert _oauth_ns(mock_log)["connected_account_id_source"] == "stored_record"
 
     @patch("app.api.v1.endpoints.oauth.user_integration_repository")
+    @patch("app.api.v1.endpoints.oauth.log")
     @patch(
         "app.api.v1.endpoints.oauth.validate_and_consume_oauth_state",
         new_callable=AsyncMock,
@@ -459,6 +474,7 @@ class TestComposioCallback:
     async def test_no_account_id_anywhere_still_fails_the_connection(
         self,
         mock_state: AsyncMock,
+        mock_log: MagicMock,
         mock_repo: MagicMock,
         client: AsyncClient,
     ):
@@ -478,6 +494,7 @@ class TestComposioCallback:
 
         assert response.status_code == 307
         assert "oauth_error=failed" in response.headers["location"]
+        assert _oauth_ns(mock_log)["connected_account_id_source"] == "missing"
 
     @patch(
         "app.api.v1.endpoints.oauth.validate_and_consume_oauth_state",

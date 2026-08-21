@@ -2,6 +2,8 @@
 
 from typing import Final
 
+from composio.core.models.webhook_events import ConnectionStatusEnum
+
 # Limits for LLM context to prevent overwhelming responses
 MAX_CONNECTED_FOR_LLM = 20
 MAX_AVAILABLE_FOR_LLM = 15
@@ -22,6 +24,28 @@ MAX_MY_INTEGRATIONS_RESULTS = 100
 # still satisfy update_user_integration_status's UserIntegrationStatus.
 INTEGRATION_STATUS_CONNECTED: Final = "connected"
 INTEGRATION_STATUS_EXPIRED: Final = "expired"
+
+# How long a Composio connection-webhook background task may run before it is
+# cancelled, so a stalled pause/expiry cannot hang indefinitely. The exact value
+# is an arbitrary budget — every test patches it — so mutating the literal
+# proves nothing.
+WEBHOOK_TASK_TIMEOUT: Final = 120.0  # pragma: no mutate
+
+# Statuses where the user's grant is genuinely dead and only they can fix it —
+# the SDK's own terminal set (``_TERMINAL_CONNECTION_STATES``).
+#
+# INACTIVE is deliberately NOT here. It is what ``PATCH /connected_accounts/
+# {nanoId}/status`` writes ("enable or disable a connected account"), i.e. someone
+# turned the account off on purpose, and the SDK excludes it from the terminal set
+# for the same reason. Telling that user "GAIA lost access, reconnect" would be
+# wrong — reconnecting is not the fix — and pausing their workflows on it is worse.
+DEAD_CONNECTION_STATUSES: Final = frozenset(
+    {
+        ConnectionStatusEnum.EXPIRED.value,
+        ConnectionStatusEnum.REVOKED.value,
+        ConnectionStatusEnum.FAILED.value,
+    }
+)
 
 # Integration managed_by provider identifiers
 MANAGED_BY_MCP = "mcp"

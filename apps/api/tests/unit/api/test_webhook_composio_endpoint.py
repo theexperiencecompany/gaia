@@ -16,6 +16,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.models.webhook_models import ComposioWebhookEvent
+
 ENDPOINT = "/api/v1/webhook/composio"
 MODULE = "app.api.v1.endpoints.webhook_composio"
 
@@ -347,7 +349,7 @@ class TestTheBackgroundExpiry:
             return []
 
         with (
-            patch(f"{MODULE}._WEBHOOK_TASK_TIMEOUT", 0.01),
+            patch(f"{MODULE}.WEBHOOK_TASK_TIMEOUT", 0.01),
             patch(f"{MODULE}.pause_workflows_for_expired_integration", _never_finishes),
             patch(f"{MODULE}.expire_user_integration", AsyncMock()) as expire,
             patch(f"{MODULE}.log") as mock_log,
@@ -362,3 +364,197 @@ class TestTheBackgroundExpiry:
             "user_id": "user-1",
             "integration_id": "gmail",
         }
+
+
+def _trigger_event(event_type: str = "gmail_new_gmail_message") -> dict:
+    """A Composio *trigger* delivery — the other branch of this endpoint."""
+    return {
+        "type": event_type,
+        "timestamp": "2026-08-10T05:44:33Z",
+        "data": {
+            "connection_id": "conn-1",
+            "connection_nano_id": "nano-1",
+            "trigger_nano_id": "trig-nano-1",
+            "trigger_id": "trig-1",
+            "user_id": "507f1f77bcf86cd799439011",
+            "payload": {"subject": "hi"},
+        },
+    }
+
+
+class TestDeliveryGuards:
+    """Signature and replay run before anything reads the body — Composio retries
+    aggressively, so a delivery processed twice is a workflow fired twice."""
+
+    async def test_every_delivery_is_signature_checked_against_its_own_request(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        redis = MagicMock()
+        redis.client.set = AsyncMock(return_value=True)
+        with (
+            patch(f"{MODULE}.verify_composio_webhook_signature", AsyncMock()) as verify,
+            patch(f"{MODULE}.redis_cache", redis),
+        ):
+            await _post_event(unauthed_client, _trigger_event(), "sig-check-1")
+
+        verify.assert_awaited_once()
+        # The real request, not a placeholder: the signature is computed over this
+        # delivery's headers and body.
+        assert verify.await_args.args[0].url.path == ENDPOINT
+
+    async def test_the_delivery_id_claims_a_dedupe_key_that_expires(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        redis = MagicMock()
+        redis.client.set = AsyncMock(return_value=True)
+        with (
+            patch(f"{MODULE}.verify_composio_webhook_signature", AsyncMock()),
+            patch(f"{MODULE}.redis_cache", redis),
+        ):
+            await _post_event(unauthed_client, _trigger_event(), "dedupe-key-1")
+
+        redis.client.set.assert_awaited_once_with(
+            "webhook:composio:dedupe-key-1", "1", nx=True, ex=3600
+        )
+
+    async def test_a_delivery_whose_key_is_already_claimed_does_no_work(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        redis = MagicMock()
+        # `nx` set returns falsy when the key already exists.
+        redis.client.set = AsyncMock(return_value=None)
+        with (
+            patch(f"{MODULE}.verify_composio_webhook_signature", AsyncMock()),
+            patch(f"{MODULE}.redis_cache", redis),
+            patch(f"{MODULE}.get_handler_by_event") as handler,
+        ):
+            response = await _post_event(unauthed_client, _trigger_event(), "dupe-1")
+
+        assert response.json()["message"] == "Duplicate webhook ignored"
+        handler.assert_not_called()
+
+
+@pytest.mark.usefixtures("_accepted_delivery")
+class TestTriggerEventRouting:
+    async def test_the_event_is_built_from_this_delivery_and_routed_by_its_type(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        """Every identifier the handler acts on comes off this body — a dropped
+        trigger_id or user_id routes someone else's automation."""
+        with patch(f"{MODULE}.get_handler_by_event") as get_handler:
+            get_handler.return_value = None  # unhandled: stops before dispatch
+            response = await _post_event(unauthed_client, _trigger_event(), "trigger-1")
+
+        assert response.json()["message"] == "Webhook received"
+        get_handler.assert_called_once_with("GMAIL_NEW_GMAIL_MESSAGE")
+
+    async def test_the_wide_event_identifies_the_user_and_trigger(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        with (
+            patch(f"{MODULE}.get_handler_by_event", return_value=None),
+            patch(f"{MODULE}.log") as mock_log,
+        ):
+            await _post_event(unauthed_client, _trigger_event(), "trigger-2")
+
+        fields = _set_fields(mock_log)
+        assert fields["user"] == {"id": "507f1f77bcf86cd799439011"}
+        assert fields["webhook"] == {
+            "event_type": "GMAIL_NEW_GMAIL_MESSAGE",
+            "trigger_id": "trig-1",
+        }
+
+    async def test_a_recognised_trigger_is_dispatched_with_the_parsed_event(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        handler = MagicMock()
+        with (
+            patch(f"{MODULE}.get_handler_by_event", return_value=handler),
+            patch(f"{MODULE}.spawn_logged_task") as spawn,
+            patch(f"{MODULE}._process_webhook_event") as process,
+        ):
+            process.return_value = "the-coroutine"
+            response = await _post_event(unauthed_client, _trigger_event(), "trigger-3")
+
+        assert response.json()["message"] == "Webhook accepted"
+        event = process.call_args.args[1]
+        assert event.trigger_id == "trig-1"
+        assert event.connection_id == "conn-1"
+        assert event.connection_nano_id == "nano-1"
+        assert event.trigger_nano_id == "trig-nano-1"
+        assert event.user_id == "507f1f77bcf86cd799439011"
+        assert event.timestamp == "2026-08-10T05:44:33Z"
+        assert event.data["payload"] == {"subject": "hi"}
+        spawn.assert_called_once()
+
+
+@pytest.mark.usefixtures("_accepted_delivery")
+class TestDeliveryWithoutAnId:
+    async def test_a_delivery_with_no_id_header_is_processed_without_claiming_a_key(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        """Composio always sends `webhook-id`, but a missing one must not invent a
+        dedupe key — one bogus key would swallow every later delivery that reused
+        it as a duplicate."""
+        redis = MagicMock()
+        redis.client.set = AsyncMock(return_value=True)
+        with (
+            patch(f"{MODULE}.verify_composio_webhook_signature", AsyncMock()),
+            patch(f"{MODULE}.redis_cache", redis),
+            patch(f"{MODULE}.get_handler_by_event", return_value=None) as get_handler,
+        ):
+            response = await unauthed_client.post(
+                ENDPOINT,
+                content=json.dumps(_trigger_event()).encode(),
+                headers={"content-type": "application/json"},
+            )
+
+        assert response.json()["message"] == "Webhook received"
+        redis.client.set.assert_not_awaited()
+        get_handler.assert_called_once()
+
+
+class TestBackgroundTriggerProcessing:
+    async def test_the_handler_gets_the_nano_id_it_actually_matches_on(self) -> None:
+        """Handlers match `trigger_config.composio_trigger_ids`, which stores the
+        NANO id from triggers.create(). Forwarding the internal UUID instead never
+        matches, so the workflow silently never fires."""
+        handler = MagicMock()
+        handler.process_event = AsyncMock()
+        event = ComposioWebhookEvent(
+            connection_id="conn-1",
+            connection_nano_id="nano-1",
+            trigger_nano_id="ti_nano",
+            trigger_id="uuid-1",
+            user_id="user-1",
+            data={"payload": 1},
+            timestamp="2026-08-10T05:44:33Z",
+            type="gmail_new_gmail_message",
+        )
+
+        await _endpoint()._process_webhook_event(handler, event)
+
+        handler.process_event.assert_awaited_once_with(
+            event_type="GMAIL_NEW_GMAIL_MESSAGE",
+            trigger_id="ti_nano",
+            user_id="user-1",
+            data={"payload": 1},
+        )
+
+    async def test_it_falls_back_to_the_uuid_when_no_nano_id_arrived(self) -> None:
+        handler = MagicMock()
+        handler.process_event = AsyncMock()
+        event = ComposioWebhookEvent(
+            connection_id="conn-1",
+            connection_nano_id="nano-1",
+            trigger_nano_id="",
+            trigger_id="uuid-1",
+            user_id="user-1",
+            data={},
+            timestamp="2026-08-10T05:44:33Z",
+            type="gmail_new_gmail_message",
+        )
+
+        await _endpoint()._process_webhook_event(handler, event)
+
+        assert handler.process_event.await_args.kwargs["trigger_id"] == "uuid-1"

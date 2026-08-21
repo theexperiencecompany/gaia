@@ -16,14 +16,15 @@ integration and running the shared integration expiry transition.
 import asyncio
 from typing import Any, cast
 
-from composio.core.models.webhook_events import (
-    ConnectionStatusEnum,
-    is_connection_expired_event,
-)
+from composio.core.models.webhook_events import is_connection_expired_event
 from fastapi import APIRouter, Request
 from pydantic import ValidationError
 
 from app.config.oauth_config import get_integration_by_config, get_integration_by_toolkit
+from app.constants.integrations import (
+    DEAD_CONNECTION_STATUSES,
+    WEBHOOK_TASK_TIMEOUT,
+)
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.webhook_models import (
@@ -39,25 +40,6 @@ from app.utils.webhook_utils import verify_composio_webhook_signature
 from shared.py.wide_events import log, spawn_logged_task
 
 router = APIRouter()
-
-# Background tasks are cancelled after this many seconds to prevent indefinite hangs.
-_WEBHOOK_TASK_TIMEOUT: float = 120.0
-
-# Statuses where the user's grant is genuinely dead and only they can fix it —
-# the SDK's own terminal set (``_TERMINAL_CONNECTION_STATES``).
-#
-# INACTIVE is deliberately NOT here. It is what ``PATCH /connected_accounts/
-# {nanoId}/status`` writes ("enable or disable a connected account"), i.e. someone
-# turned the account off on purpose, and the SDK excludes it from the terminal set
-# for the same reason. Telling that user "GAIA lost access, reconnect" would be
-# wrong — reconnecting is not the fix — and pausing their workflows on it is worse.
-_DEAD_CONNECTION_STATUSES = frozenset(
-    {
-        ConnectionStatusEnum.EXPIRED.value,
-        ConnectionStatusEnum.REVOKED.value,
-        ConnectionStatusEnum.FAILED.value,
-    }
-)
 
 
 async def _process_webhook_event(handler: TriggerHandler, event_data: ComposioWebhookEvent) -> None:
@@ -75,12 +57,12 @@ async def _process_webhook_event(handler: TriggerHandler, event_data: ComposioWe
                 user_id=event_data.user_id,
                 data=event_data.data,
             ),
-            timeout=_WEBHOOK_TASK_TIMEOUT,
+            timeout=WEBHOOK_TASK_TIMEOUT,
         )
     except TimeoutError:
         log.error(
             f"{LogTag.COMPOSIO} Webhook background processing timed out",
-            timeout_s=_WEBHOOK_TASK_TIMEOUT,
+            timeout_s=WEBHOOK_TASK_TIMEOUT,
             event_type=event_data.type,
             user_id=event_data.user_id,
         )
@@ -104,7 +86,7 @@ async def _expire_connection(
     Both steps share one timeout budget.
     """
     try:
-        async with asyncio.timeout(_WEBHOOK_TASK_TIMEOUT):
+        async with asyncio.timeout(WEBHOOK_TASK_TIMEOUT):
             paused = await pause_workflows_for_expired_integration(user_id, integration_id)
             await expire_user_integration(
                 user_id,
@@ -118,7 +100,7 @@ async def _expire_connection(
     except TimeoutError:
         log.error(
             f"{LogTag.COMPOSIO} Connection expiry processing timed out",
-            timeout_s=_WEBHOOK_TASK_TIMEOUT,
+            timeout_s=WEBHOOK_TASK_TIMEOUT,
             user_id=user_id,
             integration_id=integration_id,
         )
@@ -173,7 +155,7 @@ def _handle_connection_event(body: dict[str, Any]) -> ComposioWebhookAckResponse
         )
         return ComposioWebhookAckResponse(message="Unknown integration ignored")
 
-    if data.status not in _DEAD_CONNECTION_STATUSES:
+    if data.status not in DEAD_CONNECTION_STATUSES:
         log.info(
             f"{LogTag.COMPOSIO} Connection event with a live status — no expiry",
             status=data.status,
@@ -202,7 +184,9 @@ async def webhook_composio(request: Request) -> ComposioWebhookAckResponse:
     """
     await verify_composio_webhook_signature(request)
 
-    webhook_id = request.headers.get("webhook-id", "")
+    # pragma: no mutate — Starlette header lookup is case-insensitive, so a
+    # case change to the header name is a provable no-op.
+    webhook_id = request.headers.get("webhook-id", "")  # pragma: no mutate
     if webhook_id:
         already_processed = not await redis_cache.client.set(
             f"webhook:composio:{webhook_id}", "1", nx=True, ex=3600

@@ -62,7 +62,7 @@ class TestConnectAccountSdkContract:
 
 
 class TestDeadConnectionStatusContract:
-    """`webhook_composio._DEAD_CONNECTION_STATUSES` expires an integration on
+    """`constants.integrations.DEAD_CONNECTION_STATUSES` expires an integration on
     EXPIRED/REVOKED/FAILED. If Composio renames one of those, the webhook stops
     matching and silently never expires anything — the failure mode is silence,
     so only a binding against the real enum catches it."""
