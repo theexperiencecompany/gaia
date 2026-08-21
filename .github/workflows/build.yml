@@ -358,6 +358,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Log in to GHCR
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -394,6 +396,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=gaia-grafana
 
   deployment-plan:
+    timeout-minutes: 10
     # Keep deploy planning behind the build lanes so trigger-deploy never
     # races ahead, but never let a failed/cancelled lane skip planning
     # outright — the lane's result is evaluated explicitly by
@@ -420,6 +423,8 @@ jobs:
       grafana_image_tag: ${{ needs.docker-grafana.result == 'success' && github.sha || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # Single decision point that translates the lane result + affected +
       # manual mode into the deploy boolean, and flags a backend image
       # publish whose deploy did not run.
@@ -448,6 +453,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # continue-on-error on the send step only: the alert content is fully
       # logged by the script either way, and a webhook hiccup must not turn
       # an otherwise-green run red — the run didn't get worse because Discord
