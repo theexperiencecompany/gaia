@@ -134,7 +134,13 @@ def _ws_authorized(websocket: WebSocket) -> bool:
 
 def _ws_url(path: str) -> str:
     """Absolute ws(s) URL for a host path, derived from ``BROWSER_HOST_URL``."""
-    base = settings.BROWSER_HOST_URL.replace("https://", "wss://", 1).replace("http://", "ws://", 1)
+    # NOSONAR python:S5332 — false positive: these literals are the search/replace
+    # pair that UPGRADES the configured scheme to its websocket form. Nothing here
+    # opens a cleartext connection; https becomes wss, and the http->ws arm only
+    # applies when the operator has already configured a plaintext host URL.
+    base = settings.BROWSER_HOST_URL.replace("https://", "wss://", 1).replace(
+        "http://", "ws://", 1
+    )  # NOSONAR python:S5332
     url = f"{base.rstrip('/')}{path}"
     key = settings.BROWSER_HOST_KEY
     if key:

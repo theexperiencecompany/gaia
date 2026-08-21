@@ -57,7 +57,10 @@ def verify_takeover_token(token: str) -> TakeoverTokenClaims:
     """
     secret = _get_takeover_secret()
     try:
-        payload = jwt.decode(token, secret, algorithms=[JWT_ALGORITHM])
+        # NOSONAR python:S5659 — false positive: the signature IS verified. jose
+        # verifies whenever a key and an algorithm allow-list are supplied, and both
+        # are here; there is no verify_signature=False anywhere in this module.
+        payload = jwt.decode(token, secret, algorithms=[JWT_ALGORITHM])  # NOSONAR python:S5659
     except JWTError as exc:
         raise JWTError(f"Takeover token verification failed: {exc!s}") from exc
 
