@@ -9,8 +9,18 @@
   "useDaemonProcess": false,
   "defaultBase": "master",
   "namedInputs": {
-    "default": ["{projectRoot}/**/*"],
-    "production": ["!{projectRoot}/**/*.spec.ts", "!{projectRoot}/**/*.test.ts"]
+    "default": [
+      "{projectRoot}/**/*"
+    ],
+    "production": [
+      "!{projectRoot}/**/*.spec.ts",
+      "!{projectRoot}/**/*.test.ts"
+    ],
+    "python": [
+      "{workspaceRoot}/apps/api/pyproject.toml",
+      "{workspaceRoot}/apps/api/uv.lock",
+      "{workspaceRoot}/libs/shared/py/**/*"
+    ]
   },
   "targetDefaults": {
     "sync": {
@@ -18,15 +28,24 @@
     },
     "build": {
       "cache": true,
-      "dependsOn": ["sync", "^build"]
+      "dependsOn": [
+        "sync",
+        "^build"
+      ]
     },
     "test": {
       "cache": true,
-      "inputs": ["default", "^production"]
+      "inputs": [
+        "default",
+        "^production"
+      ]
     },
     "lint": {
       "cache": true,
-      "inputs": ["default", "{workspaceRoot}/biome.json"]
+      "inputs": [
+        "default",
+        "{workspaceRoot}/biome.json"
+      ]
     },
     "lint:fix": {
       "cache": false
@@ -36,11 +55,16 @@
     },
     "format:check": {
       "cache": true,
-      "inputs": ["default"]
+      "inputs": [
+        "default"
+      ]
     },
     "type-check": {
       "cache": true,
-      "inputs": ["default", "^production"]
+      "inputs": [
+        "default",
+        "^production"
+      ]
     },
     "dev": {
       "cache": false
@@ -82,10 +106,13 @@
     },
     "groups": {
       "apps": {
-        "projects": ["api", "voice-agent"],
+        "projects": [
+          "api",
+          "voice-agent"
+        ],
         "projectsRelationship": "independent",
         "docker": {
-          "groupPreVersionCommand": "npx nx run-many -t docker:build -p api,voice-agent --skipNxCache",
+          "groupPreVersionCommand": "npx nx run-many -t docker:build -p api,voice-agent --parallel --skipNxCache",
           "skipVersionActions": true,
           "registryUrl": "ghcr.io"
         },
@@ -102,7 +129,7 @@
         ],
         "projectsRelationship": "fixed",
         "docker": {
-          "groupPreVersionCommand": "npx nx run-many -t docker:build -p bot-discord,bot-slack,bot-telegram,bot-whatsapp --skipNxCache",
+          "groupPreVersionCommand": "npx nx run-many -t docker:build -p bot-discord,bot-slack,bot-telegram,bot-whatsapp --parallel --skipNxCache",
           "skipVersionActions": true,
           "registryUrl": "ghcr.io"
         },

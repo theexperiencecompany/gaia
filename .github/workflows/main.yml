@@ -57,6 +57,7 @@ jobs:
           # Fail loud: an nx error must fail this job, not yield an empty
           # affected list that green-lights an unchecked PR.
           set -euo pipefail
+          trap 'echo "::error::repro: pnpm exec nx show projects"' ERR
 
           # nx may print JSON arrays or one-per-line; normalize to CSV.
           normalize() { tr -d '[]"' | tr -s ' \n' ',' | sed 's/^,//; s/,$//'; }
@@ -76,10 +77,10 @@ jobs:
 
           echo "Affected Python:     $PY"
           echo "Affected TypeScript: $TS"
+          echo "### Detect affected — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
 
   # Static checks and dead code live in code-quality.yml (enforced lanes on
   # the same events) — never duplicate them here.
-
   # --- Build (runner-native, typescript only) -----------------------------
   build:
     needs: [detect]
@@ -101,20 +102,32 @@ jobs:
           # project.json files and must never expand inside the script itself.
           AFFECTED_TS_PROJECTS: ${{ needs.detect.outputs.typescript_projects }}
         run: |
+          trap 'echo "::error::repro: pnpm exec nx run-many -t build"' ERR
           echo "::group::nx build output"
-          pnpm exec nx run-many -t build -p "$AFFECTED_TS_PROJECTS" --parallel=3
+          pnpm exec nx run-many -t build -p "$AFFECTED_TS_PROJECTS" --parallel=3 2>&1 | tee /tmp/build-nx.out; _rc=${PIPESTATUS[0]}; cat /tmp/build-nx.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
           echo "::endgroup::"
+          echo "### Build (nx) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "Build: OK ($AFFECTED_TS_PROJECTS)"
 
   # --- Test: Python (runner-native + live service containers) -------------
   # Same service topology as `dagger call test-python` (the local harness),
   # run directly on the runner — rebuilding the Dagger env cold cost ~5 min
   # per run for a ~2.5 min suite.
+  # Sharded 2-way via pytest-split (5.5m vs 10m serial) — each shard boots
+  # the same live services via setup-python-test-env (no service: duplication),
+  # measures its subset's coverage to a per-shard data file, and uploads
+  # that file; test-python-coverage (below) combines them and enforces the
+  # 80% floor + diff-cover so neither shard gates a partial view.
   test-python:
     needs: [detect]
     if: needs.detect.outputs.has_python == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    name: test-python (shard ${{ matrix.shard }}/2)
     steps:
       - uses: actions/checkout@v7
         with:
@@ -122,34 +135,97 @@ jobs:
           fetch-depth: 0
       # Also exports the suite's service env (URLs, ENV, USE_REAL_SERVICES).
       - uses: ./.github/actions/setup-python-test-env
-      - name: Run Python tests
+      - name: Run Python tests (shard ${{ matrix.shard }}/2)
         working-directory: apps/api
-        # No ::group:: — failure tracebacks must be visible without un-collapsing.
-        # Coverage is measured in this same run (not a separate job) so the
-        # full suite isn't paid for twice per PR; --cov-fail-under makes the
-        # coverage floor a real gate, not an informational number.
+        env:
+          COVERAGE_FILE: .coverage.${{ matrix.shard }}
         run: |
-          # Flake gate: a test that passes only on rerun fails the build
-          # (CPython's --fail-rerun lesson) — flakiness is a defect, not a shrug.
-          # The gate strips coverage/junit from the rerun so they never gate a
-          # 2-test subset. --timeout is restored explicitly because
-          # --override-ini=addopts drops pytest.ini's `--timeout=300`.
+          trap 'echo "::error::repro: bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest"' ERR
           bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest -n auto -m 'not composio and not model_onboarding and not schemathesis' \
+            --splits 2 --group ${{ matrix.shard }} \
             --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
-            --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=80 \
-            --junitxml=test-results/pytest.xml --durations=50
-          echo "Python tests: OK (full suite vs live services)"
+            --cov=app --cov-report=term-missing --cov-report=xml:coverage.${{ matrix.shard }}.xml \
+            --junitxml=test-results/pytest-${{ matrix.shard }}.xml --durations=50 2>&1 | tee /tmp/python-tests.out; _rc=${PIPESTATUS[0]}; cat /tmp/python-tests.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
+          echo "Python tests shard ${{ matrix.shard }}/2: OK"
+          echo "### Python tests shard ${{ matrix.shard }}/2 — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload shard coverage + junit
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-results-${{ matrix.shard }}
+          path: |
+            apps/api/.coverage.${{ matrix.shard }}
+            apps/api/coverage.${{ matrix.shard }}.xml
+            apps/api/test-results/pytest-${{ matrix.shard }}.xml
+          retention-days: 7
+          if-no-files-found: error
+
+  # --- Coverage combine + gates (runs after both shards) ------------------
+  # Merges the per-shard .coverage.* files and enforces the repo-wide gates
+  # that cannot be checked per-shard: 80% line coverage and 90% diff-cover.
+  # Also runs the non-sharded checks that belong to the Python lane:
+  # junit failure summary, gaia-shared tests, and schemathesis contract fuzz
+  # (the latter boots a live server and must run serially/isolated, so it
+  # lives here rather than inside a shard).
+  test-python-coverage:
+    needs: [test-python]
+    # Run even if a shard failed so the junit summary still posts; but skip
+    # entirely when the Python lane was skipped (no affected Python projects).
+    if: always() && needs.test-python.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-python-test-env
+      - name: Download shard artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: /tmp/shard-artifacts
+          pattern: pytest-results-*
+          merge-multiple: true
+      - name: Combine coverage and enforce gates
+        working-directory: apps/api
+        run: |
+          set -euo pipefail
+          ls -la /tmp/shard-artifacts/
+          cp /tmp/shard-artifacts/.coverage.* . 2>/dev/null || { echo "::error::Missing per-shard .coverage files"; ls -R /tmp/shard-artifacts; exit 1; }
+          echo "Combining coverage from shards..."
+          uv run --frozen coverage combine
+          uv run --frozen coverage report --fail-under=80 --show-missing
+          uv run --frozen coverage xml -o coverage.xml
+          echo "Coverage combine: OK (merged $(ls .coverage* 2>/dev/null | wc -l) shards)"
+          mkdir -p test-results
+          cp /tmp/shard-artifacts/pytest-*.xml test-results/ 2>/dev/null || true
+          echo "## Python coverage (merged shards)" >> "$GITHUB_STEP_SUMMARY"
+          echo "fail-under 80% enforced on merged coverage" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f coverage.xml ]; then echo "coverage.xml exists (merged)" >> "$GITHUB_STEP_SUMMARY"; fi
+      - name: Diff coverage gate (changed lines must be covered)
+        if: github.event_name == 'pull_request'
+        working-directory: apps/api
+        run: |
+          trap 'echo "::error::repro: uv tool run diff-cover coverage.xml"' ERR
+          uv tool run diff-cover coverage.xml --compare-branch=origin/master --fail-under=90
+          echo "diff-cover: OK"
+          echo "### Diff coverage — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+      - name: Summary of failed tests (merged)
+        if: always()
+        working-directory: apps/api
+        run: |
+          for f in test-results/pytest-*.xml; do [ -e "$f" ] || continue; echo "=== $f ==="; uv run --no-project ../../scripts/ci/junit_failures.py "$f" || true; done
+      - name: Upload merged pytest artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-results
+          path: |
+            apps/api/test-results/
+            apps/api/coverage.xml
+            apps/api/.coverage
+          retention-days: 7
       - name: Schemathesis contract fuzz (isolated live-server run)
-        # Boots a real uvicorn server; must NOT share the parallel load that
-        # starves it. Runs serially after the main suite, excluded from it via
-        # the `schemathesis` marker.
-        #
-        # --override-ini is what actually makes it serial: pytest.ini's addopts
-        # carry `-n 4`, so without this the "isolated" run spun up four xdist
-        # workers that each paid the ~10s app import while one of them tried to
-        # boot uvicorn on the same two cores. The timeout is restored explicitly
-        # because overriding addopts drops pytest.ini's `--timeout=300`, which
-        # is now shorter than the server's own boot budget.
         if: always()
         working-directory: apps/api
         run: |
@@ -157,42 +233,25 @@ jobs:
             uv run pytest tests/integration/real/test_schemathesis.py -q --tb=short -m schemathesis \
             --override-ini=addopts=--strict-markers --timeout=600
           echo "Schemathesis: OK"
-      - name: Summary of failed tests
-        if: always()
-        working-directory: apps/api
-        # PEP 723 script (defusedxml pinned inline) — uv builds its own env, so
-        # --no-project keeps it off the apps/api venv it happens to run inside.
-        run: uv run --no-project ../../scripts/ci/junit_failures.py test-results/pytest.xml || true
-      - name: Upload pytest artifacts
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: pytest-results
-          path: apps/api/test-results/
-          retention-days: 7
-      - name: Diff coverage gate (changed lines must be covered)
-        if: github.event_name == 'pull_request'
-        working-directory: apps/api
-        run: |
-          uv tool run diff-cover coverage.xml --compare-branch=origin/master --fail-under=90
-          echo "diff-cover: OK"
+          echo "### Schemathesis — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
       - name: Run gaia-shared tests
         working-directory: apps/api
-        # Separate step, not folded into the run above: these live outside
-        # apps/api and would otherwise be measured against --cov=app. Nothing ran
-        # them at all until now, which is how 24 red slugify tests sat unnoticed
-        # while the bug they caught shipped in public workflow slugs.
         run: |
+          trap 'echo "::error::repro: uv run --frozen pytest ../../libs/shared/py/tests"' ERR
           uv run --frozen pytest ../../libs/shared/py/tests \
             --tb=short -q --override-ini=addopts=--strict-markers
           echo "gaia-shared tests: OK"
+          echo "### gaia-shared tests — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
 
-  # --- Test: Python fast lane (hermetic, no containers) -------------------
+# --- Test: Python fast lane (hermetic, no containers) -------------------
   # The fast-suite invariant, enforced: the hermetic default selection (what
   # `nx test api` runs locally) must finish inside the budget with NO service
   # containers — real-infra tiers skip at collection when USE_REAL_SERVICES
   # is unset. A regression that slows the default run fails this lane instead
   # of silently degrading every contributor's feedback loop.
+  # Runs parallel to test-python (needs: [detect] only) as a budget probe;
+  # making it depend on test-python would serialize the critical path (5.5m +
+  # 5m) and hide the probe's signal behind a slow suite. Keep parallel.
   test-fast:
     needs: [detect]
     if: needs.detect.outputs.has_python == 'true'
@@ -216,10 +275,12 @@ jobs:
         # real-infra tier skips at collection. The `timeout` cap IS the
         # fast-suite budget — a slower suite is a failed build.
         run: |
+          trap 'echo "::error::repro: timeout ${FAST_SUITE_BUDGET_SECONDS:-300} bash"' ERR
           timeout ${FAST_SUITE_BUDGET_SECONDS:-300} bash ../../scripts/ci/run-tests-flake-gate.sh \
             uv run --frozen pytest -n auto -m 'not composio and not model_onboarding and not schemathesis' \
             --tb=short -q --override-ini=addopts=--strict-markers --timeout=300
           echo "Hermetic fast suite: OK (under budget)"
+          echo "### Hermetic fast suite — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
 
   # --- Test: TypeScript (runner-native) -----------------------------------
   test-typescript:
@@ -237,9 +298,11 @@ jobs:
           ENV: test
           AFFECTED_TS_PROJECTS: ${{ needs.detect.outputs.typescript_projects }}
         run: |
+          trap 'echo "::error::repro: pnpm exec nx run-many -t test"' ERR
           echo "::group::vitest output"
-          pnpm exec nx run-many -t test -p "$AFFECTED_TS_PROJECTS" --parallel=3
+          pnpm exec nx run-many -t test -p "$AFFECTED_TS_PROJECTS" --parallel=3 2>&1 | tee /tmp/typescript-tests.out; _rc=${PIPESTATUS[0]}; cat /tmp/typescript-tests.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
           echo "::endgroup::"
+          echo "### TypeScript tests — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "TypeScript tests: OK (projects with a test target among: $AFFECTED_TS_PROJECTS)"
 
   # --- Test: harness tooling (runner-native, always) ----------------------
@@ -259,9 +322,11 @@ jobs:
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
       - name: Run harness tooling tests
         run: |
+          trap 'echo "::error::repro: uv run --no-project --with pytest"' ERR
           echo "::group::pytest output"
           uv run --no-project --with pytest pytest tools/lints tools/llm-stub -q
           echo "::endgroup::"
+          echo "### Harness tooling tests — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "Harness tooling tests: OK (tools/lints + tools/llm-stub)"
 
   # --- Changelog sync check (always) --------------------------------------
@@ -314,28 +379,10 @@ jobs:
           echo "::error::Changelog sub-pages were out of date. A fix PR has been opened automatically — merge it to unblock CI."
           exit 1
 
-  # --- Trivy scan (non-blocking) ------------------------------------------
-  # Kept advisory: a scan of a clean checkout (matching what this job actually
-  # sees) currently reports 12 known HIGH-severity vulnerabilities in
-  # pnpm-lock.yaml (axios, brace-expansion, fast-uri, next x4 CVEs, postcss,
-  # sharp — 0 CRITICAL). Flipping this to blocking today would red every PR
-  # for pre-existing findings, not new ones the PR caused. Upgrade the
-  # flagged packages, re-scan, then remove continue-on-error.
-  trivy-scan:
-    needs: [detect]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: aquasecurity/trivy-action@0.35.0
-        with:
-          scan-type: "fs"
-          severity: "CRITICAL,HIGH"
-          format: "table"
-          scan-ref: "."
+  # Trivy scan moved to weekly .github/workflows/security-cron.yml (A8) —
+  # per-PR it was continue-on-error advisory with pre-existing HIGH findings,
+  # not new ones the PR caused. The cron scans the default branch and opens
+  # an issue on new HIGH/CRITICAL findings.
 
   # --- Regression-proof: changed tests must FAIL on base -------------------
   # FastAPI's lesson: run the PR's changed test files against origin/master
@@ -369,13 +416,14 @@ jobs:
       - detect
       - build
       - test-python
+      - test-python-coverage
       - test-typescript
       - test-fast
       - test-harness-tools
       - regression-proof
       # static checks + dead-code live in code-quality.yml (its own gate)
       # changelog-sync deliberately excluded (non-blocking, auto-opens fix PRs)
-      # trivy-scan deliberately excluded (non-blocking, pre-existing findings)
+      # trivy + pip-audit moved to weekly security-cron.yml (A8)
       # coverage is measured inside test-python itself (--cov-fail-under=80),
       # not a separate job -- a second job would re-run the whole suite
     runs-on: ubuntu-latest
@@ -392,10 +440,24 @@ jobs:
           echo "  test-harness-tools: ${{ needs.test-harness-tools.result }}"
           echo "  regression-proof:   ${{ needs.regression-proof.result }}"
 
-          for r in \
+          {
+            echo "## Quality gate"
+            echo "| job | result |"
+            echo "|---|---|"
+            echo "| detect | ${{ needs.detect.result }} |"
+            echo "| build | ${{ needs.build.result }} |"
+            echo "| test-python | ${{ needs.test-python.result }} |"
+            echo "| test-python-coverage | ${{ needs.test-python-coverage.result }} |"
+            echo "| test-fast | ${{ needs.test-fast.result }} |"
+            echo "| test-typescript | ${{ needs.test-typescript.result }} |"
+            echo "| test-harness-tools | ${{ needs.test-harness-tools.result }} |"
+            echo "| regression-proof | ${{ needs.regression-proof.result }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+                    for r in \
             "${{ needs.detect.result }}" \
             "${{ needs.build.result }}" \
             "${{ needs.test-python.result }}" \
+            "${{ needs.test-python-coverage.result }}" \
             "${{ needs.test-typescript.result }}" \
             "${{ needs.test-fast.result }}" \
             "${{ needs.test-harness-tools.result }}" \

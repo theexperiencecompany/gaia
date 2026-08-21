@@ -1,0 +1,150 @@
+name: Security Cron (weekly Trivy + pip-audit)
+
+# Weekly security scans that were previously per-PR (continue-on-error
+# advisory with pre-existing findings). Per-PR they red every PR for old
+# CVEs, not new ones the PR caused — now they run weekly against the default
+# branch and open an issue when new HIGH/CRITICAL findings appear (A8).
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"  # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: security-cron
+  cancel-in-progress: false
+
+jobs:
+  trivy:
+    name: Trivy fs scan (HIGH/CRITICAL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Run Trivy vulnerability scanner (fs)
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: fs
+          severity: "CRITICAL,HIGH"
+          format: sarif
+          output: trivy-results.sarif
+          scan-ref: "."
+        # Do not continue-on-error: failures must surface so the issue step runs.
+
+      - name: Upload SARIF (optional, for code scanning view)
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-results.sarif
+        continue-on-error: true
+
+      - name: Open issue on HIGH/CRITICAL findings
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ ! -f trivy-results.sarif ]; then
+            echo "No SARIF produced — skipping issue."
+            exit 0
+          fi
+          COUNT=$(python3 -c "import json; d=json.load(open('trivy-results.sarif')); print(sum(len(r.get('results',[])) for r in d.get('runs',[])))")
+          if [ "$COUNT" -eq 0 ]; then
+            echo "Trivy: 0 HIGH/CRITICAL findings — no issue needed."
+            exit 0
+          fi
+          TITLE="Security: Trivy found ${COUNT} HIGH/CRITICAL finding(s) (weekly scan)"
+          # Avoid duplicate open issues with same title prefix
+          EXISTING=$(gh issue list --state open --search "Trivy found" --json number --jq length)
+          if [ "$EXISTING" -gt 0 ]; then
+            echo "Open Trivy issue already exists ($EXISTING) — updating with comment."
+            NUM=$(gh issue list --state open --search "Trivy found" --json number --jq '.[0].number')
+            gh issue comment "$NUM" --body "Weekly Trivy scan at $(date -u +%Y-%m-%d) found ${COUNT} HIGH/CRITICAL finding(s). See workflow run \#${{ github.run_id }} and SARIF upload."
+            exit 0
+          fi
+          BODY="Weekly Trivy fs scan (HIGH/CRITICAL) found **${COUNT}** finding(s) on \`master\` at $(date -u +%Y-%m-%d).
+
+          - Workflow run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          - SARIF artifact: \`trivy-results.sarif\` (also uploaded to code scanning if enabled)
+
+          Triage HIGH/CRITICAL CVEs and upgrade the flagged packages. Re-scan locally with:
+          \`\`\`
+          docker run --rm -v \$(pwd):/work aquasec/trivy fs --severity HIGH,CRITICAL /work
+          \`\`\`"
+          gh issue create --title "$TITLE" --body "$BODY" --label security 2>/dev/null || gh issue create --title "$TITLE" --body "$BODY"
+          echo "Created issue: $TITLE"
+
+  pip-audit:
+    name: pip-audit (Python deps CVEs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "0.8.17"
+          enable-cache: true
+          prune-cache: true
+
+      - name: Export resolved dependencies
+        run: uv export --frozen --no-emit-workspace -o /tmp/gaia-requirements.txt
+
+      - name: Run pip-audit
+        id: audit
+        run: |
+          set -o pipefail
+          # --strict fails on any CVE; output is captured for the issue body
+          uvx --no-build pip-audit==2.10.1 --strict --skip-editable --disable-pip -r /tmp/gaia-requirements.txt 2>&1 | tee /tmp/pip-audit.txt
+          echo "exit=$?" > /tmp/audit-exit
+        continue-on-error: true
+
+      - name: Open issue on pip-audit findings
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          EXIT=$(cat /tmp/audit-exit 2>/dev/null | cut -d= -f2 || echo 0)
+          if [ "$EXIT" -eq 0 ]; then
+            echo "pip-audit: 0 findings — no issue needed."
+            exit 0
+          fi
+          TITLE="Security: pip-audit found dependency CVEs (weekly scan)"
+          EXISTING=$(gh issue list --state open --search "pip-audit found" --json number --jq length)
+          BODY="Weekly pip-audit scan (\`pip-audit --strict\`) found CVEs on \`master\` at $(date -u +%Y-%m-%d).
+
+          \`\`\`
+          $(cat /tmp/pip-audit.txt | head -n 200)
+          \`\`\`
+
+          Workflow run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          Triage and upgrade flagged packages, then re-run:
+          \`\`\`
+          uv export --frozen --no-emit-workspace -o /tmp/req.txt && uvx pip-audit --strict --disable-pip -r /tmp/req.txt
+          \`\`\`"
+          if [ "$EXISTING" -gt 0 ]; then
+            echo "Open pip-audit issue already exists — adding comment."
+            NUM=$(gh issue list --state open --search "pip-audit found" --json number --jq '.[0].number')
+            gh issue comment "$NUM" --body "$BODY"
+            exit 0
+          fi
+          gh issue create --title "$TITLE" --body "$BODY" --label security 2>/dev/null || gh issue create --title "$TITLE" --body "$BODY"
+          echo "Created issue: $TITLE"

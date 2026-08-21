@@ -369,6 +369,25 @@ rm -f file             # NOT: rm file
 rm -rf directory       # NOT: rm -r directory
 ```
 
+## CI Parallelism & Caching — Rules
+
+Rules for GitHub Actions, Nx affected, and Cloudflare deploys. Follow exactly — CI is the gate.
+
+- **Use local `.nx/cache` via `actions/cache@v4`, not Nx Cloud.** Restore at job start, save if miss. Key: `nx-${os}-${hashFiles(pnpm-lock.yaml,nx.json,**/project.json)}-${hashFiles(apps/**,libs/**)}`. Never use `restore-keys` without a hash — prevents cache poisoning.
+- **Single `pnpm install` / `uv sync` per workflow.** One `setup` job installs and caches (`pnpm-store-${hashFiles(pnpm-lock.yaml)}` + `~/.cache/uv` via `setup-uv` with `enable-cache` + `prune-cache: true`). Downstream jobs `needs: setup` — never reinstall per lane/job.
+- **Docker layer cache is `type=gha` scoped.** Every `docker/build-push-action` and `nx docker:build` must use `cache-from: type=gha` + `cache-to: type=gha,mode=max`. GHA cache is 10 GB — `mode=max` + registry fallback; never `mode=min` alone.
+- **Parallelize Docker builds.** `api` and `voice-agent` build in a matrix, not serially.
+- **Coalesce master merges — final deploy wins.** `code-quality.yml` / `main.yml` use `cancel-in-progress: true` on `refs/heads/master` so 5 rapid merges cancel to 1 final verification. `build.yml` keeps `cancel-in-progress: false` so a running deploy never dies. Final SHA via `nrwl/nx-set-shas` with base = last successful master verifies the union of all 5.
+- **Single affected detection.** One `detect` job runs `nrwl/nx-set-shas` and exports `base`/`head`; all lanes reuse it via `nx show projects --affected` / `nx affected`. Never duplicate `changed-files.sh` greps.
+- **Use `nx affected -t <target>` with `cache: true`, not raw tools.** Lanes run `nx affected -t lint type-check build` so unaffected projects hit cache and skip. Do not call `biome`, `ruff`, or `tsc` directly outside Nx unless wrapped via `nx run-many`.
+- **Keep `nx.json` inputs correct.** `api:build` (and similar) must list `pyproject.toml`, `uv.lock`, `libs/shared/py/**` etc. A missing input causes false cache hits that hide real changes.
+- **Shard the bottleneck.** `test-python` (~10 m) is sharded into 2 via `pytest-split` (`--splits 2 --group N`). `test-fast` stays a non-blocking budget probe — never gate the PR on it alone.
+- **Next.js cache key is minimal.** `restore-nextjs-cache` hashes only `pnpm-lock.yaml` + `next.config.*` + `open-next.config.ts` + `wrangler.jsonc`, never `apps/web/src/**`. Hashing sources thrashes the cache every commit.
+- **Emit timing summaries every lane.** Each job appends duration + cache hit/miss to `$GITHUB_STEP_SUMMARY` and uses `::group::` for install logs plus `::error file=,line=` / `::warning` annotations. No lane fails silently.
+- **Cloudflare deploys only via GitHub.** `deploy-web.yml` builds `pnpm --filter web cf:build`, uploads `apps/web/.open-next`, then deploys with `cloudflare/wrangler-action@v3` using `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` (minimal scope: Workers Scripts Write + R2 Write/Read + Routes Write). Workers Dashboard → Settings → Builds must stay Disconnected (`version_upload` only). PR previews deploy as `pr-<number>`; prod only on `refs/heads/master`.
+- **Move heavy scans to cron.** `trivy`, `pip-audit`, and mutation testing (2–3 runners, skip modules <5 lines) run weekly in `security-cron.yml`, not on every PR.
+- **Verify with real workflow runs + charts.** After CI changes, trigger `gh workflow run <workflow> --ref <branch>` on the branch, collect `gh run list` timings, and publish before/after bars in `.agents/ci-report.html` or `docs/ci-metrics.md`. Never claim CI is faster without measured runs.
+
 ## Common Issues
 
 - Python deps not resolving → `nx run api:sync` or `nx run voice-agent:sync`

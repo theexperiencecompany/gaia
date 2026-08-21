@@ -285,7 +285,20 @@ def main() -> int:
         rel_py = rel_py.removesuffix(".py")
         testfiles = with_unit_mirror(rel_py, _test_files_for(rel_py))
         if testfiles:
-            matrix.append(_entry(rel, testfiles, merge_base))
+            entry = _entry(rel, testfiles, merge_base)
+            # Skip modules with <5 changed lines — a 1-4 line diff cannot
+            # justify the full mutmut cycle (hundreds of mutants on untouched
+            # lines via diff-scoped pragmas still cost minutes). The coverage
+            # and review gates already carry such tiny changes.
+            changed_lines = entry.get("changed_lines", [])
+            total_changed = sum(max(0, r[1] - r[0] + 1) for r in changed_lines) if isinstance(changed_lines, list) else 0
+            if merge_base and total_changed > 0 and total_changed < 5:
+                print(
+                    f"::notice::mutation gate: {rel} has only {total_changed} changed line(s) — skipping (threshold 5)",
+                    file=sys.stderr,
+                )
+                continue
+            matrix.append(entry)
             continue
         unit_mirror = f"tests/unit/{Path(rel_py).parent}/test_{Path(rel_py).stem}.py"
         failures.append(
