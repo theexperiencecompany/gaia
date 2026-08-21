@@ -132,8 +132,6 @@ apps/api/app/services/workflow/generation_service.py	PLR0913
 apps/api/app/services/workflow/generation_service.py	PLR0915
 apps/api/app/services/workflow/service.py	PLR0912
 apps/api/app/services/workflow/service.py	PLR0915
-apps/api/app/services/workflow/workflow_subagent.py	PLR0912
-apps/api/app/services/workflow/workflow_subagent.py	PLR0913
 apps/api/app/utils/agent_utils.py	PLR0912
 apps/api/app/utils/auth_utils.py	PLR0911
 apps/api/app/utils/auth_utils.py	PLR0912
