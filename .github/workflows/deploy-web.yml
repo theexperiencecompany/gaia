@@ -132,8 +132,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: open-next
-          path: apps/web/.open-next
+          path: apps/web/.open-next/**/*
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 3
 
       - name: Report build duration
