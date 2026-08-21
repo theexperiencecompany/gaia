@@ -63,8 +63,7 @@ async def handle_workflow_error(
         # Imported lazily: workflow_utils is imported by app.services.workflow, which
         # the repository's ChromaDB/oauth chain reaches back into — a module-level
         # import would form a cycle.
-        # Deferred import: breaks the cycle: repositories' ChromaDB/oauth chain re-enters app.services.workflow, which imports this module
-        from app.db.repositories.workflows import workflow_repository  # noqa: PLC0415 -- deferred
+        from app.db.repositories.workflows import workflow_repository
 
         await workflow_repository.mark_error(workflow_id, user_id, deactivate=deactivate)
         log.error(
@@ -114,9 +113,7 @@ async def _partition_integration_ids(
     """Split ids into (valid, unknown) by resolving each against real integrations
     (built-in, the user's custom, or the public marketplace). Resolve errors fail open
     (kept as valid) so a transient DB blip never drops a real integration."""
-    from app.services.integrations.integration_resolver import (  # noqa: PLC0415 -- resolver
-        IntegrationResolver,
-    )
+    from app.services.integrations.integration_resolver import IntegrationResolver
 
     if not integration_ids:
         return [], []
@@ -203,7 +200,7 @@ async def create_workflow_directly(
         user_timezone=user_timezone,
     )
     try:
-        from app.services.workflow import WorkflowService  # noqa: PLC0415 -- breaks c
+        from app.services.workflow.service import WorkflowService
 
         trigger_config = TriggerConfig(
             type=draft.backend_trigger_type,
@@ -330,7 +327,7 @@ async def apply_workflow_edit(
     repos, calendars — must be set in the app's workflow editor); the caller is
     told so the user can adjust it there.
     """
-    from app.services.workflow import WorkflowService  # noqa: PLC0415 -- breaks c
+    from app.services.workflow.service import WorkflowService
 
     new_type = draft.backend_trigger_type
     current = workflow.trigger_config

@@ -430,17 +430,14 @@ async def delete_todo(todo_id: str, user: AuthenticatedUser = Depends(get_curren
 async def generate_workflow(
     todo_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
-    user_timezone: str = Depends(get_user_timezone_from_preferences),  # noqa: ARG001 -- user_timezone injected for auth side-effect only
+    user_timezone: str = Depends(get_user_timezone_from_preferences),
 ) -> TodoWorkflowGenerationResponse:
     """Generate a workflow for a todo (background generation + WebSocket notification).
 
     This endpoint returns immediately with 'generating' status. The frontend should
     display a skeleton and listen for the 'workflow.generated' WebSocket event.
     """
-    # Deferred import: heavy workflow service/queue stack loads only when this route runs
-    from app.services.workflow.queue_service import (  # noqa: PLC0415 -- deferred
-        WorkflowQueueService,
-    )
+    from app.services.workflow.queue_service import WorkflowQueueService
 
     log.set(
         user={"id": user_id},
@@ -514,13 +511,8 @@ async def get_workflow_status(
         todo={"operation": "get_workflow_status", "id": todo_id},
     )
     try:
-        # Heavy workflow service/queue stack loads only when this route runs.
-        from app.services.workflow.queue_service import (  # noqa: PLC0415 -- heavy
-            WorkflowQueueService,
-        )
-        from app.services.workflow.service import (  # noqa: PLC0415 -- heavy workflow
-            WorkflowService,
-        )
+        from app.services.workflow.queue_service import WorkflowQueueService
+        from app.services.workflow.service import WorkflowService
 
         wf_cache_key = f"workflow_status:{user_id}:{todo_id}"
         cached_wf: TodoWorkflowStatusResponse | None = await get_cache(

@@ -749,7 +749,7 @@ async def _dispatch_workflow_notification(
     by the workflow's instructions).
     """
     # Imported here to avoid the workflow-service → agent import cycle.
-    from app.services.workflow.notifications import (  # noqa: PLC0415 -- breaks the workflow-service -> agent import cycle
+    from app.services.workflow.notifications import (
         send_workflow_completion_notification,
         send_workflow_failure_notification,
     )

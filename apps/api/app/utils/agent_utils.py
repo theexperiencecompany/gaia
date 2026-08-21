@@ -291,7 +291,7 @@ async def _resolve_mcp_integration_id(tool_name: str, user_id: str) -> str | Non
     the single source of truth. Returns None if the tool isn't an MCP tool
     or the user has no connected MCP that exposes it.
     """
-    from app.services.mcp.mcp_client import (  # noqa: PLC0415 -- heavy MCP client stack (mcp_use SDK) loads only when MCP tool resolution actually needs it
+    from app.services.mcp.mcp_client import (
         get_mcp_client,
     )
 
@@ -313,8 +313,7 @@ async def _resolve_mcp_ui_metadata(
     tool_name: str, user_id: str
 ) -> tuple[dict[str, Any] | None, str | None]:
     """Pull mcp_ui + mcp_server_url off the user's MCPClient tool object."""
-    # Deferred import: heavy MCP client stack (mcp_use SDK) loads only when MCP tool resolution actually needs it
-    from app.services.mcp.mcp_client import get_mcp_client  # noqa: PLC0415 -- heavy MC
+    from app.services.mcp.mcp_client import get_mcp_client
 
     try:
         mcp_client = await get_mcp_client(user_id)
@@ -338,17 +337,11 @@ async def _resolve_mcp_ui_metadata(
 
 async def _resolve_mcp_icon_name(integration_id: str) -> tuple[str | None, str | None]:
     """Fetch (icon_url, integration_name) for an integration via Redis-cached Mongo."""
-    # Function-local re-import of module-level constants inside a hot helper.
-    from app.constants.cache import (  # noqa: PLC0415 -- Function-local re-import of
+    from app.constants.cache import (
         CUSTOM_INT_METADATA_CACHE_PREFIX,
         CUSTOM_INT_METADATA_TTL,
     )
-
-    # Deferred import kept out of the module load path.
-    from app.db.redis import (  # noqa: PLC0415 -- Deferred import kept out of the
-        get_cache,
-        set_cache,
-    )
+    from app.db.redis import get_cache, set_cache
 
     cache_key = f"{CUSTOM_INT_METADATA_CACHE_PREFIX}:{integration_id}"
     cached = await get_cache(cache_key)

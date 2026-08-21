@@ -280,7 +280,7 @@ class ToolRegistry:
         """
 
         # NOTE: Import tool modules lazily to avoid circular imports during app startup.
-        from app.agents.tools import (  # noqa: PLC0415 -- tool modules re-enter this registry; deferred to break startup cycles
+        from app.agents.tools import (
             context_tool,
             desktop_tools,
             download_tool,
@@ -387,7 +387,7 @@ class ToolRegistry:
             internal=True,
             destructive_tools=set(),
         )
-        from app.agents.tools import coding  # noqa: PLC0415 -- coding pulls the e2b SDK
+        from app.agents.tools import coding
 
         # Sandbox coding tools (bash/read/write/edit) are agent-only plumbing
         # that act only inside the user's isolated sandbox.
@@ -481,9 +481,7 @@ class ToolRegistry:
         # index_tools_to_store lives in chroma_tools_store, which imports
         # get_tool_registry from this module — keep this one local to break the
         # import cycle (see _index_category_tools below).
-        from app.db.chroma.chroma_tools_store import (  # noqa: PLC0415 -- chroma_tools_store imports get_tool_registry back; local import breaks the cycle
-            index_tools_to_store,
-        )
+        from app.db.chroma.chroma_tools_store import index_tools_to_store
 
         composio_service = get_composio_service()
 
@@ -588,9 +586,7 @@ class ToolRegistry:
         index_tools_to_store always receives a homogeneous list.
         """
         # Import here to avoid circular import
-        from app.db.chroma.chroma_tools_store import (  # noqa: PLC0415 -- chroma_tools_store imports get_tool_registry back; local import breaks the cycle
-            index_tools_to_store,
-        )
+        from app.db.chroma.chroma_tools_store import index_tools_to_store
 
         category = self._categories.get(category_name)
         if not category:

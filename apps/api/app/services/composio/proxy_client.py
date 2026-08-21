@@ -50,10 +50,7 @@ _cache_lock = Lock()
 def _get_composio() -> Composio:
     # Lazy import to avoid a circular dependency between proxy_client and
     # the Composio service / custom-tool registry that imports it.
-    # Deferred import: breaks the proxy_client <-> composio_service/custom-tools import cycle
-    from app.services.composio.composio_service import (  # noqa: PLC0415 -- deferred
-        get_composio_service,
-    )
+    from app.services.composio.composio_service import get_composio_service
 
     return get_composio_service().composio
 
@@ -311,7 +308,7 @@ def proxy_request_sync(
     query: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
     binary_body: dict[str, str] | None = None,
-) -> Any:  # noqa: ANN401 -- overrides LangChain Runnable methods typed Any upstream
+) -> Any:
     """Send an authenticated request to a provider via Composio's proxy.
 
     Returns the parsed `data` field from the proxy response. Raises
@@ -380,7 +377,7 @@ async def proxy_request(
     query: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
     binary_body: dict[str, str] | None = None,
-) -> Any:  # noqa: ANN401 -- overrides LangChain Runnable methods typed Any upstream
+) -> Any:
     """Async variant of `proxy_request_sync`. Runs the SDK call in a worker thread."""
     return await asyncio.to_thread(
         proxy_request_sync,

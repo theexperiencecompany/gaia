@@ -266,7 +266,7 @@ async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None
         f"' {{}} \\; 2>/dev/null"
     )
     try:
-        res = await sbx.commands.run(enumerate_cmd, timeout=15)  # type: ignore[attr-defined]  # sbx is deliberately duck-typed as object; e2b attrs resolved at runtime
+        res = await sbx.commands.run(enumerate_cmd, timeout=15)  # type: ignore[attr-defined]
     except Exception:
         return
 
@@ -320,7 +320,7 @@ async def _persist_run_log(sbx: object, run_id: str, stdout: str, stderr: str) -
     # Native write auto-creates the runs/ parent and takes the body as data —
     # no base64 round-trip, no shell.
     with contextlib.suppress(Exception):
-        await sbx.files.write(log_path, body)  # type: ignore[attr-defined]  # sbx is deliberately duck-typed as object; e2b attrs resolved at runtime
+        await sbx.files.write(log_path, body)  # type: ignore[attr-defined]
 
 
 async def _run_foreground(
@@ -364,7 +364,7 @@ async def _run_foreground(
         # the SDK raises TimeoutException and stops streaming. A local
         # asyncio.timeout would only cancel our coroutine, not the remote
         # command, which is why S7483 does not apply here.
-        result = await sbx.commands.run(  # type: ignore[attr-defined]  # duck-typed sandbox handle (object)  # NOSONAR python:S7483
+        result = await sbx.commands.run(  # type: ignore[attr-defined]  # NOSONAR python:S7483
             command,
             cwd=cwd or WORKSPACE_ROOT,
             on_stdout=_on_stdout,
@@ -423,7 +423,7 @@ async def _run_background(
         f"nohup bash -c {sh_quote(command)} > {sh_quote(log_path)} 2>&1 "
         "& echo $!"
     )
-    result = await sbx.commands.run(  # type: ignore[attr-defined]  # sbx is deliberately duck-typed as object; e2b attrs resolved at runtime
+    result = await sbx.commands.run(  # type: ignore[attr-defined]
         wrapped, cwd=cwd or WORKSPACE_ROOT, timeout=10
     )
     pid = (getattr(result, "stdout", "") or "").strip()

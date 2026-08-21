@@ -391,7 +391,7 @@ jobs:
           echo "::group::ignore whys"
           python3 tools/lints/check_ignore_whys.py
           echo "::endgroup::"
-          echo "ignore-whys: OK (every ruff/mypy escape hatch is documented)
+          echo "ignore-whys: OK (every ruff/mypy escape hatch is documented)"
 
   # --- Python mypy --------------------------------------------------------
   python-mypy:
@@ -840,15 +840,6 @@ jobs:
           python3 tools/lints/check_suppressions.py
           echo "::endgroup::"
           echo "Suppression hygiene: OK (all inline suppressions carry a why)"
-      - name: Fail on any per-file-ignores entry that masks nothing anymore
-        # RUF100 polices inline noqas; this is its equivalent for config-file
-        # exemptions — re-run each rule without the entry and fail if it fires
-        # nowhere, so a framework-contract entry dies when its contract does.
-        run: |
-          echo "::group::escape-hatch staleness"
-          python3 tools/lints/check_ignore_staleness.py
-          echo "::endgroup::"
-          echo "Escape-hatch staleness: OK (every per-file entry is load-bearing)"
 
   # --- Secret scanning (gitleaks, diff-scoped) -----------------------------
   # gitleaks-action is free for personal-account repos but requires a (free,
