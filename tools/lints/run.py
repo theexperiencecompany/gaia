@@ -60,14 +60,15 @@ def main(argv: list[str]) -> int:
 def _write_summary(ok: bool, total: int, file_count: int) -> None:
     """Minimal human-facing lane summary for $GITHUB_STEP_SUMMARY."""
 
-
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if not summary:
         return
     try:
         with open(summary, "a", encoding="utf-8") as f:
             if ok:
-                f.write(f"### Custom Python lints — ✅ passed ({len(RULES)} rules, {file_count} files)\n")
+                f.write(
+                    f"### Custom Python lints — ✅ passed ({len(RULES)} rules, {file_count} files)\n"
+                )
             else:
                 f.write(f"### Custom Python lints — ❌ {total} violation(s) ({len(RULES)} rules)\n")
                 f.write("See `tools/lints/README.md` for rationale and remediation.\n")
