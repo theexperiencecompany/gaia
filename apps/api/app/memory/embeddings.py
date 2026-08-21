@@ -32,6 +32,8 @@ import httpx
 
 from app.constants.memory import (
     EMBEDDING_MODEL_NAME,
+    EMBEDDING_SIDECAR_MAX_BATCH_CHARS,
+    EMBEDDING_SIDECAR_MAX_BATCH_TEXTS,
     EMBEDDING_SIDECAR_TIMEOUT_SECONDS,
     EMBEDDING_SIDECAR_URL_ENV,
     MODEL_CACHE_DIR,
@@ -47,7 +49,29 @@ _embedding_lock = threading.Lock()
 _reranker_model: TextCrossEncoder | None = None
 _reranker_lock = threading.Lock()
 
+# One HTTP connection pool for the process instead of a fresh AsyncClient per
+# call. Keyed by running loop: pytest-asyncio gives every test a new loop, and
+# pooled connections from an old loop are unusable in the new one.
+_http_client: tuple[asyncio.AbstractEventLoop, httpx.AsyncClient] | None = None
+_http_client_lock = threading.Lock()
+
 _T = TypeVar("_T")
+
+
+def chunk_texts(texts: list[str], max_texts: int, max_chars: int) -> list[list[str]]:
+    """Greedy split under both caps; an oversized single text keeps its own chunk."""
+    chunks: list[list[str]] = []
+    current: list[str] = []
+    current_chars = 0
+    for text in texts:
+        if current and (len(current) >= max_texts or current_chars + len(text) > max_chars):
+            chunks.append(current)
+            current, current_chars = [], 0
+        current.append(text)
+        current_chars += len(text)
+    if current:
+        chunks.append(current)
+    return chunks
 
 
 async def _observed(operation: str, backend: str, count: int, awaitable: Awaitable[_T]) -> _T:
@@ -117,9 +141,17 @@ def _get_reranker_model() -> TextCrossEncoder:
 
 
 def _embed_sync(texts: list[str]) -> list[list[float]]:
-    """Embed passage texts synchronously (CPU-bound; call from a thread)."""
+    """Embed passage texts synchronously (CPU-bound; call from a thread).
+
+    ``batch_size`` bounds the ONNX forward pass — fastembed's default of 256
+    texts per pass materializes multi-GB activations and OOM-killed the
+    sidecar (#918).
+    """
     model = _get_embedding_model()
-    return [vector.tolist() for vector in model.embed(texts)]
+    return [
+        vector.tolist()
+        for vector in model.embed(texts, batch_size=EMBEDDING_SIDECAR_MAX_BATCH_TEXTS)
+    ]
 
 
 def _embed_query_sync(text: str) -> list[float]:
@@ -138,7 +170,10 @@ def _embed_query_sync(text: str) -> list[float]:
 def _rerank_sync(query: str, documents: list[str]) -> list[float]:
     """Score documents against the query synchronously (CPU-bound)."""
     model = _get_reranker_model()
-    return [float(score) for score in model.rerank(query, documents)]
+    return [
+        float(score)
+        for score in model.rerank(query, documents, batch_size=EMBEDDING_SIDECAR_MAX_BATCH_TEXTS)
+    ]
 
 
 def _sidecar_url() -> str | None:
@@ -147,11 +182,24 @@ def _sidecar_url() -> str | None:
     return url.rstrip("/") or None
 
 
+def _get_http_client() -> httpx.AsyncClient:
+    """The process-wide sidecar connection pool (per running loop)."""
+    global _http_client
+    loop = asyncio.get_running_loop()
+    if _http_client is None or _http_client[0] is not loop or _http_client[1].is_closed:
+        with _http_client_lock:
+            if _http_client is None or _http_client[0] is not loop or _http_client[1].is_closed:
+                _http_client = (
+                    loop,
+                    httpx.AsyncClient(timeout=EMBEDDING_SIDECAR_TIMEOUT_SECONDS),
+                )
+    return _http_client[1]
+
+
 async def _sidecar_post(path: str, payload: dict) -> dict[str, Any]:
-    async with httpx.AsyncClient(timeout=EMBEDDING_SIDECAR_TIMEOUT_SECONDS) as client:
-        response = await client.post(f"{_sidecar_url()}{path}", json=payload)
-        response.raise_for_status()
-        return cast(dict[str, Any], response.json())
+    response = await _get_http_client().post(f"{_sidecar_url()}{path}", json=payload)
+    response.raise_for_status()
+    return cast(dict[str, Any], response.json())
 
 
 async def embed_query(text: str) -> list[float]:
@@ -164,15 +212,26 @@ async def embed_query(text: str) -> list[float]:
     return await _observed("embed_query", "local", 1, asyncio.to_thread(_embed_query_sync, text))
 
 
+async def _sidecar_embed(texts: list[str]) -> list[list[float]]:
+    """POST /embed in bounded chunks; a giant batch can't hold one slot forever
+    (#918) and chunk order preserves vector order."""
+    vectors: list[list[float]] = []
+    for chunk in chunk_texts(
+        texts, EMBEDDING_SIDECAR_MAX_BATCH_TEXTS, EMBEDDING_SIDECAR_MAX_BATCH_CHARS
+    ):
+        result = await _observed(
+            "embed", "sidecar", len(chunk), _sidecar_post("/embed", {"texts": chunk})
+        )
+        vectors.extend(cast(list[list[float]], result["vectors"]))
+    return vectors
+
+
 async def embed_batch(texts: list[str]) -> list[list[float]]:
     """Embed a batch of texts in one fastembed pass."""
     if not texts:
         return []
     if _sidecar_url():
-        result = await _observed(
-            "embed", "sidecar", len(texts), _sidecar_post("/embed", {"texts": texts})
-        )
-        return cast(list[list[float]], result["vectors"])
+        return await _sidecar_embed(texts)
     return await _observed("embed", "local", len(texts), asyncio.to_thread(_embed_sync, texts))
 
 
@@ -181,13 +240,18 @@ async def rerank(query: str, documents: list[str]) -> list[float]:
     if not documents:
         return []
     if _sidecar_url():
-        result = await _observed(
-            "rerank",
-            "sidecar",
-            len(documents),
-            _sidecar_post("/rerank", {"query": query, "documents": documents}),
-        )
-        return cast(list[float], result["scores"])
+        scores: list[float] = []
+        for chunk in chunk_texts(
+            documents, EMBEDDING_SIDECAR_MAX_BATCH_TEXTS, EMBEDDING_SIDECAR_MAX_BATCH_CHARS
+        ):
+            result = await _observed(
+                "rerank",
+                "sidecar",
+                len(chunk),
+                _sidecar_post("/rerank", {"query": query, "documents": chunk}),
+            )
+            scores.extend(cast(list[float], result["scores"]))
+        return scores
     return await _observed(
         "rerank", "local", len(documents), asyncio.to_thread(_rerank_sync, query, documents)
     )

@@ -12,6 +12,7 @@ routing, request validation, and response contract (the response keys
 covered hermetically.
 """
 
+import asyncio
 from collections.abc import AsyncGenerator
 from unittest.mock import MagicMock, patch
 
@@ -172,3 +173,62 @@ class TestLifespan:
                 pass
 
         mock_rerank.assert_not_called()
+
+
+class TestRequestBounds:
+    @patch.object(server, "_embed_sync", return_value=VECTORS)
+    async def test_oversized_single_text_rejected_with_413(
+        self, mock_embed: MagicMock, sidecar_client: AsyncClient
+    ) -> None:
+        oversized = "x" * (server.EMBEDDING_SIDECAR_MAX_TEXT_CHARS + 1)
+        response = await sidecar_client.post("/embed", json={"texts": [oversized]})
+
+        assert response.status_code == 413
+        assert "MAX_TEXT_CHARS" in response.json()["detail"]
+        mock_embed.assert_not_called()
+
+    @patch.object(server, "_embed_query_sync", return_value=QUERY_VECTOR)
+    async def test_oversized_single_query_rejected_with_413(
+        self, mock_embed_query: MagicMock, sidecar_client: AsyncClient
+    ) -> None:
+        response = await sidecar_client.post(
+            "/embed_query", json={"text": "x" * (server.EMBEDDING_SIDECAR_MAX_TEXT_CHARS + 1)}
+        )
+
+        assert response.status_code == 413
+        mock_embed_query.assert_not_called()
+
+    @patch.object(server, "_embed_sync", return_value=VECTORS)
+    async def test_large_batch_passes_through_in_one_call(
+        self, mock_embed: MagicMock, sidecar_client: AsyncClient
+    ) -> None:
+        # Memory bounding happens inside _embed_sync's explicit fastembed
+        # batch_size; the endpoint forwards the full list unchanged.
+        texts = [f"t{i}" * 10 for i in range(100)]
+        response = await sidecar_client.post("/embed", json={"texts": texts})
+
+        assert response.status_code == 200
+        mock_embed.assert_called_once_with(texts)
+
+
+class TestSaturationBackpressure:
+    async def test_full_slots_return_503_after_bounded_wait(
+        self, sidecar_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # One-slot pool so holding it truly saturates the sidecar.
+        monkeypatch.setattr(server, "_slot_wait_seconds", 0.05)
+        monkeypatch.setattr(server, "_inference_slots", asyncio.Semaphore(1))
+
+        async with server._inference_slots:
+            response = await sidecar_client.post("/embed", json={"texts": TEXTS})
+
+        assert response.status_code == 503
+        assert response.headers["retry-after"] == "5"
+
+    @patch.object(server, "_embed_sync", return_value=VECTORS)
+    async def test_slot_released_after_success(
+        self, _mock_embed: MagicMock, sidecar_client: AsyncClient
+    ) -> None:
+        for _ in range(3):
+            response = await sidecar_client.post("/embed", json={"texts": TEXTS})
+            assert response.status_code == 200
