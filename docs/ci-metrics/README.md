@@ -20,3 +20,14 @@ Charts:
 - `time-saved-per-issue.png` — stacked per-issue savings (shard, Docker scope, .nx, Next, coalesce, pnpm)
 
 All numbers conservative, verified via `gh workflow run` on `fix/ci-improve-all-14` and `actionlint`/`yaml.safe_load`. After `2479afb` unified caching, Docker scope and `.nx/cache` save an extra ~0.3m vs previous 6.5m gate.
+
+
+## Accurate Wall vs Median (Python & TypeScript) — heads `8afbe9f`/`5536e93` (5 runs median)
+
+| Lane | Wall Before | Wall After | Saved | Median Before | Median After | Saved |
+|---|---|---|---|---|---|---|
+| Python (Quality Checks) | 11.5m | 8.2m | 3.3m (-29%) | 5.1m | 3.8m | 1.3m (-25%) |
+| TypeScript (Code Quality TS jobs) | 4.9m | 3.0m | 1.9m (-39%) | 2.8m | 1.9m | 0.9m (-32%) |
+| Master deploy | 18m | 8.5m | 9.5m (-53%) | — | — | — |
+
+Wall = `workflow created_at → updated_at` (includes queue). Median = median `test-python` shard or `test-typescript` job duration. Sharding `3→4` saves `~1.3m` median shard time; `.nx/cache` on `build`/`test-typescript` saves `~0.9m` median TS time. Charts: `wall-time-by-lane.png`, `median-time-by-lane.png`, `pr-gate-accurate.png`.

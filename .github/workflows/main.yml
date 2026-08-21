@@ -116,12 +116,18 @@ jobs:
           echo "::endgroup::"
           echo "### Build (nx) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "Build: OK ($AFFECTED_TS_PROJECTS)"
+      - name: Save Nx cache
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','nx.json','**/project.json') }}-${{ hashFiles('apps/**','libs/**') }}-${{ github.run_id }}
 
   # --- Test: Python (runner-native + live service containers) -------------
   # Same service topology as `dagger call test-python` (the local harness),
   # run directly on the runner — rebuilding the Dagger env cold cost ~5 min
   # per run for a ~2.5 min suite.
-  # Sharded 3-way via pytest-split (3.8m vs 10m serial, ~5.5m was 2-way) — each shard boots
+  # Sharded 4-way via pytest-split (2.8m vs 10m serial, ~5.5m was 2-way, ~3.8m was 3-way) — each shard boots
   # the same live services via setup-python-test-env (no service: duplication),
   # measures its subset's coverage to a per-shard data file, and uploads
   # that file; test-python-coverage (below) combines them and enforces the
@@ -134,8 +140,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
-    name: test-python (shard ${{ matrix.shard }}/3)
+        shard: [1, 2, 3, 4]
+    name: test-python (shard ${{ matrix.shard }}/4)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -151,20 +157,20 @@ jobs:
           restore-keys: |
             pytest-split-${{ runner.os }}-${{ hashFiles('apps/api/tests/**/*.py','apps/api/pyproject.toml','uv.lock') }}-
             pytest-split-${{ runner.os }}-
-      - name: Run Python tests (shard ${{ matrix.shard }}/2)
+      - name: Run Python tests (shard ${{ matrix.shard }}/4)
         working-directory: apps/api
         env:
           COVERAGE_FILE: .coverage.${{ matrix.shard }}
         run: |
           trap 'echo "::error::repro: bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest"' ERR
           bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest -n auto -m 'not composio and not model_onboarding and not schemathesis' \
-            --splits 3 --group ${{ matrix.shard }} \
+            --splits 4 --group ${{ matrix.shard }} \
             --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
             --cov=app --cov-report=term-missing --cov-report=xml:coverage.${{ matrix.shard }}.xml \
             --cov-fail-under=0 \
             --junitxml=test-results/pytest-${{ matrix.shard }}.xml --durations=50 2>&1 | tee /tmp/python-tests.out; _rc=${PIPESTATUS[0]}; cat /tmp/python-tests.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
-          echo "Python tests shard ${{ matrix.shard }}/3: OK"
-          echo "### Python tests shard ${{ matrix.shard }}/3 — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Python tests shard ${{ matrix.shard }}/4: OK"
+          echo "### Python tests shard ${{ matrix.shard }}/4 — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
       - name: Save pytest-split cache
         if: always()
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -319,6 +325,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Restore Nx cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.0.5
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','nx.json','**/project.json') }}-${{ hashFiles('apps/**','libs/**') }}
+          restore-keys: |
+            nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','nx.json','**/project.json') }}-
       - uses: ./.github/actions/setup-node-pnpm
       - name: Run TypeScript tests
         env:
@@ -331,6 +344,13 @@ jobs:
           echo "::endgroup::"
           echo "### TypeScript tests — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "TypeScript tests: OK (projects with a test target among: $AFFECTED_TS_PROJECTS)"
+      - name: Save Nx cache
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','nx.json','**/project.json') }}-${{ hashFiles('apps/**','libs/**') }}-${{ github.run_id }}
+
 
   # --- Test: harness tooling (runner-native, always) ----------------------
   # Deliberately ungated. `tools/` belongs to no Nx project, so a PR touching
