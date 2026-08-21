@@ -13,7 +13,7 @@ from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 
-def to_std_dict(obj: t.Any) -> t.Any:
+def to_std_dict(obj: t.Any) -> t.Any:  # noqa: ANN401 -- framework contract
     """Recursively convert jsonref proxies to standard python dicts/lists"""
     if isinstance(obj, dict):
         return {k: to_std_dict(v) for k, v in obj.items()}
@@ -26,7 +26,7 @@ _original_parse_info: Callable[..., t.Any] | None = None
 _applied = False
 
 
-def _patched_parse_info(self: t.Any) -> t.Any:
+def _patched_parse_info(self: t.Any) -> t.Any:  # noqa: ANN401 -- framework contract
     """Patched version that inlines $ref before storing schema"""
     if _original_parse_info is None:
         raise RuntimeError("composio_custom_tool_schema_patch.apply() was not called")

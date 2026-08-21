@@ -48,7 +48,7 @@ def _should_send_inactive_email(user: UserDocument) -> bool:
     return _emails_sent_this_episode(user) < 2
 
 
-async def check_inactive_users(ctx: dict[str, Any]) -> str:
+async def check_inactive_users(ctx: dict[str, Any]) -> str:  # noqa: ARG001 -- contract
     """
     Check for inactive users and send emails to those inactive for more than 7 days.
     Emails are sent only once after 7 days and once more after 14 days to avoid spam.

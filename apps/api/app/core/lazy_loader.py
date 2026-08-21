@@ -652,7 +652,7 @@ class ProviderRegistry:
             failed = ", ".join(name for name, _ in errors)
             raise RuntimeError(f"Provider warmup failed for: {failed}")
 
-    def get(self, name: str) -> Any | None:
+    def get(self, name: str) -> Any | None:  # noqa: ANN401 -- framework contract
         """Get a provider instance by name synchronously - only works for sync providers.
 
         Returns ``Any`` because the registry is keyed by name, not by type: the
@@ -674,7 +674,7 @@ class ProviderRegistry:
                     self.get(dep)
         return loader.get()
 
-    async def aget(self, name: str) -> Any | None:
+    async def aget(self, name: str) -> Any | None:  # noqa: ANN401 -- framework contract
         """Get a provider instance by name asynchronously - works for both sync and async providers.
 
         Returns ``Any`` for the same reason as :meth:`get`; narrow with ``cast``.

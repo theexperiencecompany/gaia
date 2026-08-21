@@ -18,7 +18,7 @@ from shared.py.wide_events import log
 T = TypeVar("T", bound=MessagesState)
 
 
-def filter_messages_node(state: T, config: RunnableConfig, store: BaseStore) -> T:
+def filter_messages_node(state: T, config: RunnableConfig, store: BaseStore) -> T:  # noqa: ARG001 -- execute_hooks() passes state/config/store positionally
     """
     Filters out unanswered tool calls from AI messages.
 

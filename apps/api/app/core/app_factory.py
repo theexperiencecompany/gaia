@@ -114,7 +114,8 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(
-        request: Request, exc: RequestValidationError
+        request: Request,  # noqa: ARG001 -- Starlette calls exception handlers as handler(conn, exc)
+        exc: RequestValidationError,
     ) -> JSONResponse:
         """Log validation errors with field-level detail and return 422."""
         errors = [

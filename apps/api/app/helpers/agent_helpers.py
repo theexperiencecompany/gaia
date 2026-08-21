@@ -602,7 +602,7 @@ async def execute_graph_silent(
     return complete_message, tool_data
 
 
-def _json_safe_tool_result(content: Any) -> Any:
+def _json_safe_tool_result(content: Any) -> Any:  # noqa: ANN401 -- framework contract
     """The raw tool result handed to an MCP-UI iframe, as JSON-serializable data.
 
     Inline media is text-extracted out: media blocks are plain dicts, so they

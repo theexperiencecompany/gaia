@@ -30,7 +30,7 @@ router = APIRouter()
 @router.post("/test/{integration_id}", response_model_exclude_none=True)
 async def test_mcp_connection(
     integration_id: str,
-    user: AuthenticatedUser = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),  # noqa: PT028 -- contract
 ) -> MCPConnectionTestResponse:
     """
     Test connection to an MCP server.

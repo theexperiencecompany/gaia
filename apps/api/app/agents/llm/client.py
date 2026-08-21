@@ -598,7 +598,7 @@ def _sticky_session_id(config: RunnableConfig | None, *, auxiliary: bool) -> str
 
 
 async def _meter_discarded_replay(
-    discarded: Any,
+    discarded: Any,  # noqa: ANN401 -- framework contract
     config: RunnableConfig | None,
     label: str,
 ) -> None:
@@ -654,7 +654,7 @@ async def ainvoke_llm(
     timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS,
     meter_auxiliary: bool = True,
     fallback_config: RunnableConfig | None = None,
-) -> Any:
+) -> Any:  # noqa: ANN401 -- overrides LangChain Runnable methods typed Any upstream
     """Invoke a runnable: retry transient errors, then fall back to ``fallback`` (if
     given) on a provider failure. Bugs and CancelledError propagate.
 
@@ -783,7 +783,7 @@ def invoke_llm(
     label: str = "model",
     max_attempts: int = LLM_RETRY_MAX_ATTEMPTS,
     fallback_config: RunnableConfig | None = None,
-) -> Any:
+) -> Any:  # noqa: ANN401 -- overrides LangChain Runnable methods typed Any upstream
     """Sync counterpart of :func:`ainvoke_llm`."""
     try:
         return with_llm_retry(primary, max_attempts=max_attempts).invoke(messages, config=config)

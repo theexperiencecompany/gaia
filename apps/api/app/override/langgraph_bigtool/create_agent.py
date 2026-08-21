@@ -528,7 +528,7 @@ def create_agent(
                 bound.add(tool.name)
         return bound
 
-    def reject_unbound_tools(tool_calls: list[dict], *, store: BaseStore) -> State:
+    def reject_unbound_tools(tool_calls: list[dict], *, store: BaseStore) -> State:  # noqa: ARG001 -- langgraph injects store positionally at graph-execution time
         """Return error ToolMessages for tool calls that were not bound."""
         messages = [
             ToolMessage(
@@ -649,7 +649,7 @@ def create_agent(
 
         return destinations
 
-    def finish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State:
+    def finish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State:  # noqa: ARG001 -- langgraph injects store positionally at graph-execution time
         messages = []
         for call in tool_calls:
             args = call.get("args", {}) if isinstance(call, dict) else {}

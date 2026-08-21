@@ -125,11 +125,15 @@ def _read_text(path: Path) -> str | None:
 def _reason_of(comment: str) -> str | None:
     """The reason prose in a Python directive comment, or None if absent.
 
-    Strips the directive prefix (``# noqa: B006``, ``# type: ignore[arg-type]``)
-    and any other tool directive that may trail it (``# NOSONAR ...``); what
-    remains must be real prose.
+    Finds the directive anywhere in the comment (another tool's directive, e.g.
+    ``# NOSONAR …``, may precede it on the same line), strips the directive
+    prefix (``# noqa: B006``, ``# type: ignore[arg-type]``) and any further
+    other-tool directives; what remains must be real prose.
     """
-    rest = comment.strip()
+    m = re.search(r"#\s*(?:noqa|type:\s*ignore)\b", comment)
+    if not m:
+        return None
+    rest = comment[m.start() :]
     for prefix in _DIRECTIVE_PREFIXES:
         if prefix.match(rest):
             rest = prefix.sub("", rest, count=1)

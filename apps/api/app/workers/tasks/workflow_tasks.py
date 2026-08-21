@@ -65,7 +65,11 @@ _DRIFT_WARN_SECONDS = 300
 
 
 async def process_workflow_generation_task(
-    ctx: dict[str, Any], todo_id: str, user_id: str, title: str, description: str = ""
+    ctx: dict[str, Any],  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
+    todo_id: str,
+    user_id: str,
+    title: str,
+    description: str = "",
 ) -> str:
     """
     Process workflow generation task for todos.
@@ -476,7 +480,9 @@ def _origin_for(trigger_type: str) -> LimitHitOrigin:
 
 
 async def execute_workflow_by_id(
-    ctx: dict[str, Any], workflow_id: str, context: dict[str, Any] | None = None
+    ctx: dict[str, Any],  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
+    workflow_id: str,
+    context: dict[str, Any] | None = None,
 ) -> str:
     """
     Execute a workflow by ID with proper execution count tracking.
@@ -790,7 +796,7 @@ async def execute_workflow_as_chat(
 
 
 async def regenerate_workflow_steps(
-    ctx: dict[str, Any],
+    ctx: dict[str, Any],  # noqa: ARG001 -- framework contract
     workflow_id: str,
     user_id: str,
     regeneration_reason: str,
@@ -832,7 +838,7 @@ async def regenerate_workflow_steps(
     return f"Successfully regenerated steps for workflow {workflow_id}"
 
 
-async def generate_workflow_steps(ctx: dict[str, Any], workflow_id: str, user_id: str) -> str:
+async def generate_workflow_steps(ctx: dict[str, Any], workflow_id: str, user_id: str) -> str:  # noqa: ARG001 -- contract
     """
     Generate workflow steps for a workflow.
     Broadcasts WebSocket event when complete if it's a todo workflow.

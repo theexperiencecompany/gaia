@@ -301,7 +301,7 @@ class Workflow(BaseScheduledTask):
         description="Creator info hydrated for public workflow lookups.",
     )
 
-    def __init__(self, **data: Any) -> None:
+    def __init__(self, **data: Any) -> None:  # noqa: ANN401 -- framework contract
         """Initialize workflow with mapping from trigger_config to BaseScheduledTask fields.
 
         ``**data`` stays ``Any``. Measured, don't re-litigate: ``**data: object``
@@ -354,7 +354,7 @@ class Workflow(BaseScheduledTask):
 
     @model_validator(mode="before")
     @classmethod
-    def hydrate_legacy_prompt_and_description(cls, data: Any) -> Any:
+    def hydrate_legacy_prompt_and_description(cls, data: Any) -> Any:  # noqa: ANN401 -- forwards **data into BaseScheduledTask's typed __init__
         """Ensure legacy records still expose prompt and non-null description."""
         if isinstance(data, dict):
             description = data.get("description") or ""

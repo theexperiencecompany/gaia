@@ -311,7 +311,7 @@ def proxy_request_sync(
     query: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
     binary_body: dict[str, str] | None = None,
-) -> Any:
+) -> Any:  # noqa: ANN401 -- overrides LangChain Runnable methods typed Any upstream
     """Send an authenticated request to a provider via Composio's proxy.
 
     Returns the parsed `data` field from the proxy response. Raises
@@ -380,7 +380,7 @@ async def proxy_request(
     query: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
     binary_body: dict[str, str] | None = None,
-) -> Any:
+) -> Any:  # noqa: ANN401 -- overrides LangChain Runnable methods typed Any upstream
     """Async variant of `proxy_request_sync`. Runs the SDK call in a worker thread."""
     return await asyncio.to_thread(
         proxy_request_sync,

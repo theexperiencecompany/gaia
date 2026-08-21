@@ -75,7 +75,7 @@ def _reinstate_reserved_python_keywords(
 class StructuredTool(BaseStructuredTool):
     """StructuredTool that returns a structured failure instead of raising on invalid args."""
 
-    def run(self, *args: t.Any, **kwargs: t.Any) -> t.Any:
+    def run(self, *args: t.Any, **kwargs: t.Any) -> t.Any:  # noqa: ANN401 -- contract
         """Run the tool, converting argument validation errors into a failure result."""
         try:
             return super().run(*args, **kwargs)
@@ -102,7 +102,7 @@ class LangchainProvider(
         keywords: dict[str, t.Any],
         toolkit: str | None = None,
     ) -> types.FunctionType:
-        def function(**kwargs: t.Any) -> dict[str, t.Any]:
+        def function(**kwargs: t.Any) -> dict[str, t.Any]:  # noqa: ANN401 -- contract
             """Wrapper function for composio action."""
 
             # Discarding other data except metadata from __runnable_config__

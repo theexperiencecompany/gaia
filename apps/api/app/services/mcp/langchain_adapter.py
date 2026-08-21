@@ -121,7 +121,7 @@ class SanitizingLangChainAdapter(LangChainAdapter):
     ``destructiveHint``.
     """
 
-    def fix_schema(self, schema: Any) -> Any:
+    def fix_schema(self, schema: Any) -> Any:  # noqa: ANN401 -- framework contract
         """Fix JSON schema for Pydantic compatibility.
 
         Signature kept as ``Any`` on purpose: this overrides mcp_use's
@@ -207,10 +207,10 @@ class SanitizingLangChainAdapter(LangChainAdapter):
             def __repr__(self) -> str:
                 return f"MCP tool: {self.name}: {self.description}"
 
-            def _run(self, **kwargs: Any) -> NoReturn:
+            def _run(self, **kwargs: Any) -> NoReturn:  # noqa: ANN401 -- contract
                 raise NotImplementedError("MCP tools only support async operations")
 
-            async def _arun(self, **kwargs: Any) -> str | list[dict[str, Any]] | dict[str, Any]:
+            async def _arun(self, **kwargs: Any) -> str | list[dict[str, Any]] | dict[str, Any]:  # noqa: ANN401 -- adapts the untyped MCP client into LangChain tools
                 try:
                     tool_result: CallToolResult = await self.tool_connector.call_tool(
                         self.name, kwargs

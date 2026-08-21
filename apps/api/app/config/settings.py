@@ -49,7 +49,7 @@ class BaseAppSettings(BaseSettings):
 
     # For handling both normal env var loading and dict constructor
     @classmethod
-    def from_env(cls, **kwargs: Any) -> Self:
+    def from_env(cls, **kwargs: Any) -> Self:  # noqa: ANN401 -- framework contract
         """Create settings from environment variables."""
         try:
             return cls(**kwargs)
@@ -705,7 +705,7 @@ def _ensure_infisical_loaded() -> None:
 
 
 @lru_cache(maxsize=1)
-def get_settings() -> Any:
+def get_settings() -> Any:  # noqa: ANN401 -- framework contract
     """
     Get cached settings instance based on environment.
 

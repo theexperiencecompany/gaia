@@ -430,7 +430,7 @@ async def delete_todo(todo_id: str, user: AuthenticatedUser = Depends(get_curren
 async def generate_workflow(
     todo_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
-    user_timezone: str = Depends(get_user_timezone_from_preferences),
+    user_timezone: str = Depends(get_user_timezone_from_preferences),  # noqa: ARG001 -- user_timezone injected for auth side-effect only
 ) -> TodoWorkflowGenerationResponse:
     """Generate a workflow for a todo (background generation + WebSocket notification).
 

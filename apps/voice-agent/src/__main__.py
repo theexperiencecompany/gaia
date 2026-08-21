@@ -11,8 +11,8 @@ def main() -> None:
     Errors are left to propagate so failures surface with a full traceback.
     """
     if len(sys.argv) < 2:
-        print("Usage: python -m src <command>")
-        print("Commands: start, download-files")
+        print("Usage: python -m src <command>")  # noqa: T201 -- framework contract
+        print("Commands: start, download-files")  # noqa: T201 -- framework contract
         sys.exit(1)
 
     command = sys.argv[1]
@@ -30,7 +30,7 @@ def main() -> None:
 
         download_files()
     else:
-        print(f"Unknown command: {command}")
+        print(f"Unknown command: {command}")  # noqa: T201 -- framework contract
         sys.exit(1)
 
 

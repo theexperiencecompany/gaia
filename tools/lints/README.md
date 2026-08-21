@@ -257,3 +257,17 @@ is a blanket.
 handler does not shift it and fire a false alarm. It grandfathers ten probe/parse
 sites that predate the rule. Like the `no-service-classes` allowlist it is a
 ratchet — remove an entry when the site is fixed, never add one.
+
+### Staleness watchdog (per-file entries)
+
+Inline noqas clean themselves up via RUF100; config exemptions cannot. The
+suppression-hygiene lane therefore also runs:
+
+```bash
+python3 tools/lints/check_ignore_staleness.py
+```
+
+which re-runs every concrete `per-file-ignores` entry's rule with the
+exemption stripped (`--isolated`) and fails when an entry masks nothing
+anymore — delete it. Pattern globs are skipped: they are category policy, not
+per-file debt.

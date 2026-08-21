@@ -829,12 +829,26 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "0.8.17"
+          enable-cache: true
+          prune-cache: true
       - name: Fail on any inline suppression without a same-line reason
         run: |
           echo "::group::suppression hygiene"
           python3 tools/lints/check_suppressions.py
           echo "::endgroup::"
           echo "Suppression hygiene: OK (all inline suppressions carry a why)"
+      - name: Fail on any per-file-ignores entry that masks nothing anymore
+        # RUF100 polices inline noqas; this is its equivalent for config-file
+        # exemptions — re-run each rule without the entry and fail if it fires
+        # nowhere, so a framework-contract entry dies when its contract does.
+        run: |
+          echo "::group::escape-hatch staleness"
+          python3 tools/lints/check_ignore_staleness.py
+          echo "::endgroup::"
+          echo "Escape-hatch staleness: OK (every per-file entry is load-bearing)"
 
   # --- Secret scanning (gitleaks, diff-scoped) -----------------------------
   # gitleaks-action is free for personal-account repos but requires a (free,

@@ -188,7 +188,7 @@ class DynamicToolNode(ToolNode):
         input: list[AnyMessage] | dict[str, Any] | BaseModel,
         config: RunnableConfig,
         runtime: "Runtime",
-    ) -> Any:
+    ) -> Any:  # noqa: ANN401 -- mirrors LangGraph ToolNode methods typed Any upstream
         """Override to inject dynamically added tools before execution.
 
         Return type mirrors ``ToolNode._func``, which is itself typed ``Any``
@@ -203,7 +203,7 @@ class DynamicToolNode(ToolNode):
         input: list[AnyMessage] | dict[str, Any] | BaseModel,
         config: RunnableConfig,
         runtime: "Runtime",
-    ) -> Any:
+    ) -> Any:  # noqa: ANN401 -- mirrors LangGraph ToolNode methods typed Any upstream
         """Override to inject dynamically added tools before execution and apply middleware.
 
         Return type mirrors ``ToolNode._afunc``, which is itself typed ``Any``
@@ -234,7 +234,7 @@ class DynamicToolNode(ToolNode):
         input: list[AnyMessage] | dict[str, Any] | BaseModel,
         config: RunnableConfig,
         runtime: "Runtime",
-    ) -> Any:
+    ) -> Any:  # noqa: ANN401 -- mirrors LangGraph ToolNode methods typed Any upstream
         """Execute tools with middleware wrap_tool_call hooks.
 
         Return type is ``Any``: two branches delegate straight to

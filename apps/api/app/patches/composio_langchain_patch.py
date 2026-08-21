@@ -15,7 +15,7 @@ def apply() -> None:
 
         def patched_json_schema_to_pydantic_type(
             json_schema: dict[str, t.Any] | bool,
-        ) -> t.Union[type, t.Any | None]:
+        ) -> t.Union[type, t.Any | None]:  # noqa: ANN401 -- framework contract
             # Boolean JSON Schemas (draft-06+, e.g. bare `true`/`false` sub-schemas)
             # have no "anyOf" to flatten — delegate straight to the original,
             # which already handles them (isinstance(json_schema, bool) branch).
