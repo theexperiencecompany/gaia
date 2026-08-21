@@ -10,7 +10,7 @@
 - Worker name: `gaia` (`apps/web/wrangler.jsonc`)
 - Account ID: `d65fe47d4d3b4f2725e87b91c772cbc3`
 - Secrets: `CLOUDFLARE_API_TOKEN` (minimal: Workers Scripts Write + R2 Write/Read + Routes Write, expires 2027-08-21) + `CLOUDFLARE_ACCOUNT_ID`
-- Workflow: `deploy-web.yml` builds `pnpm --filter web cf:build`, uploads `.open-next`, deploys via `wrangler-action@v3` on `push: master` (paths `apps/web/**`), preview alias `pr-<n>` on PRs. Reports duration to `$GITHUB_STEP_SUMMARY`, fails visibly (`::error`), uses `environment: production` (requires approval if configured).
+- Workflow: `deploy-web.yml` builds `pnpm --filter ./apps/web cf:build`, uploads `.open-next`, deploys via `wrangler-action@v3` on `push: master` (paths `apps/web/**`), preview alias `pr-<n>` on PRs. Reports duration to `$GITHUB_STEP_SUMMARY`, fails visibly (`::error`), uses `environment: production` (requires approval if configured).
 
 ## Manual dashboard step (required, one-time)
 
@@ -45,7 +45,7 @@ actionlint .github/workflows/deploy-web.yml
 python3 -c "import yaml; yaml.safe_load(open('.github/workflows/deploy-web.yml'))"
 
 # Dry-run locally (requires token)
-pnpm --filter web cf:build
+pnpm --filter ./apps/web cf:build
 npx wrangler deploy --config apps/web/wrangler.jsonc --dry-run
 
 # Trigger workflow

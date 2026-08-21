@@ -122,7 +122,7 @@ flowchart TD
 
 ### `.github/workflows/deploy-web.yml`
 1. Triggers on `push: master` (paths `apps/web/**`, `libs/shared/ts/**`, `wrangler.jsonc`, `open-next.config.ts`, `next.config.mjs`) and `pull_request: master` (same paths) plus manual `workflow_dispatch`.
-2. `build`: checkout → `setup-node-pnpm` + `restore-nextjs-cache` + `.nx/cache` → `preflight` (best-effort Workers Builds API probe, never blocks) → `pnpm --filter web cf:build` timed via `time` → upload `apps/web/.open-next` artifact → report duration to `$GITHUB_STEP_SUMMARY` (`::notice`) and fail visibly (`::error` + summary on failure). Concurrency `deploy-web-${{ github.ref }}` with `cancel-in-progress: false` so rapid master merges queue rather than drop the deploy.
+2. `build`: checkout → `setup-node-pnpm` + `restore-nextjs-cache` + `.nx/cache` → `preflight` (best-effort Workers Builds API probe, never blocks) → `pnpm --filter ./apps/web cf:build` timed via `time` → upload `apps/web/.open-next` artifact → report duration to `$GITHUB_STEP_SUMMARY` (`::notice`) and fail visibly (`::error` + summary on failure). Concurrency `deploy-web-${{ github.ref }}` with `cancel-in-progress: false` so rapid master merges queue rather than drop the deploy.
 3. `deploy-prod`: gated `if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'`, `environment: production`, downloads artifact, verifies `worker.js` exists, then `cloudflare/wrangler-action@v3` with `command: deploy --config apps/web/wrangler.jsonc`. Reports duration and success URL; fails visibly with token-scope hint on error.
 4. `preview`: gated `if: github.event_name == 'pull_request'`, uploads preview version via `command: versions upload --preview-alias pr-${{ github.event.number }} --config apps/web/wrangler.jsonc`, reports duration, comments PR with expected preview URL. Requires Workers Versions / Gradual Rollouts enabled; `preview_urls: false` in `wrangler.jsonc` means the alias URL is only reachable if routing is configured.
 
@@ -157,7 +157,7 @@ flowchart TD
 - `.github/workflows/code-quality.yml`: code-hygiene lanes (lint/type/dead-code/complexity/security) behind the ratcheted `Quality gate (required)` check.
 - `.github/workflows/build.yml`: Docker image build/publish via Dagger, deploy planning, and deploy triggers.
 - `.github/workflows/deploy-swarm-prod.yml`: production backend deploy and rollback via Docker Swarm stack on Hetzner VM.
-- `.github/workflows/deploy-web.yml`: Cloudflare Workers frontend deploy — builds `pnpm --filter web cf:build`, deploys via `cloudflare/wrangler-action@v3` on `push: master` (paths `apps/web/**`), preview alias `pr-<n>` on PRs. Reports duration, fails visibly, uses `environment: production`. Workers Builds auto-deploy must be disabled (see `docs/cloudflare-workers-builds.md`).
+- `.github/workflows/deploy-web.yml`: Cloudflare Workers frontend deploy — builds `pnpm --filter ./apps/web cf:build`, deploys via `cloudflare/wrangler-action@v3` on `push: master` (paths `apps/web/**`), preview alias `pr-<n>` on PRs. Reports duration, fails visibly, uses `environment: production`. Workers Builds auto-deploy must be disabled (see `docs/cloudflare-workers-builds.md`).
 - `.github/workflows/release-please.yml`: release PR/tag automation and CLI publish dispatch.
 - `.github/workflows/publish-cli.yml`: CLI package validation/build/publish workflow.
 - `.github/workflows/desktop-release.yml`: desktop installer build and release-asset upload.

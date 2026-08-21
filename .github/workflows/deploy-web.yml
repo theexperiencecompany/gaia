@@ -118,8 +118,8 @@ jobs:
 
       - name: Build Cloudflare bundle
         run: |
-          echo "::group::opennext build — pnpm --filter web cf:build"
-          time pnpm --filter web cf:build
+          echo "::group::opennext build — pnpm --filter ./apps/web cf:build"
+          time pnpm --filter ./apps/web cf:build
           echo "::endgroup::"
           echo "Build output:"
           du -sh apps/web/.open-next 2>/dev/null || true
@@ -148,7 +148,7 @@ jobs:
       - name: Fail visibly on build error
         if: failure()
         run: |
-          echo "::error title=Cloudflare build failed::pnpm --filter web cf:build failed — see logs above"
+          echo "::error title=Cloudflare build failed::pnpm --filter ./apps/web cf:build failed — see logs above"
           echo "### ❌ Build failed" >> "$GITHUB_STEP_SUMMARY"
           echo "Check the \"Build Cloudflare bundle\" step for the error." >> "$GITHUB_STEP_SUMMARY"
 
