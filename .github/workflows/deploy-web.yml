@@ -207,6 +207,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy --config apps/web/wrangler.jsonc
+          packageManager: npm
 
       - name: Report deploy duration
         if: always()
@@ -272,6 +273,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: versions upload --preview-alias pr-${{ github.event.number }} --config apps/web/wrangler.jsonc
+          packageManager: npm
 
       - name: Report preview duration
         if: always()
