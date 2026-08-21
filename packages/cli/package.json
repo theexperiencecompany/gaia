@@ -64,7 +64,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/heygaia/gaia.git",
+    "url": "git+https://github.com/theexperiencecompany/gaia.git",
     "directory": "packages/cli"
   }
 }
