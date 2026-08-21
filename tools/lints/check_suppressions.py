@@ -63,13 +63,13 @@ DOC = "tools/lints/README.md#suppression-hygiene"
 _HERE = Path(__file__).resolve().parent
 REPO_ROOT = _HERE.parents[1]
 
-_TS_SUFFIXES = {".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"}
-_TRACKED_GLOBS = ("*.py", "*.ts", "*.tsx", "*.js", "*.jsx", "*.mjs", "*.cjs")
+_TS_SUFFIXES = {".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".css"}
+_TRACKED_GLOBS = ("*.py", "*.ts", "*.tsx", "*.js", "*.jsx", "*.mjs", "*.cjs", "*.css")
 
 _NOQA_RE = re.compile(r"#\s*noqa\b")
 _TYPE_IGNORE_RE = re.compile(r"#\s*type:\s*ignore\b")
 _BIOME_IGNORE_RE = re.compile(r"//\s*biome-ignore\b")
-_BIOME_BLOCK_RE = re.compile(r"/\*?\s*biome-ignore(?:-[a-z]+)?\s+\S+:?\s*([^*]|\*(?!/))*")
+_BIOME_IGNORE_ANY_RE = re.compile(r"/{1,2}\s*\**\s*biome-ignore\b")
 
 #: Stripped off the front of a comment to leave the reason prose behind.
 _DIRECTIVE_PREFIXES = (
@@ -245,13 +245,14 @@ def _scan_ts_comments(path: Path) -> list[Hit]:
     for lineno, line in enumerate(text.splitlines(), start=1):
         blanked = _QUOTED_SPAN_RE.sub(lambda m: " " * len(m.group()), line)
         comment, in_template = _split_comment(blanked, in_template)
-        candidate = comment or blanked  # block form: /* biome-ignore */ or JSX {/* biome-ignore */}
-        if candidate:
-            m2 = _BIOME_BLOCK_RE.search(candidate)
-            if m2 and not comment:
-                candidate = "/" + candidate.lstrip("/{ ")  # normalize to // form for reason parsing
-            if m2:
-                hits.append(Hit("biome-ignore", lineno, candidate.strip()))
+        source_form = comment or blanked
+        if source_form and _BIOME_IGNORE_ANY_RE.search(source_form):
+            # Normalize every shape (// , /* , /** , JSX {/* */) to
+            # "// biome-ignore …" so reason extraction has one canonical form.
+            idx = source_form.index("biome-ignore")
+            body = source_form[idx:].split("*/")[0].rstrip()
+            norm = ("// " + body).strip()
+            hits.append(Hit("biome-ignore", lineno, norm))
     return hits
 
 

@@ -156,7 +156,9 @@ def mypy_entries(lines: list[str]) -> list[Entry]:
         "no_implicit_reexport",
         "extra_checks",
     }
-    weaken_true = {"ignore_errors", "ignore_missing_imports", "warn_unused_ignores"}
+    weaken_true = {"ignore_errors", "ignore_missing_imports"}
+    # warn_unused_ignores defaults TRUE: an override setting it FALSE silences
+    # dead-ignore detection — that is the weakening we must catch.
     # any non-empty disable_error_code list weakens checking
 
     s, _e = _section_span(lines, "[tool.mypy]")
@@ -194,6 +196,8 @@ def mypy_entries(lines: list[str]) -> list[Entry]:
                         weakened.add(key)
                     if key == "disable_error_code" and val not in ("[]", '""'):
                         weakened.add("disable_error_code")
+                    if key == "warn_unused_ignores" and val == "false":
+                        weakened.add("warn_unused_ignores")
             j += 1
         if weakened:
             label = ", ".join(modules[:3])
