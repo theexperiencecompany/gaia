@@ -1,6 +1,10 @@
 """Factory functions for the standard agent middleware stack (executor, comms,
 subagents). Centralized here so build_graph.py and base_subagent.py share one
-configuration."""
+configuration.
+
+Summarization and compaction receive the graph's own ``chat_llm`` and invoke it
+inside the graph, where the ambient request config routes them to the same
+model the conversation is using."""
 
 from collections.abc import Mapping
 from typing import cast
@@ -9,9 +13,6 @@ from langchain.agents.middleware.summarization import ContextSize
 from langchain_core.language_models import BaseChatModel, LanguageModelLike
 from langchain_core.tools import BaseTool
 
-from app.agents.llm.client import get_default_llm
-from app.agents.llm.exceptions import LLMNotConfiguredError
-from app.agents.llm.types import LLMProviderKey
 from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
 from app.agents.middleware.hil_approval import HILApprovalMiddleware
@@ -23,7 +24,6 @@ from app.agents.middleware.summarization import (
     WorkspaceArchivingSummarizationMiddleware,
 )
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
-from app.config.settings import settings
 from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
     DEFAULT_MAX_TOKENS,
@@ -36,7 +36,6 @@ from app.constants.summarization import (
     SUMMARIZATION_KEEP_TOKENS,
     SUMMARIZATION_TRIGGER_FRACTION,
 )
-from app.core.lazy_loader import providers
 from app.models.agent_models import AgentMiddlewareStack
 from shared.py.wide_events import log
 
@@ -61,94 +60,11 @@ SELF_OFFLOADING_TOOL_NAMES = {"GMAIL_FETCH_MESSAGES", "GMAIL_FETCH_THREAD"}
 # for every run on the graph. See create_middleware_stack for the wiring note.
 LOOP_GUARD_HARD_STOP = False
 
-_summarization_llm: BaseChatModel | None = None
-
-
-def get_summarization_llm() -> BaseChatModel | None:
-    """The cached summarization model, or None when the default model is not
-    configured (summarization middleware is then dropped).
-
-    Availability is decided by CALLING the factory and catching its refusal, not
-    by checking a provider key here. A key check is a second copy of "what does
-    the default model need", and when the default moved providers the two
-    disagreed: the gate passed on a key the factory no longer used, and — worse
-    the other way round — a missing key silently dropped compaction from the
-    graph while the model itself was perfectly reachable. Long conversations
-    then blow the context window with nothing in the logs pointing here.
-    """
-    global _summarization_llm
-
-    if _summarization_llm is not None:
-        return _summarization_llm
-
-    try:
-        # get_default_llm() carries the model's context-window profile, which the
-        # summarization/compaction fractional triggers below require to build.
-        _summarization_llm = get_default_llm()
-    except LLMNotConfiguredError as exc:
-        log.set(error=str(exc))
-        log.error(
-            f"{LogTag.AGENT} Default model not configured. Summarization middleware disabled."
-        )
-        return None
-    return _summarization_llm
-
-
-_compaction_summary_llm: BaseChatModel | None = None
-
-
-def get_compaction_summary_llm() -> BaseChatModel | None:
-    """The cached model that digests oversized tool outputs, or None when none
-    can be built (compaction then keeps the deterministic tiers).
-
-    Deliberately NOT :func:`get_summarization_llm`: whole-history summarization
-    rewrites the conversation the user reads, so it only ever runs on the
-    default model and is dropped when that is unconfigured. The tool-output
-    digest is bulk internal work where a cheap lane is fine — so when the
-    default model is unconfigured AND this is development with the DEV_LLM_*
-    custom endpoint registered, that endpoint serves digests instead of losing
-    the tier entirely in native dev environments.
-    """
-    global _compaction_summary_llm
-
-    if _compaction_summary_llm is not None:
-        return _compaction_summary_llm
-
-    try:
-        _compaction_summary_llm = get_default_llm()
-    except LLMNotConfiguredError as exc:
-        dev_llm = _get_dev_custom_llm()
-        if dev_llm is None:
-            log.set(error=str(exc))
-            log.error(
-                f"{LogTag.AGENT} Default model not configured; compaction keeps the deterministic tiers."
-            )
-            return None
-        log.warning(
-            f"{LogTag.AGENT} Default model not configured; compaction digests use the DEV_LLM_* custom endpoint",
-            error=str(exc),
-        )
-        _compaction_summary_llm = dev_llm
-    return _compaction_summary_llm
-
-
-def _get_dev_custom_llm() -> BaseChatModel | None:
-    """The DEV_LLM_* custom-endpoint instance when this is development AND the
-    endpoint is configured/registered; None otherwise. Never resolves outside
-    development because ``register_llm_providers`` only registers it there."""
-    if settings.ENV != "development":
-        return None
-    if not providers.is_available(LLMProviderKey.CUSTOM):
-        return None
-    instance = providers.get(LLMProviderKey.CUSTOM)
-    if instance is None:
-        return None
-    return cast("BaseChatModel", instance)
-
 
 def create_middleware_stack(
     *,
     agent_name: str = "agent",
+    chat_llm: LanguageModelLike | None = None,
     recursion_limit: int = AGENT_RECURSION_LIMIT,
     enable_accounting: bool = True,
     enable_summarization: bool = True,
@@ -182,6 +98,12 @@ def create_middleware_stack(
       persistent workspace and replaces them with a /workspace/... reference
 
     Args:
+        agent_name: Name used for accounting/log attribution
+        chat_llm: The graph's own configurable LLM. Summarization and the
+            compaction digest invoke it inside the graph, so ambient request
+            config routes them to the same model the conversation uses. When
+            None, summarization is skipped and compaction keeps its
+            deterministic tiers.
         enable_summarization: Whether to include summarization middleware
         enable_compaction: Whether to include compaction middleware
         enable_subagent: Whether to include subagent spawning middleware
@@ -244,12 +166,17 @@ def create_middleware_stack(
         middleware.append(subagent)
         log.debug(f"{LogTag.AGENT} SubagentMiddleware enabled with spawn_subagent tool")
 
-    # Summarization middleware (dropped when the default model is unconfigured)
+    # Summarization middleware (skipped without a chat LLM)
     if enable_summarization:
-        summary_llm = get_summarization_llm()
-        if summary_llm:
+        if chat_llm is None:
+            log.warning(
+                f"{LogTag.AGENT} No chat_llm provided; summarization middleware skipped."
+            )
+        else:
             summarization = WorkspaceArchivingSummarizationMiddleware(
-                model=summary_llm,
+                # The configurable-alternatives wrapper is a Runnable, not a
+                # BaseChatModel; LangChain only ever calls .ainvoke/.profile on it.
+                model=cast("BaseChatModel", chat_llm),
                 trigger=summarization_trigger,
                 keep=summarization_keep,
                 enable_archive=enable_archive,
@@ -265,23 +192,18 @@ def create_middleware_stack(
     # Compaction middleware (always available, but respects enable flag). It also
     # binds query_json/grep when a tool output is offloaded.
     if enable_compaction:
-        # DEFAULT_MAX_TOKENS is the same window the summarization model's profile
-        # carries (get_default_llm sets profile.max_input_tokens from it), so the
-        # compaction and summarization fractions are denominated in one window.
         compaction = WorkspaceCompactionMiddleware(
             compaction_threshold=compaction_threshold,
             max_output_chars=max_output_chars,
             context_window=DEFAULT_MAX_TOKENS,
             excluded_tools=compaction_excluded_tools,
-            # Dedicated accessor: unlike history summarization (default model
-            # only), the digest may ride the DEV_LLM_* custom endpoint in dev.
-            summary_llm=get_compaction_summary_llm(),
+            summary_llm=chat_llm,  # same model as the conversation; None keeps deterministic tiers
         )
         middleware.append(compaction)
         log.debug(
             f"{LogTag.AGENT} Compaction middleware enabled",
             compaction_threshold=compaction_threshold,
-            llm_summary=bool(get_compaction_summary_llm()),
+            llm_summary=chat_llm is not None,
         )
 
     # Media description — a lane that can't see pixels gets prose for any tool
@@ -316,6 +238,7 @@ def create_middleware_stack(
 
 def create_executor_middleware(
     *,
+    chat_llm: LanguageModelLike | None = None,
     subagent_llm: LanguageModelLike | None = None,
     subagent_tools: list[BaseTool] | None = None,
     subagent_registry: Mapping[str, BaseTool] | None = None,
@@ -333,6 +256,7 @@ def create_executor_middleware(
     creation via set_llm()/set_tools() since they aren't available at factory time.
 
     Args:
+        chat_llm: The graph's chat LLM; also serves summarization + compaction
         subagent_llm: LLM for subagent execution
         subagent_tools: Tools available to subagents
         subagent_registry: Alternative tool registry for subagents
@@ -344,6 +268,7 @@ def create_executor_middleware(
     """
     return create_middleware_stack(
         agent_name="executor_agent",
+        chat_llm=chat_llm,
         recursion_limit=EXECUTOR_RECURSION_LIMIT,
         enable_subagent=True,
         subagent_llm=subagent_llm,
@@ -358,7 +283,7 @@ def create_executor_middleware(
     )
 
 
-def create_comms_middleware() -> AgentMiddlewareStack:
+def create_comms_middleware(chat_llm: LanguageModelLike | None = None) -> AgentMiddlewareStack:
     """Create the middleware stack for the comms agent.
 
     Comms delegates all real work to the executor, so it only gets summarization.
@@ -367,6 +292,7 @@ def create_comms_middleware() -> AgentMiddlewareStack:
     """
     return create_middleware_stack(
         agent_name="comms_agent",
+        chat_llm=chat_llm,
         enable_subagent=False,
         enable_compaction=False,
     )
@@ -412,6 +338,7 @@ def create_subagent_middleware(
     """
     return create_middleware_stack(
         agent_name="provider_subagent",
+        chat_llm=subagent_llm,
         enable_subagent=enable_subagent,
         enable_summarization=True,
         enable_compaction=True,

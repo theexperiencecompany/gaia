@@ -48,8 +48,8 @@ from typing import Any, Literal
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ToolCallRequest
-from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.runnables import Runnable
 from langgraph.types import Command
 
 from app.agents.workspace.offload import (
@@ -182,7 +182,7 @@ def _summary_input_sample(content_str: str) -> str:
 
 
 async def _llm_summarize_output(
-    summary_llm: BaseChatModel, content_str: str, tool_name: str
+    summary_llm: Runnable, content_str: str, tool_name: str
 ) -> str | None:
     """Digest an oversized tool output into a bounded in-context summary.
 
@@ -473,7 +473,7 @@ async def compact_tool_output(
     always_persist: bool = False,
     excluded: bool = False,
     existing_additional_kwargs: dict[str, Any] | None = None,
-    summary_llm: BaseChatModel | None = None,
+    summary_llm: Runnable | None = None,
 ) -> ToolMessage | None:
     """Decide-and-compact a tool output. The one canonical compaction path.
 
@@ -597,7 +597,7 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
         always_persist_tools: list[str] | None = None,
         context_window: int = DEFAULT_MAX_TOKENS,
         excluded_tools: set[str] | None = None,
-        summary_llm: BaseChatModel | None = None,
+        summary_llm: Runnable | None = None,
     ) -> None:
         super().__init__()
         self.compaction_threshold = compaction_threshold
@@ -605,8 +605,8 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
         self.always_persist_tools = always_persist_tools or []
         self.context_window = context_window
         self.excluded_tools = excluded_tools or set()
-        # Model that digests oversized outputs into the in-context payload.
-        # None keeps the deterministic preview/truncation tiers.
+        # The graph's chat LLM. Invoked with the request's configurable bound
+        # (same as the model node), so digests ride the conversation's model.
         self.summary_llm = summary_llm
 
     async def awrap_tool_call(
@@ -631,6 +631,12 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
         configurable = runtime_configurable(request)
         thread_id = configurable.get("thread_id")
 
+        # Same per-request routing the model node does: bind this request's
+        # configurable so the digest rides the conversation's chosen model.
+        summary_llm = self.summary_llm
+        if summary_llm is not None and hasattr(summary_llm, "with_config"):
+            summary_llm = summary_llm.with_config(configurable=configurable)
+
         compacted = await compact_tool_output(
             content=result.content if hasattr(result, "content") else str(result),
             tool_name=tool_name,
@@ -644,7 +650,7 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
             always_persist=tool_name in self.always_persist_tools,
             excluded=tool_name in self.excluded_tools,
             existing_additional_kwargs=getattr(result, "additional_kwargs", {}),
-            summary_llm=self.summary_llm,
+            summary_llm=summary_llm,
         )
         result = compacted if compacted is not None else result
 

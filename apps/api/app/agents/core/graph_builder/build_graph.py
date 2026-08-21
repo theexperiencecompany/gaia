@@ -67,6 +67,7 @@ async def build_executor_graph(
     excluded_subagent_tools = {"handoff", WAIT_FOR_SUBAGENTS_NAME}
 
     middleware = create_executor_middleware(
+        chat_llm=chat_llm,
         subagent_excluded_tools=excluded_subagent_tools,
         subagent_tool_runtime_config=build_executor_child_tool_runtime_config(),
     )
@@ -174,7 +175,7 @@ async def build_comms_graph(
     }
     store = await get_tools_store()
 
-    middleware = create_comms_middleware()
+    middleware = create_comms_middleware(chat_llm=chat_llm)
 
     pre_model_hooks = comms_pre_model_hooks()
 
