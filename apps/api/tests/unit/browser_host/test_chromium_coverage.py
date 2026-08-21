@@ -276,6 +276,15 @@ def test_storage_state_cookie_to_cdp_negative_expires_not_included() -> None:
 
 
 @pytest.mark.unit
+def test_storage_state_cookie_to_cdp_expires_exactly_one_is_included() -> None:
+    # The boundary the ``> 0`` check exists for: 1 is the smallest expiry that
+    # must survive. A ``> 1`` mutant drops exactly this value.
+    cookie: dict = {"name": "n", "value": "v", "domain": "example.com", "expires": 1}
+    out = _storage_state_cookie_to_cdp(cookie)
+    assert out["expires"] == 1
+
+
+@pytest.mark.unit
 def test_storage_state_cookie_to_cdp_empty_samesite_not_included() -> None:
     cookie: dict = {"name": "n", "value": "v", "domain": "example.com", "sameSite": ""}
     out = _storage_state_cookie_to_cdp(cookie)
@@ -786,6 +795,27 @@ async def test_dump_origins_empty_localstorage_skipped() -> None:
 
 
 @pytest.mark.unit
+async def test_dump_origins_missing_result_key_yields_no_origin_not_a_crash() -> None:
+    # The "result" key's default must be a dict ({}), not None, or the
+    # chained ``.get("value")`` blows up with AttributeError instead of
+    # cleanly skipping this page.
+    host = ChromiumHost()
+    host._cdp_call = AsyncMock(
+        side_effect=[
+            {"targetInfos": [{"targetId": "t1", "type": "page", "browserContextId": "ctx1"}]},
+            {"sessionId": "sess-t1"},
+            {},  # Runtime.evaluate response missing the "result" key entirely
+            {},
+        ]
+    )
+    s = HostSession(
+        session_id="s1", context_id="ctx1", target_id="t1", created_at=0, last_activity_at=0
+    )
+    result = await host._dump_origins(s)
+    assert result == []
+
+
+@pytest.mark.unit
 async def test_dump_origins_detaches_even_when_evaluate_raises() -> None:
     host = ChromiumHost()
     # evaluate raises, detach must still be called
@@ -946,6 +976,26 @@ async def test_focused_target_id_filters_by_context_and_type() -> None:
 
 
 @pytest.mark.unit
+async def test_focused_target_id_excludes_a_page_from_another_context() -> None:
+    """type=="page" AND matching context — an ``or`` would leak cross-context
+    pages into the candidate list even though our session can't see them."""
+    host = ChromiumHost()
+    s = HostSession(
+        session_id="s1", context_id="ctx1", target_id="t-primary", created_at=0, last_activity_at=0
+    )
+    host._sessions["s1"] = s
+    host._cdp_call = AsyncMock(
+        return_value={
+            "targetInfos": [
+                {"type": "page", "browserContextId": "other-ctx", "targetId": "cross-target"},
+            ]
+        }
+    )
+    result = await host.focused_target_id("s1")
+    assert result == "t-primary"
+
+
+@pytest.mark.unit
 async def test_focused_target_id_raises_for_unknown_session() -> None:
     host = ChromiumHost()
     with pytest.raises(SessionNotFoundError):
@@ -1067,11 +1117,14 @@ async def test_start_resolves_path_launches_and_starts_reaper(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     host = ChromiumHost()
-    monkeypatch.setattr(chromium.asyncio, "to_thread", AsyncMock(return_value="/tmp/chrome"))
+    to_thread_mock = AsyncMock(return_value="/tmp/chrome")
+    monkeypatch.setattr(chromium.asyncio, "to_thread", to_thread_mock)
     host._launch = AsyncMock()
     host._reaper_loop = AsyncMock()
     await host.start()
     assert host._chromium_path == "/tmp/chrome"
+    # Must resolve the real binary, not just call to_thread with anything.
+    to_thread_mock.assert_awaited_once_with(chromium._resolve_chromium_path)
     host._launch.assert_awaited_once()
     assert host._reaper_task is not None
     # cleanup
@@ -1212,6 +1265,30 @@ async def test_dispose_context_raises_when_unknown() -> None:
         await host.dispose_context("ghost")
 
 
+@pytest.mark.unit
+async def test_dispose_context_pop_tolerates_concurrent_removal() -> None:
+    """The finally block's pop must not KeyError if another coroutine (e.g.
+    the idle reaper) already removed this session while the dump was in flight."""
+    host = ChromiumHost()
+    host._proc = MagicMock(returncode=None)
+    s = HostSession(
+        session_id="s1", context_id="ctx1", target_id="t1", created_at=0, last_activity_at=0
+    )
+    host._sessions["s1"] = s
+
+    async def _dump_and_vanish(_session: HostSession) -> dict[str, Any]:
+        host._sessions.pop("s1", None)
+        return {"cookies": [], "origins": []}
+
+    host._dump_storage_state = _dump_and_vanish
+    host._dispose_context_id = AsyncMock()
+
+    result = await host.dispose_context("s1")
+
+    assert result == {"cookies": [], "origins": []}
+    host._dispose_context_id.assert_awaited_once_with("ctx1")
+
+
 # ---------------------------------------------------------------------------
 # _launch arg composition
 # ---------------------------------------------------------------------------
@@ -1347,6 +1424,39 @@ async def test_await_cdp_ready_retries_then_succeeds(monkeypatch: pytest.MonkeyP
 
 
 @pytest.mark.unit
+async def test_await_cdp_ready_stops_exactly_at_the_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """At the deadline itself the poll loop must not run one more time."""
+    host = ChromiumHost()
+    host._read_devtools_port = AsyncMock(return_value=9222)
+    monkeypatch.setattr(chromium, "_CDP_READY_TIMEOUT_SECONDS", 10.0)
+    # First monotonic() call computes the deadline (0.0 + 10.0); the second is
+    # the while-condition check, landing exactly on that deadline.
+    monotonic_values = [0.0, 10.0]
+
+    def _next_monotonic() -> float:
+        # asyncio's own scheduler also calls the real time.monotonic (this
+        # patches the actual stdlib function), so keep returning the deadline
+        # forever after the two values the test cares about are consumed.
+        return monotonic_values.pop(0) if monotonic_values else 10.0
+
+    monkeypatch.setattr(chromium.time, "monotonic", _next_monotonic)
+    mock_client = MagicMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.get = AsyncMock(
+        side_effect=AssertionError("must not poll once monotonic() reaches the deadline")
+    )
+
+    with patch.object(chromium.httpx, "AsyncClient", return_value=mock_client):
+        with pytest.raises(RuntimeError, match="did not expose"):
+            await host._await_cdp_ready()
+
+    mock_client.get.assert_not_called()
+
+
+@pytest.mark.unit
 async def test_await_cdp_ready_timeout_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     host = ChromiumHost()
     host._read_devtools_port = AsyncMock(return_value=9222)
@@ -1424,6 +1534,37 @@ async def test_read_devtools_port_timeout_raises(
     monkeypatch.setattr(chromium, "_CDP_READY_POLL_SECONDS", 0.02)
     with pytest.raises(RuntimeError, match="did not write DevToolsActivePort"):
         await host._read_devtools_port()
+
+
+@pytest.mark.unit
+async def test_read_devtools_port_stops_exactly_at_the_deadline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """At the deadline itself the poll loop must not run one more time."""
+    host = ChromiumHost()
+    host._user_data_dir = str(tmp_path)
+    host._proc = MagicMock(returncode=None)
+    monkeypatch.setattr(chromium, "_CDP_READY_TIMEOUT_SECONDS", 10.0)
+    # First monotonic() call computes the deadline (0.0 + 10.0); the second is
+    # the while-condition check, landing exactly on that deadline.
+    monotonic_values = [0.0, 10.0]
+
+    def _next_monotonic() -> float:
+        # asyncio's own scheduler also calls the real time.monotonic (this
+        # patches the actual stdlib function), so keep returning the deadline
+        # forever after the two values the test cares about are consumed.
+        return monotonic_values.pop(0) if monotonic_values else 10.0
+
+    monkeypatch.setattr(chromium.time, "monotonic", _next_monotonic)
+    sleep_mock = AsyncMock(
+        side_effect=AssertionError("must not poll once monotonic() reaches the deadline")
+    )
+    monkeypatch.setattr(chromium.asyncio, "sleep", sleep_mock)
+
+    with pytest.raises(RuntimeError, match="did not write DevToolsActivePort"):
+        await host._read_devtools_port()
+
+    sleep_mock.assert_not_called()
 
 
 @pytest.mark.unit
@@ -1778,6 +1919,71 @@ async def test_reap_idle_handles_gone_session_between_stale_and_lock() -> None:
         with patch.object(chromium.settings, "BROWSER_HOST_IDLE_TTL_SECONDS", 1):
             await host._reap_idle()
     host._dispose_context_id.assert_not_called()
+
+
+@pytest.mark.unit
+async def test_reap_idle_continues_past_a_gone_session_to_reap_the_next_one() -> None:
+    """A session vanishing mid-sweep must skip only that one entry, not abort
+    the whole sweep — a ``break`` here would strand every stale session after it."""
+    host = ChromiumHost()
+    host._proc = MagicMock(returncode=None)
+    first = HostSession(
+        session_id="first", context_id="ctx-first", target_id="t1", created_at=0, last_activity_at=0
+    )
+    gone = HostSession(
+        session_id="gone", context_id="ctx-gone", target_id="t2", created_at=0, last_activity_at=0
+    )
+    last = HostSession(
+        session_id="last", context_id="ctx-last", target_id="t3", created_at=0, last_activity_at=0
+    )
+    # Insertion order matters: `stale` is built by iterating self._sessions,
+    # so processing order is first -> gone -> last.
+    host._sessions = {"first": first, "gone": gone, "last": last}
+
+    async def _dispose_first_and_steal_gone(context_id: str) -> None:
+        if context_id == "ctx-first":
+            # Simulate another coroutine removing "gone" while "first" is
+            # being disposed, so its own lookup later in this sweep is None.
+            del host._sessions["gone"]
+
+    host._dispose_context_id = AsyncMock(side_effect=_dispose_first_and_steal_gone)
+
+    with patch.object(chromium.time, "monotonic", return_value=9999):
+        with patch.object(chromium.settings, "BROWSER_HOST_IDLE_TTL_SECONDS", 1):
+            await host._reap_idle()
+
+    # "gone" is skipped (its lookup is None), but the sweep must continue on
+    # to reap "last" rather than aborting the whole sweep right there.
+    host._dispose_context_id.assert_any_await("ctx-last")
+    assert "last" not in host._sessions
+
+
+@pytest.mark.unit
+async def test_reap_idle_pop_tolerates_concurrent_removal() -> None:
+    """The pop of a stale session must not KeyError if another coroutine
+    (e.g. ``dispose_context``) removed it between the lookup and the lock."""
+    host = ChromiumHost()
+    host._proc = MagicMock(returncode=None)
+    stale = HostSession(
+        session_id="s1", context_id="ctx1", target_id="t1", created_at=0, last_activity_at=0
+    )
+    host._sessions = {"s1": stale}
+    host._dispose_context_id = AsyncMock()
+
+    with patch.object(chromium.time, "monotonic", return_value=9999):
+        with patch.object(chromium.settings, "BROWSER_HOST_IDLE_TTL_SECONDS", 1):
+            await host._lock.acquire()
+            task = asyncio.create_task(host._reap_idle())
+            # Let the reaper run its synchronous prelude (build `stale`, look
+            # up the session) and block trying to acquire the lock we hold.
+            await asyncio.sleep(0)
+            # Simulate a concurrent dispose_context() removing the same
+            # session while _reap_idle waits on the lock.
+            del host._sessions["s1"]
+            host._lock.release()
+            await asyncio.wait_for(task, timeout=1.0)
+
+    host._dispose_context_id.assert_awaited_once_with("ctx1")
 
 
 @pytest.mark.unit

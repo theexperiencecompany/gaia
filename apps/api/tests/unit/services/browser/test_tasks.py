@@ -8,6 +8,7 @@ lives in ``test_tasks_frames.py``.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -188,3 +189,36 @@ async def test_list_browser_tasks_uses_the_caller_supplied_limit_and_default(
     await list_browser_tasks("u1")
 
     mock_list.assert_awaited_once_with("u1", limit=20)
+
+
+@pytest.mark.unit
+async def test_list_browser_tasks_preserves_the_document_created_at(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    when = datetime(2024, 3, 5, 12, 30, tzinfo=UTC)
+    mock_list = AsyncMock(return_value=[_doc(created_at=when)])
+    monkeypatch.setattr(
+        "app.services.browser.tasks.browser_task_repository.list_recent_for_user", mock_list
+    )
+
+    (result,) = await list_browser_tasks("u1")
+
+    assert result.created_at == when
+
+
+@pytest.mark.unit
+async def test_frames_derived_url_strips_only_a_trailing_slash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`root.rstrip("/")` must strip exactly `/`, not any trailing `X` character too."""
+    monkeypatch.setattr("app.services.browser.tasks.settings.R2_PUBLIC_BASE_URL", "https://cdnX")
+    mock_list = AsyncMock(
+        return_value=[_doc(session_id="sess9", steps=1, step_goals=[], step_screenshots=[])]
+    )
+    monkeypatch.setattr(
+        "app.services.browser.tasks.browser_task_repository.list_recent_for_user", mock_list
+    )
+
+    (result,) = await list_browser_tasks("u1")
+
+    assert [f.url for f in result.frames] == ["https://cdnX/browser_steps/sess9/step_1.png"]

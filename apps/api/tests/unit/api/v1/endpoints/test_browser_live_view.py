@@ -685,6 +685,20 @@ class TestLiveViewPageDetails:
                 f"{blv.LogTag.BROWSER} browser live view page served"
             )
 
+    async def test_owner_none_and_user_id_none_still_forbidden(self) -> None:
+        # `owner is None` must short-circuit the `or` before `owner != user_id` is even
+        # reached — pins the boundary against an `is None` -> `is not None` mutation,
+        # which only differs from the original when owner and user_id are BOTH None
+        # (otherwise `owner != user_id` alone still yields the same 403).
+        with (
+            patch.object(blv, "_resolve_target_page", new=AsyncMock(return_value=("sess1", None))),
+            patch.object(blv.registry, "session_owner", new=AsyncMock(return_value=None)),
+        ):
+            req = _make_request()
+            with pytest.raises(HTTPException) as exc:
+                await blv.live_view_page("code123", req, t=None)
+            assert exc.value.status_code == status.HTTP_403_FORBIDDEN
+
 
 class TestResolveTargetPageArgs:
     async def test_authorize_page_called_with_exact_args(self) -> None:
@@ -697,6 +711,27 @@ class TestResolveTargetPageArgs:
             mock_auth.assert_called_once_with(req, "sess-raw", "tok")
             assert sid == "sess-raw"
             assert uid == "u2"
+
+    async def test_record_found_short_circuits_authorize_page(self) -> None:
+        # Pins `record is not None` -> `record is None`: with the mutant, a found
+        # record would fall through and still call _authorize_page.
+        rec = LiveCodeRecord(session_id="sess1", user_id="u1")
+        with (
+            patch.object(blv, "resolve_live_code", new=AsyncMock(return_value=rec)),
+            patch.object(blv, "_authorize_page", new=AsyncMock()) as mock_auth,
+        ):
+            sid, uid = await blv._resolve_target_page("code123", _make_request(), "tok")
+            assert sid == "sess1"
+            assert uid == "u1"
+            mock_auth.assert_not_called()
+
+    async def test_resolve_live_code_called_with_exact_code(self) -> None:
+        with patch.object(
+            blv, "resolve_live_code", new=AsyncMock(return_value=None)
+        ) as mock_resolve:
+            with patch.object(blv, "_authorize_page", new=AsyncMock(return_value="u2")):
+                await blv._resolve_target_page("sess-raw", _make_request(), "tok")
+            mock_resolve.assert_called_once_with("sess-raw")
 
 
 class TestAuthorizePageDetails:
@@ -727,6 +762,18 @@ class TestAuthorizePageDetails:
             assert uid == "42"
             assert isinstance(uid, str)
 
+    async def test_empty_string_token_falls_through_to_cookie_path(self) -> None:
+        # Pins `if token:` against an `if not token:` mutation: "" is falsy but not
+        # None, so it must take the cookie path, not the token path.
+        req = _make_request()
+        with (
+            patch.object(blv, "_verify_scoped_token") as mock_verify,
+            patch.object(blv, "get_current_user", new=AsyncMock(return_value={"user_id": "u1"})),
+        ):
+            uid = await blv._authorize_page(req, "sess1", token="")
+            assert uid == "u1"
+            mock_verify.assert_not_called()
+
 
 class TestVerifyScopedTokenDetails:
     async def test_invalid_token_detail_message(self) -> None:
@@ -748,6 +795,12 @@ class TestVerifyScopedTokenDetails:
             out = blv._verify_scoped_token("tok", "sess1")
             assert out == claims
 
+    def test_verify_takeover_token_called_with_exact_token(self) -> None:
+        claims: dict[str, object] = {"session_id": "sess1", "user_id": "u1", "exp": 123.0}
+        with patch.object(blv, "verify_takeover_token", return_value=claims) as mock_verify:
+            blv._verify_scoped_token("tok-abc", "sess1")
+            mock_verify.assert_called_once_with("tok-abc")
+
 
 class TestResolveTargetWsArgs:
     async def test_authorize_ws_called_with_exact_args(self) -> None:
@@ -762,6 +815,26 @@ class TestResolveTargetWsArgs:
             mock_auth.assert_called_once_with(ws, "sess-raw", "tok")
             assert result == ("sess-raw", "u1", 100.0)
 
+    async def test_record_found_short_circuits_authorize_ws(self) -> None:
+        # Pins `record is not None` -> `record is None`: with the mutant, a found
+        # record would fall through and still call _authorize_ws.
+        rec = LiveCodeRecord(session_id="sess1", user_id="u1")
+        with (
+            patch.object(blv, "resolve_live_code", new=AsyncMock(return_value=rec)),
+            patch.object(blv, "_authorize_ws", new=AsyncMock()) as mock_auth,
+        ):
+            result = await blv._resolve_target_ws(_make_ws(), "code123", "tok")
+            assert result == ("sess1", "u1", None)
+            mock_auth.assert_not_called()
+
+    async def test_resolve_live_code_called_with_exact_code(self) -> None:
+        with patch.object(
+            blv, "resolve_live_code", new=AsyncMock(return_value=None)
+        ) as mock_resolve:
+            with patch.object(blv, "_authorize_ws", new=AsyncMock(return_value=("u1", 100.0))):
+                await blv._resolve_target_ws(_make_ws(), "sess-raw", "tok")
+            mock_resolve.assert_called_once_with("sess-raw")
+
 
 class TestAuthorizeWsDetails:
     async def test_invalid_token_warns_with_message(self) -> None:
@@ -772,6 +845,46 @@ class TestAuthorizeWsDetails:
                 mock_log.warning.assert_called_once_with(
                     f"{blv.LogTag.BROWSER} browser live view rejected invalid takeover token"
                 )
+
+    async def test_empty_string_token_falls_through_to_cookie_path(self) -> None:
+        # Pins `if token:` against an `if not token:` mutation: "" is falsy but not
+        # None, so it must take the cookie path, not the token path.
+        ws = _make_ws()
+        with (
+            patch.object(blv, "verify_takeover_token") as mock_verify,
+            patch.object(blv, "get_current_user_ws", new=AsyncMock(return_value={"user_id": "u1"})),
+        ):
+            result = await blv._authorize_ws(ws, "sess1", token="")
+            assert result == ("u1", None)
+            mock_verify.assert_not_called()
+
+    async def test_verify_takeover_token_called_with_exact_token(self) -> None:
+        claims: dict[str, object] = {"session_id": "sess1", "user_id": "u1", "exp": 9999999999.0}
+        with (
+            patch.object(blv, "verify_takeover_token", return_value=claims) as mock_verify,
+            patch.object(blv, "takeover_token_ttl_seconds", return_value=100.0),
+        ):
+            ws = _make_ws()
+            await blv._authorize_ws(ws, "sess1", token="tok-xyz")
+            mock_verify.assert_called_once_with("tok-xyz")
+
+    async def test_takeover_token_ttl_seconds_called_with_exact_claims(self) -> None:
+        claims: dict[str, object] = {"session_id": "sess1", "user_id": "u1", "exp": 9999999999.0}
+        with (
+            patch.object(blv, "verify_takeover_token", return_value=claims),
+            patch.object(blv, "takeover_token_ttl_seconds", return_value=100.0) as mock_ttl,
+        ):
+            ws = _make_ws()
+            await blv._authorize_ws(ws, "sess1", token="tok")
+            mock_ttl.assert_called_once_with(claims)
+
+    async def test_get_current_user_ws_called_with_exact_websocket(self) -> None:
+        ws = _make_ws()
+        with patch.object(
+            blv, "get_current_user_ws", new=AsyncMock(return_value={"user_id": "u1"})
+        ) as mock_get_user:
+            await blv._authorize_ws(ws, "sess1", token=None)
+            mock_get_user.assert_called_once_with(ws)
 
     async def test_session_mismatch_warns_with_message(self) -> None:
         claims: dict[str, object] = {"session_id": "other", "user_id": "u1", "exp": 9999999999.0}
@@ -845,6 +958,27 @@ class TestLiveViewWsDetails:
             mock_log.info.assert_called_once_with(
                 f"{blv.LogTag.BROWSER} browser live view proxy opened"
             )
+
+    async def test_resolve_target_ws_called_with_exact_args(self) -> None:
+        ws = _make_ws()
+        with patch.object(
+            blv, "_resolve_target_ws", new=AsyncMock(return_value=None)
+        ) as mock_resolve:
+            await blv.live_view_ws(ws, "sess1", t="tok")
+            mock_resolve.assert_called_once_with(ws, "sess1", "tok")
+
+    async def test_get_session_entry_called_with_exact_session_id(self) -> None:
+        ws = _make_ws()
+        with (
+            patch.object(
+                blv, "_resolve_target_ws", new=AsyncMock(return_value=("sess1", "u1", None))
+            ),
+            patch.object(
+                blv.registry, "get_session_entry", new=AsyncMock(return_value=None)
+            ) as mock_get_entry,
+        ):
+            await blv.live_view_ws(ws, "code123", t=None)
+            mock_get_entry.assert_called_once_with("sess1")
 
 
 class TestProxyLiveViewDetails:

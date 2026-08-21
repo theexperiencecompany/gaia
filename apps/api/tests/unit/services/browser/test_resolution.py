@@ -1,8 +1,10 @@
 """Tests for conversational handoff resolution — chat replies resume/stop a task."""
 
+from typing import Any
 from unittest.mock import AsyncMock
 
 from app.constants.browser import HandoffDecision, HandoffStatus
+from app.constants.log_tags import LogTag
 from app.schemas.browser import HandoffRecord
 from app.services.browser import resolution as res_mod
 from app.services.browser.exceptions import BrowserHandoffNotOwned
@@ -12,6 +14,16 @@ from app.services.browser.resolution import (
     _prompt,
     resolve_handoff_from_message,
 )
+
+
+class _FakeLog:
+    """Records `log.warning` calls so tests can pin the exact message and kwargs."""
+
+    def __init__(self) -> None:
+        self.warning_calls: list[tuple[str, dict[str, Any]]] = []
+
+    def warning(self, message: str, /, **kwargs: Any) -> None:
+        self.warning_calls.append((message, kwargs))
 
 
 def _pending(monkeypatch, action: str):
@@ -138,17 +150,28 @@ async def test_interpret_falls_back_to_unrelated_on_llm_failure(monkeypatch):
     monkeypatch.setattr(
         res_mod, "ainvoke_structured", AsyncMock(side_effect=RuntimeError("llm down"))
     )
+    fake_log = _FakeLog()
+    monkeypatch.setattr(res_mod, "log", fake_log)
 
     decision = await _interpret("no, stop it", "pay")
 
     assert decision == HandoffReplyDecision(action="unrelated")
+    assert fake_log.warning_calls == [
+        (
+            f"{LogTag.BROWSER} Browser handoff resolve failed, treating as unrelated",
+            {"error_type": "RuntimeError"},
+        )
+    ]
 
 
 def test_prompt_includes_the_message_and_the_handoff_reason():
     text = _prompt("yep I paid, go on", "confirm the $50 payment")
 
-    assert "yep I paid, go on" in text
-    assert "confirm the $50 payment" in text
-    assert "CONTINUE" in text
-    assert "CANCEL" in text
-    assert "UNRELATED" in text
+    assert text == (
+        "A browser automation task is paused, waiting for the user to finish a "
+        "sensitive step themselves in the live browser: 'confirm the $50 payment'\n\n"
+        "The user just sent this message:\n'yep I paid, go on'\n\n"
+        "Is the user telling the assistant to CONTINUE (they finished the step / "
+        "gave the go-ahead), to CANCEL (stop the task), or is this an UNRELATED "
+        "new request? Reply with action='continue', 'cancel', or 'unrelated'."
+    )

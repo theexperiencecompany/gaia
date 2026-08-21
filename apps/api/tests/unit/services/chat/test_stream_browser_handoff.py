@@ -16,13 +16,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.browser import BROWSER_HANDOFF_ACK_CANCEL, BROWSER_HANDOFF_ACK_CONTINUE
+from app.constants.log_tags import LogTag
 from app.models.message_models import MessageRequestWithHistory
+from app.models.stream_events import MainResponseCompleteFrame
 from app.services.chat import stream as chat_stream
 from app.services.chat.stream import (
     _resolve_pending_browser_handoff_turn,
     _run_chat_stream,
     _StreamState,
 )
+from app.utils.agent_utils import format_sse_data, format_sse_response
 
 CONVERSATION_ID = "conv-1"
 STREAM_ID = "stream-1"
@@ -92,6 +95,21 @@ class TestNothingPendingOrMissingInputs:
         assert result is False
         assert not published
 
+    async def test_falsy_empty_string_user_id_returns_false_without_looking_up_handoff(
+        self, published: list[str], persist: AsyncMock
+    ) -> None:
+        # "" is falsy but not None — pins ``not user_id`` against a mutant
+        # that narrows the guard to ``user_id is None``.
+        with patch.object(chat_stream, "resolve_handoff_from_message") as resolve:
+            result = await _resolve_pending_browser_handoff_turn(
+                _body(), _user(user_id=""), CONVERSATION_ID, STREAM_ID, _StreamState()
+            )
+
+        resolve.assert_not_called()
+        assert result is False
+        assert not published
+        persist.assert_not_awaited()
+
     async def test_nothing_pending_runs_as_a_normal_turn(
         self, published: list[str], persist: AsyncMock
     ) -> None:
@@ -119,6 +137,39 @@ class TestNothingPendingOrMissingInputs:
         assert result is False
         assert not published
         persist.assert_not_awaited()
+
+    @pytest.mark.parametrize("action", ["Continue", "Cancel", "continued", "", "cancel "])
+    async def test_near_miss_action_runs_as_a_normal_turn(
+        self, action: str, published: list[str], persist: AsyncMock
+    ) -> None:
+        # Pins the ``action not in ("continue", "cancel")`` membership check
+        # against a mutant that pads either literal in the tuple.
+        with patch.object(
+            chat_stream, "resolve_handoff_from_message", AsyncMock(return_value=action)
+        ):
+            result = await _resolve_pending_browser_handoff_turn(
+                _body(), _user(), CONVERSATION_ID, STREAM_ID, _StreamState()
+            )
+
+        assert result is False
+        assert not published
+        persist.assert_not_awaited()
+
+    async def test_resolve_handoff_from_message_called_with_exact_args(
+        self, published: list[str], persist: AsyncMock
+    ) -> None:
+        with patch.object(
+            chat_stream, "resolve_handoff_from_message", AsyncMock(return_value=None)
+        ) as resolve:
+            await _resolve_pending_browser_handoff_turn(
+                _body(message="hello there"),
+                _user(user_id="user-42"),
+                CONVERSATION_ID,
+                STREAM_ID,
+                _StreamState(),
+            )
+
+        resolve.assert_awaited_once_with(CONVERSATION_ID, "user-42", "hello there")
 
 
 @pytest.mark.unit
@@ -157,9 +208,10 @@ class TestLookupFailureDegradesToNormalTurn:
                 _body(), _user(), CONVERSATION_ID, STREAM_ID, _StreamState()
             )
 
-        log.error.assert_called_once()
-        _args, kwargs = log.error.call_args
-        assert kwargs["error_type"] == "ValueError"
+        log.error.assert_called_once_with(
+            f"{LogTag.CHAT} Pending browser-handoff check failed; normal turn",
+            error_type="ValueError",
+        )
 
 
 @pytest.mark.unit
@@ -175,8 +227,7 @@ class TestContinueResolution:
             )
 
         assert result is True
-        assert any(BROWSER_HANDOFF_ACK_CONTINUE in chunk for chunk in published)
-        assert not any(BROWSER_HANDOFF_ACK_CANCEL in chunk for chunk in published)
+        assert published[0] == format_sse_response(BROWSER_HANDOFF_ACK_CONTINUE)
 
     async def test_state_is_stamped_with_the_ack_and_completion_time(
         self, published: list[str], persist: AsyncMock
@@ -228,8 +279,7 @@ class TestCancelResolution:
             )
 
         assert result is True
-        assert any(BROWSER_HANDOFF_ACK_CANCEL in chunk for chunk in published)
-        assert not any(BROWSER_HANDOFF_ACK_CONTINUE in chunk for chunk in published)
+        assert published[0] == format_sse_response(BROWSER_HANDOFF_ACK_CANCEL)
 
     async def test_state_is_stamped_with_the_cancel_ack(
         self, published: list[str], persist: AsyncMock
@@ -255,8 +305,11 @@ class TestCancelResolution:
                 _body(), _user(), CONVERSATION_ID, STREAM_ID, _StreamState()
             )
 
-        assert len(published) >= 2
-        assert '"main_response_complete": true' in published[1]
+        assert len(published) == 3
+        assert published[1] == format_sse_data(
+            MainResponseCompleteFrame(main_response_complete=True).model_dump()
+        )
+        assert published[2] == "data: [DONE]\n\n"
 
 
 @pytest.mark.unit
@@ -289,28 +342,48 @@ class TestRunChatStreamShortCircuitsOnHandoffResolution:
         )
 
     async def test_returns_early_without_running_the_agent(self) -> None:
+        body = _body()
+        user = _user()
         with self._patched(handoff_resolved=True):
             await _run_chat_stream(
                 stream_id=STREAM_ID,
-                body=_body(),
-                user=_user(),
+                body=body,
+                user=user,
                 conversation_id=CONVERSATION_ID,
             )
 
             chat_stream._consume_agent_stream.assert_not_awaited()
-            chat_stream._resolve_pending_browser_handoff_turn.assert_awaited_once()
-            # the finally block still tears the stream down even on the short-circuit path
+            # Full positional args, not just call-count — pins arg order/identity
+            # against a swap mutant (e.g. body<->user, conversation_id<->stream_id).
+            handoff_call = chat_stream._resolve_pending_browser_handoff_turn.await_args
+            assert handoff_call is not None
+            assert handoff_call.args[:4] == (body, user, CONVERSATION_ID, STREAM_ID)
+            state = handoff_call.args[4]
+            assert isinstance(state, _StreamState)
+
+            register_call = chat_stream.register_executor_capture.call_args
+            assert register_call == ((STREAM_ID,), {"voice_mode": body.voice_mode})
+
+            # the finally block still tears the stream down even on the short-circuit
+            # path, threading the SAME state object built at the top of the function.
             chat_stream._finalize_stream.assert_awaited_once()
+            finalize_call = chat_stream._finalize_stream.await_args
+            assert finalize_call is not None
+            assert finalize_call.args[:5] == (STREAM_ID, body, user, CONVERSATION_ID, state)
 
     async def test_runs_the_agent_when_nothing_was_pending(self) -> None:
+        body = _body()
+        user = _user()
         with self._patched(handoff_resolved=False):
             await _run_chat_stream(
                 stream_id=STREAM_ID,
-                body=_body(),
-                user=_user(),
+                body=body,
+                user=user,
                 conversation_id=CONVERSATION_ID,
             )
 
-            chat_stream._resolve_pending_browser_handoff_turn.assert_awaited_once()
+            handoff_call = chat_stream._resolve_pending_browser_handoff_turn.await_args
+            assert handoff_call is not None
+            assert handoff_call.args[:4] == (body, user, CONVERSATION_ID, STREAM_ID)
             chat_stream._consume_agent_stream.assert_awaited_once()
             chat_stream._finalize_stream.assert_awaited_once()

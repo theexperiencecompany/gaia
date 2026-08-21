@@ -130,6 +130,12 @@ class TestStepCaption:
     def test_goal_stripped(self):
         assert _step_caption(1, "  Hello world  ", None) == "Step 1 · Hello world"
 
+    def test_only_trailing_dot_is_stripped_not_letter_x(self):
+        # rstrip(".") must strip only a trailing period — a padding mutant that
+        # widens the strip set (e.g. to "XX.XX") would also eat a trailing "X",
+        # which a real caption text like "Click X" must never lose.
+        assert _step_caption(1, "Click X", None) == "Step 1 · Click X"
+
     def test_truncation_rstrips_trailing_space_before_ellipsis(self):
         # 88 "A"s then a space then filler — the 90-char slice cuts right after
         # the space, so the truncated label must have it trimmed before the
@@ -298,6 +304,28 @@ class TestBotProgressDeliveryStep:
             mp.assert_not_awaited()
             mm.assert_awaited_once()
             assert mm.call_args[0][2][0] == "Step 1 · Open"
+
+    async def test_empty_goal_uses_snapshot_action_for_caption(self, delivery):
+        # goal="" forces the caption to fall back to the *snapshot's own*
+        # action string — an arg-drop mutant that passes None instead of
+        # snapshot.action here would silently lose the action entirely and
+        # caption to "Step 1" instead of "Step 1 · Clicking".
+        snap = BrowserStepSnapshot(
+            index=1, goal="", action="click({})", url="https://example.com", screenshot=None
+        )
+        with (
+            patch(
+                "app.services.browser.bot_delivery.publish_outbound_photo", new=AsyncMock()
+            ) as mp,
+            patch(
+                "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
+            ) as mm,
+        ):
+            await delivery.step(snap)
+            mp.assert_not_awaited()
+            mm.assert_awaited_once_with(
+                ConversationSource.TELEGRAM, "user-1", ["Step 1 · Clicking"]
+            )
 
     async def test_stream_screenshots_disabled_always_text(self, delivery_no_screenshots):
         snap = BrowserStepSnapshot(

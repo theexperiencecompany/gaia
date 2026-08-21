@@ -21,7 +21,9 @@ def describe_action(name: str, params: dict[str, Any]) -> str:
     not "Clicking" five times."""
     text = str(params.get("text") or "").strip()
     if name == "navigate":
-        host = urlparse(str(params.get("url") or "")).hostname or ""
+        # No empty-string fallback: str() of a missing url is "None", which
+        # urlparse reports no hostname for — same result, one less dead literal.
+        host = urlparse(str(params.get("url"))).hostname or ""
         return f"Opening {host.removeprefix('www.')}" if host else "Opening the page"
     if name in ("search", "search_page"):
         q = str(params.get("query") or params.get("text") or "").strip()
@@ -64,7 +66,7 @@ def caption_from_action_summary(action_summary: str | None) -> str:
     """Same captions, from the flattened ``"name(params); name(params)"`` string a
     step snapshot carries when the caller has no structured action data — params
     aren't recoverable from that string, so each action is described by name alone."""
-    names = (part.strip().split("(", 1)[0].strip() for part in (action_summary or "").split(";"))
+    names = (part.strip().split("(")[0].strip() for part in (action_summary or "").split(";"))
     return _dedupe_join([describe_action(name, {}) for name in names if name])
 
 

@@ -8,6 +8,7 @@ import pytest
 
 from app.browser_host.proxy import (
     _CDP_REFUSED_CODE,
+    LogTag,
     _event_context_id,
     _filter_downstream,
     _refusal_reason,
@@ -486,6 +487,17 @@ def test_filter_downstream_bytes_decoded_by_caller_not_here() -> None:
         {"method": "Target.targetCreated", "params": {"targetInfo": {"browserContextId": "other"}}}
     )
     assert _filter_downstream(raw, "ctx1", ids) is None
+
+
+@pytest.mark.unit
+def test_filter_downstream_scoped_event_missing_params_key_passes_through() -> None:
+    """A scoped event with no ``params`` key at all (not merely an empty dict) must
+    still resolve to ``raw`` without raising: ``_event_context_id`` is handed the
+    default for a missing key, which must stay a dict, not ``None``."""
+    ids: set[int] = set()
+    for method in ["Target.attachedToTarget", "Target.targetCreated", "Target.targetInfoChanged"]:
+        raw = json.dumps({"method": method})
+        assert _filter_downstream(raw, "my-ctx", ids) == raw, method
 
 
 @pytest.mark.unit
@@ -1034,11 +1046,14 @@ async def test_run_cdp_proxy_logs_refusal_with_reason_and_session_id() -> None:
     ):
         await proxy_mod.run_cdp_proxy(host, session, client_ws)
 
-    mock_warning.assert_called_once()
-    _, kwargs = mock_warning.call_args
-    assert kwargs["error_type"] == "RefusedCdpCommand"
-    assert kwargs["browser"]["session_id"] == "sess-warn"
-    assert "downloads are denied" in kwargs["browser"]["reason"]
+    mock_warning.assert_called_once_with(
+        f"{LogTag.BROWSER} browser cdp command refused",
+        error_type="RefusedCdpCommand",
+        browser={
+            "session_id": "sess-warn",
+            "reason": "Browser.setDownloadBehavior refused: downloads are denied for this session",
+        },
+    )
 
 
 @pytest.mark.unit

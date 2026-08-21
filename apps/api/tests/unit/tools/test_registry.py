@@ -409,10 +409,37 @@ def expected_category_tool_names() -> dict[str, set[str]]:
 
 
 class TestInitializeCategoriesReal:
-    def test_category_names_match_expected_set(self, initialized_registry: ToolRegistry):
+    def test_category_names_match_expected_set(
+        self,
+        initialized_registry: ToolRegistry,
+        expected_category_tool_names: dict[str, set[str]],
+    ):
+        # `initialized_registry` is module-scoped, so `_initialize_categories()`
+        # actually runs exactly once, during whichever test in this class pytest
+        # collects first. Mutation testing ties a mutant's covering tests to
+        # the tests that were RUNNING when the mutated line executed, so a
+        # mutant inside _initialize_categories() is only ever checked against
+        # this one test, not the whole class, no matter how many other tests
+        # below also read `initialized_registry`. Every invariant that must
+        # hold for the real _add_category(...) call arguments therefore has to
+        # be asserted here too — the more specific tests below stay for
+        # readable failure messages on a full-suite run, but this is the test
+        # that actually catches a wrong tools=/destructive_tools= argument.
         assert set(initialized_registry._categories.keys()) == set(
             _EXPECTED_CATEGORY_METADATA.keys()
         )
+        for name, expected_tool_names in expected_category_tool_names.items():
+            category = initialized_registry.get_category(name)
+            assert category is not None
+            assert {tool.name for tool in category.tools} == expected_tool_names
+
+        destructive_names = {
+            tool.name
+            for category in initialized_registry._categories.values()
+            for tool in category.tools
+            if tool.destructive
+        }
+        assert destructive_names == _EXPECTED_DESTRUCTIVE_TOOL_NAMES
 
     @pytest.mark.parametrize("name", list(_EXPECTED_CATEGORY_METADATA.keys()))
     def test_category_metadata_matches_expected(

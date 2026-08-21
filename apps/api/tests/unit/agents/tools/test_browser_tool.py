@@ -17,6 +17,7 @@ from app.constants.browser import (
     HandoffStatus,
     SensitiveCategory,
 )
+from app.constants.log_tags import LogTag
 from app.models.chat_models import ConversationSource
 from app.schemas.browser import (
     BrowserHandoffSnapshot,
@@ -432,9 +433,14 @@ async def test_llm_unavailable_message_carries_the_reason(
         "build_browser_llm",
         MagicMock(side_effect=BrowserUnavailableError("no API key for 'google'")),
     )
+    fake_log = MagicMock()
+    monkeypatch.setattr(tool_mod, "log", fake_log)
     out = await browser_task.ainvoke({"task": "do it"}, config=UI_CONFIG)
     assert out == "I can't use the browser right now: no API key for 'google'"
     assert h.session_kwargs == {}
+    fake_log.warning.assert_called_once_with(
+        f"{LogTag.BROWSER} Browser LLM unavailable", error_type="BrowserUnavailableError"
+    )
 
 
 async def test_capacity_limit_returns_the_exception_text_verbatim(
@@ -452,6 +458,8 @@ async def test_session_unavailable_emits_failed_card_and_explains(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     h = _install(monkeypatch, session_error=BrowserUnavailableError("host is down"))
+    fake_log = MagicMock()
+    monkeypatch.setattr(tool_mod, "log", fake_log)
     out = await browser_task.ainvoke({"task": "x"}, config=UI_CONFIG)
     assert out == "I couldn't start the browser: host is down"
     assert h.cards == [
@@ -464,6 +472,13 @@ async def test_session_unavailable_emits_failed_card_and_explains(
             "replay_url": None,
         }
     ]
+    fake_log.warning.assert_called_once_with(
+        f"{LogTag.BROWSER} Browser session unavailable", error_type="BrowserUnavailableError"
+    )
+    # UI runs have no bot_delivery, so emitting the failed card above must not
+    # touch it — the closure's initial value must be `None`, not a falsy
+    # sentinel a snapshot could be handed to and blow up against.
+    fake_log.error.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -947,6 +962,7 @@ async def test_failed_mirror_is_logged_with_the_snapshot_that_failed(
     assert out == _completed_message("done")
     assert len(h.cards) == 1
     (error_call,) = fake_log.error.call_args_list
+    assert error_call.args == (f"{LogTag.BROWSER} Bot delivery failed; continuing browser task",)
     assert error_call.kwargs == {
         "error_type": "RuntimeError",
         "browser": {"snapshot_type": "BrowserStepSnapshot"},

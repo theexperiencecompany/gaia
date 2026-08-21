@@ -73,8 +73,9 @@ async def test_unknown_returns_none(fake_redis):
 
 async def test_ownership_enforced(fake_redis):
     await handoff_mod.create_pending_handoff("h4", "owner", "conv-h4")
-    with pytest.raises(BrowserHandoffNotOwned):
+    with pytest.raises(BrowserHandoffNotOwned) as exc_info:
         await handoff_mod.resolve_handoff("h4", HandoffDecision.CONTINUE, "intruder")
+    assert str(exc_info.value) == "Not authorized to resolve this handoff"
 
 
 async def test_await_returns_when_resolved(fake_redis):
@@ -119,6 +120,51 @@ async def test_await_handoff_polls_then_picks_up_resolution(fake_redis, monkeypa
     assert sleep_calls == [handoff_mod.HANDOFF_POLL_INTERVAL_SECONDS]
 
 
+async def test_await_handoff_stops_exactly_at_deadline(fake_redis, monkeypatch):
+    """At loop.time() == deadline the loop must stop (``<``, not ``<=``) — one
+    extra iteration would race a resolution landing exactly on the deadline
+    tick and turn a timeout into a false completion."""
+    await handoff_mod.create_pending_handoff("h6d", "user-1", "conv-h6d")
+    await handoff_mod.resolve_handoff("h6d", HandoffDecision.CONTINUE, "user-1")
+
+    class _FakeLoop:
+        def __init__(self, times: list[float]) -> None:
+            self._times = iter(times)
+
+        def time(self) -> float:
+            return next(self._times)
+
+    fake_loop = _FakeLoop([100.0, 105.0])
+    monkeypatch.setattr(handoff_mod.asyncio, "get_event_loop", lambda: fake_loop)
+
+    outcome = await handoff_mod.await_handoff("h6d", timeout_seconds=5)
+
+    assert outcome.status == HandoffStatus.TIMEOUT
+
+
+async def test_get_conversation_pending_handoff_returns_the_stored_id(fake_redis):
+    await handoff_mod.create_pending_handoff("h19", "user-1", "conv-h19")
+
+    result = await handoff_mod.get_conversation_pending_handoff("conv-h19")
+
+    assert result == "h19"
+
+
+async def test_get_conversation_pending_handoff_reads_exact_key_and_model(monkeypatch):
+    fake = _FakeRedisCache()
+    monkeypatch.setattr(handoff_mod, "redis_cache", fake)
+    await handoff_mod.create_pending_handoff("h19b", "user-1", "conv-h19b")
+    fake.get_calls.clear()
+
+    await handoff_mod.get_conversation_pending_handoff("conv-h19b")
+
+    assert fake.get_calls == [(f"{BROWSER_HANDOFF_CONV_KEY_PREFIX}conv-h19b", str)]
+
+
+async def test_get_conversation_pending_handoff_returns_none_when_absent(fake_redis):
+    assert await handoff_mod.get_conversation_pending_handoff("no-such-conv") is None
+
+
 async def test_create_pending_handoff_persists_reason(fake_redis):
     await handoff_mod.create_pending_handoff("h7", "user-1", "conv-h7", reason="payment step")
     record = await handoff_mod.get_handoff("h7")
@@ -142,6 +188,21 @@ async def test_create_pending_handoff_sets_conv_lookup(fake_redis):
 async def test_create_pending_handoff_skips_conv_lookup_when_no_conversation(fake_redis):
     await handoff_mod.create_pending_handoff("h8b", "user-1", "")
     assert all(not key.startswith(BROWSER_HANDOFF_CONV_KEY_PREFIX) for key in fake_redis)
+
+
+async def test_create_pending_handoff_writes_conv_lookup_with_ttl(monkeypatch):
+    fake = _FakeRedisCache()
+    monkeypatch.setattr(handoff_mod, "redis_cache", fake)
+
+    await handoff_mod.create_pending_handoff("h8c", "user-1", "conv-h8c")
+
+    conv_key = f"{BROWSER_HANDOFF_CONV_KEY_PREFIX}conv-h8c"
+    conv_calls = [c for c in fake.set_calls if c[0] == conv_key]
+    assert len(conv_calls) == 1
+    key, value, ttl, _model = conv_calls[0]
+    assert key == conv_key
+    assert value == "h8c"
+    assert ttl == HANDOFF_KEY_TTL_SECONDS
 
 
 async def test_store_writes_exact_key_ttl_and_model(monkeypatch):
@@ -187,6 +248,17 @@ async def test_resolve_handoff_blank_message_becomes_none(fake_redis):
     await handoff_mod.create_pending_handoff("h14", "user-1", "conv-h14")
     await handoff_mod.resolve_handoff("h14", HandoffDecision.CONTINUE, "user-1", "   ")
     record = await handoff_mod.get_handoff("h14")
+    assert record is not None
+    assert record.message is None
+
+
+async def test_resolve_handoff_no_message_argument_becomes_none(fake_redis):
+    """The ``message`` default (None), not just a blank string, must fall through
+    to no note — a wrong fallback constant would only show up when the caller
+    omits the argument entirely."""
+    await handoff_mod.create_pending_handoff("h14b", "user-1", "conv-h14b")
+    await handoff_mod.resolve_handoff("h14b", HandoffDecision.CONTINUE, "user-1")
+    record = await handoff_mod.get_handoff("h14b")
     assert record is not None
     assert record.message is None
 

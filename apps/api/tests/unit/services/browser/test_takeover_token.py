@@ -290,3 +290,109 @@ def test_ttl_seconds_matches_future_offset():
     }
     ttl = tt.takeover_token_ttl_seconds(future_claims)
     assert ttl == pytest.approx(1000, abs=2)
+
+
+def test_create_takeover_token_reads_current_time_in_utc(monkeypatch):
+    # now = datetime.now(UTC) must be called with the UTC tzinfo specifically —
+    # a tz-naive "now" would silently shift iat/exp by the host's local offset.
+    real_datetime = tt.datetime
+    captured: list[object] = []
+
+    class SpyDatetime(real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            captured.append(tz)
+            return real_datetime.now(tz)
+
+    monkeypatch.setattr(tt, "datetime", SpyDatetime)
+    tt.create_takeover_token("sess-1", "user-1")
+    assert captured == [UTC]
+
+
+def test_create_takeover_token_passes_configured_algorithm_to_jwt_encode(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_encode(claims, key, algorithm=None, headers=None, access_token=None):
+        captured["algorithm"] = algorithm
+        return "fake-token"
+
+    monkeypatch.setattr(tt.jwt, "encode", fake_encode)
+    token = tt.create_takeover_token("sess-1", "user-1")
+    assert token == "fake-token"
+    assert captured["algorithm"] == JWT_ALGORITHM
+
+
+def test_verify_takeover_token_passes_configured_algorithms_to_jwt_decode(monkeypatch):
+    token = tt.create_takeover_token("sess-1", "user-1")
+    real_decode = tt.jwt.decode
+    captured: dict[str, object] = {}
+
+    def fake_decode(token_, key, algorithms=None, **kwargs):
+        captured["algorithms"] = algorithms
+        return real_decode(token_, key, algorithms=[JWT_ALGORITHM], **kwargs)
+
+    monkeypatch.setattr(tt.jwt, "decode", fake_decode)
+    claims = tt.verify_takeover_token(token)
+    assert captured["algorithms"] == [JWT_ALGORITHM]
+    assert claims["session_id"] == "sess-1"
+
+
+def test_ttl_seconds_reads_current_time_in_utc(monkeypatch):
+    real_datetime = tt.datetime
+    captured: list[object] = []
+
+    class SpyDatetime(real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            captured.append(tz)
+            return real_datetime.now(tz)
+
+    monkeypatch.setattr(tt, "datetime", SpyDatetime)
+    claims: tt.TakeoverTokenClaims = {
+        "session_id": "sess-1",
+        "user_id": "user-1",
+        "exp": 0.0,
+    }
+    tt.takeover_token_ttl_seconds(claims)
+    assert captured == [UTC]
+
+
+def test_invalid_token_role_message_is_exact():
+    forged = jwt.encode(
+        {
+            "sub": "user-1",
+            "session_id": "sess-1",
+            "role": "bot",
+            "exp": datetime.now(UTC) + timedelta(minutes=5),
+        },
+        _SECRET,
+        algorithm=JWT_ALGORITHM,
+    )
+    with pytest.raises(JWTError) as exc_info:
+        tt.verify_takeover_token(forged)
+    assert str(exc_info.value) == "Invalid token role"
+
+
+def test_missing_claims_message_is_exact():
+    forged = jwt.encode(
+        {
+            "sub": "user-1",
+            "role": "browser_takeover",
+            "exp": datetime.now(UTC) + timedelta(minutes=5),
+        },
+        _SECRET,
+        algorithm=JWT_ALGORITHM,
+    )
+    with pytest.raises(JWTError) as exc_info:
+        tt.verify_takeover_token(forged)
+    assert str(exc_info.value) == "Takeover token missing session_id, subject, or expiry"
+
+
+def test_missing_secret_message_is_exact(monkeypatch):
+    monkeypatch.setattr(settings, "BROWSER_TAKEOVER_TOKEN_SECRET", None, raising=False)
+    with pytest.raises(ValueError) as exc_info:
+        tt.create_takeover_token("sess-1", "user-1")
+    assert str(exc_info.value) == (
+        "BROWSER_TAKEOVER_TOKEN_SECRET is required for browser takeover token signing. "
+        "Generate with: openssl rand -hex 32"
+    )

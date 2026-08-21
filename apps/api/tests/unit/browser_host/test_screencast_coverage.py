@@ -623,7 +623,7 @@ async def test_run_live_view_cdp_call_sequence_and_exact_args() -> None:
     """Every CDP call run_live_view makes, in order, with exact method/params/session_id."""
     host, session = _make_host_and_session()
     mock_cdp = _make_cdp()
-    calls: list[tuple[str, dict[str, Any] | None, str | None]] = []
+    calls: list[tuple[Any, str, dict[str, Any] | None, str | None]] = []
 
     async def fake_cdp_call(
         cdp: Any,
@@ -632,7 +632,7 @@ async def test_run_live_view_cdp_call_sequence_and_exact_args() -> None:
         *,
         session_id: str | None = None,
     ) -> dict[str, Any]:
-        calls.append((method, params, session_id))
+        calls.append((cdp, method, params, session_id))
         if method == "Target.attachToTarget":
             return {"sessionId": "page-sess"}
         if method == "Target.getTargetInfo":
@@ -648,11 +648,13 @@ async def test_run_live_view_cdp_call_sequence_and_exact_args() -> None:
 
     mock_ctor.assert_called_once_with("ws://fake")
     host.focused_target_id.assert_awaited_once_with("sess-1")
+    # every cdp_call carries the session's own CDPClient, not a dropped/None one
     assert calls == [
-        ("Target.attachToTarget", {"targetId": "target-1", "flatten": True}, None),
-        ("Page.enable", {}, "page-sess"),
-        ("Target.getTargetInfo", {"targetId": "target-1"}, None),
+        (mock_cdp, "Target.attachToTarget", {"targetId": "target-1", "flatten": True}, None),
+        (mock_cdp, "Page.enable", {}, "page-sess"),
+        (mock_cdp, "Target.getTargetInfo", {"targetId": "target-1"}, None),
         (
+            mock_cdp,
             "Page.startScreencast",
             {"format": "jpeg", "maxWidth": 1280, "maxHeight": 800, "quality": 72},
             "page-sess",
@@ -824,6 +826,8 @@ async def test_register_frame_handler_ack_uses_exact_cdp_call_args() -> None:
         )
         # the done callback discards the finished ack task from `background`
         assert background == set()
+        # the queued frame is params["data"], not some other field
+        assert frames.get_nowait() == "abc"
 
 
 @pytest.mark.unit
@@ -900,6 +904,7 @@ async def test_apply_input_key_uses_exact_session_id_kwarg() -> None:
         with pytest.raises(asyncio.CancelledError):
             await _apply_input(host, session, fake_cdp, client_ws, "page-sess")
         assert mock_call.call_args.kwargs["session_id"] == "page-sess"
+        assert mock_call.call_args[0][0] is fake_cdp
 
 
 @pytest.mark.unit

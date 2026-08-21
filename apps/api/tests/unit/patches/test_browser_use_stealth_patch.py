@@ -114,37 +114,39 @@ async def test_injection_failure_logs_the_target_and_error_type(monkeypatch):
 
 
 @pytest.mark.unit
-async def test_forwards_target_id_and_focus_to_the_original_accessor(monkeypatch):
+async def test_forwards_self_target_id_and_focus_to_the_original_accessor(monkeypatch):
     self = SimpleNamespace()
     cdp = _fake_cdp_session("t1")
-    calls: list[tuple[str | None, bool]] = []
+    calls: list[tuple[SimpleNamespace, str | None, bool]] = []
 
     async def _fake_original(self_arg: SimpleNamespace, target_id=None, focus=True):
-        calls.append((target_id, focus))
+        calls.append((self_arg, target_id, focus))
         return cdp
 
     monkeypatch.setattr(patch_module, "_original_get_or_create_cdp_session", _fake_original)
 
     await patch_module._get_or_create_cdp_session(self, target_id="t1", focus=False)
 
-    assert calls == [("t1", False)]
+    # self must be forwarded unchanged (not e.g. None) — the original accessor
+    # is a bound-method call site and needs the real BrowserSession instance.
+    assert calls == [(self, "t1", False)]
 
 
 @pytest.mark.unit
 async def test_defaults_target_id_none_and_focus_true(monkeypatch):
     self = SimpleNamespace()
     cdp = _fake_cdp_session("t1")
-    calls: list[tuple[str | None, bool]] = []
+    calls: list[tuple[SimpleNamespace, str | None, bool]] = []
 
     async def _fake_original(self_arg: SimpleNamespace, target_id=None, focus=True):
-        calls.append((target_id, focus))
+        calls.append((self_arg, target_id, focus))
         return cdp
 
     monkeypatch.setattr(patch_module, "_original_get_or_create_cdp_session", _fake_original)
 
     await patch_module._get_or_create_cdp_session(self)
 
-    assert calls == [(None, True)]
+    assert calls == [(self, None, True)]
 
 
 @pytest.mark.unit

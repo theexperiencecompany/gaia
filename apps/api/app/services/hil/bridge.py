@@ -218,7 +218,7 @@ def build_summary(tool_name: str, args: dict[str, Any], integration_name: str | 
         task = str(args.get("task", "")).strip()
         if not task:
             return "Start a browser task"
-        first = task.split(". ", 1)[0].strip().rstrip(".")
+        first = task.split(". ")[0].strip().rstrip(".")
         concise = first if 0 < len(first) <= 140 else clip_text(task, 140)
         return f"Start a browser task — {concise}"
     label = tool_name.replace("_", " ").strip().capitalize()

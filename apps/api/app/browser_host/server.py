@@ -116,7 +116,7 @@ def _ws_authorized(websocket: WebSocket) -> bool:
     if not origin:
         return True
     try:
-        netloc = (origin.split("://", 1)[1] if "://" in origin else origin).split("/", 1)[0]
+        netloc = (origin.split("://", 1)[1] if "://" in origin else origin).split("/")[0]
         host = netloc.rsplit(":", 1)[0]
     except (ValueError, IndexError) as exc:
         log.set(browser={"operation": "ws_origin_reject"})

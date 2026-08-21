@@ -10,12 +10,13 @@ actions), which is what the takeover tests below exercise directly.
 
 import asyncio
 from typing import ClassVar
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, Mock, call
 
 import browser_use
 import pytest
 
 from app.constants.browser import BrowserEventKind, BrowserSessionStatus, HandoffStatus
+from app.constants.log_tags import LogTag
 from app.schemas.browser import HandoffOutcome
 from app.services.browser import runner as runner_mod
 from app.services.browser.runner import BrowserTaskRunner
@@ -135,11 +136,12 @@ def _make_runner(
     stream_screenshots=True,
     user_id=None,
     root_request_id=None,
+    llm=None,
 ):
     return BrowserTaskRunner(
         session=_session(),
         conversation_id="c1",
-        llm=object(),
+        llm=llm if llm is not None else object(),
         emit=emit,
         request_handoff=request_handoff
         or AsyncMock(return_value=HandoffOutcome(status=HandoffStatus.COMPLETED)),
@@ -166,6 +168,20 @@ def _collector():
         events.append(snapshot)
 
     return events, emit
+
+
+# The exact verify-before-you-continue instruction the runner appends to every
+# completed takeover. Asserted verbatim so a reworded prompt has to be deliberate.
+TAKEOVER_VERIFY_TAIL = (
+    "Do NOT assume the page is in the state you expect. Look at the "
+    "CURRENT page now and VERIFY before doing anything else — e.g. a solved CAPTCHA "
+    "shows a green checkmark and no 'please verify that you are not a robot' error "
+    "remains; a login lands on the signed-in page. If the step is NOT actually "
+    "complete, call the takeover / solve_captcha_with_help action again instead of "
+    "proceeding. Only continue toward the goal once you have confirmed the page state "
+    "yourself, and never report success you cannot see on the page."
+)
+TAKEOVER_DEFAULT_PREFACE = "The user says they finished that step in the live browser. "
 
 
 async def test_takeover_completed_lets_agent_continue():
@@ -653,10 +669,10 @@ async def test_takeover_note_becomes_a_direct_instruction_for_the_agent() -> Non
     )
     out = await runner._handle_takeover("Log in", "credentials")
 
-    assert out.startswith(
-        'The user handed control back with this instruction: "just grab the photo". Follow it.\n\n'
+    assert out == (
+        'The user handed control back with this instruction: "just grab the photo". '
+        "Follow it.\n\n" + TAKEOVER_VERIFY_TAIL
     )
-    assert "VERIFY before doing anything else" in out
 
 
 async def test_takeover_without_a_note_uses_the_default_preface() -> None:
@@ -669,8 +685,7 @@ async def test_takeover_without_a_note_uses_the_default_preface() -> None:
     )
     out = await runner._handle_takeover("Log in", "credentials")
 
-    assert out.startswith("The user says they finished that step in the live browser. ")
-    assert "handed control back with this instruction" not in out
+    assert out == TAKEOVER_DEFAULT_PREFACE + TAKEOVER_VERIFY_TAIL
 
 
 @pytest.mark.parametrize(
@@ -1005,3 +1020,266 @@ async def test_a_completed_run_charges_its_llm_usage(patch_browser, monkeypatch)
 
     assert record.await_args.kwargs["model_name"] == "gemini-flash"
     assert record.await_args.kwargs["user_id"] == "u1"
+
+
+# ---------------------------------------------------------------------------
+# The exact wiring, wording and timing the wave-1 assertions let slide
+# ---------------------------------------------------------------------------
+
+
+AGENT_KWARG_KEYS = {
+    "task",
+    "llm",
+    "browser",
+    "register_new_step_callback",
+    "register_should_stop_callback",
+    "use_vision",
+    "flash_mode",
+    "max_actions_per_step",
+    "step_timeout",
+    "tools",
+}
+
+
+async def test_run_hands_browser_use_exactly_the_expected_agent_keys(patch_browser) -> None:
+    _, emit = _collector()
+    await _make_runner(emit=emit).run("x")
+
+    assert set(FakeAgent.last_kwargs) == AGENT_KWARG_KEYS
+
+
+async def test_run_gives_the_agent_the_llm_it_was_constructed_with(patch_browser) -> None:
+    sentinel = object()
+    _, emit = _collector()
+    await _make_runner(emit=emit, llm=sentinel).run("x")
+
+    assert FakeAgent.last_kwargs["llm"] is sentinel
+
+
+async def test_cdp_attach_failure_names_the_url_the_error_and_the_setting(
+    patch_browser, monkeypatch
+) -> None:
+    from app.services.browser.exceptions import BrowserUnavailableError
+
+    runner, _ = await _run_raising(monkeypatch, ConnectionError("refused"))
+    with pytest.raises(BrowserUnavailableError) as err:
+        await runner.run("x")
+
+    assert str(err.value) == (
+        "Could not attach to the browser over CDP at ws://x: refused. "
+        "Check that the browser host is reachable from the API at BROWSER_HOST_URL."
+    )
+
+
+async def test_an_unexpected_failure_is_logged_with_its_type_and_session(
+    patch_browser, monkeypatch
+) -> None:
+    logger = MagicMock()
+    monkeypatch.setattr(runner_mod, "log", logger)
+    runner, _ = await _run_raising(monkeypatch, RuntimeError("LLM provider exploded"))
+
+    await runner.run("x")
+
+    logger.error.assert_called_once_with(
+        f"{LogTag.BROWSER} Browser agent failed unexpectedly",
+        error_type="RuntimeError",
+        browser={"session_id": "s1"},
+    )
+
+
+async def test_a_takeover_without_any_note_uses_the_default_preface_verbatim() -> None:
+    _, emit = _collector()
+    runner = _make_runner(
+        emit=emit,
+        request_handoff=AsyncMock(
+            return_value=HandoffOutcome(status=HandoffStatus.COMPLETED, message=None)
+        ),
+    )
+    out = await runner._handle_takeover("Log in", "credentials")
+
+    assert out == TAKEOVER_DEFAULT_PREFACE + TAKEOVER_VERIFY_TAIL
+
+
+class _GoalOutput:
+    """A step output whose goal fields are set independently, unlike ``_Output``."""
+
+    def __init__(self, *, next_goal: str, thinking: str, actions: list[_Action]):
+        self.next_goal = next_goal
+        self.thinking = thinking
+        self.action = actions
+
+
+class _ThinklessOutput:
+    """Flash mode: the model returned neither a goal nor any thinking text."""
+
+    def __init__(self, actions: list[_Action]):
+        self.next_goal = ""
+        self.action = actions
+
+
+class _BareState:
+    """A browser state summary Browser-Use gave no url, title or screenshot."""
+
+
+async def test_the_models_next_goal_wins_over_its_thinking(patch_browser) -> None:
+    events, emit = _collector()
+    runner = _make_runner(emit=emit)
+    output = _GoalOutput(
+        next_goal="Check out", thinking="Deciding what to click", actions=[_Action("click", {})]
+    )
+    await runner._on_step(_State("https://x"), output, 1)
+    await _drain(runner)
+
+    assert events[-1].goal == "Check out"
+
+
+async def test_a_step_with_no_thinking_attribute_captions_from_its_actions(patch_browser) -> None:
+    events, emit = _collector()
+    runner = _make_runner(emit=emit)
+    output = _ThinklessOutput([_Action("navigate", {"url": "https://www.example.com/x"})])
+    await runner._on_step(_State("https://x"), output, 1)
+    await _drain(runner)
+
+    assert events[-1].goal == "Opening example.com"
+
+
+async def test_a_state_without_url_title_or_screenshot_still_emits_a_step(patch_browser) -> None:
+    events, emit = _collector()
+    runner = _make_runner(emit=emit)
+    await runner._on_step(_BareState(), _Output("Waiting", []), 1)
+    await _drain(runner)
+
+    step = events[-1]
+    assert step.url is None
+    assert step.title is None
+    assert step.screenshot is None
+
+
+async def test_each_step_reports_the_wall_clock_since_the_previous_one(
+    patch_browser, monkeypatch
+) -> None:
+    _, emit = _collector()
+    runner = _make_runner(emit=emit)
+    emit_step = AsyncMock()
+    monkeypatch.setattr(runner, "_emit_step", emit_step)
+    monkeypatch.setattr(runner_mod, "perf_counter", Mock(side_effect=[100.0, 102.5]))
+
+    output = _Output("Check out", [_Action("click", {"index": 4})])
+    state = _State("https://example.com/cart")
+    await runner._on_step(state, output, 1)
+    await _drain(runner)
+    await runner._on_step(state, output, 2)
+    await _drain(runner)
+
+    # The first step has no predecessor to measure against; the second reports 2.5s.
+    assert emit_step.await_args_list == [
+        call(
+            1,
+            "Check out",
+            "click({'index': 4})",
+            "https://example.com/cart",
+            "Page",
+            "ZmFrZQ==",
+            0,
+        ),
+        call(
+            2,
+            "Check out",
+            "click({'index': 4})",
+            "https://example.com/cart",
+            "Page",
+            "ZmFrZQ==",
+            2500,
+        ),
+    ]
+
+
+async def test_the_step_emit_is_spawned_as_a_named_background_task(
+    patch_browser, monkeypatch
+) -> None:
+    spawned: list[dict] = []
+    real_spawn = runner_mod.spawn_background_task
+
+    def _spy(coro, **kwargs):
+        spawned.append(kwargs)
+        return real_spawn(coro, **kwargs)
+
+    monkeypatch.setattr(runner_mod, "spawn_background_task", _spy)
+    _, emit = _collector()
+    runner = _make_runner(emit=emit)
+    await runner._on_step(_State("https://x"), _Output("a", []), 1)
+    await _drain(runner)
+
+    assert spawned == [{"name": "browser_step_emit"}]
+
+
+async def test_a_finished_step_emit_releases_its_slot(patch_browser) -> None:
+    _, emit = _collector()
+    runner = _make_runner(emit=emit)
+    await runner._on_step(_State("https://x"), _Output("a", []), 1)
+    await _drain(runner)
+    await asyncio.sleep(0)
+
+    # The done-callback discards the task, so the flush set never grows unbounded.
+    assert runner._emit_tasks == set()
+
+
+async def test_the_step_frame_is_uploaded_under_that_steps_index(
+    patch_browser, monkeypatch
+) -> None:
+    upload = AsyncMock(return_value="https://cdn.example.com/step_7.png")
+    monkeypatch.setattr(runner_mod, "upload_step_screenshot", upload)
+    _, emit = _collector()
+    runner = _make_runner(emit=emit)
+
+    await runner._emit_step(7, "goal", "click()", "https://x", "Page", "ZmFrZQ==", 12)
+
+    assert upload.await_args.args == (b"fake", "s1", 7)
+
+
+async def test_the_step_timing_log_reports_the_screenshot_and_emit_cost(
+    patch_browser, monkeypatch
+) -> None:
+    logger = MagicMock()
+    monkeypatch.setattr(runner_mod, "log", logger)
+    # shot_t0, after-screenshot, emit_t0, after-emit.
+    monkeypatch.setattr(runner_mod, "perf_counter", Mock(side_effect=[10.0, 12.5, 20.0, 21.0]))
+    _, emit = _collector()
+    runner = _make_runner(emit=emit)
+
+    await runner._emit_step(7, "goal", "click()", "https://x", "Page", "ZmFrZQ==", 12)
+
+    logger.info.assert_called_once_with(
+        f"{LogTag.BROWSER} step timing",
+        step=7,
+        since_prev_ms=12,
+        screenshot_ms=2500,
+        emit_ms=1000,
+    )
+
+
+async def test_a_failed_step_emit_never_sinks_the_result(patch_browser) -> None:
+    _, emit = _collector()
+    runner = _make_runner(emit=emit)
+
+    async def _boom() -> None:
+        raise RuntimeError("emit exploded")
+
+    runner._emit_tasks.add(asyncio.create_task(_boom()))
+    result = await runner._finish(BrowserSessionStatus.COMPLETED, True, "All done.")
+
+    assert result.status == BrowserSessionStatus.COMPLETED
+    assert result.summary == "All done."
+
+
+async def test_an_unreadable_history_is_logged_with_the_error_type(monkeypatch) -> None:
+    logger = MagicMock()
+    monkeypatch.setattr(runner_mod, "log", logger)
+    _, emit = _collector()
+
+    await _make_runner(emit=emit)._finish_from_history(_BrokenHistory())
+
+    logger.warning.assert_called_once_with(
+        f"{LogTag.BROWSER} Could not read browser history result",
+        error_type="RuntimeError",
+    )

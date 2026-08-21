@@ -477,3 +477,35 @@ class TestBrowserTaskSummary:
         summary = build_summary("browser_task", {"task": "First. Second. Third."}, None)
 
         assert summary == f"Start a browser task {EM_DASH}First"
+
+    def test_a_trailing_period_with_no_further_sentence_is_dropped(self) -> None:
+        # No ". " anywhere in the task, so `first` is the whole (stripped) task — only
+        # the final `.rstrip(".")` removes the trailing period, not the split.
+        summary = build_summary("browser_task", {"task": "Book a flight."}, None)
+
+        assert summary == f"Start a browser task {EM_DASH}Book a flight"
+
+    def test_the_trailing_strip_removes_only_periods_not_other_characters(self) -> None:
+        # `X` is not a character `rstrip(".")` would ever touch — this pins the exact
+        # strip set against a mutant that also strips trailing `X`s.
+        summary = build_summary("browser_task", {"task": "Book a flightX."}, None)
+
+        assert summary == f"Start a browser task {EM_DASH}Book a flightX"
+
+    def test_a_one_character_lead_in_is_kept_not_clipped(self) -> None:
+        # Pins the lower bound at `0 <`, not `1 <`: a single-character lead-in must
+        # still be treated as present and used as-is, not fall through to clip_text.
+        summary = build_summary("browser_task", {"task": "A. Rest of stuff here"}, None)
+
+        assert summary == f"Start a browser task {EM_DASH}A"
+
+    def test_a_140_char_lead_in_from_a_longer_task_is_kept_whole(self) -> None:
+        # Distinguishes `<= 140` from `< 140`: here `first` (the lead-in before the
+        # first ". ") is exactly 140 chars but `task` (the fallback clip_text source)
+        # is much longer, so a boundary off-by-one would clip a sentence that fits.
+        task = "y" * 140 + ". additional sentence"
+
+        summary = build_summary("browser_task", {"task": task}, None)
+
+        assert summary == f"Start a browser task {EM_DASH}{'y' * 140}"
+        assert ELLIPSIS not in summary
