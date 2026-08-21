@@ -31,35 +31,6 @@ When something needs you, it texts you. iMessage, WhatsApp, Telegram, Slack, or 
 | Contribute | [Development Setup](https://docs.heygaia.io/developers/development-setup) |
 | See how it's built | [ARCHITECTURE.md](./ARCHITECTURE.md) |
 
-## What GAIA does
-
-### Works while you're away
-
-Connect a tool and GAIA sets itself up. No setup screen, no template to pick — a handful of automated jobs are already running the moment you connect Gmail or Calendar. (Those are [workflows](#workflows-the-part-that-runs-itself), covered below.)
-
-- Watches your tools and tells you when something matters
-- Runs jobs on a schedule, in the background
-- Its todos aren't reminders — they research the topic and draft the output, ready for you to review
-- Reaches you wherever you actually read your messages
-
-### Remembers you
-
-- Learns as you talk — you never have to say "remember this"
-- Keeps the people, projects and preferences that come up, plus a journal of recent days
-- All of it visible on the **Memory** page as a list or a graph
-- Edit, export or delete any of it in a click
-
-### Listens
-
-- Say **"Hey GAIA"** and start talking
-- The wake word runs on your device — no audio leaves your machine until you say it, and [the model is right here](libs/wake-word) if you want to check
-- Calls are real-time and interruptible, with background noise filtered out
-
-### Puts everything in one place
-
-- Your **inbox**, **calendar**, **todos** and **workflows**, with a **dashboard** over the top
-- Whatever GAIA did while you were gone waits in **notifications** — approve it, edit it, or dismiss it
-
 ## Things people actually ask it
 
 - **"Summarize my 47 unread emails and draft replies for the 3 that need one."** Reads every thread end to end, ranks by what matters, drafts in your voice.
@@ -87,6 +58,33 @@ Build your own from the **Workflows** page:
 - **Or on an event** — new email, calendar change, Slack message, GitHub commit, Linear issue, Notion edit, new row in a sheet
 - **Chain steps across tools** — fetch, summarise, post to Slack
 
+## What else it does
+
+### Remembers you
+
+- Learns as you talk — you never have to say "remember this"
+- Keeps the people, projects and preferences that come up, plus a journal of recent days
+- All of it visible on the **Memory** page as a list or a graph
+- Edit, export or delete any of it in a click
+
+### Listens
+
+- Say **"Hey GAIA"** and start talking
+- The wake word runs on your device — no audio leaves your machine until you say it, and [the model is right here](libs/wake-word) if you want to check
+- Calls are real-time and interruptible, with background noise filtered out
+
+### Puts everything in one place
+
+- Your **inbox**, **calendar**, **todos** and **workflows**, with a **dashboard** over the top
+- Whatever GAIA did while you were gone waits in **notifications** — approve it, edit it, or dismiss it
+
+### Does real work, not just chat
+
+- **Writes and runs real code.** Every user gets a sandboxed Linux workspace. GAIA can analyse a dataset, run the script, and hand back a PDF, Word doc, deck or spreadsheet.
+- **Researches properly.** Multi-source web research, not a single search box.
+- **Learns new abilities.** 37 built-in skills on the open [Agent Skills spec](https://agentskills.io), plus any you install from GitHub or write yourself.
+- **Runs on any model.** OpenAI, Gemini, Grok and OpenRouter — which covers Claude and most everything else. Self-hosters swap freely.
+
 ## Use GAIA from anywhere
 
 | | Platform | How |
@@ -113,13 +111,6 @@ gaia bridge login          # approve the pairing in your browser
 gaia bridge fs ~/projects  # share a folder
 gaia bridge up             # connect
 ```
-
-## It's not just chat
-
-- **It writes and runs real code.** Every user gets a sandboxed Linux workspace. GAIA can analyse a dataset, run the script, and hand you the result — as a PDF, Word doc, deck, or spreadsheet.
-- **It researches properly.** Multi-source web research, not a single search box.
-- **It learns new abilities.** 37 built-in skills using the open [Agent Skills spec](https://agentskills.io), plus any skill you install from GitHub or write yourself.
-- **It's model-agnostic.** OpenAI, Gemini, Grok, and OpenRouter — which covers Claude and most everything else. Self-hosters can swap freely.
 
 ## Getting started
 
