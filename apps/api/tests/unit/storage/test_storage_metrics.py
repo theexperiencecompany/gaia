@@ -653,3 +653,12 @@ def test_a_registration_failure_for_an_unknown_collector_is_not_swallowed() -> N
 
     with pytest.raises(ValueError, match="bad bucket definition"):
         _register_once(f"never_registered_{uuid4().hex}", boom)
+
+
+def test_a_negative_byte_count_records_no_bytes(op: str) -> None:
+    # `if byte_count:` and `if byte_count > 0:` differ exactly here — a
+    # negative count must not touch either surface.
+    record_fs_op(op, duration_ms=1.0, byte_count=-5)
+
+    assert "bytes" not in peek_fs_metrics()[op]
+    assert byte_total(op) is None

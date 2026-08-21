@@ -29,7 +29,7 @@ from langgraph.types import StreamWriter
 from app.agents.context.assemble import assemble_context
 from app.agents.context.section_context import SectionContext
 from app.agents.context.tiers import AgentTier
-from app.agents.core.subagents.base_subagent import SubAgentFactory
+from app.agents.core.subagents.base_subagent import SubAgentFactory, SubAgentToolConfig
 from app.agents.llm.client import init_llm
 from app.agents.prompts.subagent_prompts import WORKFLOW_AGENT_SYSTEM_PROMPT
 from app.agents.tools.workflow_shared_tools import SUBAGENT_WORKFLOW_TOOLS
@@ -117,11 +117,13 @@ async def get_workflow_subagent() -> CompiledStateGraph:
         provider="workflow",
         name="workflow_agent",
         llm=llm,
-        tool_space="workflow_subagent",
-        use_direct_tools=True,
-        disable_retrieve_tools=True,
-        include_finish_task=False,
-        authoring_only=True,
+        config=SubAgentToolConfig(
+            tool_space="workflow_subagent",
+            use_direct_tools=True,
+            disable_retrieve_tools=True,
+            include_finish_task=False,
+            authoring_only=True,
+        ),
     )
 
     log.info(f"{LogTag.WORKFLOW} Workflow subagent graph created successfully")

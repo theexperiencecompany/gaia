@@ -1,5 +1,6 @@
 """Infra tests for tool runtime configuration and spawned subagent tool wiring."""
 
+from dataclasses import dataclass
 import json
 from types import SimpleNamespace
 from typing import Any
@@ -9,7 +10,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import BaseTool, tool
 import pytest
 
-from app.agents.core.subagents.base_subagent import SubAgentFactory
+from app.agents.core.subagents.base_subagent import SubAgentFactory, SubAgentToolConfig
 from app.agents.core.subagents.spawn_agent import _build_spawn_graph
 from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.tools.core import retrieval as retrieval_module
@@ -242,10 +243,12 @@ async def _run_provider_subagent_factory(
             provider="provider",
             name="provider_agent",
             llm=MagicMock(),
-            tool_space="provider_space",
-            use_direct_tools=use_direct_tools,
-            disable_retrieve_tools=disable_retrieve_tools,
-            auto_bind_tools=auto_bind_tools,
+            config=SubAgentToolConfig(
+                tool_space="provider_space",
+                use_direct_tools=use_direct_tools,
+                disable_retrieve_tools=disable_retrieve_tools,
+                auto_bind_tools=auto_bind_tools,
+            ),
         )
 
     return captured_kwargs, mw
@@ -610,10 +613,11 @@ async def test_base_subagent_wiring_uses_shared_tool_runtime_helpers():
             provider="provider",
             name="provider_agent",
             llm=MagicMock(),
-            tool_space="provider_space",
-            use_direct_tools=True,
-            disable_retrieve_tools=True,
-            auto_bind_tools=None,
+            config=SubAgentToolConfig(
+                tool_space="provider_space",
+                use_direct_tools=True,
+                disable_retrieve_tools=True,
+            ),
         )
 
     assert captured_kwargs["tools_config"].disable_retrieve_tools is True
@@ -678,52 +682,44 @@ class _DiscoveryRegistry:
         return SimpleNamespace(destructive=tool_name in self._destructive)
 
 
+@dataclass
+class _DiscoveryOptions:
+    """Knobs for rendering a discovery response in tests."""
+
+    categories: dict[str, str] | None = None
+    destructive: set[str] | None = None
+    connected: dict[str, str | None] | None = None
+    internal: set[str] | None = None
+    total_candidates: int = 5
+    limit: int = 10
+
+
 def _render_text(
     final_tools: list[str],
     *,
-    categories: dict[str, str] | None = None,
-    destructive: set[str] | None = None,
-    connected: dict[str, str | None] | None = None,
-    internal: set[str] | None = None,
+    options: _DiscoveryOptions | None = None,
     query: str | None = None,
-    total_candidates: int = 5,
-    limit: int = 10,
 ) -> str:
     """The raw string the model receives, formatting and all."""
+    opts = options or _DiscoveryOptions()
     return _render_discovery_response(
         final_tools,
-        _DiscoveryRegistry(categories or {}, destructive),
-        connected or {},
-        internal or set(),
+        _DiscoveryRegistry(opts.categories or {}, opts.destructive),
+        opts.connected or {},
+        opts.internal or set(),
         query,
-        total_candidates,
-        limit,
+        opts.total_candidates,
+        opts.limit,
     )
 
 
 def _render(
     final_tools: list[str],
     *,
-    categories: dict[str, str] | None = None,
-    destructive: set[str] | None = None,
-    connected: dict[str, str | None] | None = None,
-    internal: set[str] | None = None,
+    options: _DiscoveryOptions | None = None,
     query: str | None = None,
-    total_candidates: int = 5,
-    limit: int = 10,
 ) -> dict[str, Any]:
-    return json.loads(
-        _render_text(
-            final_tools,
-            categories=categories,
-            destructive=destructive,
-            connected=connected,
-            internal=internal,
-            query=query,
-            total_candidates=total_candidates,
-            limit=limit,
-        )
-    )
+    return json.loads(_render_text(final_tools, options=options, query=query))
 
 
 class TestSplitSubagentEntry:
@@ -750,11 +746,15 @@ class TestDiscoveryResponseIsIndentedJson:
     """
 
     def test_the_model_receives_indented_json_not_one_compact_line(self) -> None:
-        text = _render_text(["send_email"], categories={"send_email": "gmail"})
+        text = _render_text(
+            ["send_email"], options=_DiscoveryOptions(categories={"send_email": "gmail"})
+        )
         assert len(text.splitlines()) > 1
 
     def test_nesting_is_indented_by_two_spaces(self) -> None:
-        text = _render_text(["send_email"], categories={"send_email": "gmail"})
+        text = _render_text(
+            ["send_email"], options=_DiscoveryOptions(categories={"send_email": "gmail"})
+        )
         indents = {len(ln) - len(ln.lstrip(" ")) for ln in text.splitlines() if ln.startswith(" ")}
         assert indents, "nothing is indented — the payload came out compact"
         assert min(indents) == 2

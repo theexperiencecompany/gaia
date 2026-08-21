@@ -28,7 +28,7 @@ from app.models.subagent_models import Subagent
 from app.services.mcp.mcp_client import get_mcp_client
 from shared.py.wide_events import log
 
-from .base_subagent import SubAgentFactory
+from .base_subagent import SubAgentFactory, SubAgentToolConfig
 
 
 class SubagentUnavailableError(Exception):
@@ -133,14 +133,16 @@ async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
     graph = await SubAgentFactory.create_provider_subagent(
         provider=subagent.provider,
         llm=llm,
-        tool_space=config.tool_space,
         name=config.agent_name,
-        use_direct_tools=config.use_direct_tools,
-        disable_retrieve_tools=config.disable_retrieve_tools,
-        auto_bind_tools=config.auto_bind_tools,
-        extra_initial_tools=config.extra_initial_tools,
-        include_finish_task=config.include_finish_task,
-        source_label=subagent.name,
+        config=SubAgentToolConfig(
+            tool_space=config.tool_space,
+            use_direct_tools=config.use_direct_tools,
+            disable_retrieve_tools=config.disable_retrieve_tools,
+            auto_bind_tools=config.auto_bind_tools,
+            extra_initial_tools=config.extra_initial_tools,
+            include_finish_task=config.include_finish_task,
+            source_label=subagent.name,
+        ),
     )
 
     log.info(f"{LogTag.AGENT} Subagent created successfully", agent_name=config.agent_name)
@@ -230,15 +232,17 @@ async def _build_user_subagent(integration_id: str, user_id: str) -> CompiledSta
     graph = await SubAgentFactory.create_provider_subagent(
         provider=subagent.provider,
         llm=llm,
-        tool_space=config.tool_space,
         name=config.agent_name,
-        use_direct_tools=config.use_direct_tools,
-        disable_retrieve_tools=config.disable_retrieve_tools,
-        auto_bind_tools=config.auto_bind_tools,
-        extra_initial_tools=config.extra_initial_tools,
-        include_finish_task=config.include_finish_task,
-        mcp_tools=tools,
-        source_label=subagent.name,
+        config=SubAgentToolConfig(
+            tool_space=config.tool_space,
+            use_direct_tools=config.use_direct_tools,
+            disable_retrieve_tools=config.disable_retrieve_tools,
+            auto_bind_tools=config.auto_bind_tools,
+            extra_initial_tools=config.extra_initial_tools,
+            include_finish_task=config.include_finish_task,
+            mcp_tools=tools,
+            source_label=subagent.name,
+        ),
     )
 
     log.info(
@@ -312,12 +316,14 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str) -> Comp
     graph = await SubAgentFactory.create_provider_subagent(
         provider=integration_id,
         llm=llm,
-        tool_space=tool_namespace,
         name=agent_name,
-        use_direct_tools=use_direct,
-        disable_retrieve_tools=use_direct,
-        mcp_tools=tools,
-        source_label=custom_doc.name,
+        config=SubAgentToolConfig(
+            tool_space=tool_namespace,
+            use_direct_tools=use_direct,
+            disable_retrieve_tools=use_direct,
+            mcp_tools=tools,
+            source_label=custom_doc.name,
+        ),
     )
 
     log.info(

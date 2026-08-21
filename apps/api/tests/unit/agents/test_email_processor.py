@@ -11,12 +11,14 @@ from app.agents.memory.email_processor import (
     OnboardingFetchOptions,
     _discover_and_store_linked_profiles,
     _extract_profiles_from_parallel_searches,
+    _latest_gmail_scan_timestamp,
     _process_single_platform,
     _search_platform_emails,
     _search_platform_emails_parallel,
     fetch_emails_for_onboarding,
     process_gmail_to_memory,
 )
+from app.constants.log_tags import LogTag
 from app.models.mail_models import GmailMessagesResponse, GmailToolResult
 from app.models.user_models import UserDocument
 from app.services.onboarding.social_profile_service import (
@@ -797,3 +799,203 @@ class TestFetchEmailsForOnboardingSentLabelSurvives:
         ):
             profiles = await extract_social_profiles_from_emails(emails, "Octo Cat", None)
         assert profiles == []
+
+
+# ---------------------------------------------------------------------------
+# Exact-behavior pins for the onboarding fetch pipeline helpers
+# ---------------------------------------------------------------------------
+
+
+class TestLatestGmailScanTimestamp:
+    def test_none_user_returns_none(self) -> None:
+        assert _latest_gmail_scan_timestamp(None) is None
+
+    def test_user_without_scan_states_returns_none(self) -> None:
+        user = UserDocument(id=USER_ID)
+        assert _latest_gmail_scan_timestamp(user) is None
+
+    def test_non_dict_gmail_state_returns_none(self) -> None:
+        user = UserDocument(id=USER_ID, integration_scan_states={"gmail": "nope"})
+        assert _latest_gmail_scan_timestamp(user) is None
+
+    def test_returns_the_stored_timestamp(self) -> None:
+        ts = datetime(2025, 6, 1, tzinfo=UTC)
+        user = UserDocument(
+            id=USER_ID, integration_scan_states={"gmail": {"last_scan_timestamp": ts}}
+        )
+        assert _latest_gmail_scan_timestamp(user) == ts
+
+
+class TestFetchEmailsForOnboardingPins:
+    @patch(_PATCH_SEARCH, new_callable=AsyncMock)
+    async def test_search_receives_exact_kwargs(self, mock_search: AsyncMock) -> None:
+        mock_search.return_value = GmailMessagesResponse(messages=[])
+        await fetch_emails_for_onboarding(USER_ID, max_total=5)
+        kwargs = mock_search.await_args.kwargs
+        assert kwargs["user_id"] == USER_ID
+        assert kwargs["query"] == "in:inbox newer_than:30d"
+        assert kwargs["max_results"] == 5  # min(BATCH_SIZE, remaining)
+        assert kwargs["page_token"] is None
+        opts = kwargs["options"]
+        assert opts.output_format == "metadata"
+        assert opts.include_payload is False
+        assert opts.verbose is False
+
+    @patch(_PATCH_SEARCH, new_callable=AsyncMock)
+    async def test_full_format_requests_payload_and_verbose(self, mock_search: AsyncMock) -> None:
+        mock_search.return_value = GmailMessagesResponse(messages=[])
+        await fetch_emails_for_onboarding(
+            USER_ID, options=OnboardingFetchOptions(fmt="full", include_sent=True)
+        )
+        opts = mock_search.await_args.kwargs["options"]
+        assert opts.output_format == "full"
+        assert opts.include_payload is True
+        assert opts.verbose is True
+
+    @patch(_PATCH_SEARCH, new_callable=AsyncMock)
+    async def test_batches_are_appended_into_the_callers_list(self, mock_search: AsyncMock) -> None:
+        batch = [{"id": "1"}, {"id": "2"}]
+        mock_search.return_value = GmailMessagesResponse(messages=batch)
+        into: list[dict] = []
+        result = await fetch_emails_for_onboarding(USER_ID, max_total=2, into=into)
+        assert into == batch
+        assert result is into
+
+    @patch(_PATCH_SEARCH, new_callable=AsyncMock)
+    async def test_on_batch_receives_running_count_and_latest_sender(
+        self, mock_search: AsyncMock
+    ) -> None:
+        mock_search.return_value = GmailMessagesResponse(messages=[{"from": "Alice <alice@x.com>"}])
+        seen: list[tuple[int, str | None]] = []
+
+        async def on_batch(count: int, sender: str | None) -> None:
+            seen.append((count, sender))
+
+        await fetch_emails_for_onboarding(USER_ID, max_total=1, on_batch=on_batch)
+        assert seen == [(1, "Alice")]
+
+    @patch(_PATCH_SEARCH, new_callable=AsyncMock)
+    async def test_pagination_follows_next_page_token(self, mock_search: AsyncMock) -> None:
+        mock_search.side_effect = [
+            GmailMessagesResponse(messages=[{"id": "1"}], next_page_token="tok"),
+            GmailMessagesResponse(messages=[{"id": "2"}]),
+        ]
+        result = await fetch_emails_for_onboarding(USER_ID, max_total=10)
+        assert [m["id"] for m in result] == ["1", "2"]
+        assert mock_search.await_count == 2
+        assert mock_search.await_args_list[1].kwargs["page_token"] == "tok"
+
+    @patch(_PATCH_SEARCH, new_callable=AsyncMock)
+    async def test_fetch_error_is_swallowed_and_partial_result_returned(
+        self, mock_search: AsyncMock
+    ) -> None:
+        mock_search.side_effect = RuntimeError("gmail down")
+        with patch("app.agents.memory.email_processor.log") as log:
+            result = await fetch_emails_for_onboarding(USER_ID)
+        assert result == []
+        log.error.assert_called_once()
+        assert log.error.call_args.kwargs["error_type"] == "RuntimeError"
+        assert log.error.call_args.kwargs["user_id"] == USER_ID
+
+
+class TestCollectStorageResultsPins:
+    @patch(_PATCH_USERS)
+    @patch(_PATCH_SEARCH, new_callable=AsyncMock)
+    @patch(_PATCH_PROCESS)
+    @patch(_PATCH_STORE_EMAILS, new_callable=AsyncMock)
+    @patch(_PATCH_MARK_COMPLETE, new_callable=AsyncMock)
+    @patch(_PATCH_EXTRACT_PROFILES, new_callable=AsyncMock)
+    async def test_failed_storage_batch_is_counted_and_logged(
+        self,
+        mock_profiles: AsyncMock,
+        mock_mark: AsyncMock,
+        mock_store: AsyncMock,
+        mock_process: MagicMock,
+        mock_search: AsyncMock,
+        mock_users: MagicMock,
+    ) -> None:
+        mock_users.get = AsyncMock(
+            return_value=UserDocument(id=USER_ID, email_memory_processed=False, name="T")
+        )
+        mock_users.set_gmail_scan_timestamp = AsyncMock()
+        mock_search.return_value = GmailMessagesResponse(messages=[{"id": "1"}])
+        mock_process.return_value = ([{"role": "user", "content": "c"}], 0)
+        mock_store.side_effect = RuntimeError("mongo down")
+        mock_profiles.return_value = {"profiles_stored": 0}
+
+        with patch("app.agents.memory.email_processor.log") as log:
+            result = await process_gmail_to_memory(USER_ID)
+
+        assert result["successful"] == 1
+        assert result["processing_complete"] is True
+        failed_calls = [
+            c
+            for c in log.warning.call_args_list
+            if c.args and c.args[0] == f"{LogTag.MEMORY} Email storage task failed"
+        ]
+        assert len(failed_calls) == 1
+        assert failed_calls[0].kwargs["task_index"] == 1
+        assert failed_calls[0].kwargs["error_type"] == "RuntimeError"
+
+    @patch(_PATCH_USERS)
+    @patch(_PATCH_SEARCH, new_callable=AsyncMock)
+    @patch(_PATCH_PROCESS)
+    @patch(_PATCH_STORE_EMAILS, new_callable=AsyncMock)
+    @patch(_PATCH_MARK_COMPLETE, new_callable=AsyncMock)
+    @patch(_PATCH_EXTRACT_PROFILES, new_callable=AsyncMock)
+    async def test_no_batches_skips_the_storage_phase_entirely(
+        self,
+        mock_profiles: AsyncMock,
+        mock_mark: AsyncMock,
+        mock_store: AsyncMock,
+        mock_process: MagicMock,
+        mock_search: AsyncMock,
+        mock_users: MagicMock,
+    ) -> None:
+        mock_users.get = AsyncMock(
+            return_value=UserDocument(id=USER_ID, email_memory_processed=False, name="T")
+        )
+        mock_users.set_gmail_scan_timestamp = AsyncMock()
+        mock_search.return_value = GmailMessagesResponse(messages=[])
+        mock_profiles.return_value = {"profiles_stored": 0}
+
+        with patch("app.agents.memory.email_processor.log") as log:
+            result = await process_gmail_to_memory(USER_ID)
+
+        assert result["total"] == 0
+        dispatched = [
+            c
+            for c in log.info.call_args_list
+            if c.args and "storage tasks dispatched" in str(c.args[0])
+        ]
+        assert dispatched == []
+
+    @patch(_PATCH_USERS)
+    @patch(_PATCH_SEARCH, new_callable=AsyncMock)
+    @patch(_PATCH_PROCESS)
+    @patch(_PATCH_STORE_EMAILS, new_callable=AsyncMock)
+    @patch(_PATCH_MARK_COMPLETE, new_callable=AsyncMock)
+    @patch(_PATCH_EXTRACT_PROFILES, new_callable=AsyncMock)
+    async def test_processing_complete_requires_at_least_one_parsed_email(
+        self,
+        mock_profiles: AsyncMock,
+        mock_mark: AsyncMock,
+        mock_store: AsyncMock,
+        mock_process: MagicMock,
+        mock_search: AsyncMock,
+        mock_users: MagicMock,
+    ) -> None:
+        mock_users.get = AsyncMock(
+            return_value=UserDocument(id=USER_ID, email_memory_processed=False, name="T")
+        )
+        mock_users.set_gmail_scan_timestamp = AsyncMock()
+        # Emails fetched but ALL fail parsing → nothing stored → not complete.
+        mock_search.return_value = GmailMessagesResponse(messages=[{"id": "1"}])
+        mock_process.return_value = ([], 3)
+        mock_profiles.return_value = {"profiles_stored": 0}
+
+        result = await process_gmail_to_memory(USER_ID)
+
+        assert result["failed"] == 3
+        assert result["processing_complete"] is False
+        mock_mark.assert_not_awaited()

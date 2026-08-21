@@ -41,7 +41,7 @@ import pytest
 from app.agents.context.assemble import AssembledContext
 from app.agents.context.slots import PromptSlot, slot_of
 from app.agents.context.tiers import AgentTier
-from app.agents.core.subagents.base_subagent import SubAgentFactory
+from app.agents.core.subagents.base_subagent import SubAgentFactory, SubAgentToolConfig
 from app.agents.core.subagents.handoff_tools import (
     _resolve_subagent,
     handoff,
@@ -180,9 +180,11 @@ class TestSubAgentCanBeInstantiated:
                 provider="test_provider",
                 name="test_agent",
                 llm=fake_llm,
-                tool_space="test_space",
-                use_direct_tools=True,
-                disable_retrieve_tools=True,
+                config=SubAgentToolConfig(
+                    tool_space="test_space",
+                    use_direct_tools=True,
+                    disable_retrieve_tools=True,
+                ),
             )
 
         assert graph is not None
@@ -388,9 +390,11 @@ async def real_subagent_seams():
             provider="gmail",
             name="gmail_agent",
             llm=fake_llm,
-            tool_space="gmail_delegated",
-            use_direct_tools=True,
-            disable_retrieve_tools=True,
+            config=SubAgentToolConfig(
+                tool_space="gmail_delegated",
+                use_direct_tools=True,
+                disable_retrieve_tools=True,
+            ),
         )
 
     with (
@@ -1618,9 +1622,11 @@ async def gated_subagent(gated_tool):
             provider="gmail",
             name="gmail_agent",
             llm=llm,
-            tool_space="gmail_delegated",
-            use_direct_tools=True,
-            disable_retrieve_tools=True,
+            config=SubAgentToolConfig(
+                tool_space="gmail_delegated",
+                use_direct_tools=True,
+                disable_retrieve_tools=True,
+            ),
         )
     return SimpleNamespace(graph=graph, llm=llm)
 

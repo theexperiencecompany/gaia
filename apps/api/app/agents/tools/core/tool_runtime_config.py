@@ -5,7 +5,7 @@ from typing import Any
 
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.constants.general import FINISH_TASK_NAME
-from app.override.langgraph_bigtool.create_agent import ToolRetrievalConfig
+from app.override.langgraph_bigtool.agent_config import ToolRetrievalConfig
 
 
 @dataclass(slots=True)

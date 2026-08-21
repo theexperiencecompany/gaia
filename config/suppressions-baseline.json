@@ -7,22 +7,10 @@
       "hash": "5a26ecd871c01386ef366e90c893df9b827501970106a62ce15485135d044e48"
     },
     {
-      "path": "apps/api/app/agents/core/subagents/base_subagent.py",
-      "kind": "type-ignore",
-      "count": 1,
-      "hash": "b42f17c2cd967b3bd56072dd32bbc0dc2452f40d05dc8fa50aaab7dd06cd4a36"
-    },
-    {
       "path": "apps/api/app/agents/core/subagents/provider_subagents.py",
       "kind": "type-ignore",
       "count": 1,
       "hash": "85e6612479e767a1801652051be7829f225ed05c482f98b611df87821a33c519"
-    },
-    {
-      "path": "apps/api/app/agents/core/subagents/spawn_agent.py",
-      "kind": "type-ignore",
-      "count": 1,
-      "hash": "c8408943fc13d0ca12965a4b2c54c6e8572c239fb46aa25ac682b1e7e0db334f"
     },
     {
       "path": "apps/api/app/agents/llm/client.py",
@@ -105,8 +93,8 @@
     {
       "path": "apps/api/app/override/langgraph_bigtool/create_agent.py",
       "kind": "type-ignore",
-      "count": 16,
-      "hash": "8233bdf6feb1f4b2dcb1dcc6b671b32590ed9a5aef39c9bd2e9e96addad2e10f"
+      "count": 14,
+      "hash": "1d1caea539297aa4541a56e26a84c746dc0efd9127837e6693cd10452f9afeea"
     },
     {
       "path": "apps/api/app/override/langgraph_bigtool/hooks.py",
@@ -196,7 +184,7 @@
       "path": "apps/api/tests/e2e/test_create_todo_flow.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "84c2a177bf2da655d8b25926746b32de6fba940f0abf56837b2aea4e8643fa08"
+      "hash": "46a4263de8aa369d9a372932a2817593cda6767a914cd1a99ba259500bfff95e"
     },
     {
       "path": "apps/api/tests/helpers.py",
@@ -364,19 +352,13 @@
       "path": "apps/api/tests/unit/override/test_langgraph_bigtool.py",
       "kind": "type-ignore",
       "count": 21,
-      "hash": "184e20050097c8b2447f49e626fb71db079500b31ac0313122e8ed4d46f167d5"
+      "hash": "aedf0075439dfdb9c1a43c81c018c6793950f9d42e9b769c8c3400eee1fcbb9b"
     },
     {
       "path": "apps/api/tests/unit/patches/test_composio_langchain_patch.py",
       "kind": "noqa",
       "count": 1,
       "hash": "457c98a3c14dea99a4e043052ea6d0ec3b82757bcf33ddd84b6459cd232a005e"
-    },
-    {
-      "path": "apps/api/tests/unit/services/test_integration_service.py",
-      "kind": "type-ignore",
-      "count": 1,
-      "hash": "b5509859781ed27f044a3478aca4e56a8588eca0b9ded2bf83ac8b46723dd6cd"
     },
     {
       "path": "apps/api/tests/unit/services/test_marketplace_service.py",
@@ -460,7 +442,7 @@
       "path": "apps/api/tests/unit/utils/test_cron_utils.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "a694c07ff0b48901e3f1dc89cab7923a5ed3d98b356987a79c3081aac3c680dd"
+      "hash": "544ac3850754c2ea3952359d3ffb8d14e8972099146296bcb004aed1b4087c89"
     },
     {
       "path": "apps/api/tests/unit/utils/test_embedding_utils.py",
@@ -484,7 +466,7 @@
       "path": "apps/api/tests/unit/utils/test_internet_utils.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "20972ae098884ad4d771097fcc084cf62eff0491b1601ee4392dd42ef351a5be"
+      "hash": "965ef6765f89ba8dad9175186e10ccb5625bcae254a4e828f99d0f569b5cefaa"
     },
     {
       "path": "apps/api/tests/unit/utils/test_mcp_utils.py",

@@ -3,12 +3,14 @@
 from datetime import UTC, datetime
 import re
 import threading
+from typing import Any
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException, UploadFile
 import pytest
 
 from app.models.support_models import (
+    SupportAttachment,
     SupportEmailNotification,
     SupportRequestCreate,
     SupportRequestDocument,
@@ -19,8 +21,11 @@ from app.models.support_models import (
     SupportRequestType,
 )
 from app.services.support_service import (
+    MAX_ATTACHMENTS,
     SUPPORT_EMAILS,
     _delete_uploaded_files,
+    _process_attachments,
+    _rollback_created_request,
     _send_support_email_notifications,
     _upload_single_attachment,
     create_support_request,
@@ -1334,3 +1339,143 @@ class TestGetUserSupportRequests:
 
         assert exc_info.value.status_code == 500
         assert exc_info.value.detail == "Failed to fetch support requests"
+
+
+# ===========================================================================
+# Log-arg-exact pins for the rollback / attachment helpers
+#
+# These assert every log call's message and kwargs exactly, so a mutated
+# literal, kwarg, or branch inside these helpers fails a test.
+# ===========================================================================
+
+
+class TestRollbackCreatedRequest:
+    async def test_delete_success_logs_info_with_exact_args(self, mock_support_repo):
+        mock_support_repo.delete.return_value = True
+        with patch("app.services.support_service.log") as log:
+            await _rollback_created_request("GAIA-1", "req-1", USER_ID, RuntimeError("boom"))
+
+        mock_support_repo.delete.assert_awaited_once_with("req-1", user_id=USER_ID)
+        log.info.assert_called_once_with(
+            "Successfully rolled back support request from database", ticket_id="GAIA-1"
+        )
+        log.error.assert_not_called()
+
+    async def test_delete_false_logs_error_with_exact_args(self, mock_support_repo):
+        mock_support_repo.delete.return_value = False
+        err = ValueError("smtp down")
+        with patch("app.services.support_service.log") as log:
+            await _rollback_created_request("GAIA-2", "req-2", USER_ID, err)
+
+        log.error.assert_called_once_with(
+            "Failed to rollback support request from database",
+            ticket_id="GAIA-2",
+            error="smtp down",
+            error_type="ValueError",
+            user_id=USER_ID,
+        )
+        log.info.assert_not_called()
+
+    async def test_delete_raising_logs_error_with_rollback_error(self, mock_support_repo):
+        mock_support_repo.delete.side_effect = RuntimeError("mongo write failed")
+        with patch("app.services.support_service.log") as log:
+            await _rollback_created_request("GAIA-3", "req-3", USER_ID, ValueError("email"))
+
+        log.error.assert_called_once_with(
+            "Error during rollback for ticket",
+            ticket_id="GAIA-3",
+            error="mongo write failed",
+            error_type="RuntimeError",
+            user_id=USER_ID,
+        )
+
+
+class TestProcessAttachmentsPins:
+    async def test_empty_attachment_list_returns_two_empty_lists(self):
+        assert await _process_attachments([], "GAIA-1", datetime.now(UTC)) == ([], [])
+
+    async def test_over_limit_raises_with_exact_detail(self, sample_request_data):
+        uploads = [_make_upload_file(filename=f"f{i}.png") for i in range(MAX_ATTACHMENTS + 1)]
+        with pytest.raises(HTTPException) as exc:
+            await _process_attachments(uploads, "GAIA-1", datetime.now(UTC))
+        assert exc.value.status_code == 400
+        assert exc.value.detail == f"Maximum {MAX_ATTACHMENTS} images allowed"
+
+    async def test_success_returns_urls_and_metadata_in_order(self, mock_upload_file_to_cloudinary):
+        uploads = [_make_upload_file(), _make_upload_file()]
+        urls, processed = await _process_attachments(uploads, "GAIA-9", datetime.now(UTC))
+        assert len(urls) == 2
+        assert len(processed) == 2
+        assert urls == ["https://res.cloudinary.com/demo/support/ticket_file.png"] * 2
+        for att in processed:
+            assert isinstance(att, SupportAttachment)
+
+    async def test_upload_failure_cleans_up_partial_and_reraises(
+        self, mock_upload_file_to_cloudinary
+    ):
+        calls: list[str] = []
+
+        async def flaky(*args: Any, **kwargs: Any) -> str:
+            calls.append("upload")
+            if len(calls) == 2:
+                raise RuntimeError("cloudinary down")
+            return "https://res.cloudinary.com/demo/support/ticket_file.png"
+
+        mock_upload_file_to_cloudinary.side_effect = flaky
+        deleted: list[list[str]] = []
+
+        async def fake_delete(urls: list[str]) -> None:
+            deleted.append(list(urls))
+
+        with (
+            patch("app.services.support_service._delete_uploaded_files", side_effect=fake_delete),
+            pytest.raises(RuntimeError, match="cloudinary down"),
+        ):
+            await _process_attachments(
+                [_make_upload_file(), _make_upload_file()], "GAIA-2", datetime.now(UTC)
+            )
+
+        assert deleted == [["https://res.cloudinary.com/demo/support/ticket_file.png"]]
+
+
+class TestCreateSupportRequestLogPins:
+    async def test_email_failure_rolls_back_with_exact_args_and_raises_exact_detail(
+        self, mock_support_repo, sample_request_data, mock_email_notifications
+    ):
+        team_fn, _ = mock_email_notifications
+        team_fn.side_effect = RuntimeError("smtp refused")
+        with patch("app.services.support_service.log") as log:
+            with pytest.raises(HTTPException) as exc:
+                await create_support_request(sample_request_data, USER_ID, USER_EMAIL, USER_NAME)
+
+        assert exc.value.status_code == 500
+        assert exc.value.detail == (
+            "Failed to send email notifications. Support request was not created. Please try again."
+        )
+        assert isinstance(exc.value.__cause__, RuntimeError)
+        # The rollback helper received the generated ticket/request ids.
+        mock_support_repo.delete.assert_awaited_once()
+        delete_args = mock_support_repo.delete.await_args
+        assert delete_args.args[0] == delete_args.kwargs.get("request_id", delete_args.args[0])
+        assert delete_args.kwargs["user_id"] == USER_ID
+        log.error.assert_any_call(
+            "Email sending failed for ticket",
+            ticket_id=log.error.call_args_list[0].kwargs["ticket_id"],
+            error="smtp refused",
+            error_type="RuntimeError",
+            user_id=USER_ID,
+        )
+
+    async def test_success_response_shape_is_exact(
+        self, mock_support_repo, sample_request_data, mock_email_notifications
+    ):
+        response = await create_support_request(sample_request_data, USER_ID, USER_EMAIL, USER_NAME)
+        assert response.success is True
+        assert response.message == (
+            "Support request submitted successfully. You will receive an email confirmation "
+            "shortly."
+        )
+        assert re.match(r"^GAIA-\d{8}-[0-9A-F]{8}$", response.ticket_id)
+        assert response.support_request.user_email == USER_EMAIL
+        assert response.support_request.priority == SupportRequestPriority.MEDIUM
+        mock_support_repo.delete.assert_not_awaited()

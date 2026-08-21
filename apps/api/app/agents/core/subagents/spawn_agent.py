@@ -35,11 +35,8 @@ from app.agents.tools.finish_task_tool import finish_task
 from app.constants.general import FINISH_TASK_NAME, SPAWN_AGENT_NAME
 from app.constants.log_tags import LogTag
 from app.models.agent_models import AnyAgentMiddleware
-from app.override.langgraph_bigtool.create_agent import (
-    AgentConfig,
-    HookConfig,
-    create_agent,
-)
+from app.override.langgraph_bigtool.agent_config import AgentConfig, HookConfig
+from app.override.langgraph_bigtool.create_agent import create_agent
 from shared.py.wide_events import log
 
 #: What ``_cache_key`` produces: (model identity, tool space, initial tool names,
