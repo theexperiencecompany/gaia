@@ -27,14 +27,14 @@ from app.constants.log_tags import LogTag
 from app.constants.media import MAX_IMAGE_FILE_BYTES
 from app.decorators import with_doc, with_rate_limiting
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
-from app.services.storage import FsOps, JuiceFSUnavailable, fs_timer, read_user_file
+from app.services.storage import FsOps, JuiceFSUnavailableError, fs_timer, read_user_file
 from app.services.storage.juicefs import (
     page_bounds,
     read_user_file_bytes,
     user_owns_regular_file,
 )
 from app.templates.docstrings.coding_tools_docs import READ_TOOL
-from app.utils.image_codec import ImageCodec, InvalidImage
+from app.utils.image_codec import ImageCodec, InvalidImageError
 from app.utils.multimodal import text_content_block
 from shared.py.wide_events import log
 
@@ -96,7 +96,7 @@ async def read(
         async with fs_timer(FsOps.TOOL_READ):
             try:
                 lines, total = await read_user_file(user_id, rel, offset=offset, limit=limit)
-            except JuiceFSUnavailable:
+            except JuiceFSUnavailableError:
                 # Native dev (no host mount): read through the sandbox instead.
                 log.set(read_via="sandbox_fallback")
                 async with acquire_sandbox(user_id) as sbx:
@@ -133,7 +133,7 @@ async def _read_image(
         async with fs_timer(FsOps.TOOL_READ):
             try:
                 data = await read_user_file_bytes(user_id, rel, max_bytes=MAX_IMAGE_FILE_BYTES)
-            except JuiceFSUnavailable:
+            except JuiceFSUnavailableError:
                 # Native dev (no host mount): read through the sandbox instead.
                 log.set(read_via="sandbox_fallback")
                 async with acquire_sandbox(user_id) as sbx:
@@ -151,7 +151,7 @@ async def _read_image(
     file_size = len(data)
     try:
         image = await ImageCodec.from_bytes(data)
-    except InvalidImage as e:
+    except InvalidImageError as e:
         return f"Error: cannot read {abs_path} as an image — {e}"
 
     # The file's own type and size, not the inline block's: `ImageCodec` may have

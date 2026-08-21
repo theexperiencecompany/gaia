@@ -31,7 +31,7 @@ from app.constants.mcp import (
     MCP_UNSUPPORTED_CONTENT_NOTICE,
 )
 from app.constants.media import MAX_MEDIA_BLOCKS_PER_TOOL_RESULT
-from app.utils.image_codec import ImageCodec, InvalidImage
+from app.utils.image_codec import ImageCodec, InvalidImageError
 from app.utils.multimodal import text_content_block
 from mcp.types import (
     CallToolResult,
@@ -104,7 +104,7 @@ def _non_media_text(item: ContentBlock) -> str:
 async def _image_block(item: ImageContent) -> dict[str, Any]:
     try:
         image = await ImageCodec.from_base64(item.data)
-    except InvalidImage as exc:
+    except InvalidImageError as exc:
         return text_content_block(f"[Image from this result could not be read: {exc}]")
     return image.to_block()
 

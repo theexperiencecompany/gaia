@@ -230,10 +230,6 @@ ignore = [
             # only an unsafe autofix available — worth its own pass)
   # Allow non-pathlib stdlib usage in legacy modules.
   "PTH123", # open() vs Path.open()
-  "PTH110", # os.path.exists
-  "PTH118", # os.path.join
-  "PTH120", # os.path.dirname
-  "PTH122", # os.path.splitext
   # Bandit rules that fire on legitimate patterns.
   "S311",   # random module for non-crypto
   # S110 (try-except-pass) is enforced. A "best effort" lookup still has to say
@@ -261,7 +257,6 @@ ignore = [
   # FURB — mostly readability improvements, leave for future PRs.
   # UP rules that haven't been fully migrated yet.
   "UP007",   # use X | Y (legacy Optional/Union allowed)
-  "UP031",   # printf-style %-formatting (legacy logging patterns)
   # Pylint extras that aren't worth fixing repo-wide.
   # B905 — zip(strict=...) requires manual review per call.
   "B905",
@@ -278,12 +273,9 @@ ignore = [
   "S301",   # pickle.loads — used for trusted internal data
   # TRY rules that don't add value at scale.
   "TRY004",  # wrong-type-error
-  "TRY201",  # verbose-raise (re-raise)
   "TRY203",  # use-error-message
   # SIM rules — readability differs from style preference.
   "SIM103",  # needless-bool
-  "SIM108",  # ternary — explicit if/else branches carry logging and comments
-  "SIM118",  # use `in` instead of `keys()`
   # Unicode in strings/docs (intentional in many places).
   "RUF001",
   "RUF002",  # ambiguous unicode in docstrings — intentional arrows/dashes in prose
@@ -300,17 +292,13 @@ ignore = [
   "C408",
   # PERF102 / 401 / 403 — readability matters more than micro-perf.
   "PERF102",
-  "PERF403",  # dict-comprehension rewrite would split log-and-collect loops
   # Whitespace at line end (formatter handles it).
   "W291",
   # Pylint refactor-style suggestions.
   "PLR1714", # use `in` for multiple comparisons (readability is fine as-is)
-  "PLC0206", # extract dict value via .items() (readability)
   # FURB micro-rules.
-  "FURB132", # set.remove → set.discard
   # Datetime extras — codebase has legacy date.today() / datetime.today() calls.
   "DTZ002",  # datetime.today()
-  "DTZ011",  # date.today()
   # Comprehension micro-rules.
   "C416",    # unnecessary comprehension
   # Function in loop captures variable.

@@ -70,7 +70,7 @@ def mount(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root.mkdir()
     monkeypatch.setattr("app.services.storage.juicefs._mount_root", lambda: root)
     # _is_mounted() checks .is_mount() which returns False for a tmpdir; patch it
-    # so _require_mount() doesn't raise JuiceFSUnavailable in tests.
+    # so _require_mount() doesn't raise JuiceFSUnavailableError in tests.
     monkeypatch.setattr("app.services.storage.juicefs._is_mounted", lambda: True)
     return root
 

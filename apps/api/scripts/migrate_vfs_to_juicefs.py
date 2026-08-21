@@ -38,7 +38,7 @@ import sys
 
 from app.db.mongodb.collections import get_async_collection
 from app.services.storage import (
-    JuiceFSUnavailable,
+    JuiceFSUnavailableError,
     ensure_user_workspace,
 )
 from shared.py.wide_events import log
@@ -75,7 +75,7 @@ async def migrate_one(user_id: str, *, dry_run: bool = False) -> dict:
 
     try:
         workspace = await ensure_user_workspace(user_id)
-    except JuiceFSUnavailable as e:
+    except JuiceFSUnavailableError as e:
         return {"user_id": user_id, "files": 0, "status": f"skipped ({e})"}
 
     legacy_root = workspace / "legacy"

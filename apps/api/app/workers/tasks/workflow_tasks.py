@@ -644,7 +644,7 @@ async def execute_workflow_by_id(
         # error) must not permanently kill a recurring workflow.
         await _rearm_quietly(scheduler, workflow, context, workflow_id)
 
-        return "Error executing workflow %s: %s" % (workflow_id, str(e))
+        return f"Error executing workflow {workflow_id}: {e}"
 
 
 # No static origin: this decorator is evaluated at import, long before the

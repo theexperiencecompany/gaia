@@ -30,7 +30,7 @@ import pytest
 
 from app.agents.workspace.system_files import SystemFile
 from app.services.storage import system_workspace as sw
-from app.services.storage.juicefs import JuiceFSUnavailable
+from app.services.storage.juicefs import JuiceFSUnavailableError
 from app.services.storage.system_workspace import (
     SANDBOX_SYSTEM_DIR,
     SYSTEM_SUBDIR,
@@ -62,7 +62,7 @@ def mount(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root.mkdir()
     monkeypatch.setattr("app.services.storage.juicefs._mount_root", lambda: root)
     # is_mount() is False for a tmpdir; without this every helper short-circuits
-    # on JuiceFSUnavailable and the guards under test are never reached.
+    # on JuiceFSUnavailableError and the guards under test are never reached.
     monkeypatch.setattr("app.services.storage.juicefs._is_mounted", lambda: True)
     monkeypatch.setattr(sw, "_mount_root", lambda: root)
     return root
@@ -525,7 +525,7 @@ async def test_a_vanished_mount_under_an_existing_subtree_fails_loud(
     await ensure_system_subtree()
     unmount(monkeypatch)
 
-    with pytest.raises(JuiceFSUnavailable):
+    with pytest.raises(JuiceFSUnavailableError):
         await link_system_files_into_workspace(USER)
 
 

@@ -8,7 +8,7 @@ so the R2/JuiceFS env vars are only available *inside* the Python process.
 Design (production-manageable):
 - **Non-blocking**: the lazy provider spawns a daemon thread and returns
   immediately. App startup is never gated on the mount; the storage helpers
-  already soft-fail (`JuiceFSUnavailable`) until `/mnt/jfs` is ready, and
+  already soft-fail (`JuiceFSUnavailableError`) until `/mnt/jfs` is ready, and
   converge automatically once it is.
 - **Supervised foreground mount**: we run `juicefs mount` in the foreground
   as a detached child and poll the mountpoint ourselves, instead of relying
@@ -224,11 +224,7 @@ def _run(
     invoking ``juicefs format`` — argv is visible to anyone with shell on the
     host via ``ps auxww`` during the format window.
     """
-    merged_env: dict[str, str] | None
-    if env is None:
-        merged_env = None
-    else:
-        merged_env = {**os.environ, **env}
+    merged_env: dict[str, str] | None = None if env is None else {**os.environ, **env}
     return subprocess.run(  # nosec B603 - argv list, no shell
         cmd,
         check=False,
@@ -498,7 +494,7 @@ async def init_juicefs_mount() -> str:
 
     Startup is never blocked on the mount: a daemon thread formats (if
     needed) and mounts with retry/backoff while the app serves traffic. The
-    storage helpers raise `JuiceFSUnavailable` until `/mnt/jfs` converges,
+    storage helpers raise `JuiceFSUnavailableError` until `/mnt/jfs` converges,
     which every caller already treats as a soft-fail.
     """
     # settings is Any (app.config.settings.get_settings() is untyped upstream);

@@ -114,19 +114,19 @@ def fetch_all_providers(
     # This prevents unbounded thread creation under concurrent agent sessions
     # and isolates context-fetching threads from the default asyncio pool.
     futures = {_CONTEXT_EXECUTOR.submit(fetch_one, p): p for p in providers}
-    for future in futures:
+    for future, submitted_provider in futures.items():
         try:
             provider, data = future.result(timeout=PROVIDER_TIMEOUT_SECONDS)
             if data is not None:
                 results[provider] = data
         except FuturesTimeout:
-            provider = futures[future]
-            log.warning(f"{LogTag.AGENT} Provider timed out", provider=provider, user_id=user_id)
+            log.warning(
+                f"{LogTag.AGENT} Provider timed out", provider=submitted_provider, user_id=user_id
+            )
         except Exception as e:
-            provider = futures[future]
             log.error(
                 f"{LogTag.AGENT} Unexpected error for",
-                provider=provider,
+                provider=submitted_provider,
                 error=str(e),
                 error_type=type(e).__name__,
                 user_id=user_id,

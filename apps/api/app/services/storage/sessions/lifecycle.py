@@ -136,7 +136,7 @@ async def delete_session_dir(user_id: str, conv_id: str) -> None:
 
 
 async def touch_session_last_active(user_id: str, conv_id: str) -> None:
-    """Bump ``.meta.json.last_active``. Raises ``JuiceFSUnavailable`` if unmounted."""
+    """Bump ``.meta.json.last_active``. Raises ``JuiceFSUnavailableError`` if unmounted."""
 
     def _touch() -> None:
         base = session_base(user_id, conv_id)

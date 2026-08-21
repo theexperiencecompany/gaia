@@ -111,7 +111,7 @@ async def submit_support_request(
 @limiter.limit("10/day")  # 10 support requests per day per user
 async def submit_support_request_with_attachments(
     request: Request,  # noqa: ARG001 -- framework contract
-    type: str = Form(...),
+    request_type: str = Form(..., alias="type"),
     title: str = Form(...),
     description: str = Form(...),
     attachments: list[UploadFile] = File(default=[]),
@@ -128,7 +128,7 @@ async def submit_support_request_with_attachments(
     - Sends confirmation email to the user
 
     Args:
-        type: Type of request (support or feature)
+        request_type: Type of request (support or feature); form field name is "type"
         title: Title of the request
         description: Description of the request
         attachments: List of uploaded image files (JPG, PNG, WebP only)
@@ -137,7 +137,7 @@ async def submit_support_request_with_attachments(
     Returns:
         SupportRequestSubmissionResponse with success status and ticket ID
     """
-    log.set(operation="submit_support_request_with_attachments", category=type)
+    log.set(operation="submit_support_request_with_attachments", category=request_type)
     try:
         user_id = current_user.get("user_id")
         user_email = current_user.get("email")
@@ -148,7 +148,7 @@ async def submit_support_request_with_attachments(
 
         # Validate request type
         try:
-            request_type = SupportRequestType(type)
+            request_type = SupportRequestType(request_type)
         except ValueError as e:
             raise HTTPException(
                 status_code=400,

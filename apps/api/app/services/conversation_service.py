@@ -33,7 +33,7 @@ from app.models.conversation_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_event
-from app.services.storage import JuiceFSUnavailable, delete_session_dir
+from app.services.storage import JuiceFSUnavailableError, delete_session_dir
 from shared.py.wide_events import log
 
 
@@ -227,7 +227,7 @@ async def delete_conversation(
     if user_id:
         try:
             await delete_session_dir(user_id, conversation_id)
-        except JuiceFSUnavailable as e:
+        except JuiceFSUnavailableError as e:
             log.warning("[conversation] juicefs cleanup skipped", error=str(e))
         except Exception as e:
             log.warning("[conversation] session dir cleanup failed", error=str(e))

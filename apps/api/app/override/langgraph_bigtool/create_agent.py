@@ -149,7 +149,7 @@ def create_agent(
     tool_registry: Mapping[str, BaseTool],
     *,
     limit: int = 2,
-    filter: dict[str, Any] | None = None,
+    metadata_filter: dict[str, Any] | None = None,
     namespace_prefix: tuple[str, ...] = ("tools",),
     retrieve_tools_function: Callable[..., RetrieveToolsResponse] | None = None,
     retrieve_tools_coroutine: Callable[..., Awaitable[RetrieveToolsResponse]] | None = None,
@@ -172,7 +172,7 @@ def create_agent(
         llm: Language model to use for the agent.
         tool_registry: a dict mapping string IDs to BaseTool instances.
         limit: Maximum number of tools to retrieve with each tool selection step.
-        filter: Optional key-value pairs with which to filter results.
+        metadata_filter: Optional key-value pairs with which to filter results.
         namespace_prefix: Hierarchical path prefix to search within the Store. Defaults
             to ("tools",).
         retrieve_tools_function: Optional function to use for retrieving tools. This
@@ -214,7 +214,7 @@ def create_agent(
     if not disable_retrieve_tools:
         if retrieve_tools_function is None and retrieve_tools_coroutine is None:
             retrieve_tools_function, retrieve_tools_coroutine = get_default_retrieval_tool(
-                namespace_prefix, limit=limit, filter=filter
+                namespace_prefix, limit=limit, filter=metadata_filter
             )
         retrieve_tools = StructuredTool.from_function(
             func=retrieve_tools_function, coroutine=retrieve_tools_coroutine
@@ -389,9 +389,7 @@ def create_agent(
         # checkpointed thread stays bounded too.
         result: dict[str, object] = {"messages": [*tombstones, response]}
         base_keys = {"messages", "selected_tool_ids"}
-        for key, value in updated_state.items():
-            if key not in base_keys:
-                result[key] = value
+        result.update({key: value for key, value in updated_state.items() if key not in base_keys})
         return result  # type: ignore[return-value]  # helper's declared return is wider than the dict actually built
 
     def select_tools(tool_calls: list[dict], config: RunnableConfig, *, store: BaseStore) -> State:

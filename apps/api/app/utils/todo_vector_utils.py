@@ -216,7 +216,7 @@ async def semantic_search_todos(
 
         # Extract todo IDs from results
         todo_ids = []
-        for doc, score in results:
+        for doc, _score in results:
             if hasattr(doc, "metadata") and "todo_id" in doc.metadata:
                 todo_ids.append(doc.metadata["todo_id"])
 

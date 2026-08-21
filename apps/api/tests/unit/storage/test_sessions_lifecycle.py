@@ -25,7 +25,7 @@ from typing import Any
 import pytest
 
 from app.config.settings import settings
-from app.services.storage import JuiceFSUnavailable
+from app.services.storage import JuiceFSUnavailableError
 from app.services.storage.sessions import lifecycle as lc
 from app.services.storage.sessions.meta import SESSION_META_FILENAME
 
@@ -295,7 +295,7 @@ async def test_touching_fails_loud_when_the_mount_is_gone(
     # Unlike the read/delete paths, this one must NOT soft-fail: silently
     # skipping the stamp makes a live session look idle to the pruner.
     set_mounted(monkeypatch, False)
-    with pytest.raises(JuiceFSUnavailable):
+    with pytest.raises(JuiceFSUnavailableError):
         await lc.touch_session_last_active(USER, CONV)
 
 

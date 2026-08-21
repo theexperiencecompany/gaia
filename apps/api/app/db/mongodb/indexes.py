@@ -96,7 +96,7 @@ async def create_all_indexes() -> None:
         ]
 
         index_results = {}
-        for i, (collection_name, result) in enumerate(zip(collection_names, results)):
+        for collection_name, result in zip(collection_names, results):
             if isinstance(result, Exception):
                 log.error(
                     f"{LogTag.MONGO} Failed to create indexes for collection",

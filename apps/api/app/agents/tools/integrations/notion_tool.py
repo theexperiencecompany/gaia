@@ -114,10 +114,7 @@ def register_notion_custom_tools(composio: Composio) -> list[str]:
                 # defensive isinstance check meaningful by widening the type here.
                 title_data = cast("object", title_response["data"])
                 # Extract title from results array
-                if isinstance(title_data, dict):
-                    results = title_data.get("results", [])
-                else:
-                    results = []
+                results = title_data.get("results", []) if isinstance(title_data, dict) else []
                 if isinstance(results, list):
                     for item in results:
                         if item.get("type") == "title" and item.get("title"):

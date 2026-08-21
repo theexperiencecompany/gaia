@@ -76,10 +76,7 @@ def generate_integration_slug(
     if len(slug) > max_length:
         truncated = slug[:max_length]
         last_hyphen = truncated.rfind("-")
-        if last_hyphen > 0:
-            slug = truncated[:last_hyphen]
-        else:
-            slug = truncated
+        slug = truncated[:last_hyphen] if last_hyphen > 0 else truncated
 
     return slug.rstrip("-")
 

@@ -159,7 +159,7 @@ def mypy_entries(lines: list[str]) -> list[Entry]:
     weaken_true = {"ignore_errors", "ignore_missing_imports", "warn_unused_ignores"}
     # any non-empty disable_error_code list weakens checking
 
-    s, e = _section_span(lines, "[tool.mypy]")
+    s, _e = _section_span(lines, "[tool.mypy]")
     out: list[Entry] = []
     i = s
     while i < len(lines):

@@ -41,7 +41,7 @@ from app.agents.workspace.skill_loader import (
     skills_by_subagent,
 )
 from app.services.storage import (
-    JuiceFSUnavailable,
+    JuiceFSUnavailableError,
     provision_user_workspace,
 )
 
@@ -62,7 +62,7 @@ async def _materialize_one(user_id: str, connected_override: set[str] | None) ->
     # JuiceFS mount is missing.
     try:
         await provision_user_workspace(user_id, connected)
-    except JuiceFSUnavailable:
+    except JuiceFSUnavailableError:
         print(f"[skip] {user_id}: JuiceFS mount unavailable", file=sys.stderr)
         return
     grouped = skills_by_subagent()

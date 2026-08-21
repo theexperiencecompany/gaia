@@ -1087,13 +1087,13 @@ class TestCancellationWhileParked:
             # decision that cannot be acted on never reports success), and the
             # deny gets as far as the transition and loses it, because the record
             # is no longer pending. Both leave the run dead.
-            with pytest.raises(resolution.ApprovalNotResumable):
+            with pytest.raises(resolution.ApprovalNotResumableError):
                 await resolution.resolve_approval(
                     approval_id=record.approval_id,
                     user_id=str(USER["user_id"]),
                     kind="approve",
                 )
-            with pytest.raises(resolution.ApprovalRequestNotFound):
+            with pytest.raises(resolution.ApprovalRequestNotFoundError):
                 await resolution.resolve_approval(
                     approval_id=record.approval_id,
                     user_id=str(USER["user_id"]),
@@ -1314,7 +1314,7 @@ class TestTwoGatedCallsInOneTurn:
         got re-dispatch context: LangGraph emits one ``__interrupt__`` event PER
         paused task, and the runner used to keep only the last one it saw — leaving
         the other record with no ``resume_item``, so deciding it raised
-        ApprovalNotResumable and that decision could never be applied.
+        ApprovalNotResumableError and that decision could never be applied.
         """
         async with two_gate_world() as (world, calls):
             await run_turn(world, "check the weather and draw me a flowchart")
@@ -1645,7 +1645,7 @@ class TestAnUngatedCallAcrossTwoResumes:
 
         The defect this pins: LangGraph reports one ``__interrupt__`` event PER
         paused task, and the runner used to keep only one. The approval left out
-        got no ``resume_item``, so deciding it raised ApprovalNotResumable — the
+        got no ``resume_item``, so deciding it raised ApprovalNotResumableError — the
         user presses Approve and nothing can ever happen. Asserted on the records
         directly, because through the UI it looks like a silent no-op.
         """

@@ -152,7 +152,7 @@ class SlackTriggerHandler(TriggerHandler):
         has_failure = False
         failure_message = ""
 
-        for i, result in enumerate(results):
+        for result in results:
             if isinstance(result, Exception):
                 has_failure = True
                 failure_message = str(result)

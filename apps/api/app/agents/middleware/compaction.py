@@ -65,7 +65,7 @@ from app.constants.summarization import (
     MIN_COMPACTION_SIZE,
 )
 from app.models.agent_models import runtime_configurable
-from app.services.storage import JuiceFSUnavailable, write_session_file
+from app.services.storage import JuiceFSUnavailableError, write_session_file
 from app.utils.multimodal import (
     MessageContent,
     approx_content_chars,
@@ -356,7 +356,7 @@ async def compact_tool_output(
             status=status,
             existing_additional_kwargs=existing_additional_kwargs or {},
         )
-    except JuiceFSUnavailable as e:
+    except JuiceFSUnavailableError as e:
         log.warning(
             f"{LogTag.AGENT} Workspace unavailable, compacting in context",
             tool_name=tool_name,

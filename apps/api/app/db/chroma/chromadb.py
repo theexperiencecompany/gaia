@@ -3,7 +3,6 @@ from typing import cast
 import chromadb
 from chromadb.api import AsyncClientAPI, ClientAPI
 from chromadb.config import Settings
-from fastapi import Request
 from langchain_chroma import Chroma
 from langchain_core.embeddings import Embeddings
 
@@ -24,12 +23,9 @@ class ChromaClient:
     """
 
     @classmethod
-    async def get_client(cls, request: Request | None = None) -> AsyncClientAPI:
+    async def get_client(cls) -> AsyncClientAPI:
         """
         Get the ChromaDB client from the application state or from lazy providers.
-
-        Args:
-            request: The FastAPI request object
 
         Returns:
             The ChromaDB client

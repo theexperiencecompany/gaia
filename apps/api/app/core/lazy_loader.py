@@ -354,11 +354,7 @@ class LazyLoader(Generic[T]):
 
     def _is_value_missing(self, value: object) -> bool:
         """Check if a value is considered missing/invalid."""
-        if value is None:
-            return True
-        if isinstance(value, str) and value.strip() == "":
-            return True
-        return False
+        return value is None or (isinstance(value, str) and value.strip() == "")
 
     def _handle_missing_values_on_get(self, missing_indices: set[int]) -> Union[T, bool] | None:
         """Handle missing values when get() is called."""

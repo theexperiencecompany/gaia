@@ -149,11 +149,11 @@ class _ClientBranding(TypedDict, total=False):
     policy_uri: AnyHttpUrl
 
 
-class DCRNotSupportedException(Exception):
+class DCRNotSupportedError(Exception):
     """Raised when Dynamic Client Registration is not supported by the server."""
 
 
-class StepUpAuthRequired(Exception):
+class StepUpAuthRequiredError(Exception):
     """Raised when additional scopes are required (403 insufficient_scope).
 
     Per MCP spec, this triggers re-authorization with additional scopes.
@@ -954,7 +954,7 @@ class MCPClient:
                     integration_id=integration_id,
                     required_scopes=required_scopes,
                 )
-                raise StepUpAuthRequired(integration_id, required_scopes) from e
+                raise StepUpAuthRequiredError(integration_id, required_scopes) from e
 
             # Retry once on auth-related failures: 401 (expired token) or
             # 405 (mcp-use OAuth fallback hit a wrong endpoint because the
@@ -1187,7 +1187,7 @@ class MCPClient:
         # 2. Stored DCR client (from PostgreSQL, saved during previous _register_client)
         # 3. Client Metadata Document URL (when AS supports it and API is non-localhost)
         # 4. Dynamic Client Registration (DCR) as last resort
-        client_id, client_secret = self._resolve_client_credentials(mcp_config)
+        client_id, _client_secret = self._resolve_client_credentials(mcp_config)
 
         if not client_id:
             # Priority 2: Check for stored DCR client from a previous registration.
@@ -1366,7 +1366,7 @@ class MCPClient:
         Perform Dynamic Client Registration (RFC 7591) on the authorization server.
 
         Raises:
-            DCRNotSupportedException: If server returns 403/404/405 (DCR not supported)
+            DCRNotSupportedError: If server returns 403/404/405 (DCR not supported)
             ValueError: For other registration failures
         """
         registration_endpoint = str(as_metadata.registration_endpoint)
@@ -1403,7 +1403,7 @@ class MCPClient:
                 # which would otherwise raise a generic OAuthRegistrationError and
                 # lose the "pre-registration required" signal the caller acts on.
                 if response.status_code in (403, 404, 405):
-                    raise DCRNotSupportedException(
+                    raise DCRNotSupportedError(
                         f"DCR not supported at {registration_endpoint} "
                         f"(status {response.status_code}). Pre-registration required."
                     )
@@ -1421,7 +1421,7 @@ class MCPClient:
                     registration_endpoint=registration_endpoint,
                 )
                 return client_info.client_id
-        except DCRNotSupportedException:
+        except DCRNotSupportedError:
             raise  # Re-raise without wrapping
         except Exception as e:
             log.error(

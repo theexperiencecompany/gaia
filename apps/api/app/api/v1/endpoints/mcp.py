@@ -59,10 +59,10 @@ async def test_mcp_connection(
     # Probe the server
     probe_result = await client.probe_connection(server_url)
     log.set(
-        probe=dict(
-            requires_auth=probe_result.get("requires_auth", False),
-            has_error=bool(probe_result.get("error")),
-        )
+        probe={
+            "requires_auth": probe_result.get("requires_auth", False),
+            "has_error": bool(probe_result.get("error")),
+        }
     )
 
     probe_error = probe_result.get("error")

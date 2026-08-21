@@ -752,7 +752,7 @@ class WorkflowService:
                         registered_trigger_ids,
                         workflow_id,
                     )
-                raise db_err
+                raise
 
             if updated is None:
                 return None
