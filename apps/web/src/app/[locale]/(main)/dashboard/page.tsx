@@ -9,7 +9,11 @@ import {
   Mail01Icon,
   ZapIcon,
 } from "@icons";
-import { getSimpleTimeGreeting } from "@shared/utils";
+import {
+  CONNECT_ACTION_LABEL,
+  getSimpleTimeGreeting,
+  integrationConnectionState,
+} from "@shared/utils";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
@@ -175,11 +179,16 @@ export default function HomePage() {
   const { counts: todoCounts, loading: todosLoading } = useTodoData();
   const { getIntegrationStatus } = useIntegrations();
 
-  // Check integrations
-  const calendarStatus = getIntegrationStatus("googlecalendar");
-  const isCalendarConnected = calendarStatus?.connected || false;
-  const gmailStatus = getIntegrationStatus("gmail");
-  const isGmailConnected = gmailStatus?.connected || false;
+  // Check integrations. The state (not just the boolean) drives the CTA verb, so
+  // an integration whose grant died offers Reconnect instead of a first-time Connect.
+  const calendarState = integrationConnectionState(
+    getIntegrationStatus("googlecalendar")?.status,
+  );
+  const gmailState = integrationConnectionState(
+    getIntegrationStatus("gmail")?.status,
+  );
+  const isCalendarConnected = calendarState === "connected";
+  const isGmailConnected = gmailState === "connected";
 
   const { data: events, isLoading: eventsLoading } = useUpcomingEventsQuery(
     50,
@@ -288,6 +297,8 @@ export default function HomePage() {
         workflows={workflows}
         isCalendarConnected={isCalendarConnected}
         isGmailConnected={isGmailConnected}
+        calendarConnectLabel={CONNECT_ACTION_LABEL[calendarState]}
+        gmailConnectLabel={CONNECT_ACTION_LABEL[gmailState]}
         emailsLoading={emailsLoading}
         onLoadMoreEmails={fetchMoreEmails}
         hasMoreEmails={hasMoreEmails}

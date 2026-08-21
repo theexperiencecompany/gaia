@@ -200,7 +200,7 @@ async def create_workflow_directly(
         user_timezone=user_timezone,
     )
     try:
-        from app.services.workflow import WorkflowService
+        from app.services.workflow.service import WorkflowService
 
         trigger_config = TriggerConfig(
             type=draft.backend_trigger_type,
@@ -327,7 +327,7 @@ async def apply_workflow_edit(
     repos, calendars — must be set in the app's workflow editor); the caller is
     told so the user can adjust it there.
     """
-    from app.services.workflow import WorkflowService
+    from app.services.workflow.service import WorkflowService
 
     new_type = draft.backend_trigger_type
     current = workflow.trigger_config

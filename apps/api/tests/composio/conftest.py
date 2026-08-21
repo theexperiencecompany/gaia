@@ -16,15 +16,29 @@ exercise the real `proxy_request_sync` path with a real Composio API key
 and a real connected account.
 """
 
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
+_LIVE_TIER = Path(__file__).parent
+
 
 def pytest_collection_modifyitems(config, items):
+    """Mark this tier so the default run skips it — these tests bill real Composio calls.
+
+    Scoped to this directory by path, not by the substring "composio": that
+    matched every hermetic test whose path merely mentions Composio
+    (`tests/unit/services/composio/`, `tests/unit/api/test_webhook_composio_endpoint.py`,
+    `tests/integration/real/test_webhook_composio.py` — 545 tests in 18 files) and
+    silently dropped all of them from every CI run, since the default marker
+    expression is `not composio`. Targeting one of those files directly still
+    collected it, because this conftest never loaded, so the gap was invisible
+    locally.
+    """
     for item in items:
-        if "composio" in str(item.fspath):
+        if _LIVE_TIER in Path(str(item.fspath)).parents:
             item.add_marker(pytest.mark.composio)
 
 

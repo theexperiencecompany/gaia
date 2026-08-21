@@ -1,3 +1,4 @@
+import { CONNECT_ACTION_LABEL, integrationConnectionState } from "@gaia/shared";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import {
   forwardRef,
@@ -152,8 +153,8 @@ export const IntegrationDetailSheet = forwardRef<
     return null;
   }
 
-  const isConnected = integration.status === "connected";
-  const showRetry = integration.status === "created";
+  const state = integrationConnectionState(integration.status);
+  const isConnected = state === "connected";
   const isCustom = integration.source === "custom";
 
   return (
@@ -247,9 +248,9 @@ export const IntegrationDetailSheet = forwardRef<
                 >
                   {isConnecting
                     ? "Connecting..."
-                    : showRetry
+                    : state === "pending"
                       ? "Retry Connection"
-                      : "Connect"}
+                      : CONNECT_ACTION_LABEL[state]}
                 </Text>
               </Pressable>
             )}
