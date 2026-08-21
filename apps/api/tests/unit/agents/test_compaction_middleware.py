@@ -1037,3 +1037,190 @@ class TestKwargPlumbing:
 
         stops = [m for m, _ in recorded if "No spill and no LLM digest" in m]
         assert stops, recorded
+
+
+class TestCompactToolOutputBoundary:
+    """Every kwarg compact_tool_output forwards must land somewhere observable
+    — message fields, log payloads, write kwargs — or a None can slip through."""
+
+    async def test_digest_success_path_pins_every_forwarded_kwarg(self) -> None:
+        import json as _json
+
+        from langchain_core.messages import AIMessage
+
+        captured: dict = {}
+
+        class Capturing(BaseChatModel):
+            @property
+            def _llm_type(self) -> str:
+                return "capturing"
+
+            def _generate(self, *a, **k):
+                raise NotImplementedError
+
+            async def _agenerate(self, messages, stop=None, run_manager=None, **k):
+                captured["messages"] = messages
+                return ChatResult(
+                    generations=[ChatGeneration(message=AIMessage(content="the digest"))]
+                )
+
+        mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=Capturing())
+        content = _json.dumps([{"i": i} for i in range(500)])
+        original = ToolMessage(
+            content=content,
+            tool_call_id="call_1",
+            name="search",
+            additional_kwargs={"custom": "keep"},
+        )
+        request = SimpleNamespace(
+            tool_call={"name": "search", "id": "call_1", "args": {}},
+            runtime=SimpleNamespace(
+                config={"configurable": {"user_id": "u1", "vfs_session_id": "conv1"}}
+            ),
+            state={"messages": []},
+        )
+
+        async def handler(_req):
+            return original
+
+        wrote: dict = {}
+
+        async def fake_write(**kwargs):
+            wrote.update(kwargs)
+            return ("/host", "/workspace/sessions/conv1/tool_outputs/x.json")
+
+        with patch(
+            "app.agents.middleware.compaction.write_session_file",
+            new_callable=AsyncMock,
+            side_effect=fake_write,
+        ):
+            result = await mw.awrap_tool_call(request, handler)
+
+        from langgraph.types import Command
+
+        assert isinstance(result, Command)
+        msg = result.update["messages"][0]
+        # tool_name reached both the message name and the summarizer prompt
+        assert msg.name == "search"
+        assert msg.content.startswith("[search compacted — large_output")
+        human = captured["messages"][1]
+        assert "Tool: search" in human.content
+        # reason reached the header; size reached the pointer (1024-based)
+        kb = f"{len(content) / 1024:.1f} KB"
+        assert kb in msg.content
+        # caller's kwargs survive the merge
+        assert msg.additional_kwargs["custom"] == "keep"
+
+    async def test_juicefs_warning_payload_is_exact(self) -> None:
+        from app.agents.middleware import compaction as cm
+
+        recorded: list[tuple] = []
+
+        class _StubLog:
+            def warning(self, msg: str, **kw):
+                recorded.append((msg, kw))
+
+            def error(self, *a, **k):
+                pass
+
+            def info(self, *a, **k):
+                pass
+
+            def set(self, *a, **k):
+                pass
+
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(cm, "log", _StubLog())
+        try:
+            mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=_BrokenModel())
+
+            async def handler(_req):
+                return ToolMessage(content="x" * 5000, tool_call_id="c1", name="search")
+
+            await mw.awrap_tool_call(_request(), handler)
+        finally:
+            monkeypatch.undo()
+
+        juice = [(m, k) for m, k in recorded if "Workspace unavailable" in m]
+        assert len(juice) == 1
+        msg, kwargs = juice[0]
+        assert kwargs == {"tool_name": "search", "error_type": "JuiceFSUnavailable"}
+
+    async def test_spill_error_warning_payload_is_exact(self) -> None:
+        from app.agents.middleware import compaction as cm
+
+        recorded: list[tuple] = []
+
+        class _StubLog:
+            def warning(self, msg: str, **kw):
+                recorded.append((msg, kw))
+
+            def error(self, msg: str, **kw):
+                recorded.append((msg, kw))
+
+            def info(self, *a, **k):
+                pass
+
+            def set(self, *a, **k):
+                pass
+
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(cm, "log", _StubLog())
+        try:
+            mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=_BrokenModel())
+
+            async def handler(_req):
+                return ToolMessage(content="x" * 5000, tool_call_id="c1", name="search")
+
+            with patch(
+                "app.agents.middleware.compaction.write_session_file",
+                new_callable=AsyncMock,
+                side_effect=OSError("disk exploded"),
+            ):
+                await mw.awrap_tool_call(_request(), handler)
+        finally:
+            monkeypatch.undo()
+
+        errs = [(m, k) for m, k in recorded if "Workspace spill failed" in m]
+        assert len(errs) == 1
+        _, kwargs = errs[0]
+        assert kwargs["tool_name"] == "search"
+        assert kwargs["error_type"] == "OSError"
+
+    async def test_truncation_path_pins_message_fields_and_kwargs(self) -> None:
+        from app.agents.middleware import compaction as cm
+
+        recorded: list[tuple] = []
+
+        class _StubLog:
+            def warning(self, msg: str, **kw):
+                recorded.append((msg, kw))
+
+            def error(self, *a, **k):
+                pass
+
+            def info(self, *a, **k):
+                pass
+
+            def set(self, *a, **k):
+                pass
+
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(cm, "log", _StubLog())
+        try:
+            mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=None)
+
+            async def handler(_req):
+                return ToolMessage(
+                    content="x" * 5000,
+                    tool_call_id="call_9",
+                    name="run_query",
+                    additional_kwargs={"keepme": True},
+                )
+
+            await mw.awrap_tool_call(_request(), handler)
+        finally:
+            monkeypatch.undo()
+
+        stops = [m for m, _ in recorded if "No spill and no LLM digest" in m]
+        assert any("No spill and no LLM digest available" in m for m in stops)
