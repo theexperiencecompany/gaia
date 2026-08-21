@@ -11,158 +11,124 @@
 
 </div>
 
-Most AI assistants wait for you to open a tab and type. GAIA doesn't. It connects to the tools you already use, watches for the things you told it to care about, does the work in the background, and messages you on WhatsApp, Telegram, Slack, or Discord when there's something you actually need to see.
+Most AI assistants wait for you to open a tab and type.
 
-It remembers you between conversations, it can write and run real code in a sandbox, you can talk to it out loud, and you can run the entire thing on your own hardware.
+GAIA doesn't. It connects to the tools you already use, watches for the things you told it to care about, and does the work in the background. When something needs you, it texts you — on iMessage, WhatsApp, Telegram, Slack, or Discord.
 
-```bash
-npm install -g @heygaia/cli && gaia init
-```
+It remembers you between conversations. You can talk to it out loud. And you can run the whole thing on your own hardware.
 
 ## Choose a starting point
 
-| If you want to… | Start here |
+| If you want to… | Go here |
 | --- | --- |
-| Just use it, zero setup | **[heygaia.io](https://heygaia.io)** — sign up and start |
-| Text it from your phone | [WhatsApp](https://wa.me/12762088737) · [Telegram](https://t.me/heygaia_bot) · [Slack](https://heygaia.io/slack-bot) · [Discord](https://heygaia.io/discord-bot) |
-| Run it on your own machines | [Self-Hosting Guide](https://docs.heygaia.io/self-hosting/overview) — or `gaia init` above |
-| Give it access to your local files and tools | [`gaia bridge`](#bring-your-own-machine) — outbound-only, no ports to open |
-| Understand how it's built | [Architecture](#how-it-works) · [ARCHITECTURE.md](./ARCHITECTURE.md) |
-| Contribute | [Development Setup](https://docs.heygaia.io/developers/development-setup) · [Contributing](https://docs.heygaia.io/developers/contributing) |
+| Just use it | **[heygaia.io](https://heygaia.io)** — sign up, nothing to install |
+| Text it from your phone | [iMessage](https://docs.heygaia.io/guides/imessage-bot) · [WhatsApp](https://wa.me/12762088737) · [Telegram](https://t.me/heygaia_bot) · [Slack](https://heygaia.io/slack-bot) · [Discord](https://heygaia.io/discord-bot) |
+| Run it on your own machines | `npm i -g @heygaia/cli && gaia init` — or the [guide](https://docs.heygaia.io/self-hosting/overview) |
+| Contribute | [Development Setup](https://docs.heygaia.io/developers/development-setup) |
+| See how it's built | [ARCHITECTURE.md](./ARCHITECTURE.md) |
 
-## Why GAIA
+## What GAIA does
 
-We all drown in tools. Gmail, Calendar, Todos, Docs, Slack, Linear, WhatsApp — different stacks, same problem. Our days are eaten by small repetitive actions that aren't real work. Each one feels trivial, but together they drain focus. Inboxes clog, todo lists rot, and important things slip through.
+### It works while you're away
 
-Most automation doesn't fix this. It's rigid, built for power users, and asks you to re-explain your context every single time. A real assistant should already know you — how you write, who you work with, what you ignore.
+This is the whole point. Four things drive it:
 
-Four things make GAIA that, and they're worth reading in order.
-
-### It acts before you ask
-
-This is the whole point, and it's not a personality trait — it's machinery you can inspect:
-
-- **Event triggers.** Real webhook subscriptions across 10 services — a new Gmail message, a calendar event created or starting soon, a Slack message or new channel, a GitHub commit/PR/issue/star, a Linear issue or comment, a Notion page update, new rows in a Sheet, a new Google Doc, a Todoist or Asana task. Not polling from a laptop that has to stay open.
-- **Scheduled workflows.** Cron-style, timezone-aware. "Every Monday at 9am, scan my calendar and prep a briefing for each meeting."
-- **Self-executing todos.** Tracked todos don't just remind you — they run. They research, draft, and complete themselves, with a durable canvas that persists across conversations.
-- **Background sweeps.** A worker tier handles reminders, memory backfill, and maintenance on its own schedule — including auto-pausing workflows for inactive users so nothing runs up a bill in the dark.
-- **Then it finds you.** When a run produces something you should see — a drafted reply, a new todo, a suggested event — it routes to the notification bell, your email, or straight to whichever chat app you actually read.
+- **It watches your tools.** Real webhook subscriptions on Gmail, Calendar, Slack, GitHub, Linear, Notion, Sheets, Docs, Todoist, and Asana. A new email arrives, a meeting gets moved, an issue gets assigned — GAIA knows.
+- **It runs on a schedule.** "Every Monday at 9am, prep a briefing for each meeting on my calendar."
+- **Its todos do themselves.** Tracked todos don't just remind you. They research, draft, and finish the work.
+- **Then it finds you.** Something worth seeing gets sent to you — in the app, by email, or straight to whichever chat app you actually read.
 
 ### It remembers you
 
-Not a chat log, and not flat vector recall. GAIA runs a Postgres-backed memory engine with three layers: **facts** (people, projects, preferences), a rolling **journal** of recent episodes, and long-form **documents**. Chroma handles semantic retrieval; dedicated consolidation and reconciliation passes keep it from rotting into contradictions.
+Tell it once. It sticks.
 
-It learns passively — a memory hook runs at the end of every turn, so things you mention in passing become durable without you calling a tool. The whole store is projected to Markdown files the agent can read directly, and to a memory graph in the UI you can browse, edit, export as PNG/SVG, or delete outright.
+GAIA keeps facts about you (people, projects, preferences), a running journal of recent days, and longer documents you've built up together. It learns as you talk, so you never have to say "remember this."
 
-### It's wherever you are
+You own all of it. The **Memory** page shows everything as a list or an interactive graph — edit it, export it, or delete any of it in a click.
 
-Web, desktop (macOS, Windows, Linux), mobile, and four chat platforms — all one assistant with one memory, not four disconnected bots. Plus:
+### You can just talk to it
 
-- **Voice.** A real-time voice agent on LiveKit — Deepgram STT, ElevenLabs TTS, Silero VAD, multilingual turn detection, and noise cancellation.
-- **"Hey GAIA."** A wake word that runs **entirely on-device**. A custom-trained ONNX classifier on an openWakeWord pipeline (mel → embedding → VAD → classifier), shipping for web, Electron, and React Native. No audio leaves your machine until you say the words.
+Say **"Hey GAIA"** and start talking. The wake word runs entirely on your device, so no audio leaves your machine until you say it.
 
-### It's actually yours
+Voice calls are real-time and interruptible, with natural turn-taking and background noise filtered out.
 
-PolyForm Noncommercial, self-hostable end to end, and honest about the boundary: there's no separate "enterprise edition" holding back the good parts. Self-hosting means your own keys, your own models, no usage caps, and your data on your own disks.
+### It's genuinely yours
 
-## What people actually ask it
+Self-host the whole stack with your own keys, your own models, and no usage caps. There's no "enterprise edition" holding back the good parts.
 
-Every example below works today.
+## Things people actually ask it
 
-- **"Summarize the 47 unread emails in my inbox and draft replies for the 3 that need one."** Ranks by importance, reads threads end to end, writes drafts in your voice.
-- **"Watch my email for anything from [investor] and ping me on Telegram within 60 seconds."** Persistent background monitoring, cross-channel notification.
-- **"When my 2pm gets cancelled, rewrite my todo list to use the freed time."** Watches calendar changes and replans the afternoon against your pending todos.
-- **"Pull my GitHub, Linear, and Slack activity this week and post a Friday digest to #eng-updates."** Merged PRs, closed issues, channel highlights — gathered, formatted, posted.
-- **"Before my 1:1 with Alex tomorrow, brief me on everything we shipped this sprint."** PRs, Linear issues, and Slack threads into one prep doc.
-- **"Turn this transcript into action items, assign owners, and add them to Linear."** Extracts decisions, matches them to projects, creates issues.
-- **"Research these 10 companies into a table with pricing, team size, and funding."** Web research, structured output, ready to paste.
-- **"Clean up this CSV, chart the outliers, and send me the deck."** Real Python in a real sandbox, then a real `.pptx` back.
+Every one of these works today.
 
-## Reach GAIA anywhere
+- *"Summarize my 47 unread emails and draft replies for the 3 that need one."*
+- *"Watch my inbox for anything from [investor] and ping me on Telegram within 60 seconds."*
+- *"When my 2pm gets cancelled, rewrite my todo list to use the freed time."*
+- *"Post a Friday digest of my GitHub, Linear, and Slack activity to #eng-updates."*
+- *"Before my 1:1 with Alex, brief me on everything we shipped this sprint."*
+- *"Turn this transcript into action items, assign owners, and add them to Linear."*
+- *"Research these 10 companies into a table with pricing, team size, and funding."*
+- *"Clean up this CSV, chart the outliers, and send me the deck."*
+
+## Text GAIA from anywhere
 
 | | Platform | How |
 | --- | --- | --- |
-| <img src="apps/web/public/images/icons/macos/whatsapp.webp" width="28" height="28" /> | **WhatsApp** | [Message GAIA](https://wa.me/12762088737) — chat normally or use `/gaia` |
-| <img src="apps/web/public/images/icons/macos/telegram.webp" width="28" height="28" /> | **Telegram** | [@heygaia_bot](https://t.me/heygaia_bot) — DMs or `@mention` in groups |
-| <img src="apps/web/public/images/icons/macos/slack.webp" width="28" height="28" /> | **Slack** | [Add to workspace](https://heygaia.io/slack-bot) — `/gaia` and slash commands |
-| <img src="apps/web/public/images/icons/macos/discord.webp" width="28" height="28" /> | **Discord** | [Add the bot](https://heygaia.io/discord-bot) or [join the server](https://discord.heygaia.io) |
-| 🌐 | **Web & Desktop** | [heygaia.io](https://heygaia.io) · [Download](https://heygaia.io/download) for macOS, Windows, Linux |
-| 📱 | **Mobile** | React Native app (beta) |
-| 🎙️ | **Voice** | Talk to it live, or just say **"Hey GAIA"** |
-| <img src="apps/web/public/images/icons/macos/imessage.svg" width="28" height="28" /> | **iMessage** | *Coming soon* |
+| <img src="apps/web/public/images/icons/macos/imessage.webp" width="26" height="26" /> | **iMessage** | [Register your number](https://heygaia.io/settings/linked-accounts), text `/auth`, then just type. Pro plan. |
+| <img src="apps/web/public/images/icons/macos/whatsapp.webp" width="26" height="26" /> | **WhatsApp** | [Message GAIA](https://wa.me/12762088737) |
+| <img src="apps/web/public/images/icons/macos/telegram.webp" width="26" height="26" /> | **Telegram** | [@heygaia_bot](https://t.me/heygaia_bot) — DMs, or `@mention` it in groups |
+| <img src="apps/web/public/images/icons/macos/slack.webp" width="26" height="26" /> | **Slack** | [Add to your workspace](https://heygaia.io/slack-bot) |
+| <img src="apps/web/public/images/icons/macos/discord.webp" width="26" height="26" /> | **Discord** | [Add the bot](https://heygaia.io/discord-bot) or [join the server](https://discord.heygaia.io) |
 
-Every surface shares one conversation history and one memory. Start a task on desktop, get the answer on Telegram.
+There's also a web app, a desktop app for macOS, Windows and Linux, and a mobile app.
 
-## Integrations
+It's one assistant everywhere, not six disconnected bots. Start something on your laptop, get the answer on your phone.
 
-Around 30 services connect in one click, each with its own specialist subagent rather than one agent fumbling through a giant tool list.
+## Connect anything
 
-| | |
-| --- | --- |
-| **Google** | Gmail · Calendar · Docs · Sheets · Tasks · Meet · Maps |
-| **Work** | Slack · Notion · Linear · GitHub · Microsoft Teams · Zoom · Airtable |
-| **Tasks** | Todoist · Asana · ClickUp · Trello |
-| **Social** | Twitter/X · LinkedIn · Reddit · Instagram |
-| **Business** | HubSpot · PostHog |
-| **Research** | Perplexity · Context7 · DeepWiki · Hacker News · Browserbase |
-| **Life** | Instacart · Yelp |
+**One click for the popular ones.** Gmail, Calendar, Slack, Notion, Linear, GitHub, Sheets, Todoist, Trello, HubSpot and about 20 more. Connect from `/integrations` and GAIA gets a dedicated specialist for that tool.
 
-Not in the list? Add **any MCP server** from the same page — connect it privately or publish it to the community marketplace.
+**Anything else, via MCP.** GAIA is a full Model Context Protocol client. Point it at any MCP server and those tools work immediately. There's no fixed catalogue and no waiting for us to build an integration.
 
-### Bring your own machine
-
-`gaia bridge` pairs a local machine to your GAIA account over an **outbound-only WebSocket** — no inbound ports, no tunnel service, no firewall changes. From there you can expose local MCP servers or specific folders to your assistant.
+**Tools on your own computer.** Want GAIA to work with files or local tools on your laptop? `gaia bridge` links your machine to your account over one outgoing connection. Nothing to forward, no ports to open on your firewall.
 
 ```bash
-gaia bridge login          # RFC 8628 device pairing, approve in the browser
-gaia bridge fs ~/projects  # expose a folder
+gaia bridge login          # approve the pairing in your browser
+gaia bridge fs ~/projects  # share a folder
 gaia bridge up             # connect
 ```
 
-## How it works
+**A marketplace.** Browse what the community has published, or publish your own.
 
-GAIA runs a three-tier agent system. The agent you talk to never does the work itself — it delegates, so the conversation stays responsive while long jobs run in the background.
+## It's not just chat
 
-```
-  Comms agent          talks to you, narrates progress, owns the thread
-      │                tiny tool surface — it cannot do work itself
-      ▼  call_executor(task)  →  returns immediately, runs in background
-  Executor agent       the worker tier: bash, files, research, planning,
-      │                todos, and the handoff tool
-      ▼  handoff(subagent, task, background=…)
-  Subagents            one specialist graph per integration, dispatched in
-                       parallel, each scoped to just its own tools
-```
-
-Underneath that:
-
-- **A real computer.** `bash`, `read`, `write`, `edit`, `grep` run in a per-user E2B sandbox on a JuiceFS-backed workspace. GAIA can write code, run it, and hand you the artifact — PDF, DOCX, PPTX, spreadsheets, charts.
-- **Skills.** 37 built-in skills following the open [Agent Skills spec](https://agentskills.io) — folders of `SKILL.md` plus scripts, loaded into the workspace at runtime. Install more straight from any GitHub repo, or write your own.
-- **Deep research.** Multi-query, multi-source web research with a self-hosted SearXNG in the stack.
-- **Full MCP client.** Remote servers with OAuth discovery and token management, plus local servers over the device bridge.
-- **Models.** OpenAI, Gemini, Grok, and OpenRouter (which is how Claude and most others get in). The catalog is database-driven, so self-hosters can swap freely.
-
-For the full map — every file path, every service — see **[ARCHITECTURE.md](./ARCHITECTURE.md)**.
+- **It writes and runs real code.** Every user gets a sandboxed Linux workspace. GAIA can analyse a dataset, run the script, and hand you the result — as a PDF, Word doc, deck, or spreadsheet.
+- **It researches properly.** Multi-source web research, not a single search box.
+- **It learns new abilities.** 37 built-in skills using the open [Agent Skills spec](https://agentskills.io), plus any skill you install from GitHub or write yourself.
+- **It's model-agnostic.** OpenAI, Gemini, Grok, and OpenRouter — which covers Claude and most everything else. Self-hosters can swap freely.
 
 ## Getting started
 
-> **Just want to use it?** Cloud. **Care where your data lives, or want your own keys and no caps?** Self-host. The interface is identical.
+> **Just want to use it?** Use the cloud. **Care where your data lives, or want your own keys and no caps?** Self-host. The app is identical either way.
 
-### Cloud (recommended)
+### Cloud
 
-Visit **[heygaia.io](https://heygaia.io)** — no installation, free to start.
+<a href="https://heygaia.io"><img src="apps/web/public/images/screenshots/website_tab.png" alt="GAIA web app" width="500" /></a>
 
-### Self-hosting
+Go to **[heygaia.io](https://heygaia.io)**. Free to start, nothing to install.
 
-One CLI sets up the whole stack. **Prerequisites:** [Docker](https://docs.docker.com/get-docker/) (Engine 20.10+, Compose v2+) and [Node.js](https://nodejs.org) 20+.
+### Self-host
+
+<a href="https://heygaia.io/install"><img src="apps/web/public/images/screenshots/cli.png" alt="GAIA CLI" width="500" /></a>
+
+One command sets up the whole stack. You'll need [Docker](https://docs.docker.com/get-docker/) (Engine 20.10+, Compose v2+) and [Node.js](https://nodejs.org) 20+.
 
 ```bash
-npm install -g @heygaia/cli   # pnpm add -g / bun add -g also work
-gaia init                     # pick "Self-Host (Docker)" when asked
+npm install -g @heygaia/cli
+gaia init                     # choose "Self-Host (Docker)"
 # → http://localhost:3000
 ```
 
-`gaia init` checks prerequisites, clones the repo, walks you through environment variables, then builds and starts everything in Docker.
+`gaia init` checks your prerequisites, clones the repo, walks you through the environment variables, then builds and starts everything.
 
 ```bash
 gaia status   # health-check every service
@@ -171,9 +137,9 @@ gaia stop     # stop everything
 gaia start    # bring it back up
 ```
 
-Already cloned? Run `gaia setup` inside the checkout. Contributing? Choose **"Developer"** in `gaia init` for hot-reload local dev.
+Already cloned the repo? Run `gaia setup` inside it. Contributing? Choose **"Developer"** for hot-reload local dev.
 
-Self-hosting runs Postgres, MongoDB, Redis, ChromaDB, RabbitMQ, and SearXNG alongside the apps. A single modestly-sized VM handles a small team; the real cost is model API usage. Details in the [Self-Hosting Guide](https://docs.heygaia.io/self-hosting/overview).
+A single modest VM handles a small team. The real cost is model API usage — see the [self-hosting guide](https://docs.heygaia.io/self-hosting/overview) for numbers.
 
 ## Repository
 
@@ -181,25 +147,25 @@ Full-stack Nx monorepo.
 
 ```
 apps
-├── web            Next.js web app                       heygaia.io
+├── web            Next.js web app                    heygaia.io
 ├── desktop        Electron desktop app (beta)
 ├── mobile         React Native mobile app (beta)
 ├── api            FastAPI + LangGraph backend
 ├── voice-agent    LiveKit voice worker
-├── bridge         gaia bridge — local MCP/file tunnel
-└── bots           discord · slack · telegram · whatsapp
+├── bridge         gaia bridge — local file/tool tunnel
+└── bots           imessage · whatsapp · telegram · slack · discord
 packages
 ├── cli            @heygaia/cli
 └── gaia-ui        @heygaia/ui
 libs
-├── shared/py      gaia-shared (api, voice-agent)
-├── shared/ts      shared TypeScript + unified bot framework
+├── shared/py      gaia-shared
+├── shared/ts      shared TypeScript + the unified bot framework
 └── wake-word      @gaia/wake-word — on-device "Hey GAIA"
 docs               docs.heygaia.io
 infra/docker       Docker Compose (dev + prod)
 ```
 
-**Stack** — Next.js 16 / React 19 / Tailwind / Zustand / HeroUI · Electron · React Native + Expo · FastAPI / Python 3.11+ / Pydantic · LangGraph · LiveKit + Deepgram + ElevenLabs · Composio · E2B · Postgres / MongoDB / Redis / ChromaDB · RabbitMQ + ARQ · Prometheus / Grafana / Loki / Sentry / PostHog · Nx / pnpm / uv / mise / Biome / Ruff.
+How the agent system actually fits together — every service, every file path — is in **[ARCHITECTURE.md](./ARCHITECTURE.md)**.
 
 ## Roadmap
 
@@ -208,60 +174,62 @@ We build in the open. **[View the roadmap](https://gaia.featurebase.app/roadmap)
 ## FAQ
 
 <details>
-<summary><b>How does GAIA's proactive behaviour actually work?</b></summary>
+<summary><b>How does the proactive part actually work?</b></summary>
 
-Go to the **Workflows** page and build one. Two kinds of triggers:
+Open the **Workflows** page and build one. There are two kinds of triggers:
 
-- **Scheduled** — cron-style, timezone-aware ("every weekday at 9am", "first Monday of the month")
-- **Event-driven** — real webhook subscriptions on Gmail, Google Calendar, Google Sheets, Google Docs, Slack, GitHub, Linear, Notion, Todoist, and Asana
+- **Scheduled** — cron-style and timezone-aware ("every weekday at 9am")
+- **Event-driven** — real webhook subscriptions on Gmail, Google Calendar, Sheets, Docs, Slack, GitHub, Linear, Notion, Todoist, and Asana
 
-Chain steps across integrations ("fetch → summarise → post to Slack") and GAIA runs the whole thing in the background with no prompt. When a run produces something you should see, it lands in the notifications bell and on `/notifications`, where you can approve, edit, or dismiss it — and it can be pushed to your connected chat app too.
+Chain steps across your tools ("fetch → summarise → post to Slack") and GAIA runs the whole thing in the background with no prompt from you.
+
+When a run produces something you should see, it lands in your notifications — where you can approve, edit, or dismiss it — and can be pushed to your chat app too.
 
 </details>
 
 <details>
-<summary><b>What data does GAIA store about me, and can I delete it?</b></summary>
+<summary><b>What does GAIA store about me, and can I delete it?</b></summary>
 
 All of it is under your control:
 
-- **Memory** — everything GAIA has learned is visible on the **Memory** settings page as a list or interactive graph. Delete individual memories or clear everything in one click. Export the graph as PNG or SVG.
-- **Chat history** — one-click "Clear chat history" in **Preferences**.
+- **Memory** — see everything on the Memory page as a list or graph. Delete individual items or clear it all. Export as PNG or SVG.
+- **Chat history** — one-click clear in Preferences.
 - **Workflows, todos, reminders** — managed from their own pages.
-- **Integration tokens** — stored encrypted, revoked immediately on disconnect.
+- **Integration tokens** — encrypted, and revoked the moment you disconnect.
 
-Integration content — email bodies, calendar events, documents — is never persisted. It's fetched on demand when a request needs it.
+Your actual content — email bodies, calendar events, documents — is never copied into GAIA's database. It's fetched when a request needs it and not kept.
 
 </details>
 
 <details>
 <summary><b>Does GAIA read my email?</b></summary>
 
-Only threads relevant to what you asked it to do, and only within the scopes you granted on Google's consent screen when you connected Gmail. Email content isn't mirrored into GAIA's database — it's fetched per request. Disconnect from `/integrations` at any time to revoke access immediately.
+Only the threads relevant to what you asked it to do, and only within the scopes you granted on Google's consent screen. Nothing is mirrored into a database. Disconnect from `/integrations` and access is revoked immediately.
 
 </details>
 
 <details>
-<summary><b>Can I bring my own API keys and models?</b></summary>
+<summary><b>Can I use my own API keys and models?</b></summary>
 
-**Self-hosted:** yes. Model providers and integration services are configured via environment variables, and the model catalog is database-driven, so you can swap freely.
+**Self-hosted:** yes. Providers are set via environment variables and the model catalogue is database-driven, so you can swap freely.
 
-**Cloud:** no — the platform manages models for you and usage is governed by your plan. You can still choose between available models in the chat composer.
-
-</details>
-
-<details>
-<summary><b>How do I connect a new integration?</b></summary>
-
-Open `/integrations`. Browse by category or search. Click **Connect** — OAuth providers redirect to their consent screen, API-key providers pop a modal. The sidebar then shows the tools that integration unlocks, and **Disconnect** revokes access in one click.
-
-Need something not in the catalogue? Add your own MCP server from the same page, keep it private, or publish it to the community marketplace.
+**Cloud:** no — models are managed for you and usage follows your plan. You can still pick between the available models in the composer.
 
 </details>
 
 <details>
-<summary><b>What does self-hosting cost to run?</b></summary>
+<summary><b>How do I add an integration that isn't in the list?</b></summary>
 
-The code is free under PolyForm Noncommercial. Real costs are model API usage (scales with use), any paid integration services you opt into, and hosting — a single modestly-sized VM handles a small team. See the [self-hosting guide](https://docs.heygaia.io/self-hosting/overview) for numbers.
+Add it as an MCP server from `/integrations`. Paste the server URL, connect it privately, and its tools are available right away. You can publish it to the community marketplace if you want to share it.
+
+For tools running on your own machine, use `gaia bridge` instead.
+
+</details>
+
+<details>
+<summary><b>What does self-hosting cost?</b></summary>
+
+The code is free under PolyForm Noncommercial. Your real costs are model API usage, any paid integrations you opt into, and hosting. A single modest VM handles a small team. The [self-hosting guide](https://docs.heygaia.io/self-hosting/overview) has numbers.
 
 </details>
 
@@ -283,11 +251,11 @@ The code is free under PolyForm Noncommercial. Real costs are model API usage (s
 
 Bug fixes, features, docs, tests — all welcome.
 
-> 🤖 **AI and vibe-coded PRs are welcome.** Built it with Claude, Cursor, or anything else? Great — just mention it in the PR description.
+> 🤖 **AI and vibe-coded PRs are welcome.** Built it with Claude, Cursor, or anything else? Great — just say so in the PR description.
 
 [Contributing Guidelines](https://docs.heygaia.io/developers/contributing) · [Development Setup](https://docs.heygaia.io/developers/development-setup) · [Code Style](https://docs.heygaia.io/configuration/code-style) · [Conventional Commits](https://docs.heygaia.io/configuration/conventional-commits) · [Pull Requests](https://docs.heygaia.io/configuration/pull-requests)
 
-For bugs and feature requests, [open an issue](https://github.com/theexperiencecompany/gaia/issues).
+Found a bug? [Open an issue](https://github.com/theexperiencecompany/gaia/issues).
 
 ## License
 
