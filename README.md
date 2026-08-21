@@ -62,7 +62,9 @@ Stop opening five tabs to run your day.
 
 ### It's genuinely yours
 
-Self-host the whole stack with your own keys, your own models, and no usage caps. There's no "enterprise edition" holding back the good parts.
+Self-host the whole stack: your own API keys, your own choice of models, no usage caps, and your data on your own disks.
+
+The Docker setup brings up everything, monitoring included — there's a Grafana dashboard so you can see exactly what your assistant is doing.
 
 ## Things people actually ask it
 
@@ -77,7 +79,7 @@ Every one of these works today.
 - *"Research these 10 companies into a table with pricing, team size, and funding."*
 - *"Clean up this CSV, chart the outliers, and send me the deck."*
 
-## Text GAIA from anywhere
+## Use GAIA from anywhere
 
 | | Platform | How |
 | --- | --- | --- |
@@ -89,7 +91,7 @@ Every one of these works today.
 
 There's also the web app, a [desktop app](https://heygaia.io/download) for macOS, Windows and Linux, and a mobile app.
 
-It's one assistant everywhere, not six disconnected bots. Start something on your laptop, get the answer on your phone.
+It's all one account. A conversation you start on Telegram shows up in the web app, and GAIA remembers the same things about you no matter where you talk to it.
 
 ## Connect anything
 
