@@ -17,7 +17,6 @@ import { memo, useMemo } from "react";
 import { ChevronRight } from "@/components/shared/icons";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { getBrowserTimezone } from "@/lib/timezone";
 import { cn } from "@/lib/utils";
 import {
@@ -130,13 +129,6 @@ export default memo(function TodoItem({
   const handleToggleComplete = (e: React.ChangeEvent<HTMLInputElement>) => {
     e.stopPropagation();
     const newCompletedState = !todo.completed;
-
-    trackEvent(ANALYTICS_EVENTS.TODOS_TOGGLED, {
-      todo_id: todo.id,
-      completed: newCompletedState,
-      priority: todo.priority,
-      had_due_date: !!todo.due_date,
-    });
 
     onUpdate(todo.id, { completed: newCompletedState });
   };

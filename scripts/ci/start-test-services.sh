@@ -31,10 +31,18 @@ READY_TIMEOUT_SECS=90
 PULL_ATTEMPTS=5
 PULL_BACKOFF_SECS=5
 
+# max_connections: the default 100 is a single-client default, and this suite is
+# not one client. `pytest -n auto` gives a worker per core, and each worker can
+# hold the app engine (pool_size=5 + max_overflow=10) AND the checkpointer pool
+# (max_size=20) at once — 35 apiece before the per-test NullPool engines the
+# real-services memory tests open. Four workers already exceed 100, which is why
+# the suite met "sorry, too many clients already" as it grew rather than on any
+# one change. Same reasoning as redis' --databases below: the service has to be
+# sized for xdist, not for one process. Slots are a few KB each here.
 start_postgres() {
   docker run -d --name gaia-test-postgres \
     -e POSTGRES_USER=gaia -e POSTGRES_PASSWORD=gaia -e POSTGRES_DB=gaia_test \
-    -p 5432:5432 "$POSTGRES_IMAGE"
+    -p 5432:5432 "$POSTGRES_IMAGE" -c max_connections=300
 }
 
 # 32 logical databases so each pytest-xdist worker gets an isolated Redis DB.

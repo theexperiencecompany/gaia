@@ -11,7 +11,7 @@ import {
 export const metadata: Metadata = generatePageMetadata({
   title: "Your AI, Where You Already Work",
   description:
-    "Chat with GAIA on Discord, Telegram, Slack, and WhatsApp. Delegate tasks, get answers, and run workflows — without leaving the apps you already use.",
+    "Chat with GAIA on Discord, Telegram, Slack, WhatsApp, and iMessage. Delegate tasks, get answers, and run workflows — without leaving the apps you already use.",
   path: "/bots",
   keywords: [
     "GAIA bots",
@@ -19,6 +19,7 @@ export const metadata: Metadata = generatePageMetadata({
     "Telegram bot",
     "Slack bot",
     "WhatsApp bot",
+    "iMessage bot",
     "AI assistant bot",
     "GAIA Discord",
     "GAIA Telegram",
@@ -30,7 +31,7 @@ export const metadata: Metadata = generatePageMetadata({
 export default function Bots() {
   const webPageSchema = generateWebPageSchema(
     "GAIA Bot Integrations",
-    "Chat with GAIA on Discord, Telegram, Slack, and WhatsApp.",
+    "Chat with GAIA on Discord, Telegram, Slack, WhatsApp, and iMessage.",
     `${siteConfig.url}/bots`,
     [
       { name: "Home", url: siteConfig.url },

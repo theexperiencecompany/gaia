@@ -99,7 +99,7 @@ jobs:
       # find the desktop release and its latest-*.yml update metadata.
       - name: Upload to Release
         if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event.release.tag_name }}
           make_latest: "true"

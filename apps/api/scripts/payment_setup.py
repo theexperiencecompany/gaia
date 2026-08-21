@@ -81,12 +81,15 @@ Outcome = Literal["created", "updated", "unchanged"]
 def build_plan_catalogue(monthly_product_id: str, yearly_product_id: str) -> list[PlanDocument]:
     """The subscription plans GAIA offers, as they should exist in the database."""
     now = datetime.now(UTC)
+    # Ordered to line up row-for-row with the Free card's list below, so each
+    # upgrade sits on the same line as the limit it replaces.
     pro_features = [
+        "Chat on iMessage",
+        "More powerful models",
         "Much higher usage limits",
         "Unlimited memories",
-        "More powerful models",
-        "Long running tasks",
         "Priority support",
+        "Long running tasks",
         "Early access to new features",
     ]
 
@@ -100,11 +103,12 @@ def build_plan_catalogue(monthly_product_id: str, yearly_product_id: str) -> lis
             duration="monthly",
             max_users=1,
             features=[
-                "All tools & 100s of integrations",
+                "Chat on WhatsApp, Telegram, Discord & Slack",
                 "Standard models",
                 "Daily AI usage allowance",
                 f"{FREE_MEMORY_FACT_LIMIT} saved memories",
                 "Community support",
+                "All tools & 100s of integrations",
             ],
             is_active=True,
             created_at=now,

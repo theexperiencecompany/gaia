@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, status
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.models.feedback_models import MessageFeedbackRequest, MessageFeedbackResponse
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.feedback_service import create_message_feedback_service
 from shared.py.wide_events import log
 
@@ -41,4 +42,9 @@ async def submit_message_feedback(
     )
 
     log.set(feedback={"scored": result.scored, "trace_id": result.trace_id})
+    if result.scored:
+        capture_context_event(
+            AnalyticsEvents.FEEDBACK_MESSAGE_SUBMITTED,
+            {"is_positive": payload.is_positive},
+        )
     return result

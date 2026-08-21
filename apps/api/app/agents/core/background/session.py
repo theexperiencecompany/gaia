@@ -88,6 +88,11 @@ class ExecutorRun:
     kind: RunKind
     task_id: str | None
     user_message_id: str | None
+    #: The ORIGINAL live turn's bot message id, present only when this run is a
+    #: HIL pause/resume of that turn's executor — see ``executor_runner._record_pause``.
+    #: A plain queued (busy-lock) dispatch never carries this, so its result still
+    #: mints a fresh message keyed on ``task_id``.
+    bot_message_id: str | None = None
     workflow_id: str | None = None
     workflow_title: str = ""
     workflow_notify_on_completion: bool = True
@@ -102,6 +107,7 @@ class ExecutorRun:
         kind: RunKind,
         task_id: str | None,
         user_message_id: str | None,
+        bot_message_id: str | None = None,
     ) -> "ExecutorRun":
         """Build the run context from a LangGraph ``configurable`` dict."""
         return cls(
@@ -119,6 +125,7 @@ class ExecutorRun:
             kind=kind,
             task_id=task_id,
             user_message_id=user_message_id,
+            bot_message_id=bot_message_id,
             workflow_id=configurable.get("workflow_id"),
             workflow_title=configurable.get("workflow_title", ""),
             workflow_notify_on_completion=configurable.get("workflow_notify_on_completion", True),

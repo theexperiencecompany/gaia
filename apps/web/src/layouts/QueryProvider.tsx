@@ -19,7 +19,7 @@ import { type ReactNode, useState } from "react";
  * memory, only cross-reload restoration is lost.
  * @see https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API
  */
-function createIDBPersister(
+export function createIDBPersister(
   idbValidKey: IDBValidKey = "reactQuery",
 ): Persister {
   let disabled = false;

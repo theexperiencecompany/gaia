@@ -25,6 +25,8 @@ interface UpcomingEventsViewProps {
   events?: GoogleCalendarEvent[];
   calendars?: CalendarItem[];
   isConnected?: boolean;
+  /** Connect/Reconnect/Retry — the verb that matches the calendar's current status. */
+  connectLabel?: string;
   onConnect?: (integrationId: string) => void;
 }
 
@@ -33,6 +35,7 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
   events = [],
   calendars = [],
   isConnected = true,
+  connectLabel = "Connect",
   onConnect,
 }) => {
   const appendToInput = useAppendToInput();
@@ -199,8 +202,8 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
       isConnected={isConnected}
       connectIntegrationId="googlecalendar"
       onConnect={onConnect}
-      connectButtonText="Connect"
-      connectTitle="Connect Your Calendar"
+      connectButtonText={connectLabel}
+      connectTitle={`${connectLabel} Your Calendar`}
       connectDescription="Manage events and view your schedule"
       connectIcon={<GoogleCalendarIcon width={32} height={32} />}
       actions={actions}

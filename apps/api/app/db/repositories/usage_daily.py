@@ -1,10 +1,14 @@
 """Repository for the ``usage_daily`` collection — durable per-day usage rollups.
 
 One document per user per UTC day (``{user_id, date: "YYYY-MM-DD", count, cost,
-aux_cost}``), ``$inc``-upserted on every metered action. Backs the activity
-heatmap, the percentile badge, and the durable cost history (``cost`` mirrors
-the charged Redis budget windows; ``aux_cost`` is un-charged background COGS —
-see ``app.services.usage_activity.record_cost``).
+aux_cost, ...token counts}``), ``$inc``-upserted on every metered action. Backs
+the activity heatmap, the percentile badge, and the durable cost history
+(``cost``/``*_tokens`` mirror the charged Redis budget windows; ``aux_cost``/
+``aux_*_tokens`` are un-charged background COGS — see
+``app.services.usage_activity.record_cost``). The token counts ride alongside
+their cost in the same write so a mispriced call can be re-derived from the
+raw usage after the fact, instead of only the (possibly wrong) dollar amount
+surviving.
 """
 
 from collections.abc import Mapping
@@ -21,6 +25,14 @@ class UsageDailyDocument(UserScopedDocument):
     count: int = 0
     cost: float = 0.0
     aux_cost: float = 0.0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cached_tokens: int = 0
+    reasoning_tokens: int = 0
+    aux_input_tokens: int = 0
+    aux_output_tokens: int = 0
+    aux_cached_tokens: int = 0
+    aux_reasoning_tokens: int = 0
 
 
 class UsageDailyUpdate(BaseModel):
@@ -38,12 +50,38 @@ class UsageDailyRepository(UserScopedRepository[UsageDailyDocument, UsageDailyUp
     cache_policy = None
 
     async def increment(
-        self, user_id: str, day: str, *, count: int = 0, cost: float = 0.0, aux_cost: float = 0.0
+        self,
+        user_id: str,
+        day: str,
+        *,
+        count: int = 0,
+        cost: float = 0.0,
+        aux_cost: float = 0.0,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        cached_tokens: int = 0,
+        reasoning_tokens: int = 0,
+        aux_input_tokens: int = 0,
+        aux_output_tokens: int = 0,
+        aux_cached_tokens: int = 0,
+        aux_reasoning_tokens: int = 0,
     ) -> None:
         """``$inc``-upsert the user's rollup row for ``day`` (``YYYY-MM-DD``)."""
         inc: dict[str, object] = {
             field: amount
-            for field, amount in (("count", count), ("cost", cost), ("aux_cost", aux_cost))
+            for field, amount in (
+                ("count", count),
+                ("cost", cost),
+                ("aux_cost", aux_cost),
+                ("input_tokens", input_tokens),
+                ("output_tokens", output_tokens),
+                ("cached_tokens", cached_tokens),
+                ("reasoning_tokens", reasoning_tokens),
+                ("aux_input_tokens", aux_input_tokens),
+                ("aux_output_tokens", aux_output_tokens),
+                ("aux_cached_tokens", aux_cached_tokens),
+                ("aux_reasoning_tokens", aux_reasoning_tokens),
+            )
             if amount
         }
         if not inc:
@@ -58,8 +96,12 @@ class UsageDailyRepository(UserScopedRepository[UsageDailyDocument, UsageDailyUp
 
     async def counts_since(self, user_id: str, since_day: str) -> dict[str, int]:
         """The user's per-day action counts from ``since_day`` (inclusive) on."""
-        rows = await self._find({"user_id": user_id, "date": {"$gte": since_day}})
+        rows = await self.rollups_since(user_id, since_day)
         return {row.date: row.count for row in rows}
+
+    async def rollups_since(self, user_id: str, since_day: str) -> list[UsageDailyDocument]:
+        """The user's full rollup rows from ``since_day`` (inclusive) on."""
+        return await self._find({"user_id": user_id, "date": {"$gte": since_day}})
 
     async def rank_thresholds(
         self, window_start: str, rank_fractions: Mapping[str, float]

@@ -26,6 +26,16 @@ from app.agents.middleware.executor import (
     _has_override,
 )
 from app.override.langgraph_bigtool.utils import State
+from app.services.analytics_service import AnalyticsEvents
+
+
+@pytest.fixture(autouse=True)
+def _no_real_analytics():
+    """Keep every test hermetic: TOOL_USED events are asserted through this
+    mock and never reach a real PostHog client."""
+    with patch("app.agents.middleware.executor.capture_event") as mock_capture:
+        yield mock_capture
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -713,6 +723,56 @@ class TestWrapModelInvocation:
 
 
 class TestWrapToolInvocation:
+    async def test_tool_used_captured(self, _no_real_analytics) -> None:
+        tool_call = {"name": "test_tool", "args": {}, "id": "call_1"}
+        expected = ToolMessage(content="tool result", tool_call_id="call_1")
+        invoke_fn = AsyncMock(return_value=expected)
+
+        with (
+            patch("app.agents.middleware.executor.create_tool_call_request"),
+            patch(
+                "app.agents.middleware.executor.BigtoolToolRuntime.from_graph_context",
+                return_value=MagicMock(),
+            ),
+        ):
+            executor = MiddlewareExecutor([])
+            state = _make_state()
+            result = await executor.wrap_tool_invocation(
+                tool_call, None, state, _make_config(), None, invoke_fn
+            )
+
+        assert result.content == "tool result"
+        _no_real_analytics.assert_called_once()
+        assert _no_real_analytics.call_args.args[0] == "user_123"
+        assert _no_real_analytics.call_args.args[1] == AnalyticsEvents.TOOL_USED
+        assert _no_real_analytics.call_args.args[2] == {"tool_name": "test_tool"}
+
+    async def test_tool_used_skipped_without_user_id(self, _no_real_analytics) -> None:
+        tool_call = {"name": "test_tool", "args": {}, "id": "call_1"}
+        expected = ToolMessage(content="tool result", tool_call_id="call_1")
+        invoke_fn = AsyncMock(return_value=expected)
+
+        with (
+            patch("app.agents.middleware.executor.create_tool_call_request"),
+            patch(
+                "app.agents.middleware.executor.BigtoolToolRuntime.from_graph_context",
+                return_value=MagicMock(),
+            ),
+        ):
+            executor = MiddlewareExecutor([])
+            state = _make_state()
+            result = await executor.wrap_tool_invocation(
+                tool_call,
+                None,
+                state,
+                _make_config(configurable={"thread_id": "thread_abc"}),
+                None,
+                invoke_fn,
+            )
+
+        assert result.content == "tool result"
+        _no_real_analytics.assert_not_called()
+
     @patch(
         "app.agents.middleware.executor.create_tool_call_request",
     )

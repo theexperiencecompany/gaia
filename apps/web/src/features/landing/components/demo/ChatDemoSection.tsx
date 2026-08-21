@@ -31,6 +31,7 @@ import { RaisedButton } from "@/components/ui/raised-button";
 import { appConfig } from "@/config/appConfig";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import DummyComposer from "@/features/landing/components/demo/DummyComposer";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { InViewMount } from "../shared/InViewMount";
 import DemoCalendarView from "./calendar-demo/DemoCalendarView";
@@ -562,6 +563,15 @@ function ChatDemoWindow() {
                                 <RaisedButton
                                   color={"#00bbff"}
                                   className="text-black!"
+                                  onClick={() => {
+                                    trackEvent(
+                                      ANALYTICS_EVENTS.CTA_GET_STARTED_CLICKED,
+                                      {
+                                        button_text: "Get Started",
+                                        location: "chat_demo",
+                                      },
+                                    );
+                                  }}
                                 >
                                   Get Started
                                   <ChevronRight width={16} height={16} />

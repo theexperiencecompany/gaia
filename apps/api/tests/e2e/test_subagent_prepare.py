@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock
 from langchain_core.messages import HumanMessage, SystemMessage
 import pytest
 
+from app.agents.context.assemble import AssembledContext
 from app.agents.core.subagents import handoff_tools
 from app.agents.core.subagents.handoff_tools import prepare_subagent_execution
 
@@ -74,8 +75,15 @@ def gmail_subagent(monkeypatch: pytest.MonkeyPatch):
     # The context message pulls memories, skills and stored instructions; each is
     # its own subsystem and none of them is what this file is about.
     monkeypatch.setattr(
-        "app.agents.core.subagents.subagent_runner.create_agent_context_message",
-        AsyncMock(return_value=SystemMessage(content="dynamic context")),
+        "app.agents.core.subagents.subagent_runner.assemble_context",
+        AsyncMock(
+            return_value=AssembledContext(
+                stable=SystemMessage(
+                    content="dynamic context", additional_kwargs={"dynamic_context": True}
+                ),
+                volatile=None,
+            )
+        ),
     )
     return graph
 

@@ -39,6 +39,7 @@ from app.models.memory_models import (
     UpdateMemoryRequest,
 )
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from shared.py.wide_events import MemoryContext, UserContext, log
 
 USER_DELETED_REASON = "user_deleted"
@@ -364,6 +365,7 @@ async def delete_memory(
     if not success:
         log.warning("memory_not_found", operation="delete", memory_id=memory_id)
         raise HTTPException(status_code=404, detail="Memory not found")
+    capture_context_event(AnalyticsEvents.MEMORY_ITEM_DELETED, {"memory_id": memory_id})
     return DeleteMemoryResponse(success=True, message="Memory deleted successfully")
 
 
@@ -378,6 +380,7 @@ async def clear_all_memories(
 
     deleted = await memory_engine.delete_all(user_id)
 
+    capture_context_event(AnalyticsEvents.MEMORY_CLEARED, {"deleted_count": deleted})
     log.set(
         memory=MemoryContext(
             operation="delete_all",
