@@ -152,7 +152,7 @@ backend = [
   "llama-cloud-services>=0.6.15",
   "pymupdf>=1.25.5",
   "markdown2>=2.5.3",
-  "pillow==12.2.0",
+  "pillow==12.3.0",
   "pandas>=2.3.0",
   "beautifulsoup4>=4.13.5,<5",
   "bs4==0.0.2",

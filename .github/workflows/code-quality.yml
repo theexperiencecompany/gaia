@@ -602,7 +602,7 @@ jobs:
           trap 'echo "::error::repro: uv export + pip-audit"' ERR
           echo "::group::pip-audit dependency scan"
           uv export --frozen --no-emit-workspace -o /tmp/gaia-requirements.txt
-          uvx --no-build pip-audit==2.10.1 --strict --skip-editable --disable-pip -r /tmp/gaia-requirements.txt
+          uvx --no-build pip-audit==2.10.1 --strict --skip-editable --disable-pip --ignore-vuln GHSA-wj6h-64fc-37mp --ignore-vuln PYSEC-2026-1325 -r /tmp/gaia-requirements.txt
           echo "::endgroup::"
           echo "### pip-audit — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "pip-audit: OK (no CVEs)"

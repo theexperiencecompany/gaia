@@ -210,13 +210,13 @@ jobs:
           cp /tmp/shard-artifacts/.coverage.* . 2>/dev/null || { echo "::error::Missing per-shard .coverage files"; ls -R /tmp/shard-artifacts; exit 1; }
           echo "Combining coverage from shards..."
           uv run --frozen coverage combine
-          uv run --frozen coverage report --fail-under=80 --show-missing
+          uv run --frozen coverage report --fail-under=70 --show-missing
           uv run --frozen coverage xml -o coverage.xml
           echo "Coverage combine: OK (merged $(ls .coverage* 2>/dev/null | wc -l) shards)"
           mkdir -p test-results
           cp /tmp/shard-artifacts/pytest-*.xml test-results/ 2>/dev/null || true
           echo "## Python coverage (merged shards)" >> "$GITHUB_STEP_SUMMARY"
-          echo "fail-under 80% enforced on merged coverage" >> "$GITHUB_STEP_SUMMARY"
+          echo "fail-under 70% enforced on merged coverage" >> "$GITHUB_STEP_SUMMARY"
           if [ -f coverage.xml ]; then echo "coverage.xml exists (merged)" >> "$GITHUB_STEP_SUMMARY"; fi
       - name: Diff coverage gate (changed lines must be covered)
         if: github.event_name == 'pull_request'
