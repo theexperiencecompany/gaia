@@ -19,8 +19,13 @@ export const REQUIRED_DOC_COMMANDS = [
   "gaia status",
 ] as const;
 
-export const REQUIRED_INSTALL_COMMANDS = [
-  "npm install -g @heygaia/cli",
-  "pnpm add -g @heygaia/cli",
-  "bun add -g @heygaia/cli",
-] as const;
+/** The canonical way to install the `gaia` CLI, per package manager. */
+export const CLI_INSTALL_COMMANDS = {
+  npm: "npm install -g @heygaia/cli",
+  pnpm: "pnpm add -g @heygaia/cli",
+  bun: "bun add -g @heygaia/cli",
+} as const;
+
+export const REQUIRED_INSTALL_COMMANDS = Object.values(
+  CLI_INSTALL_COMMANDS,
+) as readonly string[];

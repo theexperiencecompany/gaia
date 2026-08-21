@@ -334,6 +334,7 @@ export {
 } from "./chat";
 export {
   CLI_COMMAND_DESCRIPTIONS,
+  CLI_INSTALL_COMMANDS,
   REQUIRED_DOC_COMMANDS,
   REQUIRED_INSTALL_COMMANDS,
 } from "./cli";

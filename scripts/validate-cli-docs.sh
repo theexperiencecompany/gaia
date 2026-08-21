@@ -16,9 +16,12 @@ if [[ ! -f "$CLI_PACKAGE_JSON" ]]; then
   exit 1
 fi
 
+# Reads the quoted string literals out of a manifest export. Handles both array
+# (`= [ … ] as const;`) and object (`= { … } as const;`) exports — unquoted
+# object keys never match the string pattern, so only the values come back.
 extract_manifest_array() {
-  local array_name="$1"
-  awk "/export const ${array_name} = \\[/,/\\] as const;/" "$MANIFEST_PATH" \
+  local export_name="$1"
+  awk "/export const ${export_name} = [\\[{]/,/[]}] as const;/" "$MANIFEST_PATH" \
     | rg -o '"[^"]+"' \
     | tr -d '"'
 }
@@ -27,7 +30,7 @@ DOC_COMMAND_FILES=(
   "$ROOT_DIR/docs/cli/commands.mdx"
   "$ROOT_DIR/docs/developers/commands.mdx"
   "$ROOT_DIR/docs/self-hosting/cli-setup.mdx"
-  "$ROOT_DIR/apps/web/src/app/(landing)/install/InstallPageClient.tsx"
+  "$ROOT_DIR/apps/web/src/app/[locale]/(landing)/cli/InstallPageClient.tsx"
 )
 
 INSTALL_GUIDE_FILES=(
@@ -36,7 +39,7 @@ INSTALL_GUIDE_FILES=(
   "$ROOT_DIR/docs/self-hosting/overview.mdx"
   "$ROOT_DIR/docs/self-hosting/cli-setup.mdx"
   "$ROOT_DIR/docs/self-hosting/docker-setup.mdx"
-  "$ROOT_DIR/apps/web/src/app/(landing)/install/InstallPageClient.tsx"
+  "$ROOT_DIR/apps/web/src/app/[locale]/(landing)/cli/InstallPageClient.tsx"
 )
 
 FAIL=0
@@ -44,7 +47,7 @@ FAIL=0
 REQUIRED_NODE_MAJOR="$(node -e "const pkg=require(process.argv[1]); const engine=pkg.engines?.node || ''; const m=engine.match(/\\d+/); if(!m){process.exit(2)}; process.stdout.write(m[0]);" "$CLI_PACKAGE_JSON")"
 
 mapfile -t REQUIRED_DOC_COMMANDS < <(extract_manifest_array "REQUIRED_DOC_COMMANDS")
-mapfile -t REQUIRED_INSTALL_COMMANDS < <(extract_manifest_array "REQUIRED_INSTALL_COMMANDS")
+mapfile -t REQUIRED_INSTALL_COMMANDS < <(extract_manifest_array "CLI_INSTALL_COMMANDS")
 
 for file in "${DOC_COMMAND_FILES[@]}"; do
   for command in "${REQUIRED_DOC_COMMANDS[@]}"; do
@@ -86,7 +89,7 @@ FORBIDDEN_PATTERNS=(
 CHECK_FILES=(
   "$ROOT_DIR/README.md"
   "$ROOT_DIR/docs"
-  "$ROOT_DIR/apps/web/src/app/(landing)/install/InstallPageClient.tsx"
+  "$ROOT_DIR/apps/web/src/app/[locale]/(landing)/cli/InstallPageClient.tsx"
 )
 
 for pattern in "${FORBIDDEN_PATTERNS[@]}"; do

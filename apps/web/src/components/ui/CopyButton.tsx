@@ -1,13 +1,13 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button, type ButtonProps } from "@heroui/button";
 import { CheckmarkCircle01Icon, Copy01Icon } from "@icons";
 import { useState } from "react";
 
 interface CopyButtonProps {
   textToCopy: string;
-  variant?: "solid" | "flat" | "ghost" | "bordered";
-  size?: "sm" | "md" | "lg";
+  variant?: ButtonProps["variant"];
+  size?: ButtonProps["size"];
   className?: string;
   copied?: boolean; // Optional external copied state
   onCopy?: () => void; // Optional external copy handler
