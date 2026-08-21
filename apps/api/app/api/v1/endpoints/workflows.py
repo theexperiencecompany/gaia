@@ -41,12 +41,12 @@ from app.models.workflow_models import (
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.oauth.oauth_service import get_all_integrations_status
 from app.services.system_workflows.provisioner import reset_system_workflow_to_default
-from app.services.workflow import WorkflowService
 from app.services.workflow.execution_service import (
     get_workflow_executions as get_executions,
 )
 from app.services.workflow.generation_service import WorkflowGenerationService
 from app.services.workflow.service import (
+    WorkflowService,
     ensure_public_workflow_slug,
     generate_unique_workflow_slug,
 )

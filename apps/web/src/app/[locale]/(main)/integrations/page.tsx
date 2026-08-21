@@ -23,6 +23,7 @@ import {
 import { useBearerTokenModal } from "@/features/integrations/hooks/useBearerTokenModal";
 import { useIntegrationDeepLink } from "@/features/integrations/hooks/useIntegrationDeepLink";
 import { useIntegrationSearch } from "@/features/integrations/hooks/useIntegrationSearch";
+import { useIntegrationStatusWebSocket } from "@/features/integrations/hooks/useIntegrationStatusWebSocket";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
 import { useHeader } from "@/hooks/layout/useHeader";
@@ -49,6 +50,10 @@ export default function IntegrationsPage() {
     unpublishIntegration,
     refetch,
   } = useIntegrations();
+
+  // An integration can die while this page is open (Composio revokes the grant,
+  // or a tool call hits a dead account) — flip it to Reconnect without a refresh.
+  useIntegrationStatusWebSocket();
 
   // Right sidebar store
   const setRightSidebarContent = useRightSidebar((state) => state.setContent);

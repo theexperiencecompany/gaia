@@ -444,7 +444,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
         short_name="gmail",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_svLPDmjcTVMX",
+            auth_config_id="ac_zLZJrT48iedR",
             toolkit="GMAIL",
             toolkit_version="20260107_00",
         ),
@@ -2034,6 +2034,20 @@ def get_integration_by_config(auth_config_id: str) -> OAuthIntegration | None:
             i
             for i in OAUTH_INTEGRATIONS
             if i.composio_config and i.composio_config.auth_config_id == auth_config_id
+        ),
+        None,
+    )
+
+
+@cache
+def get_integration_by_toolkit(toolkit: str) -> OAuthIntegration | None:
+    """Get an integration by its Composio toolkit slug (case-insensitive)."""
+    normalized = toolkit.upper()
+    return next(
+        (
+            i
+            for i in OAUTH_INTEGRATIONS
+            if i.composio_config and i.composio_config.toolkit.upper() == normalized
         ),
         None,
     )

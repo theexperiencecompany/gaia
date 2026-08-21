@@ -15,6 +15,9 @@ from app.services.oauth.oauth_service import (
     handle_oauth_connection,
     store_user_info,
 )
+from app.services.workflow.integration_pause import (
+    resume_workflows_for_reconnected_integration,
+)
 
 
 def _ui_doc(integration_id: str, status: str) -> UserIntegrationDocument:
@@ -808,7 +811,7 @@ class TestHandleOAuthConnection:
         )
 
         mock_update_user_integration_status.assert_awaited_once_with(
-            "user123", "notion", "connected"
+            "user123", "notion", "connected", connected_account_id=None
         )
 
     async def test_sets_up_triggers_when_present(
@@ -1136,6 +1139,28 @@ class TestHandleOAuthConnection:
             # provision_system_workflows should NOT appear in any background task
             for call in background_tasks.add_task.call_args_list:
                 assert call[0][0] is not mock_psw
+
+    async def test_reconnecting_schedules_the_workflow_resume_for_that_user_and_integration(
+        self,
+        mock_update_user_integration_status,
+    ):
+        """Reconnecting is what un-pauses the workflows this integration's expiry
+        stopped. Scheduled for the wrong user or integration, the user's workflows
+        stay dark and someone else's come back."""
+        config = _make_integration_config(integration_id="notion", name="Notion")
+        background_tasks = MagicMock()
+
+        await handle_oauth_connection(
+            user_id="user123",
+            integration_config=config,
+            background_tasks=background_tasks,
+        )
+
+        background_tasks.add_task.assert_any_call(
+            resume_workflows_for_reconnected_integration,
+            "user123",
+            "notion",
+        )
 
     async def test_integration_status_update_failure_does_not_raise(
         self,

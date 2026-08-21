@@ -45,6 +45,7 @@ class DeactivationReason(str, Enum):
     user-initiated deactivation records no reason at all."""
 
     USER_DORMANT = "user_dormant"
+    INTEGRATION_EXPIRED = "integration_expired"
 
 
 class IntegrationRef(BaseModel):

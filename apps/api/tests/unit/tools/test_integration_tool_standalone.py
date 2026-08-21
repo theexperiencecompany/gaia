@@ -1,7 +1,12 @@
 """Unit tests for app.agents.tools.integration_tool."""
 
+from collections.abc import Iterator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from app.db.repositories.user_integrations import user_integration_repository
 
 # ---------------------------------------------------------------------------
 # Module-level patch for rate limiting
@@ -199,6 +204,14 @@ class TestListIntegrations:
 
 
 class TestConnectIntegration:
+    @pytest.fixture(autouse=True)
+    def _never_expired(self) -> Iterator[None]:
+        """The connect prompt reads the stored status to choose its wording. These
+        tests are about the tool's own behaviour, so pin it to the never-connected
+        case — the expired wording is covered in test_integration_checker.py."""
+        with patch.object(user_integration_repository, "is_expired", AsyncMock(return_value=False)):
+            yield
+
     @patch(f"{MODULE}.get_stream_writer")
     @patch(
         f"{MODULE}.check_single_integration_status",

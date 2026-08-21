@@ -13,6 +13,7 @@ Tests exercise the real service logic from:
 - app.services.integrations.integration_resolver (resolve from platform/custom)
 - app.config.oauth_config (integration definitions, scopes)
 - app.services.oauth.oauth_service (status checks, connection handling)
+- app.services.workflow.integration_pause (workflow resume on reconnect)
 
 Mocking boundaries:
 - Redis (oauth state storage)
@@ -24,8 +25,8 @@ Mocking boundaries:
 
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from typing import Any, Literal
-from unittest.mock import AsyncMock, patch
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -34,7 +35,11 @@ from app.config.oauth_config import (
     get_integration_by_id,
     get_integration_scopes,
 )
-from app.models.integration_models import Integration, UserIntegrationDocument
+from app.models.integration_models import (
+    Integration,
+    UserIntegrationDocument,
+    UserIntegrationStatus,
+)
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import OAuthIntegration
 from app.services.integrations.integration_connection_service import (
@@ -56,6 +61,9 @@ from app.services.oauth.oauth_state_service import (
     create_oauth_state,
     is_safe_redirect_path,
     validate_and_consume_oauth_state,
+)
+from app.services.workflow.integration_pause import (
+    resume_workflows_for_reconnected_integration,
 )
 
 # ---------------------------------------------------------------------------
@@ -106,9 +114,11 @@ class _FakeUserIntegrationRepo:
 
     Preserves the upsert/delete semantics the service layer relies on — one
     record per ``(user_id, integration_id)``, ``connected_at`` stamped on the
-    connected transition — so the lifecycle/idempotence/isolation assertions hold
-    at the repository seam. The repository's Mongo+Redis behaviour itself is
-    covered by ``tests/contracts/test_user_integrations_repository.py``.
+    connected transition and ``expired_at``/``expired_reason`` on the expired one
+    (cleared again on reconnect) — so the lifecycle/idempotence/isolation
+    assertions hold at the repository seam. The repository's Mongo+Redis
+    behaviour itself is covered by
+    ``tests/contracts/test_user_integrations_repository.py``.
     """
 
     def __init__(self) -> None:
@@ -119,7 +129,9 @@ class _FakeUserIntegrationRepo:
         user_id: str,
         integration_id: str,
         *,
-        status: Literal["created", "connected"],
+        status: UserIntegrationStatus,
+        expired_reason: str | None = None,
+        connected_account_id: str | None = None,
     ) -> bool:
         key = (user_id, integration_id)
         existing = self.docs.get(key)
@@ -130,12 +142,29 @@ class _FakeUserIntegrationRepo:
             "status": status,
             "created_at": existing.created_at if existing else now,
         }
+        if connected_account_id is not None:
+            fields["connected_account_id"] = connected_account_id
+        elif existing is not None:
+            fields["connected_account_id"] = existing.connected_account_id
         if existing is not None and existing.connected_at is not None:
             fields["connected_at"] = existing.connected_at
+        if existing is not None and status != "connected":
+            fields["expired_at"] = existing.expired_at
+            fields["expired_reason"] = existing.expired_reason
         if status == "connected":
             fields["connected_at"] = now
+            fields["expired_at"] = None
+            fields["expired_reason"] = None
+        elif status == "expired":
+            fields["expired_at"] = now
+            fields["expired_reason"] = expired_reason
         self.docs[key] = UserIntegrationDocument.model_validate(fields)
         return True
+
+    async def get_for_user(
+        self, user_id: str, integration_id: str
+    ) -> UserIntegrationDocument | None:
+        return self.docs.get((user_id, integration_id))
 
     async def delete_for_user(self, user_id: str, integration_id: str) -> bool:
         return self.docs.pop((user_id, integration_id), None) is not None
@@ -383,6 +412,28 @@ class TestUserIntegrationStatusTracking:
         assert doc.status == "connected"
         assert doc.connected_at is not None
 
+    async def test_callback_for_a_never_added_integration_creates_it_connected(self) -> None:
+        """A callback can be the first write for an integration — nothing pre-creates it.
+
+        Composio can hand back an account for an integration the user never
+        explicitly added, so the connected transition has to insert, not just update.
+        """
+        repo = _FakeUserIntegrationRepo()
+
+        with _patched_repo(repo):
+            result = await update_user_integration_status(
+                USER_ID, "gmail", "connected", connected_account_id="ca_new"
+            )
+
+        assert result is True
+        assert len(repo.stored) == 1
+        doc = repo.stored[0]
+        assert doc.status == "connected"
+        assert doc.connected_at is not None
+        assert doc.connected_account_id == "ca_new"
+        assert doc.expired_at is None
+        assert doc.expired_reason is None
+
     async def test_upsert_is_idempotent(self) -> None:
         """Calling upsert twice with same status does not create duplicates."""
         repo = _FakeUserIntegrationRepo()
@@ -409,7 +460,11 @@ class TestComposioIntegrationConnection:
 
         mock_composio = AsyncMock()
         mock_composio.connect_account = AsyncMock(
-            return_value={"redirect_url": "https://accounts.google.com/o/oauth2/auth?client_id=xxx"}
+            return_value={
+                "status": "pending",
+                "redirect_url": "https://accounts.google.com/o/oauth2/auth?client_id=xxx",
+                "connection_id": "ca_initiated",
+            }
         )
 
         with (
@@ -444,7 +499,11 @@ class TestComposioIntegrationConnection:
 
         mock_composio = AsyncMock()
         mock_composio.connect_account = AsyncMock(
-            return_value={"redirect_url": "https://oauth.example.com/auth"}
+            return_value={
+                "status": "pending",
+                "redirect_url": "https://oauth.example.com/auth",
+                "connection_id": "ca_initiated",
+            }
         )
 
         mock_create_state = AsyncMock(return_value="state_abc123")
@@ -482,7 +541,11 @@ class TestComposioIntegrationConnection:
 
         mock_composio = AsyncMock()
         mock_composio.connect_account = AsyncMock(
-            return_value={"redirect_url": "https://oauth.example.com/auth"}
+            return_value={
+                "status": "pending",
+                "redirect_url": "https://oauth.example.com/auth",
+                "connection_id": "ca_initiated",
+            }
         )
 
         mock_update_status = AsyncMock(return_value=True)
@@ -509,7 +572,12 @@ class TestComposioIntegrationConnection:
                 redirect_path="/integrations",
             )
 
-            mock_update_status.assert_called_once_with(USER_ID, "gmail", "created")
+            # `created` before the redirect (so an abandoned connect still leaves a
+            # record), then again with the id Composio minted at initiate time.
+            assert mock_update_status.await_args_list == [
+                call(USER_ID, "gmail", "created"),
+                call(USER_ID, "gmail", "created", connected_account_id="ca_initiated"),
+            ]
 
 
 # ---------------------------------------------------------------------------
@@ -787,6 +855,74 @@ class TestReconnectionFlow:
             assert doc.status == "connected"
             assert doc.user_id == USER_ID
             assert doc.integration_id == "gmail"
+
+    async def test_reconnect_after_expiry_clears_the_expiry_stamps(self) -> None:
+        """A reconnected integration must not read as connected-but-broken.
+
+        Stale ``expired_at``/``expired_reason`` on a live record would make the
+        integration look dead to anything that reads them.
+        """
+        repo = _FakeUserIntegrationRepo()
+
+        with _patched_repo(repo):
+            await update_user_integration_status(USER_ID, "gmail", "connected")
+            await update_user_integration_status(
+                USER_ID, "gmail", "expired", expired_reason="refresh_token_revoked"
+            )
+
+            expired = repo.stored[0]
+            assert expired.status == "expired"
+            assert expired.expired_at is not None
+            assert expired.expired_reason == "refresh_token_revoked"
+
+            await update_user_integration_status(USER_ID, "gmail", "connected")
+
+            reconnected = repo.stored[0]
+            assert reconnected.status == "connected"
+            assert reconnected.expired_at is None
+            assert reconnected.expired_reason is None
+
+
+# ---------------------------------------------------------------------------
+# Tests — Workflow Resume On Reconnect
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestWorkflowResumeOnReconnect:
+    """resume_workflows_for_reconnected_integration: which paused workflows come back."""
+
+    async def test_reconnect_leaves_workflows_waiting_on_another_integration_paused(
+        self,
+    ) -> None:
+        """Reconnecting Gmail resumes only the Gmail workflow, not the whole paused batch.
+
+        Every paused workflow carries the same INTEGRATION_EXPIRED reason, so the
+        per-workflow requirement check is the only thing keeping a Notion workflow
+        from being re-armed against a still-dead integration.
+        """
+        notion_workflow = MagicMock(id="wf-notion")
+        gmail_workflow = MagicMock(id="wf-gmail")
+
+        with (
+            patch("app.services.workflow.integration_pause.workflow_repository") as repo,
+            patch(
+                "app.services.workflow.integration_pause.compute_required_integrations"
+            ) as required,
+            patch("app.services.workflow.integration_pause.WorkflowService") as service,
+        ):
+            # Notion first: a resume that stopped at the first non-match would
+            # never reach the Gmail workflow behind it.
+            repo.find_paused_for_reason = AsyncMock(return_value=[notion_workflow, gmail_workflow])
+            required.side_effect = lambda steps, trigger: (
+                {"gmail"} if steps is gmail_workflow.steps else {"notion"}
+            )
+            service.activate_workflow = AsyncMock()
+
+            resumed = await resume_workflows_for_reconnected_integration(USER_ID, "gmail")
+
+        assert resumed == 1
+        service.activate_workflow.assert_awaited_once_with("wf-gmail", USER_ID)
 
 
 # ---------------------------------------------------------------------------

@@ -2,13 +2,16 @@ import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Button } from "@heroui/button";
 import type { Selection } from "@heroui/react";
 import { Add01Icon } from "@icons";
+import {
+  CONNECT_ACTION_LABEL,
+  INTEGRATION_STATE_ORDER,
+  integrationConnectionState,
+} from "@shared/utils";
 import type React from "react";
-
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useRouter } from "@/i18n/navigation";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
-
 import type { Integration } from "../types";
 
 interface IntegrationsCardProps {
@@ -23,7 +26,8 @@ const IntegrationItem: React.FC<{
   onClick: (id: string) => void;
   size?: "default" | "small";
 }> = ({ integration, onConnect, onClick, size }) => {
-  const isConnected = integration.status === "connected";
+  const state = integrationConnectionState(integration.status);
+  const isConnected = state === "connected";
   // Custom integrations are always available, platform integrations use available field
   const isAvailable = integration.source === "custom" || integration.available;
 
@@ -74,22 +78,28 @@ const IntegrationItem: React.FC<{
             <span className="h-2 w-2 rounded-full bg-success mr-2" />
           )}
 
-          {integration.status === "created" && (
+          {state === "pending" && (
             <span className="h-2 w-2 rounded-full bg-warning mr-2" />
           )}
 
-          {/* Connect button */}
-          {isAvailable && !isConnected && integration.status !== "created" && (
-            <Button
-              size="sm"
-              variant="flat"
-              color="primary"
-              className="text-xs text-primary"
-              onPress={handleConnectClick}
-            >
-              Connect
-            </Button>
+          {state === "expired" && (
+            <span className="h-2 w-2 rounded-full bg-danger mr-2" />
           )}
+
+          {/* Connect button — a dead connection reads as Reconnect, never Connect */}
+          {(isAvailable || state === "expired") &&
+            !isConnected &&
+            state !== "pending" && (
+              <Button
+                size="sm"
+                variant="flat"
+                color={state === "expired" ? "warning" : "primary"}
+                className="text-xs"
+                onPress={handleConnectClick}
+              >
+                {CONNECT_ACTION_LABEL[state]}
+              </Button>
+            )}
         </div>
       </div>
     </div>
@@ -106,10 +116,11 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
   const { isExpanded, setExpanded } = useIntegrationsAccordion();
   const router = useRouter();
 
-  // Only the user's own integrations — connected, or created (added, not yet
-  // authenticated). The full catalog lives on the integrations page.
+  // Only the user's own integrations — connected, created (added, not yet
+  // authenticated) or expired (connected once, now broken). The full catalog
+  // lives on the integrations page.
   const myIntegrations = integrations.filter(
-    (i) => i.status === "connected" || i.status === "created",
+    (i) => integrationConnectionState(i.status) !== "disconnected",
   );
 
   // Convert boolean to Selection for NextUI Accordion
@@ -135,12 +146,6 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
     (i) => i.status === "connected",
   ).length;
 
-  const statusOrder = {
-    created: 0,
-    connected: 1,
-    not_connected: 2,
-    error: 3,
-  };
   return (
     <div className="mx-2 mb-3 border-b-1 border-zinc-800">
       <Accordion
@@ -177,9 +182,15 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
             <div className="grid grid-cols-2 gap-2 pl-1">
               {myIntegrations
                 .toSorted((a, b) => {
-                  // Connected first, then alphabetically
-                  const aOrder = statusOrder[a.status] ?? 99;
-                  const bOrder = statusOrder[b.status] ?? 99;
+                  // Needs-attention first, then connected, then alphabetically
+                  const aOrder =
+                    INTEGRATION_STATE_ORDER[
+                      integrationConnectionState(a.status)
+                    ];
+                  const bOrder =
+                    INTEGRATION_STATE_ORDER[
+                      integrationConnectionState(b.status)
+                    ];
                   if (aOrder !== bOrder) return aOrder - bOrder;
                   return a.name.localeCompare(b.name);
                 })

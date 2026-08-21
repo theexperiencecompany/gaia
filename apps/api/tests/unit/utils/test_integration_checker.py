@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.db.repositories.user_integrations import user_integration_repository
 from app.utils.integration_checker import request_integration_connection
 
 # ---------------------------------------------------------------------------
@@ -14,14 +15,33 @@ from app.utils.integration_checker import request_integration_connection
 
 _FAKE_FRONTEND = "https://app.example.com"
 _MAGIC_LINK = "https://app.example.com/connect/abc123"
+# The identity the status lookup is expected to be asked about.
+_USER = "user1"
+_INTEGRATION_ID = "gmail"
 
 
 @contextmanager
-def _graph_run(category: str | None, connect_url: str | None = _MAGIC_LINK) -> Iterator[MagicMock]:
+def _graph_run(
+    category: str | None,
+    connect_url: str | None = _MAGIC_LINK,
+    *,
+    expired: bool = False,
+) -> Iterator[MagicMock]:
     """Run the prompt as if inside a graph run of ``category``, yielding its stream writer.
 
     ``category=None`` simulates no runnable context at all (get_config raises).
+    ``expired`` is the stored connection status the prompt reads to tell a dead
+    grant from one that was never set up.
+
+    The status lookup answers from the arguments it is handed rather than a fixed
+    value: a stub that ignores them cannot tell the real call from one that passed
+    the wrong user, dropped an argument, or swapped the two — and every such
+    mutation survived while it did.
     """
+
+    async def _is_expired(user_id: str, integration_id: str) -> bool:
+        return expired and (user_id, integration_id) == (_USER, _INTEGRATION_ID)
+
     writer = MagicMock()
     config_patch = (
         patch(
@@ -42,6 +62,7 @@ def _graph_run(category: str | None, connect_url: str | None = _MAGIC_LINK) -> I
             AsyncMock(return_value=connect_url),
         ),
         patch("app.utils.integration_checker.settings") as mock_settings,
+        patch.object(user_integration_repository, "is_expired", AsyncMock(side_effect=_is_expired)),
     ):
         mock_settings.FRONTEND_URL = _FAKE_FRONTEND
         yield writer
@@ -56,6 +77,10 @@ class TestRequestIntegrationConnection:
             msg = await request_integration_connection("gmail", "Gmail", "user1")
         assert "Gmail" in msg
         assert "card" in msg.lower()
+        # The verb, not just the card: "connect" vs "reconnect" is the whole
+        # distinction this copy exists to make.
+        assert "connect button" in msg
+        assert "reconnect button" not in msg
         assert "http" not in msg
         assert "/integrations" not in msg
 
@@ -82,7 +107,7 @@ class TestRequestIntegrationConnection:
         with _graph_run(category, connect_url=None):
             msg = await request_integration_connection("gmail", "Gmail", "user1")
         assert f"{_FAKE_FRONTEND}/integrations" in msg
-        assert "Gmail" in msg
+        assert "connect Gmail there" in msg
 
     async def test_outside_runnable_context_defaults_to_url_and_skips_card(self) -> None:
         """No graph run means no stream to carry a card — the link must be inline."""
@@ -90,3 +115,61 @@ class TestRequestIntegrationConnection:
             msg = await request_integration_connection("slack", "Slack", "user1")
         assert _MAGIC_LINK in msg
         assert writer.call_count == 0
+
+
+class TestExpiredConnectionPrompt:
+    """A grant that died and one that was never set up are different asks. The
+    stored status is the only thing that tells them apart, so the prompt reads it
+    rather than trusting a caller to pass it."""
+
+    async def test_expired_copy_tells_the_agent_not_to_offer_a_first_time_connect(self) -> None:
+        with _graph_run("ui", expired=True):
+            expired = await request_integration_connection("gmail", "Gmail", "user1")
+        with _graph_run("ui", expired=False):
+            never = await request_integration_connection("gmail", "Gmail", "user1")
+
+        assert "EXPIRED" in expired
+        assert "sign in again" in expired
+        assert "EXPIRED" not in never
+        assert "sign in again" not in never
+
+    async def test_expired_on_ui_says_reconnect_and_still_holds_the_url_back(self) -> None:
+        with _graph_run("ui", expired=True):
+            msg = await request_integration_connection("gmail", "Gmail", "user1")
+        assert "reconnect button" in msg
+        assert "http" not in msg
+
+    async def test_expired_on_a_bot_without_a_link_says_reconnect_not_connect(self) -> None:
+        with _graph_run("bot", connect_url=None, expired=True):
+            msg = await request_integration_connection("gmail", "Gmail", "user1")
+        assert "reconnect Gmail there" in msg
+
+    @staticmethod
+    def _card(writer: MagicMock) -> dict[str, object]:
+        payload = writer.call_args.args[0]["integration_connection_required"]
+        assert isinstance(payload, dict)
+        return payload
+
+    async def test_card_carries_the_expired_flag_both_ways(self) -> None:
+        """The streamed payload is the renderers' contract — `expired` is what lets
+        the card read as a re-login instead of a first-time connect."""
+        with _graph_run("ui", expired=True) as writer:
+            await request_integration_connection("gmail", "Gmail", "user1")
+        assert self._card(writer)["expired"] is True
+
+        with _graph_run("ui", expired=False) as writer:
+            await request_integration_connection("gmail", "Gmail", "user1")
+        assert self._card(writer)["expired"] is False
+
+    async def test_expired_card_copy_asks_the_user_to_sign_in_again(self) -> None:
+        with _graph_run("ui", expired=True) as writer:
+            await request_integration_connection("gmail", "Gmail", "user1")
+        assert self._card(writer)["message"] == (
+            "Your Gmail connection expired. Sign in again to keep using it."
+        )
+
+        with _graph_run("ui", expired=False) as writer:
+            await request_integration_connection("gmail", "Gmail", "user1")
+        assert self._card(writer)["message"] == (
+            "To use Gmail features, please connect your account first."
+        )
