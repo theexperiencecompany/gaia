@@ -31,67 +31,47 @@ When something needs you, it texts you. iMessage, WhatsApp, Telegram, Slack, or 
 
 ## What GAIA does
 
-### It works while you're away
+### Works while you're away
 
-Connect a tool and GAIA sets itself up. Gmail gets you inbox triage and reply drafting. Calendar gets you meeting briefings. No setup screen, no template to pick.
+Connect a tool and GAIA sets itself up. No setup screen, no template to pick — the [workflows](#workflows-the-part-that-runs-itself) are already running.
 
-From there it watches for what matters, runs on a schedule, and finishes work you never chased. Its todos aren't reminders — they research and complete themselves.
+- Watches your tools and tells you when something matters
+- Runs jobs on a schedule, in the background
+- Its todos aren't reminders — they research and finish themselves
+- Reaches you wherever you actually read your messages
 
-Then it comes to you, wherever you read your messages.
+### Remembers you
 
-### It remembers you
+- Learns as you talk — you never have to say "remember this"
+- Keeps the people, projects and preferences that come up, plus a journal of recent days
+- All of it visible on the **Memory** page as a list or a graph
+- Edit, export or delete any of it in a click
 
-Tell it once. It sticks.
+### Listens
 
-People, projects, preferences, a journal of recent days. It learns as you talk, so you never have to say "remember this."
+- Say **"Hey GAIA"** and start talking
+- The wake word runs on your device — no audio leaves your machine until you say it
+- Calls are real-time and interruptible, with background noise filtered out
 
-The **Memory** page shows all of it as a list or a graph. Edit, export, or delete any of it in a click.
+### Puts everything in one place
 
-### You can just talk to it
+- Your **inbox**, **calendar**, **todos** and **workflows**, with a **dashboard** over the top
+- Whatever GAIA did while you were gone waits in **notifications** — approve it, edit it, or dismiss it
 
-Say **"Hey GAIA"** and start talking. The wake word runs on your device — no audio leaves your machine until you say it.
+### Is yours to run
 
-Calls are real-time and interruptible, background noise filtered out.
-
-### Everything lives in one place
-
-Your **inbox**, **calendar**, **todos** and **workflows**, with a **dashboard** tying them together.
-
-Whatever GAIA did while you were gone is waiting in **notifications** — approve it, edit it, or dismiss it.
-
-### It's genuinely yours
-
-Self-host the whole stack: your own API keys, your own models, no usage caps, your data on your disks.
-
-Monitoring comes with it, so you can see exactly what your assistant is doing.
+- Self-host with your own API keys and your own choice of models
+- No usage caps, and your data stays on your disks
+- Monitoring included, so you can see exactly what it's doing
 
 ## Things people actually ask it
 
-Every one of these works today.
-
-> *"Summarize my 47 unread emails and draft replies for the 3 that need one."*
-
-Reads every thread end to end, ranks by what matters, writes drafts in your voice.
-
-> *"Watch my inbox for anything from our investor and ping me on Telegram."*
-
-Runs for weeks without you thinking about it. You get a text within the minute.
-
-> *"When my 2pm gets cancelled, rewrite my todo list to use the freed time."*
-
-Notices the change on its own and replans your afternoon around what's still pending.
-
-> *"Post a Friday digest of my GitHub, Linear and Slack activity to #eng-updates."*
-
-Merged PRs, closed issues, channel highlights — gathered, written up, posted without you.
-
-> *"Before my 1:1 with Alex, brief me on everything we shipped this sprint."*
-
-Pulls the PRs, issues and threads into one prep doc, waiting before the meeting starts.
-
-> *"Clean up this CSV, chart the outliers, and send me the deck."*
-
-Writes real Python, runs it in a real sandbox, hands back a real `.pptx`.
+- **"Summarize my 47 unread emails and draft replies for the 3 that need one."** Reads every thread end to end, ranks by what matters, drafts in your voice.
+- **"Watch my inbox for anything from our investor and ping me on Telegram."** Runs for weeks without you thinking about it. You get a text within the minute.
+- **"When my 2pm gets cancelled, rewrite my todo list to use the freed time."** Notices the change itself and replans your afternoon.
+- **"Post a Friday digest of my GitHub, Linear and Slack activity to #eng-updates."** Merged PRs, closed issues, channel highlights — gathered, written up, posted.
+- **"Before my 1:1 with Alex, brief me on what we shipped this sprint."** Pulls the PRs, issues and threads into one prep doc, ready before you sit down.
+- **"Clean up this CSV, chart the outliers, and send me the deck."** Writes real Python, runs it in a real sandbox, hands back a real `.pptx`.
 
 ## Workflows: the part that runs itself
 
@@ -104,9 +84,12 @@ A workflow is a job GAIA does without you. Some are already running the moment y
 | **Meeting Briefing** | Calendar | Researches who you're meeting and what it's about, before you walk in |
 | **Meeting Reminder** | Calendar | A heads-up 10 minutes out, join link included |
 
-Build your own from the **Workflows** page — describe it in plain English and GAIA writes the steps. Trigger on a schedule ("every weekday at 9am") or on an event: new email, calendar change, Slack message, GitHub commit, Linear issue, Notion edit, new row in a sheet.
+Build your own from the **Workflows** page:
 
-Chain steps across tools — *fetch, summarise, post to Slack* — and it runs in the background for as long as you want it to.
+- **Describe it in plain English** — GAIA writes the steps for you
+- **Run it on a schedule** — "every weekday at 9am"
+- **Or on an event** — new email, calendar change, Slack message, GitHub commit, Linear issue, Notion edit, new row in a sheet
+- **Chain steps across tools** — fetch, summarise, post to Slack
 
 ## Use GAIA from anywhere
 
@@ -118,25 +101,22 @@ Chain steps across tools — *fetch, summarise, post to Slack* — and it runs i
 | <img src="apps/web/public/images/icons/macos/slack.webp" width="26" height="26" /> | **Slack** | [Add to your workspace](https://heygaia.io/slack-bot) |
 | <img src="apps/web/public/images/icons/macos/discord.webp" width="26" height="26" /> | **Discord** | [Add the bot](https://heygaia.io/discord-bot) or [join the server](https://discord.heygaia.io) |
 
-There's also the web app, a [desktop app](https://heygaia.io/download) for macOS, Windows and Linux, and a mobile app.
-
-It's all one account. A conversation you start on Telegram shows up in the web app, and GAIA remembers the same things about you no matter where you talk to it.
+- Also on the **web**, a **[desktop app](https://heygaia.io/download)** for macOS, Windows and Linux, and **mobile**
+- It's all one account — a chat you start on Telegram shows up in the web app
+- Same memory everywhere, no matter where you talk to it
 
 ## Connect anything
 
-**One click for the popular ones.** Gmail, Calendar, Slack, Notion, Linear, GitHub, Sheets, Todoist, Trello, HubSpot and about 20 more. Connect from `/integrations` and GAIA gets a dedicated specialist for that tool.
-
-**Anything else, via MCP.** GAIA is a full Model Context Protocol client. Point it at any MCP server and those tools work immediately. There's no fixed catalogue and no waiting for us to build an integration.
-
-**Tools on your own computer.** Want GAIA to work with files or local tools on your laptop? `gaia bridge` links your machine to your account over one outgoing connection. Nothing to forward, no ports to open on your firewall.
+- **The popular ones, one click.** Gmail, Calendar, Slack, Notion, Linear, GitHub, Sheets, Todoist, Trello, HubSpot and ~20 more. Each gets its own specialist agent.
+- **Anything else, via MCP.** Point GAIA at any MCP server and its tools work immediately. No fixed catalogue, no waiting on us to build an integration.
+- **A marketplace.** Browse what the community published, or publish your own.
+- **Tools on your own computer.** `gaia bridge` links your laptop over one outgoing connection — nothing to forward, no ports to open.
 
 ```bash
 gaia bridge login          # approve the pairing in your browser
 gaia bridge fs ~/projects  # share a folder
 gaia bridge up             # connect
 ```
-
-**A marketplace.** Browse what the community has published, or publish your own.
 
 ## It's not just chat
 
@@ -151,17 +131,17 @@ gaia bridge up             # connect
 
 <a href="https://heygaia.io"><img src="apps/web/public/images/screenshots/website_tab.png" alt="GAIA web app" width="500" /></a>
 
-Go to **[heygaia.io](https://heygaia.io)** and start. Free, nothing to install, no infrastructure to babysit.
+Go to **[heygaia.io](https://heygaia.io)**. Free, nothing to install, always up to date.
 
-This is the way to use GAIA. You get the same app, always up to date, without running six databases yourself.
+This is how most people should use GAIA — you skip running six databases yourself.
 
 ### Self-host
 
 <a href="https://heygaia.io/install"><img src="apps/web/public/images/screenshots/cli.png" alt="GAIA CLI" width="500" /></a>
 
-Want it on your own machines instead? That works too — you get your own keys, your own models, no caps, and your data on your disks. It's real infrastructure though, so expect to maintain it.
+Prefer your own machines? You get your own keys and models, no caps, and your data on your disks — in exchange for running real infrastructure.
 
-You'll need [Docker](https://docs.docker.com/get-docker/) (Engine 20.10+, Compose v2+) and [Node.js](https://nodejs.org) 20+.
+Needs [Docker](https://docs.docker.com/get-docker/) (Engine 20.10+, Compose v2+) and [Node.js](https://nodejs.org) 20+.
 
 ```bash
 npm install -g @heygaia/cli
@@ -169,7 +149,7 @@ gaia init                     # choose "Self-Host (Docker)"
 # → http://localhost:3000
 ```
 
-`gaia init` checks your prerequisites, clones the repo, walks you through the environment variables, then builds and starts everything.
+That checks prerequisites, clones the repo, walks you through the environment variables, then builds and starts everything. After that:
 
 ```bash
 gaia status   # health-check every service
