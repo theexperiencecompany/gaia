@@ -28,7 +28,7 @@
       "path": "apps/api/app/agents/llm/client.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "9b7a79f23e8bb4e5913df8133844f004804785a631b7579aad2f2f968092eacf"
+      "hash": "b60c7b831574e0b7a72ceb3226450f628ac625f8099ce210d32b0c733cd7422c"
     },
     {
       "path": "apps/api/app/agents/middleware/runtime_adapter.py",
@@ -195,14 +195,14 @@
     {
       "path": "apps/api/tests/helpers.py",
       "kind": "type-ignore",
-      "count": 2,
-      "hash": "9cec3b81b3c22fcde68971da48ef5b088382f763b2cde2bb68ccb4708ae3e50a"
+      "count": 1,
+      "hash": "7426170b56f8414611275cce97581395dd6265a3c2793a020b0076978825c81f"
     },
     {
       "path": "apps/api/tests/integration/agents/test_real_comms_agent.py",
       "kind": "noqa",
       "count": 1,
-      "hash": "2b9da7c25115ca9c3e08e5a6e8f75862c8a40c15203ae3493aaa2e4f68fe140d"
+      "hash": "695bed870b830156ba61965c0e065f4beaefd74eac9ac5e9079b9f8d68d8c1de"
     },
     {
       "path": "apps/api/tests/integration/conftest.py",
@@ -334,7 +334,7 @@
       "path": "apps/api/tests/unit/middleware/test_compaction_offload_bind.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "9052cbfabaf80d429c8114b5d696a61d32ac6ea303c97837562f97fa8158b3cc"
+      "hash": "90ee193add8f97ff888a66f95ac42a13b0f35539c806ba63d5ecfc12d64ea4a5"
     },
     {
       "path": "apps/api/tests/unit/models/test_reminder_models.py",
@@ -430,7 +430,7 @@
       "path": "apps/api/tests/unit/utils/test_agent_utils.py",
       "kind": "type-ignore",
       "count": 13,
-      "hash": "128979a3d184fa7ba06376cc93c505c77970c2676ee91471f5955e590bf3f867"
+      "hash": "f992b147a6d82ef1aa718fdb401516a09bc5b544a3d14f0a5831a1924c239ca7"
     },
     {
       "path": "apps/api/tests/unit/utils/test_auth_utils.py",
@@ -730,7 +730,7 @@
       "path": "apps/web/src/features/landing/components/demo/SimpleChatBubbles.tsx",
       "kind": "biome-ignore",
       "count": 1,
-      "hash": "7af33b778b4dea376e237480cc553987efe06d03182f4090631deb487f5cbc7d"
+      "hash": "625a43eabea0c35fe7393f40ff95d2f5ff70563f065755f73456b8c282ec4958"
     },
     {
       "path": "apps/web/src/features/landing/components/iphone/ChatDemo.tsx",

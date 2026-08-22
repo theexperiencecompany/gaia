@@ -33,6 +33,9 @@ from app.services.provider_metadata_service import (
 )
 from app.services.system_workflows.provisioner import provision_system_workflows
 from app.services.workflow.dormancy import resume_dormancy_paused_workflows
+from app.services.workflow.integration_pause import (
+    resume_workflows_for_reconnected_integration,
+)
 from app.services.workflow.trigger_service import TriggerService
 from app.services.workspace_sync import schedule_user_provision
 from app.utils.redis_utils import RedisPoolManager
@@ -323,6 +326,7 @@ async def handle_oauth_connection(
     user_id: str,
     integration_config: OAuthIntegration,
     background_tasks: BackgroundTasks,
+    connected_account_id: str | None = None,
 ) -> None:
     """
     Handle successful OAuth connection: setup triggers, update bio status, queue processing.
@@ -331,6 +335,7 @@ async def handle_oauth_connection(
         user_id: The user ID
         integration_config: The integration configuration object
         background_tasks: FastAPI background tasks
+        connected_account_id: Composio's nanoid for the account that just authorized
     """
     log.set(auth={"user_id": user_id, "provider": integration_config.id})
     log.set_ns(
@@ -452,9 +457,20 @@ async def handle_oauth_connection(
     # set (OAUTH_STATUS + tools:user:* + tool_namespaces), so no manual delete here.
     try:
         await update_user_integration_status(
-            user_id, integration_config.id, INTEGRATION_STATUS_CONNECTED
+            user_id,
+            integration_config.id,
+            INTEGRATION_STATUS_CONNECTED,
+            connected_account_id=connected_account_id,
         )
         log.info(f"{LogTag.OAUTH} Updated user_integrations status for", id=integration_config.id)
+        # Runs after the status write above, and as a background task, so the
+        # reconnected integration already reads as connected by the time
+        # activate_workflow re-checks the workflow's requirements.
+        background_tasks.add_task(
+            resume_workflows_for_reconnected_integration,
+            user_id,
+            integration_config.id,
+        )
     except Exception as e:
         log.warning(
             f"{LogTag.OAUTH} Failed to update user_integrations status",

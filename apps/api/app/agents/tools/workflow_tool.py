@@ -29,7 +29,7 @@ from app.constants.log_tags import LogTag
 from app.decorators import with_rate_limiting
 from app.models.agent_models import agent_configurable
 from app.models.workflow_models import WorkflowExecutionRequest
-from app.services.workflow import WorkflowService
+from app.services.workflow.service import WorkflowService
 from app.services.workflow.subagent_output import parse_subagent_response
 from app.services.workflow.workflow_subagent import WorkflowSubagentRunner
 from app.utils.timezone import home_timezone_from_config
@@ -212,10 +212,15 @@ async def get_workflow(
         if not workflow:
             return error_response("not_found", f"Workflow {workflow_id} not found")
 
+        # mode="json": this payload is plain json.dumps'd twice — as the tool
+        # result handed to the LLM and as the stream-writer SSE frame — so a
+        # native datetime raises TypeError inside the tool and wedges the agent
+        # in a retry loop.
+        workflow_json = workflow.model_dump(mode="json")
         writer = get_stream_writer()
-        writer({"workflow_data": {"action": "get", "workflow": workflow.model_dump()}})
+        writer({"workflow_data": {"action": "get", "workflow": workflow_json}})
 
-        return success_response(workflow.model_dump())
+        return success_response(workflow_json)
 
     except Exception as e:
         log.error(
@@ -280,7 +285,9 @@ async def pause_workflow(
             return error_response("not_found", f"Workflow {workflow_id} not found")
 
         writer = get_stream_writer()
-        writer({"workflow_data": {"action": "paused", "workflow": workflow.model_dump()}})
+        writer(
+            {"workflow_data": {"action": "paused", "workflow": workflow.model_dump(mode="json")}}
+        )
 
         return success_response(
             {"workflow_id": workflow.id, "title": workflow.title, "activated": workflow.activated}
@@ -319,7 +326,9 @@ async def resume_workflow(
             return error_response("not_found", f"Workflow {workflow_id} not found")
 
         writer = get_stream_writer()
-        writer({"workflow_data": {"action": "resumed", "workflow": workflow.model_dump()}})
+        writer(
+            {"workflow_data": {"action": "resumed", "workflow": workflow.model_dump(mode="json")}}
+        )
 
         return success_response(
             {"workflow_id": workflow.id, "title": workflow.title, "activated": workflow.activated}

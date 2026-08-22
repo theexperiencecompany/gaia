@@ -205,6 +205,63 @@ class TestWorkflowsScheduler:
         wf = await repo.create(_workflow(activated=False, status=ScheduledTaskStatus.SCHEDULED))
         assert await repo.claim_for_execution(wf.id) is False
 
+    async def test_claim_pin_rejects_stale_fire_after_reschedule(self, repo):
+        """The bug-2 gate against real Mongo: a deferred ARQ job armed for 16:00
+        that fires after the workflow was rescheduled to 21:00 must be rejected,
+        and the rejection must leave the row claimable by the 21:00 job."""
+        old_fire = (datetime.now(UTC) + timedelta(hours=5)).replace(microsecond=0)
+        new_fire = old_fire + timedelta(hours=5)
+        wf = await repo.create(
+            _workflow(
+                activated=True,
+                status=ScheduledTaskStatus.SCHEDULED,
+                scheduled_at=old_fire,
+                trigger_config=TriggerConfig(
+                    type=TriggerType.SCHEDULE,
+                    enabled=True,
+                    cron_expression="0 16 * * *",
+                    timezone="UTC",
+                    next_run=old_fire,
+                ),
+            )
+        )
+
+        # The reschedule itself: update_workflow persists the new cron's next_run.
+        assert (
+            await repo.set_status(
+                wf.id, ScheduledTaskStatus.SCHEDULED, scheduled_at=new_fire, next_run=new_fire
+            )
+            is True
+        )
+
+        # Old job fires: armed for 16:00 but next_run is now 21:00 -> rejected...
+        assert await repo.claim_for_execution(wf.id, expected_next_run=old_fire) is False
+        # ...and the rejection changed nothing — the row is still idle/scheduled.
+        after_stale = await repo.get(wf.id)
+        assert after_stale.status == ScheduledTaskStatus.SCHEDULED
+
+        # New job fires: matches the current occurrence -> claims cleanly.
+        assert await repo.claim_for_execution(wf.id, expected_next_run=new_fire) is True
+        assert (await repo.get(wf.id)).status == ScheduledTaskStatus.EXECUTING
+
+    async def test_claim_without_pin_stays_ungated(self, repo):
+        """Jobs enqueued before the stamp existed carry no expected time; they
+        must keep claiming across a deploy."""
+        wf = await repo.create(
+            _workflow(
+                activated=True,
+                status=ScheduledTaskStatus.SCHEDULED,
+                trigger_config=TriggerConfig(
+                    type=TriggerType.SCHEDULE,
+                    enabled=True,
+                    cron_expression="0 16 * * *",
+                    timezone="UTC",
+                    next_run=datetime.now(UTC).replace(microsecond=0),
+                ),
+            )
+        )
+        assert await repo.claim_for_execution(wf.id) is True
+
     async def test_find_stale_executing(self, repo, raw_collection):
         now = datetime.now(UTC)
         stale = await repo.create(_workflow(activated=True, status=ScheduledTaskStatus.EXECUTING))
@@ -477,6 +534,48 @@ class TestWorkflowsPublishAndWrites:
         with_msg = await repo.set_error_message(wf.id, owner, "boom")
         assert with_msg is not None and with_msg.error_message == "boom"
         assert await repo.touch(_uid("missing"), owner) is None
+
+
+class TestScheduledWorkflowToolPayloadJsonSafety:
+    """Bug-1 gate against real Mongo: a persisted scheduled workflow read back
+    through the repository carries native datetimes (BSON dates), so the tool
+    payloads the workflow tools emit must be built with ``model_dump(mode="json")``
+    — their consumers (the LLM ToolMessage and the stream writer) plain
+    ``json.dumps`` them."""
+
+    async def test_get_workflow_tool_payload_is_json_safe(self, repo):
+        import json
+
+        next_run = (datetime.now(UTC) + timedelta(hours=5)).replace(microsecond=0)
+        wf = await repo.create(
+            _workflow(
+                activated=True,
+                scheduled_at=next_run,
+                last_executed_at=next_run - timedelta(days=1),
+                trigger_config=TriggerConfig(
+                    type=TriggerType.SCHEDULE,
+                    enabled=True,
+                    cron_expression="0 16 * * *",
+                    timezone="UTC",
+                    next_run=next_run,
+                ),
+            )
+        )
+
+        doc = await repo.get_for_user(wf.id, wf.user_id)
+        assert doc is not None
+        # The document really does carry native datetimes after the round-trip.
+        assert isinstance(doc.trigger_config.next_run, datetime)
+
+        # Exactly what get_workflow emits (workflow_tool.py).
+        payload = {"success": True, "data": doc.model_dump(mode="json")}
+        dumped = json.dumps(payload)
+        assert doc.trigger_config.next_run.isoformat() in dumped
+
+        # The old python-mode dump is what raised TypeError in production —
+        # keep this assertion so a regression to model_dump() fails here too.
+        with pytest.raises(TypeError, match="not JSON serializable"):
+            json.dumps({"success": True, "data": doc.model_dump()})
 
 
 class TestWorkflowsUniqueIndexSurface:

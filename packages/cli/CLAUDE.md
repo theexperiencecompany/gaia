@@ -13,6 +13,7 @@ The `@heygaia/cli` package — a Node.js CLI tool (`gaia`) for self-hosting GAIA
 | `gaia stop [--force-ports]` | Stop running services |
 | `gaia status` | Show service health status |
 | `gaia logs` | Stream Docker Compose logs |
+| `gaia bridge <cmd>` | Connect this machine's local MCP servers/folders to GAIA over an outbound tunnel (`add`, `login`, `fs`, `ls`, `rm`, `up`, `logout`) |
 
 ## Key Commands
 
@@ -44,6 +45,7 @@ node dist/index.js
 src/
   index.ts                  - Entry point; Commander program + command wiring
   commands/
+    bridge/                 - `gaia bridge` device tunnel daemon (see its README)
     init/                   - Clone repo flow
     setup/                  - Env file setup wizard
     start/                  - Docker Compose start flow
@@ -73,7 +75,7 @@ src/
 
 ## Architecture
 
-Each command follows the same pattern:
+Each command follows the same pattern (except `bridge/`, which is a non-Ink daemon — plain Commander subcommands defined in `bridge/command.ts`):
 1. `handler.ts` — creates the store, renders `<App>`, calls `flow.ts`, handles SIGINT/SIGTERM
 2. `flow.ts` — imperative business logic that mutates the store (no React)
 3. The Ink `<App>` component reads from the store and re-renders reactively

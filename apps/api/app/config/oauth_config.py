@@ -2039,6 +2039,20 @@ def get_integration_by_config(auth_config_id: str) -> OAuthIntegration | None:
     )
 
 
+@cache
+def get_integration_by_toolkit(toolkit: str) -> OAuthIntegration | None:
+    """Get an integration by its Composio toolkit slug (case-insensitive)."""
+    normalized = toolkit.upper()
+    return next(
+        (
+            i
+            for i in OAUTH_INTEGRATIONS
+            if i.composio_config and i.composio_config.toolkit.upper() == normalized
+        ),
+        None,
+    )
+
+
 def get_memory_extraction_prompt(integration_id: str) -> str | None:
     """Get the memory extraction prompt for an integration, or None. Single source of truth."""
     integration = get_integration_by_id(integration_id)

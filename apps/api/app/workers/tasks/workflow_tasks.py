@@ -533,15 +533,52 @@ async def execute_workflow_by_id(
         # executing) so a concurrent recovery scan can't double-execute a workflow
         # whose previous fire is still running. Manual/integration "run now" fires
         # don't go through the scan and must not be status-gated.
-        if trigger_type == TriggerType.SCHEDULE.value and not (
-            await scheduler.claim_scheduled_for_execution(workflow_id)
-        ):
-            log.warning(
-                f"{LogTag.WORKER} Workflow not in scheduled state "
-                "(already claimed or running); skipping duplicate scheduled fire",
-                workflow_id=workflow_id,
-            )
-            return f"Workflow {workflow_id} already claimed; skipped duplicate scheduled fire"
+        #
+        # The claim also pins the occurrence the fire was armed for
+        # (``scheduled_for``, stamped by the scheduler at enqueue). ARQ has no job
+        # cancellation, so after a reschedule the old deferred job still fires;
+        # trigger_config.next_run has moved on and the mismatch rejects it instead
+        # of running the workflow at its original time. Jobs enqueued before the
+        # stamp existed carry no key and are ungated, so a deploy never strands a
+        # schedule.
+        if trigger_type == TriggerType.SCHEDULE.value:
+            # Only a numeric stamp is scheduler provenance. Manual "run now"
+            # callers control their own context dict, so a hand-typed
+            # trigger_type/scheduled_for must be ignored (ungated), not crash
+            # fromtimestamp with a TypeError/OverflowError mid-run.
+            scheduled_for = context.get("scheduled_for") if context else None
+            if isinstance(scheduled_for, bool) or not isinstance(scheduled_for, (int, float)):
+                log.warning(
+                    f"{LogTag.WORKER} Unparseable scheduled_for on scheduled fire; "
+                    "treating as unstamped",
+                    workflow_id=workflow_id,
+                    scheduled_for=str(scheduled_for)[:32],
+                )
+                expected_next_run = None
+            else:
+                try:
+                    expected_next_run = datetime.fromtimestamp(scheduled_for, tz=UTC)
+                except (ValueError, OverflowError, OSError):
+                    log.warning(
+                        f"{LogTag.WORKER} Unparseable scheduled_for on scheduled fire; "
+                        "treating as unstamped",
+                        workflow_id=workflow_id,
+                        scheduled_for=str(scheduled_for)[:32],
+                    )
+                    expected_next_run = None
+            if not (
+                await scheduler.claim_scheduled_for_execution(
+                    workflow_id, expected_next_run=expected_next_run
+                )
+            ):
+                log.warning(
+                    f"{LogTag.WORKER} Workflow not in scheduled state "
+                    "(already claimed, running, deactivated, or rescheduled away); "
+                    "skipping stale scheduled fire",
+                    workflow_id=workflow_id,
+                    scheduled_for=scheduled_for,
+                )
+                return f"Workflow {workflow_id} already claimed; skipped duplicate scheduled fire"
 
         _log_schedule_drift(workflow, workflow_id, actual_fire_utc)
 
@@ -848,7 +885,7 @@ async def regenerate_workflow_steps(
     )
 
     # Import here to avoid circular imports
-    from app.services.workflow import WorkflowService
+    from app.services.workflow.service import WorkflowService
 
     # Regenerate steps using the service method (without background queue)
     await WorkflowService.regenerate_workflow_steps(
@@ -877,7 +914,7 @@ async def generate_workflow_steps(ctx: dict[str, Any], workflow_id: str, user_id
     """
     log.set(workflow_id=workflow_id, user_id=user_id)
     # Import here to avoid circular imports
-    from app.services.workflow import WorkflowService
+    from app.services.workflow.service import WorkflowService
 
     # Generate steps using the service method
     await WorkflowService._generate_workflow_steps(workflow_id, user_id)
