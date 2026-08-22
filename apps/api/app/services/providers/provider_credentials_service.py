@@ -1,0 +1,275 @@
+"""Runtime-configurable provider credentials (self-host credential store).
+
+User-configured provider credentials live in Mongo as Fernet-encrypted JSON
+(keyed by the instance secret — see ``secrets_store``); plaintext never touches
+the database. ``resolve`` is the single read path every consumer uses:
+
+    DB credential → env fallback → None
+
+with a 60s in-process TTL cache in front of both. Writes go through
+``upsert``/``delete`` which invalidate and fan out so every LLM consumer rebuilds
+against the new configuration:
+
+- the lazy-loader registry entry for the provider's LLM is reset,
+- the aux-LLM caches inside ``app.agents.llm.client`` are cleared,
+- a Redis publish on ``RUNTIME_CONFIG_CHANNEL`` tells other pods to do the same.
+"""
+
+import importlib
+import json
+from time import monotonic
+from typing import TypedDict
+
+from cryptography.fernet import Fernet, InvalidToken
+
+from app.config.settings import settings
+from app.constants.log_tags import LogTag
+from app.constants.providers import CREDENTIAL_PROVIDERS
+from app.core.lazy_loader import providers
+from app.db.redis import redis_cache
+from app.db.repositories.provider_credentials import provider_credentials_repository
+from app.services.runtime.secrets_store import fernet_key_from, get_instance_secret
+from shared.py.wide_events import log
+
+# Other pods subscribe to this channel to invalidate their own caches; payload:
+# {"scope": "provider:<name>"}.
+RUNTIME_CONFIG_CHANNEL = "gaia:runtime-config-updated"
+
+_CACHE_TTL_SECONDS = 60.0
+
+# Credential-store provider → lazy-loader registry key whose cached instance must
+# be rebuilt when the credential changes. "tavily" has no LLM loader.
+_LLM_REGISTRY_KEYS: dict[str, str] = {
+    "openrouter": "openrouter_llm",
+    "gemini": "gemini_llm",
+    "ollama": "ollama_llm",
+    "custom": "custom_llm",
+}
+
+
+class ProviderConfig(TypedDict):
+    """A decrypted provider payload."""
+
+    api_key: str | None
+    base_url: str | None
+    model: str | None
+    preset: str | None  # e.g. "opencode" | "nous"
+
+
+# provider → (cached-at monotonic, resolved config). Entries may hold None-ish
+# configs (unconfigured) too, so misses don't re-hit Mongo on every call.
+_cache: dict[str, tuple[float, ProviderConfig]] = {}
+
+
+async def resolve(provider: str) -> ProviderConfig | None:
+    """The provider's active config: stored credential → env fallback → None."""
+    hit, cached = _cache_get(provider)
+    if hit:
+        return cached
+
+    doc = await provider_credentials_repository.find_by_provider(provider)
+    if doc is not None:
+        config = await _decrypt_config(doc.data_encrypted)
+        if config is not None:
+            _cache_put(provider, config)
+            return config
+        # Undecryptable (instance secret rotated): logged loudly above; fall
+        # through so env still works instead of bricking the provider.
+
+    fallback = _env_fallback(provider)
+    if fallback is not None or provider in CREDENTIAL_PROVIDERS:
+        # Cache known providers' outcomes (including unconfigured), so repeated
+        # resolves don't hammer Mongo; unknown names return immediately.
+        _cache_put(provider, fallback)
+    return fallback
+
+
+async def upsert(
+    provider: str,
+    *,
+    api_key: str | None = None,
+    base_url: str | None = None,
+    model: str | None = None,
+    preset: str | None = None,
+) -> None:
+    """Store (or replace) a provider's encrypted credential and fan out invalidation."""
+    _ensure_known(provider)
+    payload = json.dumps(
+        ProviderConfig(api_key=api_key, base_url=base_url, model=model, preset=preset)
+    )
+    data_encrypted = await _encrypt(payload)
+    await provider_credentials_repository.upsert_encrypted(provider, data_encrypted)
+    log.info(
+        f"{LogTag.API} Provider credential updated",
+        provider=provider,
+        has_api_key=api_key is not None,
+    )
+    await invalidate(provider)
+
+
+async def delete(provider: str) -> None:
+    """Remove a stored credential (idempotent) and fan out invalidation."""
+    _ensure_known(provider)
+    await provider_credentials_repository.delete(provider)
+    log.info(f"{LogTag.API} Provider credential removed", provider=provider)
+    await invalidate(provider)
+
+
+async def invalidate(provider: str) -> None:
+    """Drop this pod's cached config and tell every consumer (and pod) to rebuild."""
+    _cache.pop(provider, None)
+
+    registry_key = _LLM_REGISTRY_KEYS.get(provider)
+    if registry_key is not None:
+        try:
+            providers.reset(registry_key)
+        except KeyError:
+            # The LLM registry may not have registered this key yet (e.g. the
+            # custom lane only registers under development) — nothing to reset.
+            log.debug(
+                f"{LogTag.API} LLM provider not registered, skipping reset",
+                name=registry_key,
+            )
+
+    # Imported lazily through the module: client.py consumes this service for
+    # provider resolution, so a module-level import (of the module or its
+    # symbol) is a cycle. Contract: A3 provides reset_aux_llm_caches on
+    # app.agents.llm.client; a missing symbol fails loud here.
+    client_module = importlib.import_module("app.agents.llm.client")
+    client_module.reset_aux_llm_caches()
+
+    client = redis_cache.redis
+    if client is not None:
+        try:
+            await client.publish(
+                RUNTIME_CONFIG_CHANNEL, json.dumps({"scope": f"provider:{provider}"})
+            )
+        except Exception as e:
+            # Deliberate degradation, loud: cross-pod refresh is missed but the
+            # 60s TTL bounds staleness and local state is already consistent.
+            log.error(
+                f"{LogTag.API} Failed to publish runtime-config update",
+                channel=RUNTIME_CONFIG_CHANNEL,
+                provider=provider,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+
+
+# ---------------------------------------------------------------------------
+# internals
+# ---------------------------------------------------------------------------
+
+
+def _ensure_known(provider: str) -> None:
+    """Raise on anything outside the credential-store provider set."""
+    if provider not in CREDENTIAL_PROVIDERS:
+        raise ValueError(
+            f"Unknown provider '{provider}' — expected one of {', '.join(CREDENTIAL_PROVIDERS)}"
+        )
+
+
+def _cache_get(provider: str) -> tuple[bool, ProviderConfig | None]:
+    """(hit?, config) for the provider's cache entry.
+
+    A hit whose config is ``None`` is a cached *miss* (provider known but
+    unconfigured) — it resolves to ``None`` without touching Mongo again.
+    """
+    entry = _cache.get(provider)
+    if entry is None:
+        return False, None
+    cached_at, config = entry
+    if monotonic() - cached_at >= _CACHE_TTL_SECONDS:
+        _cache.pop(provider, None)
+        return False, None
+    return True, config
+
+
+def _cache_put(provider: str, config: ProviderConfig | None) -> None:
+    _cache[provider] = (monotonic(), config)
+
+
+def _env_fallback(provider: str) -> ProviderConfig | None:
+    """What the environment alone provides for ``provider``, or None."""
+    if provider == "openrouter":
+        if not settings.OPENROUTER_API_KEY:
+            return None
+        return ProviderConfig(
+            api_key=settings.OPENROUTER_API_KEY,
+            base_url=settings.OPENROUTER_BASE_URL,
+            model=None,
+            preset=None,
+        )
+    if provider == "gemini":
+        if not settings.GOOGLE_API_KEY:
+            return None
+        return ProviderConfig(
+            api_key=settings.GOOGLE_API_KEY, base_url=None, model=None, preset=None
+        )
+    if provider == "ollama":
+        # Keyless local lane — always resolvable from its endpoint alone.
+        return ProviderConfig(
+            api_key=None, base_url=settings.OLLAMA_BASE_URL, model=None, preset=None
+        )
+    if provider == "tavily":
+        if not settings.TAVILY_API_KEY:
+            return None
+        return ProviderConfig(
+            api_key=settings.TAVILY_API_KEY, base_url=None, model=None, preset=None
+        )
+    if provider == "custom":
+        # The dev-only OpenAI-compatible lane; all three fields ship together.
+        if settings.ENV != "development":
+            return None
+        if not (settings.DEV_LLM_BASE_URL and settings.DEV_LLM_API_KEY and settings.DEV_LLM_MODEL):
+            return None
+        return ProviderConfig(
+            api_key=settings.DEV_LLM_API_KEY,
+            base_url=settings.DEV_LLM_BASE_URL,
+            model=settings.DEV_LLM_MODEL,
+            preset=None,
+        )
+    return None
+
+
+async def _encrypt(payload_json: str) -> str:
+    secret = await get_instance_secret()
+    return Fernet(fernet_key_from(secret)).encrypt(payload_json.encode()).decode()
+
+
+async def _decrypt_config(data_encrypted: str) -> ProviderConfig | None:
+    """Decrypt a stored ciphertext into a config, or None when undecryptable.
+
+    An InvalidToken means the instance secret changed since the row was written;
+    that is recoverable by re-entering credentials, so it degrades with a loud
+    error rather than raising out of every consumer's hot path.
+    """
+    secret = await get_instance_secret()
+    try:
+        plaintext = Fernet(fernet_key_from(secret)).decrypt(data_encrypted.encode())
+    except InvalidToken as e:
+        log.error(
+            f"{LogTag.API} Stored provider credential cannot be decrypted",
+            reason=f"instance secret mismatch ({e!r})",
+            fix="re-enter the provider credentials; the old ciphertext is unreadable",
+        )
+        return None
+    parsed: object = json.loads(plaintext)
+    if not isinstance(parsed, dict):
+        raise ValueError("decrypted provider credential payload is not a JSON object")
+    return _coerce_config(parsed)
+
+
+def _coerce_config(raw: dict[str, object]) -> ProviderConfig:
+    """Project a decrypted dict onto the four-field config shape."""
+
+    def opt_str(key: str) -> str | None:
+        value = raw.get(key)
+        return value if isinstance(value, str) else None
+
+    return ProviderConfig(
+        api_key=opt_str("api_key"),
+        base_url=opt_str("base_url"),
+        model=opt_str("model"),
+        preset=opt_str("preset"),
+    )
