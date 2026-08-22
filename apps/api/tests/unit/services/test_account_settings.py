@@ -114,3 +114,145 @@ async def test_unknown_voice_names_the_catalog_instead_of_failing_blindly(repo) 
 
     assert "Rachel" in excinfo.value.fix
     set_voice.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Brutal edge cases — attack what a hasty implementation forgets
+# ---------------------------------------------------------------------------
+
+
+class TestSetPreferencesEdges:
+    async def test_no_arguments_at_all_is_an_error_not_a_silent_noop(self, repo) -> None:
+        with pytest.raises(AppError, match="Nothing to update"):
+            await account_settings.set_preferences(USER_ID)
+        repo.update_prefs.assert_not_awaited()
+        repo.update.assert_not_awaited()
+
+    async def test_whitespace_only_response_style_is_rejected_after_stripping(self, repo):
+        with pytest.raises(AppError, match="cannot be empty"):
+            await account_settings.set_preferences(USER_ID, response_style="   \t\n")
+        repo.update_prefs.assert_not_awaited()
+
+    async def test_missing_user_on_style_write_raises_404(self, repo) -> None:
+        repo.update_prefs.return_value = None
+        with pytest.raises(AppError, match="User not found"):
+            await account_settings.set_preferences(USER_ID, response_style="brief")
+
+    async def test_missing_user_on_timezone_write_raises_404(self, repo) -> None:
+        repo.update.return_value = None
+        with pytest.raises(AppError, match="User not found"):
+            await account_settings.set_preferences(USER_ID, timezone="UTC")
+
+    @pytest.mark.parametrize("tz", ["+05:30", "-08:00", "asia/kolkata", "UTC"])
+    async def test_every_timezone_shape_the_canonical_validator_accepts_lands_verbatim(
+        self, repo, tz
+    ):
+        await account_settings.set_preferences(USER_ID, timezone=tz)
+        assert repo.update.await_args.args[1].timezone == tz
+
+    async def test_style_and_timezone_together_write_both_seams(self, repo) -> None:
+        result = await account_settings.set_preferences(
+            USER_ID, response_style="brief", timezone="UTC"
+        )
+
+        assert "brief" in result and "UTC" in result
+        assert repo.update_prefs.await_count == 1
+        assert repo.update.await_count == 1
+
+    async def test_repo_failure_propagates_instead_of_faking_success(self, repo) -> None:
+        repo.update.side_effect = RuntimeError("mongo down")
+        with pytest.raises(RuntimeError, match="mongo down"):
+            await account_settings.set_preferences(USER_ID, timezone="UTC")
+
+
+class TestCustomInstructionBoundaries:
+    @pytest.mark.parametrize("length", [499, 500])
+    async def test_instructions_at_the_cap_are_accepted(self, repo, length: int) -> None:
+        await account_settings.set_custom_instructions(USER_ID, instructions="é" * length)
+        preferences = repo.update_prefs.await_args.args[1]
+        assert preferences.custom_instructions == "é" * length
+
+    @pytest.mark.parametrize("length", [501, 10_000])
+    async def test_instructions_over_the_cap_are_rejected_before_any_write(
+        self, repo, length: int
+    ) -> None:
+        with pytest.raises(AppError, match="500 characters or less"):
+            await account_settings.set_custom_instructions(USER_ID, instructions="é" * length)
+        repo.update_prefs.assert_not_awaited()
+
+    async def test_missing_user_raises_404(self, repo) -> None:
+        repo.update_prefs.return_value = None
+        with pytest.raises(AppError, match="User not found"):
+            await account_settings.set_custom_instructions(USER_ID, instructions="hi")
+
+
+class TestChannelFlagSemantics:
+    async def test_all_five_flags_write_in_one_call(self, repo) -> None:
+        flags = dict.fromkeys(account_settings.CHANNEL_FLAGS, True)
+        await account_settings.set_notification_channels(USER_ID, **flags)
+        repo.set_channels.assert_awaited_once_with(USER_ID, **flags)
+
+    async def test_unset_channels_are_absent_from_the_write_so_they_survive(self, repo) -> None:
+        # email=False must be written; telegram=None must NOT be — the whole
+        # PATCH contract is "unspecified means untouched".
+        await account_settings.set_notification_channels(USER_ID, email=False)
+        kwargs = repo.set_channels.await_args.kwargs
+        assert kwargs == {"email": False}
+        assert set(kwargs) != set(account_settings.CHANNEL_FLAGS)
+
+
+class TestVoiceSelectionAttacks:
+    def catalog_of(self, *voices):
+        return SimpleNamespace(voices=list(voices), selected_voice_id=None)
+
+    async def test_empty_catalog_reports_an_unknown_voice_without_listing_anything(self):
+        with (
+            patch(f"{MODULE}.list_voices", new=AsyncMock(return_value=self.catalog_of())),
+            patch(f"{MODULE}.set_user_voice", new=AsyncMock()) as set_voice,
+        ):
+            with pytest.raises(AppError, match="Unknown voice 'Ghost'"):
+                await account_settings.select_voice(USER_ID, voice="Ghost")
+        set_voice.assert_not_awaited()
+
+    async def test_big_catalog_error_lists_only_a_sample_not_all_voices(self) -> None:
+        voices = [SimpleNamespace(voice_id=f"v{i}", name=f"Voice{i}") for i in range(40)]
+        with patch(f"{MODULE}.list_voices", new=AsyncMock(return_value=self.catalog_of(*voices))):
+            with pytest.raises(AppError) as excinfo:
+                await account_settings.select_voice(USER_ID, voice="Missing")
+        assert "Voice14" in excinfo.value.fix
+        assert "Voice39" not in excinfo.value.fix
+
+    async def test_exact_voice_id_wins_even_when_it_lowercases_to_another_name(self) -> None:
+        # 'rachel' is another voice's NAME but also this voice's ID — id match
+        # is exact and checked first in list order.
+        voices = [
+            SimpleNamespace(voice_id="rachel", name="First"),
+            SimpleNamespace(voice_id="v2", name="Rachel"),
+        ]
+        with (
+            patch(f"{MODULE}.list_voices", new=AsyncMock(return_value=self.catalog_of(*voices))),
+            patch(f"{MODULE}.set_user_voice", new=AsyncMock()) as set_voice,
+        ):
+            result = await account_settings.select_voice(USER_ID, voice="rachel")
+        assert "First" in result
+        set_voice.assert_awaited_once_with(USER_ID, "rachel")
+
+    async def test_selection_failure_between_list_and_set_propagates_loud(self) -> None:
+        voice = SimpleNamespace(voice_id="v-123", name="Rachel", starred=False)
+        with (
+            patch(f"{MODULE}.list_voices", new=AsyncMock(return_value=self.catalog_of(voice))),
+            patch(
+                f"{MODULE}.set_user_voice", new=AsyncMock(side_effect=RuntimeError("elevenlabs down"))
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="elevenlabs down"):
+                await account_settings.select_voice(USER_ID, voice="Rachel")
+
+    async def test_whitespace_padded_query_still_resolves(self) -> None:
+        voice = SimpleNamespace(voice_id="v-123", name="Rachel", starred=False)
+        with (
+            patch(f"{MODULE}.list_voices", new=AsyncMock(return_value=self.catalog_of(voice))),
+            patch(f"{MODULE}.set_user_voice", new=AsyncMock()),
+        ):
+            result = await account_settings.select_voice(USER_ID, voice="  RACHEL  ")
+        assert "Rachel" in result

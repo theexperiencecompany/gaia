@@ -30,7 +30,9 @@ def user_id_from_config(config: RunnableConfig | None) -> str | None:
     configurable = agent_configurable(config) if config else {}
     metadata = config.get("metadata", {}) if config else {}
     user_id = configurable.get("user_id") or metadata.get("user_id")
-    return user_id if isinstance(user_id, str) and user_id else None
+    if not isinstance(user_id, str):
+        return None
+    return user_id.strip() or None
 
 
 def define_mutation_tool(

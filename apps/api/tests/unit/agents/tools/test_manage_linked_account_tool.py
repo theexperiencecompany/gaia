@@ -1,0 +1,135 @@
+"""manage_linked_account — both actions, end to end through the real tool object.
+
+The tool is the agent's only lever on platform links: generate_link must return
+usable connect instructions without approval, disconnect must run the real
+unlink seam and refresh the projection. The service seams are mocked; the
+tool's own dispatch, formatting, analytics and resync are not.
+"""
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from app.agents.tools import account_tools
+from app.services.analytics_service import AnalyticsEvents
+
+MODULE = "app.agents.tools.account_tools"
+CONFIG = {"metadata": {"user_id": "user-1"}}
+
+
+@pytest.fixture(autouse=True)
+def _quiet():
+    with (
+        patch(f"{MODULE}.log"),
+        patch(f"{MODULE}.capture_context_event") as capture,
+    ):
+        yield capture
+
+
+@pytest.mark.unit
+class TestGenerateLink:
+    async def test_manual_platform_returns_instructions_and_action_link(self) -> None:
+        flow = AsyncMock()
+        flow.auth_url = None
+        flow.instructions = "Message @gaia_bot with /auth"
+        flow.action_link = "https://t.me/gaia_bot"
+        with (
+            patch(f"{MODULE}.enforce_rate_limit", new=AsyncMock()),
+            patch(f"{MODULE}.start_platform_connect", new=AsyncMock(return_value=flow)),
+        ):
+            result = await account_tools.manage_linked_account.ainvoke(
+                {"platform": "telegram", "action": "generate_link"}, config=CONFIG
+            )
+
+        assert "connect your telegram account" in result.lower()
+        assert "Message @gaia_bot with /auth" in result
+        assert "https://t.me/gaia_bot" in result
+
+    async def test_oauth_platform_returns_the_authorize_url(self) -> None:
+        flow = AsyncMock()
+        flow.auth_url = "https://discord.com/api/oauth2/authorize?state=s1"
+        flow.instructions = None
+        flow.action_link = None
+        with (
+            patch(f"{MODULE}.enforce_rate_limit", new=AsyncMock()) as limit,
+            patch(f"{MODULE}.start_platform_connect", new=AsyncMock(return_value=flow)),
+        ):
+            result = await account_tools.manage_linked_account.ainvoke(
+                {"platform": "discord", "action": "generate_link"}, config=CONFIG
+            )
+
+        assert "authorize: https://discord.com/api/oauth2/authorize?state=s1" in result
+        limit.assert_awaited_once()
+
+    async def test_generate_link_is_not_gated_and_emits_no_setting_event(self) -> None:
+        flow = AsyncMock()
+        flow.auth_url = None
+        flow.instructions = "i"
+        flow.action_link = None
+        with (
+            patch(f"{MODULE}.enforce_rate_limit", new=AsyncMock()),
+            patch(f"{MODULE}.start_platform_connect", new=AsyncMock(return_value=flow)),
+        ):
+            await account_tools.manage_linked_account.ainvoke(
+                {"platform": "slack", "action": "generate_link"}, config=CONFIG
+            )
+
+
+@pytest.mark.unit
+class TestDisconnect:
+    async def test_disconnect_runs_the_real_seam_refreshes_projection_and_confirms(
+        self,
+    ) -> None:
+        unlink = AsyncMock()
+        resync = MagicMock()
+        with (
+            patch(f"{MODULE}.disconnect_platform_account", new=unlink),
+            patch(f"{MODULE}.schedule_account_sync", new=resync),
+            patch(f"{MODULE}.capture_context_event") as capture,
+        ):
+            result = await account_tools.manage_linked_account.ainvoke(
+                {"platform": "whatsapp", "action": "disconnect"}, config=CONFIG
+            )
+
+        unlink.assert_awaited_once_with("user-1", "whatsapp")
+        assert "whatsapp disconnected" in result.lower()
+        # The linked-accounts projection must reflect reality immediately.
+        resync.assert_called_once_with("user-1")
+        capture.assert_called_once_with(
+            AnalyticsEvents.ACCOUNT_PLATFORM_DISCONNECTED, {"area": "linked_accounts"}
+        )
+
+    async def test_disconnect_failure_surfaces_as_an_error_string_not_a_crash(self) -> None:
+        from app.utils.errors import AppError
+
+        with (
+            patch(
+                f"{MODULE}.disconnect_platform_account",
+                new=AsyncMock(side_effect=AppError(message="not linked", status_code=404)),
+            ),
+            patch(f"{MODULE}.schedule_account_sync", new=AsyncMock()),
+        ):
+            result = await account_tools.manage_linked_account.ainvoke(
+                {"platform": "slack", "action": "disconnect"}, config=CONFIG
+            )
+
+        assert result.startswith("Error: not linked")
+
+
+@pytest.mark.unit
+class TestSchemaContract:
+    async def test_unsupported_platform_is_rejected_by_the_schema_itself(self) -> None:
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            await account_tools.manage_linked_account.ainvoke(
+                {"platform": "carrier_pigeon", "action": "disconnect"}, config=CONFIG
+            )
+
+    async def test_unknown_action_is_rejected_by_the_schema_itself(self) -> None:
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            await account_tools.manage_linked_account.ainvoke(
+                {"platform": "slack", "action": "nuke"}, config=CONFIG
+            )
