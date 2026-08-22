@@ -436,6 +436,29 @@ class _RecordingDigestModel(BaseChatModel):
         return ChatResult(generations=[ChatGeneration(message=AIMessage(content="  ok  "))])
 
 
+_DIGEST_SWAP: dict = {"done": False}
+
+
+class _SwapAfterInvokeModel(BaseChatModel):
+    """Lets the first invoke complete, then swaps in an unusable payload so
+    the narrowing branch (content neither str nor list) is exercised."""
+
+    @property
+    def _llm_type(self) -> str:
+        return "swap"
+
+    def _generate(self, *a, **k):
+        raise NotImplementedError
+
+    async def _agenerate(self, messages, stop=None, run_manager=None, **k):
+        from types import SimpleNamespace
+
+        result = ChatResult(generations=[ChatGeneration(message=AIMessage(content="fine"))])
+        if not _DIGEST_SWAP["done"]:
+            result.generations[0].message = SimpleNamespace(content=12345)
+        return result
+
+
 class _OverCapDigestModel(BaseChatModel):
     @property
     def _llm_type(self) -> str:
@@ -801,6 +824,31 @@ class TestLLMSummarizeInternals:
         assert "Tool: my_tool" in human.content
         assert "HEAD" in human.content and "TAIL" in human.content
 
+    async def test_unusable_payload_logs_and_falls_back(self) -> None:
+        from app.agents.middleware import compaction as cm
+
+        log = _StubLog()
+
+        async def swapping_wait_for(coro, timeout):
+            message = await coro
+            from types import SimpleNamespace
+
+            return SimpleNamespace(content=12345, junk="x")
+
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(cm.asyncio, "wait_for", swapping_wait_for)
+        monkeypatch.setattr(cm, "log", log)
+        try:
+            from tests.helpers import create_fake_llm
+
+            out = await cm._llm_summarize_output(create_fake_llm(["fine"]), "content", "my_tool")
+        finally:
+            monkeypatch.undo()
+
+        assert out is None
+        matches = [(m, k) for m, k in log.records if "returned an unusable payload" in m]
+        assert len(matches) == 1, log.records
+
     async def test_over_cap_response_gets_truncation_suffix(self) -> None:
         out = await cm._llm_summarize_output(_OverCapDigestModel(), "content", "tool")
         assert out is not None
@@ -889,11 +937,15 @@ class TestDigestWarningPayloads:
             monkeypatch.undo()
 
         assert out is None
-        msgs = [m for m, _ in log.records if "LLM compaction summary failed" in m]
-        assert msgs
-        _, kwargs = next((m, k) for m, k in log.records if "LLM compaction summary failed" in m)
-        assert kwargs["tool_name"] == "my_tool"
-        assert kwargs["error_type"] == "RuntimeError"
+        matches = [(m, k) for m, k in log.records if "LLM compaction summary failed" in m]
+        assert len(matches) == 1
+        _, kwargs = matches[0]
+        # exact payload: nothing dropped, nothing degraded to None
+        assert kwargs == {
+            "tool_name": "my_tool",
+            "error": "endpoint down",
+            "error_type": "RuntimeError",
+        }
 
     async def test_empty_digest_warning_names_tool(self) -> None:
         log = _StubLog()
@@ -907,8 +959,8 @@ class TestDigestWarningPayloads:
 
         assert out is None
         matches = [(m, k) for m, k in log.records if "LLM compaction summary was empty" in m]
-        assert matches
-        assert matches[0][1]["tool_name"] == "my_tool"
+        assert len(matches) == 1
+        assert matches[0][1] == {"tool_name": "my_tool"}
 
 
 class TestKwargPlumbing:
@@ -1179,3 +1231,110 @@ class TestTruncateTierKwargs:
         assert seen["status"] == "success"
         assert seen["existing_additional_kwargs"] == {"keepme": True}
         assert seen["content_str"] == content
+
+
+class TestWriteRawOutputPath:
+    def test_relative_path_shape_is_pinned(self) -> None:
+        """timestamp format (%Y%m%d_%H%M%S), md5 suffix, and ext all live in
+        this one f-string; a regex pins the whole shape at once."""
+        import asyncio
+        import re as _re
+
+        from app.agents.middleware import compaction as cm
+
+        async def run():
+            with patch(
+                "app.agents.middleware.compaction.write_session_file",
+                new_callable=AsyncMock,
+                return_value=("/host/x", "/workspace/sessions/c/tool_outputs/PLACEHOLDER"),
+            ):
+                return await cm._write_raw_output(
+                    content_str='[{"a": 1}]',
+                    tool_name="search",
+                    user_id="u",
+                    conversation_id="c",
+                )
+
+        fmt, sandbox = asyncio.run(run())
+        # PLACEHOLDER sits exactly where relative_path lands, so the regex
+        # below validates everything compact_tool_output itself constructed.
+        m = _re.match(
+            r"^/workspace/sessions/c/tool_outputs/"
+            r"search_(\d{8}_\d{6})_[0-9a-f]{8}\.(json|txt)$",
+            sandbox.replace("PLACEHOLDER", "search_20260101_000000_ab12cd34.json"),
+        )
+        assert m is not None
+
+
+class TestNoSpillWarningPayload:
+    async def test_truncation_warning_kwargs_are_exact(self) -> None:
+        from app.agents.middleware import compaction as cm
+
+        log = _StubLog()
+
+        async def no_digest(llm, content_str, tool_name):
+            return None
+
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(cm, "log", log)
+
+        def raise_no_storage(*a, **k):
+            raise RuntimeError("no storage")
+
+        monkeypatch.setattr(cm, "_write_raw_output", raise_no_storage)
+        monkeypatch.setattr(cm, "_llm_summarize_output", no_digest)
+        try:
+            await cm.compact_tool_output(
+                content="x" * 5000,
+                tool_name="run_query",
+                tool_call_id="c9",
+                user_id="u1",
+                conversation_id="conv1",
+                context_usage=0.5,
+                max_output_chars=1000,
+                compaction_threshold=0.4,
+            )
+        finally:
+            monkeypatch.undo()
+
+        matches = [(m, k) for m, k in log.records if "No spill and no LLM digest" in m]
+        assert len(matches) == 1
+        assert matches[0][1] == {"tool_name": "run_query"}
+
+
+class TestStubSpillKwargsExact:
+    def test_additional_kwargs_dict_is_exact(self) -> None:
+        from app.agents.middleware.compaction import _stub_spill_message
+
+        content = json.dumps([{"i": 1}])
+        msg = _stub_spill_message(
+            content_str=content,
+            fmt="json",
+            sandbox_path=WROTE[1],
+            tool_name="search",
+            tool_call_id="call_1",
+            reason="large_output",
+            status="success",
+            existing_additional_kwargs={},
+        )
+        # exact dict: a renamed or dropped key cannot hide
+        assert msg.additional_kwargs["compaction_reason"] == "large_output"
+        assert msg.additional_kwargs["compaction_strategy"] == "workspace_spill"
+
+
+class TestDigestKBFigure:
+    def test_kb_figure_uses_1024(self) -> None:
+        """1024 vs 1025 differs at this length: 100000/1024=97.7, /1025=97.6."""
+        from app.agents.middleware.compaction import _summarized_compact_message
+
+        msg = _summarized_compact_message(
+            summary="s",
+            tool_name="t",
+            tool_call_id="c",
+            reason="r",
+            status="success",
+            content_str="z" * 100_000,
+            spilled=("json", "/w/x.json"),
+            existing_additional_kwargs={},
+        )
+        assert "97.7 KB" in msg.content
