@@ -9,7 +9,7 @@ import ast
 import importlib
 from pathlib import Path
 import re
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -42,12 +42,33 @@ class TestValidateStartupRequirements:
             await validate_startup_requirements()
 
     async def test_raises_when_payment_is_not_set_up(self) -> None:
+        # Dodo configured: the seeder must NOT fire — a Dodo instance missing
+        # its plans is a real misconfiguration and keeps the boot gate.
+        dodo_settings = MagicMock()
+        dodo_settings.DODO_PAYMENTS_API_KEY = "dodo_key"
         with (
+            patch(f"{MODULE}.settings", dodo_settings),
             patch(f"{MODULE}.are_models_seeded", AsyncMock(return_value=True)),
             patch(f"{MODULE}.is_payment_setup", AsyncMock(return_value=False)),
+            patch(f"{MODULE}.seed_free_plan_if_missing", new_callable=AsyncMock) as mock_seed,
             pytest.raises(RuntimeError, match="Startup requirements not met"),
         ):
             await validate_startup_requirements()
+
+        mock_seed.assert_not_awaited()
+
+    async def test_boots_by_seeding_free_plan_when_no_dodo(self) -> None:
+        # Selfhost/dev: no Dodo key, empty plans — the seeder provisions the
+        # Free row and the gate passes instead of demanding the Dodo script.
+        free_settings = MagicMock()
+        free_settings.DODO_PAYMENTS_API_KEY = None
+        with (
+            patch(f"{MODULE}.settings", free_settings),
+            patch(f"{MODULE}.are_models_seeded", AsyncMock(return_value=True)),
+            patch(f"{MODULE}.is_payment_setup", AsyncMock(return_value=False)),
+            patch(f"{MODULE}.seed_free_plan_if_missing", AsyncMock(return_value=True)),
+        ):
+            assert await validate_startup_requirements() is None
 
     @pytest.mark.parametrize(
         ("models_ok", "payment_ok"),
@@ -59,9 +80,15 @@ class TestValidateStartupRequirements:
         # The guidance is the whole value of this check — it previously pointed at
         # ./scripts/setup.sh, which does not exist in the repo, so an operator who
         # followed it got "no such file" instead of a seeded database.
+        # Dodo configured so the payment remedy stays in play for the
+        # unseeded-payment cases (without a Dodo key the seeder is the remedy).
+        dodo_settings = MagicMock()
+        dodo_settings.DODO_PAYMENTS_API_KEY = "dodo_key"
         with (
+            patch(f"{MODULE}.settings", dodo_settings),
             patch(f"{MODULE}.are_models_seeded", AsyncMock(return_value=models_ok)),
             patch(f"{MODULE}.is_payment_setup", AsyncMock(return_value=payment_ok)),
+            patch(f"{MODULE}.seed_free_plan_if_missing", AsyncMock(return_value=False)),
             pytest.raises(RuntimeError) as excinfo,
         ):
             await validate_startup_requirements()

@@ -2,9 +2,11 @@
 Startup validation for GAIA.
 """
 
+from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.db.repositories.ai_models import ai_model_repository
 from app.db.repositories.plans import plan_repository
+from app.services.bootstrap.plan_seeder import seed_free_plan_if_missing
 from shared.py.wide_events import log
 
 SEED_MODELS_COMMAND = "uv run --group backend python scripts/seed_models.py --force"
@@ -47,14 +49,28 @@ async def validate_startup_requirements() -> None:
 
     models_ok = await are_models_seeded()
     payment_ok = await is_payment_setup()
+    if not payment_ok and not settings.DODO_PAYMENTS_API_KEY:
+        # No payment provider configured (selfhost/dev): the Dodo setup script
+        # cannot run at all, so provision the Free row instead of demanding it.
+        # With Dodo configured this never fires — a Dodo instance missing its
+        # plans is a real misconfiguration and keeps the remedy below.
+        payment_ok = await seed_free_plan_if_missing()
     if models_ok and payment_ok:
         return
 
     remedies: list[str] = []
     if not models_ok:
         remedies.append(f"AI models not seeded — run: {SEED_MODELS_COMMAND}")
-    if not payment_ok:
+    # Without a Dodo key there is no payment system to set up — the seeder call
+    # above is the remedy — so only demand its script when Dodo is configured.
+    if not payment_ok and settings.DODO_PAYMENTS_API_KEY:
         remedies.append(f"Payment plans not set up — run: {SEED_PLANS_COMMAND}")
+
+    if not remedies:
+        # The seeder either inserted or raised; reaching here with no remedy
+        # means another process seeded between our two counts, so plans exist
+        # and booting is correct.
+        return
 
     log.error("Setup incomplete!")
     for remedy in remedies:
