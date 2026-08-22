@@ -1,10 +1,4 @@
-/** Uniform [0,1) from Web Crypto. The card randomizer is cosmetic, but
- * crypto-grade randomness keeps security scanners quiet and costs nothing. */
-function random(): number {
-  return crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32;
-}
-
-("use client");
+"use client";
 
 import { Button, ButtonGroup } from "@heroui/button";
 import {
@@ -34,6 +28,13 @@ import {
 } from "react";
 import ColorPicker from "react-best-gradient-color-picker";
 import { TwitterShareButton } from "react-share";
+
+/** Uniform [0,1) from Web Crypto. The card randomizer is cosmetic, but
+ * crypto-grade randomness keeps security scanners quiet and costs nothing. */
+function random(): number {
+  return crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32;
+}
+
 import { Dices, TwitterIcon } from "@/components/shared/icons";
 import { holoCardApi } from "@/features/onboarding/api/holoCardApi";
 import { toast } from "@/lib/toast";
