@@ -33,7 +33,6 @@ from app.agents.middleware.factory import (
     create_executor_middleware,
     create_middleware_stack,
     create_subagent_middleware,
-    get_summarization_llm,
 )
 from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.agents.middleware.media import MediaDescriptionMiddleware
@@ -64,5 +63,4 @@ __all__ = [
     "create_model_request",
     "create_subagent_middleware",
     "create_tool_call_request",
-    "get_summarization_llm",
 ]
