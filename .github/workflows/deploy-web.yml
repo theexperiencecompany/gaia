@@ -84,14 +84,12 @@ jobs:
 
       - uses: ./.github/actions/restore-nextjs-cache
 
-      - name: Restore Nx cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .nx/cache
-          key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','nx.json','**/project.json') }}-${{ hashFiles('apps/web/**','libs/shared/ts/**') }}
-          restore-keys: |
-            nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','nx.json','**/project.json') }}-
-            nx-${{ runner.os }}-
+      # No Nx cache here: `cf:build` is a plain `pnpm --filter ./apps/web
+      # cf:build` script — no nx command runs, so the restore (~42s), the
+      # explicit save (~86s) and the combined action's post-save re-upload
+      # (~113s) were ~4 min of pure ceremony per web PR (measured on
+      # 32592594996: build step itself is only 179s of the 545s job).
+      # The Next.js compiler cache above is what actually warms next build.
 
       # No Cloudflare secrets here — preflight moved to preview/deploy (environment-gated)
       - name: Build Cloudflare bundle
@@ -132,13 +130,6 @@ jobs:
           echo "::error title=Cloudflare build failed::pnpm --filter ./apps/web cf:build failed — see logs above"
           echo "### ❌ Build failed" >> "$GITHUB_STEP_SUMMARY"
           echo "Check the \"Build Cloudflare bundle\" step for the error." >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Save Nx cache
-        if: always()
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .nx/cache
-          key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','nx.json','**/project.json') }}-${{ hashFiles('apps/web/**','libs/shared/ts/**') }}
 
   deploy-prod:
     name: deploy (production)
