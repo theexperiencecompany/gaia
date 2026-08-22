@@ -1582,7 +1582,7 @@ class TestFullKwargsCapture:
             patch.object(cm, "_llm_summarize_output", side_effect=fake_no_digest),
             patch.object(cm, "_truncate_in_context", side_effect=fake_truncate),
         ):
-            result = await mw.awrap_tool_call(request, handler)
+            _ = await mw.awrap_tool_call(request, handler)
 
         assert calls["content_str"] == content
         assert calls["tool_name"] == "search"
