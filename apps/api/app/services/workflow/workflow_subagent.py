@@ -41,6 +41,7 @@ from app.helpers.message_helpers import build_current_time_message
 from app.models.agent_models import AgentConfigurable, AgentUserContext, agent_configurable
 from app.services.workflow.knowledge import build_connected_integrations_hint
 from app.services.workflow.subagent_output import parse_subagent_response
+from app.utils.stream_utils import extract_tool_entries_from_update
 from app.utils.workflow_utils import unknown_integration_ids
 from shared.py.wide_events import log
 
@@ -324,8 +325,6 @@ class WorkflowSubagentRunner:
         emitted_tool_calls: set[str],
     ) -> None:
         """Stream tool entries carried in one graph-updates event."""
-        from app.utils.stream_utils import extract_tool_entries_from_update
-
         for _node_name, state_update in payload.items():
             entries = await extract_tool_entries_from_update(
                 state_update=state_update,

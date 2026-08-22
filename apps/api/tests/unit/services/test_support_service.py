@@ -697,7 +697,6 @@ class TestCreateSupportRequestWithAttachments:
         mock_log.set.assert_called_once_with(
             component="support_service",
             user_id=USER_ID,
-            user_email=USER_EMAIL,
             attachment_count=2,
         )
         db_log = next(

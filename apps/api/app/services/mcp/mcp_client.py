@@ -1203,6 +1203,19 @@ class MCPClient:
         """Resolve OAuth client credentials from config or environment."""
         return resolve_client_credentials(mcp_config)
 
+    @staticmethod
+    def _metadata_document_candidate() -> tuple[str, bool, str]:
+        """Compute ``(api_base, is_localhost, client metadata document URL)``.
+
+        Shared by auth-URL building and token exchange so the client_id used in
+        the authorization request cannot drift from the one sent to the token
+        endpoint. Per draft-ietf-oauth-client-id-metadata-document, the
+        client_id can be the URL to the client metadata document — but only
+        when the auth server can actually fetch it (non-localhost API base).
+        """
+        api_base = get_api_base_url()
+        return api_base, is_localhost_url(api_base), get_client_metadata_document_url(api_base)
+
     async def _client_id_from_metadata_or_dcr(
         self,
         integration_id: str,
@@ -1210,23 +1223,15 @@ class MCPClient:
         redirect_uri: str,
     ) -> str | None:
         """Fallback client_id sources: metadata document URL (priority 3) or fresh DCR (priority 4)."""
-        # Per draft-ietf-oauth-client-id-metadata-document, the client_id can be
-        # the URL to the client metadata document.
-        #
-        # IMPORTANT: Only use client metadata document when our API is publicly
-        # accessible. The auth server needs to fetch our metadata document to
-        # validate the client. When running on localhost, this is impossible.
-        api_base = get_api_base_url()
-        is_localhost = is_localhost_url(api_base)
+        _, is_localhost, metadata_doc_url = self._metadata_document_candidate()
 
         if oauth_config.as_metadata.client_id_metadata_document_supported and not is_localhost:
-            client_id = get_client_metadata_document_url(api_base)
             log.info(
                 f"{LogTag.MCP} Using client metadata document URL as client_id for",
                 integration_id=integration_id,
-                client_id=client_id,
+                client_id=metadata_doc_url,
             )
-            return client_id
+            return metadata_doc_url
 
         # Fall back to Dynamic Client Registration (DCR). Also required when
         # running locally since the auth server cannot reach localhost to
@@ -1549,15 +1554,13 @@ class MCPClient:
             return dcr_data.get("client_id"), dcr_data.get("client_secret")
 
         # 3. Client Metadata Document URL (must match build_oauth_auth_url logic)
-        api_base = get_api_base_url()
-        is_localhost = is_localhost_url(api_base)
+        _, is_localhost, metadata_doc_url = self._metadata_document_candidate()
         if oauth_config.as_metadata.client_id_metadata_document_supported and not is_localhost:
-            client_id = get_client_metadata_document_url(api_base)
             log.info(
                 f"{LogTag.MCP} Using client metadata document URL as client_id for token exchange",
-                client_id=client_id,
+                client_id=metadata_doc_url,
             )
-            return client_id, None
+            return metadata_doc_url, None
 
         return None, None
 
@@ -1622,34 +1625,33 @@ class MCPClient:
         """Compare the id_token nonce against the value stored during auth URL build."""
         id_token = tokens.get("id_token")
         if not id_token:
-            log.warning(
-                f"{LogTag.MCP} OIDC nonce stored but no id_token in response for",
-                integration_id=integration_id,
+            raise ValueError(
+                f"OIDC nonce validation failed for {integration_id}: "
+                "token response contained no id_token"
             )
-            return
 
-        token_nonce: str | None
         try:
             # Decode JWT payload without verification (nonce is for replay protection)
             payload_b64 = id_token.split(".")[1]
             # Add padding
             payload_b64 += "=" * (4 - len(payload_b64) % 4)
             payload = _json.loads(base64.urlsafe_b64decode(payload_b64))
-            token_nonce = payload.get("nonce")
         except Exception as e:
-            log.warning(
-                f"{LogTag.MCP} Could not decode id_token for nonce validation",
-                integration_id=integration_id,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            token_nonce = None
+            raise ValueError(
+                f"OIDC nonce validation failed for {integration_id}: could not decode id_token"
+            ) from e
 
-        if token_nonce is not None and token_nonce != stored_nonce:
+        token_nonce = payload.get("nonce")
+        if token_nonce is None:
+            raise ValueError(
+                f"OIDC nonce validation failed for {integration_id}: "
+                "id_token carries no nonce claim"
+            )
+
+        if token_nonce != stored_nonce:
             raise ValueError(f"OIDC nonce mismatch for {integration_id}: possible replay attack")
 
-        if token_nonce is not None:
-            log.debug(f"{LogTag.MCP} OIDC nonce validated for", integration_id=integration_id)
+        log.debug(f"{LogTag.MCP} OIDC nonce validated for", integration_id=integration_id)
 
     async def handle_oauth_callback(
         self,

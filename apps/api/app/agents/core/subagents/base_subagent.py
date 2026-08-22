@@ -254,7 +254,7 @@ class SubAgentFactory:
             "llm": llm,
             "tool_registry": scoped_tool_dict,  # Use scoped dict instead of global
             "agent_config": AgentConfig(agent_name=name, middleware=middleware),
-            "hook_config": HookConfig(
+            "hooks_config": HookConfig(
                 pre_model_hooks=worker_pre_model_hooks(todo_hook),
                 end_graph_hooks=[memory_node],
             ),

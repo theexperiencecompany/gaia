@@ -197,7 +197,9 @@ class TestSubmitSupportRequest:
                         data={"type": "support", "title": "T", "description": "Something broke"},
                     )
             finally:
-                if original is not None:
+                if original is None:
+                    test_app.dependency_overrides.pop(get_current_user, None)
+                else:
                     test_app.dependency_overrides[get_current_user] = original
 
             assert resp.status_code == 401

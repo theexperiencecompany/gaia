@@ -569,7 +569,7 @@ class TestGetPersonalization:
 class TestGetPersonalizationPins:
     """Exact pins for the personalization endpoint's guards and log calls."""
 
-    async def test_invalid_user_id_type_returns_exact_400(self, client: AsyncClient):
+    async def test_invalid_user_id_type_returns_exact_400(self, client: AsyncClient) -> None:
         with patch(
             "app.api.v1.endpoints.onboarding.get_current_user",
             return_value={"user_id": 12345},
@@ -582,7 +582,7 @@ class TestGetPersonalizationPins:
         assert exc.value.detail == "Invalid user_id"
         _ = response
 
-    async def test_missing_user_id_key_returns_exact_400(self):
+    async def test_missing_user_id_key_returns_exact_400(self) -> None:
         with pytest.raises(HTTPException) as exc:
             await get_onboarding_personalization(user=cast(AuthenticatedUser, {}))
         assert exc.value.status_code == 400

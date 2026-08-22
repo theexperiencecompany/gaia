@@ -383,6 +383,7 @@ async def edit_workflow(
                 user_name=user_name,
                 user_timezone=user_timezone,
                 stream_writer=writer,
+                base_configurable=agent_configurable(config),
             ),
         )
 

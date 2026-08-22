@@ -244,7 +244,7 @@ async def create_support_request(
 
     Atomic: if email sending fails, the support request is deleted.
     """
-    log.set(component="support_service", user_id=user_id, user_email=user_email)
+    log.set(component="support_service", user_id=user_id)
     request_id = None
     try:
         # Generate unique IDs

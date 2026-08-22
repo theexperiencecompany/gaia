@@ -44,12 +44,12 @@ class TestGitHubListRepositoriesInput:
             GitHubListRepositoriesInput(direction=direction)
 
     @pytest.mark.parametrize("sort", ["stars", "name", ""])
-    def test_invalid_sort_literal(self, sort):
+    def test_invalid_sort_literal(self, sort: str) -> None:
         with pytest.raises(ValidationError):
             GitHubListRepositoriesInput(sort=sort)
 
     @pytest.mark.parametrize("repo_type", ["starred", "forked", ""])
-    def test_invalid_type_literal(self, repo_type):
+    def test_invalid_type_literal(self, repo_type: str) -> None:
         with pytest.raises(ValidationError):
             GitHubListRepositoriesInput(type=repo_type)
 

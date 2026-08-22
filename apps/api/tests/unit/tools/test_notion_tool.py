@@ -36,7 +36,9 @@ def _capture_tools(
 
     def custom_tool(**kwargs: Any) -> Callable[[Any], Any]:
         def decorator(fn: Any) -> Any:
-            captured[fn.__name__] = (fn, kwargs)
+            # Composio registers custom tools under "<TOOLKIT>_<fn name>".
+            registered_name = f"{kwargs.get('toolkit', '')}_{fn.__name__}"
+            captured[registered_name] = (fn, kwargs)
             return fn
 
         return decorator
@@ -56,7 +58,7 @@ def test_register_returns_exact_tool_names_and_toolkits() -> None:
 
 def test_fetch_data_app_error_raises_runtime_error_with_message() -> None:
     _, tools = _capture_tools(register_notion_custom_tools)
-    fetch_data, _ = tools["FETCH_DATA"]
+    fetch_data, _ = tools["NOTION_FETCH_DATA"]
     error = AppError(message="Notion API error (500)", status_code=500)
 
     with patch(f"{MODULE}.proxy_request_sync", side_effect=error):
@@ -69,7 +71,7 @@ def test_fetch_data_app_error_raises_runtime_error_with_message() -> None:
 
 def test_fetch_data_unexpected_error_raises_runtime_error_with_str() -> None:
     _, tools = _capture_tools(register_notion_custom_tools)
-    fetch_data, _ = tools["FETCH_DATA"]
+    fetch_data, _ = tools["NOTION_FETCH_DATA"]
     error = ValueError("connection reset")
 
     with patch(f"{MODULE}.proxy_request_sync", side_effect=error):

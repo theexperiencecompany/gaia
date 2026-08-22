@@ -482,7 +482,7 @@ class TestCreateWorkflowPins:
     async def test_log_context_is_exact(self) -> None:
         from app.agents.tools.workflow_tool import create_workflow
 
-        parsed = _make_parsed_result(mode="clarifying", questions=["what time?"])
+        parsed = _make_parsed_result(mode="clarifying", message="what time of day?")
         with (
             patch(f"{MODULE}.log") as mock_log,
             patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
@@ -514,7 +514,7 @@ class TestCreateWorkflowPins:
     async def test_subagent_receives_the_exact_context(self) -> None:
         from app.agents.tools.workflow_tool import create_workflow
 
-        parsed = _make_parsed_result(mode="clarifying", questions=["q"])
+        parsed = _make_parsed_result(mode="clarifying", message="which services?")
         with (
             patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.parse_subagent_response", return_value=parsed),

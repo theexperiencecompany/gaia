@@ -766,6 +766,8 @@ async def update_label_route(
                 name=request.name,
                 label_list_visibility=request.label_list_visibility,
                 message_list_visibility=request.message_list_visibility,
+                background_color=request.background_color,
+                text_color=request.text_color,
             ),
         )
         log.set(

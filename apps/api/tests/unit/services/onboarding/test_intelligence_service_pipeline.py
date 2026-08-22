@@ -309,15 +309,8 @@ def _finalize_ctx(**overrides: Any) -> OnboardingContext:
 
 def _finalize_kwargs(**overrides: Any) -> dict[str, Any]:
     payload: dict[str, Any] = {
-        "name": "Ann",
-        "profession": "lawyer",
-        "triage": None,
         "todos": [],
         "workflows": [],
-        "writing_style": None,
-        "has_gmail": False,
-        "focus": "close Q3",
-        "clarify_answers": [],
         "provision_future": None,
     }
     payload.update(overrides)

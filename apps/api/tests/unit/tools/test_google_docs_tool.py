@@ -35,7 +35,9 @@ def _capture_tools(
 
     def custom_tool(**kwargs: Any) -> Callable[[Any], Any]:
         def decorator(fn: Any) -> Any:
-            captured[fn.__name__] = (fn, kwargs)
+            # Composio registers custom tools under "<TOOLKIT>_<fn name>".
+            registered_name = f"{kwargs.get('toolkit', '')}_{fn.__name__}"
+            captured[registered_name] = (fn, kwargs)
             return fn
 
         return decorator
@@ -55,7 +57,7 @@ def test_register_returns_exact_tool_names_and_toolkits() -> None:
 
 def test_delete_doc_raises_runtime_error_on_app_error() -> None:
     _, tools = _capture_tools(register_google_docs_custom_tools)
-    delete_doc, _ = tools["CUSTOM_DELETE_DOC"]
+    delete_doc, _ = tools["GOOGLEDOCS_CUSTOM_DELETE_DOC"]
     error = AppError(message="Drive API error (403)", status_code=403)
 
     with patch(f"{MODULE}.proxy_request_sync", side_effect=error) as proxy:
