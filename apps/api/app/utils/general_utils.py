@@ -1,5 +1,5 @@
 import base64
-from datetime import UTC, datetime
+from datetime import datetime
 import json
 from pathlib import Path
 import tomllib
@@ -64,8 +64,7 @@ def get_context_window(text: str, query: str, chars_before: int = 15, chars_afte
 def transform_gmail_message(msg: dict[str, Any]) -> dict[str, Any]:
     """Transform a Gmail API or Composio message into the frontend-friendly format,
     keeping every raw key alongside the derived ones."""
-    # Deferred import: third-party dateutil parser needed only by this Gmail message transform
-    from dateutil.parser import parse as parse_date  # noqa: PLC0415 -- third-party
+    from dateutil.parser import parse as parse_date  # noqa: PLC0415 -- cycle
 
     def get_sender(m: dict[str, Any]) -> str:
         return m.get("from") or m.get("sender") or ""
@@ -84,7 +83,7 @@ def transform_gmail_message(msg: dict[str, Any]) -> dict[str, Any]:
         if m.get("internalDate"):
             try:
                 timestamp = int(m["internalDate"]) / 1000
-                return datetime.fromtimestamp(timestamp, tz=UTC).strftime("%Y-%m-%d %H:%M")
+                return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")
             except Exception:
                 return str(m["internalDate"])
         return ""
@@ -181,7 +180,7 @@ def get_project_info() -> ProjectInfo:
     try:
         # Path to pyproject.toml from this file location
         pyproject_path = Path(__file__).parent.parent.parent / "pyproject.toml"
-        with pyproject_path.open("rb") as f:
+        with open(pyproject_path, "rb") as f:
             pyproject_data = tomllib.load(f)
             project = pyproject_data.get("project", {})
             return ProjectInfo(
