@@ -421,7 +421,7 @@ Rules for GitHub Actions, Nx affected, and Cloudflare deploys. Follow exactly �
 - **Emit timing summaries every lane.** Each job appends duration + cache hit/miss to `$GITHUB_STEP_SUMMARY` and uses `::group::` for install logs plus `::error file=,line=` / `::warning` annotations. No lane fails silently.
 - **Cloudflare deploys only via GitHub.** `deploy-web.yml` builds `pnpm --filter web cf:build`, uploads `apps/web/.open-next`, then deploys with `cloudflare/wrangler-action@v3` using `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` (minimal scope: Workers Scripts Write + R2 Write/Read + Routes Write). Workers Dashboard → Settings → Builds must stay Disconnected (`version_upload` only). PR previews deploy as `pr-<number>`; prod only on `refs/heads/master`.
 - **Move heavy scans to cron.** `trivy`, `pip-audit`, and mutation testing (2–3 runners, skip modules <5 lines) run weekly in `security-cron.yml`, not on every PR.
-- **Verify with real workflow runs + charts.** After CI changes, trigger `gh workflow run <workflow> --ref <branch>` on the branch, collect `gh run list` timings, and publish before/after bars in `.agents/ci-report.html` or `docs/ci-metrics.md`. Never claim CI is faster without measured runs.
+- **Verify with real workflow runs + charts.** After CI changes, trigger `gh workflow run <workflow> --ref <branch>` on the branch, collect `gh run list` timings, and publish before/after bars in the PR body (images on the `pr-assets` branch) or `.agents/ci-report.html` (gitignored) — never commit metrics files into the source tree. Never claim CI is faster without measured runs.
 
 ## CI Discrepancies & Conventions — What Was Fixed and How To Keep It Fixed
 
