@@ -1264,39 +1264,6 @@ class TestTruncateTierKwargs:
         assert seen["content_str"] == content
 
 
-class TestWriteRawOutputPath:
-    def test_relative_path_shape_is_pinned(self) -> None:
-        """timestamp format (%Y%m%d_%H%M%S), md5 suffix, and ext all live in
-        this one f-string; a regex pins the whole shape at once."""
-        import asyncio
-        import re as _re
-
-        from app.agents.middleware import compaction as cm
-
-        async def run():
-            with patch(
-                "app.agents.middleware.compaction.write_session_file",
-                new_callable=AsyncMock,
-                return_value=("/host/x", "/workspace/sessions/c/tool_outputs/PLACEHOLDER"),
-            ):
-                return await cm._write_raw_output(
-                    content_str='[{"a": 1}]',
-                    tool_name="search",
-                    user_id="u",
-                    conversation_id="c",
-                )
-
-        fmt, sandbox = asyncio.run(run())
-        # PLACEHOLDER sits exactly where relative_path lands, so the regex
-        # below validates everything compact_tool_output itself constructed.
-        m = _re.match(
-            r"^/workspace/sessions/c/tool_outputs/"
-            r"search_(\d{8}_\d{6})_[0-9a-f]{8}\.(json|txt)$",
-            sandbox.replace("PLACEHOLDER", "search_20260101_000000_ab12cd34.json"),
-        )
-        assert m is not None
-
-
 class TestNoSpillWarningPayload:
     async def test_truncation_warning_kwargs_are_exact(self) -> None:
         from app.agents.middleware import compaction as cm
@@ -1700,3 +1667,135 @@ class TestUnusablePayloadKwargs:
         assert "MISSING" not in kwargs.values()
         assert kwargs["user_id"] == "missing"
         assert kwargs["conversation_id"] == "missing"
+
+
+class TestWritePathAndIdentityKwargs:
+    """Kills the remaining write-path and identity-warning mutants."""
+
+    def test_write_raw_output_timestamp_format_is_exact(self) -> None:
+        import asyncio
+        import re as _re
+
+        from app.agents.middleware.compaction import _write_raw_output as wro_fn
+
+        captured = {}
+
+        async def fake_write(*, user_id, conversation_id, relative_path, content):
+            captured["relative_path"] = relative_path
+            return ("/h", "/w/s/c/" + relative_path)
+
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(cm, "write_session_file", fake_write)
+        try:
+            asyncio.run(
+                wro_fn(content_str='{"a": 1}', tool_name="search", user_id="u", conversation_id="c")
+            )
+        finally:
+            monkeypatch.undo()
+
+        m = _re.search(
+            r"search_\d{8}_\d{6}_[0-9a-f]{8}\.(json|jsonl|txt)$", captured["relative_path"]
+        )
+        assert m is not None, captured["relative_path"]
+
+    async def test_no_identity_warning_conversation_id_set_variant(self) -> None:
+        from app.agents.middleware import compaction as cm
+
+        log = _StubLog()
+
+        async def fake_digest(llm, content_str, tool_name):
+            return "d"
+
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(cm, "log", log)
+        try:
+            await cm.compact_tool_output(
+                content="x" * 5000,
+                tool_name="search",
+                tool_call_id="c1",
+                user_id="u1",
+                conversation_id=None,
+                context_usage=0.5,
+                max_output_chars=100_000,
+                compaction_threshold=0.4,
+                summary_llm=None,
+            )
+        finally:
+            monkeypatch.undo()
+
+        matches = [(m, k) for m, k in log.records if "no workspace identity" in m]
+        assert len(matches) == 1
+        _, kwargs = matches[0]
+        assert kwargs["user_id"] == "set"
+        assert kwargs["conversation_id"] == "missing"
+
+    async def test_spill_error_payload_includes_message_and_type(self) -> None:
+        from app.agents.middleware import compaction as cm
+
+        log = _StubLog()
+
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(cm, "log", log)
+        try:
+            mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=_BrokenModel())
+
+            async def handler(_req):
+                return ToolMessage(content="x" * 5000, tool_call_id="c1", name="search")
+
+            with patch(
+                "app.agents.middleware.compaction.write_session_file",
+                new_callable=AsyncMock,
+                side_effect=OSError("disk exploded badly"),
+            ):
+                await mw.awrap_tool_call(_request(), handler)
+        finally:
+            monkeypatch.undo()
+
+        errs = [(m, k) for m, k in log.records if "Workspace spill failed" in m]
+        assert len(errs) == 1
+        _, kwargs = errs[0]
+        # exact payload: every field present with real values
+        assert kwargs["tool_name"] == "search"
+        assert kwargs["error"] == "disk exploded badly"
+        assert kwargs["error_type"] == "OSError"
+
+    async def test_stub_spill_kwargs_merge_preserves_existing(self) -> None:
+        import json as _json
+
+        from app.agents.middleware import compaction as cm
+
+        calls = {}
+
+        async def fake_write(**kw):
+            return ("json", "/workspace/sessions/c/x.json")
+
+        def fake_stub(**kw):
+            calls.update(kw)
+            return ToolMessage(content="stub", tool_call_id="call_1", name="search")
+
+        mw = WorkspaceCompactionMiddleware(max_output_chars=1000)
+        content = _json.dumps([{"i": i} for i in range(300)])
+
+        async def handler(_req):
+            return ToolMessage(
+                content=content,
+                tool_call_id="call_1",
+                name="search",
+                additional_kwargs={"pre": True},
+            )
+
+        request = SimpleNamespace(
+            tool_call={"name": "search", "id": "call_1", "args": {}},
+            runtime=SimpleNamespace(
+                config={"configurable": {"user_id": "u1", "vfs_session_id": "c1"}}
+            ),
+            state={"messages": []},
+        )
+
+        with (
+            patch.object(cm, "_write_raw_output", side_effect=fake_write),
+            patch.object(cm, "_stub_spill_message", side_effect=fake_stub),
+        ):
+            await mw.awrap_tool_call(request, handler)
+
+        assert calls["existing_additional_kwargs"] == {"pre": True}
