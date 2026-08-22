@@ -347,6 +347,13 @@ jobs:
       - name: Setup Node.js + pnpm
         uses: ./.github/actions/setup-node-pnpm
 
+      # Restore the Next.js compiler cache into the build context: the
+      # .dockerignore negation (**/.next/* + !**/.next/cache) lets `COPY . .`
+      # carry it into the builder, so `next build` inside Docker starts from
+      # the same warm compiler cache cf:build uses. apps/web/.next/cache has a
+      # committed .gitkeep so local/self-host builds always have the dir.
+      - uses: ./.github/actions/restore-nextjs-cache
+
       # Convert Nx affected output into a simple boolean consumed by downstream jobs.
       - name: Check if web is affected
         id: web-affected
