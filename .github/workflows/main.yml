@@ -597,13 +597,37 @@ jobs:
           done
           echo "All required jobs passed or were skipped."
 
-  # --- Trigger Docker build (master only) ---------------------------------
-  # always() is required to suppress the implicit success() check, which walks
-  # the transitive needs graph and returns false when any ancestor lane
-  # (e.g. build / test-typescript on a Python-only change) was skipped —
-  # even though quality-gate itself succeeded.
-  trigger-build:
-    needs: [quality-gate]
-    if: ${{ always() && needs.quality-gate.result == 'success' && github.ref == 'refs/heads/master' }}
+  # --- Docker phase, split so the long part runs parallel to the gate -------
+  # build-images starts right after detect (master only) and builds/publishes
+  # the docker images while all test lanes run; trigger-build then runs the
+  # deploy plan + swarm deploy after quality-gate, using the build phase's
+  # outputs as inputs (see build.yml phase input). The deploy decision lives
+  # in compute-deploy-plan.sh with GATE_RESULT as an explicit input, so a
+  # failed gate still fires the publish-without-deploy orphan alert instead of
+  # silently skipping everything.
+  build-images:
+    needs: [detect]
+    if: ${{ always() && needs.detect.result == 'success' && github.ref == 'refs/heads/master' }}
     uses: ./.github/workflows/build.yml
+    with:
+      phase: build
+    secrets: inherit # pragma: allowlist secret
+  trigger-build:
+    # always() is required to suppress the implicit success() check, which
+    # walks the transitive needs graph and returns false when any ancestor
+    # lane was skipped. Runs on every master run — gate failure must still
+    # reach the deploy plan so the orphan guardrail fires.
+    needs: [quality-gate, build-images]
+    if: ${{ always() && github.ref == 'refs/heads/master' }}
+    uses: ./.github/workflows/build.yml
+    with:
+      phase: deploy
+      gate_result: ${{ needs.quality-gate.result }}
+      api_affected: ${{ needs.build-images.outputs.api_affected }}
+      bots_affected: ${{ needs.build-images.outputs.bots_affected }}
+      images_published: ${{ needs.build-images.outputs.images_published }}
+      apps_image_tag: ${{ needs.build-images.outputs.apps_tag }}
+      bots_image_tag: ${{ needs.build-images.outputs.bots_tag }}
+      grafana_image_tag: ${{ needs.build-images.outputs.grafana_tag }}
+      docker_release_result: ${{ needs.build-images.outputs.docker_release_result }}
     secrets: inherit # pragma: allowlist secret
