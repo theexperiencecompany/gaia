@@ -48,8 +48,8 @@ from typing import Any, Literal
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ToolCallRequest
+from langchain_core.language_models import LanguageModelLike
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage, ToolMessage
-from langchain_core.runnables import Runnable
 from langgraph.types import Command
 
 from app.agents.workspace.offload import (
@@ -182,7 +182,7 @@ def _summary_input_sample(content_str: str) -> str:
 
 
 async def _llm_summarize_output(
-    summary_llm: Runnable, content_str: str, tool_name: str
+    summary_llm: LanguageModelLike, content_str: str, tool_name: str
 ) -> str | None:
     """Digest an oversized tool output into a bounded in-context summary.
 
@@ -211,9 +211,18 @@ async def _llm_summarize_output(
             f"{LogTag.AGENT} LLM compaction summary failed; falling back to deterministic tiers",
             tool_name=tool_name,
             error_type=type(e).__name__,
+            error=str(e),
         )
         return None
-    text = extract_text_content(response.content).strip()
+    response_message = getattr(response, "content", "")
+    if not isinstance(response_message, (str, list)):
+        log.warning(
+            f"{LogTag.AGENT} LLM compaction summary returned an unusable payload",
+            tool_name=tool_name,
+            payload_type=type(response_message).__name__,
+        )
+        return None
+    text = extract_text_content(response_message).strip()
     if not text:
         log.warning(
             f"{LogTag.AGENT} LLM compaction summary was empty; falling back to deterministic tiers",
@@ -473,7 +482,7 @@ async def compact_tool_output(
     always_persist: bool = False,
     excluded: bool = False,
     existing_additional_kwargs: dict[str, Any] | None = None,
-    summary_llm: Runnable | None = None,
+    summary_llm: LanguageModelLike | None = None,
 ) -> ToolMessage | None:
     """Decide-and-compact a tool output. The one canonical compaction path.
 
@@ -534,6 +543,7 @@ async def compact_tool_output(
             log.error(
                 f"{LogTag.AGENT} Workspace spill failed, compacting without a spill",
                 tool_name=tool_name,
+                error=str(e),
                 error_type=type(e).__name__,
             )
 
@@ -597,7 +607,7 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
         always_persist_tools: list[str] | None = None,
         context_window: int = DEFAULT_MAX_TOKENS,
         excluded_tools: set[str] | None = None,
-        summary_llm: Runnable | None = None,
+        summary_llm: LanguageModelLike | None = None,
     ) -> None:
         super().__init__()
         self.compaction_threshold = compaction_threshold

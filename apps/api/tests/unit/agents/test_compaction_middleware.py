@@ -9,24 +9,29 @@ persistence logic.
 
 import asyncio
 import json
+import re as _re
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock, patch
 
-from langchain_core.language_models import BaseChatModel
+from langchain_core.language_models import BaseChatModel, LanguageModelLike
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
-from langchain_core.runnables import Runnable
 from langgraph.types import Command
 import pytest
 
+from app.agents.middleware import compaction as cm
 from app.agents.middleware.compaction import (
     COMPACTION_TRUNCATED_MARKER,
     WorkspaceCompactionMiddleware,
+    _offload_kwargs,
+    _stub_spill_message,
     _summarize_output,
+    _summarized_compact_message,
     _summary_input_sample,
     should_compact_output,
 )
+from app.agents.workspace.offload import read_offload
 from app.constants.offload import OFFLOAD_KEY
 from app.constants.summarization import (
     COMPACTION_FALLBACK_HEAD_CHARS,
@@ -440,8 +445,6 @@ class _OverCapDigestModel(BaseChatModel):
         raise NotImplementedError
 
     async def _agenerate(self, messages, stop=None, run_manager=None, **k):
-        from app.constants.summarization import COMPACTION_SUMMARY_MAX_CHARS
-
         return ChatResult(
             generations=[
                 ChatGeneration(message=AIMessage(content="y" * (COMPACTION_SUMMARY_MAX_CHARS + 10)))
@@ -467,7 +470,7 @@ class TestLLMSummary:
 
     def _mw(self, llm: object) -> WorkspaceCompactionMiddleware:
         return WorkspaceCompactionMiddleware(
-            max_output_chars=1000, summary_llm=cast("Runnable", llm)
+            max_output_chars=1000, summary_llm=cast("LanguageModelLike", llm)
         )
 
     @staticmethod
@@ -644,8 +647,6 @@ class TestDigestComposition:
     wording per format, kwargs fields, status passthrough, kwargs merging."""
 
     def _build(self, *, fmt="json", spilled=True, status="success", extra=None):
-        from app.agents.middleware.compaction import _summarized_compact_message
-
         path = WROTE[1]
         msg = _summarized_compact_message(
             summary="the digest",
@@ -676,7 +677,6 @@ class TestDigestComposition:
     def test_text_pointer_offers_grep_only(self) -> None:
         body = self._build(fmt="text").content
         # exact word: "XXgrepXX" (a corrupted wording) contains "grep" too
-        import re as _re
 
         assert _re.search(r"(?<!X)grep(?!X)", body)
         assert "query_json" not in body
@@ -703,8 +703,6 @@ class TestDigestComposition:
         assert self._build(status="error").status == "error"
 
     def test_message_fields_carry_the_tool_and_format(self) -> None:
-        from app.agents.workspace.offload import read_offload
-
         msg = self._build(fmt="json")
         # the ToolMessage name routes the reply back to the right tool call
         assert msg.name == "search"
@@ -719,7 +717,6 @@ class TestDigestComposition:
 
     def test_builder_uses_summary_verbatim(self) -> None:
         """Capping happens in _llm_summarize_output; the builder renders as-is."""
-        from app.agents.middleware.compaction import _summarized_compact_message
 
         msg = _summarized_compact_message(
             summary="a" * 500,
@@ -736,8 +733,6 @@ class TestDigestComposition:
 
 class TestOffloadKwargsFields:
     def test_every_field_is_set_from_the_inputs(self) -> None:
-        from app.agents.middleware.compaction import _offload_kwargs
-
         info = _offload_kwargs(
             sandbox_path="/w/x.json", fmt="json", content_str="héllo", tool_name="t"
         )
@@ -751,8 +746,6 @@ class TestOffloadKwargsFields:
 
 class TestStubSpillBody:
     def test_stub_body_pieces(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from app.agents.middleware.compaction import _stub_spill_message
-
         content = json.dumps([{"i": i} for i in range(40)])
         msg = _stub_spill_message(
             content_str=content,
@@ -773,14 +766,11 @@ class TestStubSpillBody:
         assert kw["compaction_strategy"] == "workspace_spill"
         assert kw["original_length"] == len(content)
         assert kw["pre"] == 1
-        from app.agents.workspace.offload import read_offload
 
         info = read_offload(msg)
         assert info is not None and info["producer"] == "search"
 
     def test_stub_text_body_suggests_grep_only(self) -> None:
-        from app.agents.middleware.compaction import _stub_spill_message
-
         msg = _stub_spill_message(
             content_str="log line\n" * 300,
             fmt="text",
@@ -799,8 +789,6 @@ class TestLLMSummarizeInternals:
     async def test_prompt_carries_tool_name_and_sample(self) -> None:
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        from app.agents.middleware import compaction as cm
-
         _DIGEST_CAPTURE["messages"] = None
         result = await cm._llm_summarize_output(
             _RecordingDigestModel(), "HEAD" + "x" * 100_000 + "TAIL", "my_tool"
@@ -814,9 +802,6 @@ class TestLLMSummarizeInternals:
         assert "HEAD" in human.content and "TAIL" in human.content
 
     async def test_over_cap_response_gets_truncation_suffix(self) -> None:
-        from app.agents.middleware import compaction as cm
-        from app.constants.summarization import COMPACTION_SUMMARY_MAX_CHARS
-
         out = await cm._llm_summarize_output(_OverCapDigestModel(), "content", "tool")
         assert out is not None
         assert out.endswith("…[digest truncated]")
@@ -824,9 +809,6 @@ class TestLLMSummarizeInternals:
 
     async def test_digest_at_exactly_the_cap_is_not_truncated(self) -> None:
         from langchain_core.messages import AIMessage
-
-        from app.agents.middleware import compaction as cm
-        from app.constants.summarization import COMPACTION_SUMMARY_MAX_CHARS
 
         class Exactly(BaseChatModel):
             @property
@@ -853,7 +835,6 @@ class TestLLMSummarizeInternals:
     async def test_cap_slice_rstrips_trailing_whitespace(self) -> None:
         from langchain_core.messages import AIMessage
 
-        from app.agents.middleware import compaction as cm
         from app.constants.summarization import (
             COMPACTION_SUMMARY_MAX_CHARS as MAX,
         )
@@ -881,10 +862,6 @@ class TestLLMSummarizeInternals:
         assert not head.endswith(" ")
 
     async def test_timeout_is_enforced_per_call(self) -> None:
-        import asyncio
-
-        from app.agents.middleware import compaction as cm
-
         timeouts: list = []
         real_wait = asyncio.wait_for
 
@@ -902,8 +879,6 @@ class TestDigestWarningPayloads:
     grep for them when a lane degrades; they must not be able to go None."""
 
     async def test_llm_failure_warning_names_tool_and_error(self) -> None:
-        from app.agents.middleware import compaction as cm
-
         log = _StubLog()
 
         monkeypatch = pytest.MonkeyPatch()
@@ -921,8 +896,6 @@ class TestDigestWarningPayloads:
         assert kwargs["error_type"] == "RuntimeError"
 
     async def test_empty_digest_warning_names_tool(self) -> None:
-        from app.agents.middleware import compaction as cm
-
         log = _StubLog()
 
         monkeypatch = pytest.MonkeyPatch()
@@ -945,10 +918,8 @@ class TestKwargPlumbing:
     everything at every boundary and compare exactly."""
 
     async def test_spill_write_receives_identity_and_raw_content(self) -> None:
-        import json as _json
-
         mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=None)
-        content = _json.dumps([{"i": i} for i in range(500)])
+        content = json.dumps([{"i": i} for i in range(500)])
         request = SimpleNamespace(
             tool_call={"name": "search", "id": "call_1", "args": {}},
             runtime=SimpleNamespace(
@@ -980,8 +951,6 @@ class TestKwargPlumbing:
         assert captured["relative_path"].startswith("tool_outputs/search_")
 
     async def test_digest_failure_warning_carries_tool_kwarg(self) -> None:
-        from app.agents.middleware import compaction as cm
-
         log = _StubLog()
 
         monkeypatch = pytest.MonkeyPatch()
@@ -1001,8 +970,6 @@ class TestKwargPlumbing:
         assert fails[0][1]["tool_name"] == "search"
 
     async def test_no_spill_warning_carries_tool_kwarg(self) -> None:
-        from app.agents.middleware import compaction as cm
-
         log = _StubLog()
 
         monkeypatch = pytest.MonkeyPatch()
@@ -1026,8 +993,6 @@ class TestCompactToolOutputBoundary:
     — message fields, log payloads, write kwargs — or a None can slip through."""
 
     async def test_digest_success_path_pins_every_forwarded_kwarg(self) -> None:
-        import json as _json
-
         from langchain_core.messages import AIMessage
 
         captured: dict = {}
@@ -1047,7 +1012,7 @@ class TestCompactToolOutputBoundary:
                 )
 
         mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=Capturing())
-        content = _json.dumps([{"i": i} for i in range(500)])
+        content = json.dumps([{"i": i} for i in range(500)])
         original = ToolMessage(
             content=content,
             tool_call_id="call_1",
@@ -1094,8 +1059,6 @@ class TestCompactToolOutputBoundary:
         assert msg.additional_kwargs["custom"] == "keep"
 
     async def test_juicefs_warning_payload_is_exact(self) -> None:
-        from app.agents.middleware import compaction as cm
-
         log = _StubLog()
 
         monkeypatch = pytest.MonkeyPatch()
@@ -1116,8 +1079,6 @@ class TestCompactToolOutputBoundary:
         assert kwargs == {"tool_name": "search", "error_type": "JuiceFSUnavailable"}
 
     async def test_spill_error_warning_payload_is_exact(self) -> None:
-        from app.agents.middleware import compaction as cm
-
         log = _StubLog()
 
         monkeypatch = pytest.MonkeyPatch()
@@ -1144,8 +1105,6 @@ class TestCompactToolOutputBoundary:
         assert kwargs["error_type"] == "OSError"
 
     async def test_truncation_path_pins_message_fields_and_kwargs(self) -> None:
-        from app.agents.middleware import compaction as cm
-
         log = _StubLog()
 
         monkeypatch = pytest.MonkeyPatch()
@@ -1176,10 +1135,6 @@ class TestTruncateTierKwargs:
     """The truncation fallback receives the caller's context intact."""
 
     async def test_truncate_tier_receives_full_context(self) -> None:
-        import json as _json
-
-        from app.agents.middleware import compaction as cm
-
         seen: dict = {}
 
         def fake_truncate(**kwargs):
@@ -1191,7 +1146,7 @@ class TestTruncateTierKwargs:
             )
 
         mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=_BrokenModel())
-        content = _json.dumps([{"i": i} for i in range(500)])
+        content = json.dumps([{"i": i} for i in range(500)])
         request = SimpleNamespace(
             tool_call={"name": "run_query", "id": "call_9", "args": {}},
             runtime=SimpleNamespace(

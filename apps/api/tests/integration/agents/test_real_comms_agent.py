@@ -20,7 +20,9 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+from langchain_core.language_models import LanguageModelInput
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.runnables import RunnableConfig
 import pytest
 
 # ---------------------------------------------------------------------------
@@ -833,7 +835,14 @@ class TestRealCommsAgent:
         timeout_error = TimeoutError("LLM request timed out")
 
         class TimeoutFakeLLM(BindableToolsFakeModel):
-            async def ainvoke(self, *args, **kwargs):
+            async def ainvoke(
+                self,
+                input: LanguageModelInput,
+                config: RunnableConfig | None = None,
+                *,
+                stop: list[str] | None = None,
+                **kwargs: object,
+            ) -> AIMessage:
                 raise timeout_error
 
         fake_llm = TimeoutFakeLLM(responses=[])

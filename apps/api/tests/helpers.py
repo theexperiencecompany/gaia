@@ -12,6 +12,7 @@ from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
 )
 from langchain_core.messages import AIMessage, BaseMessage
+from pydantic import Field
 import pytest
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -97,23 +98,26 @@ def worker_mongo_db_name(base_name: str = "gaia_test") -> str:
 
 
 class BindableToolsFakeModel(FakeMessagesListChatModel):
-    """FakeMessagesListChatModel with bind_tools() support.
+    """Fake chat model whose pre-programmed responses survive bind_tools().
 
-    The real agent (create_agent.py) calls llm.bind_tools(tools) before each
-    invocation.  FakeMessagesListChatModel raises NotImplementedError for this.
-    This subclass returns itself so the fake pre-programmed responses are
-    preserved while production code that calls bind_tools() works correctly.
+    langchain-core >= 1.4 implements bind_tools on FakeMessagesListChatModel
+    itself (delegating through bind), so no override is needed here anymore.
+    Production code (create_agent.py) binds tools before every invocation;
+    the returned RunnableBinding still routes ainvoke back into this fake,
+    which answers from the messages it is shown.
 
     Every real chat LLM carries a context-window profile (init_*_llm pin it);
     fractional-token middleware raises without one, so the default here keeps
     graph-building tests on the same contract.
     """
 
-    def __init__(self, **kwargs: Any) -> None:
-        kwargs.setdefault("profile", {"max_input_tokens": 100_000})
-        super().__init__(**kwargs)
+    # The bind_tools() override below stays on purpose: langchain-core's
+    # inherited implementation returns a NEW RunnableBinding instead of self,
+    # and dozens of tests (plus create_agent's re-binding flow) rely on the
+    # fake remaining the same object with its scripted responses intact.
+    profile: dict[str, int] = Field(default={"max_input_tokens": 100_000})
 
-    def bind_tools(self, tools: Any, **kwargs: Any) -> "BindableToolsFakeModel":  # type: ignore[override]
+    def bind_tools(self, tools: Any, **kwargs: Any) -> "BindableToolsFakeModel":
         return self
 
 

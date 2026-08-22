@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, patch
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, ToolMessage
 
+from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
 from app.agents.middleware.factory import (
     create_comms_middleware,
@@ -111,7 +112,7 @@ class ConfigCapturingModel:
 
     def __init__(self, inner: BaseChatModel) -> None:
         self._inner = inner
-        self.captured: dict[str, Any] = {}
+        self.captured: dict[str, object] = {}
 
     def with_config(self, **kwargs: Any) -> BaseChatModel:
         self.captured.update(kwargs.get("configurable") or {})
@@ -164,9 +165,14 @@ class TestStackConfigurationPropagation:
     """The factory's knobs must land on the middleware that consumes them."""
 
     @staticmethod
-    def _stack(**kwargs) -> tuple:
-        from app.agents.middleware.accounting import LLMAccountingMiddleware
-
+    def _stack(
+        **kwargs: Any,
+    ) -> tuple[
+        LLMAccountingMiddleware | None,
+        WorkspaceArchivingSummarizationMiddleware | None,
+        WorkspaceCompactionMiddleware | None,
+        list,
+    ]:
         stack = create_middleware_stack(**kwargs)
         accounting = next((mw for mw in stack if isinstance(mw, LLMAccountingMiddleware)), None)
         summarizer = next(
