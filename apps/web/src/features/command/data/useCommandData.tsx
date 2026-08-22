@@ -464,8 +464,11 @@ export function useCommandData(host: CommandHost): CommandData {
       prepareNewChat();
       // Auto-send hands the query to ChatPage's send pipeline; prefill mode
       // drops it in the composer for the user to edit first.
+      // setPendingPrompt (not appendToInput): the latter hard-navigates via
+      // window.location.assign off /c, and a full reload drops the volatile
+      // pendingAutoSend flag — router.push keeps this an SPA handoff.
       useComposerStore.getState().setPendingAutoSend(autoSend);
-      useComposerStore.getState().appendToInput(query);
+      useComposerStore.getState().setPendingPrompt(query);
       router.push("/c");
       host.close();
     },

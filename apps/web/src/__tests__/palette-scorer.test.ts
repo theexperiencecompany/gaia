@@ -82,6 +82,34 @@ describe("scoreFields — multi-term and weighting", () => {
     expect(titleHit).toBeGreaterThan(keywordHit);
   });
 
+  it("matches terms scattered across fields (title + keywords), at averaged strength", () => {
+    // "new" lives in the title, "compose" only in keywords — the row must
+    // still surface, but below a single-field exact match.
+    const scattered = scoreFields("new compose", [
+      { text: "New chat", weight: 2 },
+      { text: "compose message", weight: 1 },
+    ]);
+    expect(scattered).toBeGreaterThan(0);
+
+    const singleFieldExact = scoreFields("new chat", [
+      { text: "New chat", weight: 2 },
+      { text: "compose message", weight: 1 },
+    ]);
+    // Both words are word-boundary prefix hits inside the title:
+    // (90 + 80) / 2 * weight 2
+    expect(singleFieldExact).toBe(170);
+    expect(scattered).toBeLessThan(singleFieldExact);
+  });
+
+  it("still zeroes when a term exists nowhere across fields", () => {
+    expect(
+      scoreFields("new zebra", [
+        { text: "New chat", weight: 2 },
+        { text: "compose message" },
+      ]),
+    ).toBe(0);
+  });
+
   it("averages per-term scores so extra terms don't inflate a field past an exact single-term match", () => {
     const singleExact = scoreFields("chat", [{ text: "chat", weight: 2 }]);
     const twoTerms = scoreFields("chat now", [

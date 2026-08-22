@@ -51,12 +51,9 @@ const MainChat = React.memo(function MainChat() {
   const openPricingModal = usePricingModalStore((s) => s.openModal);
   const pendingPrompt = usePendingPrompt();
   const { clearPendingPrompt } = useComposerTextActions();
-  // Once-only guard for the palette's auto-send ask (the chat layout can
-  // remount while the send is in flight — same hazard as workflow auto-send).
+  // Once-per-prompt guard for the palette's auto-send handoff (reset in the
+  // consumer effect below when the prompt is consumed / cleared).
   const autoAskFiredRef = useRef(false);
-  useEffect(() => {
-    if (!pendingPrompt) autoAskFiredRef.current = false;
-  }, [pendingPrompt]);
   const setActiveConversationId = useChatStore(
     (state) => state.setActiveConversationId,
   );
@@ -176,24 +173,31 @@ const MainChat = React.memo(function MainChat() {
   });
 
   useEffect(() => {
-    if (!pendingPrompt) return;
+    // Consume each prompt exactly once. StrictMode replays mount effects
+    // against the same state snapshot — without this guard an auto-send
+    // handoff is followed by a second pass reading the stale prompt and
+    // duplicating it into the composer.
+    if (!pendingPrompt) {
+      autoAskFiredRef.current = false;
+      return;
+    }
+    if (autoAskFiredRef.current) return;
+    autoAskFiredRef.current = true;
+
     // Palette "Ask GAIA" hands over with auto-send: skip the composer and
     // fire the message directly (once — the layout can remount mid-send).
     if (useComposerStore.getState().pendingAutoSend) {
-      if (autoAskFiredRef.current) return;
-      autoAskFiredRef.current = true;
-      const prompt = pendingPrompt;
-      clearPendingPrompt();
       useComposerStore.getState().setPendingAutoSend(false);
       setTimeout(() => {
-        sendMessage(prompt, { conversationId: null });
+        sendMessage(pendingPrompt, { conversationId: null });
       }, 0);
+      clearPendingPrompt();
       return;
     }
     if (appendToInputRef.current) {
       appendToInputRef.current(pendingPrompt);
-      clearPendingPrompt();
     }
+    clearPendingPrompt();
   }, [pendingPrompt, clearPendingPrompt, appendToInputRef, sendMessage]);
 
   useEffect(() => {

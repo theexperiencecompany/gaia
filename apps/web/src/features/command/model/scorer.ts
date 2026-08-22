@@ -60,29 +60,53 @@ export interface ScoredField {
 }
 
 /**
- * Score a whole query against weighted fields. Every whitespace-separated
- * term must match each field's text for that field to count; per-field term
- * scores are averaged so adding terms doesn't inflate a field past a
- * single-term exact match of another.
+ * Score a whole query against weighted fields.
+ *
+ * Preferred shape: every term matches inside ONE field — that field's
+ * weighted average is added (exact/prefix title hits dominate this way).
+ * When no single field holds the whole query but every term matches
+ * somewhere across fields (title has "new", keywords have "compose"), the
+ * best weighted per-term scores are averaged instead, so multi-term
+ * searches spanning an item's fields still surface it. Any unmatched term
+ * zeroes the item.
  */
 export function scoreFields(query: string, fields: ScoredField[]): number {
   const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (terms.length === 0) return 0;
 
-  let total = 0;
+  let fullFieldTotal = 0;
+  const bestPerTerm = new Map<string, { score: number; weight: number }>();
+
   for (const { text, weight = 1 } of fields) {
     if (!text) continue;
     let sum = 0;
     let allMatch = true;
     for (const term of terms) {
       const s = scoreTerm(term, text);
-      if (s === 0) {
+      // Track each term's best weighted hit across fields even when THIS
+      // field won't hold the whole query — the scattered pass needs it.
+      if (s > 0) {
+        sum += s;
+        const prev = bestPerTerm.get(term);
+        if (!prev || s * weight > prev.score * prev.weight) {
+          bestPerTerm.set(term, { score: s, weight });
+        }
+      } else {
         allMatch = false;
-        break;
       }
-      sum += s;
     }
-    if (allMatch) total += weight * (sum / terms.length);
+    if (allMatch) fullFieldTotal += weight * (sum / terms.length);
   }
-  return total;
+
+  if (fullFieldTotal > 0) return fullFieldTotal;
+
+  // Terms are scattered across fields — require each one to exist somewhere.
+  if (bestPerTerm.size < terms.length) return 0;
+  let total = 0;
+  for (const term of terms) {
+    const best = bestPerTerm.get(term);
+    if (!best) return 0;
+    total += best.score * best.weight;
+  }
+  return total / terms.length;
 }
