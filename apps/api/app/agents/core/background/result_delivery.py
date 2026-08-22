@@ -292,6 +292,7 @@ async def _narrate_and_deliver(
                 user=run.user,
                 user_id=user_id,
                 notification_text=notification_text,
+                origin=_delivery_origin(run),
             )
         await _dispatch_workflow_notification(
             msg_type=result_type,
@@ -879,3 +880,13 @@ async def _get_conversation_source(conversation_id: str, user_id: str) -> Conver
     except Exception as e:
         log.warning(f"{LogTag.AGENT} _get_conversation_source: lookup failed", error=str(e))
         return None
+
+
+def _delivery_origin(run: ExecutorRun) -> str:
+    """Name what produced this run's result, with machine ids, so a delivered
+    message recorded in a platform thread can be traced back to its source."""
+    name = f' "{run.workflow_title}"' if run.workflow_title else ""
+    origin = f"workflow{name} (id {run.workflow_id})"
+    if run.active_todo_id:
+        origin += f", tracked todo (id {run.active_todo_id})"
+    return origin

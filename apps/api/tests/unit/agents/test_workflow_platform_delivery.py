@@ -9,6 +9,8 @@ sibling platforms).
 
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from app.agents.core.background.workflow_platform_delivery import (
     _preferred_bot_platforms,
     deliver_workflow_result_to_platforms,
@@ -83,13 +85,15 @@ class TestPreferredBotPlatforms:
 
 
 class TestDeliverWorkflowResultToPlatforms:
+    ORIGIN = 'workflow "Morning digest" (id wf-1)'
+
     async def test_blank_text_is_a_no_op(self) -> None:
         with (
             patch(f"{MODULE}.PlatformLinkService.get_linked_platforms", AsyncMock()) as linked,
             patch(f"{MODULE}.fetch_channel_preferences", AsyncMock()),
         ):
             await deliver_workflow_result_to_platforms(
-                user=USER, user_id=USER_ID, notification_text="   "
+                user=USER, user_id=USER_ID, notification_text="   ", origin=self.ORIGIN
             )
 
         linked.assert_not_called()
@@ -101,7 +105,7 @@ class TestDeliverWorkflowResultToPlatforms:
             patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock()) as session,
         ):
             await deliver_workflow_result_to_platforms(
-                user=USER, user_id=USER_ID, notification_text=TEXT
+                user=USER, user_id=USER_ID, notification_text=TEXT, origin=self.ORIGIN
             )
 
         session.assert_not_called()
@@ -123,7 +127,7 @@ class TestDeliverWorkflowResultToPlatforms:
             ) as publish,
         ):
             await deliver_workflow_result_to_platforms(
-                user=USER, user_id=USER_ID, notification_text=TEXT
+                user=USER, user_id=USER_ID, notification_text=TEXT, origin=self.ORIGIN
             )
 
         assert session.await_count == 2
@@ -153,7 +157,7 @@ class TestDeliverWorkflowResultToPlatforms:
             ),
         ):
             await deliver_workflow_result_to_platforms(
-                user=USER, user_id=USER_ID, notification_text=TEXT
+                user=USER, user_id=USER_ID, notification_text=TEXT, origin=self.ORIGIN
             )
 
     async def test_a_failing_platform_does_not_block_the_other(self) -> None:
@@ -173,9 +177,58 @@ class TestDeliverWorkflowResultToPlatforms:
             ) as publish,
         ):
             await deliver_workflow_result_to_platforms(
-                user=USER, user_id=USER_ID, notification_text=TEXT
+                user=USER, user_id=USER_ID, notification_text=TEXT, origin=self.ORIGIN
             )
 
         # Telegram failed, Slack still delivered.
         assert publish.await_count == 1
         assert publish.await_args.args[0] == ConversationSource.SLACK
+
+
+class TestDeliveredResultsReachTheSessionThread:
+    """A result pushed into a bot session must also land in that conversation's
+    langgraph checkpoint thread — the Mongo save alone is invisible to the next
+    turn, which reads its history from the checkpoint, so GAIA had no memory of
+    results it had just sent to Telegram. The record carries the platform and
+    origin (with machine ids) so a later turn can backtrack to the source."""
+
+    ORIGIN = 'workflow "Morning digest" (id wf-1), tracked todo (id todo-9)'
+
+    async def _deliver(self, publish_result: OutboundResult) -> AsyncMock:
+        recorder = AsyncMock()
+        with (
+            patch(
+                f"{MODULE}.PlatformLinkService.get_linked_platforms", AsyncMock(return_value=LINKED)
+            ),
+            patch(f"{MODULE}.fetch_channel_preferences", AsyncMock(return_value=PREFERENCES)),
+            patch(
+                f"{MODULE}.BotService.get_or_create_session",
+                AsyncMock(side_effect=["tg-conv", "sl-conv"]),
+            ),
+            patch(f"{MODULE}.update_messages", AsyncMock()),
+            patch(f"{MODULE}.publish_outbound_message", AsyncMock(return_value=publish_result)),
+            patch(f"{MODULE}.record_platform_delivery", recorder),
+        ):
+            await deliver_workflow_result_to_platforms(
+                user=USER,
+                user_id=USER_ID,
+                notification_text=TEXT,
+                origin=self.ORIGIN,
+            )
+        return recorder
+
+    @pytest.mark.regression
+    async def test_published_result_is_recorded_in_each_session_thread(self) -> None:
+        record = await self._deliver(OutboundResult.PUBLISHED)
+
+        recorded = {call.args for call in record.await_args_list}
+        assert recorded == {
+            ("tg-conv", f"[Delivered to the user on Telegram — result of {self.ORIGIN}]: {TEXT}"),
+            ("sl-conv", f"[Delivered to the user on Slack — result of {self.ORIGIN}]: {TEXT}"),
+        }
+
+    @pytest.mark.regression
+    async def test_a_result_that_was_not_delivered_is_not_recorded(self) -> None:
+        record = await self._deliver(OutboundResult.FAILED)
+
+        record.assert_not_called()

@@ -96,6 +96,9 @@ class ExecutorRun:
     workflow_id: str | None = None
     workflow_title: str = ""
     workflow_notify_on_completion: bool = True
+    #: The tracked todo this run is bound to (a scheduled-todo trigger fired it),
+    #: so a delivered result can name its origin for later backtracking.
+    active_todo_id: str | None = None
 
     @classmethod
     def from_configurable(
@@ -129,6 +132,7 @@ class ExecutorRun:
             workflow_id=configurable.get("workflow_id"),
             workflow_title=configurable.get("workflow_title", ""),
             workflow_notify_on_completion=configurable.get("workflow_notify_on_completion", True),
+            active_todo_id=configurable.get("active_todo_id"),
         )
 
     @property

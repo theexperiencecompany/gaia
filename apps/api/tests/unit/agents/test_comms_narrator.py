@@ -10,11 +10,12 @@ to the comms checkpoint.
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from app.agents.core.background.comms_narrator import (
     narrate_executor_result,
     record_executor_cancellation,
+    record_platform_delivery,
 )
 from app.agents.core.graph_manager import GraphUnavailableError
 from app.agents.llm.lane import AgentRole
@@ -212,6 +213,37 @@ class TestRecordExecutorCancellation:
         graph.aupdate_state = AsyncMock(side_effect=RuntimeError("checkpoint down"))
         with _patch_graph(graph):
             await record_executor_cancellation(CONVERSATION_ID, "task-42", "send the email")
+
+
+class TestRecordPlatformDelivery:
+    async def test_delivered_message_is_appended_to_the_checkpoint(self) -> None:
+        graph = _fake_comms_graph()
+        with _patch_graph(graph):
+            await record_platform_delivery(CONVERSATION_ID, "Report is ready. It has 3 pages.")
+
+        graph.aupdate_state.assert_awaited_once()
+        call = graph.aupdate_state.await_args
+        assert call.args[0] == {"configurable": {"thread_id": CONVERSATION_ID}}
+        # GAIA's own voice on that platform, so the next turn reads it as a
+        # message it already sent.
+        assert call.kwargs["as_node"] == "agent"
+        messages = call.args[1]["messages"]
+        assert len(messages) == 1
+        assert isinstance(messages[0], AIMessage)
+        assert messages[0].content == "Report is ready. It has 3 pages."
+
+    async def test_blank_text_is_a_no_op(self) -> None:
+        graph = _fake_comms_graph()
+        with _patch_graph(graph):
+            await record_platform_delivery(CONVERSATION_ID, "   ")
+
+        graph.aupdate_state.assert_not_called()
+
+    async def test_failure_to_record_is_swallowed(self) -> None:
+        graph = _fake_comms_graph()
+        graph.aupdate_state = AsyncMock(side_effect=RuntimeError("checkpoint down"))
+        with _patch_graph(graph):
+            await record_platform_delivery(CONVERSATION_ID, "hello")
 
 
 class TestNarrationResolvesItsOwnCommsLane:
