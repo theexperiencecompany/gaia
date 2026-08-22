@@ -117,7 +117,10 @@ jobs:
           echo "### Build (nx) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "Build: OK ($AFFECTED_TS_PROJECTS)"
       - name: Save Nx cache
-        if: always()
+        # PR build outputs aren't reusable by master (different source hash);
+        # the upload is ~160s of wall time for a cache only exact re-runs of
+        # this SHA would hit. Master pushes keep the shared cache warm.
+        if: always() && github.event_name == 'push'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .nx/cache
