@@ -25,6 +25,20 @@ None of it is your job. Each one costs two minutes. Together they cost your afte
 
 **GAIA does that whole layer for you.** Not by giving you another app to drive, but by doing the work and telling you when it's done.
 
+## Features
+
+- **Proactive by default** — connect a tool and jobs start running on their own. No setup screen, no template to pick.
+- **Workflows** — scheduled or event-driven automations across your tools. Describe one in plain English and GAIA writes the steps.
+- **Memory** — remembers the people, projects and preferences that come up, and learns as you talk. Browse it as a list or a graph, and edit, export or delete any of it.
+- **Voice** — real-time, interruptible calls, plus a **"Hey GAIA"** wake word that runs [entirely on your device](libs/wake-word).
+- **Everywhere you already are** — iMessage, WhatsApp, Telegram, Slack and Discord, plus web, desktop and mobile. One account, one memory.
+- **32 integrations, or anything with an MCP server** — one-click OAuth for the popular ones, and no fixed catalogue beyond that.
+- **Runs real code** — a sandboxed Linux workspace per user. It can analyse a dataset and hand back a PDF, deck or spreadsheet.
+- **Deep research** — multi-source web research, not a single search box.
+- **37 built-in skills** — on the open [Agent Skills spec](https://agentskills.io), plus any you install from GitHub or write yourself.
+- **One workspace** — inbox, calendar, todos, workflows and notifications in a single app, with everything GAIA did while you were away waiting for approval.
+- **Yours to run** — open source and self-hostable, with your own keys, your own models and no usage caps.
+
 ## Proactivity
 
 GAIA does the work before you ask, then tells you. This is the part that makes it an assistant rather than a chat window.
@@ -78,34 +92,7 @@ The day above runs on its own. This is what you ask it directly.
 - **"Draft follow-ups to every email I sent three days ago that nobody answered."** Sweeps your sent mail, writes a personalised nudge per thread.
 - **"Research these 10 companies into a table with pricing, team size and funding."** Multi-source research, structured output, ready to paste.
 - **"Clean up this CSV, chart the outliers and send me the deck."** Writes real Python, runs it in a real sandbox, hands back a real `.pptx`.
-- **"Now run that every Monday at 9am."** Any of the above becomes a standing job — which is the next section.
-
-## Features
-
-### Memory
-
-- Learns as you talk — you never have to say "remember this"
-- Keeps the people, projects and preferences that come up, plus a journal of recent days
-- All of it visible on the **Memory** page as a list or a graph
-- Edit, export or delete any of it in a click
-
-### Voice
-
-- Say **"Hey GAIA"** and start talking
-- The wake word runs on your device — no audio leaves your machine until you say it, and [the model is right here](libs/wake-word) if you want to check
-- Calls are real-time and interruptible, with background noise filtered out
-
-### One workspace
-
-- Your **inbox**, **calendar**, **todos** and **workflows**, with a **dashboard** over the top
-- Whatever it did while you were gone waits in **notifications** — approve it, edit it, or dismiss it
-
-### Code, research and documents
-
-- **Writes and runs real code.** Every user gets a sandboxed Linux workspace. It can analyse a dataset, run the script and hand back a PDF, Word doc, deck or spreadsheet.
-- **Researches properly.** Multi-source web research, not a single search box.
-- **Learns new abilities.** 37 built-in skills on the open [Agent Skills spec](https://agentskills.io), plus any you install from GitHub or write yourself.
-- **Runs on any model.** OpenAI, Gemini, Grok and OpenRouter — which covers Claude and most everything else. Self-hosters swap freely.
+- **"Now run that every Monday at 9am."** Any of the above becomes a standing job, running on a schedule without you.
 
 ## Integrations
 
