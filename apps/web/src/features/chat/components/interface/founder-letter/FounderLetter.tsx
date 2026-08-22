@@ -267,7 +267,8 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
   const openPricingModal = usePricingModalStore((s) => s.openModal);
   const reduceMotion = useReducedMotion();
 
-  const firstName = userName.trim().split(" ")[0] || SALUTATION_FALLBACK;
+  const firstName =
+    (userName ?? "").trim().split(" ")[0] || SALUTATION_FALLBACK;
 
   useEffect(() => {
     const isDismissed = !!window.localStorage.getItem(LETTER_DISMISSED_KEY);

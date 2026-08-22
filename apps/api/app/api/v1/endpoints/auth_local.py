@@ -168,7 +168,16 @@ async def signup(request: Request, body: SignupRequest) -> JSONResponse:
     user = await user_repository.get_by_email(email)
     created_user = False
     if user is None:
-        user = await user_repository.create(UserDocument(email=email, name=body.name))
+        user = await user_repository.create(
+            UserDocument(
+                email=email,
+                # Hosted signups always carry a WorkOS profile name; self-host
+                # name is optional. Default to the email local-part so the
+                # display name (greetings, founder letter, holo card) never
+                # has to handle null.
+                name=body.name or email.split("@", 1)[0],
+            )
+        )
         created_user = True
 
     password_hash = bcrypt.hashpw(
