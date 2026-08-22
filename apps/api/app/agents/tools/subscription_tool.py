@@ -12,6 +12,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from app.constants.log_tags import LogTag
+from app.constants.payments import NO_USER_MESSAGE
 from app.decorators import with_doc
 from app.models.agent_models import agent_configurable
 from app.models.payment_models import PlanDuration, SubscriptionDetails
@@ -21,8 +22,6 @@ from app.templates.docstrings.subscription_tool_docs import (
     GET_SUBSCRIPTION_DETAILS,
 )
 from shared.py.wide_events import log
-
-NO_USER_MESSAGE = "Could not identify the user, so their billing state is unavailable."
 
 
 def _format_money(amount_minor: int, currency: str) -> str:
