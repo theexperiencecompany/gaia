@@ -3,6 +3,7 @@ from typing import Any
 
 from fastapi import BackgroundTasks, HTTPException
 
+from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.todos import todo_repository
@@ -218,6 +219,13 @@ async def get_user_onboarding_status(user_id: str) -> OnboardingStatusResponse:
             raise HTTPException(status_code=404, detail="User not found")
 
         onboarding_data = user.onboarding or {}
+
+        # Self-host has no hosted onboarding pipeline — a fresh local admin
+        # would read completed=false forever and stay gated out of chat.
+        # Synthesize the completed state (read-only) for local instances;
+        # AUTH_MODE=workos keeps the stored value untouched.
+        if settings.AUTH_MODE == "local":
+            onboarding_data = {**onboarding_data, "completed": True}
 
         return OnboardingStatusResponse(
             completed=onboarding_data.get("completed", False),
