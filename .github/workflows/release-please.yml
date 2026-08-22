@@ -88,20 +88,15 @@ jobs:
     if: needs.release-please.outputs.cli_release_created == 'true'
     runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
-      # Dispatch dedicated publish workflow with resolved tag/version inputs.
-      - name: Trigger CLI Publish Workflow
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            await github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'publish-cli.yml',
-              ref: 'master',
-              inputs: {
-                tag: '${{ needs.release-please.outputs.cli_tag_name }}',
-                version: '${{ needs.release-please.outputs.cli_version }}'
-              }
-            });
-            console.log('CLI publish workflow triggered for tag: ${{ needs.release-please.outputs.cli_tag_name }}');
+      # The script needs the repo checked out to run.
+      - uses: actions/checkout@v7
+
+      # Dispatch the dedicated publish workflow and block on its conclusion, so
+      # a failed publish fails this run too. A bare createWorkflowDispatch call
+      # succeeds as soon as GitHub accepts it and hides every publish failure.
+      - name: Publish CLI to npm
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release-please.outputs.cli_tag_name }}
+          VERSION: ${{ needs.release-please.outputs.cli_version }}
+        run: bash scripts/ci/dispatch-cli-publish.sh

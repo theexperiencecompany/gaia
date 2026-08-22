@@ -280,3 +280,41 @@ is a blanket.
 handler does not shift it and fire a false alarm. It grandfathers ten probe/parse
 sites that predate the rule. Like the `no-service-classes` allowlist it is a
 ratchet — remove an entry when the site is fixed, never add one.
+
+---
+
+## tool-dump-boundary
+
+**Rule:** every `model_dump()` call under `app/agents/tools/` must pass
+`mode="json"` literally. A bare call (or any other mode, or `**kwargs`) is
+reported.
+
+**Why:** Pydantic's two dump modes have opposite contracts — python mode keeps
+native `datetime` objects, JSON mode produces ISO strings — and they differ by
+three invisible characters at the call site. Inside the tools tree every dump
+crosses into model/SSE text, where python-mode output either crashes stdlib
+`json.dumps` (`TypeError: Object of type datetime is not JSON serializable`) or
+silently degrades to Python reprs. Issue #917 shipped exactly this:
+`search_reminders_tool` returned its serialization error on every call for
+months because one tool used a bare dump while the rest of the tree used
+`mode="json"`; the unit tests mocked `model_dump()` with plain strings and never
+saw it.
+
+**Scope** is deliberately the tools tree only. Service- and repository-layer
+dumps legitimately stay in python mode: those dicts persist to MongoDB as BSON
+dates, which the scheduler's `$lte` recovery scans match on — converting them to
+ISO strings would break scheduling silently.
+
+**Fix:** pass `mode="json"`. If a dump under `tools/` genuinely feeds a
+Mongo write rather than the model/stream boundary, that logic belongs in the
+service/repository layer anyway (see `repository-boundaries`).
+
+**Allowlist:** keyed `<path>::<enclosing function>` with an **audited call
+count**, grandfathering thirteen sites whose models the #917 audit verified are
+string-only (`ImageData`, `SearchResultItem`/`WebSearchResult`, the calendar
+wire models, `TodoLabelCount`) — both dump modes produce identical output
+there. The count is the ratchet, not just the entry: a *new* bare dump added to
+an allowlisted function pushes its count past the audited number and is
+reported, so a historical exemption can never absorb new code. An entry comes
+out when its model gains a datetime field and the calls take `mode="json"`;
+never raise a count.
