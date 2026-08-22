@@ -21,7 +21,7 @@ on:
 jobs:
   publish:
     # OIDC token enables npm provenance signing.
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write

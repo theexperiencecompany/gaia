@@ -36,7 +36,7 @@ jobs:
     timeout-minutes: 10
     # Runs release-please and exposes per-component outputs for downstream workflows.
     needs: enforce-master-ref
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       releases_created: ${{ steps.release.outputs.releases_created }}
@@ -89,7 +89,7 @@ jobs:
     timeout-minutes: 10
     needs: release-please
     if: needs.release-please.outputs.cli_release_created == 'true'
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     steps:
       # The script needs the repo checked out to run.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

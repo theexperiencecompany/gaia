@@ -95,10 +95,8 @@ concurrency:
 
 jobs:
   docker-release:
-    # GitHub-hosted only: the org's blacksmith allowance is reserved for
-    # nothing; ubuntu-latest 2vCPU is sufficient and free within plan limits.
-    # Skips entirely in phase=deploy (the deploy phase consumes this phase's
-    # outputs via inputs instead).
+    # GitHub-hosted only (org rule: no blacksmith anywhere). Skips entirely in
+    # phase=deploy (the deploy phase consumes this phase's outputs via inputs).
     if: inputs.phase != 'deploy'
     runs-on: ubuntu-latest
     timeout-minutes: 30

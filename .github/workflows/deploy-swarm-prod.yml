@@ -76,7 +76,7 @@ concurrency:
 jobs:
   deploy:
     if: inputs.action == 'deploy'
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     environment: production
     permissions:
       contents: read
@@ -285,7 +285,7 @@ jobs:
 
   rollback:
     if: github.event_name == 'workflow_dispatch' && inputs.action == 'rollback'
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     environment: production
     permissions:
       contents: read
