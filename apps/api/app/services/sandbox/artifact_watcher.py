@@ -51,7 +51,7 @@ from app.services.artifact_events import (
 )
 from app.services.storage import (
     FsOps,
-    JuiceFSUnavailableError,
+    JuiceFSUnavailable,
     fs_timer,
     list_artifacts,
     list_session_ids,
@@ -274,7 +274,7 @@ class ArtifactWatcher:
                 if info is None:
                     return
                 await publish_artifact_event(self.user_id, upsert_event(conv, info))
-            except JuiceFSUnavailableError:
+            except JuiceFSUnavailable:
                 return
             except Exception as e:
                 # Was debug — i.e. below the default level, so an artifact that
@@ -392,7 +392,7 @@ class ArtifactWatcher:
             try:
                 conv_ids = await list_session_ids(self.user_id)
                 self._sessions_root_ino = await sessions_root_inode(self.user_id)
-            except JuiceFSUnavailableError:
+            except JuiceFSUnavailable:
                 return
             await self._rescan_each(conv_ids)
             # Drop inode-map entries for conversations that no longer exist so
@@ -405,7 +405,7 @@ class ArtifactWatcher:
             try:
                 conv_ino, artifacts_ino = await session_dir_inodes(self.user_id, conv)
                 infos = await list_artifacts(self.user_id, conv)
-            except JuiceFSUnavailableError:
+            except JuiceFSUnavailable:
                 return
             except Exception as exc:
                 log.debug(

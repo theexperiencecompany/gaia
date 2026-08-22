@@ -20,7 +20,7 @@ from app.services.storage.juicefs import (
 
 
 def session_base(user_id: str, conv_id: str) -> Path:
-    """Validated session path; raises ``JuiceFSUnavailableError`` if unmounted."""
+    """Validated session path; raises ``JuiceFSUnavailable`` if unmounted."""
     _require_mount()
     return session_root(user_id, conv_id)
 

@@ -22,7 +22,7 @@ from langgraph.runtime import Runtime
 
 from app.constants.log_tags import LogTag
 from app.models.agent_models import agent_configurable
-from app.services.storage import JuiceFSUnavailableError, write_session_file
+from app.services.storage import JuiceFSUnavailable, write_session_file
 from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
 
@@ -59,7 +59,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         if self.enable_archive and self._should_trigger_summarization(state):
             try:
                 archive_path = await self._archive(state)
-            except JuiceFSUnavailableError as e:
+            except JuiceFSUnavailable as e:
                 log.warning(
                     f"{LogTag.AGENT} Archive skipped (workspace unavailable)",
                     error_type=type(e).__name__,

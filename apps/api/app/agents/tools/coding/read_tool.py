@@ -27,7 +27,7 @@ from app.constants.log_tags import LogTag
 from app.constants.media import MAX_IMAGE_FILE_BYTES
 from app.decorators import with_doc, with_rate_limiting
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
-from app.services.storage import FsOps, JuiceFSUnavailableError, fs_timer, read_user_file
+from app.services.storage import FsOps, JuiceFSUnavailable, fs_timer, read_user_file
 from app.services.storage.juicefs import (
     page_bounds,
     read_user_file_bytes,
@@ -96,7 +96,7 @@ async def read(
         async with fs_timer(FsOps.TOOL_READ):
             try:
                 lines, total = await read_user_file(user_id, rel, offset=offset, limit=limit)
-            except JuiceFSUnavailableError:
+            except JuiceFSUnavailable:
                 # Native dev (no host mount): read through the sandbox instead.
                 log.set(read_via="sandbox_fallback")
                 async with acquire_sandbox(user_id) as sbx:
@@ -133,7 +133,7 @@ async def _read_image(
         async with fs_timer(FsOps.TOOL_READ):
             try:
                 data = await read_user_file_bytes(user_id, rel, max_bytes=MAX_IMAGE_FILE_BYTES)
-            except JuiceFSUnavailableError:
+            except JuiceFSUnavailable:
                 # Native dev (no host mount): read through the sandbox instead.
                 log.set(read_via="sandbox_fallback")
                 async with acquire_sandbox(user_id) as sbx:

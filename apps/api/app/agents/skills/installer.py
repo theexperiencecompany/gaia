@@ -30,7 +30,7 @@ from app.agents.skills.registry import (
 from app.agents.skills.utils import GITHUB_API_BASE, get_github_headers
 from app.constants.log_tags import LogTag
 from app.services.storage import (
-    JuiceFSUnavailableError,
+    JuiceFSUnavailable,
     delete_user_skill,
     ensure_user_skills_dir,
     write_skill_file,
@@ -465,7 +465,7 @@ async def uninstall_skill_full(user_id: str, skill_id: str) -> Skill | None:
     # Delete the skill directory from JuiceFS
     try:
         await delete_user_skill(user_id, skill.name)
-    except JuiceFSUnavailableError as e:
+    except JuiceFSUnavailable as e:
         log.warning(
             f"{LogTag.SKILLS} storage cleanup skipped (mount unavailable)",
             error_type=type(e).__name__,

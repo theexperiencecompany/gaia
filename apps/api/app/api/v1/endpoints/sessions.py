@@ -22,7 +22,7 @@ from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.storage import (
     ArtifactInfo,
-    JuiceFSUnavailableError,
+    JuiceFSUnavailable,
     list_artifacts,
     list_user_uploaded,
     pin_session_artifact,
@@ -113,7 +113,7 @@ async def _resolve_file(
         host_path = await resolve_session_path(user_id, conv_id, role, path)
     except ValueError as e:
         raise HTTPException(status_code=400, detail="Invalid path") from e
-    except JuiceFSUnavailableError as e:
+    except JuiceFSUnavailable as e:
         raise HTTPException(status_code=503, detail="Workspace storage offline") from e
     if not host_path.is_file():
         raise HTTPException(status_code=404, detail="File not found")
@@ -130,7 +130,7 @@ async def list_session_artifacts(
     await _assert_owns(user_id, conv_id)
     try:
         items = await list_artifacts(user_id, conv_id)
-    except JuiceFSUnavailableError as e:
+    except JuiceFSUnavailable as e:
         log.warning(
             "workspace storage offline — returning empty artifact list",
             error_type=type(e).__name__,
@@ -168,7 +168,7 @@ async def list_uploads(
     await _assert_owns(user_id, conv_id)
     try:
         items = await list_user_uploaded(user_id, conv_id)
-    except JuiceFSUnavailableError as e:
+    except JuiceFSUnavailable as e:
         log.warning(
             "workspace storage offline — returning empty upload list",
             error_type=type(e).__name__,
@@ -222,7 +222,7 @@ async def pin_artifact(
         raise HTTPException(status_code=400, detail="Invalid path") from e
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail="Artifact not found") from e
-    except JuiceFSUnavailableError as e:
+    except JuiceFSUnavailable as e:
         raise HTTPException(status_code=503, detail="Workspace storage offline") from e
     capture_context_event(AnalyticsEvents.SESSION_ARTIFACT_PINNED)
     return JSONResponse(

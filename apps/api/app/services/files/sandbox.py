@@ -12,7 +12,7 @@ from app.agents.workspace.paths import USER_UPLOADED_DIRNAME
 from app.services.artifact_events import publish_artifact_event, upload_event
 from app.services.storage import (
     FsOps,
-    JuiceFSUnavailableError,
+    JuiceFSUnavailable,
     chmod_path,
     fs_timer,
     session_root,
@@ -55,7 +55,7 @@ async def mirror_upload(
                 content=content,
             )
             await chmod_path(host_path, _READ_ONLY)
-    except JuiceFSUnavailableError as e:
+    except JuiceFSUnavailable as e:
         log.warning(
             "[files] juicefs unavailable; not mirroring upload",
             error=str(e),
@@ -112,7 +112,7 @@ async def write_summary_sidecar(
         )
         await chmod_path(host_path, _READ_ONLY)
         log.info("[files] wrote summary sidecar for", safe_filename=safe_filename)
-    except JuiceFSUnavailableError:
+    except JuiceFSUnavailable:
         return
     except Exception as e:
         log.warning(

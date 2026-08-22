@@ -108,7 +108,6 @@ async def provision_user_workspace(user_id: str, connected_ids: set[str] | None 
     # Late-bound: ``app.services.storage`` re-exports this module, so importing
     # ``system_workspace`` (which imports ``storage.juicefs``) at top level would
     # re-enter the half-initialized storage package.
-    # Deferred import: late-bound: app.services.storage re-exports this module, so a top-level import would re-enter the half-initialized package
     from app.services.storage.system_workspace import (  # noqa: PLC0415 -- deferred
         link_system_files_into_workspace,
     )
@@ -136,7 +135,7 @@ async def delete_session_dir(user_id: str, conv_id: str) -> None:
 
 
 async def touch_session_last_active(user_id: str, conv_id: str) -> None:
-    """Bump ``.meta.json.last_active``. Raises ``JuiceFSUnavailableError`` if unmounted."""
+    """Bump ``.meta.json.last_active``. Raises ``JuiceFSUnavailable`` if unmounted."""
 
     def _touch() -> None:
         base = session_base(user_id, conv_id)

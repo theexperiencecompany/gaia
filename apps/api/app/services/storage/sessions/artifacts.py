@@ -181,7 +181,7 @@ async def resolve_session_path(
 ) -> Path:
     """Resolve a request path under a session's artifacts/ or user-uploaded/ root.
 
-    Raises ``JuiceFSUnavailableError`` if the mount is missing, ``ValueError`` if
+    Raises ``JuiceFSUnavailable`` if the mount is missing, ``ValueError`` if
     ``rel_path`` escapes the root. Existence is the caller's concern (so it
     can distinguish 404 from 400).
     """
