@@ -36,22 +36,39 @@ export function containsMessageBreakToken(text: string): boolean {
 }
 
 /**
+ * Every proper prefix of every sentinel spelling, longest first. A chunk
+ * boundary can land anywhere inside a variant too ("<new_line_bre",
+ * "< NEW_LINE_BR"), so the live-preview strip has to recognize partial
+ * spellings case-insensitively, with the same optional whitespace after "<"
+ * that {@link MESSAGE_BREAK_VARIANT_PATTERN} accepts in complete tokens.
+ */
+const PARTIAL_SENTINEL_SUFFIXES = [
+  ...new Set(
+    BREAK_TOKEN_SPELLINGS.flatMap((spelling) => {
+      const core = spelling.slice(1); // drop "<"
+      const prefixes: string[] = [];
+      for (let n = 0; n < core.length; n += 1) prefixes.push(core.slice(0, n));
+      return prefixes;
+    }),
+  ),
+]
+  .filter((prefix) => prefix.length > 0)
+  .sort((a, b) => b.length - a.length);
+
+const PARTIAL_SENTINEL_RE = new RegExp(
+  `<\\s*(?:${PARTIAL_SENTINEL_SUFFIXES.map((p) => p.toLowerCase()).join("|")})?$`,
+  "i",
+);
+
+/**
  * Drops a trailing partial break sentinel from live-preview text.
  *
  * The token arrives split across stream chunks, so a half-received
  * `<NEW_MESSAG` would otherwise flash in the bubble as literal text — and on
  * Telegram an unclosed ``<`` makes the whole HTML edit fail to parse. Runs on
- * already-normalized text, but still recognizes partial variants in case a
- * chunk boundary lands mid-spelling before normalization can match.
+ * already-normalized text, but recognizes partial variants of any casing so a
+ * chunk boundary landing mid-spelling never flashes either.
  */
 export function stripPartialBreakToken(text: string): string {
-  let longest = 0;
-  for (const spelling of BREAK_TOKEN_SPELLINGS) {
-    for (let n = spelling.length - 1; n > longest; n -= 1) {
-      if (text.endsWith(spelling.slice(0, n))) {
-        longest = n;
-      }
-    }
-  }
-  return longest > 0 ? text.slice(0, -longest) : text;
+  return text.replace(PARTIAL_SENTINEL_RE, "");
 }

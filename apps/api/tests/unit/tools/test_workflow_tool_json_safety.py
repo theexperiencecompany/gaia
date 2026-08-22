@@ -14,9 +14,9 @@ scripts/evals/data/capability/reminders_extra.yaml; the codebase convention
 
 from datetime import UTC, datetime, timedelta
 import json
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.runnables.config import RunnableConfig
 import pytest
 
 from app.models.workflow_models import TriggerConfig, TriggerType, WorkflowWithIntegrations
@@ -27,7 +27,7 @@ UTILS_MODULE = "app.utils.workflow_utils"
 FAKE_USER_ID = "507f1f77bcf86cd799439011"
 
 
-def _make_config() -> dict[str, Any]:
+def _make_config() -> RunnableConfig:
     return {
         "configurable": {
             "user_id": FAKE_USER_ID,
@@ -60,7 +60,7 @@ def _make_real_workflow() -> WorkflowWithIntegrations:
     )
 
 
-def _assert_json_safe(payload: Any) -> None:
+def _assert_json_safe(payload: object) -> None:
     """The exact operation every consumer of these payloads performs."""
     json.dumps(payload)
 

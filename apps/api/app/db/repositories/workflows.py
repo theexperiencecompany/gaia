@@ -38,6 +38,11 @@ from app.models.workflow_models import (
 )
 from app.utils.creator import creator_lookup_stage
 
+# The scheduler's occurrence field, written by every arm/re-arm path and pinned
+# by the stale-fire claim gate. One constant keeps the dotted key from drifting
+# between the writers and the gate.
+NEXT_RUN_FIELD = "trigger_config.next_run"
+
 # Cron-driven workflows only carry a non-empty ``repeat``; manual / integration /
 # todo workflows default to status="scheduled" with ``scheduled_at=now``, so the
 # pending scan must exclude them or it would re-run the agent every pass.
@@ -451,7 +456,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
                     "trigger_config.composio_trigger_ids": trigger_ids,
                     "status": ScheduledTaskStatus.SCHEDULED.value,
                     "scheduled_at": next_run,
-                    "trigger_config.next_run": next_run,
+                    NEXT_RUN_FIELD: next_run,
                     "deactivated_reason": None,
                 }
             },
@@ -513,7 +518,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             "status": ScheduledTaskStatus.SCHEDULED.value,
         }
         if expected_next_run is not None:
-            filter_["trigger_config.next_run"] = expected_next_run
+            filter_[NEXT_RUN_FIELD] = expected_next_run
         result = await self._apply_raw_update(
             filter_,
             {"$set": {"status": ScheduledTaskStatus.EXECUTING.value}},
@@ -552,7 +557,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         if repeat is not None:
             set_fields["repeat"] = repeat
         if not isinstance(next_run, _Unset):
-            set_fields["trigger_config.next_run"] = next_run
+            set_fields[NEXT_RUN_FIELD] = next_run
         result = await self._apply_raw_update(
             filter_, {"$set": set_fields}, scope=REPO_GLOBAL_SCOPE
         )

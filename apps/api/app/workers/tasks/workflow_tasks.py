@@ -530,10 +530,24 @@ async def execute_workflow_by_id(
         # stamp existed carry no key and are ungated, so a deploy never strands a
         # schedule.
         if trigger_type == TriggerType.SCHEDULE.value:
+            # Only a numeric stamp is scheduler provenance. Manual "run now"
+            # callers control their own context dict, so a hand-typed
+            # trigger_type/scheduled_for must be ignored (ungated), not crash
+            # fromtimestamp with a TypeError/OverflowError mid-run.
             scheduled_for = context.get("scheduled_for") if context else None
-            expected_next_run = (
-                datetime.fromtimestamp(scheduled_for, tz=UTC) if scheduled_for is not None else None
-            )
+            if isinstance(scheduled_for, bool) or not isinstance(scheduled_for, (int, float)):
+                expected_next_run = None
+            else:
+                try:
+                    expected_next_run = datetime.fromtimestamp(scheduled_for, tz=UTC)
+                except (ValueError, OverflowError, OSError):
+                    log.warning(
+                        f"{LogTag.WORKER} Unparseable scheduled_for on scheduled fire; "
+                        "treating as unstamped",
+                        workflow_id=workflow_id,
+                        scheduled_for=str(scheduled_for)[:32],
+                    )
+                    expected_next_run = None
             if not (
                 await scheduler.claim_scheduled_for_execution(
                     workflow_id, expected_next_run=expected_next_run

@@ -302,6 +302,31 @@ describe("handleStreamingChat delivery", () => {
     }
   });
 
+  it("never shows a partial lowercase or spaced variant either", async () => {
+    // Normalization matches case/whitespace variants of complete tokens; the
+    // live-preview strip must recognize their PARTIALS too, or a chunk
+    // boundary inside "<new_line_br" flashes literal text.
+    const { bubbles, writes } = await deliver("telegram", [
+      "Checking that now.",
+      "<new_line_br",
+      "eak>",
+      "All ",
+      "< NEW_MESS",
+      "AGE_BREAK>",
+      "done.",
+    ]);
+
+    for (const write of writes) {
+      const lowered = write.toLowerCase();
+      expect(lowered).not.toContain("new_line");
+      expect(lowered).not.toContain("new_mess");
+      expect(write).not.toContain("<");
+    }
+    // Both sides of each variant survived as real bubbles.
+    expect(bubbles.join("\n")).toContain("All");
+    expect(bubbles.join("\n")).toContain("done.");
+  });
+
   it("delivers the full reply on platforms that cannot edit", async () => {
     // WhatsApp/iMessage have no edit API, so each write is a new message.
     const text = body("Alpha", 120);
