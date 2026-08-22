@@ -228,16 +228,17 @@ function handleDropdownKeyDown(
     case "Enter":
     case "Tab": {
       e.preventDefault();
-      // Only select unlocked items
+      // Only select unlocked items. ctx.selectedIndex is an UNLOCKED-list
+      // position (matches the highlight comparison), so index into the
+      // unlocked list — not the full filtered list.
       const unlockedFilteredMatches = currentFilteredMatches.filter(
         (match) => !match.enhancedTool?.isLocked,
       );
       if (unlockedFilteredMatches.length === 1) {
         ctx.onSelect(unlockedFilteredMatches[0]);
       } else {
-        const selectedMatch = currentFilteredMatches[ctx.selectedIndex];
-        // Only allow selection if the item is not locked
-        if (selectedMatch && !selectedMatch.enhancedTool?.isLocked) {
+        const selectedMatch = unlockedFilteredMatches[ctx.selectedIndex];
+        if (selectedMatch) {
           ctx.onSelect(selectedMatch);
         }
       }

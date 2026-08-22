@@ -82,6 +82,22 @@ function buildCategories(matches: SlashCommandMatch[]): string[] {
   return ["all", ...uniqueCategories.toSorted((a, b) => a.localeCompare(b))];
 }
 
+/**
+ * Move `selectedIndex` by `delta` within unlocked-row space, clamped to
+ * [0, unlockedCount - 1]. All keyboard/pointer navigation must share this
+ * single index space — the rendered rows compare their UNLOCKED-list position
+ * against selectedIndex, so any full-list arithmetic highlights the wrong row
+ * whenever locked items precede an unlocked one.
+ */
+function clampSelection(
+  delta: 1 | -1,
+  currentIndex: number,
+  unlockedCount: number,
+): number {
+  if (unlockedCount <= 0) return currentIndex;
+  return Math.min(Math.max(currentIndex + delta, 0), unlockedCount - 1);
+}
+
 interface UseSlashCommandDropdownStateParams {
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   searchbarText: string;
@@ -236,57 +252,39 @@ export function useSlashCommandDropdownState({
     }));
   }, []);
 
-  // Navigate up through unlocked items (identical for keyboard and pointer).
+  // Keyboard + pointer navigation share one unlocked-index space (see
+  // clampSelection). The old keyboard path scanned the full match list and
+  // highlighted the wrong row whenever locked items preceded an unlocked one.
   const navigateUp = useCallback(() => {
     setSlashCommandState((prev) => {
       const filteredMatches = filterMatchesByCategory(
         prev.selectedCategory,
         prev.matches,
       );
-
-      let newIndex = prev.selectedIndex - 1;
-      // Skip locked items when navigating up
-      while (newIndex >= 0) {
-        const match = filteredMatches[newIndex];
-        if (!match.enhancedTool?.isLocked) {
-          break;
-        }
-        newIndex--;
-      }
+      const unlockedCount = filteredMatches.filter(
+        (match) => !match.enhancedTool?.isLocked,
+      ).length;
 
       return {
         ...prev,
-        selectedIndex: Math.max(0, newIndex),
+        selectedIndex: clampSelection(-1, prev.selectedIndex, unlockedCount),
       };
     });
   }, []);
 
-  // Pointer/button variant of "navigate down": clamps to the last unlocked
-  // match. See the hook doc comment for why this differs from the keyboard.
   const navigateDown = useCallback(() => {
     setSlashCommandState((prev) => {
       const filteredMatches = filterMatchesByCategory(
         prev.selectedCategory,
         prev.matches,
       );
-      // Only navigate through unlocked items
-      const unlockedMatches = filteredMatches.filter(
+      const unlockedCount = filteredMatches.filter(
         (match) => !match.enhancedTool?.isLocked,
-      );
-
-      let newIndex = prev.selectedIndex + 1;
-      // Keep going down until we find an unlocked item or reach the end
-      while (newIndex < filteredMatches.length) {
-        const match = filteredMatches[newIndex];
-        if (!match.enhancedTool?.isLocked) {
-          break;
-        }
-        newIndex++;
-      }
+      ).length;
 
       return {
         ...prev,
-        selectedIndex: Math.min(unlockedMatches.length - 1, newIndex),
+        selectedIndex: clampSelection(1, prev.selectedIndex, unlockedCount),
       };
     });
   }, []);
@@ -313,26 +311,17 @@ export function useSlashCommandDropdownState({
               prev.selectedCategory,
               prev.matches,
             );
-
-            let newIndex = prev.selectedIndex + 1;
-            // Skip locked items when navigating down
-            while (newIndex < filteredMatches.length) {
-              const match = filteredMatches[newIndex];
-              if (!match.enhancedTool?.isLocked) {
-                break;
-              }
-              newIndex++;
-            }
-
-            // Find the last unlocked index to properly limit navigation
-            const lastUnlockedIndex = filteredMatches.findIndex(
-              (match, idx) => idx >= newIndex && !match.enhancedTool?.isLocked,
-            );
+            const unlockedCount = filteredMatches.filter(
+              (match) => !match.enhancedTool?.isLocked,
+            ).length;
 
             return {
               ...prev,
-              selectedIndex:
-                lastUnlockedIndex >= 0 ? lastUnlockedIndex : prev.selectedIndex,
+              selectedIndex: clampSelection(
+                1,
+                prev.selectedIndex,
+                unlockedCount,
+              ),
             };
           });
           return true;
