@@ -75,9 +75,9 @@ def upload_file_to_cloudinary(
 
     except cloudinary.exceptions.Error as e:
         log.error("Cloudinary upload failed", error=str(e), error_type=type(e).__name__)
-        raise HTTPException(status_code=500, detail="Failed to upload file to Cloudinary")
+        raise HTTPException(status_code=500, detail="Failed to upload file to Cloudinary") from e
     except Exception as e:
         log.error("Unexpected error during upload", error=str(e), error_type=type(e).__name__)
         raise HTTPException(
             status_code=500, detail="An unexpected error occurred during file upload"
-        )
+        ) from e

@@ -95,6 +95,26 @@ class TestCalendarEventsQueryRequest:
         with pytest.raises(ValidationError):
             CalendarEventsQueryRequest(selected_calendars=["cal1"], start_date="2025-02-30")
 
+    def test_none_dates_pass_through(self):
+        m = CalendarEventsQueryRequest(selected_calendars=["cal1"], start_date=None, end_date=None)
+        assert m.start_date is None
+        assert m.end_date is None
+
+    def test_invalid_start_date_exact_message(self):
+        with pytest.raises(
+            ValidationError,
+            match=r"Invalid date format: 2025/01/15\. Use YYYY-MM-DD format\.",
+        ):
+            CalendarEventsQueryRequest(selected_calendars=["cal1"], start_date="2025/01/15")
+
+    def test_valid_start_date_not_mutated(self):
+        m = CalendarEventsQueryRequest(selected_calendars=["cal1"], start_date="2025-01-15")
+        assert m.start_date == "2025-01-15"
+
+    def test_invalid_date_value_exact_message(self):
+        with pytest.raises(ValidationError, match=r"Invalid date: 2025-02-30"):
+            CalendarEventsQueryRequest(selected_calendars=["cal1"], end_date="2025-02-30")
+
     def test_max_results_boundaries(self):
         m = CalendarEventsQueryRequest(selected_calendars=["cal1"], max_results=1)
         assert m.max_results == 1
@@ -234,6 +254,28 @@ class TestRecurrenceRule:
     def test_invalid_exclude_date_value(self):
         with pytest.raises(ValidationError):
             RecurrenceRule(frequency="DAILY", exclude_dates=["2025-02-30"])
+
+    @pytest.mark.parametrize(
+        ("field", "dates"),
+        [
+            ("exclude_dates", ["2025-01-15", "2025-06-02"]),
+            ("include_dates", ["2025-03-08"]),
+        ],
+    )
+    def test_valid_dates_survive_validation(self, field, dates):
+        rule = RecurrenceRule(frequency="DAILY", **{field: dates})
+        assert getattr(rule, field) == dates
+
+    def test_invalid_exclude_date_format_exact_message(self):
+        with pytest.raises(
+            ValidationError,
+            match=r"Invalid date format: not-a-date\. Use YYYY-MM-DD format\.",
+        ):
+            RecurrenceRule(frequency="DAILY", exclude_dates=["not-a-date"])
+
+    def test_invalid_include_date_value_exact_message(self):
+        with pytest.raises(ValidationError, match=r"Invalid date: 2025-02-31"):
+            RecurrenceRule(frequency="DAILY", include_dates=["2025-02-31"])
 
 
 # ---------------------------------------------------------------------------

@@ -158,7 +158,7 @@ def validate_oauth_endpoints(as_metadata: OAuthMetadata, allow_localhost: bool =
             try:
                 validate_https_url(str(url), allow_localhost=allow_localhost)
             except OAuthSecurityError as e:
-                raise OAuthSecurityError(f"Invalid {key}: {e}")
+                raise OAuthSecurityError(f"Invalid {key}: {e}") from e
 
 
 def parse_rejected_scopes(error_description: str | None) -> set[str]:

@@ -22,7 +22,7 @@ async def get_user_by_id(user_id: str) -> dict[str, Any] | None:
         return user_to_legacy_dict(user) if user else None
     except Exception as e:
         log.error("Error fetching user", user_id=user_id, error=str(e), error_type=type(e).__name__)
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="User not found") from e
 
 
 async def update_user_profile(
@@ -65,7 +65,9 @@ async def update_user_profile(
                     error_type=type(e).__name__,
                     user_id=user_id,
                 )
-                raise HTTPException(status_code=500, detail="Failed to upload profile picture")
+                raise HTTPException(
+                    status_code=500, detail="Failed to upload profile picture"
+                ) from e
 
         # Only write (and bump updated_at) when something actually changed.
         updated_user = (
@@ -94,4 +96,4 @@ async def update_user_profile(
             error_type=type(e).__name__,
             user_id=user_id,
         )
-        raise HTTPException(status_code=500, detail="Failed to update profile")
+        raise HTTPException(status_code=500, detail="Failed to update profile") from e

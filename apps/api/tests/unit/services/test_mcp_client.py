@@ -7,12 +7,14 @@ LangChain adapter schema sanitization, and resilient adapter retry/skip logic.
 """
 
 import asyncio
+import base64
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import parse_qs, urlparse
 
 from langchain_core.tools import BaseTool
 from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
@@ -30,6 +32,8 @@ from mcp.types import (
 from pydantic import AnyUrl
 import pytest
 
+from app.constants.device_bridge import DEVICE_TRANSPORT
+from app.constants.log_tags import LogTag
 from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
 from app.models.device import Device
 from app.models.mcp_config import MCPConfig, OAuthDiscovery
@@ -50,6 +54,7 @@ from app.services.mcp.token_management import (
     revoke_tokens,
     try_refresh_token,
 )
+from app.utils.mcp_oauth_utils import MCP_PROTOCOL_VERSION
 
 # ---------------------------------------------------------------------------
 # Helpers / Factories
@@ -3186,3 +3191,1064 @@ class TestProbeMcpConnectionSSRF:
         assert result["requires_auth"] is False
         assert "error" in result
         mock_extract.assert_not_awaited()
+
+
+# ===========================================================================
+# Mutation-hardening: exact assertions on log writes, dict-key writes,
+# outbound HTTP args, and raised exceptions
+# ===========================================================================
+
+
+def _make_id_token(payload: dict[str, Any]) -> str:
+    """Build an unsigned JWT whose payload decodes exactly like a real id_token."""
+
+    def b64(part: bytes) -> str:
+        return base64.urlsafe_b64encode(part).decode().rstrip("=")
+
+    header = b64(json.dumps({"alg": "RS256", "typ": "JWT"}).encode())
+    body = b64(json.dumps(payload).encode())
+    return f"{header}.{body}.sig"
+
+
+def _fake_http_client(post_mock: AsyncMock):
+    @asynccontextmanager
+    async def _ctx():
+        mock_http_client = AsyncMock()
+        mock_http_client.post = post_mock
+        yield mock_http_client
+
+    return _ctx
+
+
+def _ok_response(body: dict[str, Any]) -> MagicMock:
+    response = MagicMock()
+    response.status_code = 200
+    response.json.return_value = body
+    return response
+
+
+class TestStampToolMetadataExact:
+    def test_ui_tool_gets_server_url_and_every_tool_gets_integration_id(self):
+        ui_tool = _mock_tool("ui_tool")
+        ui_tool.metadata = {"mcp_ui": {"csp": "default-src 'self'"}}
+        plain_tool = _mock_tool("plain_tool")
+        plain_tool.metadata = None
+
+        MCPClient._stamp_tool_metadata([ui_tool, plain_tool], INTEGRATION_ID, SERVER_URL)
+
+        assert ui_tool.metadata == {
+            "mcp_ui": {"csp": "default-src 'self'"},
+            "mcp_server_url": SERVER_URL,
+            "integration_id": INTEGRATION_ID,
+        }
+        assert plain_tool.metadata == {"integration_id": INTEGRATION_ID}
+
+    def test_non_ui_tool_never_gets_server_url(self):
+        tool = _mock_tool()
+        tool.metadata = {}
+
+        MCPClient._stamp_tool_metadata([tool], INTEGRATION_ID, SERVER_URL)
+
+        assert tool.metadata == {"integration_id": INTEGRATION_ID}
+
+
+class TestOpenSessionExact:
+    async def test_device_transport_delegates_to_device_client_and_skips_ssrf_check(self):
+        client = MCPClient(user_id=USER_ID)
+        mcp_config = _make_mcp_config(
+            server_url="device://dev-1/filesystem", transport=DEVICE_TRANSPORT
+        )
+        device_client = AsyncMock()
+        with (
+            patch.object(
+                client, "_build_device_client", new_callable=AsyncMock, return_value=device_client
+            ) as mock_build_device,
+            patch(
+                "app.services.mcp.mcp_client.assert_public_http_url", new_callable=AsyncMock
+            ) as mock_ssrf,
+            patch("app.services.mcp.mcp_client.log") as mock_log,
+        ):
+            result = await client._open_session(INTEGRATION_ID, mcp_config)
+
+        assert result is device_client
+        mock_build_device.assert_awaited_once_with(INTEGRATION_ID, mcp_config)
+        mock_ssrf.assert_not_awaited()
+        mock_log.info.assert_called_once_with(
+            f"{LogTag.MCP} Opening device-tunnel MCP session", integration_id=INTEGRATION_ID
+        )
+
+    async def test_http_path_validates_url_then_builds_config_then_opens_session(self):
+        client = MCPClient(user_id=USER_ID)
+        mcp_config = _make_mcp_config()
+        config = {"mcpServers": {INTEGRATION_ID: {"url": SERVER_URL}}}
+        base_client = AsyncMock()
+
+        call_order: list[str] = []
+
+        async def _record_ssrf(url: str) -> None:
+            call_order.append("ssrf")
+
+        async def _record_build(iid: str, cfg: MCPConfig) -> dict[str, Any]:
+            call_order.append("build_config")
+            return config
+
+        with (
+            patch(
+                "app.services.mcp.mcp_client.assert_public_http_url",
+                new_callable=AsyncMock,
+                side_effect=_record_ssrf,
+            ),
+            patch.object(client, "_build_config", side_effect=_record_build),
+            patch.object(client, "_sanitize_config", return_value={"sanitized": True}),
+            patch(
+                "app.services.mcp.mcp_client.BaseMCPClient", return_value=base_client
+            ) as mock_cls,
+            patch("app.services.mcp.mcp_client.log") as mock_log,
+        ):
+            result = await client._open_session(INTEGRATION_ID, mcp_config)
+
+        assert result is base_client
+        # The DNS-rebinding re-check must run before _build_config (which can do outbound I/O).
+        assert call_order == ["ssrf", "build_config"]
+        mock_cls.assert_called_once_with(config)
+        base_client.create_session.assert_awaited_once_with(INTEGRATION_ID)
+        mock_log.info.assert_any_call(
+            f"{LogTag.MCP} Starting connection to MCP server",
+            integration_id=INTEGRATION_ID,
+            config={"sanitized": True},
+        )
+
+
+class TestConvertToolsSafeExact:
+    async def test_success_returns_raw_tools_and_logs_exact_count(self):
+        client = MCPClient(user_id=USER_ID)
+        tools = [_mock_tool("a"), _mock_tool("b")]
+        adapter = AsyncMock()
+        adapter.create_tools = AsyncMock(return_value=tools)
+        fake_client = AsyncMock()
+        with (
+            patch("app.services.mcp.mcp_client.ResilientLangChainAdapter", return_value=adapter),
+            patch("app.services.mcp.mcp_client.log") as mock_log,
+        ):
+            result = await client._convert_tools_safe(fake_client, INTEGRATION_ID)
+
+        assert result is tools
+        adapter.create_tools.assert_awaited_once_with(fake_client)
+        fake_client.close_all_sessions.assert_not_awaited()
+        mock_log.info.assert_any_call(
+            f"{LogTag.MCP} Successfully converted tools to LangChain format",
+            integration_id=INTEGRATION_ID,
+            raw_tools_count=2,
+        )
+
+    async def test_failure_closes_sessions_and_reraises_original_exception(self):
+        client = MCPClient(user_id=USER_ID)
+        err = RuntimeError("Schema error")
+        adapter = AsyncMock()
+        adapter.create_tools = AsyncMock(side_effect=err)
+        fake_client = AsyncMock()
+        with (
+            patch("app.services.mcp.mcp_client.ResilientLangChainAdapter", return_value=adapter),
+            patch("app.services.mcp.mcp_client.log"),
+        ):
+            with pytest.raises(RuntimeError) as exc_info:
+                await client._convert_tools_safe(fake_client, INTEGRATION_ID)
+
+        assert exc_info.value is err
+        fake_client.close_all_sessions.assert_awaited_once_with()
+
+    async def test_close_failure_logs_warning_and_still_reraises_original(self):
+        client = MCPClient(user_id=USER_ID)
+        err = RuntimeError("Schema error")
+        close_err = RuntimeError("close boom")
+        adapter = AsyncMock()
+        adapter.create_tools = AsyncMock(side_effect=err)
+        fake_client = AsyncMock()
+        fake_client.close_all_sessions = AsyncMock(side_effect=close_err)
+        with (
+            patch("app.services.mcp.mcp_client.ResilientLangChainAdapter", return_value=adapter),
+            patch("app.services.mcp.mcp_client.log") as mock_log,
+        ):
+            with pytest.raises(RuntimeError) as exc_info:
+                await client._convert_tools_safe(fake_client, INTEGRATION_ID)
+
+        assert exc_info.value is err
+        mock_log.warning.assert_called_once_with(
+            f"{LogTag.MCP} Failed to close leaked session",
+            integration_id=INTEGRATION_ID,
+            error="close boom",
+            error_type="RuntimeError",
+        )
+
+
+class TestMakeCallbacksExact:
+    async def test_evict_callback_pops_dicts_closes_stale_client_and_logs_iid(self):
+        client = MCPClient(user_id=USER_ID)
+        stale_client = AsyncMock()
+        client._clients[INTEGRATION_ID] = stale_client
+        client._tools[INTEGRATION_ID] = [_mock_tool()]
+
+        with (
+            patch.object(client, "_safe_close_client", new_callable=AsyncMock) as mock_close,
+            patch("app.services.mcp.mcp_client._spawn_background") as mock_spawn,
+            patch("app.services.mcp.mcp_client.log") as mock_log,
+        ):
+            callback = client._make_evict_callback(INTEGRATION_ID)
+            callback()
+
+        assert INTEGRATION_ID not in client._clients
+        assert INTEGRATION_ID not in client._tools
+        coro_arg, label = mock_spawn.call_args[0]
+        assert label == f"evict_close_{INTEGRATION_ID}"
+        await coro_arg  # drain the never-awaited close coroutine
+        mock_close.assert_awaited_once_with(stale_client)
+        mock_log.info.assert_called_once_with(
+            f"{LogTag.MCP} Evicted stale session after connection error", iid=INTEGRATION_ID
+        )
+
+    async def test_evict_callback_without_stale_client_spawns_nothing(self):
+        client = MCPClient(user_id=USER_ID)
+        client._tools[INTEGRATION_ID] = [_mock_tool()]
+
+        with (
+            patch("app.services.mcp.mcp_client._spawn_background") as mock_spawn,
+            patch("app.services.mcp.mcp_client.log"),
+        ):
+            client._make_evict_callback(INTEGRATION_ID)()
+
+        assert INTEGRATION_ID not in client._tools
+        mock_spawn.assert_not_called()
+
+    async def test_reconnect_callback_delegates_with_exact_args_and_result(self):
+        client = MCPClient(user_id=USER_ID)
+        sentinel = object()
+        with patch.object(
+            client, "reconnect_and_call", new_callable=AsyncMock, return_value=sentinel
+        ) as mock_rec:
+            callback = client._make_reconnect_callback(INTEGRATION_ID)
+            result = await callback("my_tool", {"k": "v"})
+
+        mock_rec.assert_awaited_once_with(INTEGRATION_ID, "my_tool", {"k": "v"})
+        assert result is sentinel
+
+
+class TestRunPostConnectTasksExact:
+    def _resolved(self) -> MagicMock:
+        resolved = MagicMock()
+        resolved.source = "platform"
+        resolved.custom_doc = None
+        return resolved
+
+    async def test_unauthenticated_platform_runs_each_task_with_exact_args(self):
+        client = MCPClient(user_id=USER_ID)
+        client.token_store.store_unauthenticated = AsyncMock()
+        client._index_platform_mcp_tools = AsyncMock()
+        tools = [_mock_tool("t1", "desc1")]
+
+        with (
+            patch(
+                "app.services.mcp.mcp_client.store_mcp_tools", new_callable=AsyncMock
+            ) as mock_store_tools,
+            patch(
+                "app.services.mcp.mcp_client.update_user_integration_status",
+                new_callable=AsyncMock,
+            ) as mock_status,
+            patch("app.services.mcp.mcp_client.log") as mock_log,
+        ):
+            await client._run_post_connect_tasks(
+                self._resolved(), _make_mcp_config(), False, INTEGRATION_ID, tools
+            )
+
+        client.token_store.store_unauthenticated.assert_awaited_once_with(INTEGRATION_ID)
+        mock_store_tools.assert_awaited_once_with(
+            INTEGRATION_ID, [{"name": "t1", "description": "desc1"}]
+        )
+        client._index_platform_mcp_tools.assert_awaited_once_with(INTEGRATION_ID, tools)
+        mock_status.assert_awaited_once_with(USER_ID, INTEGRATION_ID, "connected")
+
+        ok_labels = [
+            call.kwargs["label"]
+            for call in mock_log.info.call_args_list
+            if "post-connect task ok" in call.args[0]
+        ]
+        assert ok_labels == [
+            "store_unauthenticated",
+            "store_tools_mongo",
+            "index_platform_chroma",
+            "update_status_connected",
+        ]
+
+    async def test_custom_integration_routes_to_custom_handler_with_doc_fields(self):
+        resolved = MagicMock()
+        resolved.custom_doc = {"name": "Custom Name", "description": "Custom Desc"}
+        client = MCPClient(user_id=USER_ID)
+        client.token_store.store_unauthenticated = AsyncMock()
+        client._handle_custom_integration_connect = AsyncMock()
+        tools = [_mock_tool()]
+
+        with (
+            patch("app.services.mcp.mcp_client.store_mcp_tools", new_callable=AsyncMock),
+            patch(
+                "app.services.mcp.mcp_client.update_user_integration_status",
+                new_callable=AsyncMock,
+            ),
+            patch("app.services.mcp.mcp_client.log"),
+        ):
+            await client._run_post_connect_tasks(
+                resolved, _make_mcp_config(server_url=SERVER_URL), True, INTEGRATION_ID, tools
+            )
+
+        client._handle_custom_integration_connect.assert_awaited_once_with(
+            INTEGRATION_ID, SERVER_URL, tools, name="Custom Name", description="Custom Desc"
+        )
+
+    async def test_failing_post_task_logs_warning_with_its_label_only(self):
+        client = MCPClient(user_id=USER_ID)
+        client.token_store.store_unauthenticated = AsyncMock()
+        client._index_platform_mcp_tools = AsyncMock()
+        tools = [_mock_tool()]
+
+        with (
+            patch("app.services.mcp.mcp_client.store_mcp_tools", new_callable=AsyncMock),
+            patch(
+                "app.services.mcp.mcp_client.update_user_integration_status",
+                new_callable=AsyncMock,
+                side_effect=Exception("status write failed"),
+            ),
+            patch("app.services.mcp.mcp_client.log") as mock_log,
+        ):
+            await client._run_post_connect_tasks(
+                self._resolved(), _make_mcp_config(), False, INTEGRATION_ID, tools
+            )
+
+        warnings = [c for c in mock_log.warning.call_args_list]
+        assert len(warnings) == 1
+        assert warnings[0].args[0] == f"{LogTag.MCP} post-connect task failed"
+        assert warnings[0].kwargs == {
+            "integration_id": INTEGRATION_ID,
+            "label": "update_status_connected",
+            "error": "status write failed",
+            "error_type": "Exception",
+        }
+
+
+class TestHandleConnectFailureExact:
+    async def test_step_up_raises_with_parsed_scopes_and_original_cause(self):
+        client = MCPClient(user_id=USER_ID)
+        err = ValueError('403 insufficient_scope scope="read write"')
+        with patch("app.services.mcp.mcp_client.log"):
+            with pytest.raises(StepUpAuthRequired) as exc_info:
+                await client._handle_connect_failure(err, INTEGRATION_ID, _make_mcp_config())
+
+        assert exc_info.value.integration_id == INTEGRATION_ID
+        assert exc_info.value.required_scopes == ["read", "write"]
+        assert exc_info.value.__cause__ is err
+
+    async def test_transient_failure_keeps_connected_status_and_warns_exactly_once(self):
+        client = MCPClient(user_id=USER_ID)
+        client._reset_to_disconnected = AsyncMock()
+        err = RuntimeError("connection reset by peer")
+        with patch("app.services.mcp.mcp_client.log") as mock_log:
+            result = await client._handle_connect_failure(err, INTEGRATION_ID, _make_mcp_config())
+
+        assert result is None
+        client._reset_to_disconnected.assert_not_awaited()
+        mock_log.set_ns.assert_called_once_with(
+            "mcp",
+            operation="connect",
+            server_id=INTEGRATION_ID,
+            success=False,
+            error_type="RuntimeError",
+        )
+        mock_log.error.assert_any_call(
+            f"{LogTag.MCP} Failed to connect to MCP",
+            integration_id=INTEGRATION_ID,
+            error="connection reset by peer",
+            error_type="RuntimeError",
+        )
+        mock_log.warning.assert_called_once_with(
+            f"{LogTag.MCP} Transient connection failure — keeping "
+            f"connected status so next attempt retries with current tokens",
+            integration_id=INTEGRATION_ID,
+            error="connection reset by peer",
+            error_type="RuntimeError",
+        )
+
+    async def test_terminal_auth_failure_resets_to_disconnected(self):
+        client = MCPClient(user_id=USER_ID)
+        client._reset_to_disconnected = AsyncMock()
+        err = RuntimeError("invalid_grant: token revoked")
+        with patch("app.services.mcp.mcp_client.log") as mock_log:
+            result = await client._handle_connect_failure(err, INTEGRATION_ID, _make_mcp_config())
+
+        assert result is None
+        client._reset_to_disconnected.assert_awaited_once_with(INTEGRATION_ID)
+        mock_log.warning.assert_not_called()
+
+    async def test_auth_error_refreshes_token_and_retries_connect_once(self):
+        client = MCPClient(user_id=USER_ID)
+        mcp_config = _make_mcp_config(requires_auth=True)
+        retried_tools = [_mock_tool("retry_tool")]
+        client._try_refresh_token = AsyncMock(return_value=True)
+        client._do_connect = AsyncMock(return_value=retried_tools)
+        err = RuntimeError("401 Unauthorized from server")
+
+        with patch("app.services.mcp.mcp_client.log"):
+            result = await client._handle_connect_failure(err, INTEGRATION_ID, mcp_config)
+
+        assert result is retried_tools
+        client._try_refresh_token.assert_awaited_once_with(INTEGRATION_ID, mcp_config)
+        client._do_connect.assert_awaited_once_with(INTEGRATION_ID)
+        assert not hasattr(client, f"_retry_{INTEGRATION_ID}")
+
+    async def test_failed_refresh_warns_then_resets_on_terminal_error(self):
+        client = MCPClient(user_id=USER_ID)
+        mcp_config = _make_mcp_config(requires_auth=True)
+        client._try_refresh_token = AsyncMock(return_value=False)
+        client._reset_to_disconnected = AsyncMock()
+        err = RuntimeError("401 invalid_grant")
+
+        with patch("app.services.mcp.mcp_client.log") as mock_log:
+            result = await client._handle_connect_failure(err, INTEGRATION_ID, mcp_config)
+
+        assert result is None
+        mock_log.warning.assert_any_call(
+            f"{LogTag.MCP} Token refresh failed, user may need to re-authorize",
+            integration_id=INTEGRATION_ID,
+            error="401 invalid_grant",
+            error_type="RuntimeError",
+        )
+        client._reset_to_disconnected.assert_awaited_once_with(INTEGRATION_ID)
+
+
+class TestDoConnectWiringExact:
+    @pytest.fixture(autouse=True)
+    def _mock_ssrf_guard(self) -> Iterator[None]:
+        with patch("app.services.mcp.mcp_client.assert_public_http_url", new_callable=AsyncMock):
+            yield
+
+    async def test_wraps_stamped_tools_with_live_callbacks_and_persists(self):
+        raw = [_mock_tool("raw1"), _mock_tool("raw2")]
+        wrapped = [MagicMock(name="w1"), MagicMock(name="w2")]
+        wrapped[0].name = "w1"
+        wrapped[1].name = "w2"
+        mock_base = AsyncMock()
+        adapter = AsyncMock()
+        adapter.create_tools = AsyncMock(return_value=raw)
+        resolved = MagicMock()
+        resolved.mcp_config = _make_mcp_config()
+        resolved.source = "platform"
+        resolved.custom_doc = None
+
+        with (
+            patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
+            patch("app.services.mcp.mcp_client.BaseMCPClient", return_value=mock_base),
+            patch("app.services.mcp.mcp_client.ResilientLangChainAdapter", return_value=adapter),
+            patch(
+                "app.services.mcp.mcp_client.wrap_tools_with_null_filter", return_value=wrapped
+            ) as mock_wrap,
+            patch(
+                "app.services.mcp.mcp_client.store_mcp_tools", new_callable=AsyncMock
+            ) as mock_store_tools,
+            patch(
+                "app.services.mcp.mcp_client.update_user_integration_status",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.services.mcp.mcp_client.invalidate_user_integration_caches",
+                new_callable=AsyncMock,
+            ) as mock_inval,
+            patch("app.services.mcp.mcp_client.log") as mock_log,
+        ):
+            mock_resolver.resolve = AsyncMock(return_value=resolved)
+            client = MCPClient(user_id=USER_ID)
+            client.token_store.get_bearer_token = AsyncMock(return_value=None)
+            client._index_platform_mcp_tools = AsyncMock()
+
+            result = await client._do_connect(INTEGRATION_ID)
+
+        assert result is wrapped
+        assert client._tools[INTEGRATION_ID] is wrapped
+        assert client._clients[INTEGRATION_ID] is mock_base
+
+        mock_wrap.assert_called_once()
+        assert mock_wrap.call_args.args[0] is raw
+        wrap_kwargs = mock_wrap.call_args.kwargs
+
+        # Provenance was stamped before wrapping.
+        assert [t.metadata["integration_id"] for t in raw] == [INTEGRATION_ID, INTEGRATION_ID]
+
+        # The evict callback handed to the wrapper really evicts this client's caches.
+        client._tools[INTEGRATION_ID] = wrapped
+        client._clients[INTEGRATION_ID] = mock_base
+        with (
+            patch.object(client, "_safe_close_client", new_callable=AsyncMock) as mock_close,
+            patch("app.services.mcp.mcp_client._spawn_background") as mock_evict_spawn,
+        ):
+            wrap_kwargs["on_connection_error"]()
+            assert INTEGRATION_ID not in client._clients
+            assert INTEGRATION_ID not in client._tools
+            coro_arg, label = mock_evict_spawn.call_args[0]
+            assert label == f"evict_close_{INTEGRATION_ID}"
+            await coro_arg
+            mock_close.assert_awaited_once_with(mock_base)
+
+        # The reconnect callback delegates to reconnect_and_call for this integration.
+        sentinel = object()
+        with patch.object(
+            client, "reconnect_and_call", new_callable=AsyncMock, return_value=sentinel
+        ) as mock_rec:
+            assert await wrap_kwargs["reconnect_and_retry"]("tool_x", {"a": 1}) is sentinel
+        mock_rec.assert_awaited_once_with(INTEGRATION_ID, "tool_x", {"a": 1})
+
+        # Post-connect persistence runs on the wrapped tool list.
+        mock_store_tools.assert_awaited_once()
+        stored_metadata = mock_store_tools.await_args.args[1]
+        assert [entry["name"] for entry in stored_metadata] == ["w1", "w2"]
+        mock_inval.assert_awaited_once_with(USER_ID)
+        mock_log.set_ns.assert_called_once_with(
+            "mcp",
+            operation="connect",
+            server_id=INTEGRATION_ID,
+            tool_count=2,
+            success=True,
+        )
+
+
+class TestBuildOauthAuthUrlExactParams:
+    async def _build(self, redirect_path: str = "/integrations"):
+        client = MCPClient(user_id=USER_ID)
+        resolved = MagicMock()
+        resolved.mcp_config = _make_mcp_config(
+            requires_auth=True, client_id="my_client", oauth_scopes=["read"]
+        )
+        oauth_config = _make_oauth_discovery(metadata_overrides={"scopes_supported": ["read"]})
+
+        with (
+            patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
+            patch.object(
+                client,
+                "_discover_oauth_config",
+                new_callable=AsyncMock,
+                return_value=oauth_config,
+            ),
+            patch("app.services.mcp.mcp_client.validate_pkce_support"),
+            patch(
+                "app.services.mcp.mcp_client.PKCEParameters.generate",
+                return_value=MagicMock(
+                    code_verifier="verifier_123", code_challenge="challenge_456"
+                ),
+            ),
+        ):
+            mock_resolver.resolve = AsyncMock(return_value=resolved)
+            client.token_store.create_oauth_state = AsyncMock(return_value="state_abc")
+
+            url = await client.build_oauth_auth_url(
+                INTEGRATION_ID, "https://myapp.com/callback", redirect_path=redirect_path
+            )
+
+        return url
+
+    async def test_query_params_are_exact(self):
+        url = await self._build()
+        parsed = urlparse(url)
+        query = parse_qs(parsed.query)
+
+        assert f"{parsed.scheme}://{parsed.netloc}{parsed.path}" == (
+            "https://auth.example.com/authorize"
+        )
+        assert query == {
+            "client_id": ["my_client"],
+            "redirect_uri": ["https://myapp.com/callback"],
+            "response_type": ["code"],
+            "state": [f"state_abc:{INTEGRATION_ID}:/integrations"],
+            "code_challenge": ["challenge_456"],
+            "code_challenge_method": ["S256"],
+            "resource": [SERVER_URL],
+            "scope": ["read"],
+        }
+
+    async def test_state_carries_custom_redirect_path(self):
+        url = await self._build(redirect_path="/onboarding")
+        query = parse_qs(urlparse(url).query)
+        assert query["state"] == [f"state_abc:{INTEGRATION_ID}:/onboarding"]
+
+    async def test_nonce_param_matches_nonce_passed_to_store(self):
+        client = MCPClient(user_id=USER_ID)
+        resolved = MagicMock()
+        resolved.mcp_config = _make_mcp_config(
+            requires_auth=True, client_id="cid", oauth_scopes=["openid", "profile"]
+        )
+        oauth_config = _make_oauth_discovery()
+
+        stored_nonce: list[str] = []
+
+        async def _capture_store(iid: str, nonce: str) -> None:
+            stored_nonce.append(nonce)
+
+        with (
+            patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
+            patch.object(
+                client,
+                "_discover_oauth_config",
+                new_callable=AsyncMock,
+                return_value=oauth_config,
+            ),
+            patch("app.services.mcp.mcp_client.validate_pkce_support"),
+            patch(
+                "app.services.mcp.mcp_client.PKCEParameters.generate",
+                return_value=MagicMock(code_verifier="v", code_challenge="c"),
+            ),
+        ):
+            mock_resolver.resolve = AsyncMock(return_value=resolved)
+            client.token_store.create_oauth_state = AsyncMock(return_value="state")
+            client.token_store.store_oauth_nonce = AsyncMock(side_effect=_capture_store)
+
+            url = await client.build_oauth_auth_url(INTEGRATION_ID, "https://callback.com")
+
+        query = parse_qs(urlparse(url).query)
+        assert len(stored_nonce) == 1
+        assert query["nonce"] == [stored_nonce[0]]
+        client.token_store.store_oauth_nonce.assert_awaited_once_with(
+            INTEGRATION_ID, stored_nonce[0]
+        )
+
+
+class TestClientIdFromMetadataOrDcrExact:
+    async def test_metadata_doc_returned_when_supported_and_api_is_public(self):
+        client = MCPClient(user_id=USER_ID)
+        discovery = _make_oauth_discovery(
+            metadata_overrides={"client_id_metadata_document_supported": True}
+        )
+        with (
+            patch(
+                "app.services.mcp.mcp_client.get_api_base_url",
+                return_value="https://api.gaia.dev",
+            ),
+            patch("app.services.mcp.mcp_client.is_localhost_url", return_value=False),
+            patch(
+                "app.services.mcp.mcp_client.get_client_metadata_document_url",
+                return_value="https://api.gaia.dev/.well-known/oauth-client",
+            ) as mock_doc_url,
+            patch("app.services.mcp.mcp_client.log") as mock_log,
+        ):
+            result = await client._client_id_from_metadata_or_dcr(
+                INTEGRATION_ID, discovery, "https://cb"
+            )
+
+        assert result == "https://api.gaia.dev/.well-known/oauth-client"
+        mock_doc_url.assert_called_once_with("https://api.gaia.dev")
+        mock_log.info.assert_called_once_with(
+            f"{LogTag.MCP} Using client metadata document URL as client_id for",
+            integration_id=INTEGRATION_ID,
+            client_id="https://api.gaia.dev/.well-known/oauth-client",
+        )
+
+    async def test_falls_back_to_dcr_on_localhost_even_when_supported(self):
+        client = MCPClient(user_id=USER_ID)
+        discovery = _make_oauth_discovery(
+            metadata_overrides={
+                "client_id_metadata_document_supported": True,
+                "registration_endpoint": "https://auth.example.com/register",
+            }
+        )
+        as_metadata = discovery.as_metadata
+        with (
+            patch(
+                "app.services.mcp.mcp_client.get_api_base_url",
+                return_value="http://localhost:8000",
+            ),
+            patch("app.services.mcp.mcp_client.is_localhost_url", return_value=True),
+            patch.object(
+                client, "_register_client", new_callable=AsyncMock, return_value="dcr_cid"
+            ) as mock_register,
+            patch("app.services.mcp.mcp_client.log"),
+        ):
+            result = await client._client_id_from_metadata_or_dcr(
+                INTEGRATION_ID, discovery, "https://cb"
+            )
+
+        assert result == "dcr_cid"
+        mock_register.assert_awaited_once_with(INTEGRATION_ID, as_metadata, "https://cb")
+
+
+class TestResolveTokenExchangeCredentialsExact:
+    async def test_preconfigured_credentials_win_before_dcr_lookup(self):
+        client = MCPClient(user_id=USER_ID)
+        mcp_config = _make_mcp_config(client_id="cfg_client", client_secret="cfg_secret")
+        client.token_store.get_dcr_client = AsyncMock()
+
+        result = await client._resolve_token_exchange_credentials(
+            INTEGRATION_ID, mcp_config, _make_oauth_discovery()
+        )
+
+        assert result == ("cfg_client", "cfg_secret")
+        client.token_store.get_dcr_client.assert_not_awaited()
+
+    async def test_stored_dcr_client_used_when_no_preconfigured_credentials(self):
+        client = MCPClient(user_id=USER_ID)
+        mcp_config = _make_mcp_config()
+        client.token_store.get_dcr_client = AsyncMock(
+            return_value={"client_id": "dcr_cid", "client_secret": "dcr_sec"}
+        )
+
+        result = await client._resolve_token_exchange_credentials(
+            INTEGRATION_ID, mcp_config, _make_oauth_discovery()
+        )
+
+        assert result == ("dcr_cid", "dcr_sec")
+        client.token_store.get_dcr_client.assert_awaited_once_with(INTEGRATION_ID)
+
+    async def test_metadata_document_returns_url_without_secret(self):
+        client = MCPClient(user_id=USER_ID)
+        mcp_config = _make_mcp_config()
+        discovery = _make_oauth_discovery(
+            metadata_overrides={"client_id_metadata_document_supported": True}
+        )
+        client.token_store.get_dcr_client = AsyncMock(return_value=None)
+        with (
+            patch(
+                "app.services.mcp.mcp_client.get_api_base_url",
+                return_value="https://api.gaia.dev",
+            ),
+            patch("app.services.mcp.mcp_client.is_localhost_url", return_value=False),
+            patch(
+                "app.services.mcp.mcp_client.get_client_metadata_document_url",
+                return_value="https://api.gaia.dev/.well-known/oauth-client",
+            ),
+            patch("app.services.mcp.mcp_client.log") as mock_log,
+        ):
+            result = await client._resolve_token_exchange_credentials(
+                INTEGRATION_ID, mcp_config, discovery
+            )
+
+        assert result == ("https://api.gaia.dev/.well-known/oauth-client", None)
+        mock_log.info.assert_called_once_with(
+            f"{LogTag.MCP} Using client metadata document URL as client_id for token exchange",
+            client_id="https://api.gaia.dev/.well-known/oauth-client",
+        )
+
+    async def test_localhost_never_uses_metadata_document(self):
+        client = MCPClient(user_id=USER_ID)
+        mcp_config = _make_mcp_config()
+        discovery = _make_oauth_discovery(
+            metadata_overrides={"client_id_metadata_document_supported": True}
+        )
+        client.token_store.get_dcr_client = AsyncMock(return_value=None)
+        with (
+            patch(
+                "app.services.mcp.mcp_client.get_api_base_url",
+                return_value="http://localhost:8000",
+            ),
+            patch("app.services.mcp.mcp_client.is_localhost_url", return_value=True),
+            patch(
+                "app.services.mcp.mcp_client.get_client_metadata_document_url",
+                return_value="http://localhost:8000/.well-known/oauth-client",
+            ) as mock_doc_url,
+            patch("app.services.mcp.mcp_client.log"),
+        ):
+            result = await client._resolve_token_exchange_credentials(
+                INTEGRATION_ID, mcp_config, discovery
+            )
+
+        # Supported or not, a localhost API base can never serve the metadata
+        # document — no client_id may come out of this branch.
+        assert result == (None, None)
+        mock_doc_url.assert_called_once_with("http://localhost:8000")
+
+
+class TestExchangeCodeForTokensExact:
+    def _exchange(self, **overrides: Any) -> dict[str, Any]:
+        exchange: dict[str, Any] = {
+            "code": "authcode",
+            "redirect_uri": "https://myapp.com/callback",
+            "resource": SERVER_URL,
+            "client_id": "cid",
+            "client_secret": None,
+            "code_verifier": "verifier123",
+        }
+        exchange.update(overrides)
+        return exchange
+
+    async def test_posts_exact_form_data_headers_and_timeout(self):
+        client = MCPClient(user_id=USER_ID)
+        post = AsyncMock(return_value=_ok_response({"access_token": "at"}))
+        with (
+            patch(
+                "app.services.mcp.mcp_client.httpx.AsyncClient",
+                return_value=_fake_http_client(post)(),
+            ),
+        ):
+            result = await client._exchange_code_for_tokens(
+                INTEGRATION_ID, "https://auth.example.com/token", self._exchange()
+            )
+
+        post.assert_awaited_once_with(
+            "https://auth.example.com/token",
+            data={
+                "grant_type": "authorization_code",
+                "client_id": "cid",
+                "code": "authcode",
+                "redirect_uri": "https://myapp.com/callback",
+                "resource": SERVER_URL,
+                "code_verifier": "verifier123",
+            },
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
+            },
+            timeout=30,
+        )
+        assert result == {"access_token": "at"}
+
+    async def test_missing_verifier_omits_the_key_entirely(self):
+        client = MCPClient(user_id=USER_ID)
+        post = AsyncMock(return_value=_ok_response({}))
+        with patch(
+            "app.services.mcp.mcp_client.httpx.AsyncClient",
+            return_value=_fake_http_client(post)(),
+        ):
+            await client._exchange_code_for_tokens(
+                INTEGRATION_ID, "https://auth.example.com/token", self._exchange(code_verifier=None)
+            )
+
+        sent_data = post.call_args.kwargs["data"]
+        assert sent_data == {
+            "grant_type": "authorization_code",
+            "client_id": "cid",
+            "code": "authcode",
+            "redirect_uri": "https://myapp.com/callback",
+            "resource": SERVER_URL,
+        }
+
+    async def test_secret_adds_basic_auth_header_with_exact_encoding(self):
+        client = MCPClient(user_id=USER_ID)
+        post = AsyncMock(return_value=_ok_response({}))
+        expected_basic = "Basic " + base64.b64encode(b"cid:sec").decode()
+        with patch(
+            "app.services.mcp.mcp_client.httpx.AsyncClient",
+            return_value=_fake_http_client(post)(),
+        ):
+            await client._exchange_code_for_tokens(
+                INTEGRATION_ID,
+                "https://auth.example.com/token",
+                self._exchange(client_secret="sec"),
+            )
+
+        headers = post.call_args.kwargs["headers"]
+        assert headers["Authorization"] == expected_basic
+
+    async def test_no_secret_means_no_authorization_header(self):
+        client = MCPClient(user_id=USER_ID)
+        post = AsyncMock(return_value=_ok_response({}))
+        with patch(
+            "app.services.mcp.mcp_client.httpx.AsyncClient",
+            return_value=_fake_http_client(post)(),
+        ):
+            await client._exchange_code_for_tokens(
+                INTEGRATION_ID, "https://auth.example.com/token", self._exchange()
+            )
+
+        assert "Authorization" not in post.call_args.kwargs["headers"]
+
+    async def test_error_response_logs_exact_kwargs_and_raises_exact_message(self):
+        client = MCPClient(user_id=USER_ID)
+        bad_response = MagicMock()
+        bad_response.status_code = 400
+        with (
+            patch(
+                "app.services.mcp.mcp_client.httpx.AsyncClient",
+                return_value=_fake_http_client(AsyncMock(return_value=bad_response))(),
+            ),
+            patch(
+                "app.services.mcp.mcp_client.parse_oauth_error_response",
+                return_value={"error": "invalid_grant", "error_description": "Code expired"},
+            ),
+            patch("app.services.mcp.mcp_client.log") as mock_log,
+        ):
+            with pytest.raises(
+                ValueError, match=r"^Token exchange failed: invalid_grant - Code expired$"
+            ):
+                await client._exchange_code_for_tokens(
+                    INTEGRATION_ID, "https://auth.example.com/token", self._exchange()
+                )
+
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.MCP} Token exchange failed",
+            integration_id=INTEGRATION_ID,
+            oauth_error="invalid_grant",
+            oauth_error_description="Code expired",
+        )
+
+
+class TestHandleOauthCallbackNonceEnforcement:
+    """A stored nonce must gate the whole exchange — every mismatch path fails loud."""
+
+    def _make_client(self) -> MCPClient:
+        client = MCPClient(user_id=USER_ID)
+        client.token_store.verify_oauth_state = AsyncMock(return_value=(True, "verifier"))
+        client.token_store.get_and_delete_oauth_nonce = AsyncMock()
+        client.token_store.store_oauth_tokens = AsyncMock()
+        return client
+
+    async def _run_callback(
+        self, client: MCPClient, tokens: dict[str, Any], stored_nonce: str | None
+    ) -> list[BaseTool]:
+        client.token_store.get_and_delete_oauth_nonce = AsyncMock(return_value=stored_nonce)
+        resolved = MagicMock()
+        resolved.mcp_config = _make_mcp_config(requires_auth=True, client_id="cid")
+
+        with (
+            patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
+            patch.object(
+                client,
+                "_discover_oauth_config",
+                new_callable=AsyncMock,
+                return_value=_make_oauth_discovery(),
+            ),
+            patch("app.services.mcp.mcp_client.validate_https_url"),
+            patch("app.services.mcp.mcp_client.validate_jwt_issuer", return_value=True),
+            patch(
+                "app.services.mcp.mcp_client.httpx.AsyncClient",
+                return_value=_fake_http_client(AsyncMock(return_value=_ok_response(tokens)))(),
+            ),
+            patch(
+                "app.services.mcp.mcp_client.update_user_integration_status",
+                new_callable=AsyncMock,
+            ),
+        ):
+            mock_resolver.resolve = AsyncMock(return_value=resolved)
+            return await client.handle_oauth_callback(
+                INTEGRATION_ID, "code", "state", "https://callback.com"
+            )
+
+    async def test_nonce_mismatch_aborts_before_tokens_are_stored(self):
+        client = self._make_client()
+        tokens = {
+            "access_token": "at",
+            "token_type": "Bearer",
+            "id_token": _make_id_token({"nonce": "attacker_nonce"}),
+        }
+        with pytest.raises(ValueError, match=r"^OIDC nonce mismatch .* possible replay attack$"):
+            await self._run_callback(client, tokens, stored_nonce="stored_nonce")
+        client.token_store.store_oauth_tokens.assert_not_awaited()
+
+    async def test_missing_id_token_with_stored_nonce_raises(self):
+        client = self._make_client()
+        tokens = {"access_token": "at", "token_type": "Bearer"}
+        with pytest.raises(ValueError, match="token response contained no id_token"):
+            await self._run_callback(client, tokens, stored_nonce="stored_nonce")
+        client.token_store.store_oauth_tokens.assert_not_awaited()
+
+    async def test_undecodable_id_token_raises(self):
+        client = self._make_client()
+        tokens = {
+            "access_token": "at",
+            "token_type": "Bearer",
+            "id_token": "not-a-jwt",
+        }
+        with pytest.raises(ValueError, match="could not decode id_token"):
+            await self._run_callback(client, tokens, stored_nonce="stored_nonce")
+        client.token_store.store_oauth_tokens.assert_not_awaited()
+
+    async def test_id_token_without_nonce_claim_raises(self):
+        client = self._make_client()
+        tokens = {
+            "access_token": "at",
+            "token_type": "Bearer",
+            "id_token": _make_id_token({"sub": "user-1"}),
+        }
+        with pytest.raises(ValueError, match="carries no nonce claim"):
+            await self._run_callback(client, tokens, stored_nonce="stored_nonce")
+        client.token_store.store_oauth_tokens.assert_not_awaited()
+
+    async def test_matching_nonce_proceeds_to_storage_and_returns_empty_list(self):
+        client = self._make_client()
+        tokens = {
+            "access_token": "at",
+            "token_type": "Bearer",
+            "expires_in": 3600,
+            "id_token": _make_id_token({"nonce": "stored_nonce"}),
+        }
+        with patch("app.services.mcp.mcp_client._spawn_background", return_value=MagicMock()):
+            result = await self._run_callback(client, tokens, stored_nonce="stored_nonce")
+
+        assert result == []
+        client.token_store.store_oauth_tokens.assert_awaited_once()
+        call_kwargs = client.token_store.store_oauth_tokens.await_args.kwargs
+        assert call_kwargs["integration_id"] == INTEGRATION_ID
+        assert call_kwargs["access_token"] == "at"
+        assert call_kwargs["refresh_token"] is None
+
+
+class TestServerUrlMatchingHelpersExact:
+    def _resolved_with(self, server_url: str | None) -> MagicMock:
+        resolved = MagicMock()
+        resolved.mcp_config = (
+            None if server_url is None else _make_mcp_config(server_url=server_url)
+        )
+        return resolved
+
+    def test_matches_normalized_urls(self):
+        client = MCPClient(user_id=USER_ID)
+        target = client._normalize_server_url(SERVER_URL)
+        assert (
+            client._resolved_matches_server_url(self._resolved_with(SERVER_URL + "/"), target)
+            is True
+        )
+        assert (
+            client._resolved_matches_server_url(
+                self._resolved_with("HTTPS://MCP.EXAMPLE.COM/v1"), target
+            )
+            is True
+        )
+        assert (
+            client._resolved_matches_server_url(self._resolved_with("https://other.com"), target)
+            is False
+        )
+
+    def test_rejects_none_resolution_and_missing_config(self):
+        client = MCPClient(user_id=USER_ID)
+        assert client._resolved_matches_server_url(None, "anything") is False
+        assert client._resolved_matches_server_url(self._resolved_with(None), "anything") is False
+
+    async def test_match_active_client_returns_first_matching_integration_id(self):
+        client = MCPClient(user_id=USER_ID)
+        client._clients["aaa"] = MagicMock()
+        client._clients["bbb"] = MagicMock()
+        target = client._normalize_server_url(SERVER_URL)
+        resolutions = {
+            "aaa": self._resolved_with("https://elsewhere.io"),
+            "bbb": self._resolved_with(SERVER_URL),
+        }
+
+        with patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver:
+            mock_resolver.resolve = AsyncMock(side_effect=lambda iid: resolutions[iid])
+            match = await client._match_active_client_by_server_url(target)
+
+        assert match == "bbb"
+
+    async def test_match_active_client_returns_none_when_nothing_matches(self):
+        client = MCPClient(user_id=USER_ID)
+        client._clients["aaa"] = MagicMock()
+        target = client._normalize_server_url(SERVER_URL)
+        with patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver:
+            mock_resolver.resolve = AsyncMock(
+                return_value=self._resolved_with("https://elsewhere.io")
+            )
+            match = await client._match_active_client_by_server_url(target)
+
+        assert match is None
+
+    def test_connectable_candidate_ids_filters_exactly(self):
+        docs = [
+            {"integration_id": "a", "status": "connected"},
+            {"integration_id": "b", "status": "created"},
+            {"integration_id": None, "status": "connected"},
+            {"integration_id": "c"},
+            {"integration_id": 123, "status": "connected"},
+        ]
+        assert MCPClient._connectable_candidate_ids(docs) == ["a", "c", "123"]
+
+    def test_connectable_candidate_ids_empty_for_no_docs(self):
+        assert MCPClient._connectable_candidate_ids([]) == []

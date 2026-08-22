@@ -40,7 +40,7 @@ class TestCommsToolSurface:
     )
     async def test_the_comms_tools_are_bound_from_the_start(self, tool: str):
         """Comms retrieves nothing, so anything it can do it must already have."""
-        async with comms_graph([call(tool, {}, id="c1"), "ok"]) as graph:
+        async with comms_graph([call(tool, {}, call_id="c1"), "ok"]) as graph:
             run = await run_graph(graph, "hello")
 
         assert REJECT_NODE not in run.nodes(), f"{tool} was not bound to comms"
@@ -58,7 +58,7 @@ class TestCommsToolSurface:
         the assertion order-dependent.
         """
         async with comms_graph(
-            [call("call_executor", {"task": "book a table"}, id="c1"), "On it."]
+            [call("call_executor", {"task": "book a table"}, call_id="c1"), "On it."]
         ) as graph:
             run = await run_graph(graph, "book me a table", thread_id=f"dispatch-{uuid4()}")
 
@@ -71,7 +71,7 @@ class TestCommsToolSurface:
         """The tier boundary. If an executor tool were callable here it would run
         outside delegation — no executor thread, no todo plan, no approval gate,
         and nothing on the stream to show it happened."""
-        async with comms_graph([call(tool, {}, id="c1"), "ok"]) as graph:
+        async with comms_graph([call(tool, {}, call_id="c1"), "ok"]) as graph:
             run = await run_graph(graph, "do the thing")
 
         assert REJECT_NODE in run.nodes()
@@ -86,7 +86,7 @@ class TestCommsToolSurface:
                 call(
                     "retrieve_tools",
                     {"query": "todo", "exact_tool_names": ["plan_tasks"]},
-                    id="r1",
+                    call_id="r1",
                 ),
                 "ok",
             ]
@@ -100,7 +100,9 @@ class TestCommsToolSurface:
     async def test_a_rejected_tool_still_lets_the_turn_finish(self):
         """The user must get an answer even when the model reached for something
         it does not have."""
-        async with comms_graph([call("plan_tasks", {}, id="c1"), "Let me delegate that."]) as graph:
+        async with comms_graph(
+            [call("plan_tasks", {}, call_id="c1"), "Let me delegate that."]
+        ) as graph:
             run = await run_graph(graph, "do the thing")
 
         assert "Let me delegate that." in run.final_text()
@@ -113,7 +115,7 @@ class TestMemoryTools:
         missing it returns "Error: user_id not found in config" while still
         looking like a completed tool call. Assert the real result."""
         async with comms_graph(
-            [call("search_memory", {"query": "coffee"}, id="m1"), "You like oat milk."]
+            [call("search_memory", {"query": "coffee"}, call_id="m1"), "You like oat milk."]
         ) as graph:
             run = await run_graph(graph, "what do I drink?")
             engine = memory_engine_of(graph)

@@ -109,6 +109,8 @@ class _DeterministicEmbeddings(Embeddings):
 
 class _NoOpEmbeddingFunction:
     def __call__(self, input: list[str]) -> list[list[float]]:
+        # `input` must keep this exact name: chromadb calls embedding functions
+        # as `self._embedding_function(input=input)` (keyword), not positionally.
         return [[0.0] * 384 for _ in input]
 
     @staticmethod

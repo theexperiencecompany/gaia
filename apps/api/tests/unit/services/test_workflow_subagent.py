@@ -14,7 +14,7 @@ import pytest
 
 from app.agents.context.assemble import AssembledContext
 from app.constants.llm import WORKFLOW_SUBAGENT_RECURSION_LIMIT
-from app.services.workflow.workflow_subagent import WorkflowSubagentRunner
+from app.services.workflow.workflow_subagent import SubagentRunContext, WorkflowSubagentRunner
 
 _MOD = "app.services.workflow.workflow_subagent"
 
@@ -60,9 +60,9 @@ async def _execute(draft: str, base_configurable: dict | None = None) -> _Run:
             task="every monday, summarize my inbox",
             user_id="u1",
             thread_id="t1",
-            user_name="Dev",
-            user_timezone="UTC",
-            base_configurable=base_configurable,
+            context=SubagentRunContext(
+                user_name="Dev", user_timezone="UTC", base_configurable=base_configurable
+            ),
         )
     return _Run(result=result, build_config=build_config, stream_turn=stream_turn)
 
@@ -107,3 +107,33 @@ class TestTheLaneItInherits:
 
         config = run.stream_turn.call_args.args[2]
         assert config["recursion_limit"] == WORKFLOW_SUBAGENT_RECURSION_LIMIT
+
+
+@pytest.mark.unit
+class TestExecuteLogPins:
+    async def test_execution_log_is_exact(self) -> None:
+        with patch(f"{_MOD}.get_workflow_subagent", new_callable=AsyncMock):
+            with (
+                patch.object(
+                    WorkflowSubagentRunner,
+                    "_stream_turn",
+                    new_callable=AsyncMock,
+                    return_value=('{"title": "x"}', False),
+                ),
+                patch.object(
+                    WorkflowSubagentRunner,
+                    "_draft_correction_needed",
+                    new_callable=AsyncMock,
+                    return_value=None,
+                ),
+                patch("app.services.workflow.workflow_subagent.log") as log,
+            ):
+                await WorkflowSubagentRunner.execute(task="t", user_id="u1", thread_id="t1")
+
+        exec_logs = [
+            c
+            for c in log.info.call_args_list
+            if "Executing workflow subagent task" in str(c.args[0])
+        ]
+        assert len(exec_logs) == 1
+        assert exec_logs[0].kwargs["task_length"] == len("t")

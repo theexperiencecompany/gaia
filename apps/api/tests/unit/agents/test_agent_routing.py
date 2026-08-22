@@ -14,7 +14,12 @@ from langchain_core.tools import tool
 import pytest
 
 from app.constants.llm import COMPLETION_NUDGE_MESSAGE, MAX_COMPLETION_NUDGES
-from app.override.langgraph_bigtool.create_agent import create_agent
+from app.override.langgraph_bigtool.create_agent import (
+    AgentConfig,
+    HookConfig,
+    ToolRetrievalConfig,
+    create_agent,
+)
 from tests.helpers import BindableToolsFakeModel
 
 
@@ -77,9 +82,11 @@ class TestShouldContinueLogicViaCreateAgent:
         builder = create_agent(
             llm=mock_llm,
             tool_registry=tool_registry,
-            disable_retrieve_tools=True,
-            initial_tool_ids=["dummy_tool"],
-            agent_name="test_agent",
+            tools_config=ToolRetrievalConfig(
+                disable_retrieve_tools=True,
+                initial_tool_ids=["dummy_tool"],
+            ),
+            agent_config=AgentConfig(agent_name="test_agent"),
         )
 
         agent_branches = builder.branches.get("agent")
@@ -100,10 +107,11 @@ class TestShouldContinueLogicViaCreateAgent:
         builder = create_agent(
             llm=mock_llm,
             tool_registry=tool_registry,
-            disable_retrieve_tools=True,
-            initial_tool_ids=["dummy_tool"],
-            agent_name="test_agent",
-            end_graph_hooks=None,
+            tools_config=ToolRetrievalConfig(
+                disable_retrieve_tools=True,
+                initial_tool_ids=["dummy_tool"],
+            ),
+            agent_config=AgentConfig(agent_name="test_agent"),
         )
 
         ends = _get_agent_branch_ends(builder)
@@ -125,10 +133,12 @@ class TestShouldContinueLogicViaCreateAgent:
         builder = create_agent(
             llm=mock_llm,
             tool_registry=tool_registry,
-            disable_retrieve_tools=True,
-            initial_tool_ids=["dummy_tool"],
-            agent_name="test_agent",
-            end_graph_hooks=[mock_hook],
+            tools_config=ToolRetrievalConfig(
+                disable_retrieve_tools=True,
+                initial_tool_ids=["dummy_tool"],
+            ),
+            agent_config=AgentConfig(agent_name="test_agent"),
+            hooks_config=HookConfig(end_graph_hooks=[mock_hook]),
         )
 
         ends = _get_agent_branch_ends(builder)
@@ -147,9 +157,11 @@ class TestShouldContinueLogicViaCreateAgent:
         builder = create_agent(
             llm=mock_llm,
             tool_registry=tool_registry,
-            disable_retrieve_tools=True,
-            initial_tool_ids=["dummy_tool"],
-            agent_name="test_agent",
+            tools_config=ToolRetrievalConfig(
+                disable_retrieve_tools=True,
+                initial_tool_ids=["dummy_tool"],
+            ),
+            agent_config=AgentConfig(agent_name="test_agent"),
         )
 
         ends = _get_agent_branch_ends(builder)
@@ -171,8 +183,8 @@ class TestShouldContinueLogicViaCreateAgent:
         builder = create_agent(
             llm=mock_llm,
             tool_registry=tool_registry,
-            retrieve_tools_coroutine=mock_retrieve,
-            agent_name="test_agent",
+            tools_config=ToolRetrievalConfig(retrieve_tools_coroutine=mock_retrieve),
+            agent_config=AgentConfig(agent_name="test_agent"),
         )
 
         ends = _get_agent_branch_ends(builder)
@@ -190,9 +202,11 @@ class TestShouldContinueLogicViaCreateAgent:
         builder = create_agent(
             llm=mock_llm,
             tool_registry=tool_registry,
-            disable_retrieve_tools=True,
-            initial_tool_ids=["dummy_tool"],
-            agent_name="test_agent",
+            tools_config=ToolRetrievalConfig(
+                disable_retrieve_tools=True,
+                initial_tool_ids=["dummy_tool"],
+            ),
+            agent_config=AgentConfig(agent_name="test_agent"),
         )
 
         ends = _get_agent_branch_ends(builder)
@@ -220,10 +234,12 @@ class TestShouldContinueBehavior:
         builder = create_agent(
             llm=llm,
             tool_registry=_build_minimal_registry(),
-            disable_retrieve_tools=True,
-            initial_tool_ids=["dummy_tool"],
-            agent_name="test_agent",
-            end_graph_hooks=end_graph_hooks,
+            tools_config=ToolRetrievalConfig(
+                disable_retrieve_tools=True,
+                initial_tool_ids=["dummy_tool"],
+            ),
+            agent_config=AgentConfig(agent_name="test_agent"),
+            hooks_config=HookConfig(end_graph_hooks=end_graph_hooks),
         )
         from langgraph.checkpoint.memory import MemorySaver
 
@@ -273,9 +289,11 @@ class TestShouldContinueBehavior:
         builder = create_agent(
             llm=llm,
             tool_registry={"echo_tool": echo_tool},
-            disable_retrieve_tools=True,
-            initial_tool_ids=["echo_tool"],
-            agent_name="test_agent",
+            tools_config=ToolRetrievalConfig(
+                disable_retrieve_tools=True,
+                initial_tool_ids=["echo_tool"],
+            ),
+            agent_config=AgentConfig(agent_name="test_agent"),
         )
         from langgraph.checkpoint.memory import MemorySaver
 
@@ -342,10 +360,12 @@ class TestCompletionNudgeWiring:
         builder = create_agent(
             llm=llm,
             tool_registry=_build_minimal_registry(),
-            disable_retrieve_tools=True,
-            initial_tool_ids=["dummy_tool"],
-            agent_name="executor_agent",
-            require_finish_to_end=require_finish_to_end,
+            tools_config=ToolRetrievalConfig(
+                disable_retrieve_tools=True,
+                initial_tool_ids=["dummy_tool"],
+            ),
+            hooks_config=HookConfig(require_finish_to_end=require_finish_to_end),
+            agent_config=AgentConfig(agent_name="executor_agent"),
         )
         return builder.compile(checkpointer=MemorySaver())
 
@@ -460,9 +480,11 @@ class TestCompletionNudgeWiring:
         builder = create_agent(
             llm=BindableToolsFakeModel(responses=[AIMessage(content="Here you go.")]),
             tool_registry=_build_minimal_registry(),
-            disable_retrieve_tools=True,
-            initial_tool_ids=["dummy_tool"],
-            agent_name="comms_agent",
+            tools_config=ToolRetrievalConfig(
+                disable_retrieve_tools=True,
+                initial_tool_ids=["dummy_tool"],
+            ),
+            agent_config=AgentConfig(agent_name="comms_agent"),
         )
         graph = builder.compile(checkpointer=MemorySaver())
 
@@ -499,10 +521,12 @@ class TestCompletionNudgeWiring:
         builder = create_agent(
             llm=_make_mock_llm(AIMessage(content="done")),
             tool_registry=_build_minimal_registry(),
-            disable_retrieve_tools=True,
-            initial_tool_ids=["dummy_tool"],
-            agent_name="executor_agent",
-            require_finish_to_end=True,
+            tools_config=ToolRetrievalConfig(
+                disable_retrieve_tools=True,
+                initial_tool_ids=["dummy_tool"],
+            ),
+            hooks_config=HookConfig(require_finish_to_end=True),
+            agent_config=AgentConfig(agent_name="executor_agent"),
         )
 
         assert "nudge_continue" in _get_agent_branch_ends(builder).values()
@@ -549,10 +573,11 @@ class TestRetrievedToolDiscoveryRendering:
         builder = create_agent(
             llm=self._retrieving_model(),
             tool_registry=_build_minimal_registry(),
-            retrieve_tools_function=retrieve_tools,
-            retrieve_tools_coroutine=retrieve_coroutine,
-            initial_tool_ids=[],
-            agent_name="executor_agent",
+            tools_config=ToolRetrievalConfig(
+                retrieve_tools_function=retrieve_tools,
+                retrieve_tools_coroutine=retrieve_coroutine,
+            ),
+            agent_config=AgentConfig(agent_name="executor_agent"),
         )
         return builder.compile(checkpointer=MemorySaver(), store=InMemoryStore())
 
@@ -629,9 +654,8 @@ class TestRetrievedToolDiscoveryRendering:
         builder = create_agent(
             llm=self._retrieving_model(),
             tool_registry=_build_minimal_registry(),
-            retrieve_tools_function=retrieve_tools,
-            initial_tool_ids=[],
-            agent_name="executor_agent",
+            tools_config=ToolRetrievalConfig(retrieve_tools_function=retrieve_tools),
+            agent_config=AgentConfig(agent_name="executor_agent"),
         )
         graph = builder.compile(checkpointer=MemorySaver(), store=InMemoryStore())
 
@@ -657,9 +681,8 @@ class TestRetrievedToolDiscoveryRendering:
         builder = create_agent(
             llm=self._retrieving_model(),
             tool_registry=_build_minimal_registry(),
-            retrieve_tools_function=retrieve_tools,
-            initial_tool_ids=[],
-            agent_name="executor_agent",
+            tools_config=ToolRetrievalConfig(retrieve_tools_function=retrieve_tools),
+            agent_config=AgentConfig(agent_name="executor_agent"),
         )
         graph = builder.compile(checkpointer=MemorySaver(), store=InMemoryStore())
 
@@ -709,9 +732,8 @@ class TestRetrievedToolDiscoveryRendering:
         builder = create_agent(
             llm=self._retrieving_model(),
             tool_registry=_build_minimal_registry(),
-            retrieve_tools_function=retrieve_tools,
-            initial_tool_ids=[],
-            agent_name="executor_agent",
+            tools_config=ToolRetrievalConfig(retrieve_tools_function=retrieve_tools),
+            agent_config=AgentConfig(agent_name="executor_agent"),
         )
         graph = builder.compile(checkpointer=MemorySaver(), store=InMemoryStore())
 

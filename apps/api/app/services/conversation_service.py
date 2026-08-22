@@ -111,7 +111,7 @@ async def create_conversation_service(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create conversation: {e!s}",
-        )
+        ) from e
 
     # Runs from the conversations endpoint, the chat stream's background init,
     # bot message handling, and seeding — always with an explicit user_id.
@@ -330,7 +330,7 @@ async def create_system_conversation(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create system conversation: {e!s}",
-        )
+        ) from e
 
     capture_event(
         user_id,

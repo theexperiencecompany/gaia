@@ -1,13 +1,15 @@
 """Unit tests for onboarding service and post-onboarding service."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from bson import ObjectId
 from fastapi import BackgroundTasks, HTTPException
 import pytest
 
+from app.constants.log_tags import LogTag
 from app.models.user_models import (
     BioStatus,
+    ClarifyAnswer,
     OnboardingPhase,
     OnboardingPreferences,
     OnboardingRequest,
@@ -114,6 +116,7 @@ class TestCompleteOnboarding:
                 sample_user_id, sample_onboarding_request, sample_background_tasks
             )
         assert exc_info.value.status_code == 404
+        assert exc_info.value.detail == "User not found"
 
     async def test_already_onboarded_replays_idempotently(
         self,
@@ -175,6 +178,95 @@ class TestCompleteOnboarding:
         await complete_onboarding(sample_user_id, request, sample_background_tasks)
 
         assert mock_repo.complete_onboarding.call_args.kwargs["timezone"] == "America/New_York"
+
+    async def test_passes_exact_normalized_kwargs_to_repository(
+        self,
+        mock_repo,
+        mock_enqueue_intelligence_job,
+        sample_user_id,
+        sample_background_tasks,
+        sample_user,
+    ):
+        request = OnboardingRequest(
+            name="Alice",
+            profession="Engineer",
+            timezone="UTC",
+            focus="  ship the product  ",
+            clarify_answers=[
+                ClarifyAnswer(
+                    id="scope",
+                    kind="scope",
+                    question="What should GAIA take off your plate?",
+                    value="  triage my inbox  ",
+                ),
+                # Whitespace-only and skipped answers must not survive.
+                ClarifyAnswer(id="blocker", kind="blocker", question="Q2?", value="   "),
+                ClarifyAnswer(id="constraint", kind="constraint", question="Q3?", value=None),
+            ],
+            selected_integrations=["gmail"],
+        )
+        mock_repo.complete_onboarding.return_value = sample_user
+
+        await complete_onboarding(sample_user_id, request, sample_background_tasks)
+
+        mock_repo.complete_onboarding.assert_awaited_once_with(
+            sample_user_id,
+            name="Alice",
+            timezone="UTC",
+            phase=OnboardingPhase.PERSONALIZATION_PENDING,
+            bio_status=BioStatus.PENDING,
+            pipeline_mode="full",
+            preferences=OnboardingPreferences(
+                profession="Engineer", response_style="casual", custom_instructions=None
+            ),
+            focus="ship the product",
+            clarify_answers=[
+                {
+                    "id": "scope",
+                    "kind": "scope",
+                    "question": "What should GAIA take off your plate?",
+                    "value": "triage my inbox",
+                }
+            ],
+            selected_integrations=["gmail"],
+        )
+        mock_enqueue_intelligence_job.assert_awaited_once_with(sample_user_id)
+        sample_background_tasks.add_task.assert_called_once_with(
+            seed_initial_user_data, sample_user_id
+        )
+
+    async def test_blank_and_absent_optionals_normalize_to_none_and_split_mode(
+        self,
+        mock_repo,
+        mock_enqueue_intelligence_job,
+        sample_user_id,
+        sample_background_tasks,
+        sample_user,
+    ):
+        request = OnboardingRequest(
+            name="Alice",
+            profession="Engineer",
+            defer_workflows=True,
+            focus="   ",
+        )
+        mock_repo.complete_onboarding.return_value = sample_user
+
+        await complete_onboarding(sample_user_id, request, sample_background_tasks)
+
+        mock_repo.complete_onboarding.assert_awaited_once_with(
+            sample_user_id,
+            name="Alice",
+            timezone=None,
+            phase=OnboardingPhase.PERSONALIZATION_PENDING,
+            bio_status=BioStatus.PENDING,
+            pipeline_mode="split",
+            preferences=OnboardingPreferences(
+                profession="Engineer", response_style="casual", custom_instructions=None
+            ),
+            focus=None,
+            clarify_answers=None,
+            selected_integrations=None,
+        )
 
     async def test_generic_exception_returns_500(
         self, mock_repo, sample_user_id, sample_onboarding_request, sample_background_tasks
@@ -334,3 +426,243 @@ class TestSeedInitialUserData:
             side_effect=Exception("seed error"),
         ):
             await seed_initial_user_data("user1")
+
+
+class TestOnboardingServiceLogPins:
+    """Exact pins for log calls and error paths the flow tests don't assert."""
+
+    async def test_complete_onboarding_success_log_is_exact(
+        self,
+        mock_repo,
+        mock_enqueue_intelligence_job,
+        sample_user_id,
+        sample_onboarding_request,
+        sample_background_tasks,
+        sample_user,
+    ):
+        mock_repo.complete_onboarding.return_value = sample_user
+        with patch("app.services.onboarding.onboarding_service.log") as log:
+            await complete_onboarding(
+                sample_user_id, sample_onboarding_request, sample_background_tasks
+            )
+
+        log.set.assert_called_once_with(auth={"user_id": sample_user_id})
+        log.info.assert_called_once_with(
+            f"{LogTag.ONBOARDING} Onboarding completed successfully for user",
+            user_id=sample_user_id,
+        )
+
+    async def test_complete_onboarding_replay_log_is_exact(
+        self,
+        mock_repo,
+        sample_user_id,
+        sample_onboarding_request,
+        sample_background_tasks,
+    ):
+        # The atomic gate makes a repeat submission a no-op: complete_onboarding
+        # returns None and the existing user is returned unchanged.
+        existing = UserDocument.model_validate(
+            {"id": sample_user_id, "onboarding": {"phase": "personalization_pending"}}
+        )
+        mock_repo.complete_onboarding.return_value = None
+        mock_repo.get.return_value = existing
+        with patch("app.services.onboarding.onboarding_service.log") as log:
+            result = await complete_onboarding(
+                sample_user_id, sample_onboarding_request, sample_background_tasks
+            )
+
+        assert result["_id"] == sample_user_id
+        mock_repo.get.assert_awaited_once_with(sample_user_id)
+        log.info.assert_called_once_with(
+            f"{LogTag.ONBOARDING} complete_onboarding replay — onboarding already submitted",
+            user_id=sample_user_id,
+            phase="personalization_pending",
+        )
+
+    async def test_enqueue_failure_rolls_back_with_exact_error_log(
+        self,
+        mock_repo,
+        sample_user_id,
+        sample_onboarding_request,
+        sample_background_tasks,
+        sample_user,
+    ):
+        mock_repo.complete_onboarding.return_value = sample_user
+        with (
+            patch(
+                "app.services.onboarding.onboarding_service.enqueue_intelligence_job",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("queue down"),
+            ),
+            patch("app.services.onboarding.onboarding_service.log") as log,
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await complete_onboarding(
+                sample_user_id, sample_onboarding_request, sample_background_tasks
+            )
+
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.detail == "Could not start onboarding. Please retry."
+        mock_repo.clear_onboarding.assert_awaited_once_with(sample_user_id)
+        assert log.error.call_args_list[0] == call(
+            f"{LogTag.ONBOARDING} Enqueue failed, rolling back onboarding state for user",
+            user_id=sample_user_id,
+            error="queue down",
+            error_type="RuntimeError",
+            exc_info=True,
+        )
+
+    async def test_generic_exception_logs_exactly_and_raises_500_with_exact_detail(
+        self, mock_repo, sample_user_id, sample_onboarding_request, sample_background_tasks
+    ):
+        mock_repo.complete_onboarding.side_effect = RuntimeError("Unexpected")
+        with patch("app.services.onboarding.onboarding_service.log") as log:
+            with pytest.raises(HTTPException) as exc_info:
+                await complete_onboarding(
+                    sample_user_id, sample_onboarding_request, sample_background_tasks
+                )
+
+        assert exc_info.value.status_code == 500
+        assert exc_info.value.detail == "Failed to complete onboarding"
+        log.error.assert_called_once_with(
+            f"{LogTag.ONBOARDING} Error completing onboarding for user",
+            user_id=sample_user_id,
+            error="Unexpected",
+            error_type="RuntimeError",
+            exc_info=True,
+        )
+
+    async def test_rollback_failure_logs_exactly_and_still_raises_503(
+        self,
+        mock_repo,
+        sample_user_id,
+        sample_onboarding_request,
+        sample_background_tasks,
+        sample_user,
+    ):
+        mock_repo.complete_onboarding.return_value = sample_user
+        with (
+            patch(
+                "app.services.onboarding.onboarding_service.enqueue_intelligence_job",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("queue down"),
+            ),
+            patch(
+                "app.services.onboarding.onboarding_service.user_repository.clear_onboarding",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("rollback blew up"),
+            ),
+            patch("app.services.onboarding.onboarding_service.log") as log,
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await complete_onboarding(
+                sample_user_id, sample_onboarding_request, sample_background_tasks
+            )
+
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.detail == "Could not start onboarding. Please retry."
+        assert len(log.error.call_args_list) == 2
+        assert log.error.call_args_list[1] == call(
+            f"{LogTag.ONBOARDING} Rollback also failed for user",
+            user_id=sample_user_id,
+            error="rollback blew up",
+            error_type="RuntimeError",
+            exc_info=True,
+        )
+
+    async def test_get_status_returns_every_field_from_the_document(
+        self, mock_repo, sample_user_id
+    ):
+        user = UserDocument.model_validate(
+            {
+                "id": sample_user_id,
+                "name": "Alice",
+                "onboarding": {
+                    "completed": True,
+                    "completed_at": "2025-01-01T00:00:00Z",
+                    "phase": OnboardingPhase.PERSONALIZATION_PENDING.value,
+                    "preferences": {"profession": "Engineer", "response_style": "casual"},
+                    "first_message_conversation_id": "conv-9",
+                },
+            }
+        )
+        mock_repo.get.return_value = user
+
+        status = await get_user_onboarding_status(sample_user_id)
+
+        assert status.completed is True
+        assert status.phase == OnboardingPhase.PERSONALIZATION_PENDING
+        assert status.preferences.profession == "Engineer"
+        assert status.first_message_conversation_id == "conv-9"
+
+    async def test_get_status_generic_error_raises_500_with_exact_detail(
+        self, mock_repo, sample_user_id
+    ):
+        mock_repo.get.side_effect = RuntimeError("mongo down")
+        with pytest.raises(HTTPException) as exc_info:
+            await get_user_onboarding_status(sample_user_id)
+
+        assert exc_info.value.status_code == 500
+        assert exc_info.value.detail == "An internal error occurred"
+
+    async def test_update_preferences_success_log_is_exact(self, mock_repo, sample_user_id):
+        updated = UserDocument(id=sample_user_id, name="Alice")
+        mock_repo.update_onboarding_preferences.return_value = updated
+        prefs = OnboardingPreferences(profession="Writer", response_style="formal")
+
+        with patch("app.services.onboarding.onboarding_service.log") as log:
+            await update_onboarding_preferences(sample_user_id, prefs)
+
+        log.info.assert_called_once_with(
+            f"{LogTag.ONBOARDING} Onboarding preferences updated successfully for user",
+            user_id=sample_user_id,
+        )
+        mock_repo.update_onboarding_preferences.assert_awaited_once_with(sample_user_id, prefs)
+
+    async def test_update_preferences_generic_error_raises_500_with_exact_detail(
+        self, mock_repo, sample_user_id
+    ):
+        mock_repo.update_onboarding_preferences.side_effect = RuntimeError("db down")
+        prefs = OnboardingPreferences(profession="Writer", response_style="formal")
+
+        with pytest.raises(HTTPException) as exc_info:
+            await update_onboarding_preferences(sample_user_id, prefs)
+
+        assert exc_info.value.status_code == 500
+        assert exc_info.value.detail == "Failed to update preferences"
+
+
+class TestCompleteOnboardingExactKwargs:
+    async def test_repository_receives_the_exact_normalized_kwargs(
+        self,
+        mock_repo,
+        mock_enqueue_intelligence_job,
+        sample_user_id,
+        sample_background_tasks,
+        sample_user,
+    ):
+        mock_repo.complete_onboarding.return_value = sample_user
+        request = OnboardingRequest(
+            name="  Alice  ",
+            profession="Engineer",
+            timezone=" UTC ",
+            defer_workflows=True,
+            focus="  ship v2  ",
+            clarify_answers=[
+                {"id": "c1", "kind": "goal", "question": "q", "value": "  grow  "},
+                {"id": "c2", "kind": "goal", "question": "q", "value": "   "},
+            ],
+        )
+        await complete_onboarding(sample_user_id, request, sample_background_tasks)
+
+        kwargs = mock_repo.complete_onboarding.await_args.kwargs
+        assert kwargs["name"] == "Alice"
+        assert kwargs["timezone"] == "UTC"
+        assert kwargs["pipeline_mode"] == "split"
+        assert kwargs["focus"] == "ship v2"
+        assert kwargs["clarify_answers"] == [
+            {"id": "c1", "kind": "goal", "question": "q", "value": "grow"}
+        ]
+        assert kwargs["preferences"] == OnboardingPreferences(
+            profession="Engineer", response_style="casual", custom_instructions=None
+        )

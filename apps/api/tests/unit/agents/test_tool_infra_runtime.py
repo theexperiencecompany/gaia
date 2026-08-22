@@ -1,5 +1,6 @@
 """Infra tests for tool runtime configuration and spawned subagent tool wiring."""
 
+from dataclasses import dataclass
 import json
 from types import SimpleNamespace
 from typing import Any
@@ -9,7 +10,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import BaseTool, tool
 import pytest
 
-from app.agents.core.subagents.base_subagent import SubAgentFactory
+from app.agents.core.subagents.base_subagent import SubAgentFactory, SubAgentToolConfig
 from app.agents.core.subagents.spawn_agent import _build_spawn_graph
 from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.tools.core import retrieval as retrieval_module
@@ -27,7 +28,11 @@ from app.agents.tools.core.tool_runtime_config import (
     build_provider_parent_tool_runtime_config,
 )
 from app.constants.general import FINISH_TASK_NAME
-from app.override.langgraph_bigtool.create_agent import create_agent
+from app.override.langgraph_bigtool.create_agent import (
+    AgentConfig,
+    ToolRetrievalConfig,
+    create_agent,
+)
 from tests.helpers import PassthroughFakeLLM
 
 
@@ -238,10 +243,12 @@ async def _run_provider_subagent_factory(
             provider="provider",
             name="provider_agent",
             llm=MagicMock(),
-            tool_space="provider_space",
-            use_direct_tools=use_direct_tools,
-            disable_retrieve_tools=disable_retrieve_tools,
-            auto_bind_tools=auto_bind_tools,
+            config=SubAgentToolConfig(
+                tool_space="provider_space",
+                use_direct_tools=use_direct_tools,
+                disable_retrieve_tools=disable_retrieve_tools,
+                auto_bind_tools=auto_bind_tools,
+            ),
         )
 
     return captured_kwargs, mw
@@ -285,8 +292,9 @@ async def test_tool_runtime_config_builders_cover_direct_and_dynamic_modes():
     assert executor_child.initial_tool_names == ["read", "bash", "finish_task"]
 
     kwargs = build_create_agent_tool_kwargs(parent_dynamic, tool_space="provider_space")
-    assert "initial_tool_ids" in kwargs
-    assert "retrieve_tools_coroutine" in kwargs
+    tools_config = kwargs["tools_config"]
+    assert tools_config.initial_tool_ids == parent_dynamic.initial_tool_names
+    assert tools_config.retrieve_tools_coroutine is not None
 
 
 async def _spawn_graph_agent_kwargs(
@@ -340,7 +348,7 @@ async def test_spawn_graph_scopes_the_registry_to_what_the_parent_allows():
     bindable = set(captured["tool_registry"])
     assert "spawn_subagent" not in bindable
     assert {"vfs_read", "normal_tool", FINISH_TASK_NAME} <= bindable
-    assert "retrieve_tools_coroutine" in captured
+    assert captured["tools_config"].retrieve_tools_coroutine is not None
 
 
 @pytest.mark.asyncio
@@ -351,8 +359,8 @@ async def test_spawn_graph_disables_retrieve_when_the_parent_did():
         runtime=ToolRuntimeConfig(initial_tool_names=["vfs_read"], enable_retrieve_tools=False),
     )
 
-    assert captured["disable_retrieve_tools"] is True
-    assert "retrieve_tools_coroutine" not in captured
+    assert captured["tools_config"].disable_retrieve_tools is True
+    assert captured["tools_config"].retrieve_tools_coroutine is None
 
 
 @pytest.mark.asyncio
@@ -369,7 +377,7 @@ async def test_spawned_retrieve_cannot_bind_back_an_excluded_tool():
         "app.agents.tools.core.retrieval.get_tool_registry",
         new=AsyncMock(return_value=_RetrieveRegistry(["normal_tool", "vfs_read", "handoff"])),
     ):
-        result = await captured["retrieve_tools_coroutine"](
+        result = await captured["tools_config"].retrieve_tools_coroutine(
             store=MagicMock(),
             config={"configurable": {"user_id": "u1"}},
             exact_tool_names=["subagent:gmail", "handoff", "normal_tool"],
@@ -537,11 +545,11 @@ async def test_create_agent_filters_subagent_from_direct_binding():
     builder = create_agent(
         llm=fake_llm,
         tool_registry={"normal_tool": normal_tool},
-        retrieve_tools_function=_dummy_retrieve_tools,
-        retrieve_tools_coroutine=_dummy_retrieve_tools_async,
-        initial_tool_ids=[],
-        disable_retrieve_tools=False,
-        middleware=[],
+        tools_config=ToolRetrievalConfig(
+            retrieve_tools_function=_dummy_retrieve_tools,
+            retrieve_tools_coroutine=_dummy_retrieve_tools_async,
+        ),
+        agent_config=AgentConfig(middleware=[]),
     )
     graph = builder.compile()
 
@@ -605,16 +613,17 @@ async def test_base_subagent_wiring_uses_shared_tool_runtime_helpers():
             provider="provider",
             name="provider_agent",
             llm=MagicMock(),
-            tool_space="provider_space",
-            use_direct_tools=True,
-            disable_retrieve_tools=True,
-            auto_bind_tools=None,
+            config=SubAgentToolConfig(
+                tool_space="provider_space",
+                use_direct_tools=True,
+                disable_retrieve_tools=True,
+            ),
         )
 
-    assert captured_kwargs["disable_retrieve_tools"] is True
-    assert "retrieve_tools_coroutine" not in captured_kwargs
-    assert "read" in captured_kwargs["initial_tool_ids"]
-    assert "normal_tool" in captured_kwargs["initial_tool_ids"]
+    assert captured_kwargs["tools_config"].disable_retrieve_tools is True
+    assert captured_kwargs["tools_config"].retrieve_tools_coroutine is None
+    assert "read" in captured_kwargs["tools_config"].initial_tool_ids
+    assert "normal_tool" in captured_kwargs["tools_config"].initial_tool_ids
 
 
 @pytest.mark.asyncio
@@ -625,12 +634,12 @@ async def test_base_subagent_dynamic_mode_wires_retrieve_and_auto_bind():
         auto_bind_tools=["normal_tool", "missing_tool"],
     )
 
-    assert "retrieve_tools_coroutine" in captured_kwargs
-    assert "disable_retrieve_tools" not in captured_kwargs
-    assert "search_memory" in captured_kwargs["initial_tool_ids"]
-    assert "read" in captured_kwargs["initial_tool_ids"]
-    assert "normal_tool" in captured_kwargs["initial_tool_ids"]
-    assert "missing_tool" not in captured_kwargs["initial_tool_ids"]
+    assert captured_kwargs["tools_config"].retrieve_tools_coroutine is not None
+    assert captured_kwargs["tools_config"].disable_retrieve_tools is False
+    assert "search_memory" in captured_kwargs["tools_config"].initial_tool_ids
+    assert "read" in captured_kwargs["tools_config"].initial_tool_ids
+    assert "normal_tool" in captured_kwargs["tools_config"].initial_tool_ids
+    assert "missing_tool" not in captured_kwargs["tools_config"].initial_tool_ids
     # spawned child for dynamic mode should keep minimal initial tools
     assert mw._tool_runtime_config.initial_tool_names == ["read", "bash", "finish_task"]
     assert mw._tool_runtime_config.enable_retrieve_tools is True
@@ -643,10 +652,10 @@ async def test_base_subagent_direct_mode_propagates_child_direct_runtime():
         disable_retrieve_tools=True,
     )
 
-    assert captured_kwargs["disable_retrieve_tools"] is True
-    assert "retrieve_tools_coroutine" not in captured_kwargs
-    assert "read" in captured_kwargs["initial_tool_ids"]
-    assert "normal_tool" in captured_kwargs["initial_tool_ids"]
+    assert captured_kwargs["tools_config"].disable_retrieve_tools is True
+    assert captured_kwargs["tools_config"].retrieve_tools_coroutine is None
+    assert "read" in captured_kwargs["tools_config"].initial_tool_ids
+    assert "normal_tool" in captured_kwargs["tools_config"].initial_tool_ids
     assert mw._tool_runtime_config.enable_retrieve_tools is False
     assert "normal_tool" in mw._tool_runtime_config.initial_tool_names
     assert "read" in mw._tool_runtime_config.initial_tool_names
@@ -673,52 +682,44 @@ class _DiscoveryRegistry:
         return SimpleNamespace(destructive=tool_name in self._destructive)
 
 
+@dataclass
+class _DiscoveryOptions:
+    """Knobs for rendering a discovery response in tests."""
+
+    categories: dict[str, str] | None = None
+    destructive: set[str] | None = None
+    connected: dict[str, str | None] | None = None
+    internal: set[str] | None = None
+    total_candidates: int = 5
+    limit: int = 10
+
+
 def _render_text(
     final_tools: list[str],
     *,
-    categories: dict[str, str] | None = None,
-    destructive: set[str] | None = None,
-    connected: dict[str, str | None] | None = None,
-    internal: set[str] | None = None,
+    options: _DiscoveryOptions | None = None,
     query: str | None = None,
-    total_candidates: int = 5,
-    limit: int = 10,
 ) -> str:
     """The raw string the model receives, formatting and all."""
+    opts = options or _DiscoveryOptions()
     return _render_discovery_response(
         final_tools,
-        _DiscoveryRegistry(categories or {}, destructive),
-        connected or {},
-        internal or set(),
+        _DiscoveryRegistry(opts.categories or {}, opts.destructive),
+        opts.connected or {},
+        opts.internal or set(),
         query,
-        total_candidates,
-        limit,
+        opts.total_candidates,
+        opts.limit,
     )
 
 
 def _render(
     final_tools: list[str],
     *,
-    categories: dict[str, str] | None = None,
-    destructive: set[str] | None = None,
-    connected: dict[str, str | None] | None = None,
-    internal: set[str] | None = None,
+    options: _DiscoveryOptions | None = None,
     query: str | None = None,
-    total_candidates: int = 5,
-    limit: int = 10,
 ) -> dict[str, Any]:
-    return json.loads(
-        _render_text(
-            final_tools,
-            categories=categories,
-            destructive=destructive,
-            connected=connected,
-            internal=internal,
-            query=query,
-            total_candidates=total_candidates,
-            limit=limit,
-        )
-    )
+    return json.loads(_render_text(final_tools, options=options, query=query))
 
 
 class TestSplitSubagentEntry:
@@ -745,11 +746,15 @@ class TestDiscoveryResponseIsIndentedJson:
     """
 
     def test_the_model_receives_indented_json_not_one_compact_line(self) -> None:
-        text = _render_text(["send_email"], categories={"send_email": "gmail"})
+        text = _render_text(
+            ["send_email"], options=_DiscoveryOptions(categories={"send_email": "gmail"})
+        )
         assert len(text.splitlines()) > 1
 
     def test_nesting_is_indented_by_two_spaces(self) -> None:
-        text = _render_text(["send_email"], categories={"send_email": "gmail"})
+        text = _render_text(
+            ["send_email"], options=_DiscoveryOptions(categories={"send_email": "gmail"})
+        )
         indents = {len(ln) - len(ln.lstrip(" ")) for ln in text.splitlines() if ln.startswith(" ")}
         assert indents, "nothing is indented — the payload came out compact"
         assert min(indents) == 2
@@ -771,7 +776,10 @@ class TestDiscoveryAvailabilityBuckets:
         assert payload["subagents_connected"] == []
 
     def test_a_connected_integration_subagent_is_ready_to_hand_off_to(self) -> None:
-        payload = _render(["subagent:gmail (Gmail)"], connected={"gmail": "me@example.com"})
+        payload = _render(
+            ["subagent:gmail (Gmail)"],
+            options=_DiscoveryOptions(connected={"gmail": "me@example.com"}),
+        )
 
         assert payload["subagents_connected"] == [{"id": "gmail", "name": "Gmail"}]
         assert payload["subagents_needing_connection"] == []
@@ -794,15 +802,17 @@ class TestDiscoveryAvailabilityBuckets:
         assert payload["subagents_connected"] == []
 
     def test_a_nameless_subagent_carries_only_its_id(self) -> None:
-        payload = _render(["subagent:gmail"], internal={"gmail"})
+        payload = _render(["subagent:gmail"], options=_DiscoveryOptions(internal={"gmail"}))
 
         assert payload["subagents_builtin"] == [{"id": "gmail"}]
 
     def test_tools_and_subagents_go_to_different_buckets(self) -> None:
         payload = _render(
             ["web_search_tool", "subagent:gmail (Gmail)"],
-            categories={"web_search_tool": "search"},
-            internal={"gmail"},
+            options=_DiscoveryOptions(
+                categories={"web_search_tool": "search"},
+                internal={"gmail"},
+            ),
         )
 
         assert [t["name"] for t in payload["tools_to_bind"]] == ["web_search_tool"]
@@ -813,8 +823,10 @@ class TestDiscoveryToolEntries:
     def test_a_connected_integration_tool_is_sourced_by_its_display_name(self) -> None:
         payload = _render(
             ["GMAIL_SEND"],
-            categories={"GMAIL_SEND": "gmail"},
-            connected={"gmail": "me@example.com"},
+            options=_DiscoveryOptions(
+                categories={"GMAIL_SEND": "gmail"},
+                connected={"gmail": "me@example.com"},
+            ),
         )
 
         assert payload["tools_to_bind"] == [{"name": "GMAIL_SEND", "source": "me@example.com"}]
@@ -827,7 +839,9 @@ class TestDiscoveryToolEntries:
         assert payload["tools_to_bind"] == [{"name": "GMAIL_SEND", "source": "gmail"}]
 
     def test_a_first_party_tool_is_sourced_to_gaia(self) -> None:
-        payload = _render(["web_search_tool"], categories={"web_search_tool": "search"})
+        payload = _render(
+            ["web_search_tool"], options=_DiscoveryOptions(categories={"web_search_tool": "search"})
+        )
 
         assert payload["tools_to_bind"] == [{"name": "web_search_tool", "source": "gaia"}]
 
@@ -841,7 +855,9 @@ class TestDiscoveryToolEntries:
     def test_a_safe_tool_carries_no_approval_flag(self) -> None:
         """The key's presence is the signal, so an explicit False would read as
         'approval considered and required' to a client checking for the key."""
-        payload = _render(["web_search_tool"], categories={"web_search_tool": "search"})
+        payload = _render(
+            ["web_search_tool"], options=_DiscoveryOptions(categories={"web_search_tool": "search"})
+        )
 
         assert "needs_approval" not in payload["tools_to_bind"][0]
 
@@ -854,8 +870,10 @@ class TestDiscoveryZeroMatchSignal:
     def test_a_zero_match_search_says_so_even_though_builtins_are_listed(self) -> None:
         payload = _render(
             ["subagent:gaia_knowledge_guide (Guide)"],
-            internal={"gaia_knowledge_guide"},
-            total_candidates=0,
+            options=_DiscoveryOptions(
+                internal={"gaia_knowledge_guide"},
+                total_candidates=0,
+            ),
         )
 
         assert payload["search_matched_nothing"] is True
@@ -872,8 +890,8 @@ class TestDiscoveryZeroMatchSignal:
         assert "handoff(subagent_id=" in payload["next"]
 
     def test_the_two_next_instructions_are_different(self) -> None:
-        empty = _render([], total_candidates=0)["next"]
-        hits = _render(["x"], total_candidates=1)["next"]
+        empty = _render([], options=_DiscoveryOptions(total_candidates=0))["next"]
+        hits = _render(["x"], options=_DiscoveryOptions(total_candidates=1))["next"]
 
         assert empty != hits
 
@@ -881,7 +899,7 @@ class TestDiscoveryZeroMatchSignal:
         """This block is the contract with the model, not commentary: each
         clause closes one of the loops a dead search sent it into (re-query the
         same words, guess a tool name, keep going instead of telling the user)."""
-        assert _render([], total_candidates=0)["next"] == (
+        assert _render([], options=_DiscoveryOptions(total_candidates=0))["next"] == (
             "The search matched NOTHING; anything listed above is a built-in that is "
             "always offered, not a hit. Retry ONCE with a broader query naming the "
             "action ('send email', not a product name). If you already know the exact "
@@ -893,7 +911,7 @@ class TestDiscoveryZeroMatchSignal:
     def test_the_found_instruction_survives_verbatim(self) -> None:
         """Two of these clauses exist because the model got them wrong: binding
         a subagent, and offering an unconnected integration as if it worked."""
-        assert _render(["x"], total_candidates=1)["next"] == (
+        assert _render(["x"], options=_DiscoveryOptions(total_candidates=1))["next"] == (
             "Bind with retrieve_tools(exact_tool_names=[...]) then call the tool. "
             'Subagents are NOT bindable — use handoff(subagent_id="<id>", task="..."). '
             "Anything under subagents_needing_connection is unusable until the user "
@@ -903,20 +921,30 @@ class TestDiscoveryZeroMatchSignal:
 
 class TestDiscoveryTruncationAndQuery:
     def test_more_candidates_than_the_limit_reports_the_shortfall(self) -> None:
-        payload = _render(["a", "b"], categories={"a": "s", "b": "s"}, total_candidates=9, limit=2)
+        payload = _render(
+            ["a", "b"],
+            options=_DiscoveryOptions(categories={"a": "s", "b": "s"}, total_candidates=9, limit=2),
+        )
 
         assert payload["truncated"] == {"shown": 2, "total": 9}
 
     def test_a_full_result_set_is_not_marked_truncated(self) -> None:
-        payload = _render(["a"], categories={"a": "s"}, total_candidates=2, limit=2)
+        payload = _render(
+            ["a"], options=_DiscoveryOptions(categories={"a": "s"}, total_candidates=2, limit=2)
+        )
 
         assert "truncated" not in payload
 
     def test_the_query_is_echoed_back_when_there_was_one(self) -> None:
-        assert _render(["a"], categories={"a": "s"}, query="send email")["query"] == "send email"
+        assert (
+            _render(["a"], options=_DiscoveryOptions(categories={"a": "s"}), query="send email")[
+                "query"
+            ]
+            == "send email"
+        )
 
     def test_an_exact_name_lookup_echoes_no_query(self) -> None:
-        assert "query" not in _render(["a"], categories={"a": "s"}, query=None)
+        assert "query" not in _render(["a"], options=_DiscoveryOptions(categories={"a": "s"}))
 
 
 # ---------------------------------------------------------------------------

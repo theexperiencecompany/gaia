@@ -102,7 +102,7 @@ async def api_generate_image(message: str, improve_prompt: bool = True) -> Image
             error=str(e),
             error_type=type(e).__name__,
         )
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        raise HTTPException(status_code=500, detail="Internal Server Error") from e
 
 
 async def image_to_text_endpoint(message: str, file: UploadFile) -> ImageToTextResponse:
@@ -123,7 +123,7 @@ async def image_to_text_endpoint(message: str, file: UploadFile) -> ImageToTextR
             error=str(e),
             error_type=type(e).__name__,
         )
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        raise HTTPException(status_code=500, detail="Internal Server Error") from e
 
 
 async def generate_image_stream(query_text: str) -> AsyncGenerator[str, None]:

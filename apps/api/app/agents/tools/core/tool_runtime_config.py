@@ -1,10 +1,11 @@
 """Shared tool runtime configuration for agent and child-agent execution."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.constants.general import FINISH_TASK_NAME
+from app.override.langgraph_bigtool.agent_config import ToolRetrievalConfig
 
 
 @dataclass(slots=True)
@@ -27,24 +28,25 @@ def build_create_agent_tool_kwargs(
     tool_space: str,
     bindable_tool_names: set[str] | None = None,
 ) -> dict[str, Any]:
-    """Build create_agent kwargs from shared tool runtime config.
+    """Build create_agent tool config from shared tool runtime config.
 
     `bindable_tool_names` is the set of tools the agent's graph can actually bind
     (its scoped registry). Pass it for scoped agents so retrieve_tools validates
     binding against what the graph honors; leave None for full-registry agents.
     """
-    kwargs: dict[str, Any] = {
-        "initial_tool_ids": tool_runtime_config.initial_tool_names,
-    }
-    if tool_runtime_config.enable_retrieve_tools:
-        kwargs["retrieve_tools_coroutine"] = get_retrieve_tools_function(
-            tool_space=tool_space,
-            include_subagents=tool_runtime_config.include_subagents_in_retrieve,
-            bindable_tool_names=bindable_tool_names,
+    tool_config = ToolRetrievalConfig(initial_tool_ids=tool_runtime_config.initial_tool_names)
+    if not tool_runtime_config.enable_retrieve_tools:
+        return {"tools_config": replace(tool_config, disable_retrieve_tools=True)}
+    return {
+        "tools_config": replace(
+            tool_config,
+            retrieve_tools_coroutine=get_retrieve_tools_function(
+                tool_space=tool_space,
+                include_subagents=tool_runtime_config.include_subagents_in_retrieve,
+                bindable_tool_names=bindable_tool_names,
+            ),
         )
-    else:
-        kwargs["disable_retrieve_tools"] = True
-    return kwargs
+    }
 
 
 def build_provider_parent_tool_runtime_config(

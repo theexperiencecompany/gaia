@@ -12,7 +12,13 @@ from app.agents.llm import lane as lane_module
 from app.agents.llm.lane import ModelLane
 from app.agents.llm.types import LLMProviderName
 from app.constants.llm import DEFAULT_MAX_TOKENS, LANE_FIELD_ID
-from app.override.langgraph_bigtool.create_agent import _fallback_config, _prepare_fallback
+from app.override.langgraph_bigtool.create_agent import (
+    AgentConfig,
+    HookConfig,
+    ToolRetrievalConfig,
+    _fallback_config,
+    _prepare_fallback,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -76,7 +82,9 @@ class TestCreateAgent:
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a)
 
-        builder = create_agent(llm, registry, disable_retrieve_tools=True)
+        builder = create_agent(
+            llm, registry, tools_config=ToolRetrievalConfig(disable_retrieve_tools=True)
+        )
 
         from langgraph.graph import StateGraph
 
@@ -97,8 +105,8 @@ class TestCreateAgent:
         builder = create_agent(
             _make_llm(),
             _make_tool_registry(dummy_tool_a),
-            disable_retrieve_tools=True,
-            context_schema=_Ctx,
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            agent_config=AgentConfig(context_schema=_Ctx),
         )
 
         assert builder.context_schema is _Ctx
@@ -116,7 +124,7 @@ class TestCreateAgent:
         builder = create_agent(
             llm,
             registry,
-            retrieve_tools_coroutine=my_coroutine,
+            tools_config=ToolRetrievalConfig(retrieve_tools_coroutine=my_coroutine),
         )
 
         from langgraph.graph import StateGraph
@@ -136,7 +144,7 @@ class TestCreateAgent:
         builder = create_agent(
             llm,
             registry,
-            retrieve_tools_function=my_func,
+            tools_config=ToolRetrievalConfig(retrieve_tools_function=my_func),
         )
 
         from langgraph.graph import StateGraph
@@ -160,8 +168,10 @@ class TestCreateAgent:
         builder = create_agent(
             llm,
             registry,
-            retrieve_tools_function=my_func,
-            retrieve_tools_coroutine=my_coroutine,
+            tools_config=ToolRetrievalConfig(
+                retrieve_tools_function=my_func,
+                retrieve_tools_coroutine=my_coroutine,
+            ),
         )
 
         from langgraph.graph import StateGraph
@@ -177,8 +187,10 @@ class TestCreateAgent:
         builder = create_agent(
             llm,
             registry,
-            disable_retrieve_tools=True,
-            initial_tool_ids=["dummy_tool_a"],
+            tools_config=ToolRetrievalConfig(
+                disable_retrieve_tools=True,
+                initial_tool_ids=["dummy_tool_a"],
+            ),
         )
 
         from langgraph.graph import StateGraph
@@ -197,8 +209,7 @@ class TestCreateAgent:
         builder = create_agent(
             llm,
             registry,
-            disable_retrieve_tools=True,
-            end_graph_hooks=[my_hook],
+            hooks_config=HookConfig(end_graph_hooks=[my_hook]),
         )
 
         from langgraph.graph import StateGraph
@@ -217,8 +228,8 @@ class TestCreateAgent:
         builder = create_agent(
             llm,
             registry,
-            disable_retrieve_tools=True,
-            middleware=[mw],
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            agent_config=AgentConfig(middleware=[mw]),
         )
 
         from langgraph.graph import StateGraph
@@ -237,8 +248,8 @@ class TestCreateAgent:
         builder = create_agent(
             llm,
             registry,
-            disable_retrieve_tools=True,
-            middleware=[mw],
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            agent_config=AgentConfig(middleware=[mw]),
         )
 
         from langgraph.graph import StateGraph
@@ -256,13 +267,79 @@ class TestCreateAgent:
         builder = create_agent(
             llm,
             registry,
-            disable_retrieve_tools=True,
-            middleware=[mw],
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            agent_config=AgentConfig(middleware=[mw]),
         )
 
         from langgraph.graph import StateGraph
 
         assert isinstance(builder, StateGraph)
+
+
+class TestCreateAgentDefaults:
+    """The default ToolRetrievalConfig values must reach the retrieval tool.
+
+    A drifted default (limit, namespace prefix) silently changes what the
+    executor can retrieve on every turn — nothing fails — so the default
+    configuration path is pinned through get_default_retrieval_tool's call.
+    """
+
+    def test_the_default_retrieval_settings_reach_get_default_retrieval_tool(self) -> None:
+        from app.override.langgraph_bigtool.create_agent import create_agent
+
+        def my_func(**kwargs: Any) -> list[str]:
+            """Retrieve tools."""
+            return []
+
+        async def my_coroutine(**kwargs: Any) -> list[str]:
+            """Retrieve tools."""
+            return []
+
+        llm = _make_llm()
+        registry = _make_tool_registry(dummy_tool_a)
+
+        with (
+            patch(
+                "app.override.langgraph_bigtool.create_agent.get_default_retrieval_tool",
+                return_value=(my_func, my_coroutine),
+            ) as mock_get_default,
+            patch(
+                "app.override.langgraph_bigtool.create_agent.get_store_arg", return_value="store"
+            ),
+        ):
+            builder = create_agent(llm, registry)
+
+        mock_get_default.assert_called_once_with(("tools",), limit=2, filter=None)
+        # Enabling retrieval by default is observable in the graph wiring too.
+        assert "select_tools" in builder.nodes
+
+    def test_an_explicit_metadata_filter_is_forwarded_not_dropped(self) -> None:
+        from app.override.langgraph_bigtool.create_agent import create_agent
+
+        def my_func(**kwargs: Any) -> list[str]:
+            """Retrieve tools."""
+            return []
+
+        async def my_coroutine(**kwargs: Any) -> list[str]:
+            """Retrieve tools."""
+            return []
+
+        with (
+            patch(
+                "app.override.langgraph_bigtool.create_agent.get_default_retrieval_tool",
+                return_value=(my_func, my_coroutine),
+            ) as mock_get_default,
+            patch(
+                "app.override.langgraph_bigtool.create_agent.get_store_arg", return_value="store"
+            ),
+        ):
+            create_agent(
+                _make_llm(),
+                _make_tool_registry(dummy_tool_a),
+                tools_config=ToolRetrievalConfig(metadata_filter={"provider": "gmail"}),
+            )
+
+        assert mock_get_default.call_args.kwargs["filter"] == {"provider": "gmail"}
 
 
 # ---------------------------------------------------------------------------
@@ -285,8 +362,8 @@ class TestCallModel:
         builder = create_agent(
             llm,
             registry,
-            disable_retrieve_tools=True,
-            middleware=[mw],
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            agent_config=AgentConfig(middleware=[mw]),
         )
 
         agent_node = builder.nodes["agent"]
@@ -307,7 +384,7 @@ class TestCallModel:
         builder = create_agent(
             llm,
             registry,
-            disable_retrieve_tools=True,
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
         )
 
         agent_node = builder.nodes["agent"]
@@ -332,7 +409,9 @@ class TestCallModel:
         llm.with_config.return_value = configured
 
         registry = _make_tool_registry()
-        builder = create_agent(llm, registry, disable_retrieve_tools=True)
+        builder = create_agent(
+            llm, registry, tools_config=ToolRetrievalConfig(disable_retrieve_tools=True)
+        )
 
         agent_node = builder.nodes["agent"]
         state = _make_state()
@@ -353,8 +432,8 @@ class TestCallModel:
         builder = create_agent(
             llm,
             registry,
-            disable_retrieve_tools=True,
-            agent_name="comms_agent",
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            agent_config=AgentConfig(agent_name="comms_agent"),
         )
 
         agent_node = builder.nodes["agent"]
@@ -374,7 +453,9 @@ class TestAcallModel:
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a)
 
-        builder = create_agent(llm, registry, disable_retrieve_tools=True)
+        builder = create_agent(
+            llm, registry, tools_config=ToolRetrievalConfig(disable_retrieve_tools=True)
+        )
 
         agent_node = builder.nodes["agent"]
         state = _make_state()
@@ -404,8 +485,8 @@ class TestAcallModel:
             builder = create_agent(
                 llm,
                 registry,
-                disable_retrieve_tools=True,
-                middleware=[mw],
+                tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+                agent_config=AgentConfig(middleware=[mw]),
             )
             agent_node = builder.nodes["agent"]
             state = _make_state()
@@ -428,7 +509,9 @@ class TestAcallModel:
         llm.with_config.return_value = configured
 
         registry = _make_tool_registry()
-        builder = create_agent(llm, registry, disable_retrieve_tools=True)
+        builder = create_agent(
+            llm, registry, tools_config=ToolRetrievalConfig(disable_retrieve_tools=True)
+        )
 
         agent_node = builder.nodes["agent"]
         state = _make_state()
@@ -448,8 +531,8 @@ class TestAcallModel:
         builder = create_agent(
             llm,
             registry,
-            disable_retrieve_tools=True,
-            agent_name="comms_agent",
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            agent_config=AgentConfig(agent_name="comms_agent"),
         )
 
         agent_node = builder.nodes["agent"]
@@ -474,7 +557,9 @@ class TestShouldContinue:
         llm = _make_llm()
         registry = _make_tool_registry()
 
-        builder = create_agent(llm, registry, disable_retrieve_tools=True)
+        builder = create_agent(
+            llm, registry, tools_config=ToolRetrievalConfig(disable_retrieve_tools=True)
+        )
 
         msg = AIMessage(content="done")
         state = _make_state(messages=[msg])
@@ -497,8 +582,7 @@ class TestShouldContinue:
         builder = create_agent(
             llm,
             registry,
-            disable_retrieve_tools=True,
-            end_graph_hooks=[hook],
+            hooks_config=HookConfig(end_graph_hooks=[hook]),
         )
 
         msg = AIMessage(content="done")
@@ -519,8 +603,10 @@ class TestShouldContinue:
         builder = create_agent(
             llm,
             registry,
-            disable_retrieve_tools=True,
-            initial_tool_ids=["dummy_tool_a"],
+            tools_config=ToolRetrievalConfig(
+                disable_retrieve_tools=True,
+                initial_tool_ids=["dummy_tool_a"],
+            ),
         )
 
         msg = AIMessage(
@@ -545,7 +631,9 @@ class TestShouldContinue:
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a)
 
-        builder = create_agent(llm, registry, disable_retrieve_tools=True)
+        builder = create_agent(
+            llm, registry, tools_config=ToolRetrievalConfig(disable_retrieve_tools=True)
+        )
 
         msg = AIMessage(
             content="",
@@ -572,7 +660,9 @@ class TestRejectUnboundTools:
         llm = _make_llm()
         registry = _make_tool_registry()
 
-        builder = create_agent(llm, registry, disable_retrieve_tools=True)
+        builder = create_agent(
+            llm, registry, tools_config=ToolRetrievalConfig(disable_retrieve_tools=True)
+        )
 
         reject_node = builder.nodes["reject_unbound_tools"]
         tool_calls = [{"id": "tc1", "name": "missing_tool"}]
@@ -589,7 +679,9 @@ class TestRejectUnboundTools:
         llm = _make_llm()
         registry = _make_tool_registry()
 
-        builder = create_agent(llm, registry, disable_retrieve_tools=True)
+        builder = create_agent(
+            llm, registry, tools_config=ToolRetrievalConfig(disable_retrieve_tools=True)
+        )
 
         reject_node = builder.nodes["reject_unbound_tools"]
         tool_calls = [{"id": "tc1", "name": "missing_tool"}]
@@ -615,7 +707,9 @@ class TestSelectTools:
             """Retrieve tools."""
             return {"tools_to_bind": ["dummy_tool_a"], "response": ["dummy_tool_a"]}
 
-        builder = create_agent(llm, registry, retrieve_tools_function=my_func)  # type: ignore[arg-type]
+        builder = create_agent(
+            llm, registry, tools_config=ToolRetrievalConfig(retrieve_tools_function=my_func)
+        )  # type: ignore[arg-type]
 
         select_node = builder.nodes["select_tools"]
         tool_calls = [{"id": "tc1", "args": {"query": "test"}}]
@@ -636,7 +730,9 @@ class TestSelectTools:
             """Retrieve tools."""
             return ["dummy_tool_a"]
 
-        builder = create_agent(llm, registry, retrieve_tools_function=my_func)
+        builder = create_agent(
+            llm, registry, tools_config=ToolRetrievalConfig(retrieve_tools_function=my_func)
+        )
 
         select_node = builder.nodes["select_tools"]
         tool_calls = [{"id": "tc1", "args": {}}]
@@ -656,7 +752,9 @@ class TestSelectTools:
             """Retrieve tools."""
             return ["dummy_tool_a", "subagent:gmail"]
 
-        builder = create_agent(llm, registry, retrieve_tools_function=my_func)
+        builder = create_agent(
+            llm, registry, tools_config=ToolRetrievalConfig(retrieve_tools_function=my_func)
+        )
 
         select_node = builder.nodes["select_tools"]
         tool_calls = [{"id": "tc1", "args": {}}]
@@ -678,7 +776,9 @@ class TestSelectTools:
             """Retrieve tools."""
             return ["dummy_tool_a"]
 
-        builder = create_agent(llm, registry, retrieve_tools_coroutine=my_coro)
+        builder = create_agent(
+            llm, registry, tools_config=ToolRetrievalConfig(retrieve_tools_coroutine=my_coro)
+        )
 
         select_node = builder.nodes["select_tools"]
         tool_calls = [{"id": "tc1", "args": {}}]
@@ -699,7 +799,9 @@ class TestSelectTools:
             """Retrieve tools."""
             return {"tools_to_bind": ["dummy_tool_a"], "response": ["dummy_tool_a"]}
 
-        builder = create_agent(llm, registry, retrieve_tools_coroutine=my_coro)  # type: ignore[arg-type]
+        builder = create_agent(
+            llm, registry, tools_config=ToolRetrievalConfig(retrieve_tools_coroutine=my_coro)
+        )  # type: ignore[arg-type]
 
         select_node = builder.nodes["select_tools"]
         tool_calls = [{"id": "tc1", "args": {}}]

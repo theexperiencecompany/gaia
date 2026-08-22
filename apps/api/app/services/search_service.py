@@ -83,4 +83,4 @@ async def search_messages(query: str, user_id: str) -> SearchResultsResponse:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to perform search: {e!s}",
-        )
+        ) from e

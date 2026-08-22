@@ -42,7 +42,7 @@ class TestCreateSupportTicket:
 
         result = await create_support_ticket.coroutine(
             config=_cfg(),
-            type="support",
+            ticket_type="support",
             title="App crashes on login",
             description="When I try to log in with Google, the app crashes immediately.",
         )
@@ -71,7 +71,7 @@ class TestCreateSupportTicket:
 
         result = await create_support_ticket.coroutine(
             config=_cfg(),
-            type="feature",
+            ticket_type="feature",
             title="Add dark mode",
             description="I would love to have a dark mode option in the settings.",
         )
@@ -82,7 +82,7 @@ class TestCreateSupportTicket:
 
         result = await create_support_ticket.coroutine(
             config=_cfg_no_user(),
-            type="support",
+            ticket_type="support",
             title="Test",
             description="A test description for the ticket.",
         )
@@ -96,7 +96,7 @@ class TestCreateSupportTicket:
 
         result = await create_support_ticket.coroutine(
             config=_cfg(),
-            type="support",
+            ticket_type="support",
             title="Test",
             description="A test description for the ticket.",
         )
@@ -110,7 +110,7 @@ class TestCreateSupportTicket:
 
         result = await create_support_ticket.coroutine(
             config=_cfg(),
-            type="support",
+            ticket_type="support",
             title="Test",
             description="A test description for the ticket.",
         )
@@ -129,7 +129,7 @@ class TestCreateSupportTicket:
 
         await create_support_ticket.coroutine(
             config=_cfg(),
-            type="support",
+            ticket_type="support",
             title="  Padded title  ",
             description="  Padded description  ",
         )
@@ -146,7 +146,7 @@ class TestCreateSupportTicket:
 
         result = await create_support_ticket.coroutine(
             config=_cfg(),
-            type="support",
+            ticket_type="support",
             title="Test",
             description="A test description for the ticket.",
         )
@@ -164,7 +164,7 @@ class TestCreateSupportTicket:
 
         await create_support_ticket.coroutine(
             config=_cfg(),
-            type="support",
+            ticket_type="support",
             title="Test",
             description="A test description for the ticket.",
         )

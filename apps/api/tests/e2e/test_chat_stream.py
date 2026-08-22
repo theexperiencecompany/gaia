@@ -49,8 +49,8 @@ async def stream_turn(graph: Any, prompt: str, thread_id: str, user_id: str) -> 
     return Transcript.from_chunks(chunks)
 
 
-def _call(name: str, args: dict[str, Any], id: str) -> dict[str, Any]:
-    return {"name": name, "args": args, "id": id}
+def _call(name: str, args: dict[str, Any], call_id: str) -> dict[str, Any]:
+    return {"name": name, "args": args, "id": call_id}
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +90,7 @@ class TestToolTurn:
         arguments the model chose, and fills in with the real tool's output."""
         async with comms_graph(
             [
-                _call("add_memory", {"content": "Dhruv drinks oat milk"}, id="tc_mem"),
+                _call("add_memory", {"content": "Dhruv drinks oat milk"}, call_id="tc_mem"),
                 "Noted.",
             ]
         ) as graph:
@@ -109,7 +109,9 @@ class TestToolTurn:
     async def test_the_tool_card_precedes_its_result_on_the_wire(self):
         """The card must render before the result exists — that is what makes
         the tool call visible while it is still running."""
-        async with comms_graph([_call("add_memory", {"content": "x"}, id="tc_mem"), "ok"]) as graph:
+        async with comms_graph(
+            [_call("add_memory", {"content": "x"}, call_id="tc_mem"), "ok"]
+        ) as graph:
             transcript = await stream_turn(graph, "remember x", "t1", "u1")
 
         kinds = transcript.kinds()
@@ -119,7 +121,7 @@ class TestToolTurn:
         """The frontend joins on this id alone. If the ids disagree the card
         renders forever without ever showing a result."""
         async with comms_graph(
-            [_call("add_memory", {"content": "x"}, id="tc_join"), "ok"]
+            [_call("add_memory", {"content": "x"}, call_id="tc_join"), "ok"]
         ) as graph:
             transcript = await stream_turn(graph, "remember x", "t1", "u1")
 
@@ -130,7 +132,7 @@ class TestToolTurn:
         """``call_executor`` is how every non-trivial request leaves the comms
         tier; if it does not stream, the UI goes silent while work happens."""
         async with comms_graph(
-            [_call("call_executor", {"task": "book a flight"}, id="tc_exec"), "On it."]
+            [_call("call_executor", {"task": "book a flight"}, call_id="tc_exec"), "On it."]
         ) as graph:
             transcript = await stream_turn(graph, "book me a flight", "t1", "u1")
 
@@ -141,8 +143,8 @@ class TestToolTurn:
     async def test_two_tools_in_one_turn_each_get_their_own_card_and_result(self):
         async with comms_graph(
             [
-                _call("add_memory", {"content": "likes tea"}, id="tc_1"),
-                _call("search_memory", {"query": "tea"}, id="tc_2"),
+                _call("add_memory", {"content": "likes tea"}, call_id="tc_1"),
+                _call("search_memory", {"query": "tea"}, call_id="tc_2"),
                 "Both done.",
             ]
         ) as graph:
@@ -167,7 +169,7 @@ class TestAcrossTurns:
         thread = f"t-{uuid4()}"
         async with comms_graph(
             [
-                _call("add_memory", {"content": "first turn fact"}, id="tc_turn1"),
+                _call("add_memory", {"content": "first turn fact"}, call_id="tc_turn1"),
                 "Stored it.",
                 "Just chatting now.",
             ]

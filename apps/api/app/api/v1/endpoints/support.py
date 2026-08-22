@@ -111,7 +111,10 @@ async def submit_support_request(
 @limiter.limit("10/day")  # 10 support requests per day per user
 async def submit_support_request_with_attachments(
     request: Request,
-    type: str = Form(...),
+    # Renamed from the wire field `type` to avoid shadowing the builtin;
+    # `alias="type"` keeps the multipart field name the frontend sends
+    # (apps/web/src/features/support/api/supportApi.ts) unchanged.
+    ticket_type: str = Form(..., alias="type"),
     title: str = Form(...),
     description: str = Form(...),
     attachments: list[UploadFile] = File(default=[]),
@@ -128,7 +131,7 @@ async def submit_support_request_with_attachments(
     - Sends confirmation email to the user
 
     Args:
-        type: Type of request (support or feature)
+        ticket_type: Type of request (support or feature)
         title: Title of the request
         description: Description of the request
         attachments: List of uploaded image files (JPG, PNG, WebP only)
@@ -137,7 +140,7 @@ async def submit_support_request_with_attachments(
     Returns:
         SupportRequestSubmissionResponse with success status and ticket ID
     """
-    log.set(operation="submit_support_request_with_attachments", category=type)
+    log.set(operation="submit_support_request_with_attachments", category=ticket_type)
     try:
         user_id = current_user.get("user_id")
         user_email = current_user.get("email")
@@ -148,7 +151,7 @@ async def submit_support_request_with_attachments(
 
         # Validate request type
         try:
-            request_type = SupportRequestType(type)
+            request_type = SupportRequestType(ticket_type)
         except ValueError as e:
             raise HTTPException(
                 status_code=400,

@@ -28,6 +28,7 @@ from app.services.onboarding.intelligence_service import (
     _DEFAULT_WORKFLOW_CRON,
     _TODO_TITLE_MAX_CHARS,
     _WORKFLOW_SPEC_MAX_ATTEMPTS,
+    OnboardingContext,
     _build_trigger_config_from_suggestion,
     _build_workflow_prompt_context,
     _find_workflow_trigger_schema,
@@ -350,7 +351,18 @@ def _prompt(**overrides: Any) -> str:
         "selected_integrations": None,
     }
     payload.update(overrides)
-    return _build_workflow_prompt_context(**payload)
+    selected = payload.pop("selected_integrations")
+    ctx = OnboardingContext(
+        user_id="user-42",
+        name="Ann",
+        profession=payload["profession"],
+        focus=payload["focus"],
+        has_gmail=payload["has_gmail"],
+        triage=payload["triage"],
+        writing_style=payload["writing_style"],
+        clarify_answers=payload["clarify_answers"] or [],
+    )
+    return _build_workflow_prompt_context(ctx, selected)
 
 
 class TestBuildWorkflowPromptContext:

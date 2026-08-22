@@ -373,6 +373,16 @@ jobs:
           python3 tools/lints/check_ignore_ratchet.py
           echo "::endgroup::"
           echo "ignore-ratchet: OK (no ruff rule was switched off)"
+      - name: PLR complexity ratchet (touch a grandfathered file, fix it now)
+        # PLR0911/0912/0913/0915 are in ruff's ignore list so the lane above
+        # doesn't double-report them -- this script is what actually enforces
+        # them, via tools/lints/plr_complexity_baseline.txt. See
+        # tools/lints/README.md#plr-complexity-ratchet.
+        run: |
+          echo "::group::plr complexity ratchet"
+          python3 tools/lints/check_plr_complexity.py
+          echo "::endgroup::"
+          echo "plr-complexity-ratchet: OK"
 
   # --- Python mypy --------------------------------------------------------
   python-mypy:

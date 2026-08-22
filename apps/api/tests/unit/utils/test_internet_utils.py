@@ -1,7 +1,9 @@
 """Unit tests for app.utils.internet_utils — URL validation, scraping, and metadata fetching."""
 
+import socket
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from fastapi import HTTPException
 import httpx
 import pytest
 
@@ -558,3 +560,38 @@ class TestFetchUrlMetadata:
         # Third positional arg to set_cache is the TTL
         call_args = mock_set_cache.call_args
         assert call_args[0][2] == 864000
+
+
+# ---------------------------------------------------------------------------
+# SSRF guard — DNS resolution path
+# ---------------------------------------------------------------------------
+
+
+class TestSsrfGuardResolution:
+    """Tests for the DNS-resolution branch of the SSRF guard."""
+
+    @patch("asyncio.get_running_loop")
+    async def test_unparseable_resolved_address_rejects_url(
+        self, mock_get_running_loop: MagicMock
+    ) -> None:
+        """A resolved address ipaddress cannot parse raises a 400 and never fetches."""
+        mock_loop = MagicMock()
+        mock_loop.getaddrinfo = AsyncMock(
+            return_value=[
+                (
+                    socket.AF_INET,
+                    socket.SOCK_STREAM,
+                    socket.IPPROTO_TCP,
+                    "",
+                    ("not-an-ip-address", 0),
+                )
+            ]
+        )
+        mock_get_running_loop.return_value = mock_loop
+
+        with pytest.raises(HTTPException) as exc_info:
+            await fetch_url_metadata("http://example.com")
+
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.detail == "URL host resolves to an unsupported address."
+        mock_loop.getaddrinfo.assert_awaited_once()

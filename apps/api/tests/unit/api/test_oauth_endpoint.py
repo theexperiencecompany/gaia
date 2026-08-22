@@ -7,6 +7,7 @@ to verify routing, status codes, redirects, and cookie handling.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
+import pytest
 
 from app.services.analytics_service import AnalyticsEvents
 
@@ -46,6 +47,16 @@ def _mock_auth_response(
 # ---------------------------------------------------------------------------
 # GET /oauth/client-metadata.json
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def stubbed_oauth_side_effects():
+    """Patch the callback's fire-and-forget side effects no test asserts."""
+    with (
+        patch("app.api.v1.endpoints.oauth.capture_event"),
+        patch("app.api.v1.endpoints.oauth.handle_oauth_connection", new_callable=AsyncMock),
+    ):
+        yield
 
 
 class TestClientMetadata:
@@ -407,8 +418,7 @@ class TestComposioCallback:
             {"integration_id": "gmail", "provider": integration.provider},
         )
 
-    @patch("app.api.v1.endpoints.oauth.capture_event")
-    @patch("app.api.v1.endpoints.oauth.handle_oauth_connection", new_callable=AsyncMock)
+    @pytest.mark.usefixtures("stubbed_oauth_side_effects")
     @patch("app.api.v1.endpoints.oauth.get_integration_by_config")
     @patch("app.api.v1.endpoints.oauth.get_composio_service")
     @patch("app.api.v1.endpoints.oauth.user_integration_repository")
@@ -424,8 +434,6 @@ class TestComposioCallback:
         mock_repo: MagicMock,
         mock_composio: MagicMock,
         mock_config: MagicMock,
-        mock_handle: AsyncMock,
-        mock_capture: MagicMock,
         client: AsyncClient,
     ):
         """Composio's hosted Connect Link redirects back WITHOUT `connectedAccountId`

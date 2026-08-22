@@ -417,7 +417,7 @@ class TestWorkflowExecution:
         )
 
         def _make_stub(name: str):
-            async def _stub(input: str = "") -> str:
+            async def _stub(query: str = "") -> str:
                 return f"stub:{name}"
 
             _stub.__name__ = name

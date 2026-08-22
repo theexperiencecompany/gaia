@@ -32,7 +32,7 @@ from app.models.webhook_models import (
     ComposioWebhookAckResponse,
     ComposioWebhookEvent,
 )
-from app.services.integrations.integration_expiry import expire_user_integration
+from app.services.integrations.integration_expiry import ExpiryOptions, expire_user_integration
 from app.services.triggers import get_handler_by_event
 from app.services.triggers.base import TriggerHandler
 from app.services.workflow.integration_pause import pause_workflows_for_expired_integration
@@ -91,11 +91,13 @@ async def _expire_connection(
             await expire_user_integration(
                 user_id,
                 integration_id,
-                reason=reason,
-                trigger="webhook",
-                notify=True,
-                connected_account_id=connected_account_id,
-                paused_workflows=paused,
+                ExpiryOptions(
+                    reason=reason,
+                    trigger="webhook",
+                    notify=True,
+                    connected_account_id=connected_account_id,
+                    paused_workflows=paused,
+                ),
             )
     except TimeoutError:
         log.error(

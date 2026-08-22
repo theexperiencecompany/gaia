@@ -21,7 +21,7 @@ class _AsyncIterator:
         try:
             return next(self._items)
         except StopIteration:
-            raise StopAsyncIteration
+            raise StopAsyncIteration from None
 
 
 # ---------------------------------------------------------------------------

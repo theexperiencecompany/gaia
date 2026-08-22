@@ -14,6 +14,7 @@ from app.agents.skills.models import (
     _validate_skill_name,
 )
 from app.agents.skills.registry import (
+    SkillInstallRequest,
     disable_skill,
     enable_skill,
     get_skill,
@@ -322,14 +323,16 @@ class TestInstallSkill:
         mock_skill_repo.find_by_name = AsyncMock(return_value=None)
         mock_skill_repo.create = AsyncMock()
         await install_skill(
-            user_id="u1",
-            name="my-skill",
-            description="Does something useful",
-            target="executor",
-            vfs_path="/skills/my-skill",
-            source=SkillSource.GITHUB,
-            source_url="https://github.com/org/repo",
-            license="MIT",
+            SkillInstallRequest(
+                user_id="u1",
+                name="my-skill",
+                description="Does something useful",
+                target="executor",
+                vfs_path="/skills/my-skill",
+                source=SkillSource.GITHUB,
+                source_url="https://github.com/org/repo",
+                license_name="MIT",
+            )
         )
         mock_skill_repo.create.assert_awaited_once()
         created = mock_skill_repo.create.await_args.args[0]
@@ -342,12 +345,14 @@ class TestInstallSkill:
         mock_skill_repo.find_by_name = AsyncMock(return_value=None)
         mock_skill_repo.create = AsyncMock()
         skill = await install_skill(
-            user_id="u1",
-            name="my-skill",
-            description="Does something useful",
-            target="executor",
-            vfs_path="/skills/my-skill",
-            source=SkillSource.INLINE,
+            SkillInstallRequest(
+                user_id="u1",
+                name="my-skill",
+                description="Does something useful",
+                target="executor",
+                vfs_path="/skills/my-skill",
+                source=SkillSource.INLINE,
+            )
         )
         assert isinstance(skill, Skill)
         assert skill.user_id == "u1" and skill.enabled is True and skill.id
@@ -357,10 +362,12 @@ class TestInstallSkill:
         mock_skill_repo.create = AsyncMock()
         with pytest.raises(ValueError, match="already installed"):
             await install_skill(
-                user_id="u1",
-                name="my-skill",
-                description="Duplicate skill",
-                target="executor",
-                vfs_path="/skills/my-skill",
-                source=SkillSource.INLINE,
+                SkillInstallRequest(
+                    user_id="u1",
+                    name="my-skill",
+                    description="Duplicate skill",
+                    target="executor",
+                    vfs_path="/skills/my-skill",
+                    source=SkillSource.INLINE,
+                )
             )

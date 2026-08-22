@@ -24,38 +24,37 @@ import pytest
 # ---------------------------------------------------------------------------
 
 
+RECORD_ID = 1
+USER_ID = "user_1"
+PROVIDER = "google"
+ACCESS_TOKEN = "access_123"
+REFRESH_TOKEN = "refresh_456"
+SCOPES = "openid email"
+
+
 def _make_token_record(
     *,
-    user_id: str = "user_1",
-    provider: str = "google",
-    access_token: str = "access_123",
-    refresh_token: str | None = "refresh_456",
-    token_data: str | None = None,
-    scopes: str | None = "openid email",
+    refresh_token: str | None = REFRESH_TOKEN,
     expires_at: datetime | None = None,
-    updated_at: datetime | None = None,
-    id: int = 1,
 ) -> MagicMock:
     """Create a mock OAuthToken database record."""
     record = MagicMock()
-    record.id = id
-    record.user_id = user_id
-    record.provider = provider
-    record.access_token = access_token
+    record.id = RECORD_ID
+    record.user_id = USER_ID
+    record.provider = PROVIDER
+    record.access_token = ACCESS_TOKEN
     record.refresh_token = refresh_token
-    record.scopes = scopes
+    record.scopes = SCOPES
     record.expires_at = expires_at or (datetime.now(UTC) + timedelta(hours=1))
-    record.updated_at = updated_at or datetime.now(UTC)
-    if token_data is None:
-        token_data = json.dumps(
-            {
-                "access_token": access_token,
-                "refresh_token": refresh_token,
-                "token_type": "Bearer",
-                "scope": scopes or "",
-            }
-        )
-    record.token_data = token_data
+    record.updated_at = datetime.now(UTC)
+    record.token_data = json.dumps(
+        {
+            "access_token": ACCESS_TOKEN,
+            "refresh_token": refresh_token,
+            "token_type": "Bearer",
+            "scope": SCOPES,
+        }
+    )
     return record
 
 

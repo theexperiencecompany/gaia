@@ -22,7 +22,12 @@ from langgraph.store.memory import InMemoryStore
 import pytest
 
 from app.constants.llm import COMPLETION_NUDGE_MESSAGE, MAX_COMPLETION_NUDGES
-from app.override.langgraph_bigtool.create_agent import create_agent
+from app.override.langgraph_bigtool.create_agent import (
+    AgentConfig,
+    HookConfig,
+    ToolRetrievalConfig,
+    create_agent,
+)
 from tests.helpers import create_fake_llm, create_fake_llm_with_tool_calls
 
 
@@ -36,10 +41,12 @@ def _compile(llm, *, require_finish_to_end: bool):
     builder = create_agent(
         llm=llm,
         tool_registry={"lookup": lookup},
-        agent_name="executor_agent",
-        disable_retrieve_tools=True,
-        initial_tool_ids=["lookup"],
-        require_finish_to_end=require_finish_to_end,
+        tools_config=ToolRetrievalConfig(
+            disable_retrieve_tools=True,
+            initial_tool_ids=["lookup"],
+        ),
+        hooks_config=HookConfig(require_finish_to_end=require_finish_to_end),
+        agent_config=AgentConfig(agent_name="executor_agent"),
     )
     return builder.compile(checkpointer=MemorySaver(), store=InMemoryStore())
 

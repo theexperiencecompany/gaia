@@ -39,7 +39,7 @@ def _writer() -> MagicMock:
 
 
 def _make_integration(
-    id: str = "gmail",
+    integration_id: str = "gmail",
     name: str = "Gmail",
     available: bool = True,
     short_name: str = "",
@@ -48,7 +48,7 @@ def _make_integration(
 ) -> MagicMock:
     """Create a mock OAuthIntegration."""
     mock = MagicMock()
-    mock.id = id
+    mock.id = integration_id
     mock.name = name
     mock.available = available
     mock.short_name = short_name
