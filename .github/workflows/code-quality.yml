@@ -30,6 +30,11 @@ permissions:
   contents: read
 
 jobs:
+  # --- Change detection (no toolchain install) -----------------------------
+  # Unified with main.yml detect: uses nx-set-shas + nx show projects --affected
+  # with same base (origin/master via NX_BASE/NX_HEAD) so both workflows
+  # agree on what "affected" means. Push/dispatch → __FULL__ semantics via
+  # workflow_dispatch branch; PRs use --affected. No changed-files.sh grep.
   changes:
     name: Detect changed languages
     runs-on: ubuntu-latest
@@ -45,677 +50,932 @@ jobs:
       python_projects: ${{ steps.detect.outputs.python_projects }}
       typescript_projects: ${{ steps.detect.outputs.typescript_projects }}
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-        persist-credentials: false
-    - uses: nrwl/nx-set-shas@afb73a62d26e41464e9254689e1fd6122ee683c1
-      with:
-        main-branch-name: master
-    - uses: ./.github/actions/setup-node-pnpm
-    - name: Detect affected projects
-      id: detect
-      run: "set -euo pipefail\nnormalize() { tr -d '[]\"' | tr -s ' \\n' ',' | sed 's/^,//; s/,$//'; }\n\nif [[ \"${{ github.event_name\
-        \ }}\" == \"workflow_dispatch\" ]]; then\n  PY=$(pnpm exec nx show projects --projects 'tag:scope:python' | normalize)\n\
-        \  TS=$(pnpm exec nx show projects --projects 'tag:scope:typescript' | normalize)\n  ALERTS=true\nelse\n  PY=$(pnpm\
-        \ exec nx show projects --affected --projects 'tag:scope:python' | normalize)\n  TS=$(pnpm exec nx show projects --affected\
-        \ --projects 'tag:scope:typescript' | normalize)\n  # Alert rules are path-scoped, not tag-scoped: derive from affected\
-        \ files\n  # using the same base nx uses (NX_BASE). Falls back to origin/master.\n  BASE=\"${NX_BASE:-origin/master}\"\
-        \n  HEAD=\"${NX_HEAD:-HEAD}\"\n  # Ensure base is fetched (nx-set-shas already did, but best-effort)\n  git fetch\
-        \ --no-tags origin master 2>/dev/null || true\n  AFFECTED_FILES=$(git diff --name-only \"$BASE...$HEAD\" 2>/dev/null\
-        \ || git diff --name-only \"origin/master...HEAD\" 2>/dev/null || echo \"__FULL__\")\n  if [[ \"$AFFECTED_FILES\"\
-        \ == \"__FULL__\" ]]; then\n    ALERTS=true\n  elif echo \"$AFFECTED_FILES\" | grep -qE '^(infra/docker/observability/grafana/provisioning/alerting/|tools/alert-rules/|config/pint\\\
-        .hcl$)'; then\n    ALERTS=true\n  else\n    ALERTS=false\n  fi\nfi\n\necho \"python_projects=$PY\" >> \"$GITHUB_OUTPUT\"\
-        \necho \"typescript_projects=$TS\" >> \"$GITHUB_OUTPUT\"\necho \"has_python=$([[ -n \"$PY\" ]] && echo true || echo\
-        \ false)\" >> \"$GITHUB_OUTPUT\"\necho \"has_typescript=$([[ -n \"$TS\" ]] && echo true || echo false)\" >> \"$GITHUB_OUTPUT\"\
-        \necho \"has_alert_rules=$ALERTS\" >> \"$GITHUB_OUTPUT\"\necho \"python: ${PY:-none} | typescript: ${TS:-none} | alert-rules:\
-        \ $ALERTS\"\necho \"Affected Python: $PY\"\necho \"Affected TypeScript: $TS\"\n"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: nrwl/nx-set-shas@afb73a62d26e41464e9254689e1fd6122ee683c1 # v5.0.1
+        with:
+          main-branch-name: master
+
+      - uses: ./.github/actions/setup-node-pnpm
+
+      - name: Detect affected projects
+        id: detect
+        run: |
+          set -euo pipefail
+          normalize() { tr -d '[]"' | tr -s ' \n' ',' | sed 's/^,//; s/,$//'; }
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            PY=$(pnpm exec nx show projects --projects 'tag:scope:python' | normalize)
+            TS=$(pnpm exec nx show projects --projects 'tag:scope:typescript' | normalize)
+            ALERTS=true
+          else
+            PY=$(pnpm exec nx show projects --affected --projects 'tag:scope:python' | normalize)
+            TS=$(pnpm exec nx show projects --affected --projects 'tag:scope:typescript' | normalize)
+            # Alert rules are path-scoped, not tag-scoped: derive from affected files
+            # using the same base nx uses (NX_BASE). Falls back to origin/master.
+            BASE="${NX_BASE:-origin/master}"
+            HEAD="${NX_HEAD:-HEAD}"
+            # No fetch needed: the checkout above is fetch-depth: 0, so every
+            # remote branch (and nx-set-shas' base SHA) is already local.
+            AFFECTED_FILES=$(git diff --name-only "$BASE...$HEAD" 2>/dev/null || git diff --name-only "origin/master...HEAD" 2>/dev/null || echo "__FULL__")
+            if [[ "$AFFECTED_FILES" == "__FULL__" ]]; then
+              ALERTS=true
+            elif echo "$AFFECTED_FILES" | grep -qE '^(infra/docker/observability/grafana/provisioning/alerting/|tools/alert-rules/|config/pint\.hcl$)'; then
+              ALERTS=true
+            else
+              ALERTS=false
+            fi
+          fi
+
+          echo "python_projects=$PY" >> "$GITHUB_OUTPUT"
+          echo "typescript_projects=$TS" >> "$GITHUB_OUTPUT"
+          echo "has_python=$([[ -n "$PY" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "has_typescript=$([[ -n "$TS" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "has_alert_rules=$ALERTS" >> "$GITHUB_OUTPUT"
+          echo "python: ${PY:-none} | typescript: ${TS:-none} | alert-rules: $ALERTS"
+          echo "Affected Python: $PY"
+          echo "Affected TypeScript: $TS"
+  # --- Biome lint + format -------------------------------------------------
   biome:
     name: Biome lint + format
-    needs:
-    - changes
+    needs: [changes]
     if: needs.changes.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-        persist-credentials: false
-    - uses: ./.github/actions/setup-node-pnpm
-    - name: Lint and format check across all TS/JS/JSON/CSS files
-      run: "echo \"::group::Biome check\"\n# Drop top-level paths that biome.json explicitly excludes via `!!`\n# negation\
-        \ (apps/api, apps/voice-agent, apps/web/public, infra, docs,\n# .github, etc.). Biome errors out with exit 1 when\
-        \ every input path\n# is excluded by config, so the lane must not feed it those paths\n# in the first place. Keep\
-        \ this list in sync with biome.json\n# `files.includes` negations.\nFILES=$(scripts/ci/changed-files.sh ts tsx js\
-        \ jsx json jsonc css \\\n  | grep -Ev '^(apps/api|apps/voice-agent|apps/web/public|infra|docs|\\.github|\\.claude|\\\
-        .agents|\\.husky|\\.yarn|\\.vscode|\\.idea|\\.mise|\\.opencode|\\.worktrees|\\.jscpd-report)/' || true)\nif [ \"$FILES\"\
-        \ = \"__FULL__\" ]; then\n  pnpm run quality:lint\nelif [ -z \"$FILES\" ]; then\n  echo \"No matching changed files\
-        \ — skipping.\"\nelse\n  pnpm exec biome check $FILES\nfi\necho \"::endgroup::\"\necho \"Biome: OK (0 errors; warnings\
-        \ shown above are non-blocking)\"\n"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Lint and format check across all TS/JS/JSON/CSS files
+        run: |
+          echo "::group::Biome check"
+          # Drop top-level paths that biome.json explicitly excludes via `!!`
+          # negation (apps/api, apps/voice-agent, apps/web/public, infra, docs,
+          # .github, etc.). Biome errors out with exit 1 when every input path
+          # is excluded by config, so the lane must not feed it those paths
+          # in the first place. Keep this list in sync with biome.json
+          # `files.includes` negations.
+          FILES=$(scripts/ci/changed-files.sh ts tsx js jsx json jsonc css \
+            | grep -Ev '^(apps/api|apps/voice-agent|apps/web/public|infra|docs|\.github|\.claude|\.agents|\.husky|\.yarn|\.vscode|\.idea|\.mise|\.opencode|\.worktrees|\.jscpd-report)/' || true)
+          if [ "$FILES" = "__FULL__" ]; then
+            pnpm run quality:lint
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            pnpm exec biome check $FILES
+          fi
+          echo "::endgroup::"
+          echo "Biome: OK (0 errors; warnings shown above are non-blocking)"
+
+  # --- Workspace dependency hygiene ---------------------------------------
   deps:
     name: Workspace dependency hygiene
-    needs:
-    - changes
+    needs: [changes]
     if: needs.changes.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        persist-credentials: false
-    - uses: ./.github/actions/setup-node-pnpm
-    - name: All workspace packages agree on dep versions (syncpack)
-      run: 'trap ''echo "::error::repro: pnpm exec syncpack lint --config config/.syncpackrc.json"'' ERR
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: All workspace packages agree on dep versions (syncpack)
+        run: |
+          trap 'echo "::error::repro: pnpm exec syncpack lint --config config/.syncpackrc.json"' ERR
+          echo "::group::syncpack lint"
+          pnpm exec syncpack lint --config config/.syncpackrc.json
+          echo "::endgroup::"
+          echo "### Deps (syncpack) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "syncpack: OK (dep versions and semver ranges consistent)"
+      - name: Workspace topology is valid (manypkg)
+        run: |
+          trap 'echo "::error::repro: pnpm exec manypkg check"' ERR
+          echo "::group::manypkg check"
+          pnpm exec manypkg check
+          echo "::endgroup::"
+          echo "### Deps (manypkg) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "manypkg: OK (workspace structure valid)"
+      - name: package.json shape conforms (npm-package-json-lint)
+        run: |
+          trap 'echo "::error::repro: pnpm run quality:pkg-json"' ERR
+          echo "::group::package.json lint"
+          pnpm run quality:pkg-json
+          echo "::endgroup::"
+          echo "### Deps (pkg-json) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "pkg-json: OK (all package.json files conform to schema)"
 
-        echo "::group::syncpack lint"
-
-        pnpm exec syncpack lint --config config/.syncpackrc.json
-
-        echo "::endgroup::"
-
-        echo "### Deps (syncpack) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
-
-        echo "syncpack: OK (dep versions and semver ranges consistent)"
-
-        '
-    - name: Workspace topology is valid (manypkg)
-      run: 'trap ''echo "::error::repro: pnpm exec manypkg check"'' ERR
-
-        echo "::group::manypkg check"
-
-        pnpm exec manypkg check
-
-        echo "::endgroup::"
-
-        echo "### Deps (manypkg) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
-
-        echo "manypkg: OK (workspace structure valid)"
-
-        '
-    - name: package.json shape conforms (npm-package-json-lint)
-      run: 'trap ''echo "::error::repro: pnpm run quality:pkg-json"'' ERR
-
-        echo "::group::package.json lint"
-
-        pnpm run quality:pkg-json
-
-        echo "::endgroup::"
-
-        echo "### Deps (pkg-json) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
-
-        echo "pkg-json: OK (all package.json files conform to schema)"
-
-        '
+  # --- Circular dependency check ------------------------------------------
   circular:
     name: No circular imports
-    needs:
-    - changes
+    needs: [changes]
     if: needs.changes.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        persist-credentials: false
-    - uses: ./.github/actions/setup-node-pnpm
-    - name: Circular dependency scan (Biome)
-      run: 'trap ''echo "::error::repro: pnpm run quality:circular"'' ERR
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Circular dependency scan (Biome)
+        run: |
+          trap 'echo "::error::repro: pnpm run quality:circular"' ERR
+          echo "::group::biome lint --only=suspicious/noImportCycles"
+          pnpm run quality:circular
+          echo "::endgroup::"
+          echo "### Circular deps — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Circular deps: OK (no cycles found)"
 
-        echo "::group::biome lint --only=suspicious/noImportCycles"
-
-        pnpm run quality:circular
-
-        echo "::endgroup::"
-
-        echo "### Circular deps — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
-
-        echo "Circular deps: OK (no cycles found)"
-
-        '
+  # --- File size limit (per-extension + allowlist + hard cap) -------------
   file-size:
     name: File size limits
-    needs:
-    - changes
+    needs: [changes]
     if: needs.changes.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-        persist-credentials: false
-    - uses: ./.github/actions/setup-node-pnpm
-    - name: Per-file line count (default 400, relaxed 700, hard cap 1200)
-      run: "trap 'echo \"::error::repro: pnpm run quality:size\"' ERR\necho \"::group::File size scan\"\nFILES=$(scripts/ci/changed-files.sh\
-        \ ts tsx js jsx mjs cjs)\nif [ \"$FILES\" = \"__FULL__\" ]; then\n  pnpm run quality:size\nelif [ -z \"$FILES\" ];\
-        \ then\n  echo \"No matching changed files — skipping.\"\nelse\n  CHANGED_FILES=\"$FILES\" node scripts/ci/check-file-sizes.mjs\n\
-        fi\necho \"::endgroup::\"\necho \"### File size — ✅ passed\" >> \"$GITHUB_STEP_SUMMARY\"\necho \"File size: OK (no\
-        \ hard-cap violations)\"\n"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Per-file line count (default 400, relaxed 700, hard cap 1200)
+        run: |
+          trap 'echo "::error::repro: pnpm run quality:size"' ERR
+          echo "::group::File size scan"
+          FILES=$(scripts/ci/changed-files.sh ts tsx js jsx mjs cjs)
+          if [ "$FILES" = "__FULL__" ]; then
+            pnpm run quality:size
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            CHANGED_FILES="$FILES" node scripts/ci/check-file-sizes.mjs
+          fi
+          echo "::endgroup::"
+          echo "### File size — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "File size: OK (no hard-cap violations)"
+
+  # --- Types must live in dedicated type files ----------------------------
   types-location:
     name: Types live in dedicated *.types.ts files
-    needs:
-    - changes
+    needs: [changes]
     if: needs.changes.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-        persist-credentials: false
-    - uses: ./.github/actions/setup-node-pnpm
-    - name: Type / interface / enum location enforcer
-      run: "trap 'echo \"::error::repro: node scripts/ci/check-types-location.mjs --enforce\"' ERR\necho \"::group::types-location\
-        \ check\"\nFILES=$(scripts/ci/changed-files.sh ts tsx)\nif [ \"$FILES\" = \"__FULL__\" ]; then\n  node scripts/ci/check-types-location.mjs\
-        \ --enforce\nelif [ -z \"$FILES\" ]; then\n  echo \"No matching changed files — skipping.\"\nelse\n  CHANGED_FILES=\"\
-        $FILES\" node scripts/ci/check-types-location.mjs --enforce\nfi\necho \"::endgroup::\"\necho \"### Types location\
-        \ — ✅ passed\" >> \"$GITHUB_STEP_SUMMARY\"\necho \"Type colocation: OK (no file exports > 3 types unless in *.types.ts)\"\
-        \n"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Type / interface / enum location enforcer
+        run: |
+          trap 'echo "::error::repro: node scripts/ci/check-types-location.mjs --enforce"' ERR
+          echo "::group::types-location check"
+          FILES=$(scripts/ci/changed-files.sh ts tsx)
+          if [ "$FILES" = "__FULL__" ]; then
+            node scripts/ci/check-types-location.mjs --enforce
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            CHANGED_FILES="$FILES" node scripts/ci/check-types-location.mjs --enforce
+          fi
+          echo "::endgroup::"
+          echo "### Types location — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Type colocation: OK (no file exports > 3 types unless in *.types.ts)"
+
+  # --- Components-per-file ------------------------------------------------
   components-per-file:
     name: At most 2 React components per file
-    needs:
-    - changes
+    needs: [changes]
     if: needs.changes.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-        persist-credentials: false
-    - uses: ./.github/actions/setup-node-pnpm
-    - name: Components-per-file enforcer
-      run: "trap 'echo \"::error::repro: pnpm run quality:components\"' ERR\necho \"::group::components-per-file check\"\n\
-        FILES=$(scripts/ci/changed-files.sh tsx)\nif [ \"$FILES\" = \"__FULL__\" ]; then\n  pnpm run quality:components\n\
-        elif [ -z \"$FILES\" ]; then\n  echo \"No matching changed files — skipping.\"\nelse\n  CHANGED_FILES=\"$FILES\" node\
-        \ scripts/ci/check-components-per-file.mjs\nfi\necho \"::endgroup::\"\necho \"### Components per file — ✅ passed\"\
-        \ >> \"$GITHUB_STEP_SUMMARY\"\necho \"Components: OK (no file declares > 2 React components)\"\n"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Components-per-file enforcer
+        run: |
+          trap 'echo "::error::repro: pnpm run quality:components"' ERR
+          echo "::group::components-per-file check"
+          FILES=$(scripts/ci/changed-files.sh tsx)
+          if [ "$FILES" = "__FULL__" ]; then
+            pnpm run quality:components
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            CHANGED_FILES="$FILES" node scripts/ci/check-components-per-file.mjs
+          fi
+          echo "::endgroup::"
+          echo "### Components per file — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Components: OK (no file declares > 2 React components)"
+
+  # --- Copy-paste detection -----------------------------------------------
   duplicates:
     name: Copy-paste detection (jscpd)
-    needs:
-    - changes
+    needs: [changes]
     if: needs.changes.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-        persist-credentials: false
-    - uses: ./.github/actions/setup-node-pnpm
-    - name: Copy-paste detection (jscpd, fails over 3% on changed lines)
-      run: "trap 'echo \"::error::repro: pnpm run quality:dupe\"' ERR\necho \"::group::jscpd\"\n# Timeout + low-speed guard:\
-        \ a stalled HTTPS fetch dies in <=60s rather\n# than hanging until the job's timeout-minutes cap (a `cancelled` lane\n\
-        # that fails the quality gate). Not `|| true` — jscpd needs the base ref,\n# so a genuine fetch failure must still\
-        \ fail the lane.\ntimeout 60 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 \\\n  fetch --no-tags origin \"\
-        $GITHUB_BASE_REF\"\npnpm run quality:dupe\necho \"::endgroup::\"\necho \"### Duplicates (jscpd) — ✅ passed\" >> \"\
-        $GITHUB_STEP_SUMMARY\"\necho \"Duplicates: OK (<= 3% on changed lines)\"\n"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Copy-paste detection (jscpd, fails over 3% on changed lines)
+        run: |
+          trap 'echo "::error::repro: pnpm run quality:dupe"' ERR
+          echo "::group::jscpd"
+          # No fetch: the checkout above is fetch-depth: 0, so
+          # origin/$GITHUB_BASE_REF — the ref check-duplication.mjs diffs
+          # against — is already local.
+          pnpm run quality:dupe
+          echo "::endgroup::"
+          echo "### Duplicates (jscpd) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Duplicates: OK (<= 3% on changed lines)"
+
+  # --- Published package hygiene ------------------------------------------
   package-hygiene:
     name: Published package hygiene (publint + attw)
-    needs:
-    - changes
+    needs: [changes]
     if: needs.changes.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        persist-credentials: false
-    - uses: ./.github/actions/setup-node-pnpm
-    - name: publint — validate packages/cli npm metadata
-      run: 'trap ''echo "::error::repro: pnpm run quality:publint"'' ERR
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: publint — validate packages/cli npm metadata
+        run: |
+          trap 'echo "::error::repro: pnpm run quality:publint"' ERR
+          echo "::group::publint packages/cli"
+          pnpm run quality:publint
+          echo "::endgroup::"
+          echo "### Package hygiene (publint) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "publint: OK (packages/cli npm metadata is valid)"
+      - name: are-the-types-wrong — validate type exports
+        run: |
+          trap 'echo "::error::repro: pnpm run quality:attw"' ERR
+          echo "::group::attw packages/cli"
+          OUTPUT=$(pnpm run quality:attw 2>&1)
+          echo "$OUTPUT"
+          if echo "$OUTPUT" | grep -q "This package does not contain types"; then
+            echo "::endgroup::"
+            echo "attw: OK (packages/cli is a CLI binary — no exported types is expected)"
+          else
+            echo "::endgroup::"
+          echo "### Package hygiene (attw) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+            echo "attw: OK (type exports resolve across CJS/ESM/node16/bundler)"
+          fi
 
-        echo "::group::publint packages/cli"
-
-        pnpm run quality:publint
-
-        echo "::endgroup::"
-
-        echo "### Package hygiene (publint) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
-
-        echo "publint: OK (packages/cli npm metadata is valid)"
-
-        '
-    - name: are-the-types-wrong — validate type exports
-      run: "trap 'echo \"::error::repro: pnpm run quality:attw\"' ERR\necho \"::group::attw packages/cli\"\nOUTPUT=$(pnpm\
-        \ run quality:attw 2>&1)\necho \"$OUTPUT\"\nif echo \"$OUTPUT\" | grep -q \"This package does not contain types\"\
-        ; then\n  echo \"::endgroup::\"\n  echo \"attw: OK (packages/cli is a CLI binary — no exported types is expected)\"\
-        \nelse\n  echo \"::endgroup::\"\necho \"### Package hygiene (attw) — ✅ passed\" >> \"$GITHUB_STEP_SUMMARY\"\n  echo\
-        \ \"attw: OK (type exports resolve across CJS/ESM/node16/bundler)\"\nfi\n"
+  # --- TypeScript strict type-check ---------------------------------------
   type-check:
     name: TypeScript strict type-check (all workspaces)
-    needs:
-    - changes
+    needs: [changes]
     if: needs.changes.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-        persist-credentials: false
-    - uses: ./.github/actions/setup-node-pnpm
-    - name: tsc --noEmit across web, desktop, mobile, cli, bots
-      run: "echo \"::group::nx type-check\"\nif [ -n \"${GITHUB_BASE_REF:-}\" ]; then\n  # Timeout + low-speed guard so a\
-        \ stalled HTTPS fetch fails fast instead\n  # of hanging until the job's timeout-minutes cap (which surfaces as a\n\
-        \  # `cancelled` lane and fails the quality gate). nx affected falls back\n  # to whatever base ref is already local\
-        \ if the fetch is skipped.\n  timeout 60 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 \\\n    fetch --no-tags\
-        \ --depth=1 origin \"$GITHUB_BASE_REF\" 2>/dev/null || true\n  # Exclude Python projects (api, voice-agent): their\
-        \ type-check\n  # runs mypy via uv, which isn't installed in this Node-only job, and\n  # Python typing is already\
-        \ enforced by the dedicated python-mypy lane.\n  pnpm exec nx affected -t type-check --base=origin/$GITHUB_BASE_REF\
-        \ --exclude=api,voice-agent\nelse\n  pnpm exec nx run-many -t type-check --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage\n\
-        fi\necho \"::endgroup::\"\necho \"TypeScript: OK (all affected workspaces pass strict tsc)\"\n"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: tsc --noEmit across web, desktop, mobile, cli, bots
+        run: |
+          echo "::group::nx type-check"
+          if [ -n "${GITHUB_BASE_REF:-}" ]; then
+            # No fetch: the checkout above is fetch-depth: 0, so
+            # origin/$GITHUB_BASE_REF is already local for nx affected.
+            # Exclude Python projects (api, voice-agent): their type-check
+            # runs mypy via uv, which isn't installed in this Node-only job, and
+            # Python typing is already enforced by the dedicated python-mypy lane.
+            pnpm exec nx affected -t type-check --base=origin/$GITHUB_BASE_REF --exclude=api,voice-agent
+          else
+            pnpm exec nx run-many -t type-check --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage
+          fi
+          echo "::endgroup::"
+          echo "TypeScript: OK (all affected workspaces pass strict tsc)"
+
+  # --- Python static analysis (ruff + xenon + interrogate + security) ------
+  # One job, not four: each of these tools is seconds of work behind ~40s of
+  # runner boot + checkout + uv install, so four separate lanes spent most of
+  # their wall-clock on setup and burned four runners to do it. They share the
+  # exact same environment (uv 0.8.17, no dependency install), so they share
+  # one job.
+  #
+  # Failure isolation is preserved by `continue-on-error` on every tool step
+  # plus the aggregating verdict at the end: one red tool no longer hides the
+  # other five, which is the only thing separate jobs bought us here.
+  python-static:
+    name: Python static (ruff + custom lints + xenon + interrogate + bandit + pip-audit)
+    needs: [changes]
+    if: needs.changes.outputs.has_python == 'true'
+    runs-on: ubuntu-latest
+    # The six tools now run serially in one job, so the cap is the sum of what
+    # the four old lanes allowed themselves in parallel (10 + 5 + 5 + 10),
+    # halved for headroom. A too-tight cap surfaces as a `cancelled` lane,
+    # which fails the quality gate for a reason nobody can read.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.8.17"
+          enable-cache: true
+          prune-cache: true
+      - name: ruff check + format (PL, RUF, FAST, S, B, A, COM, C4, DTZ, ISC, RET, SIM, ARG, PTH, TRY, PERF, UP, FURB, LOG, G + more)
+        id: ruff
+        continue-on-error: true
+        # Pinned to the uv.lock ruff version — bump both together. Unpinned,
+        # a ruff release can flip this lane red with zero code changes
+        # (0.16.0 shipped ISC004/RUF036 four minutes before a run here).
+        run: |
+          echo "::group::ruff check + format --check"
+          FILES=$(scripts/ci/changed-files.sh py)
+          if [ "$FILES" = "__FULL__" ]; then
+            # Whole repo, not a list of roots. The old list was
+            # "apps/api apps/voice-agent libs/shared/py", which silently excluded
+            # tools/, .agents/skills/, apps/web/scripts/ and docs/scripts/ — and
+            # is how libs/shared/py went unlinted long enough to accumulate 15
+            # findings after a rule was switched on repo-wide. A new app or lib
+            # is now covered the moment it exists instead of when someone
+            # remembers to add it here. Exclusions live in [tool.ruff]
+            # extend-exclude, where they are visible and reviewable.
+            uvx --no-build ruff@0.14.13 check .
+            uvx --no-build ruff@0.14.13 format --check .
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            uvx --no-build ruff@0.14.13 check $FILES
+            uvx --no-build ruff@0.14.13 format --check $FILES
+          fi
+          echo "::endgroup::"
+          echo "ruff: OK (strict rule set passes; every file is already formatted)"
+      - name: Custom Python AST lints (route contract, no service classes, wide events, repository boundaries)
+        id: custom-lints
+        continue-on-error: true
+        run: |
+          echo "::group::custom lints"
+          python3 tools/lints/run.py apps/api/app
+          echo "::endgroup::"
+          echo "Custom lints: OK (4 rules pass)"
+      - name: Ruff ignore-list ratchet (ignore / per-file-ignores may only shrink)
+        id: ignore-ratchet
+        continue-on-error: true
+        # Also a pre-commit hook, but that one is bypassable with --no-verify and
+        # the lists it guards are exactly what a red build tempts you to edit.
+        run: |
+          echo "::group::ignore ratchet"
+          python3 tools/lints/check_ignore_ratchet.py
+          echo "::endgroup::"
+          echo "ignore-ratchet: OK (no ruff rule was switched off)"
+      - name: Complexity scan (max-absolute F, max-modules E, max-average B)
+        id: xenon
+        continue-on-error: true
+        run: |
+          trap 'echo "::error::repro: uvx xenon --max-absolute F --max-modules E --max-average B"' ERR
+          echo "::group::xenon"
+          FILES=$(scripts/ci/changed-py-source.sh)
+          if [ "$FILES" = "__FULL__" ]; then
+            uvx xenon \
+              --max-absolute F \
+              --max-modules E \
+              --max-average B \
+              apps/api apps/voice-agent libs/shared/py \
+              -e 'apps/api/tests/**' \
+              -e 'apps/api/scripts/**' \
+              -e 'libs/shared/py/tests/**'
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            uvx xenon \
+              --max-absolute F \
+              --max-modules E \
+              --max-average B \
+              $FILES
+          fi
+          echo "::endgroup::"
+          echo "### Complexity (xenon) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Complexity: OK (no module exceeds rank D, codebase average ≤ B)"
+      - name: Docstring coverage on public API surface
+        id: interrogate
+        continue-on-error: true
+        run: |
+          trap 'echo "::error::repro: uvx interrogate -c pyproject.toml"' ERR
+          echo "::group::interrogate"
+          FILES=$(scripts/ci/changed-py-source.sh)
+          if [ "$FILES" = "__FULL__" ]; then
+            uvx interrogate -c pyproject.toml apps/api apps/voice-agent libs/shared/py
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            uvx interrogate -c pyproject.toml $FILES
+          fi
+          echo "::endgroup::"
+          echo "### Docstring coverage — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Docstrings: OK (coverage ≥ 80%)"
+      # Both security scans are blocking: PRs go red on HIGH/CRITICAL.
+      # Previously advisory due to pre-existing findings; those must be fixed
+      # or explicitly ignored per finding.
+      - name: Bandit security scan (zero-warning policy)
+        id: bandit
+        continue-on-error: true
+        run: |
+          trap 'echo "::error::repro: uvx bandit -c pyproject.toml"' ERR
+          echo "::group::bandit (low severity, low confidence — no exclusions)"
+          FILES=$(scripts/ci/changed-py-source.sh)
+          if [ "$FILES" = "__FULL__" ]; then
+            uvx bandit -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low 2>&1 | tee /tmp/bandit.out; _rc=${PIPESTATUS[0]}; cat /tmp/bandit.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            uvx bandit -c pyproject.toml $FILES --severity-level low --confidence-level low 2>&1 | tee /tmp/bandit.out; _rc=${PIPESTATUS[0]}; cat /tmp/bandit.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
+          fi
+          echo "::endgroup::"
+          echo "### Bandit — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Security: OK (0 issues across all severity levels)"
+      - name: pip-audit (dependency CVEs — blocking)
+        id: pip-audit
+        continue-on-error: true
+        run: |
+          trap 'echo "::error::repro: uv export + pip-audit"' ERR
+          echo "::group::pip-audit dependency scan"
+          uv export --frozen --no-emit-workspace -o /tmp/gaia-requirements.txt
+          uvx --no-build pip-audit==2.10.1 --strict --skip-editable --disable-pip --ignore-vuln GHSA-wj6h-64fc-37mp --ignore-vuln PYSEC-2026-1325 -r /tmp/gaia-requirements.txt
+          echo "::endgroup::"
+          echo "### pip-audit — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "pip-audit: OK (no CVEs)"
+      - name: Verdict (every tool above ran; this fails if any of them did not pass)
+        if: always()
+        env:
+          # Step outcomes passed through env to match the quality gate's
+          # no-inline-expansion convention.
+          RUFF: ${{ steps.ruff.outcome }}
+          CUSTOM_LINTS: ${{ steps.custom-lints.outcome }}
+          IGNORE_RATCHET: ${{ steps.ignore-ratchet.outcome }}
+          XENON: ${{ steps.xenon.outcome }}
+          INTERROGATE: ${{ steps.interrogate.outcome }}
+          BANDIT: ${{ steps.bandit.outcome }}
+          PIP_AUDIT: ${{ steps.pip-audit.outcome }}
+        run: |
+          bash scripts/ci/check-step-outcomes.sh \
+            "ruff=$RUFF" \
+            "custom-lints=$CUSTOM_LINTS" \
+            "ignore-ratchet=$IGNORE_RATCHET" \
+            "xenon=$XENON" \
+            "interrogate=$INTERROGATE" \
+            "bandit=$BANDIT" \
+            "pip-audit=$PIP_AUDIT"
+
+  # --- Python mypy --------------------------------------------------------
   python-mypy:
     name: Python mypy (staged-strict)
-    needs:
-    - changes
+    needs: [changes]
     if: needs.changes.outputs.has_python == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-        persist-credentials: false
-    - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
-      with:
-        version: 0.8.17
-        enable-cache: true
-        prune-cache: true
-    - name: Install api dev + backend dependencies (uv sync)
-      run: 'echo "::group::uv sync"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.8.17"
+          enable-cache: true
+          prune-cache: true
+      - name: Install api dev + backend dependencies (uv sync)
+        run: |
+          echo "::group::uv sync"
+          uv sync --project apps/api --group backend --group dev
+          echo "::endgroup::"
+          echo "deps: OK"
+      - name: mypy across api + voice-agent + shared + lint tooling (staged-strict + shared.* strict override)
+        run: |
+          echo "::group::mypy"
+          # mypy needs the whole module graph per project, so it can't be scoped
+          # to individual changed files.
+          #
+          # Still uncovered, deliberately and with the cost measured: apps/api/tests
+          # (759 errors even under the loosened tests override), apps/api/scripts
+          # (45) and tools/llm-stub (27, all missing annotations on a dev fixture).
+          # Named here so the gap stays a decision instead of quietly becoming the
+          # kind of blind spot that let libs/shared/py drift. On PRs we instead detect which Python
+          # projects changed (from the .py diff) and check only those project
+          # roots. libs/shared/py is a dependency of both apps, so any change
+          # there pulls both apps in. On push we check everything.
+          FILES=$(scripts/ci/changed-files.sh py)
+          if [ "$FILES" = "__FULL__" ]; then
+            # --no-build is impossible here, not forgotten. composio pulls pysher, and pysher's
+            # latest release (1.0.8) publishes no wheel at all, so uv refuses the install:
+            # "Wheels are required for `pysher` because building from source is disabled".
+            # No pin of ours can change that — it is upstream's to publish. --frozen already
+            # locks every resolved version from uv.lock, which is the part we do control.
+            # Sonar githubactions:S8541 therefore stays open here; NOSONAR is not honoured by
+            # that analyzer, so it is resolved as Accepted in the SonarCloud UI instead.
+            uv run --project apps/api --frozen --group backend --group dev mypy apps/api/app apps/voice-agent/src libs/shared/py tools/lints --ignore-missing-imports
+          elif [ -z "$FILES" ]; then
+            echo "No changed Python files — skipping."
+          else
+            TARGETS=""
+            if echo "$FILES" | grep -q '^libs/shared/py/'; then
+              TARGETS="apps/api/app apps/voice-agent/src libs/shared/py"
+            else
+              echo "$FILES" | grep -q '^apps/api/'         && TARGETS="$TARGETS apps/api/app"
+              echo "$FILES" | grep -q '^apps/voice-agent/' && TARGETS="$TARGETS apps/voice-agent/src"
+            fi
+            echo "$FILES" | grep -q '^tools/lints/' && TARGETS="$TARGETS tools/lints"
+            if [ -z "$TARGETS" ]; then
+              echo "No tracked Python project changed — skipping."
+            else
+              # --no-build is impossible here, not forgotten. composio pulls pysher, and pysher's
+              # latest release (1.0.8) publishes no wheel at all, so uv refuses the install:
+              # "Wheels are required for `pysher` because building from source is disabled".
+              # No pin of ours can change that — it is upstream's to publish. --frozen already
+              # locks every resolved version from uv.lock, which is the part we do control.
+              # Sonar githubactions:S8541 therefore stays open here; NOSONAR is not honoured by
+              # that analyzer, so it is resolved as Accepted in the SonarCloud UI instead.
+              uv run --project apps/api --frozen --group backend --group dev mypy $TARGETS --ignore-missing-imports
+            fi
+          fi
+          echo "::endgroup::"
+          echo "mypy: OK (no type errors)"
 
-        uv sync --project apps/api --group backend --group dev
-
-        echo "::endgroup::"
-
-        echo "deps: OK"
-
-        '
-    - name: mypy across api + voice-agent + shared + lint tooling (staged-strict + shared.* strict override)
-      run: "echo \"::group::mypy\"\n# mypy needs the whole module graph per project, so it can't be scoped\n# to individual\
-        \ changed files.\n#\n# Still uncovered, deliberately and with the cost measured: apps/api/tests\n# (759 errors even\
-        \ under the loosened tests override), apps/api/scripts\n# (45) and tools/llm-stub (27, all missing annotations on\
-        \ a dev fixture).\n# Named here so the gap stays a decision instead of quietly becoming the\n# kind of blind spot\
-        \ that let libs/shared/py drift. On PRs we instead detect which Python\n# projects changed (from the .py diff) and\
-        \ check only those project\n# roots. libs/shared/py is a dependency of both apps, so any change\n# there pulls both\
-        \ apps in. On push we check everything.\nFILES=$(scripts/ci/changed-files.sh py)\nif [ \"$FILES\" = \"__FULL__\" ];\
-        \ then\n  # --no-build is impossible here, not forgotten. composio pulls pysher, and pysher's\n  # latest release\
-        \ (1.0.8) publishes no wheel at all, so uv refuses the install:\n  # \"Wheels are required for `pysher` because building\
-        \ from source is disabled\".\n  # No pin of ours can change that — it is upstream's to publish. --frozen already\n\
-        \  # locks every resolved version from uv.lock, which is the part we do control.\n  # Sonar githubactions:S8541 therefore\
-        \ stays open here; NOSONAR is not honoured by\n  # that analyzer, so it is resolved as Accepted in the SonarCloud\
-        \ UI instead.\n  uv run --project apps/api --frozen --group backend --group dev mypy apps/api/app apps/voice-agent/src\
-        \ libs/shared/py tools/lints --ignore-missing-imports\nelif [ -z \"$FILES\" ]; then\n  echo \"No changed Python files\
-        \ — skipping.\"\nelse\n  TARGETS=\"\"\n  if echo \"$FILES\" | grep -q '^libs/shared/py/'; then\n    TARGETS=\"apps/api/app\
-        \ apps/voice-agent/src libs/shared/py\"\n  else\n    echo \"$FILES\" | grep -q '^apps/api/'         && TARGETS=\"\
-        $TARGETS apps/api/app\"\n    echo \"$FILES\" | grep -q '^apps/voice-agent/' && TARGETS=\"$TARGETS apps/voice-agent/src\"\
-        \n  fi\n  echo \"$FILES\" | grep -q '^tools/lints/' && TARGETS=\"$TARGETS tools/lints\"\n  if [ -z \"$TARGETS\" ];\
-        \ then\n    echo \"No tracked Python project changed — skipping.\"\n  else\n    # --no-build is impossible here, not\
-        \ forgotten. composio pulls pysher, and pysher's\n    # latest release (1.0.8) publishes no wheel at all, so uv refuses\
-        \ the install:\n    # \"Wheels are required for `pysher` because building from source is disabled\".\n    # No pin\
-        \ of ours can change that — it is upstream's to publish. --frozen already\n    # locks every resolved version from\
-        \ uv.lock, which is the part we do control.\n    # Sonar githubactions:S8541 therefore stays open here; NOSONAR is\
-        \ not honoured by\n    # that analyzer, so it is resolved as Accepted in the SonarCloud UI instead.\n    uv run --project\
-        \ apps/api --frozen --group backend --group dev mypy $TARGETS --ignore-missing-imports\n  fi\nfi\necho \"::endgroup::\"\
-        \necho \"mypy: OK (no type errors)\"\n"
-  python-static:
-    name: Python static (ruff + custom lints + xenon + interrogate + bandit + pip-audit)
-    needs:
-    - changes
-    if: needs.changes.outputs.has_python == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-        persist-credentials: false
-    - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
-      with:
-        version: 0.8.17
-        enable-cache: true
-        prune-cache: true
-    - name: ruff check + format (PL, RUF, FAST, S, B, A, COM, C4, DTZ, ISC, RET, SIM, ARG, PTH, TRY, PERF, UP, FURB, LOG,
-        G + more)
-      run: "echo \"::group::ruff check + format --check\"\nFILES=$(scripts/ci/changed-files.sh py)\nif [ \"$FILES\" = \"__FULL__\"\
-        \ ]; then\n  # Whole repo, not a list of roots. The old list was\n  # \"apps/api apps/voice-agent libs/shared/py\"\
-        , which silently excluded\n  # tools/, .agents/skills/, apps/web/scripts/ and docs/scripts/ — and\n  # is how libs/shared/py\
-        \ went unlinted long enough to accumulate 15\n  # findings after a rule was switched on repo-wide. A new app or lib\n\
-        \  # is now covered the moment it exists instead of when someone\n  # remembers to add it here. Exclusions live in\
-        \ [tool.ruff]\n  # extend-exclude, where they are visible and reviewable.\n  uvx --no-build ruff@0.14.13 check .\n\
-        \  uvx --no-build ruff@0.14.13 format --check .\nelif [ -z \"$FILES\" ]; then\n  echo \"No matching changed files\
-        \ — skipping.\"\nelse\n  uvx --no-build ruff@0.14.13 check $FILES\n  uvx --no-build ruff@0.14.13 format --check $FILES\n\
-        fi\necho \"::endgroup::\"\necho \"ruff: OK (strict rule set passes; every file is already formatted)\"\n"
-    - name: Custom Python AST lints (route contract, no service classes, wide events, repository boundaries)
-      run: 'echo "::group::custom lints"
-
-        python3 tools/lints/run.py apps/api/app
-
-        echo "::endgroup::"
-
-        echo "Custom lints: OK (4 rules pass)"
-
-        '
-    - name: Ruff ignore-list ratchet (ignore / per-file-ignores may only shrink)
-      run: 'echo "::group::ignore ratchet"
-
-        python3 tools/lints/check_ignore_ratchet.py
-
-        echo "::endgroup::"
-
-        echo "ignore-ratchet: OK (no ruff rule was switched off)"
-
-        '
-    - name: Complexity scan (max-absolute F, max-modules E, max-average B)
-      run: "trap 'echo \"::error::repro: uvx xenon --max-absolute F --max-modules E --max-average B\"' ERR\necho \"::group::xenon\"\
-        \nFILES=$(scripts/ci/changed-py-source.sh)\nif [ \"$FILES\" = \"__FULL__\" ]; then\n  uvx xenon \\\n    --max-absolute\
-        \ F \\\n    --max-modules E \\\n    --max-average B \\\n    apps/api apps/voice-agent libs/shared/py \\\n    -e 'apps/api/tests/**'\
-        \ \\\n    -e 'apps/api/scripts/**' \\\n    -e 'libs/shared/py/tests/**'\nelif [ -z \"$FILES\" ]; then\n  echo \"No\
-        \ matching changed files — skipping.\"\nelse\n  uvx xenon \\\n    --max-absolute F \\\n    --max-modules E \\\n  \
-        \  --max-average B \\\n    $FILES\nfi\necho \"::endgroup::\"\necho \"### Complexity (xenon) — ✅ passed\" >> \"$GITHUB_STEP_SUMMARY\"\
-        \necho \"Complexity: OK (no module exceeds rank D, codebase average ≤ B)\"\n"
-    - name: Docstring coverage on public API surface
-      run: "trap 'echo \"::error::repro: uvx interrogate -c pyproject.toml\"' ERR\necho \"::group::interrogate\"\nFILES=$(scripts/ci/changed-py-source.sh)\n\
-        if [ \"$FILES\" = \"__FULL__\" ]; then\n  uvx interrogate -c pyproject.toml apps/api apps/voice-agent libs/shared/py\n\
-        elif [ -z \"$FILES\" ]; then\n  echo \"No matching changed files — skipping.\"\nelse\n  uvx interrogate -c pyproject.toml\
-        \ $FILES\nfi\necho \"::endgroup::\"\necho \"### Docstring coverage — ✅ passed\" >> \"$GITHUB_STEP_SUMMARY\"\necho\
-        \ \"Docstrings: OK (coverage ≥ 80%)\"\n"
-    - name: Bandit security scan (zero-warning policy)
-      run: "trap 'echo \"::error::repro: uvx bandit -c pyproject.toml\"' ERR\necho \"::group::bandit (low severity, low confidence\
-        \ — no exclusions)\"\nFILES=$(scripts/ci/changed-py-source.sh)\nif [ \"$FILES\" = \"__FULL__\" ]; then\n  uvx bandit\
-        \ -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low\
-        \ 2>&1 | tee /tmp/bandit.out; _rc=${PIPESTATUS[0]}; cat /tmp/bandit.out | python3 scripts/ci/emit-github-annotations.py\
-        \ || true; test $_rc -eq 0\nelif [ -z \"$FILES\" ]; then\n  echo \"No matching changed files — skipping.\"\nelse\n\
-        \  uvx bandit -c pyproject.toml $FILES --severity-level low --confidence-level low 2>&1 | tee /tmp/bandit.out; _rc=${PIPESTATUS[0]};\
-        \ cat /tmp/bandit.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0\nfi\necho \"::endgroup::\"\
-        \necho \"### Bandit — ✅ passed\" >> \"$GITHUB_STEP_SUMMARY\"\necho \"Security: OK (0 issues across all severity levels)\"\
-        \n"
-    - name: pip-audit (dependency CVEs — blocking)
-      run: 'trap ''echo "::error::repro: uv export + pip-audit"'' ERR
-
-        echo "::group::pip-audit dependency scan"
-
-        uv export --frozen --no-emit-workspace -o /tmp/gaia-requirements.txt
-
-        uvx --no-build pip-audit==2.10.1 --strict --skip-editable --disable-pip --ignore-vuln GHSA-wj6h-64fc-37mp --ignore-vuln
-        PYSEC-2026-1325 -r /tmp/gaia-requirements.txt
-
-        echo "::endgroup::"
-
-        echo "### pip-audit — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
-
-        echo "pip-audit: OK (no CVEs)"
-
-        '
+  # --- Observability score (evlog map) ------------------------------------
+  # Python port of evlog's `map` (tools/evlog_map): scores every FastAPI/ARQ
+  # entry point on wide-event instrumentation, weighted so money/auth routes
+  # count double. Full-repo score goes to the job summary; on PRs the changed
+  # files are scored at the merge-base and at HEAD with the same scanner and
+  # the lane fails on regression (new files get a hard "good"-grade floor).
+  # The scanners themselves are stdlib-only; uv is installed only to run their
+  # test suites (first step).
   observability:
     name: Observability score (evlog map)
-    needs:
-    - changes
+    needs: [changes]
     if: needs.changes.outputs.has_python == 'true' || needs.changes.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-        persist-credentials: false
-    - uses: ./.github/actions/setup-node-pnpm
-    - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
-      with:
-        version: 0.8.17
-        enable-cache: true
-        prune-cache: true
-    - name: Scanner self-tests
-      run: 'set -euo pipefail
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # Node toolchain only for the bots scanner (TS compiler API needs
+      # node_modules); the Python scanner stays stdlib-only.
+      - uses: ./.github/actions/setup-node-pnpm
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.8.17"
+          enable-cache: true
+          prune-cache: true
+      # This lane's verdict is only worth what its rules are worth, and those
+      # rules have been silently wrong (a discarded-error except matrix, route
+      # resolution that found 2 of 283 paths). Both still printed a score — so
+      # the tools are tested BEFORE they gate: tools/evlog_map (static) and
+      # tools/logcheck (black-box) run in ~1s, deliberately un-grouped so a
+      # failure traceback is the signal.
+      - name: Scanner self-tests
+        run: |
+          set -euo pipefail
+          trap 'echo "::error::repro: uvx pytest tools/evlog_map tools/logcheck -q"' ERR
+          uvx --no-build pytest@9.1.1 tools/evlog_map tools/logcheck -q
+          echo "scanner self-tests: OK (evlog map rules + log-contract invariants)"
+      # --min-score 100 gates BOTH quality and discovery: an empty map scores
+      # 0 (not 100), so a scanner that stops seeing entry points fails the
+      # gate instead of reporting a perfect score over nothing — no
+      # hand-maintained entry-count floor needed.
+      - name: Full observability score — API + voice-agent + bots (details in job summary)
+        run: |
+          set -euo pipefail
+          trap 'echo "::error::repro: python3 tools/evlog_map --min-score 100  /  node scripts/ci/evlog-map-bots.mjs --min-score 100"' ERR
+          echo "evlog map — python surface (apps/api + apps/voice-agent)"
+          python3 tools/evlog_map --github-summary --no-write --min-score 100
+          echo "evlog map — bots surface (apps/bots + libs/shared/ts)"
+          node scripts/ci/evlog-map-bots.mjs --min-score 100
+          echo "observability: full scores above; per-entry detail in the job summary only"
+          echo "### Observability — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+      - name: Changed-files regression gate (per-file, score must not drop)
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          FILES=$(scripts/ci/changed-files.sh py)
+          if [ -z "$FILES" ]; then
+            echo "observability: OK (no changed Python files)"
+            exit 0
+          fi
+          if [ "$FILES" = "__FULL__" ]; then
+            echo "observability: OK (full run — covered by the full scan above)"
+            exit 0
+          fi
+          echo "::group::evlog map — changed files vs merge-base (per-file ratchet)"
+          scripts/ci/evlog-ratchet.sh
+          echo "::endgroup::"
+          echo "observability: OK (no per-file regression on changed Python files)"
+      - name: Bots regression gate (full surface, held at 100)
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          BOT_FILES=$(scripts/ci/changed-files.sh ts)
+          if [ -z "$BOT_FILES" ]; then
+            echo "observability-bots: OK (no changed TypeScript files)"
+            exit 0
+          fi
+          if [ "$BOT_FILES" != "__FULL__" ] && ! grep -qE '^(apps/bots/|libs/shared/ts/)' <<< "$BOT_FILES"; then
+            echo "observability-bots: OK (no bot-surface files changed)"
+            exit 0
+          fi
+          # The bots surface is small and already at 100 — hold it there
+          # outright rather than baselining per file. An empty map scores 0
+          # (not 100), so --min-score also catches the scanner going blind.
+          echo "::group::evlog map — bots surface gate"
+          node scripts/ci/evlog-map-bots.mjs --min-score 100
+          echo "::endgroup::"
+          echo "observability-bots: OK (surface held at 100)"
 
-        trap ''echo "::error::repro: uvx pytest tools/evlog_map tools/logcheck -q"'' ERR
-
-        uvx --no-build pytest@9.1.1 tools/evlog_map tools/logcheck -q
-
-        echo "scanner self-tests: OK (evlog map rules + log-contract invariants)"
-
-        '
-    - name: Full observability score — API + voice-agent + bots (details in job summary)
-      run: 'set -euo pipefail
-
-        trap ''echo "::error::repro: python3 tools/evlog_map --min-score 100  /  node scripts/ci/evlog-map-bots.mjs --min-score
-        100"'' ERR
-
-        echo "evlog map — python surface (apps/api + apps/voice-agent)"
-
-        python3 tools/evlog_map --github-summary --no-write --min-score 100
-
-        echo "evlog map — bots surface (apps/bots + libs/shared/ts)"
-
-        node scripts/ci/evlog-map-bots.mjs --min-score 100
-
-        echo "observability: full scores above; per-entry detail in the job summary only"
-
-        echo "### Observability — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
-
-        '
-    - name: Changed-files regression gate (per-file, score must not drop)
-      if: github.event_name == 'pull_request'
-      run: "set -euo pipefail\nFILES=$(scripts/ci/changed-files.sh py)\nif [ -z \"$FILES\" ]; then\n  echo \"observability:\
-        \ OK (no changed Python files)\"\n  exit 0\nfi\nif [ \"$FILES\" = \"__FULL__\" ]; then\n  echo \"observability: OK\
-        \ (full run — covered by the full scan above)\"\n  exit 0\nfi\necho \"::group::evlog map — changed files vs merge-base\
-        \ (per-file ratchet)\"\nscripts/ci/evlog-ratchet.sh\necho \"::endgroup::\"\necho \"observability: OK (no per-file\
-        \ regression on changed Python files)\"\n"
-    - name: Bots regression gate (full surface, held at 100)
-      if: github.event_name == 'pull_request'
-      run: "set -euo pipefail\nBOT_FILES=$(scripts/ci/changed-files.sh ts)\nif [ -z \"$BOT_FILES\" ]; then\n  echo \"observability-bots:\
-        \ OK (no changed TypeScript files)\"\n  exit 0\nfi\nif [ \"$BOT_FILES\" != \"__FULL__\" ] && ! grep -qE '^(apps/bots/|libs/shared/ts/)'\
-        \ <<< \"$BOT_FILES\"; then\n  echo \"observability-bots: OK (no bot-surface files changed)\"\n  exit 0\nfi\n# The\
-        \ bots surface is small and already at 100 — hold it there\n# outright rather than baselining per file. An empty map\
-        \ scores 0\n# (not 100), so --min-score also catches the scanner going blind.\necho \"::group::evlog map — bots surface\
-        \ gate\"\nnode scripts/ci/evlog-map-bots.mjs --min-score 100\necho \"::endgroup::\"\necho \"observability-bots: OK\
-        \ (surface held at 100)\"\n"
+  # --- Wide-event cross-runtime conformance --------------------------------
+  # The Python services and the TypeScript bots must emit the SAME log shape,
+  # so one LogQL query spans both. This lane runs both logging stacks for real,
+  # captures the NDJSON each prints, and diffs the shapes against each other and
+  # against scripts/ci/wide-event-conformance/contract.json. A field renamed,
+  # retyped, or added on only one side fails here — which is the only thing that
+  # actually stops the two halves drifting apart between reviews.
   wide-event-conformance:
     name: Wide events have one shape across Python and TypeScript
-    needs:
-    - changes
+    needs: [changes]
     if: needs.changes.outputs.has_python == 'true' || needs.changes.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        persist-credentials: false
-    - uses: ./.github/actions/setup-node-pnpm
-    - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
-      with:
-        version: 0.8.17
-        enable-cache: true
-        prune-cache: true
-    - name: Emit real events from both runtimes and diff their shapes
-      run: 'trap ''echo "::error::repro: python3 scripts/ci/wide-event-conformance/run.py --show-capture"'' ERR
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.8.17"
+          enable-cache: true
+          prune-cache: true
+      - name: Emit real events from both runtimes and diff their shapes
+        run: |
+          trap 'echo "::error::repro: python3 scripts/ci/wide-event-conformance/run.py --show-capture"' ERR
+          echo "::group::wide-event conformance"
+          python3 scripts/ci/wide-event-conformance/run.py --show-capture
+          echo "::endgroup::"
+          echo "### Wide-event conformance — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "wide events: OK (Python and TypeScript emit one shape)"
 
-        echo "::group::wide-event conformance"
-
-        python3 scripts/ci/wide-event-conformance/run.py --show-capture
-
-        echo "::endgroup::"
-
-        echo "### Wide-event conformance — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
-
-        echo "wide events: OK (Python and TypeScript emit one shape)"
-
-        '
+  # --- Dead code detection (knip + vulture) — enforced ---------------------
+  # Runs in --strict mode: any knip (TS) or vulture (Python) finding fails the
+  # lane. The scan is tightened to drop systematic false positives (tests,
+  # Pydantic/dynamic-dispatch, framework-consumed files) — see config/knip.config.ts
+  # and the [tool.vulture] ignore_names / ignore_decorators lists in pyproject.toml.
   dead-code:
     name: Dead code (knip + vulture, strict)
-    needs:
-    - changes
+    needs: [changes]
     if: needs.changes.outputs.has_typescript == 'true' || needs.changes.outputs.has_python == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        persist-credentials: false
-    - uses: ./.github/actions/setup-node-pnpm
-    - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
-      with:
-        version: 0.8.17
-        enable-cache: true
-        prune-cache: true
-    - name: Install vulture (Python dead-code detector)
-      run: 'echo "::group::uv tool install vulture"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.8.17"
+          enable-cache: true
+          prune-cache: true
+      - name: Install vulture (Python dead-code detector)
+        run: |
+          echo "::group::uv tool install vulture"
+          uv tool install vulture
+          echo "::endgroup::"
+      - name: knip (TypeScript) + vulture (Python) dead-code scan (strict)
+        run: |
+          trap 'echo "::error::repro: bash scripts/dead-code-check.sh --strict"' ERR
+          echo "::group::dead-code scan"
+          bash scripts/dead-code-check.sh --strict --verbose
+          echo "::endgroup::"
+          echo "### Dead code — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Dead code: OK (no unused TS or Python code)"
 
-        uv tool install vulture
-
-        echo "::endgroup::"
-
-        '
-    - name: knip (TypeScript) + vulture (Python) dead-code scan (strict)
-      run: 'trap ''echo "::error::repro: bash scripts/dead-code-check.sh --strict"'' ERR
-
-        echo "::group::dead-code scan"
-
-        bash scripts/dead-code-check.sh --strict --verbose
-
-        echo "::endgroup::"
-
-        echo "### Dead code — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
-
-        echo "Dead code: OK (no unused TS or Python code)"
-
-        '
+  # --- Grafana alert rules (pint + promtool) ------------------------------
+  # Grafana's alert rules are managed objects, not Prometheus rule files, so they
+  # cannot be fed to promtool directly. The extractor derives a Prometheus-native
+  # rule file from the single source of truth (no second copy to maintain) and
+  # the lane proves three things:
+  #
+  #   1. every rule matches the documented A/B/C shape AND has a promtool test
+  #      file — the extractor aborts on either violation (--test-dir),
+  #   2. the PromQL is valid and sane — pint `--offline` (promql/syntax,
+  #      promql/impossible, promql/fragile, alerts/comparison, alerts/for, …),
+  #   3. every rule actually fires under its trigger fixture and stays quiet
+  #      under its quiet fixture — promtool test rules, which also honours each
+  #      rule's real `for` duration.
+  #
+  # The two things CI structurally cannot prove are that the metric exists with
+  # matching labels (promql/series) and that the threshold is reachable
+  # (alerts/count) — both need a live server and are a documented local
+  # Prometheus pass — see infra/docker/observability/CLAUDE.md.
   alert-rules:
     name: Grafana alert rules (pint + promtool)
-    needs:
-    - changes
+    needs: [changes]
     if: needs.changes.outputs.has_alert_rules == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        persist-credentials: false
-    - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
-      with:
-        version: 0.8.17
-        enable-cache: true
-        prune-cache: true
-    - name: Install pint + promtool (pinned release binaries, same versions prod runs)
-      run: "echo \"::group::install\"\n# Pinned GitHub release tarballs, not `go install`: Prometheus v3's\n# go.mod declares\
-        \ `module github.com/prometheus/prometheus` (no `/v3`\n# suffix), which the Go tool rejects at major version 3, and\
-        \ a\n# lock-file-free `go install` is unpinned for transitive deps anyway.\n# --proto '=https' keeps redirects from\
-        \ ever downgrading to http.\ncurl -sSL --proto '=https' -o /tmp/pint.tar.gz \\\n  https://github.com/cloudflare/pint/releases/download/v0.87.0/pint-0.87.0-linux-amd64.tar.gz\n\
-        tar -xzf /tmp/pint.tar.gz -C /tmp\ncp /tmp/pint-linux-amd64 /usr/local/bin/pint\ncurl -sSL --proto '=https' -o /tmp/prometheus.tar.gz\
-        \ \\\n  https://github.com/prometheus/prometheus/releases/download/v3.1.0/prometheus-3.1.0.linux-amd64.tar.gz\ntar\
-        \ -xzf /tmp/prometheus.tar.gz -C /tmp\ncp /tmp/prometheus-3.1.0.linux-amd64/promtool /usr/local/bin/promtool\necho\
-        \ \"::endgroup::\"\necho \"pint v0.87.0 + promtool v3.1.0 installed\"\n"
-    - name: Extract rules and enforce test coverage (no silent skips)
-      run: "trap 'echo \"::error::repro: uv run --no-build tools/alert-rules/extract_promql.py\"' ERR\necho \"::group::extract\"\
-        \n# --no-build forbids building sdist deps from source; the pinned\n# pyyaml wheel is all this script needs.\nuv run\
-        \ --no-build tools/alert-rules/extract_promql.py -o tools/alert-rules/gaia-rules.yaml \\\n  --test-dir tools/alert-rules/tests\n\
-        echo \"::endgroup::\"\necho \"### Alert rules (extract) — ✅ passed\" >> \"$GITHUB_STEP_SUMMARY\"\necho \"Extraction:\
-        \ OK (every rule matched the A/B/C shape and has a test)\"\n"
-    - name: pint lint (PromQL validity, impossible queries, fragile alerts)
-      run: 'trap ''echo "::error::repro: pint --offline lint tools/alert-rules/gaia-rules.yaml"'' ERR
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.8.17"
+          enable-cache: true
+          prune-cache: true
+      - name: Install pint + promtool (pinned release binaries, same versions prod runs)
+        run: |
+          echo "::group::install"
+          # Pinned GitHub release tarballs, not `go install`: Prometheus v3's
+          # go.mod declares `module github.com/prometheus/prometheus` (no `/v3`
+          # suffix), which the Go tool rejects at major version 3, and a
+          # lock-file-free `go install` is unpinned for transitive deps anyway.
+          # --proto '=https' keeps redirects from ever downgrading to http.
+          curl -sSL --proto '=https' -o /tmp/pint.tar.gz \
+            https://github.com/cloudflare/pint/releases/download/v0.87.0/pint-0.87.0-linux-amd64.tar.gz
+          tar -xzf /tmp/pint.tar.gz -C /tmp
+          cp /tmp/pint-linux-amd64 /usr/local/bin/pint
+          curl -sSL --proto '=https' -o /tmp/prometheus.tar.gz \
+            https://github.com/prometheus/prometheus/releases/download/v3.1.0/prometheus-3.1.0.linux-amd64.tar.gz
+          tar -xzf /tmp/prometheus.tar.gz -C /tmp
+          cp /tmp/prometheus-3.1.0.linux-amd64/promtool /usr/local/bin/promtool
+          echo "::endgroup::"
+          echo "pint v0.87.0 + promtool v3.1.0 installed"
+      - name: Extract rules and enforce test coverage (no silent skips)
+        run: |
+          trap 'echo "::error::repro: uv run --no-build tools/alert-rules/extract_promql.py"' ERR
+          echo "::group::extract"
+          # --no-build forbids building sdist deps from source; the pinned
+          # pyyaml wheel is all this script needs.
+          uv run --no-build tools/alert-rules/extract_promql.py -o tools/alert-rules/gaia-rules.yaml \
+            --test-dir tools/alert-rules/tests
+          echo "::endgroup::"
+          echo "### Alert rules (extract) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Extraction: OK (every rule matched the A/B/C shape and has a test)"
+      - name: pint lint (PromQL validity, impossible queries, fragile alerts)
+        run: |
+          trap 'echo "::error::repro: pint --offline lint tools/alert-rules/gaia-rules.yaml"' ERR
+          echo "::group::pint lint --offline"
+          pint --no-color --offline --config config/pint.hcl lint tools/alert-rules/gaia-rules.yaml
+          echo "::endgroup::"
+          echo "### Alert rules (pint) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "pint: OK (offline checks pass — promql/series still needs a run against a local Prometheus)"
+      - name: promtool check rules (independent rule-file validation)
+        run: |
+          trap 'echo "::error::repro: promtool check rules tools/alert-rules/gaia-rules.yaml"' ERR
+          echo "::group::promtool check rules"
+          promtool check rules tools/alert-rules/gaia-rules.yaml
+          echo "::endgroup::"
+          echo "### Alert rules (promtool check) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "promtool: OK (rule file is valid)"
+      - name: promtool test rules (every rule fires and stays quiet)
+        run: |
+          trap 'echo "::error::repro: promtool test rules tools/alert-rules/tests/*.yaml"' ERR
+          echo "::group::promtool test rules"
+          promtool test rules tools/alert-rules/tests/*.yaml
+          echo "::endgroup::"
+          echo "### Alert rules (promtool test) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "promtool: OK (all per-rule firing + quiet tests pass)"
 
-        echo "::group::pint lint --offline"
-
-        pint --no-color --offline --config config/pint.hcl lint tools/alert-rules/gaia-rules.yaml
-
-        echo "::endgroup::"
-
-        echo "### Alert rules (pint) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
-
-        echo "pint: OK (offline checks pass — promql/series still needs a run against a local Prometheus)"
-
-        '
-    - name: promtool check rules (independent rule-file validation)
-      run: 'trap ''echo "::error::repro: promtool check rules tools/alert-rules/gaia-rules.yaml"'' ERR
-
-        echo "::group::promtool check rules"
-
-        promtool check rules tools/alert-rules/gaia-rules.yaml
-
-        echo "::endgroup::"
-
-        echo "### Alert rules (promtool check) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
-
-        echo "promtool: OK (rule file is valid)"
-
-        '
-    - name: promtool test rules (every rule fires and stays quiet)
-      run: 'trap ''echo "::error::repro: promtool test rules tools/alert-rules/tests/*.yaml"'' ERR
-
-        echo "::group::promtool test rules"
-
-        promtool test rules tools/alert-rules/tests/*.yaml
-
-        echo "::endgroup::"
-
-        echo "### Alert rules (promtool test) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
-
-        echo "promtool: OK (all per-rule firing + quiet tests pass)"
-
-        '
+  # --- Suppression baseline (no NEW inline lint-suppression comments) -----
+  # Checked-in baseline, not a git-history diff: config/suppressions-baseline.json
+  # records a count per (file, kind) and the tree may only ever match or shrink
+  # it. No fetch-depth, no base ref, no merge-base needed — the whole check is a
+  # working-tree scan, so it is reproducible locally with the exact command below.
   suppression-ratchet:
-    name: 'Suppression baseline (no new # noqa / # type: ignore / biome-ignore)'
-    needs:
-    - changes
+    name: "Suppression baseline (no new # noqa / # type: ignore / biome-ignore)"
+    needs: [changes]
     if: needs.changes.outputs.has_typescript == 'true' || needs.changes.outputs.has_python == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        persist-credentials: false
-    - name: Scan the tree for suppressions not covered by the checked-in baseline
-      run: 'trap ''echo "::error::repro: python3 tools/lints/check_suppressions.py"'' ERR
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Scan the tree for suppressions not covered by the checked-in baseline
+        run: |
+          trap 'echo "::error::repro: python3 tools/lints/check_suppressions.py"' ERR
+          echo "::group::suppression baseline"
+          python3 tools/lints/check_suppressions.py
+          echo "::endgroup::"
+          echo "### Suppression baseline — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Suppression baseline: OK (no new inline suppression comments; baseline is tight)"
 
-        echo "::group::suppression baseline"
-
-        python3 tools/lints/check_suppressions.py
-
-        echo "::endgroup::"
-
-        echo "### Suppression baseline — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
-
-        echo "Suppression baseline: OK (no new inline suppression comments; baseline is tight)"
-
-        '
+  # --- Secret scanning (gitleaks, diff-scoped) -----------------------------
+  # gitleaks-action is free for personal-account repos but requires a (free,
+  # 1-repo "Starter") license key for org-owned repos — this repo is owned by
+  # an org. Sign up at https://gitleaks.io and set the `GITLEAKS_LICENSE`
+  # repo secret, or this job fails outright regardless of findings.
   gitleaks:
     name: Secret scanning (gitleaks)
-    needs:
-    - changes
+    needs: [changes]
+    # Dependabot-triggered runs get Dependabot secrets, not repo secrets, so
+    # GITLEAKS_LICENSE is empty and the action hard-fails before scanning.
+    # Skip (gate counts skipped as passing): its PRs are machine-generated
+    # manifest/lockfile bumps, and every human commit stays scanned. To scan
+    # them too, mirror GITLEAKS_LICENSE into Dependabot secrets and drop this.
     if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-        persist-credentials: false
-    - name: Scan the PR diff for committed secrets
-      uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Scan the PR diff for committed secrets
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+
+  # --- Python semgrep (SSRF / path traversal / injection) ------------------
+  # Dataflow SAST that bandit cannot do: follows user-controlled input into
+  # URL fetches / file paths / subprocesses. ENFORCED: the findings it was
+  # ratcheting against are burned down (apps/api/app is at 0 across 815 files),
+  # and it is a flat-enforced lane in the quality-gate LANES array.
+  #
+  # Deliberately a whole-directory scan rather than diff-scoped like ruff/mypy:
+  # a security lane that only looks at files a PR happens to touch stops
+  # noticing everything else.
+  #
+  # Rules come from the VENDORED pack, not `--config p/python`. The registry
+  # form re-resolves the ruleset on every run, so what CI enforces could change
+  # with no commit behind it and red an unrelated PR — the reason this lane sat
+  # informational. The digest pins the engine; tools/semgrep/p-python.yaml pins
+  # the rules (151, byte-identical to the registry pack it was fetched from), so
+  # both halves of the verdict are now reviewable. Refresh deliberately with
+  # tools/semgrep/refresh-p-python.sh.
   semgrep:
     name: Python security patterns (semgrep)
-    needs:
-    - changes
+    needs: [changes]
     if: needs.changes.outputs.has_python == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        persist-credentials: false
-    - name: semgrep scan (p/python over apps/api/app)
-      uses: docker://semgrep/semgrep@sha256:b68f9b68483955b85042dac7b4533757779625a02dcf91e470da4c2df1b430be
-      with:
-        args: semgrep scan --config tools/semgrep/p-python.yaml apps/api/app --error --metrics=off
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: semgrep scan (p/python over apps/api/app)
+        # docker form: returntocorp/semgrep-action is deprecated upstream; the
+        # image has no ENTRYPOINT, so the command must spell `semgrep`.
+        #
+        # Digest-pinned, not `:latest` (Sonar githubactions security rule, and
+        # the reason this lane cannot simply be flipped to enforced): a floating
+        # tag lets an upstream release change what every unrelated PR is
+        # scanned with. Note this pins the scanner, not the rules — `p/python`
+        # is still fetched from the registry per run.
+        uses: docker://semgrep/semgrep@sha256:b68f9b68483955b85042dac7b4533757779625a02dcf91e470da4c2df1b430be # v1.145.0
+        with:
+          args: semgrep scan --config tools/semgrep/p-python.yaml apps/api/app --error --metrics=off
+
+  # --- Quality gate (single required status check) -------------------------
+  # --- Mutation testing (changed modules, self-contained) -----------------
+  # The "tests must have teeth" gate: every changed app module is mutated
+  # (one injected bug at a time, mutmut) and the module's own tests must
+  # catch every mutant. Fails on: changed app code with no test file
+  # anywhere, zero mutants (tests do not cover the changed lines), any
+  # surviving mutant, or the lane budget being exceeded.
+  #
+  # Self-contained by design: an earlier version fed the module list through
+  # a job output into a matrix (`include: ${{ fromJSON(needs.X.outputs.matrix) }}`)
+  # — the matrix job never materialized because output values containing
+  # quotes corrupt the expression context (verified with a minimal probe
+  # workflow: hardcoded include works, literal fromJSON works, fromJSON of a
+  # job output does not). One job that computes the list and runs the
+  # modules itself (xargs -P for bounded parallelism on the runner) has no
+  # such surface to break. mutation.sh is parallel-safe (per-invocation
+  # workdir), so concurrent runs never race on shared state.
+  # Which modules to mutate. Cheap (git diff + an AST scan, no toolchain), and
+  # separate so the shards below can fan out. It is ALSO the job that fails
+  # loudly when changed app code has no test file anywhere — which is why the
+  # quality gate requires it by name: a failed plan skips the matrix, and a
+  # skipped lane counts as a pass.
   test-mutation-plan:
     name: Mutation plan (one shard per changed module)
-    needs:
-    - changes
+    needs: [changes]
     if: needs.changes.outputs.has_python == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -723,121 +983,188 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
       count: ${{ steps.plan.outputs.count }}
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-        persist-credentials: false
-    - name: Compute the mutation matrix
-      id: plan
-      run: bash scripts/ci/mutation-plan.sh
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Compute the mutation matrix
+        id: plan
+        run: bash scripts/ci/mutation-plan.sh
+
+  # One runner per changed module. mutmut re-runs a module's whole test
+  # selection once per mutant, so a heavy module costs tens of minutes; in a
+  # single job those costs add up AND the slowest few hold every worker while
+  # the rest never start (observed: 37 of 54 done, 13 never begun, lane
+  # cancelled at its cap having proven nothing). Sharded, the lane costs the
+  # slowest module rather than their sum, and a module that hangs takes down
+  # only its own shard.
   test-mutation:
+    # Named explicitly: the default appends EVERY matrix value, so each of the
+    # 50+ checks would carry its full test-file JSON and the module — the only
+    # part a reader needs — would be truncated away in the checks list.
     name: Mutation ${{ matrix.label }}
-    needs:
-    - changes
-    - test-mutation-plan
+    needs: [changes, test-mutation-plan]
     if: needs.changes.outputs.has_python == 'true' && needs.test-mutation-plan.outputs.count != '0'
     runs-on: ubuntu-latest
+    # Per MODULE, not per lane. The slowest shard measured end to end (setup
+    # included) is ~3 minutes; the margin covers a genuinely large module.
     timeout-minutes: 25
     strategy:
+      # Every module reports. Stopping at the first failure would hide the
+      # rest, and this gate's whole value is the complete list.
       fail-fast: false
+      # Wide instrumentation PRs touch 50+ modules; cap the fan-out so one
+      # PR cannot monopolise the runner pool. Excess shards queue.
       max-parallel: 12
       matrix:
         include: ${{ fromJson(needs.test-mutation-plan.outputs.matrix) }}
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-        persist-credentials: false
-    - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
-      with:
-        version: 0.8.17
-        enable-cache: true
-        prune-cache: true
-    - name: Sync Python dependencies
-      run: uv sync --frozen --package gaia --group backend --group dev
-    - name: Mutation check (zero survivors required)
-      timeout-minutes: 20
-      env:
-        GROUP: ${{ matrix.group }}
-      run: bash scripts/ci/mutation-shard.sh
-    - name: Upload shard log
-      if: always()
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-      with:
-        name: mutation-log-${{ strategy.job-index }}
-        path: shard.log
-        retention-days: 3
-        if-no-files-found: ignore
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.8.17"
+          enable-cache: true
+          prune-cache: true
+      - name: Sync Python dependencies
+        run: uv sync --frozen --package gaia --group backend --group dev
+      - name: Mutation check (zero survivors required)
+        # STEP-level timeout so a stuck shard fails as a step (job continues,
+        # the shard-log artifact uploads, logs survive) instead of the job
+        # being cancelled at its cap — a cancelled job retains nothing.
+        timeout-minutes: 20
+        # Through env, not inline expansion: the value is generated, but an
+        # inline ${{ }} in a run block is a shell-injection seam regardless.
+        env:
+          GROUP: ${{ matrix.group }}
+        run: bash scripts/ci/mutation-shard.sh
+      - name: Upload shard log
+        # Belt and braces for the diagnosis path: runs even when the step
+        # above fails or the job is cancelled, so the evidence survives the
+        # one scenario that has destroyed it five times.
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-log-${{ strategy.job-index }}
+          path: shard.log
+          retention-days: 3
+          if-no-files-found: ignore
+
   quality-gate:
     name: Quality gate (required)
     if: always()
     needs:
-    - changes
-    - biome
-    - deps
-    - circular
-    - file-size
-    - types-location
-    - components-per-file
-    - duplicates
-    - package-hygiene
-    - type-check
-    - python-mypy
-    - python-static
-    - observability
-    - wide-event-conformance
-    - dead-code
-    - alert-rules
-    - suppression-ratchet
-    - gitleaks
-    - semgrep
-    - test-mutation-plan
-    - test-mutation
+      - changes
+      - biome
+      - deps
+      - circular
+      - file-size
+      - types-location
+      - components-per-file
+      - duplicates
+      - package-hygiene
+      - type-check
+      - python-static
+      - python-mypy
+      - observability
+      - wide-event-conformance
+      - dead-code
+      - alert-rules
+      - suppression-ratchet
+      - gitleaks
+      - semgrep
+      - test-mutation-plan
+      - test-mutation
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        persist-credentials: false
-    - name: Verdict
-      env:
-        CHANGES: ${{ needs.changes.result }}
-        BIOME: ${{ needs.biome.result }}
-        DEPS: ${{ needs.deps.result }}
-        CIRCULAR: ${{ needs.circular.result }}
-        FILE_SIZE: ${{ needs.file-size.result }}
-        TYPES_LOCATION: ${{ needs.types-location.result }}
-        COMPONENTS_PER_FILE: ${{ needs.components-per-file.result }}
-        DUPLICATES: ${{ needs.duplicates.result }}
-        PACKAGE_HYGIENE: ${{ needs.package-hygiene.result }}
-        TYPE_CHECK: ${{ needs.type-check.result }}
-        PYTHON_MYPY: ${{ needs.python-mypy.result }}
-        OBSERVABILITY: ${{ needs.observability.result }}
-        WIDE_EVENT_CONFORMANCE: ${{ needs.wide-event-conformance.result }}
-        DEAD_CODE: ${{ needs.dead-code.result }}
-        ALERT_RULES: ${{ needs.alert-rules.result }}
-        SUPPRESSION_RATCHET: ${{ needs.suppression-ratchet.result }}
-        GITLEAKS: ${{ needs.gitleaks.result }}
-        SEMGREP: ${{ needs.semgrep.result }}
-        MUTATION_PLAN: ${{ needs.test-mutation-plan.result }}
-        MUTATION: ${{ needs.test-mutation.result }}
-        PYTHON_STATIC: ${{ needs.python-static.result }}
-      run: "# Lane skips are only trustworthy if change detection succeeded.\nif [[ \"$CHANGES\" != \"success\" ]]; then\n\
-        \  echo \"::error::change detection failed (result: $CHANGES) — cannot trust lane skips\"\n  exit 1\nfi\n\ndeclare\
-        \ -A RESULT=(\n  [biome]=\"$BIOME\"\n  [deps]=\"$DEPS\"\n  [circular]=\"$CIRCULAR\"\n  [file-size]=\"$FILE_SIZE\"\n\
-        \  [types-location]=\"$TYPES_LOCATION\"\n  [components-per-file]=\"$COMPONENTS_PER_FILE\"\n  [duplicates]=\"$DUPLICATES\"\
-        \n  [package-hygiene]=\"$PACKAGE_HYGIENE\"\n  [type-check]=\"$TYPE_CHECK\"\n  [python-static]=\"$PYTHON_STATIC\"\n\
-        \  [python-mypy]=\"$PYTHON_MYPY\"\n  [observability]=\"$OBSERVABILITY\"\n  [wide-event-conformance]=\"$WIDE_EVENT_CONFORMANCE\"\
-        \n  [dead-code]=\"$DEAD_CODE\"\n  [alert-rules]=\"$ALERT_RULES\"\n  [suppression-ratchet]=\"$SUPPRESSION_RATCHET\"\
-        \n  [gitleaks]=\"$GITLEAKS\"\n  [semgrep]=\"$SEMGREP\"\n  [test-mutation-plan]=\"$MUTATION_PLAN\"\n  [test-mutation]=\"\
-        $MUTATION\"\n)\nLANES=(biome deps circular file-size types-location components-per-file \\\n       duplicates package-hygiene\
-        \ type-check \\\n       python-static python-mypy \\\n       observability wide-event-conformance \\\n       dead-code\
-        \ alert-rules suppression-ratchet gitleaks semgrep test-mutation-plan test-mutation)\n\necho \"::group::Per-lane results\"\
-        \nfor lane in \"${LANES[@]}\"; do\n  printf '  %-22s %-12s\\n' \"$lane:\" \"${RESULT[$lane]}\"\ndone\necho \"::endgroup::\"\
-        \n\n# Every lane is enforced: a lane that is neither success nor skipped\n# (the changes job proved its language was\
-        \ untouched) fails the gate.\n# The old marker-file ratchet is gone — the rollout it enabled is\n# complete, and the\
-        \ two sources of truth had drifted\n# (observability + wide-event-conformance were enforced but missing\n# from LANES).\n\
-        failed=0\nfor lane in \"${LANES[@]}\"; do\n  r=\"${RESULT[$lane]}\"\n  if [[ \"$r\" != \"success\" && \"$r\" != \"\
-        skipped\" ]]; then\n    echo \"::error::lane '$lane' did not pass (result: $r)\"\n    failed=$((failed + 1))\n  fi\n\
-        done\n\nif [[ \"$failed\" -gt 0 ]]; then\n  echo \"::error::Quality gate FAILED — $failed lane(s) did not pass\"\n\
-        \  exit 1\nfi\necho \"Quality gate: PASSED — ${#LANES[@]} lanes enforced\""
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verdict
+        env:
+          # Lane results passed through env to avoid inline-expansion injection.
+          CHANGES: ${{ needs.changes.result }}
+          BIOME: ${{ needs.biome.result }}
+          DEPS: ${{ needs.deps.result }}
+          CIRCULAR: ${{ needs.circular.result }}
+          FILE_SIZE: ${{ needs.file-size.result }}
+          TYPES_LOCATION: ${{ needs.types-location.result }}
+          COMPONENTS_PER_FILE: ${{ needs.components-per-file.result }}
+          DUPLICATES: ${{ needs.duplicates.result }}
+          PACKAGE_HYGIENE: ${{ needs.package-hygiene.result }}
+          TYPE_CHECK: ${{ needs.type-check.result }}
+          PYTHON_STATIC: ${{ needs.python-static.result }}
+          PYTHON_MYPY: ${{ needs.python-mypy.result }}
+          OBSERVABILITY: ${{ needs.observability.result }}
+          WIDE_EVENT_CONFORMANCE: ${{ needs.wide-event-conformance.result }}
+          DEAD_CODE: ${{ needs.dead-code.result }}
+          ALERT_RULES: ${{ needs.alert-rules.result }}
+          SUPPRESSION_RATCHET: ${{ needs.suppression-ratchet.result }}
+          GITLEAKS: ${{ needs.gitleaks.result }}
+          SEMGREP: ${{ needs.semgrep.result }}
+          MUTATION_PLAN: ${{ needs.test-mutation-plan.result }}
+          MUTATION: ${{ needs.test-mutation.result }}
+        run: |
+          # Lane skips are only trustworthy if change detection succeeded.
+          if [[ "$CHANGES" != "success" ]]; then
+            echo "::error::change detection failed (result: $CHANGES) — cannot trust lane skips"
+            exit 1
+          fi
+
+          declare -A RESULT=(
+            [biome]="$BIOME"
+            [deps]="$DEPS"
+            [circular]="$CIRCULAR"
+            [file-size]="$FILE_SIZE"
+            [types-location]="$TYPES_LOCATION"
+            [components-per-file]="$COMPONENTS_PER_FILE"
+            [duplicates]="$DUPLICATES"
+            [package-hygiene]="$PACKAGE_HYGIENE"
+            [type-check]="$TYPE_CHECK"
+            [python-static]="$PYTHON_STATIC"
+            [python-mypy]="$PYTHON_MYPY"
+            [observability]="$OBSERVABILITY"
+            [wide-event-conformance]="$WIDE_EVENT_CONFORMANCE"
+            [dead-code]="$DEAD_CODE"
+            [alert-rules]="$ALERT_RULES"
+            [suppression-ratchet]="$SUPPRESSION_RATCHET"
+            [gitleaks]="$GITLEAKS"
+            [semgrep]="$SEMGREP"
+            [test-mutation-plan]="$MUTATION_PLAN"
+            [test-mutation]="$MUTATION"
+          )
+          LANES=(biome deps circular file-size types-location components-per-file \
+                 duplicates package-hygiene type-check \
+                 python-static python-mypy \
+                 observability wide-event-conformance \
+                 dead-code alert-rules suppression-ratchet gitleaks semgrep test-mutation-plan test-mutation)
+
+          echo "::group::Per-lane results"
+          for lane in "${LANES[@]}"; do
+            printf '  %-22s %-12s\n' "$lane:" "${RESULT[$lane]}"
+          done
+          echo "::endgroup::"
+
+          # Every lane is enforced: a lane that is neither success nor skipped
+          # (the changes job proved its language was untouched) fails the gate.
+          # The old marker-file ratchet is gone — the rollout it enabled is
+          # complete, and the two sources of truth had drifted
+          # (observability + wide-event-conformance were enforced but missing
+          # from LANES).
+          failed=0
+          for lane in "${LANES[@]}"; do
+            r="${RESULT[$lane]}"
+            if [[ "$r" != "success" && "$r" != "skipped" ]]; then
+              echo "::error::lane '$lane' did not pass (result: $r)"
+              failed=$((failed + 1))
+            fi
+          done
+
+          if [[ "$failed" -gt 0 ]]; then
+            echo "::error::Quality gate FAILED — $failed lane(s) did not pass"
+            exit 1
+          fi
+          echo "Quality gate: PASSED — ${#LANES[@]} lanes enforced"
