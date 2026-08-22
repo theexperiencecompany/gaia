@@ -12,12 +12,15 @@ the workflow's current ``trigger_config.next_run``.
 """
 
 from datetime import UTC, datetime, timedelta
+import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
+from app.constants.log_tags import LogTag
+from app.models.scheduler_models import ScheduledTaskStatus
 from app.services.workflow.scheduler import WorkflowScheduler
 
 
@@ -91,6 +94,36 @@ class TestScheduledFireStamping:
 
         assert captured["scheduled_at"] == past
 
+    async def test_naive_scheduled_at_stamp_is_normalized_to_utc(
+        self, scheduler: WorkflowScheduler, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A naive scheduled_at is normalized to UTC BEFORE the stamp is built:
+        the stamp must reflect the UTC instant, not the wall clock read in the
+        process's local zone. Runs under a non-UTC zone so reading the naive
+        value un-normalized drifts the stamp by the zone offset and fails."""
+        monkeypatch.setenv("TZ", "America/New_York")
+        time.tzset()
+        try:
+            # Winter date: EST is a fixed UTC-5, no DST ambiguity.
+            naive = datetime(2099, 1, 15, 12, 0, 0)
+            utc_armed = datetime(2099, 1, 15, 12, 0, tzinfo=UTC)
+            mock_job = MagicMock(job_id="j")
+
+            with patch(
+                "app.services.scheduler_service.enqueue_worker_job",
+                new=AsyncMock(return_value=mock_job),
+            ) as mock_enqueue:
+                await scheduler._enqueue_task("wf_1", naive)
+
+            call = mock_enqueue.await_args
+            context = call.args[3]
+            assert context["scheduled_for"] == int(utc_armed.timestamp())
+            defer_until = call.kwargs["_defer_until"]
+            assert defer_until == utc_armed
+            assert defer_until.tzinfo is not None
+        finally:
+            time.tzset()
+
 
 @pytest.mark.regression
 @pytest.mark.unit
@@ -115,7 +148,14 @@ class TestStaleScheduledFireRejected:
             )
 
         assert claimed is False
-        assert captured_filters[0]["trigger_config.next_run"] == new_fire
+        # The whole atomic filter: liveness, run-state, and the occurrence pin
+        # must all hold together or the fire is not claimable.
+        assert captured_filters[0] == {
+            "_id": "wf_1",
+            "activated": True,
+            "status": ScheduledTaskStatus.SCHEDULED.value,
+            "trigger_config.next_run": new_fire,
+        }
 
     async def test_fresh_fire_is_claimed(self) -> None:
         """A job whose stamp matches the current next_run still claims fine."""
@@ -124,7 +164,12 @@ class TestStaleScheduledFireRejected:
         fire = datetime.now(UTC).replace(microsecond=0)
 
         async def _fake_apply_update(filter_: dict[str, Any], ops: dict[str, Any], **kwargs: Any):
-            assert filter_["trigger_config.next_run"] == fire
+            assert filter_ == {
+                "_id": "wf_1",
+                "activated": True,
+                "status": ScheduledTaskStatus.SCHEDULED.value,
+                "trigger_config.next_run": fire,
+            }
             return MagicMock()
 
         with patch.object(workflow_repository, "_apply_raw_update", side_effect=_fake_apply_update):
@@ -138,7 +183,12 @@ class TestStaleScheduledFireRejected:
         from app.db.repositories.workflows import workflow_repository
 
         async def _fake_apply_update(filter_: dict[str, Any], ops: dict[str, Any], **kwargs: Any):
-            assert "trigger_config.next_run" not in filter_
+            # No expected_next_run key: the legacy path must add nothing.
+            assert filter_ == {
+                "_id": "wf_1",
+                "activated": True,
+                "status": ScheduledTaskStatus.SCHEDULED.value,
+            }
             return MagicMock()
 
         with patch.object(workflow_repository, "_apply_raw_update", side_effect=_fake_apply_update):
@@ -147,13 +197,15 @@ class TestStaleScheduledFireRejected:
         assert claimed is True
 
 
-def _gate_claim(workflow: MagicMock, calls: list[datetime | None]):
+def _gate_claim(workflow: MagicMock, calls: list[tuple[str, datetime | None]]):
     """A claim mock modeling the real gate semantics: it accepts only a fire
     whose expected time matches the workflow's current next_run — exactly what
-    ``claim_for_execution(expected_next_run=...)`` enforces in Mongo."""
+    ``claim_for_execution(expected_next_run=...)`` enforces in Mongo. Records
+    (workflow_id, expected) pairs so tests assert the worker claimed the right
+    workflow for the right occurrence."""
 
     async def _claim(workflow_id: str, expected_next_run: datetime | None = None) -> bool:
-        calls.append(expected_next_run)
+        calls.append((workflow_id, expected_next_run))
         next_run = workflow.trigger_config.next_run
         if expected_next_run is None:
             return True  # legacy unstamped fire: ungated
@@ -195,14 +247,23 @@ class TestWorkerRejectsStaleFire:
         with (
             patch("app.workers.tasks.workflow_tasks.workflow_scheduler", scheduler),
             patch("app.workers.tasks.workflow_tasks.create_execution", AsyncMock()) as mock_create,
+            patch("app.workers.tasks.workflow_tasks.log") as mock_log,
         ):
-            result = await execute_workflow_by_id({}, workflow.id, context)
+            await execute_workflow_by_id({}, workflow.id, context)
 
-        # The worker derived the expectation from the job's stamp...
-        assert claim_calls == [old_fire]
-        # ...the gate rejected it (armed 16:00 vs current next_run 21:00)...
-        assert "skipped" in result.lower()
-        # ...and nothing ran or re-armed.
+        # The worker derived the expectation from the job's stamp and asked
+        # for THIS workflow...
+        assert claim_calls == [(workflow.id, old_fire)]
+        # ...the gate rejected it (armed 16:00 vs current next_run 21:00),
+        # and the skip is logged with the context to find it in Loki...
+        mock_log.warning.assert_called_once_with(
+            f"{LogTag.WORKER} Workflow not in scheduled state "
+            "(already claimed, running, deactivated, or rescheduled away); "
+            "skipping stale scheduled fire",
+            workflow_id=workflow.id,
+            scheduled_for=int(old_fire.timestamp()),
+        )
+        # ...nothing ran or re-armed.
         mock_create.assert_not_awaited()
         scheduler.handle_recurring_task.assert_not_awaited()
 
@@ -238,6 +299,13 @@ class TestWorkerRejectsStaleFire:
                 "app.workers.tasks.workflow_tasks.create_execution",
                 AsyncMock(return_value=execution),
             ),
+            # Real budget gate reads Mongo/Redis for the user's plan — a seam
+            # this test does not exercise, and one that hangs in sandboxes
+            # where neither is reachable.
+            patch(
+                "app.workers.tasks.workflow_tasks.enforce_daily_cost_budget",
+                AsyncMock(),
+            ),
             patch("app.workers.tasks.workflow_tasks.complete_execution", AsyncMock()),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
             patch(
@@ -248,7 +316,7 @@ class TestWorkerRejectsStaleFire:
             mock_wf_svc.increment_execution_count = AsyncMock()
             result = await execute_workflow_by_id({}, workflow.id, context)
 
-        assert claim_calls == [fire]
+        assert claim_calls == [(workflow.id, fire)]
         assert "executed successfully" in result
 
     async def test_unstamped_scheduled_fire_still_executes(self) -> None:
@@ -281,6 +349,13 @@ class TestWorkerRejectsStaleFire:
                 "app.workers.tasks.workflow_tasks.create_execution",
                 AsyncMock(return_value=execution),
             ),
+            # Real budget gate reads Mongo/Redis for the user's plan — a seam
+            # this test does not exercise, and one that hangs in sandboxes
+            # where neither is reachable.
+            patch(
+                "app.workers.tasks.workflow_tasks.enforce_daily_cost_budget",
+                AsyncMock(),
+            ),
             patch("app.workers.tasks.workflow_tasks.complete_execution", AsyncMock()),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
             patch(
@@ -291,5 +366,5 @@ class TestWorkerRejectsStaleFire:
             mock_wf_svc.increment_execution_count = AsyncMock()
             result = await execute_workflow_by_id({}, workflow.id, context)
 
-        assert claim_calls == [None]
+        assert claim_calls == [(workflow.id, None)]
         assert "executed successfully" in result

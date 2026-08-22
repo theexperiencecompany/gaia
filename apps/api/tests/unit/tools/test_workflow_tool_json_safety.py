@@ -72,6 +72,7 @@ class TestWorkflowToolPayloadsAreJsonSafe:
         from app.agents.tools.workflow_tool import get_workflow
 
         workflow = _make_real_workflow()
+        expected_payload = workflow.model_dump(mode="json")
         with (
             patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.WorkflowService") as mock_service,
@@ -85,13 +86,19 @@ class TestWorkflowToolPayloadsAreJsonSafe:
                 config=_make_config(),
             )
 
-        _assert_json_safe(result)
-        _assert_json_safe(writer.call_args.args[0])
+        # The rate-limiting decorator adds its own _rate_limit_info key;
+        # everything else must be exactly the JSON-safe payload.
+        assert result["success"] is True
+        assert result["data"] == expected_payload
+        assert writer.call_args.args[0] == {
+            "workflow_data": {"action": "get", "workflow": expected_payload}
+        }
 
     async def test_pause_workflow_stream_frame_is_json_safe(self) -> None:
         from app.agents.tools.workflow_tool import pause_workflow
 
         workflow = _make_real_workflow()
+        expected_payload = workflow.model_dump(mode="json")
         with (
             patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.WorkflowService") as mock_service,
@@ -106,12 +113,15 @@ class TestWorkflowToolPayloadsAreJsonSafe:
             )
 
         assert result["success"] is True
-        _assert_json_safe(writer.call_args.args[0])
+        assert writer.call_args.args[0] == {
+            "workflow_data": {"action": "paused", "workflow": expected_payload}
+        }
 
     async def test_resume_workflow_stream_frame_is_json_safe(self) -> None:
         from app.agents.tools.workflow_tool import resume_workflow
 
         workflow = _make_real_workflow()
+        expected_payload = workflow.model_dump(mode="json")
         with (
             patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.WorkflowService") as mock_service,
@@ -126,7 +136,9 @@ class TestWorkflowToolPayloadsAreJsonSafe:
             )
 
         assert result["success"] is True
-        _assert_json_safe(writer.call_args.args[0])
+        assert writer.call_args.args[0] == {
+            "workflow_data": {"action": "resumed", "workflow": expected_payload}
+        }
 
     async def test_apply_workflow_edit_stream_frame_is_json_safe(self) -> None:
         from app.services.workflow.subagent_output import FinalizedOutput
@@ -144,6 +156,7 @@ class TestWorkflowToolPayloadsAreJsonSafe:
             cron_expression=current.trigger_config.cron_expression,
         )
         writer = MagicMock()
+        expected_payload = updated.model_dump(mode="json")
 
         with patch("app.services.workflow.service.WorkflowService") as mock_service:
             mock_service.update_workflow = AsyncMock(return_value=updated)
@@ -156,4 +169,33 @@ class TestWorkflowToolPayloadsAreJsonSafe:
             )
 
         assert result["success"] is True
-        _assert_json_safe(writer.call_args.args[0])
+        assert writer.call_args.args[0] == {
+            "workflow_data": {"action": "updated", "workflow": expected_payload}
+        }
+
+    async def test_create_directly_uses_prompt_not_description_as_instructions(self) -> None:
+        """create_workflow_directly builds the execution instructions from the
+        draft's prompt, falling back to its description only when absent."""
+        from app.services.workflow.subagent_output import FinalizedOutput
+        from app.utils.workflow_utils import create_workflow_directly
+
+        workflow = _make_real_workflow()
+        draft = FinalizedOutput(
+            type="finalized",
+            title="Manual thing",
+            description="A short display blurb",
+            prompt="The detailed execution instructions.",
+            trigger_type="manual",
+            direct_create=True,
+        )
+
+        with patch("app.services.workflow.service.WorkflowService") as mock_service:
+            mock_service.create_workflow = AsyncMock(return_value=workflow)
+
+            result = await create_workflow_directly(
+                draft=draft, user_id=FAKE_USER_ID, writer=MagicMock()
+            )
+
+        assert result is not None
+        request = mock_service.create_workflow.await_args.kwargs["request"]
+        assert request.prompt == "The detailed execution instructions."
