@@ -8,13 +8,6 @@ inputs:
     description: NX Cloud access token for remote caching
     required: false
     default: ""
-  install-args:
-    description: >
-      Extra arguments appended to `pnpm install`. detect uses
-      '--filter . --ignore-scripts' to install only the root package (nx)
-      instead of the whole workspace (~49s -> ~10s on that lane).
-    required: false
-    default: ""
 
 runs:
   using: composite
@@ -35,7 +28,7 @@ runs:
       shell: bash
       run: |
         echo "::group::pnpm install"
-        pnpm install --frozen-lockfile --prefer-offline ${{ inputs.install-args }}
+        pnpm install --frozen-lockfile --prefer-offline
         echo "::endgroup::"
 
     - name: Set NX_CLOUD_ACCESS_TOKEN
