@@ -34,6 +34,7 @@ from app.models.webhook_models import (
 )
 from app.services.payments.payment_service import DodoPaymentService
 from app.services.payments.payment_webhook_service import PaymentWebhookService
+from shared.py.wide_events import log
 
 # ---------------------------------------------------------------------------
 # Shared helpers / constants
@@ -1011,6 +1012,7 @@ def _plan(
     duration: str,
     product_id: str,
     plan_id: str,
+    active: bool = True,
 ) -> PlanDocument:
     return PlanDocument(
         id=plan_id,
@@ -1022,7 +1024,7 @@ def _plan(
         duration=duration,
         max_users=1,
         features=["Unlimited memories"],
-        is_active=True,
+        is_active=active,
         created_at=NOW,
         updated_at=NOW,
     )
@@ -1055,8 +1057,92 @@ def _payment(payment_id: str, created_at: datetime, amount: int = 3000):
     return payment
 
 
+class TestPlanForSubscription:
+    """Tests for DodoPaymentService._plan_for_subscription."""
+
+    async def test_resolves_the_product_from_the_full_catalogue(
+        self, payment_service, mock_plan_repository, mock_redis_cache
+    ):
+        """A cancelled subscription's plan is inactive in the catalogue but the
+        row still resolves — the read is deliberately active_only=False."""
+        sub = SubscriptionDocument(
+            id="s1",
+            dodo_subscription_id="sub_old",
+            user_id=FAKE_USER_ID,
+            product_id="prod_m",
+            status="cancelled",
+        )
+        retired = _plan(
+            name="Pro",
+            amount=3000,
+            duration="monthly",
+            product_id="prod_m",
+            plan_id="p_m",
+            active=False,
+        )
+        mock_plan_repository.list_plans = AsyncMock(return_value=[retired])
+
+        plan = await payment_service._plan_for_subscription(sub)
+
+        assert plan is not None and plan.dodo_product_id == "prod_m"
+        mock_plan_repository.list_plans.assert_awaited_once_with(active_only=False)
+
+    async def test_a_catalogue_failure_degrades_with_a_full_warning(
+        self, payment_service, mock_subscription_repository, mock_redis_cache
+    ):
+        log.reset()
+        sub = SubscriptionDocument(
+            id="s1",
+            dodo_subscription_id="sub_x",
+            user_id=FAKE_USER_ID,
+            product_id="prod_m",
+            status="active",
+        )
+        with patch.object(
+            payment_service, "get_plans", AsyncMock(side_effect=RuntimeError("dodo down"))
+        ):
+            plan = await payment_service._plan_for_subscription(sub)
+
+        assert plan is None
+        assert log.get()["warnings"] == [
+            {
+                "msg": "[PAYMENT] Could not resolve the plan behind a subscription",
+                "dodo_subscription_id": "sub_x",
+                "error_type": "RuntimeError",
+                "error": "dodo down",
+            }
+        ]
+
+
 class TestGetProPlan:
     """Tests for DodoPaymentService.get_pro_plan."""
+
+    async def test_only_asks_the_catalogue_for_active_plans(
+        self, payment_service, mock_plan_repository, mock_redis_cache
+    ):
+        mock_plan_repository.list_plans = AsyncMock(return_value=CATALOGUE)
+
+        await payment_service.get_pro_plan(PlanDuration.MONTHLY)
+
+        mock_plan_repository.list_plans.assert_awaited_once_with(active_only=True)
+
+    async def test_a_one_cent_plan_is_still_purchasable(
+        self, payment_service, mock_plan_repository, mock_redis_cache
+    ):
+        """Amount is minor units — the paid-tier check is >0, not a rounded
+        threshold that would silently drop genuinely priced products."""
+        cheap = _plan(
+            name="Pro",
+            amount=1,
+            duration="monthly",
+            product_id="prod_m",
+            plan_id="p_m",
+        )
+        mock_plan_repository.list_plans = AsyncMock(return_value=[cheap])
+
+        plan = await payment_service.get_pro_plan(PlanDuration.MONTHLY)
+
+        assert plan.dodo_product_id == "prod_m"
 
     async def test_picks_the_paid_plan_for_the_requested_cycle(
         self, payment_service, mock_plan_repository, mock_redis_cache
@@ -1097,16 +1183,86 @@ class TestGetProPlan:
     async def test_missing_cycle_fails_loudly(
         self, payment_service, mock_plan_repository, mock_redis_cache
     ):
+        log.reset()
         mock_plan_repository.list_plans = AsyncMock(return_value=[CATALOGUE[1]])
 
         with pytest.raises(HTTPException) as exc:
             await payment_service.get_pro_plan(PlanDuration.YEARLY)
 
         assert exc.value.status_code == 500
+        assert exc.value.detail == "No purchasable yearly plan is configured"
+        assert log.get()["errors"] == [
+            {
+                "msg": "[PAYMENT] No purchasable plan in the catalogue",
+                "billing_cycle": PlanDuration.YEARLY,
+                "active_plans": 1,
+            }
+        ]
 
 
 class TestCreateProCheckout:
     """Tests for DodoPaymentService.create_pro_checkout."""
+
+    async def test_uses_the_exact_cache_key_and_mint_arguments(
+        self,
+        payment_service,
+        mock_plan_repository,
+        mock_subscription_repository,
+        mock_users_collection,
+        mock_redis_cache,
+        mock_dodo_client,
+    ):
+        mock_plan_repository.list_plans = AsyncMock(return_value=CATALOGUE)
+        session = MagicMock()
+        session.session_id = "cs_1"
+        session.checkout_url = "https://checkout.dodopayments.com/s/cs_1"
+        mock_dodo_client.checkout_sessions.create = MagicMock(return_value=session)
+
+        mint = AsyncMock(
+            return_value=CreateSubscriptionResponse(
+                subscription_id="cs_1",
+                payment_link="https://checkout.dodopayments.com/s/cs_1",
+                status="payment_link_created",
+            )
+        )
+        with patch.object(payment_service, "create_subscription", mint):
+            await payment_service.create_pro_checkout(FAKE_USER_ID, PlanDuration.YEARLY)
+
+        upgrade_gets = [
+            call
+            for call in mock_redis_cache.get.await_args_list
+            if call.args[0] == f"upgrade_link:{FAKE_USER_ID}:yearly"
+        ]
+        assert len(upgrade_gets) == 1
+        # The checkout session must be created for THIS user, tied by metadata.
+        mint.assert_awaited_once_with(FAKE_USER_ID, "prod_y")
+
+    async def test_caches_the_session_under_the_one_hour_ttl(
+        self,
+        payment_service,
+        mock_plan_repository,
+        mock_subscription_repository,
+        mock_users_collection,
+        mock_redis_cache,
+        mock_dodo_client,
+    ):
+        from app.constants.cache import UPGRADE_LINK_CACHE_TTL
+
+        mock_plan_repository.list_plans = AsyncMock(return_value=CATALOGUE)
+        session = MagicMock()
+        session.session_id = "cs_2"
+        session.checkout_url = "https://checkout.dodopayments.com/s/cs_2"
+        mock_dodo_client.checkout_sessions.create = MagicMock(return_value=session)
+
+        await payment_service.create_pro_checkout(FAKE_USER_ID)
+
+        upgrade_calls = [
+            call
+            for call in mock_redis_cache.set.await_args_list
+            if call.args[0] == f"upgrade_link:{FAKE_USER_ID}:monthly"
+        ]
+        assert len(upgrade_calls) == 1
+        assert upgrade_calls[0].kwargs["ttl"] == UPGRADE_LINK_CACHE_TTL
 
     async def test_mints_a_session_for_the_resolved_pro_product(
         self,
@@ -1199,6 +1355,39 @@ class TestCreateProCheckout:
 class TestGetPaymentHistory:
     """Tests for DodoPaymentService.get_payment_history."""
 
+    async def test_reads_this_users_ledger_at_the_requested_limit(
+        self, payment_service, mock_subscription_repository, mock_dodo_client
+    ):
+        sub = SubscriptionDocument(
+            id="s1", dodo_subscription_id="sub_1", user_id=FAKE_USER_ID, status="active"
+        )
+        mock_subscription_repository.list_for_user = AsyncMock(return_value=[sub])
+        mock_dodo_client.payments.list = MagicMock(return_value=_payment_page())
+
+        await payment_service.get_payment_history(FAKE_USER_ID, limit=7)
+
+        mock_subscription_repository.list_for_user.assert_awaited_once_with(FAKE_USER_ID)
+        list_call = mock_dodo_client.payments.list.call_args
+        assert list_call.kwargs["subscription_id"] == "sub_1"
+        assert list_call.kwargs["page_size"] == 7
+
+    async def test_carries_status_and_method_from_the_ledger(
+        self, payment_service, mock_subscription_repository, mock_dodo_client
+    ):
+        sub = SubscriptionDocument(
+            id="s1", dodo_subscription_id="sub_1", user_id=FAKE_USER_ID, status="active"
+        )
+        mock_subscription_repository.list_for_user = AsyncMock(return_value=[sub])
+        payment = _payment("pay_1", datetime(2026, 1, 1, tzinfo=UTC))
+        payment.status = "partially_refunded"
+        payment.payment_method = "paypal"
+        mock_dodo_client.payments.list = MagicMock(return_value=_payment_page(payment))
+
+        history = await payment_service.get_payment_history(FAKE_USER_ID)
+
+        assert history[0].status == "partially_refunded"
+        assert history[0].payment_method == "paypal"
+
     async def test_no_subscriptions_means_no_ledger_call(
         self, payment_service, mock_subscription_repository, mock_dodo_client
     ):
@@ -1265,7 +1454,39 @@ class TestGetSubscriptionDetails:
         assert details.plan_type == PlanType.FREE
         assert details.is_subscribed is False
         assert details.payments == []
+        mock_subscription_repository.get_active_for_user.assert_awaited_once_with(FAKE_USER_ID)
         mock_dodo_client.payments.list.assert_not_called()
+
+    async def test_the_ledger_read_scopes_to_this_user_at_the_default_limit(
+        self,
+        payment_service,
+        mock_subscription_repository,
+        mock_plan_repository,
+        mock_redis_cache,
+        mock_dodo_client,
+    ):
+        """Both the free and the pro path must read the ledger for the RIGHT
+        user, at the shipped history limit — not an unbounded page."""
+        subscription = SubscriptionDocument(
+            id="s1",
+            dodo_subscription_id="sub_1",
+            user_id=FAKE_USER_ID,
+            product_id="prod_m",
+            status="active",
+        )
+        mock_subscription_repository.get_active_for_user = AsyncMock(return_value=subscription)
+        mock_subscription_repository.list_for_user = AsyncMock(return_value=[subscription])
+        mock_plan_repository.list_plans = AsyncMock(return_value=CATALOGUE)
+        mock_dodo_client.payments.list = MagicMock(return_value=_payment_page())
+
+        await payment_service.get_subscription_details(FAKE_USER_ID, history_limit=3)
+
+        from app.constants.payments import PAYMENT_HISTORY_LIMIT
+
+        list_call = mock_dodo_client.payments.list.call_args
+        assert list_call.kwargs["page_size"] == 3
+        assert PAYMENT_HISTORY_LIMIT == 10  # the default the free path must use
+        mock_subscription_repository.list_for_user.assert_awaited_once_with(FAKE_USER_ID)
 
     async def test_a_former_subscriber_still_sees_their_charges(
         self,
@@ -1290,11 +1511,15 @@ class TestGetSubscriptionDetails:
             return_value=_payment_page(_payment("pay_old", datetime(2025, 6, 1, tzinfo=UTC)))
         )
 
-        details = await payment_service.get_subscription_details(FAKE_USER_ID)
+        details = await payment_service.get_subscription_details(FAKE_USER_ID, history_limit=4)
 
         assert details.plan_type == PlanType.FREE
         assert details.is_subscribed is False
         assert [entry.payment_id for entry in details.payments] == ["pay_old"]
+        mock_subscription_repository.list_for_user.assert_awaited_once_with(FAKE_USER_ID)
+        list_call = mock_dodo_client.payments.list.call_args
+        assert list_call.kwargs["subscription_id"] == "sub_old"
+        assert list_call.kwargs["page_size"] == 4
 
     async def test_pro_user_carries_plan_price_renewal_and_charges(
         self,
@@ -1325,6 +1550,7 @@ class TestGetSubscriptionDetails:
         assert details.plan_type == PlanType.PRO
         assert details.is_subscribed is True
         assert details.status == SubscriptionStatus.ACTIVE
+        assert details.plan_name == "Pro"
         assert (details.amount, details.currency) == (3000, "USD")
         assert details.billing_cycle == PlanDuration.MONTHLY
         assert details.next_billing_date == "2026-04-14T12:00:00Z"

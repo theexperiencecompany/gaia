@@ -212,8 +212,7 @@ class TestBlockedToolStreamsItsCard:
             )
 
         assert str(raised.value) == (
-            "Rate limit exceeded for generate_image."
-            f" Resets at {RESET_AT.isoformat()}."
+            f"Rate limit exceeded for generate_image. Resets at {RESET_AT.isoformat()}."
         )
 
     async def test_no_streaming_context_still_blocks_the_call(self) -> None:

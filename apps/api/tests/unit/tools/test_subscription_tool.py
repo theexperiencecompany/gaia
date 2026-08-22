@@ -180,9 +180,7 @@ class TestGetSubscriptionDetails:
             result = await get_subscription_details.coroutine(config=_cfg())
 
         assert result == (
-            "Plan: Pro\n"
-            "Subscribed: yes (status: active)\n"
-            "Recent charges: none recorded yet."
+            "Plan: Pro\nSubscribed: yes (status: active)\nRecent charges: none recorded yet."
         )
 
     async def test_missing_cycle_still_renders_the_price_without_a_suffix(self) -> None:
