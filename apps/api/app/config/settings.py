@@ -19,7 +19,7 @@ import time
 from typing import Any, Literal, Self
 
 from dotenv import load_dotenv
-from pydantic import computed_field, field_validator
+from pydantic import ValidationInfo, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.config.secrets import inject_infisical_secrets
@@ -37,7 +37,7 @@ load_dotenv()
 class BaseAppSettings(BaseSettings):
     """Base configuration settings for the application."""
 
-    ENV: Literal["production", "development"] = "production"
+    ENV: Literal["production", "development", "selfhost"] = "production"
 
     SHOW_MISSING_KEY_WARNINGS: bool = True
 
@@ -105,9 +105,33 @@ class CommonSettings(BaseAppSettings):
     # ----------------------------------------------
     # Authentication & OAuth
     # ----------------------------------------------
-    WORKOS_API_KEY: str
-    WORKOS_CLIENT_ID: str
-    WORKOS_COOKIE_PASSWORD: str
+    # Auth mode: "workos" (default — hosted/dev, AuthKit hosted UI) or "local"
+    # (self-host email+password sessions; see auth_local endpoints). WorkOS
+    # credentials are only required when the WorkOS mode is selected.
+    AUTH_MODE: Literal["workos", "local"] = "workos"
+
+    WORKOS_API_KEY: str | None = None
+    WORKOS_CLIENT_ID: str | None = None
+    WORKOS_COOKIE_PASSWORD: str | None = None
+
+    @field_validator("WORKOS_API_KEY", "WORKOS_CLIENT_ID", "WORKOS_COOKIE_PASSWORD")
+    @classmethod
+    def _require_workos_credentials_when_selected(
+        cls, v: str | None, info: ValidationInfo
+    ) -> str | None:
+        if info.data.get("AUTH_MODE") == "workos" and not v:
+            raise ValueError(f"{info.field_name} is required when AUTH_MODE=workos")
+        return v
+
+    # Instance-wide secret. Env wins; otherwise generated once and persisted in
+    # Mongo by app.services.runtime.secrets_store (survives container recreation
+    # because the DB volume persists). Signs local sessions and derives Fernet
+    # keys for stored provider credentials.
+    INSTANCE_SECRET: str | None = None
+
+    # Ollama endpoint as seen from THIS process. Inside Docker the host is
+    # reached via the special host-gateway DNS name; native runs use localhost.
+    OLLAMA_BASE_URL: str = "http://host.docker.internal:11434"
 
     # ----------------------------------------------
     # Environment & Deployment
@@ -688,20 +712,242 @@ class DevelopmentSettings(CommonSettings):
     )
 
 
+# Fields ProductionSettings marks required that a self-host instance legitimately
+# boots without — every SaaS/provider integration is optional (features disable
+# gracefully via the lazy-provider WARN path) so the required set is only the
+# infra connection material plus machine-local secrets, which `gaia up`
+# auto-generates. User-facing provider keys arrive at runtime via the
+# credentials store instead of env.
+_SELFHOST_OPTIONAL_STRS = (
+    "BLOG_BEARER_TOKEN",
+    "CLOUDINARY_API_KEY",
+    "CLOUDINARY_API_SECRET",
+    "CLOUDINARY_CLOUD_NAME",
+    "COMPOSIO_KEY",
+    "COMPOSIO_WEBHOOK_SECRET",
+    "DEEPGRAM_API_KEY",
+    "DODO_PAYMENTS_API_KEY",
+    "DODO_WEBHOOK_PAYMENTS_SECRET",
+    "E2B_API_KEY",
+    "E2B_DOMAIN",
+    "E2B_TEMPLATE_ID",
+    "ELEVENLABS_API_KEY",
+    "ELEVENLABS_TTS_MODEL",
+    "ELEVENLABS_VOICE_ID",
+    "FIGMA_MCP_CLIENT_ID",
+    "FIGMA_MCP_CLIENT_SECRET",
+    "FIRECRAWL_API_KEY",
+    "GAIA_BACKEND_URL",
+    "GOOGLE_API_KEY",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "JUICEFS_META_URL_TEMPLATE",
+    "LIVEKIT_API_KEY",
+    "LIVEKIT_API_SECRET",
+    "LIVEKIT_URL",
+    "LLAMA_INDEX_KEY",
+    "MCP_ENCRYPTION_KEY",
+    "NOTION_MCP_CLIENT_ID",
+    "NOTION_MCP_CLIENT_SECRET",
+    "OPENAI_API_KEY",
+    "OPENROUTER_API_KEY",
+    "OPENWEATHER_API_KEY",
+    "R2_ACCESS_KEY",
+    "R2_ACCOUNT_ID",
+    "R2_BUCKET",
+    "R2_SECRET_KEY",
+    "RESEND_API_KEY",
+    "RESEND_AUDIENCE_ID",
+    "SENTRY_DSN",
+    "TAVILY_API_KEY",
+    "VERCEL_MCP_CLIENT_ID",
+)
+
+
+class SelfHostSettings(ProductionSettings):
+    """Self-host profile.
+
+    Relaxes every SaaS/provider field ProductionSettings requires — integrations
+    are optional and disable gracefully — so the required set is only infra
+    connection material plus machine-local secrets (which ``gaia up``
+    auto-generates). User-facing provider keys arrive at runtime via the
+    credentials store instead of env.
+    """
+
+    ENV: Literal["production", "development", "selfhost"] = "selfhost"
+
+    # --- LLM / AI providers (runtime-configurable; see provider_credentials_service)
+    OPENROUTER_API_KEY: str | None = None
+    GOOGLE_API_KEY: str | None = None
+    OPENAI_API_KEY: str | None = None
+
+    # --- Search / scraping
+    TAVILY_API_KEY: str | None = None
+    FIRECRAWL_API_KEY: str | None = None
+
+    # --- Integrations / OAuth
+    COMPOSIO_KEY: str | None = None
+    COMPOSIO_WEBHOOK_SECRET: str | None = None
+    GOOGLE_CLIENT_ID: str | None = None
+    GOOGLE_CLIENT_SECRET: str | None = None
+    MCP_ENCRYPTION_KEY: str | None = None
+    VERCEL_MCP_CLIENT_ID: str | None = None
+    NOTION_MCP_CLIENT_ID: str | None = None
+    NOTION_MCP_CLIENT_SECRET: str | None = None
+    FIGMA_MCP_CLIENT_ID: str | None = None
+    FIGMA_MCP_CLIENT_SECRET: str | None = None
+
+    # --- Sandbox / workspace storage
+    E2B_API_KEY: str | None = None
+    E2B_DOMAIN: str | None = None
+    E2B_TEMPLATE_ID: str | None = None
+    R2_ACCOUNT_ID: str | None = None
+    R2_ACCESS_KEY: str | None = None
+    R2_SECRET_KEY: str | None = None
+    R2_BUCKET: str | None = None
+    JUICEFS_META_URL_TEMPLATE: str | None = None
+
+    # --- Voice
+    LIVEKIT_URL: str | None = None
+    LIVEKIT_API_KEY: str | None = None
+    LIVEKIT_API_SECRET: str | None = None
+    DEEPGRAM_API_KEY: str | None = None
+    ELEVENLABS_API_KEY: str | None = None
+    ELEVENLABS_TTS_MODEL: str | None = None
+    ELEVENLABS_VOICE_ID: str | None = None
+
+    # --- Payments (self-host never requires Dodo; Free plan auto-seeds)
+    DODO_PAYMENTS_API_KEY: str | None = None
+    DODO_WEBHOOK_PAYMENTS_SECRET: str | None = None
+
+    # --- Media / email / misc SaaS
+    CLOUDINARY_CLOUD_NAME: str | None = None
+    CLOUDINARY_API_KEY: str | None = None
+    CLOUDINARY_API_SECRET: str | None = None
+    RESEND_API_KEY: str | None = None
+    RESEND_AUDIENCE_ID: str | None = None
+    SENTRY_DSN: str | None = None
+    BLOG_BEARER_TOKEN: str | None = None
+    OPENWEATHER_API_KEY: str | None = None
+    LLAMA_INDEX_KEY: str | None = None
+    GAIA_BACKEND_URL: str | None = None
+
+
 _infisical_secrets_loaded = False
 
 
 def _ensure_infisical_loaded() -> None:
     """Ensure Infisical secrets are loaded exactly once."""
     global _infisical_secrets_loaded
-    if not _infisical_secrets_loaded:
-        infisical_start = time.time()
-        inject_infisical_secrets()
-        log.info(
-            f"{LogTag.STARTUP} Infisical secrets loaded",
-            duration_seconds=round(time.time() - infisical_start, 3),
-        )
+    if _infisical_secrets_loaded:
+        return
+    if os.getenv("ENV") == "selfhost":
+        # Self-host resolves all configuration locally by design — never contact
+        # Infisical, even if machine-identity vars happen to be present in .env.
+        log.info(f"{LogTag.STARTUP} Infisical skipped: self-host mode uses local configuration")
         _infisical_secrets_loaded = True
+        return
+    infisical_start = time.time()
+    inject_infisical_secrets()
+    log.info(
+        f"{LogTag.STARTUP} Infisical secrets loaded",
+        duration_seconds=round(time.time() - infisical_start, 3),
+    )
+    _infisical_secrets_loaded = True
+
+
+def _raise_if_dev_override_env() -> None:
+    """Hard-block the development-only override vars outside development.
+
+    Shared by the production and selfhost branches: the dev auth bypass
+    authenticates every request as a fixed user, sim mode routes every model
+    call to a scripted stub, and the OpenRouter base-URL override is a stub
+    hook — real deployments must refuse to boot with any of them rather than
+    run misconfigured. Checked via os.getenv because from_env() downgrades
+    pydantic validation errors to warnings.
+    """
+    if os.getenv("DEV_AUTH_BYPASS_EMAIL"):
+        raise RuntimeError(
+            "DEV_AUTH_BYPASS_EMAIL is set but ENV is not 'development' — "
+            "the dev auth bypass must never be enabled in a real deployment."
+        )
+    if os.getenv("DEV_UNLIMITED_RATE_LIMITS", "").strip().lower() not in (
+        "",
+        "0",
+        "false",
+        "no",
+        "off",
+    ):
+        raise RuntimeError(
+            "DEV_UNLIMITED_RATE_LIMITS is set but ENV is not 'development' — "
+            "lifting rate limits via a dev flag in a real deployment is never allowed."
+        )
+    # Same policy as the auth bypass: the OpenRouter base-URL override
+    # redirects the model to a local scripted stub, so production must
+    # refuse to boot rather than run against it.
+    if os.getenv("OPENROUTER_BASE_URL"):
+        raise RuntimeError(
+            "OPENROUTER_BASE_URL is set but ENV is not 'development' — "
+            "the OpenRouter base-URL override is a development-only stub hook."
+        )
+    # Boolean-semantic var: an explicit "false"/"0"/"no"/"off" is a
+    # legitimate way to DISABLE sim mode and must not trip the guard
+    # (unlike the string-valued overrides above, where set == enabled).
+    if os.getenv("GAIA_SIM_MODE", "").strip().lower() not in (
+        "",
+        "0",
+        "false",
+        "no",
+        "off",
+    ):
+        raise RuntimeError(
+            "GAIA_SIM_MODE is set but ENV is not 'development' — "
+            "sim mode routes every model call to a local scripted stub."
+        )
+
+
+def _raise_if_selfhost_feature_in_production() -> None:
+    """Hard-block self-host-only configuration outside its environments.
+
+    Local auth is a self-host concept: hosted production MUST authenticate via
+    WorkOS. Letting AUTH_MODE=local slip into a production deployment would
+    silently stand up an open-registration password endpoint against the
+    hosted user base.
+    """
+    if os.getenv("AUTH_MODE") == "local" and os.getenv("ENV", "production") == "production":
+        raise RuntimeError(
+            "AUTH_MODE=local is set but ENV=production — local username/password "
+            "auth is a self-host feature and must never run against production. "
+            "Use ENV=selfhost for local auth."
+        )
+
+
+def _raise_if_workos_credentials_missing_in_production() -> None:
+    """Hard-block a hosted production boot without WorkOS credentials.
+
+    The per-field validator cannot be relied on for this: validate_default=False
+    means a defaulted AUTH_MODE never enters validation (so the credential
+    requirement never fires when AUTH_MODE is simply unset — the production
+    default), and from_env() downgrades any surviving validation error into an
+    ""-filled instance. Without this guard the misconfiguration only surfaces
+    later as an opaque crash at WorkOS client construction. Development keeps
+    dummy-ok boot semantics and self-host never requires WorkOS credentials —
+    this guard runs only on the ENV=production branch of get_settings().
+    """
+    if os.getenv("AUTH_MODE", "workos") != "workos":
+        return
+    missing = [
+        name
+        for name in ("WORKOS_API_KEY", "WORKOS_CLIENT_ID", "WORKOS_COOKIE_PASSWORD")
+        if not os.getenv(name)
+    ]
+    if not missing:
+        return
+    raise RuntimeError(
+        f"{', '.join(missing)} must be set when ENV=production with AUTH_MODE=workos "
+        "— hosted deployments require WorkOS credentials (local auth via "
+        "AUTH_MODE=local is available under ENV=selfhost)."
+    )
 
 
 @lru_cache(maxsize=1)
@@ -730,52 +976,30 @@ def get_settings() -> Any:
 
     try:
         # Initialize settings based on environment
-        settings_obj: ProductionSettings | DevelopmentSettings
+        settings_obj: ProductionSettings | DevelopmentSettings | SelfHostSettings
         if env == "development":
             settings_obj = DevelopmentSettings.from_env()
+        elif env == "selfhost":
+            # Same hard blocks as production (see _raise_if_dev_override_env),
+            # then the relaxed self-host profile.
+            _raise_if_dev_override_env()
+            settings_obj = SelfHostSettings.from_env()
+            log.info(f"{LogTag.STARTUP} Self-host settings initialized")
         else:
             # Hard block, not a warning: the dev auth bypass authenticates
             # every request as a fixed user, so production must refuse to
             # boot rather than run with it. Checked via os.getenv because
             # from_env() downgrades pydantic validation errors to warnings.
-            if os.getenv("DEV_AUTH_BYPASS_EMAIL"):
-                raise RuntimeError(
-                    "DEV_AUTH_BYPASS_EMAIL is set but ENV=production — "
-                    "the dev auth bypass must never be enabled in production."
-                )
-            if os.getenv("DEV_UNLIMITED_RATE_LIMITS", "").strip().lower() not in (
-                "",
-                "0",
-                "false",
-                "no",
-                "off",
-            ):
-                raise RuntimeError(
-                    "DEV_UNLIMITED_RATE_LIMITS is set but ENV=production — "
-                    "lifting rate limits in production is never allowed."
-                )
-            # Same policy as the auth bypass: the OpenRouter base-URL override
-            # redirects the model to a local scripted stub, so production must
-            # refuse to boot rather than run against it.
-            if os.getenv("OPENROUTER_BASE_URL"):
-                raise RuntimeError(
-                    "OPENROUTER_BASE_URL is set but ENV=production — "
-                    "the OpenRouter base-URL override is a development-only stub hook."
-                )
-            # Boolean-semantic var: an explicit "false"/"0"/"no"/"off" is a
-            # legitimate way to DISABLE sim mode and must not trip the guard
-            # (unlike the string-valued overrides above, where set == enabled).
-            if os.getenv("GAIA_SIM_MODE", "").strip().lower() not in (
-                "",
-                "0",
-                "false",
-                "no",
-                "off",
-            ):
-                raise RuntimeError(
-                    "GAIA_SIM_MODE is set but ENV=production — "
-                    "sim mode routes every model call to a local scripted stub."
-                )
+            _raise_if_dev_override_env()
+            # Self-host-only configuration (local auth) must never reach a
+            # production deployment — refuse loudly rather than serve an open
+            # password-registration endpoint against hosted users.
+            _raise_if_selfhost_feature_in_production()
+            # Hosted deployments authenticate via AuthKit/WorkOS: with the
+            # default AUTH_MODE=workos, missing credentials must stop the
+            # boot here instead of crashing later at WorkOS client
+            # construction (see _raise_if_workos_credentials_missing_in_production).
+            _raise_if_workos_credentials_missing_in_production()
             settings_obj = ProductionSettings.from_env()
             log.info(f"{LogTag.STARTUP} Production settings initialized")
 
