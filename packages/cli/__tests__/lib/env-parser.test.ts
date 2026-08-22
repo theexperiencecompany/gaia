@@ -11,6 +11,7 @@ import {
   getInfrastructureVariables,
   getWebInfrastructureDefaults,
   isCategorySatisfied,
+  loadVendoredSchema,
 } from "../../src/lib/env-parser.js";
 
 // ---------------------------------------------------------------------------
@@ -38,6 +39,35 @@ function makeCategory(overrides?: Partial<EnvCategory>): EnvCategory {
     ...overrides,
   };
 }
+
+// ---------------------------------------------------------------------------
+// loadVendoredSchema
+// ---------------------------------------------------------------------------
+describe("loadVendoredSchema", () => {
+  it("returns categories from the vendored JSON (no host Python)", () => {
+    const categories = loadVendoredSchema();
+    expect(categories.length).toBeGreaterThan(0);
+    for (const category of categories) {
+      expect(category.name).toBeTruthy();
+      expect(Array.isArray(category.variables)).toBe(true);
+    }
+  });
+
+  it("preserves grouping semantics: alternative groups intact", () => {
+    const alternatives = getAlternativeGroups(loadVendoredSchema());
+    // OpenAI Integration ↔ Google AI pair ships in the vendored schema.
+    expect(alternatives.get("OpenAI Integration")).toBe("Google AI");
+    expect(alternatives.get("Google AI")).toBe("OpenAI Integration");
+  });
+
+  it("returns a deep copy — mutating the result never corrupts the source", () => {
+    const first = loadVendoredSchema();
+    first[0]!.name = "MUTATED";
+
+    const second = loadVendoredSchema();
+    expect(second[0]!.name).not.toBe("MUTATED");
+  });
+});
 
 // ---------------------------------------------------------------------------
 // getDefaultValue

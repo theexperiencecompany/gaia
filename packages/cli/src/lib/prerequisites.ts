@@ -1,4 +1,7 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { execa } from "execa";
+import type { CLIStore } from "../ui/store.js";
 
 export type CheckResult = "success" | "error" | "missing" | "pending";
 
@@ -85,6 +88,131 @@ export async function checkMise(): Promise<CheckResult> {
     return "success";
   } catch {
     return "missing";
+  }
+}
+
+/** Official Docker Engine install script (apt-based distros), per Docker docs. */
+const DOCKER_INSTALL_SCRIPT_URL = "https://get.docker.com";
+
+const ORBSTACK_URL = "https://orbstack.dev";
+const DOCKER_DESKTOP_MAC_URL =
+  "https://docs.docker.com/desktop/install/mac-install/";
+
+function isDebianAptLinux(): boolean {
+  return (
+    fs.existsSync("/usr/bin/apt-get") || fs.existsSync("/etc/debian_version")
+  );
+}
+
+/**
+ * Ensure Docker is installed and running, installing it when the user
+ * confirms.
+ *
+ * Behavior by platform/situation:
+ * - Linux (apt/Debian) + TTY: interactive confirm, then runs the official
+ *   Docker install script (`get.docker.com`) via sudo/sh and re-checks.
+ * - Linux + no TTY: fails loud — install Docker manually, then rerun.
+ * - macOS: never auto-installs; points at OrbStack / Docker Desktop.
+ * - Installed but daemon down: actionable start-Docker error.
+ *
+ * @throws Error with remediation copy when Docker cannot be made available.
+ */
+export async function ensureDocker(store: CLIStore): Promise<void> {
+  store.updateData("checks", {
+    ...store.currentState.data.checks,
+    docker: "pending",
+  });
+
+  let info = await checkDockerDetailed();
+
+  if (!info.installed) {
+    const os = await import("node:os");
+    const platform = os.platform();
+
+    if (platform === "darwin") {
+      // Auto-installing a hypervisor on someone's Mac is too invasive —
+      // surface both lightweight (OrbStack) and official options instead.
+      throw new Error(
+        "Docker is required but not installed.\n" +
+          `  • OrbStack (lightweight): ${ORBSTACK_URL}\n` +
+          `  • Docker Desktop: ${DOCKER_DESKTOP_MAC_URL}\n` +
+          "Install either, then rerun this command.",
+      );
+    }
+
+    if (platform !== "linux" || !isDebianAptLinux()) {
+      throw new Error(
+        `Docker is required but not installed. Install it from ${PREREQUISITE_URLS.docker} and rerun.`,
+      );
+    }
+
+    if (!(process.stdin.isTTY === true && process.stdout.isTTY === true)) {
+      // Fail loud instead of silently continuing without Docker.
+      throw new Error(
+        `Docker is required but not installed, and there is no terminal to confirm installation.\n` +
+          `Install Docker Engine first:\n` +
+          `  curl -fsSL ${DOCKER_INSTALL_SCRIPT_URL} | sudo sh\n` +
+          `Then rerun this command.`,
+      );
+    }
+
+    store.setStatus("Docker is not installed.");
+    const confirmed = await store.waitForInput("docker_install_confirm");
+    if (confirmed !== "install") {
+      throw new Error(
+        "Docker is required to continue. Install it from " +
+          `${PREREQUISITE_URLS.docker} and rerun.`,
+      );
+    }
+
+    store.setStatus(
+      "Installing Docker Engine (this can take several minutes)...",
+    );
+    await installDockerLinux();
+    store.setStatus("Docker installed. Verifying...");
+    info = await checkDockerDetailed();
+  }
+
+  if (!info.working) {
+    store.updateData("checks", {
+      ...store.currentState.data.checks,
+      docker: "error",
+    });
+    store.updateData("dockerError", info.errorMessage);
+    throw new Error(
+      info.errorMessage ||
+        "Docker is not running. Start Docker, then rerun this command.",
+    );
+  }
+
+  store.updateData("checks", {
+    ...store.currentState.data.checks,
+    docker: "success",
+  });
+}
+
+/**
+ * Run the official Docker Engine convenience script for apt-based distros,
+ * downloading it to a temp file so sudo can execute it without a
+ * pipe-under-root race. stdio is inherited so sudo can prompt for a password.
+ */
+async function installDockerLinux(): Promise<void> {
+  const os = await import("node:os");
+  const scriptPath = path.join(os.tmpdir(), "gaia-docker-install.sh");
+  await execa("curl", ["-fsSL", DOCKER_INSTALL_SCRIPT_URL, "-o", scriptPath]);
+
+  const isRoot = typeof process.getuid === "function" && process.getuid() === 0;
+  try {
+    if (isRoot) {
+      await execa("sh", [scriptPath], { stdio: "inherit" });
+    } else {
+      await execa("sudo", ["sh", scriptPath], { stdio: "inherit" });
+    }
+  } catch (e) {
+    throw new Error(
+      `Docker installation failed: ${(e as Error).message}\n` +
+        `Install manually following ${PREREQUISITE_URLS.docker} and rerun.`,
+    );
   }
 }
 

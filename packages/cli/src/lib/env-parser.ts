@@ -1,6 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { execa } from "execa";
+// Vendored schema generated from apps/api settings by `mise run cli:schema`
+// (apps/api/scripts/dump_config_schema.py). Committed so the CLI never needs
+// a host Python installation.
+import vendoredSchema from "./api-config-schema.generated.json";
 import type {
   EnvCategory,
   EnvVar,
@@ -71,42 +74,22 @@ export function getDefaultValue(
   );
 }
 
-export async function parseSettings(repoPath: string): Promise<EnvCategory[]> {
-  const scriptPath = path.join(
-    repoPath,
-    "apps/api/scripts/dump_config_schema.py",
-  );
-  const validatorPath = path.join(
-    repoPath,
-    "apps/api/app/config/settings_validator.py",
-  );
-  const settingsPath = path.join(repoPath, "apps/api/app/config/settings.py");
-
-  if (!fs.existsSync(scriptPath)) {
-    throw new Error("dump_config_schema.py not found in apps/api/scripts");
-  }
-
-  try {
-    try {
-      const { stdout } = await execa(
-        "python3",
-        [scriptPath, validatorPath, settingsPath],
-        { cwd: repoPath },
-      );
-      return JSON.parse(stdout);
-    } catch {
-      const { stdout } = await execa(
-        "python",
-        [scriptPath, validatorPath, settingsPath],
-        { cwd: repoPath },
-      );
-      return JSON.parse(stdout);
-    }
-  } catch (e) {
-    throw new Error(
-      `Failed to parse settings schema: ${(e as Error).message}. Ensure python is installed.`,
-    );
-  }
+/**
+ * Load the vendored API config schema.
+ *
+ * The schema is extracted from `apps/api/app/config/settings*.py` at repo
+ * build time via `mise run cli:schema` and committed as
+ * `api-config-schema.generated.json`. Regenerate and commit the JSON whenever
+ * settings.py or settings_validator.py change — there is deliberately no
+ * runtime fallback (the old host-Python spawn path is gone).
+ *
+ * Returns a deep copy so callers can mutate categories without corrupting
+ * the module-level import.
+ */
+export function loadVendoredSchema(): EnvCategory[] {
+  // The JSON infers `defaultValue: string | null`; the EnvVar contract treats
+  // absent/null uniformly as "no default", so cast through unknown.
+  return structuredClone(vendoredSchema) as unknown as EnvCategory[];
 }
 
 export function parseWebEnv(repoPath: string): WebEnvVar[] {
