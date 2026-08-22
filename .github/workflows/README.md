@@ -102,7 +102,7 @@ flowchart TD
 ### `.github/workflows/build.yml`
 1. Start three build lanes: `docker-release`, `docker-web`, `docker-grafana`.
 2. `docker-release`: detect affected backend/bot projects, publish images to GHCR, optionally sync Discord commands. Records `images_published` right after its push steps (before Discord command sync), so a later, unrelated step failure never misreports a real publish as "nothing published". After the release steps, `scripts/ci/resolve-image-tags.sh` resolves the immutable per-commit tags nx pushed (production versionScheme `YYMM.DD.<shortsha>`, read from the local image store, never recomputed) and guarantees they exist in GHCR (pushing them if nx skipped publishing), emitting `apps_tag` (gaia + gaia-voice-agent) and `bots_tag` (the four bot images) — empty when that group wasn't released this run.
-3. `docker-web`: detect `web` changes and build/push the `gaia-web` image only when affected. This is a package publish for self-host users (`docker-compose.selfhost.yml`), not a production deploy — the hosted frontend deploys itself via Cloudflare Workers Builds on every master push, independently of CI.
+3. `docker-web`: detect `web` changes and build/push the `gaia-web` image only when affected. This is a package publish for self-host users (`docker-compose.selfhost.yml`), not a production deploy — the hosted frontend deploys via `.github/workflows/deploy-web.yml` → Cloudflare Workers (`wrangler deploy`) on every master push.
 4. `docker-grafana`: builds/pushes the Grafana image unconditionally every run (tiny COPY layer over the upstream image). Not part of orphan detection — it has no "affected" concept and its `:latest` is always safe for the stack to pick up.
 5. `deployment-plan` runs with `if: always()` — it is never skipped by a lane failing or being cancelled — and needs `docker-release` + `docker-grafana` purely for sequencing (deploy planning must not race ahead of the build lanes). It evaluates `docker-release`'s `.result` plus backend affected-detection (`docker-release.outputs.api_affected`/`bots_affected`) via `scripts/ci/compute-deploy-plan.sh`:
    - `backend_deploy` is `true` only when `docker-release` succeeded AND api/bots affected. A failed/cancelled `docker-release` never deploys; `docker-web`'s result never gates it — the hosted frontend has already shipped itself either way.
@@ -119,6 +119,14 @@ flowchart TD
 4. Only after convergence succeeds, `scripts/ci/retag-latest-alias.sh` re-points each deployed repo's `:latest` at the deployed tag registry-side (`docker buildx imagetools create`, no layer transfer) — `:latest` is a deploy-time alias meaning "what prod runs", not "what was last built". A failed deploy does not move `:latest`.
 5. Push a deploy annotation to Loki (including the deployed tags) and send status to Discord via `scripts/ci/notify-discord.sh`.
 6. Manual `workflow_dispatch` supports `action=rollback` with `rollback_mode=last` (Docker service rollback) or `rollback_mode=digest` (redeploy pinned image). After a successful rollback, the same retag script re-points `:latest` at the images the rolled-back services now run (digest mode: the pinned gaia ref; last mode: each rolled-back service's restored image spec), so the alias keeps tracking production through rollbacks too.
+
+### `.github/workflows/deploy-web.yml`
+1. Triggers on `push: master` (paths `apps/web/**`, `libs/shared/ts/**`, `wrangler.jsonc`, `open-next.config.ts`, `next.config.mjs`) and `pull_request: master` (same paths) plus manual `workflow_dispatch`.
+2. `build`: checkout → `setup-node-pnpm` + `restore-nextjs-cache` + `.nx/cache` → `preflight` (best-effort Workers Builds API probe, never blocks) → `pnpm --filter ./apps/web cf:build` timed via `time` → upload `apps/web/.open-next` artifact → report duration to `$GITHUB_STEP_SUMMARY` (`::notice`) and fail visibly (`::error` + summary on failure). Concurrency `deploy-web-${{ github.ref }}` with `cancel-in-progress: false` so rapid master merges queue rather than drop the deploy.
+3. `deploy-prod`: gated `if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'`, `environment: production`, downloads artifact, verifies `worker.js` exists, then `cloudflare/wrangler-action@v3` with `command: deploy --config apps/web/wrangler.jsonc`. Reports duration and success URL; fails visibly with token-scope hint on error.
+4. `preview`: gated `if: github.event_name == 'pull_request'`, uploads preview version via `command: versions upload --preview-alias pr-${{ github.event.number }} --config apps/web/wrangler.jsonc`, reports duration, comments PR with expected preview URL. Requires Workers Versions / Gradual Rollouts enabled; `preview_urls: false` in `wrangler.jsonc` means the alias URL is only reachable if routing is configured.
+
+> Workers Builds (dashboard git auto-deploy) must be **disabled** — see `docs/cloudflare-workers-builds.md` and `scripts/ci/disable-cf-builds.sh`. The workflow header comments the exact dashboard steps and the `preflight` API probe.
 
 ### `.github/workflows/release-please.yml`
 1. Enforce `master` ref (manual runs on non-master fail fast).
@@ -148,7 +156,8 @@ flowchart TD
 - `.github/workflows/main.yml`: CI correctness gate (build + tests). Python tests run runner-native against live service containers.
 - `.github/workflows/code-quality.yml`: code-hygiene lanes (lint/type/dead-code/complexity/security) behind the ratcheted `Quality gate (required)` check.
 - `.github/workflows/build.yml`: Docker image build/publish via Dagger, deploy planning, and deploy triggers.
-- `.github/workflows/deploy-swarm-prod.yml`: production backend deploy and rollback via Docker Swarm stack on Hetzner VM. (The hosted frontend deploys itself via Cloudflare Workers Builds — no CI workflow involved.)
+- `.github/workflows/deploy-swarm-prod.yml`: production backend deploy and rollback via Docker Swarm stack on Hetzner VM.
+- `.github/workflows/deploy-web.yml`: Cloudflare Workers frontend deploy — builds `pnpm --filter ./apps/web cf:build`, deploys via `cloudflare/wrangler-action@v3` on `push: master` (paths `apps/web/**`), preview alias `pr-<n>` on PRs. Reports duration, fails visibly, uses `environment: production`. Workers Builds auto-deploy must be disabled (see `docs/cloudflare-workers-builds.md`).
 - `.github/workflows/release-please.yml`: release PR/tag automation and CLI publish dispatch.
 - `.github/workflows/publish-cli.yml`: CLI package validation/build/publish workflow.
 - `.github/workflows/desktop-release.yml`: desktop installer build and release-asset upload.

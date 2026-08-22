@@ -2,15 +2,32 @@ name: Setup Python test environment
 description: >
   Prepare the runner to execute the API pytest suite against live services:
   install Node + pnpm deps (the device-bridge e2e tests drive the real
-  `gaia bridge` CLI via tsx), sync Python deps with uv, and start
+  `gaia bridge` CLI via tsx) when requested, sync Python deps with uv, and start
   PostgreSQL/Redis/MongoDB/ChromaDB/RabbitMQ containers on the local Docker
   daemon. Mirrors the topology of `dagger call test-python` so the suite runs
   identically in CI and in the local Dagger harness.
+
+inputs:
+  install-node:
+    description: >
+      Whether to install Node.js + pnpm. The pytest suite and the coverage
+      merge job do not need it (the device-bridge e2e tests that do are not in
+      the sharded selection); skipping Node saves ~56-75s per job.
+    required: false
+    default: "true"
+  restore-models:
+    description: >
+      Whether to restore/prefetch the ~1.3GB embedding models. Only jobs that
+      run memory/embedding tests need them; the coverage merge job downloads
+      and pre-uploads 1.3GB it never uses (wasted restore time on every run).
+    required: false
+    default: "true"
 
 runs:
   using: composite
   steps:
     - name: Setup Node.js + pnpm
+      if: inputs.install-node == 'true'
       uses: ./.github/actions/setup-node-pnpm
 
     - name: Setup uv
@@ -63,14 +80,15 @@ runs:
     # where a failure is loud and names itself, and cache them so the download
     # happens once per key rather than on every run.
     - name: Restore embedding models
+      if: inputs.restore-models == 'true'
       id: model-cache
-      uses: actions/cache/restore@v6
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: /tmp/fastembed_cache
         key: fastembed-${{ runner.os }}-${{ hashFiles('apps/api/app/constants/memory.py', 'uv.lock') }}
 
     - name: Prefetch embedding models
-      if: steps.model-cache.outputs.cache-hit != 'true'
+      if: inputs.restore-models == 'true' && steps.model-cache.outputs.cache-hit != 'true'
       shell: bash
       working-directory: apps/api
       # Goes through the app's own loaders, so the models, cache dir and ONNX
@@ -101,8 +119,8 @@ runs:
     # Only reached when the prefetch above succeeded, so a poisoned partial
     # download is never what gets cached for every later run.
     - name: Save embedding models
-      if: steps.model-cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v6
+      if: inputs.restore-models == 'true' && steps.model-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: /tmp/fastembed_cache
         key: fastembed-${{ runner.os }}-${{ hashFiles('apps/api/app/constants/memory.py', 'uv.lock') }}
