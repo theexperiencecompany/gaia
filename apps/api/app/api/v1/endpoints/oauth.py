@@ -35,7 +35,24 @@ from shared.py.wide_events import OAuthContext, log
 router = APIRouter()
 http_async_client = httpx.AsyncClient()
 
-workos = WorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID)
+
+def _workos() -> WorkOSClient:
+    """The WorkOS client for this module's routes, built on first use.
+
+    Module-level construction crashed every AUTH_MODE=local boot (self-host
+    has no WorkOS credentials at all); these routes are workos-mode-only and
+    the middleware already gates them, so lazy is sufficient — a local-mode
+    request can never reach here.
+    """
+    global _workos_client
+    if _workos_client is None:
+        _workos_client = WorkOSClient(
+            api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID
+        )
+    return _workos_client
+
+
+_workos_client: WorkOSClient | None = None
 
 
 @router.get("/client-metadata.json")
@@ -88,7 +105,7 @@ async def login_workos(return_url: str | None = None) -> RedirectResponse:
     if return_url:
         await redis_cache.client.setex(f"oauth_return_url:{state}", 600, return_url)
 
-    authorization_url = workos.user_management.get_authorization_url(
+    authorization_url = _workos().user_management.get_authorization_url(
         provider="authkit",
         redirect_uri=settings.WORKOS_REDIRECT_URI,
         state=state,
@@ -141,7 +158,7 @@ async def login_workos_mobile(redirect_uri: str | None = None) -> MobileLoginUrl
         state_prefix=state[:8],
     )
 
-    authorization_url = workos.user_management.get_authorization_url(
+    authorization_url = _workos().user_management.get_authorization_url(
         provider="authkit",
         redirect_uri=settings.WORKOS_MOBILE_REDIRECT_URI,
         state=state,
@@ -173,7 +190,7 @@ async def login_google_mobile(redirect_uri: str | None = None) -> MobileLoginUrl
         state_prefix=state[:8],
     )
 
-    authorization_url = workos.user_management.get_authorization_url(
+    authorization_url = _workos().user_management.get_authorization_url(
         provider="GoogleOAuth",
         redirect_uri=settings.WORKOS_MOBILE_REDIRECT_URI,
         state=state,
@@ -216,7 +233,7 @@ async def workos_mobile_callback(
             )
             return RedirectResponse(url=f"{mobile_redirect}?error=missing_code")
 
-        auth_response = workos.user_management.authenticate_with_code(
+        auth_response = _workos().user_management.authenticate_with_code(
             code=code,
             session={
                 "seal_session": True,
@@ -288,7 +305,7 @@ async def login_workos_desktop() -> RedirectResponse:
         oauth_flow_type=OAUTH_FLOW_DESKTOP,
         oauth=OAuthContext(operation="authorize", provider="authkit"),
     )
-    authorization_url = workos.user_management.get_authorization_url(
+    authorization_url = _workos().user_management.get_authorization_url(
         provider="authkit",
         redirect_uri=settings.WORKOS_DESKTOP_REDIRECT_URI,
     )
@@ -323,7 +340,7 @@ async def workos_desktop_callback(
             )
             return RedirectResponse(url=f"{DESKTOP_DEEP_LINK}?error=missing_code")
 
-        auth_response = workos.user_management.authenticate_with_code(
+        auth_response = _workos().user_management.authenticate_with_code(
             code=code,
             session={
                 "seal_session": True,
@@ -418,7 +435,7 @@ async def workos_callback(
             )
             return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=missing_code")
 
-        auth_response = workos.user_management.authenticate_with_code(
+        auth_response = _workos().user_management.authenticate_with_code(
             code=code,
             session={
                 "seal_session": True,

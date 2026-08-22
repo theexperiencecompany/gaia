@@ -37,7 +37,20 @@ from shared.py.wide_events import log
 
 router = APIRouter()
 
-workos = WorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID)
+
+def _workos() -> WorkOSClient:
+    """Lazy WorkOS client (see oauth._workos): module-level construction
+    crashed AUTH_MODE=local boots; the logout route only touches it in
+    workos mode."""
+    global _workos_client
+    if _workos_client is None:
+        _workos_client = WorkOSClient(
+            api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID
+        )
+    return _workos_client
+
+
+_workos_client: WorkOSClient | None = None
 
 
 # exclude_none: the per-auth-path flags (impersonated/bot_authenticated/dev_bypass)
@@ -369,7 +382,7 @@ async def logout(
     try:
         log.set(operation="logout")
 
-        session = workos.user_management.load_sealed_session(
+        session = _workos().user_management.load_sealed_session(
             sealed_session=wos_session,
             cookie_password=settings.WORKOS_COOKIE_PASSWORD,
         )
