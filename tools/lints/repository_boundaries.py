@@ -246,6 +246,7 @@ def _signature_violations(tree: ast.Module) -> list[tuple[int, str, str]]:
 
 
 def check(files: list[Path]) -> list[Violation]:
+    """Flag repository-boundary violations (imports, signatures, hand-caching) in ``files``."""
     violations: list[Violation] = []
     for path in files:
         app_rel = _app_relative(path)
