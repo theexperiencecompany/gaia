@@ -22,6 +22,7 @@ import pytest
 from app.constants.log_tags import LogTag
 from app.models.scheduler_models import ScheduledTaskStatus
 from app.services.workflow.scheduler import WorkflowScheduler
+from app.workers.tasks.workflow_tasks import execute_workflow_by_id
 
 
 @pytest.fixture(autouse=True)
@@ -220,7 +221,8 @@ def _gate_claim(workflow: MagicMock, calls: list[tuple[str, datetime | None]]):
 @pytest.mark.unit
 class TestWorkerRejectsStaleFire:
     @staticmethod
-    def _scheduled_workflow(next_run: datetime):
+    @staticmethod
+    def _scheduled_workflow(next_run: datetime) -> MagicMock:
         workflow = MagicMock()
         workflow.id = f"wf_{uuid4().hex[:12]}"
         workflow.user_id = "user_abc"
@@ -232,11 +234,15 @@ class TestWorkerRejectsStaleFire:
     @staticmethod
     async def _run_fire(
         context: dict[str, Any], *, next_run: datetime | None = None
-    ) -> tuple[MagicMock, MagicMock, list[tuple[str, datetime | None]], str]:
+    ) -> tuple[
+        MagicMock,
+        MagicMock,
+        list[tuple[str, datetime | None]],
+        str,
+        MagicMock,
+    ]:
         """Drive one fire through execute_workflow_by_id with every seam
         mocked; returns (workflow, scheduler, claim_calls, result)."""
-        from app.workers.tasks.workflow_tasks import execute_workflow_by_id
-
         workflow = TestWorkerRejectsStaleFire._scheduled_workflow(next_run or datetime.now(UTC))
         scheduler = AsyncMock()
         scheduler.get_task = AsyncMock(return_value=workflow)
@@ -277,8 +283,6 @@ class TestWorkerRejectsStaleFire:
         """A scheduled fire armed for 16:00 that fires after the workflow was
         rescheduled to 21:00 is rejected by the gate and skipped without
         executing or re-arming."""
-        from app.workers.tasks.workflow_tasks import execute_workflow_by_id
-
         old_fire = datetime.now(UTC).replace(microsecond=0)
         new_fire = old_fire + timedelta(hours=5)
 
