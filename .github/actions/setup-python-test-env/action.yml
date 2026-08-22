@@ -2,15 +2,25 @@ name: Setup Python test environment
 description: >
   Prepare the runner to execute the API pytest suite against live services:
   install Node + pnpm deps (the device-bridge e2e tests drive the real
-  `gaia bridge` CLI via tsx), sync Python deps with uv, and start
+  `gaia bridge` CLI via tsx) when requested, sync Python deps with uv, and start
   PostgreSQL/Redis/MongoDB/ChromaDB/RabbitMQ containers on the local Docker
   daemon. Mirrors the topology of `dagger call test-python` so the suite runs
   identically in CI and in the local Dagger harness.
+
+inputs:
+  install-node:
+    description: >
+      Whether to install Node.js + pnpm. The pytest suite and the coverage
+      merge job do not need it (the device-bridge e2e tests that do are not in
+      the sharded selection); skipping Node saves ~56-75s per job.
+    required: false
+    default: "true"
 
 runs:
   using: composite
   steps:
     - name: Setup Node.js + pnpm
+      if: inputs.install-node == 'true'
       uses: ./.github/actions/setup-node-pnpm
 
     - name: Setup uv

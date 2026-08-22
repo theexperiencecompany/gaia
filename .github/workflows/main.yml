@@ -103,6 +103,15 @@ jobs:
       # Without a warm compiler cache every PR pays a full cold `next build`
       # (~4 min, the job's critical path).
       - uses: ./.github/actions/restore-nextjs-cache
+      # Warm .nx/outputs from the last green master run so only the affected
+      # projects rebuild — measured 120-200s saved vs a cold build.
+      - name: Restore Nx cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','nx.json','**/project.json') }}-${{ hashFiles('apps/**','libs/**') }}
+          restore-keys: |
+            nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','nx.json','**/project.json') }}-
       - name: Build
         env:
           NEXT_PUBLIC_API_BASE_URL: "http://fake-api-for-build.example.com"
@@ -127,7 +136,8 @@ jobs:
   # Same service topology as `dagger call test-python` (the local harness),
   # run directly on the runner — rebuilding the Dagger env cold cost ~5 min
   # per run for a ~2.5 min suite.
-  # Sharded 4-way via pytest-split (2.8m vs 10m serial, ~5.5m was 2-way, ~3.8m was 3-way) — each shard boots
+  # Sharded 6-way via pytest-split (measured 260s max-shard + ~2m coverage merge
+  # vs 370s max-shard at 4-way; 6-way + no Node in shards ran 8.6m total) — each shard boots
   # the same live services via setup-python-test-env (no service: duplication),
   # measures its subset's coverage to a per-shard data file, and uploads
   # that file; test-python-coverage (below) combines them and enforces the
@@ -140,15 +150,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
-    name: test-python (shard ${{ matrix.shard }}/4)
+        shard: [1, 2, 3, 4, 5, 6]
+    name: test-python (shard ${{ matrix.shard }}/6)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
       # Also exports the suite's service env (URLs, ENV, USE_REAL_SERVICES).
+      # install-node: false — the sharded selection doesn't drive the
+      # device-bridge CLI; skipping pnpm saves ~56-75s per shard (measured
+      # green in the 6-shard era, 8.6m total vs 13.4m with Node).
       - uses: ./.github/actions/setup-python-test-env
+        with:
+          install-node: "false"
       - name: Restore pytest-split cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -157,20 +172,20 @@ jobs:
           restore-keys: |
             pytest-split-${{ runner.os }}-${{ hashFiles('apps/api/tests/**/*.py','apps/api/pyproject.toml','uv.lock') }}-
             pytest-split-${{ runner.os }}-
-      - name: Run Python tests (shard ${{ matrix.shard }}/4)
+      - name: Run Python tests (shard ${{ matrix.shard }}/6)
         working-directory: apps/api
         env:
           COVERAGE_FILE: .coverage.${{ matrix.shard }}
         run: |
           trap 'echo "::error::repro: bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest"' ERR
           bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest -n auto -m 'not composio and not model_onboarding and not schemathesis' \
-            --splits 4 --group ${{ matrix.shard }} \
+            --splits 6 --group ${{ matrix.shard }} \
             --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
             --cov=app --cov-report=term-missing --cov-report=xml:coverage.${{ matrix.shard }}.xml \
             --cov-fail-under=0 \
             --junitxml=test-results/pytest-${{ matrix.shard }}.xml --durations=50 2>&1 | tee /tmp/python-tests.out; _rc=${PIPESTATUS[0]}; cat /tmp/python-tests.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
-          echo "Python tests shard ${{ matrix.shard }}/4: OK"
-          echo "### Python tests shard ${{ matrix.shard }}/4 — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Python tests shard ${{ matrix.shard }}/6: OK"
+          echo "### Python tests shard ${{ matrix.shard }}/6 — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
       - name: Save pytest-split cache
         if: always()
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -210,7 +225,11 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      # This job merges .coverage files and runs schemathesis/gaia-shared;
+      # none of them drive the device-bridge CLI, so skip Node (~56-75s).
       - uses: ./.github/actions/setup-python-test-env
+        with:
+          install-node: "false"
       - name: Download shard artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
