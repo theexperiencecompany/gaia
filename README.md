@@ -17,7 +17,7 @@ You set none of that up. It's running the moment you connect.
 
 And when something needs you, it comes to you — on iMessage, WhatsApp, Telegram, Slack or Discord.
 
-## The work that isn't work
+## Why GAIA
 
 Triaging mail. Prepping for a meeting. Chasing an update. Copying a task from one tool into another. Writing the same status post every Friday.
 
@@ -25,7 +25,11 @@ None of it is your job. Each one costs two minutes. Together they cost your afte
 
 **GAIA does that whole layer for you.** Not by giving you another app to drive, but by doing the work and telling you when it's done.
 
-## Your day, handled
+## Proactivity
+
+GAIA does the work before you ask, then tells you. This is the part that makes it an assistant rather than a chat window.
+
+### A day with GAIA
 
 | | |
 | --- | --- |
@@ -41,18 +45,7 @@ That's a normal day. You didn't open GAIA once.
 
 **$1 a day to never do busywork again.**
 
-## Things people actually ask it
-
-The day above runs on its own. This is what you ask it directly.
-
-- **"Summarise my 47 unread emails and draft replies for the 3 that need one."** Reads every thread end to end, ranks by what matters, drafts in your voice.
-- **"Turn this call transcript into action items, assign owners and add them to Linear."** Pulls out the decisions, matches them to projects, files the issues.
-- **"Draft follow-ups to every email I sent three days ago that nobody answered."** Sweeps your sent mail, writes a personalised nudge per thread.
-- **"Research these 10 companies into a table with pricing, team size and funding."** Multi-source research, structured output, ready to paste.
-- **"Clean up this CSV, chart the outliers and send me the deck."** Writes real Python, runs it in a real sandbox, hands back a real `.pptx`.
-- **"Now run that every Monday at 9am."** Any of the above becomes a standing job — which is the next section.
-
-## Things it does without being asked
+### Built-in workflows
 
 The other half, and the reason GAIA isn't a chatbot. These are **workflows** — jobs it runs on its own — and a few switch on by themselves the moment you connect a tool.
 
@@ -63,7 +56,11 @@ The other half, and the reason GAIA isn't a chatbot. These are **workflows** —
 | **Meeting Briefing** | Calendar | Researches who you're meeting and what it's about, before you walk in |
 | **Meeting Reminder** | Calendar | A heads-up 10 minutes out, join link included |
 
-You'll never open a settings screen for those. Build your own from the **Workflows** page:
+You'll never open a settings screen for those.
+
+### Custom workflows
+
+Build your own from the **Workflows** page:
 
 - **Describe it in plain English** — GAIA writes the steps for you
 - **Run it on a schedule** — "every weekday at 9am"
@@ -72,7 +69,58 @@ You'll never open a settings screen for those. Build your own from the **Workflo
 
 People automate email triage and follow-ups, meeting briefings, action items out of transcripts, todo creation and replanning, Friday digests pulled from GitHub, Linear and Slack, competitor research into a table, and the spreadsheet clean-up they'd otherwise do by hand at 6pm.
 
-## Use GAIA from anywhere
+## Examples
+
+The day above runs on its own. This is what you ask it directly.
+
+- **"Summarise my 47 unread emails and draft replies for the 3 that need one."** Reads every thread end to end, ranks by what matters, drafts in your voice.
+- **"Turn this call transcript into action items, assign owners and add them to Linear."** Pulls out the decisions, matches them to projects, files the issues.
+- **"Draft follow-ups to every email I sent three days ago that nobody answered."** Sweeps your sent mail, writes a personalised nudge per thread.
+- **"Research these 10 companies into a table with pricing, team size and funding."** Multi-source research, structured output, ready to paste.
+- **"Clean up this CSV, chart the outliers and send me the deck."** Writes real Python, runs it in a real sandbox, hands back a real `.pptx`.
+- **"Now run that every Monday at 9am."** Any of the above becomes a standing job — which is the next section.
+
+## Features
+
+### Memory
+
+- Learns as you talk — you never have to say "remember this"
+- Keeps the people, projects and preferences that come up, plus a journal of recent days
+- All of it visible on the **Memory** page as a list or a graph
+- Edit, export or delete any of it in a click
+
+### Voice
+
+- Say **"Hey GAIA"** and start talking
+- The wake word runs on your device — no audio leaves your machine until you say it, and [the model is right here](libs/wake-word) if you want to check
+- Calls are real-time and interruptible, with background noise filtered out
+
+### One workspace
+
+- Your **inbox**, **calendar**, **todos** and **workflows**, with a **dashboard** over the top
+- Whatever it did while you were gone waits in **notifications** — approve it, edit it, or dismiss it
+
+### Code, research and documents
+
+- **Writes and runs real code.** Every user gets a sandboxed Linux workspace. It can analyse a dataset, run the script and hand back a PDF, Word doc, deck or spreadsheet.
+- **Researches properly.** Multi-source web research, not a single search box.
+- **Learns new abilities.** 37 built-in skills on the open [Agent Skills spec](https://agentskills.io), plus any you install from GitHub or write yourself.
+- **Runs on any model.** OpenAI, Gemini, Grok and OpenRouter — which covers Claude and most everything else. Self-hosters swap freely.
+
+## Integrations
+
+- **32 services, one click.** Gmail, Calendar, Slack, Notion, Linear, GitHub, Sheets, Todoist, Trello, HubSpot and more. Each gets its own specialist agent.
+- **Anything else, via MCP.** [Model Context Protocol](https://modelcontextprotocol.io) is the open standard for plugging tools into AI models. Point GAIA at any MCP server and its tools work immediately — no fixed catalogue, no waiting on us.
+- **A marketplace.** Browse what the community published, or publish your own.
+- **Tools on your own computer.** `gaia bridge` links your laptop over one outgoing connection — nothing to forward, no ports to open.
+
+```bash
+gaia bridge login          # approve the pairing in your browser
+gaia bridge fs ~/projects  # share a folder
+gaia bridge up             # connect
+```
+
+## Platforms
 
 | | Platform | How |
 | --- | --- | --- |
@@ -86,47 +134,7 @@ People automate email triage and follow-ups, meeting briefings, action items out
 - It's all one account — a chat you start on Telegram shows up in the web app
 - Same memory everywhere, no matter where you talk to it
 
-## Connect anything
-
-- **32 services, one click.** Gmail, Calendar, Slack, Notion, Linear, GitHub, Sheets, Todoist, Trello, HubSpot and more. Each gets its own specialist agent.
-- **Anything else, via MCP.** [Model Context Protocol](https://modelcontextprotocol.io) is the open standard for plugging tools into AI models. Point GAIA at any MCP server and its tools work immediately — no fixed catalogue, no waiting on us.
-- **A marketplace.** Browse what the community published, or publish your own.
-- **Tools on your own computer.** `gaia bridge` links your laptop over one outgoing connection — nothing to forward, no ports to open.
-
-```bash
-gaia bridge login          # approve the pairing in your browser
-gaia bridge fs ~/projects  # share a folder
-gaia bridge up             # connect
-```
-
-## What else it does
-
-### Remembers you
-
-- Learns as you talk — you never have to say "remember this"
-- Keeps the people, projects and preferences that come up, plus a journal of recent days
-- All of it visible on the **Memory** page as a list or a graph
-- Edit, export or delete any of it in a click
-
-### Listens to you
-
-- Say **"Hey GAIA"** and start talking
-- The wake word runs on your device — no audio leaves your machine until you say it, and [the model is right here](libs/wake-word) if you want to check
-- Calls are real-time and interruptible, with background noise filtered out
-
-### Puts everything in one place
-
-- Your **inbox**, **calendar**, **todos** and **workflows**, with a **dashboard** over the top
-- Whatever it did while you were gone waits in **notifications** — approve it, edit it, or dismiss it
-
-### Gets real work done
-
-- **Writes and runs real code.** Every user gets a sandboxed Linux workspace. It can analyse a dataset, run the script and hand back a PDF, Word doc, deck or spreadsheet.
-- **Researches properly.** Multi-source web research, not a single search box.
-- **Learns new abilities.** 37 built-in skills on the open [Agent Skills spec](https://agentskills.io), plus any you install from GitHub or write yourself.
-- **Runs on any model.** OpenAI, Gemini, Grok and OpenRouter — which covers Claude and most everything else. Self-hosters swap freely.
-
-## Choose a starting point
+## Getting started
 
 | If you want to… | Go here |
 | --- | --- |
@@ -135,8 +143,6 @@ gaia bridge up             # connect
 | Run it on your own machines | `npm i -g @heygaia/cli && gaia init` — or the [guide](https://docs.heygaia.io/self-hosting/overview) |
 | Contribute | [Development Setup](https://docs.heygaia.io/developers/development-setup) |
 | See how it's built | [ARCHITECTURE.md](./ARCHITECTURE.md) |
-
-## Getting started
 
 ### Cloud — recommended
 
