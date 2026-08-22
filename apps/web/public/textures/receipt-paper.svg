@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="520" viewBox="0 0 360 520">
+  <defs>
+    <filter id="paper" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.008 0.016" numOctaves="4" seed="17" stitchTiles="stitch" result="coarse" />
+      <feDiffuseLighting in="coarse" surfaceScale="3.2" diffuseConstant="0.72" lighting-color="#ffffff" result="coarse-light">
+        <feDistantLight azimuth="225" elevation="55" />
+      </feDiffuseLighting>
+      <feTurbulence type="fractalNoise" baseFrequency="0.09 0.12" numOctaves="2" seed="31" stitchTiles="stitch" result="fine" />
+      <feDiffuseLighting in="fine" surfaceScale="0.55" diffuseConstant="0.55" lighting-color="#ffffff" result="fine-light">
+        <feDistantLight azimuth="205" elevation="65" />
+      </feDiffuseLighting>
+      <feBlend in="coarse-light" in2="fine-light" mode="multiply" result="combined" />
+      <feComponentTransfer in="combined">
+        <feFuncR type="linear" slope="0.42" intercept="0.29" />
+        <feFuncG type="linear" slope="0.42" intercept="0.29" />
+        <feFuncB type="linear" slope="0.42" intercept="0.29" />
+      </feComponentTransfer>
+    </filter>
+  </defs>
+  <rect width="360" height="520" fill="#808080" filter="url(#paper)" />
+</svg>
