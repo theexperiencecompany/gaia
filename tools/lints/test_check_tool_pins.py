@@ -10,6 +10,9 @@ def test_real_tree_is_consistent() -> None:
     root = Path(__file__).resolve().parents[2]
     result = subprocess.run(
         ["python3", "tools/lints/check_tool_pins.py"],
-        cwd=root, capture_output=True, text=True, check=False,
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert result.returncode == 0, result.stderr

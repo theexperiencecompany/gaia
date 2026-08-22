@@ -118,7 +118,7 @@ def fires(entry: Entry) -> bool:
             capture_output=True,
             text=True,
             check=False,
-        )
+        )  # nosec B603 -- argv is a constant list plus our own resolved paths; nothing user-controlled
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
     # concise output: one "path:line:col: RULE msg" line per finding. Success

@@ -73,9 +73,7 @@ def _missing(tool: str, version: str) -> list[Path]:
         text = surface.read_text(encoding="utf-8")
         if tool == "ruff":
             # pre-commit expresses this as a rev under the ruff-pre-commit repo
-            pat = re.compile(
-                rf"ruff-pre-commit\n\s*rev:\s*v{re.escape(version)}"
-            )
+            pat = re.compile(rf"ruff-pre-commit\n\s*rev:\s*v{re.escape(version)}")
             if pat.search(text):
                 continue
         if f"{tool}@{version}" in text or f"{tool}=={version}" in text:
