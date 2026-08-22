@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  group: ci-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -127,7 +127,7 @@ jobs:
   # Same service topology as `dagger call test-python` (the local harness),
   # run directly on the runner — rebuilding the Dagger env cold cost ~5 min
   # per run for a ~2.5 min suite.
-  # Sharded 3-way via pytest-split (3.8m vs 10m serial, ~5.5m was 2-way) — each shard boots — each shard boots
+  # Sharded 4-way via pytest-split (2.8m vs 10m serial, ~5.5m was 2-way, ~3.8m was 3-way) — each shard boots
   # the same live services via setup-python-test-env (no service: duplication),
   # measures its subset's coverage to a per-shard data file, and uploads
   # that file; test-python-coverage (below) combines them and enforces the
@@ -140,8 +140,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
-    name: test-python (shard ${{ matrix.shard }}/3)
+        shard: [1, 2, 3, 4]
+    name: test-python (shard ${{ matrix.shard }}/4)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -157,20 +157,20 @@ jobs:
           restore-keys: |
             pytest-split-${{ runner.os }}-${{ hashFiles('apps/api/tests/**/*.py','apps/api/pyproject.toml','uv.lock') }}-
             pytest-split-${{ runner.os }}-
-      - name: Run Python tests (shard ${{ matrix.shard }}/3)
+      - name: Run Python tests (shard ${{ matrix.shard }}/4)
         working-directory: apps/api
         env:
           COVERAGE_FILE: .coverage.${{ matrix.shard }}
         run: |
           trap 'echo "::error::repro: bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest"' ERR
           bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest -n auto -m 'not composio and not model_onboarding and not schemathesis' \
-            --splits 3 --group ${{ matrix.shard }} \
+            --splits 4 --group ${{ matrix.shard }} \
             --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
-            --cov=app --cov-report=xml:coverage.${{ matrix.shard }}.xml \
+            --cov=app --cov-report=term-missing --cov-report=xml:coverage.${{ matrix.shard }}.xml \
             --cov-fail-under=0 \
             --junitxml=test-results/pytest-${{ matrix.shard }}.xml --durations=50 2>&1 | tee /tmp/python-tests.out; _rc=${PIPESTATUS[0]}; cat /tmp/python-tests.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
-          echo "Python tests shard ${{ matrix.shard }}/3: OK"
-          echo "### Python tests shard ${{ matrix.shard }}/3 — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Python tests shard ${{ matrix.shard }}/4: OK"
+          echo "### Python tests shard ${{ matrix.shard }}/4 — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
       - name: Save pytest-split cache
         if: always()
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -267,6 +267,15 @@ jobs:
             --override-ini=addopts=--strict-markers --timeout=600
           echo "Schemathesis: OK"
           echo "### Schemathesis — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+      - name: Run gaia-shared tests
+        working-directory: apps/api
+        run: |
+          trap 'echo "::error::repro: uv run --frozen pytest ../../libs/shared/py/tests"' ERR
+          uv run --frozen pytest ../../libs/shared/py/tests \
+            --tb=short -q --override-ini=addopts=--strict-markers
+          echo "gaia-shared tests: OK"
+          echo "### gaia-shared tests — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+
 # --- Test: Python fast lane (hermetic, no containers) -------------------
   # The fast-suite invariant, enforced: the hermetic default selection (what
   # `nx test api` runs locally) must finish inside the budget with NO service
@@ -472,7 +481,6 @@ jobs:
       - build
       - test-python
       - test-python-coverage
-      - test-gaia-shared
       - test-typescript
       - test-fast
       - test-harness-tools
@@ -491,8 +499,6 @@ jobs:
           echo "  detect:             ${{ needs.detect.result }}"
           echo "  build:              ${{ needs.build.result }}"
           echo "  test-python:        ${{ needs.test-python.result }}"
-          echo "  test-python-coverage: ${{ needs.test-python-coverage.result }}"
-          echo "  test-gaia-shared:   ${{ needs.test-gaia-shared.result }}"
           echo "  test-typescript:    ${{ needs.test-typescript.result }}"
           echo "  test-fast:          ${{ needs.test-fast.result }}"
           echo "  test-harness-tools: ${{ needs.test-harness-tools.result }}"
@@ -507,7 +513,6 @@ jobs:
             echo "| build | ${{ needs.build.result }} |"
             echo "| test-python | ${{ needs.test-python.result }} |"
             echo "| test-python-coverage | ${{ needs.test-python-coverage.result }} |"
-            echo "| test-gaia-shared | ${{ needs.test-gaia-shared.result }} |"
             echo "| test-fast | ${{ needs.test-fast.result }} |"
             echo "| test-typescript | ${{ needs.test-typescript.result }} |"
             echo "| test-harness-tools | ${{ needs.test-harness-tools.result }} |"
@@ -519,7 +524,6 @@ jobs:
             "${{ needs.build.result }}" \
             "${{ needs.test-python.result }}" \
             "${{ needs.test-python-coverage.result }}" \
-            "${{ needs.test-gaia-shared.result }}" \
             "${{ needs.test-typescript.result }}" \
             "${{ needs.test-fast.result }}" \
             "${{ needs.test-harness-tools.result }}" \
