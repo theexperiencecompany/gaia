@@ -1369,3 +1369,271 @@ class TestDigestKBFigure:
             existing_additional_kwargs={},
         )
         assert "97.7 KB" in msg.content
+
+
+class TestSignatureDefaultsAndBranches:
+    """Signature defaults and branch polarity on compact_tool_output itself."""
+
+    def test_default_always_persist_is_false(self) -> None:
+        """Without always_persist, a small output must stay inline."""
+        result = asyncio.run(
+            cm.compact_tool_output(
+                content="small",
+                tool_name="search",
+                tool_call_id="c1",
+                user_id="u1",
+                conversation_id="c1",
+                context_usage=0.0,
+                max_output_chars=100_000,
+                compaction_threshold=0.4,
+            )
+        )
+        assert result is None
+
+    def test_small_output_stays_inline_without_always_persist(self) -> None:
+        """The default always_persist=False must leave small outputs inline."""
+        result = asyncio.run(
+            cm.compact_tool_output(
+                content="small output",
+                tool_name="search",
+                tool_call_id="c1",
+                user_id="u1",
+                conversation_id="c1",
+                context_usage=0.0,
+                max_output_chars=100_000,
+                compaction_threshold=0.4,
+            )
+        )
+        assert result is None
+
+
+class TestNoWorkspaceIdentityWarningPayload:
+    async def test_warning_kwargs_are_exact(self) -> None:
+        log = _StubLog()
+
+        async def fake_digest(llm, content_str, tool_name):
+            return "digest"
+
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(cm, "log", log)
+        try:
+            await cm.compact_tool_output(
+                content="x" * 5000,
+                tool_name="search",
+                tool_call_id="c1",
+                user_id=None,
+                conversation_id=None,
+                context_usage=0.5,
+                max_output_chars=100_000,
+                compaction_threshold=0.4,
+                summary_llm=_RecordingDigestModel(),
+            )
+        finally:
+            monkeypatch.undo()
+
+        matches = [(m, k) for m, k in log.records if "no workspace identity" in m]
+        assert len(matches) == 1
+        _, kwargs = matches[0]
+        # exact payload: nothing dropped or set to None
+        assert kwargs == {"tool_name": "search", "user_id": "missing", "conversation_id": "missing"}
+
+    async def test_partial_identity_shows_set(self) -> None:
+        log = _StubLog()
+
+        async def fake_digest(llm, content_str, tool_name):
+            return "d"
+
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(cm, "log", log)
+        try:
+            await cm.compact_tool_output(
+                content="x" * 5000,
+                tool_name="search",
+                tool_call_id="c1",
+                user_id="u1",
+                conversation_id=None,
+                context_usage=0.5,
+                max_output_chars=100_000,
+                compaction_threshold=0.4,
+                summary_llm=_RecordingDigestModel(),
+            )
+        finally:
+            monkeypatch.undo()
+
+        matches = [(m, k) for m, k in log.records if "no workspace identity" in m]
+        assert len(matches) == 1
+        assert matches[0][1] == {
+            "tool_name": "search",
+            "user_id": "set",
+            "conversation_id": "missing",
+        }
+
+
+class TestFullKwargsCapture:
+    """Patch every internal function, drive all three tiers, and assert the
+    EXACT kwargs each receives — any dropped or None'd kwarg fails."""
+
+    async def test_digest_path_kwargs(self) -> None:
+        import json as _json
+
+        calls = {}
+
+        async def fake_write(**kw):
+            return ("/host", "/workspace/sessions/c/tool_outputs/x.json")
+
+        async def fake_digest(llm, content_str, tool_name):
+            calls["digest"] = {"content_str": content_str, "tool_name": tool_name}
+            return "the digest"
+
+        captured_msg = {}
+
+        def fake_summarized(**kw):
+            calls["summarized"] = dict(kw)
+            msg = ToolMessage(
+                content=f"[{kw['tool_name']}] {kw['summary']}",
+                tool_call_id=kw["tool_call_id"],
+                name=kw["tool_name"],
+                status=kw["status"],
+            )
+            captured_msg["msg"] = msg
+            return msg
+
+        mw = WorkspaceCompactionMiddleware(max_output_chars=1000)
+        content = _json.dumps([{"i": i} for i in range(300)])
+
+        async def handler(_req):
+            return ToolMessage(content=content, tool_call_id="call_1", name="search")
+
+        request = SimpleNamespace(
+            tool_call={"name": "search", "id": "call_1", "args": {}},
+            runtime=SimpleNamespace(
+                config={"configurable": {"user_id": "u1", "vfs_session_id": "c1"}}
+            ),
+            state={"messages": []},
+        )
+
+        with (
+            patch.object(cm, "_write_raw_output", side_effect=fake_write),
+            patch.object(cm, "_llm_summarize_output", side_effect=fake_digest),
+            patch.object(cm, "_summarized_compact_message", side_effect=fake_summarized),
+        ):
+            await mw.awrap_tool_call(request, handler)
+
+        s = calls["summarized"]
+        assert s["summary"] == "the digest"
+        assert s["tool_name"] == "search"
+        assert s["tool_call_id"] == "call_1"
+        assert s["reason"].startswith("large_output")
+        assert s["status"] == "success"
+        assert s["content_str"] == content
+        assert s["spilled"] is not None
+        assert s["existing_additional_kwargs"] == {}
+
+    async def test_truncate_path_kwargs(self) -> None:
+        import json as _json
+
+        from app.agents.middleware import compaction as cm
+
+        calls = {}
+
+        async def fake_write(**kw):
+            raise RuntimeError("no storage")
+
+        async def fake_no_digest(llm, content_str, tool_name):
+            return None
+
+        def fake_truncate(**kw):
+            calls.update(kw)
+            return ToolMessage(
+                content="[Compacted in context]",
+                tool_call_id=kw["tool_call_id"],
+                name=kw["tool_name"],
+                status=kw["status"],
+            )
+
+        mw = WorkspaceCompactionMiddleware(max_output_chars=1000)
+        content = _json.dumps([{"i": i} for i in range(300)])
+
+        async def handler(_req):
+            return ToolMessage(content=content, tool_call_id="call_1", name="search")
+
+        request = SimpleNamespace(
+            tool_call={"name": "search", "id": "call_1", "args": {}},
+            runtime=SimpleNamespace(
+                config={"configurable": {"user_id": "u1", "vfs_session_id": "c1"}}
+            ),
+            state={"messages": []},
+        )
+
+        with (
+            patch.object(cm, "_write_raw_output", side_effect=fake_write),
+            patch.object(cm, "_llm_summarize_output", side_effect=fake_no_digest),
+            patch.object(cm, "_truncate_in_context", side_effect=fake_truncate),
+        ):
+            result = await mw.awrap_tool_call(request, handler)
+
+        assert calls["content_str"] == content
+        assert calls["tool_name"] == "search"
+        assert calls["tool_call_id"] == "call_1"
+        assert calls["reason"].startswith("large_output")
+        assert calls["status"] == "success"
+        assert calls["existing_additional_kwargs"] == {}
+
+    async def test_stub_spill_path_kwargs(self) -> None:
+        import json as _json
+
+        from app.agents.middleware import compaction as cm
+
+        calls = {}
+
+        async def fake_write(**kw):
+            return ("/host", "/workspace/sessions/c/x.json")
+
+        def fake_stub(**kw):
+            calls.update(kw)
+            return ToolMessage(
+                content=f"[{kw['tool_name']}] {kw['sandbox_path']}",
+                tool_call_id=kw["tool_call_id"],
+                name=kw["tool_name"],
+                status=kw["status"],
+            )
+
+        class _NoLLM(BaseChatModel):
+            @property
+            def _llm_type(self):
+                return "none"
+
+            def _generate(self, *a, **k):
+                raise NotImplementedError
+
+            async def _agenerate(self, messages, stop=None, run_manager=None, **k):
+                return ChatResult(generations=[ChatGeneration(message=AIMessage(content=""))])
+
+        mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=_NoLLM())
+        content = _json.dumps([{"i": i} for i in range(300)])
+
+        async def handler(_req):
+            return ToolMessage(content=content, tool_call_id="call_1", name="search")
+
+        request = SimpleNamespace(
+            tool_call={"name": "search", "id": "call_1", "args": {}},
+            runtime=SimpleNamespace(
+                config={"configurable": {"user_id": "u1", "vfs_session_id": "c1"}}
+            ),
+            state={"messages": []},
+        )
+
+        with (
+            patch.object(cm, "_llm_summarize_output", side_effect=lambda llm, c, t: None),
+            patch.object(cm, "_stub_spill_message", side_effect=fake_stub),
+        ):
+            await mw.awrap_tool_call(request, handler)
+
+        assert calls["fmt"] == "json"
+        assert calls["sandbox_path"] == "/workspace/sessions/c/x.json"
+        assert calls["content_str"] == content
+        assert calls["tool_name"] == "search"
+        assert calls["tool_call_id"] == "call_1"
+        assert calls["reason"].startswith("large_output")
+        assert calls["status"] == "success"
+        assert calls["existing_additional_kwargs"] == {}
