@@ -21,6 +21,7 @@ worthless late — a meeting reminder delayed by its window is a missed meeting.
 
 import json
 from typing import Any
+from uuid import uuid4
 
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
@@ -38,21 +39,36 @@ TRIGGER_BATCH_KEY = "trigger_batch:{workflow_id}"
 # events win and the overflow is logged rather than silently dropped.
 MAX_TRIGGER_BATCH_EVENTS = 50
 
-# The buffer only has to outlive its own deferred job. Sized well past the
-# window so a slow queue can't strand a batch, and short enough that an
-# abandoned workflow's payloads don't linger.
+# The buffer must outlive its own deferred job even when the worker lags —
+# a worker deploy or restart delays the run past the window, and an expired
+# buffer means the run fires against nothing and the events silently vanish
+# (observed live: a 1-minute window's 4x TTL lost a batch to a 268s worker
+# outage). The floor keeps short windows restart-proof; the multiplier keeps
+# long ones from lingering for an abandoned workflow.
 TRIGGER_BATCH_TTL_MULTIPLIER = 4
+TRIGGER_BATCH_TTL_FLOOR_SECONDS = 60 * 60
+
+# Window for per-email triggers that declare no interval (gmail_new_message).
+# Daily, deliberately: everything users build on this trigger is digest-shaped
+# (newsletter synthesis, deadline tracking, reply drafting), one free-tier run
+# costs the whole free daily budget, and a user who wants a faster cadence can
+# say so with a poll trigger's explicit interval.
+PER_EMAIL_FALLBACK_WINDOW_SECONDS = 24 * 60 * 60
 
 
 def coalesce_window_seconds(trigger_config: TriggerConfig) -> int:
     """Seconds to batch this trigger's events over, or 0 to fire immediately.
 
-    The window IS the user's configured poll interval, so "polls your inbox
-    every N minutes" finally describes what the workflow does.
+    A poll trigger's window IS its configured interval, so "polls your inbox
+    every N minutes" finally describes what the workflow does. The account-level
+    per-email trigger declares no interval at all, so it gets the daily fallback
+    — it fires once per inbound email, which is never a cadence anyone chose.
     """
     trigger_data = trigger_config.trigger_data
     if isinstance(trigger_data, GmailPollInboxConfig):
         return trigger_data.interval * 60
+    if trigger_config.trigger_name == "gmail_new_message":
+        return PER_EMAIL_FALLBACK_WINDOW_SECONDS
     return 0
 
 
@@ -90,7 +106,9 @@ async def buffer_trigger_event(
             max_batch=MAX_TRIGGER_BATCH_EVENTS,
         )
         buffered = MAX_TRIGGER_BATCH_EVENTS
-    await client.expire(key, window_seconds * TRIGGER_BATCH_TTL_MULTIPLIER)
+    await client.expire(
+        key, max(window_seconds * TRIGGER_BATCH_TTL_MULTIPLIER, TRIGGER_BATCH_TTL_FLOOR_SECONDS)
+    )
 
     # One id per workflow: while a batch run is queued or executing, every
     # further event's enqueue is deduped away and it simply rides the buffer.
@@ -144,3 +162,39 @@ async def drain_trigger_batch(batch_key: str) -> list[dict[str, Any]]:
                 batch_key=batch_key,
             )
     return events
+
+
+async def reschedule_if_refilled(
+    workflow_id: str, batch_key: str, window_seconds: int, context: dict[str, Any]
+) -> bool:
+    """Schedule a follow-up run when events landed while the current run held them.
+
+    An event arriving mid-run buffers fine, but its own enqueue is rejected —
+    the run's job id is still occupied — so without this check it would sit
+    stranded until the NEXT event happens to arrive. Called by the worker at the
+    end of a batched run; the fresh job needs a unique id for the same reason
+    (this run's id is not yet freed), and the empty-batch skip makes a rare
+    duplicate harmless.
+    """
+    client = redis_cache.redis
+    if client is None or await client.llen(batch_key) == 0:
+        return False
+
+    pool = await RedisPoolManager.get_pool()
+    await enqueue_worker_job(
+        pool,
+        "execute_workflow_by_id",
+        workflow_id,
+        {
+            **{k: v for k, v in context.items() if k != "trigger_data"},
+            "trigger_batch_key": batch_key,
+        },
+        _job_id=f"trigger_batch:{workflow_id}:refill:{uuid4().hex[:12]}",
+        _defer_by=window_seconds,
+    )
+    log.info(
+        f"{LogTag.TRIGGER} Trigger batch refilled mid-run — follow-up run scheduled",
+        workflow_id=workflow_id,
+        window_seconds=window_seconds,
+    )
+    return True

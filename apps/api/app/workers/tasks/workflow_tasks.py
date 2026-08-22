@@ -48,7 +48,11 @@ from app.models.workflow_models import (
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
 from app.services.notification_service import notification_service
-from app.services.triggers.batching import drain_trigger_batch
+from app.services.triggers.batching import (
+    coalesce_window_seconds,
+    drain_trigger_batch,
+    reschedule_if_refilled,
+)
 from app.services.user_service import get_user_by_id
 from app.services.workflow.conversation_service import (
     add_workflow_execution_messages,
@@ -498,19 +502,10 @@ async def execute_workflow_by_id(
 
         # A coalesced trigger run carries its events in Redis rather than in the
         # job payload, so that concurrent enqueues could dedup down to this one
-        # job. Collect them now — an empty batch means another run already took
-        # them and there is nothing left to do.
+        # job. Drained only AFTER the gates below — a run the onboarding or
+        # budget gate rejects must leave the buffer intact for a later run,
+        # not consume the events and discard them.
         batch_key = context.get("trigger_batch_key") if context else None
-        if batch_key:
-            events = await drain_trigger_batch(str(batch_key))
-            log.set_ns("workflow", trigger_batch_size=len(events))
-            if not events:
-                log.info(
-                    f"{LogTag.WORKER} Trigger batch already drained; skipping empty run",
-                    workflow_id=workflow_id,
-                )
-                return f"Workflow {workflow_id} skipped — trigger batch empty"
-            context = {**(context or {}), "trigger_data": {"events": events, "count": len(events)}}
 
         # Determine trigger type from context. An explicit trigger_type always
         # wins; only an ABSENT one falls back — to "integration" when the
@@ -576,6 +571,19 @@ async def execute_workflow_by_id(
             feature_key="trigger_workflow_executions",
         )
 
+        # Both gates passed — take the batch. An empty one means another run
+        # already drained these events and there is nothing left to do.
+        if batch_key:
+            events = await drain_trigger_batch(str(batch_key))
+            log.set_ns("workflow", trigger_batch_size=len(events))
+            if not events:
+                log.info(
+                    f"{LogTag.WORKER} Trigger batch already drained; skipping empty run",
+                    workflow_id=workflow_id,
+                )
+                return f"Workflow {workflow_id} skipped — trigger batch empty"
+            context = {**(context or {}), "trigger_data": {"events": events, "count": len(events)}}
+
         # Create execution record at start
         execution = await create_execution(
             workflow_id=workflow_id,
@@ -620,6 +628,16 @@ async def execute_workflow_by_id(
         # Arm the next occurrence (scheduled recurring workflows only). A re-arm
         # failure must not turn a successful execution into a reported failure.
         await _rearm_quietly(scheduler, workflow, context, workflow_id)
+
+        # Events that landed while this run held the batch could not schedule
+        # their own run (the job id was occupied) — give them one now.
+        if batch_key:
+            await reschedule_if_refilled(
+                workflow_id,
+                str(batch_key),
+                coalesce_window_seconds(workflow.trigger_config),
+                context or {},
+            )
 
         return f"Workflow {workflow_id} executed successfully"
 

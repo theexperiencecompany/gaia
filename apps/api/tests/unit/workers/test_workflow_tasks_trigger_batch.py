@@ -30,7 +30,9 @@ def _onboarded_user() -> MagicMock:
 
 
 async def _run_task(
-    context: dict[str, Any] | None, drained: list[dict[str, Any]]
+    context: dict[str, Any] | None,
+    drained: list[dict[str, Any]],
+    budget_error: Exception | None = None,
 ) -> tuple[str, AsyncMock, AsyncMock]:
     with (
         patch(f"{MODULE}.workflow_scheduler") as scheduler,
@@ -40,7 +42,12 @@ async def _run_task(
         patch(
             f"{MODULE}.drain_trigger_batch", new_callable=AsyncMock, return_value=drained
         ) as drain,
-        patch(f"{MODULE}.enforce_daily_cost_budget", new_callable=AsyncMock),
+        patch(
+            f"{MODULE}.enforce_daily_cost_budget", new_callable=AsyncMock, side_effect=budget_error
+        ),
+        patch(f"{MODULE}.reschedule_if_refilled", new_callable=AsyncMock),
+        patch(f"{MODULE}.coalesce_window_seconds", return_value=900),
+        patch(f"{MODULE}.notification_service", MagicMock(send_notification=AsyncMock())),
         patch(f"{MODULE}.create_execution", new_callable=AsyncMock) as create,
         patch(
             f"{MODULE}.execute_workflow_as_chat", new_callable=AsyncMock, return_value="conv-1"
@@ -87,3 +94,17 @@ class TestTriggerBatchDrain:
         assert "executed successfully" in result
         drain.assert_not_awaited()
         assert "trigger_data" not in run_chat.await_args.args[2]
+
+
+class TestGatesRunBeforeTheDrain:
+    async def test_budget_walled_run_leaves_the_buffer_intact(self) -> None:
+        """A rejected run must not consume the batch — the events belong to a
+        future run after the budget resets, not to the void."""
+        result, drain, run_chat = await _run_task(
+            {"trigger_type": "integration", "trigger_batch_key": "trigger_batch:wf-1"},
+            [{"id": 1}],
+            budget_error=RuntimeError("daily budget exhausted"),
+        )
+
+        drain.assert_not_awaited()
+        run_chat.assert_not_awaited()

@@ -20,10 +20,13 @@ from app.models.trigger_configs import GmailNewMessageConfig, GmailPollInboxConf
 from app.models.workflow_models import TriggerConfig, TriggerType
 from app.services.triggers.batching import (
     MAX_TRIGGER_BATCH_EVENTS,
+    PER_EMAIL_FALLBACK_WINDOW_SECONDS,
     TRIGGER_BATCH_KEY,
+    TRIGGER_BATCH_TTL_FLOOR_SECONDS,
     buffer_trigger_event,
     coalesce_window_seconds,
     drain_trigger_batch,
+    reschedule_if_refilled,
 )
 
 MODULE = "app.services.triggers.batching"
@@ -64,6 +67,9 @@ class _FakeRedis:
     async def rpush(self, key: str, value: str) -> int:
         self.store.setdefault(key, []).append(value)
         return len(self.store[key])
+
+    async def llen(self, key: str) -> int:
+        return len(self.store.get(key, []))
 
     async def ltrim(self, key: str, start: int, end: int) -> None:
         items = self.store.get(key, [])
@@ -113,13 +119,25 @@ class TestCoalesceWindow:
         )
         assert coalesce_window_seconds(config) == 0
 
-    def test_account_level_gmail_trigger_is_not_coalesced(self) -> None:
+    def test_account_level_gmail_trigger_falls_back_to_the_daily_window(self) -> None:
+        """gmail_new_message declares no interval, and firing per email is never
+        a cadence anyone chose — it batches on the daily fallback."""
         config = TriggerConfig(
             type=TriggerType.INTEGRATION,
             trigger_name="gmail_new_message",
             trigger_data=GmailNewMessageConfig(),
         )
-        assert coalesce_window_seconds(config) == 0
+        assert coalesce_window_seconds(config) == PER_EMAIL_FALLBACK_WINDOW_SECONDS
+
+    def test_account_level_gmail_trigger_with_no_trigger_data_still_batches(self) -> None:
+        """The 126 prod workflows on this trigger carry trigger_data=None — the
+        fallback must key on the trigger name, not the config object."""
+        config = TriggerConfig(
+            type=TriggerType.INTEGRATION,
+            trigger_name="gmail_new_message",
+            trigger_data=None,
+        )
+        assert coalesce_window_seconds(config) == PER_EMAIL_FALLBACK_WINDOW_SECONDS
 
 
 @pytest.mark.unit
@@ -235,3 +253,53 @@ class TestRedisUnavailable:
         with patch(f"{MODULE}.redis_cache") as cache:
             cache.redis = None
             assert await drain_trigger_batch("trigger_batch:wf_1") == []
+
+
+@pytest.mark.unit
+class TestRescheduleIfRefilled:
+    async def test_refilled_buffer_gets_a_follow_up_run(
+        self, fake_redis: _FakeRedis, enqueue: Any
+    ) -> None:
+        key = TRIGGER_BATCH_KEY.format(workflow_id="wf_1")
+        fake_redis.store[key] = [json.dumps({"id": 99})]
+
+        assert await reschedule_if_refilled(
+            "wf_1", key, 900, {"trigger_type": "integration", "trigger_data": {"count": 3}}
+        )
+
+        assert enqueue.await_args.kwargs["_defer_by"] == 900
+        # A unique id: this run's own id is still occupied, so reusing it
+        # would strand the refill exactly like the events it exists to save.
+        assert enqueue.await_args.kwargs["_job_id"].startswith("trigger_batch:wf_1:refill:")
+        context = enqueue.await_args.args[3]
+        assert context["trigger_batch_key"] == key
+        assert "trigger_data" not in context  # the drained events must not ride along
+
+    async def test_empty_buffer_schedules_nothing(
+        self, fake_redis: _FakeRedis, enqueue: Any
+    ) -> None:
+        key = TRIGGER_BATCH_KEY.format(workflow_id="wf_1")
+
+        assert not await reschedule_if_refilled("wf_1", key, 900, {})
+        enqueue.assert_not_awaited()
+
+
+@pytest.mark.unit
+class TestBufferTtl:
+    async def test_short_window_ttl_survives_a_worker_outage(
+        self, fake_redis: _FakeRedis, enqueue: Any
+    ) -> None:
+        """Observed live: a 1-minute window's 4x TTL (240s) expired the batch
+        during a 268s worker outage, so the run fired against nothing and the
+        events silently vanished. The floor makes short windows restart-proof."""
+        await buffer_trigger_event("wf_1", "user_1", {"id": 1}, 60, {})
+        key = TRIGGER_BATCH_KEY.format(workflow_id="wf_1")
+        assert fake_redis.expires[key] == TRIGGER_BATCH_TTL_FLOOR_SECONDS
+
+    async def test_long_window_ttl_still_scales_with_the_window(
+        self, fake_redis: _FakeRedis, enqueue: Any
+    ) -> None:
+        day = 24 * 60 * 60
+        await buffer_trigger_event("wf_1", "user_1", {"id": 1}, day, {})
+        key = TRIGGER_BATCH_KEY.format(workflow_id="wf_1")
+        assert fake_redis.expires[key] == day * 4
