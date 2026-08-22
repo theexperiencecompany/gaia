@@ -10,9 +10,10 @@ word locally.
 | `silero_vad.onnx` | Voice activity detection (pre-gate) | openWakeWord v0.5.1 |
 | `hey_gaia.onnx` | Custom "Hey GAIA" classifier head | Trained from `libs/wake-word/training/configs/hey_gaia.yaml` |
 
-The current `hey_gaia.onnx` is a temporary placeholder using the `hey_mycroft_v0.1`
-classifier so end-to-end integration works during development. Replace it with
-the output of `libs/wake-word/training/src/train.py` before shipping.
+`hey_gaia.onnx` is the custom-trained classifier produced by
+`libs/wake-word/training/src/train.py`. Training metrics for the shipped model
+live alongside it in `libs/wake-word/models/hey_gaia.meta.json`; re-run the
+training pipeline and copy both files here to replace it.
 
 Models are licensed under Apache-2.0 (openWakeWord). The custom-trained
 `hey_gaia.onnx` is owned by GAIA.
