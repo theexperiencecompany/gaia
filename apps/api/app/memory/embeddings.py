@@ -293,11 +293,8 @@ async def rerank(query: str, documents: list[str]) -> list[float]:
     if _sidecar_url():
         scores: list[float] = []
         # The query is sent with every chunk, so it consumes char budget too.
-        for chunk in chunk_texts(
-            documents,
-            EMBEDDING_SIDECAR_MAX_BATCH_TEXTS,
-            EMBEDDING_SIDECAR_MAX_BATCH_CHARS - len(query),
-        ):
+        char_budget = EMBEDDING_SIDECAR_MAX_BATCH_CHARS - len(query)
+        for chunk in chunk_texts(documents, EMBEDDING_SIDECAR_MAX_BATCH_TEXTS, char_budget):
             result = await _observed(
                 "rerank",
                 "sidecar",
