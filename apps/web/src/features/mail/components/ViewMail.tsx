@@ -223,7 +223,7 @@ function ThreadMessages({
                 startContent={<ArrowTurnBackwardIcon size={14} />}
                 onPress={() => onReply(message)}
               >
-                ArrowTurnBackwardIcon
+                Reply
               </Button>
             </div>
           </div>
@@ -253,7 +253,7 @@ function ReplyEditor({
     <div className="mt-4 border-t-2 border-zinc-700 pt-4">
       <div className="mb-2 flex items-center justify-between">
         <div className="text-sm">
-          <span className="font-medium">ArrowTurnBackwardIcon to: </span>
+          <span className="font-medium">Reply to: </span>
           <span className="text-gray-400">
             {parseEmail(replyTo.from).name || parseEmail(replyTo.from).email}
           </span>
@@ -284,7 +284,7 @@ function ReplyEditor({
           isLoading={isSending}
           isDisabled={isSending}
         >
-          {isSending ? "Sending..." : "SentIcon Reply"}
+          {isSending ? "Sending..." : "Send Reply"}
         </Button>
       </div>
     </div>
@@ -393,7 +393,7 @@ export default function ViewEmail({
       //   body: content,
       // });
 
-      toast.error("ArrowTurnBackwardIcon functionality is not yet implemented");
+      toast.error("Reply functionality is not yet implemented");
       setShowReplyEditor(false);
       editor.commands.setContent("<p></p>");
     } catch (error) {
@@ -472,7 +472,7 @@ export default function ViewEmail({
                   startContent={<ArrowTurnBackwardIcon size={16} />}
                   onPress={() => mail && handleReply(mail)}
                 >
-                  ArrowTurnBackwardIcon
+                  Reply
                 </Button>
                 <Button
                   color="primary"
@@ -480,7 +480,7 @@ export default function ViewEmail({
                   startContent={<ArrowLeftDoubleIcon size={16} />}
                   onPress={() => mail && handleReply(mail)}
                 >
-                  ArrowTurnBackwardIcon All
+                  Reply All
                 </Button>
               </div>
             </header>
@@ -543,7 +543,7 @@ export default function ViewEmail({
                 </>
               ) : null}
 
-              {/* ArrowTurnBackwardIcon editor */}
+              {/* Reply editor */}
               {showReplyEditor && replyTo && (
                 <ReplyEditor
                   replyTo={replyTo}

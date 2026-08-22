@@ -7,11 +7,11 @@ import {
   SearchIcon,
 } from "@icons";
 import { useState } from "react";
+import { safeUrl } from "@/features/chat/utils/safeUrl";
 import type {
   DeepResearchResults,
   EnhancedWebResult,
 } from "@/types/features/convoTypes";
-
 import SearchResultsTabs from "./SearchResultsTabs";
 
 interface DeepResearchResultsTabsProps {
@@ -133,13 +133,7 @@ function EnhancedWebResults({ results }: EnhancedWebResultsProps) {
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                {(() => {
-                  try {
-                    return new URL(result.url).hostname;
-                  } catch {
-                    return result.url;
-                  }
-                })()}
+                {safeUrl(result.url)?.hostname ?? result.url}
               </a>
             </span>
           </div>

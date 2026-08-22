@@ -62,7 +62,8 @@ function ReplyQuote({
         const el = document.getElementById(replyToMessage.id);
         if (el) {
           el.scrollIntoView({ behavior: "smooth", block: "center" });
-          el.style.transition = "all 0.3s ease";
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.style.transition = "scale 0.3s ease";
           el.style.scale = "1.02";
           setTimeout(() => {
             el.style.scale = "1";

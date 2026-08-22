@@ -102,7 +102,7 @@ export default function CalendarEventSection({
             summary: option.summary,
             description: option.description || "",
             time: option.start,
-            is_all_day: option.is_all_day || true,
+            is_all_day: option.is_all_day ?? true,
             recurrence: option.recurrence,
             calendar_id: option.calendar_id,
             attendees: option.attendees,

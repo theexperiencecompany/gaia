@@ -5,6 +5,7 @@ import { CircleArrowRight02Icon, NewsIcon } from "@icons";
 import * as m from "motion/react-m";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
+import { safeUrl } from "@/features/chat/utils/safeUrl";
 import { useImageDialog } from "@/stores/uiStore";
 import type {
   ImageResult,
@@ -210,24 +211,29 @@ function SourcesButton({ web }: SourcesButtonProps) {
         <PopoverTrigger>
           <Button variant="flat" radius="full" size="sm">
             <div className="flex -space-x-3">
-              {web.slice(0, 4).map((result) => (
-                <div
-                  key={result.url + result.title}
-                  className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-zinc-900 bg-zinc-700"
-                >
-                  <Image
-                    src={`https://www.google.com/s2/favicons?domain=${new URL(result.url).hostname}&sz=64`}
-                    alt={`${new URL(result.url).hostname} favicon`}
-                    width={16}
-                    height={16}
-                    className="h-full w-full rounded-full"
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      target.style.display = "none";
-                    }}
-                  />
-                </div>
-              ))}
+              {web.slice(0, 4).map((result) => {
+                const host = safeUrl(result.url)?.hostname;
+                return (
+                  <div
+                    key={result.url + result.title}
+                    className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-zinc-900 bg-zinc-700"
+                  >
+                    {host && (
+                      <Image
+                        src={`https://www.google.com/s2/favicons?domain=${host}&sz=64`}
+                        alt={`${host} favicon`}
+                        width={16}
+                        height={16}
+                        className="h-full w-full rounded-full"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = "none";
+                        }}
+                      />
+                    )}
+                  </div>
+                );
+              })}
             </div>
             <span className="font-medium text-zinc-300">Search Results</span>
           </Button>
@@ -283,43 +289,58 @@ interface WebResultsProps {
 function WebResults({ web }: WebResultsProps) {
   return (
     <div className="max-h-80 w-full max-w-lg overflow-y-auto rounded-2xl bg-zinc-800/70 backdrop-blur-2xl">
-      {web.map((result) => (
-        <div
-          className="w-full border-b-1 border-b-zinc-700 p-4 pb-3 transition-colors hover:bg-white/5"
-          key={result.url + result.title}
-        >
-          <a
-            href={result.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full space-y-1"
+      {web.map((result) => {
+        const url = safeUrl(result.url);
+        const host = url?.hostname;
+        return (
+          <div
+            className="w-full border-b-1 border-b-zinc-700 p-4 pb-3 transition-colors hover:bg-white/5"
+            key={result.url + result.title}
           >
-            <h2 className="truncate text-sm font-medium">{result.title}</h2>
-            <p className="line-clamp-2 text-xs text-foreground-500">
-              {result.content}
-            </p>
-            <div className="flex flex-wrap items-center gap-x-4 text-sm">
-              <span className="flex items-center gap-2">
-                <Image
-                  src={`https://www.google.com/s2/favicons?domain=${new URL(result.url).hostname}&sz=64`}
-                  alt={`${new URL(result.url).hostname} favicon`}
-                  width={16}
-                  height={16}
-                  className="rounded-full"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    target.style.display = "none";
-                  }}
-                />
-                <span className="max-w-xs truncate text-xs text-primary hover:underline">
-                  {new URL(result.url).hostname}
-                </span>
-              </span>
-              {/* <span className="flex items-center">{timeAgo(result.date)}</span> */}
-            </div>
-          </a>
-        </div>
-      ))}
+            {url ? (
+              <a
+                href={result.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full space-y-1"
+              >
+                <h2 className="truncate text-sm font-medium">{result.title}</h2>
+                <p className="line-clamp-2 text-xs text-foreground-500">
+                  {result.content}
+                </p>
+                <div className="flex flex-wrap items-center gap-x-4 text-sm">
+                  <span className="flex items-center gap-2">
+                    <Image
+                      src={`https://www.google.com/s2/favicons?domain=${host}&sz=64`}
+                      alt={`${host} favicon`}
+                      width={16}
+                      height={16}
+                      className="rounded-full"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = "none";
+                      }}
+                    />
+                    <span className="max-w-xs truncate text-xs text-primary hover:underline">
+                      {host}
+                    </span>
+                  </span>
+                  {/* <span className="flex items-center">{timeAgo(result.date)}</span> */}
+                </div>
+              </a>
+            ) : (
+              <div className="w-full space-y-1">
+                <h2 className="truncate text-sm font-medium text-foreground-500">
+                  {result.title}
+                </h2>
+                <p className="line-clamp-2 text-xs text-foreground-500">
+                  {result.content}
+                </p>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
