@@ -219,6 +219,59 @@ def _gate_claim(workflow: MagicMock, calls: list[tuple[str, datetime | None]]):
 
 @pytest.mark.unit
 class TestWorkerRejectsStaleFire:
+    @staticmethod
+    def _scheduled_workflow(next_run: datetime):
+        workflow = MagicMock()
+        workflow.id = f"wf_{uuid4().hex[:12]}"
+        workflow.user_id = "user_abc"
+        workflow.repeat = "0 16 * * *"
+        workflow.activated = True
+        workflow.trigger_config.next_run = next_run
+        return workflow
+
+    @staticmethod
+    async def _run_fire(
+        context: dict[str, Any], *, next_run: datetime | None = None
+    ) -> tuple[MagicMock, MagicMock, list[tuple[str, datetime | None]], str]:
+        """Drive one fire through execute_workflow_by_id with every seam
+        mocked; returns (workflow, scheduler, claim_calls, result)."""
+        from app.workers.tasks.workflow_tasks import execute_workflow_by_id
+
+        workflow = TestWorkerRejectsStaleFire._scheduled_workflow(next_run or datetime.now(UTC))
+        scheduler = AsyncMock()
+        scheduler.get_task = AsyncMock(return_value=workflow)
+        claim_calls: list[tuple[str, datetime | None]] = []
+        scheduler.claim_scheduled_for_execution = AsyncMock(
+            side_effect=_gate_claim(workflow, claim_calls)
+        )
+
+        with (
+            patch("app.workers.tasks.workflow_tasks.workflow_scheduler", scheduler),
+            patch(
+                "app.workers.tasks.workflow_tasks.create_execution",
+                AsyncMock(return_value=MagicMock(execution_id="exec_1")),
+            ) as mock_create,
+            patch("app.workers.tasks.workflow_tasks.complete_execution", AsyncMock()),
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch("app.workers.tasks.workflow_tasks.log") as mock_log,
+            patch(
+                "app.workers.tasks.workflow_tasks.enforce_daily_cost_budget",
+                AsyncMock(),
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
+                AsyncMock(return_value="conv_1"),
+            ),
+        ):
+            mock_wf_svc.increment_execution_count = AsyncMock()
+            result = await execute_workflow_by_id({}, workflow.id, context)
+            mocks = MagicMock()
+            mocks.create_execution = mock_create
+            mocks.log_warning = mock_log.warning
+            mocks.increment_execution_count = mock_wf_svc.increment_execution_count
+
+        return workflow, scheduler, claim_calls, result, mocks
+
     @pytest.mark.regression
     async def test_execute_workflow_by_id_skips_stale_scheduled_fire(self) -> None:
         """A scheduled fire armed for 16:00 that fires after the workflow was
@@ -229,20 +282,14 @@ class TestWorkerRejectsStaleFire:
         old_fire = datetime.now(UTC).replace(microsecond=0)
         new_fire = old_fire + timedelta(hours=5)
 
-        workflow = MagicMock()
-        workflow.id = f"wf_{uuid4().hex[:12]}"
-        workflow.user_id = "user_abc"
-        workflow.repeat = "0 16 * * *"
-        workflow.activated = True
-        workflow.trigger_config.next_run = new_fire
-
+        workflow = self._scheduled_workflow(new_fire)
+        # The gate accepts only the CURRENT occurrence (21:00).
         scheduler = AsyncMock()
         scheduler.get_task = AsyncMock(return_value=workflow)
-        claim_calls: list[datetime | None] = []
+        claim_calls: list[tuple[str, datetime | None]] = []
         scheduler.claim_scheduled_for_execution = AsyncMock(
             side_effect=_gate_claim(workflow, claim_calls)
         )
-
         context = {"trigger_type": "schedule", "scheduled_for": int(old_fire.timestamp())}
 
         with (
@@ -272,51 +319,10 @@ class TestWorkerRejectsStaleFire:
     async def test_execute_workflow_by_id_runs_fresh_scheduled_fire(self) -> None:
         """A scheduled fire whose stamp matches next_run passes the gate and
         executes normally."""
-        from app.workers.tasks.workflow_tasks import execute_workflow_by_id
-
         fire = datetime.now(UTC).replace(microsecond=0)
-
-        workflow = MagicMock()
-        workflow.id = f"wf_{uuid4().hex[:12]}"
-        workflow.user_id = "user_abc"
-        workflow.repeat = "0 16 * * *"
-        workflow.activated = True
-        workflow.trigger_config.next_run = fire
-
-        execution = MagicMock()
-        execution.execution_id = "exec_1"
-
-        scheduler = AsyncMock()
-        scheduler.get_task = AsyncMock(return_value=workflow)
-        claim_calls: list[datetime | None] = []
-        scheduler.claim_scheduled_for_execution = AsyncMock(
-            side_effect=_gate_claim(workflow, claim_calls)
-        )
-
         context = {"trigger_type": "schedule", "scheduled_for": int(fire.timestamp())}
 
-        with (
-            patch("app.workers.tasks.workflow_tasks.workflow_scheduler", scheduler),
-            patch(
-                "app.workers.tasks.workflow_tasks.create_execution",
-                AsyncMock(return_value=execution),
-            ),
-            # Real budget gate reads Mongo/Redis for the user's plan — a seam
-            # this test does not exercise, and one that hangs in sandboxes
-            # where neither is reachable.
-            patch(
-                "app.workers.tasks.workflow_tasks.enforce_daily_cost_budget",
-                AsyncMock(),
-            ),
-            patch("app.workers.tasks.workflow_tasks.complete_execution", AsyncMock()),
-            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch(
-                "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
-                AsyncMock(return_value="conv_1"),
-            ),
-        ):
-            mock_wf_svc.increment_execution_count = AsyncMock()
-            result = await execute_workflow_by_id({}, workflow.id, context)
+        workflow, _, claim_calls, result, _ = await self._run_fire(context, next_run=fire)
 
         assert claim_calls == [(workflow.id, fire)]
         assert "executed successfully" in result
@@ -324,49 +330,9 @@ class TestWorkerRejectsStaleFire:
     async def test_unstamped_scheduled_fire_still_executes(self) -> None:
         """Jobs enqueued before the stamp existed carry no scheduled_for key;
         the worker must not gate them, so a deploy never strands a schedule."""
-        from app.workers.tasks.workflow_tasks import execute_workflow_by_id
-
-        workflow = MagicMock()
-        workflow.id = f"wf_{uuid4().hex[:12]}"
-        workflow.user_id = "user_abc"
-        workflow.repeat = "0 16 * * *"
-        workflow.activated = True
-        workflow.trigger_config.next_run = datetime.now(UTC)
-
-        execution = MagicMock()
-        execution.execution_id = "exec_1"
-
-        scheduler = AsyncMock()
-        scheduler.get_task = AsyncMock(return_value=workflow)
-        claim_calls: list[datetime | None] = []
-        scheduler.claim_scheduled_for_execution = AsyncMock(
-            side_effect=_gate_claim(workflow, claim_calls)
-        )
-
         context = {"trigger_type": "schedule"}
 
-        with (
-            patch("app.workers.tasks.workflow_tasks.workflow_scheduler", scheduler),
-            patch(
-                "app.workers.tasks.workflow_tasks.create_execution",
-                AsyncMock(return_value=execution),
-            ),
-            # Real budget gate reads Mongo/Redis for the user's plan — a seam
-            # this test does not exercise, and one that hangs in sandboxes
-            # where neither is reachable.
-            patch(
-                "app.workers.tasks.workflow_tasks.enforce_daily_cost_budget",
-                AsyncMock(),
-            ),
-            patch("app.workers.tasks.workflow_tasks.complete_execution", AsyncMock()),
-            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch(
-                "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
-                AsyncMock(return_value="conv_1"),
-            ),
-        ):
-            mock_wf_svc.increment_execution_count = AsyncMock()
-            result = await execute_workflow_by_id({}, workflow.id, context)
+        workflow, _, claim_calls, result, _ = await self._run_fire(context)
 
         assert claim_calls == [(workflow.id, None)]
         assert "executed successfully" in result
@@ -375,52 +341,15 @@ class TestWorkerRejectsStaleFire:
         """A manual caller typing its own context (trigger_type=schedule with a
         non-numeric stamp) must not crash fromtimestamp: the fire is treated as
         unstamped, logged, and runs ungated — pre-change behavior."""
-        from app.workers.tasks.workflow_tasks import execute_workflow_by_id
-
-        workflow = MagicMock()
-        workflow.id = f"wf_{uuid4().hex[:12]}"
-        workflow.user_id = "user_abc"
-        workflow.repeat = "0 16 * * *"
-        workflow.activated = True
-        workflow.trigger_config.next_run = datetime.now(UTC)
-
-        execution = MagicMock()
-        execution.execution_id = "exec_1"
-
-        scheduler = AsyncMock()
-        scheduler.get_task = AsyncMock(return_value=workflow)
-        claim_calls: list[tuple[str, datetime | None]] = []
-        scheduler.claim_scheduled_for_execution = AsyncMock(
-            side_effect=_gate_claim(workflow, claim_calls)
-        )
-
-        garbage = "not-a-timestamp-" + "x" * 40  # >33 chars: pins the log truncation
+        garbage = "not-a-timestamp-" + "x" * 40  # >33 chars: pins log truncation
         context = {"trigger_type": "schedule", "scheduled_for": garbage}
 
-        with (
-            patch("app.workers.tasks.workflow_tasks.workflow_scheduler", scheduler),
-            patch(
-                "app.workers.tasks.workflow_tasks.create_execution",
-                AsyncMock(return_value=execution),
-            ),
-            patch("app.workers.tasks.workflow_tasks.complete_execution", AsyncMock()),
-            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch("app.workers.tasks.workflow_tasks.log") as mock_log,
-            patch(
-                "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
-                AsyncMock(return_value="conv_1"),
-            ),
-        ):
-            mock_wf_svc.increment_execution_count = AsyncMock()
-            result = await execute_workflow_by_id({}, workflow.id, context)
+        workflow, _, claim_calls, result, mocks = await self._run_fire(context)
 
-        # Garbage stamp == no provenance: ungated claim for this workflow...
         assert claim_calls == [(workflow.id, None)]
         assert "executed successfully" in result
-        # ...and the discard is logged so a lying caller is visible.
-        mock_log.warning.assert_called_once_with(
-            f"{LogTag.WORKER} Unparseable scheduled_for on scheduled fire; "
-            "treating as unstamped",
+        mocks.log_warning.assert_called_once_with(
+            f"{LogTag.WORKER} Unparseable scheduled_for on scheduled fire; treating as unstamped",
             workflow_id=workflow.id,
             scheduled_for=garbage[:32],
         )
@@ -428,50 +357,15 @@ class TestWorkerRejectsStaleFire:
     async def test_overflowing_numeric_scheduled_for_is_ignored_not_crashed(self) -> None:
         """A numeric stamp fromtimestamp cannot represent (year out of range)
         takes the same discard path: ungated, logged with the truncated value."""
-        from app.workers.tasks.workflow_tasks import execute_workflow_by_id
-
-        workflow = MagicMock()
-        workflow.id = f"wf_{uuid4().hex[:12]}"
-        workflow.user_id = "user_abc"
-        workflow.repeat = "0 16 * * *"
-        workflow.activated = True
-        workflow.trigger_config.next_run = datetime.now(UTC)
-
-        execution = MagicMock()
-        execution.execution_id = "exec_1"
-
-        scheduler = AsyncMock()
-        scheduler.get_task = AsyncMock(return_value=workflow)
-        claim_calls: list[tuple[str, datetime | None]] = []
-        scheduler.claim_scheduled_for_execution = AsyncMock(
-            side_effect=_gate_claim(workflow, claim_calls)
-        )
-
         stamp = 10**40
         context = {"trigger_type": "schedule", "scheduled_for": stamp}
 
-        with (
-            patch("app.workers.tasks.workflow_tasks.workflow_scheduler", scheduler),
-            patch(
-                "app.workers.tasks.workflow_tasks.create_execution",
-                AsyncMock(return_value=execution),
-            ),
-            patch("app.workers.tasks.workflow_tasks.complete_execution", AsyncMock()),
-            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch("app.workers.tasks.workflow_tasks.log") as mock_log,
-            patch(
-                "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
-                AsyncMock(return_value="conv_1"),
-            ),
-        ):
-            mock_wf_svc.increment_execution_count = AsyncMock()
-            result = await execute_workflow_by_id({}, workflow.id, context)
+        workflow, _, claim_calls, result, mocks = await self._run_fire(context)
 
         assert claim_calls == [(workflow.id, None)]
         assert "executed successfully" in result
-        mock_log.warning.assert_called_once_with(
-            f"{LogTag.WORKER} Unparseable scheduled_for on scheduled fire; "
-            "treating as unstamped",
+        mocks.log_warning.assert_called_once_with(
+            f"{LogTag.WORKER} Unparseable scheduled_for on scheduled fire; treating as unstamped",
             workflow_id=workflow.id,
             scheduled_for=str(stamp)[:32],
         )
