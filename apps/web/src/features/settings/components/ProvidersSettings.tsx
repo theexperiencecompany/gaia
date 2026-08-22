@@ -1,0 +1,432 @@
+"use client";
+
+import { Button } from "@heroui/button";
+import { Input } from "@heroui/input";
+import {
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+} from "@heroui/modal";
+import Image from "next/image";
+import { useEffect, useState } from "react";
+import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import {
+  type CredentialProvider,
+  type ProviderConfigBody,
+  type ProviderTestResult,
+  providerFaviconUrl,
+  providersApi,
+} from "@/features/settings/api/providersApi";
+import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
+import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
+import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
+import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
+import { useConfirmation } from "@/hooks/useConfirmation";
+import { toast } from "@/lib/toast";
+
+interface ProviderRow {
+  key: CredentialProvider;
+  label: string;
+  description: string;
+  faviconDomain: string;
+  needsBaseUrl: boolean;
+  defaultBaseUrl?: string;
+  defaultModel?: string;
+  /** Tavily is a tool key — no model applies. */
+  showModelField: boolean;
+}
+
+// Mirrors PRESETS in app/constants/providers.py.
+const PROVIDER_ROWS: ProviderRow[] = [
+  {
+    key: "openrouter",
+    label: "OpenRouter",
+    description: "Route GAIA's LLM calls through OpenRouter.",
+    faviconDomain: "openrouter.ai",
+    needsBaseUrl: false,
+    showModelField: true,
+  },
+  {
+    key: "gemini",
+    label: "Google Gemini",
+    description: "Use Google's Gemini models with an API key.",
+    faviconDomain: "ai.google.dev",
+    needsBaseUrl: false,
+    showModelField: true,
+  },
+  {
+    key: "ollama",
+    label: "Ollama",
+    description: "Run local open-source models through Ollama.",
+    faviconDomain: "ollama.com",
+    needsBaseUrl: true,
+    defaultBaseUrl: "http://host.docker.internal:11434",
+    defaultModel: "llama3.2",
+    showModelField: true,
+  },
+  {
+    key: "custom",
+    label: "Custom Gateway",
+    description:
+      "Any OpenAI-compatible endpoint — OpenCode Zen, Nous Research, or your own.",
+    faviconDomain: "opencode.ai",
+    needsBaseUrl: true,
+    showModelField: true,
+  },
+  {
+    key: "tavily",
+    label: "Tavily",
+    description: "API key for the Tavily web search tools.",
+    faviconDomain: "tavily.com",
+    needsBaseUrl: false,
+    showModelField: false,
+  },
+];
+
+// Preset gateways for the custom lane — paste an API key and go.
+const CUSTOM_PRESETS = [
+  {
+    id: "opencode",
+    label: "OpenCode",
+    baseUrl: "https://opencode.ai/zen/go/v1",
+    model: "deepseek-v4-flash",
+  },
+  {
+    id: "nous",
+    label: "Nous",
+    baseUrl: "https://inference-api.nousresearch.com/v1",
+    model: "",
+  },
+] as const;
+
+type CustomPresetId = (typeof CUSTOM_PRESETS)[number]["id"] | "manual";
+
+const PRESET_CHIPS: ReadonlyArray<{ id: CustomPresetId; label: string }> = [
+  ...CUSTOM_PRESETS.map((p) => ({
+    id: p.id as CustomPresetId,
+    label: p.label,
+  })),
+  { id: "manual", label: "Manual" },
+];
+
+function StatusBadge({ configured }: { configured: boolean }) {
+  if (configured) {
+    return (
+      <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+        Connected
+      </span>
+    );
+  }
+  return (
+    <span className="flex items-center gap-1 rounded-full bg-zinc-700/50 px-2 py-0.5 text-xs font-medium text-zinc-400">
+      <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" />
+      Not configured
+    </span>
+  );
+}
+
+function ProviderFavicon({
+  domain,
+  size = 36,
+}: {
+  domain: string;
+  size?: number;
+}) {
+  return (
+    <Image
+      src={providerFaviconUrl(domain)}
+      alt=""
+      width={size}
+      height={size}
+      className="rounded-xl object-contain"
+      unoptimized
+    />
+  );
+}
+
+interface ConfigureProviderModalProps {
+  row: ProviderRow | null;
+  isConfigured: boolean;
+  onSaved: () => void;
+  onClose: () => void;
+}
+
+function ConfigureProviderModal({
+  row,
+  isConfigured,
+  onSaved,
+  onClose,
+}: ConfigureProviderModalProps) {
+  const { confirm, confirmationProps } = useConfirmation();
+  const [apiKey, setApiKey] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [model, setModel] = useState("");
+  const [preset, setPreset] = useState<CustomPresetId>("manual");
+  const [isSaving, setIsSaving] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
+  const [testResult, setTestResult] = useState<ProviderTestResult | null>(null);
+
+  const isOpen = row != null;
+
+  useEffect(() => {
+    if (!row) return;
+    setApiKey("");
+    setBaseUrl(row.defaultBaseUrl ?? "");
+    setModel(row.defaultModel ?? "");
+    setPreset("manual");
+    setTestResult(null);
+    setIsSaving(false);
+    setIsTesting(false);
+  }, [row]);
+
+  if (!row) return null;
+
+  const selectPreset = (id: CustomPresetId) => {
+    setPreset(id);
+    setTestResult(null);
+    if (id === "manual") return;
+    const match = CUSTOM_PRESETS.find((p) => p.id === id);
+    if (!match) return;
+    setBaseUrl(match.baseUrl);
+    setModel(match.model);
+  };
+
+  const buildBody = (): ProviderConfigBody => {
+    const body: ProviderConfigBody = {};
+    if (apiKey) body.api_key = apiKey;
+    if (preset !== "manual") body.preset = preset;
+    if (baseUrl) body.base_url = baseUrl;
+    if (row.showModelField && model) body.model = model;
+    return body;
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await providersApi.upsertProvider(row.key, buildBody());
+      toast.success(`${row.label} connected`);
+      onSaved();
+    } catch {
+      toast.error(`Failed to save ${row.label}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleRemove = async () => {
+    const confirmed = await confirm({
+      title: `Remove ${row.label}?`,
+      message:
+        "GAIA will stop using this provider and fall back to any environment variables configured for it.",
+      confirmText: "Remove",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
+    try {
+      await providersApi.deleteProvider(row.key);
+      toast.success(`${row.label} removed`);
+      onSaved();
+    } catch {
+      toast.error(`Failed to remove ${row.label}`);
+    }
+  };
+
+  const handleTest = async () => {
+    setIsTesting(true);
+    setTestResult(null);
+    try {
+      const result = await providersApi.testProvider(row.key, buildBody());
+      setTestResult(result);
+    } catch {
+      setTestResult({
+        ok: false,
+        detail: "Could not reach GAIA to run the test.",
+        models: [],
+      });
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
+  const showPresetChips = row.key === "custom";
+
+  return (
+    <>
+      <Modal isOpen={isOpen} onClose={onClose} size="md">
+        <ModalContent>
+          <ModalHeader className="flex-row items-center gap-3">
+            <ProviderFavicon domain={row.faviconDomain} />
+            Configure {row.label}
+          </ModalHeader>
+          <ModalBody className="gap-4">
+            <Input
+              autoFocus
+              type="password"
+              label="API key"
+              placeholder={
+                isConfigured
+                  ? "•••••••• (saved)"
+                  : `Paste your ${row.label} key`
+              }
+              value={apiKey}
+              onValueChange={setApiKey}
+            />
+            {(row.needsBaseUrl || showPresetChips) && (
+              <>
+                {showPresetChips && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium tracking-wider text-zinc-500 uppercase">
+                      Preset gateway
+                    </p>
+                    <div className="flex gap-2">
+                      {PRESET_CHIPS.map((chip) => (
+                        <Button
+                          key={chip.id}
+                          size="sm"
+                          variant={preset === chip.id ? "flat" : "light"}
+                          color={preset === chip.id ? "primary" : "default"}
+                          onPress={() => selectPreset(chip.id)}
+                        >
+                          {chip.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <Input
+                  label="Base URL"
+                  placeholder={
+                    row.defaultBaseUrl ?? "https://your-gateway.example.com/v1"
+                  }
+                  value={baseUrl}
+                  onValueChange={setBaseUrl}
+                />
+              </>
+            )}
+            {row.showModelField && (
+              <Input
+                label="Model"
+                placeholder="Default"
+                description="Leave empty to use the endpoint default."
+                value={model}
+                onValueChange={setModel}
+              />
+            )}
+            {testResult && (
+              <div
+                className={`rounded-xl p-3 text-xs ${
+                  testResult.ok
+                    ? "bg-emerald-400/10 text-emerald-400"
+                    : "bg-red-400/10 text-red-400"
+                }`}
+              >
+                <p>{testResult.detail}</p>
+                {testResult.ok && testResult.models.length > 0 && (
+                  <p className="mt-1 text-zinc-400">
+                    {testResult.models.length} models available
+                  </p>
+                )}
+              </div>
+            )}
+          </ModalBody>
+          <ModalFooter>
+            {isConfigured && (
+              <Button
+                color="danger"
+                variant="light"
+                size="sm"
+                onPress={() => {
+                  void handleRemove();
+                }}
+              >
+                Remove
+              </Button>
+            )}
+            <Button variant="flat" size="sm" onPress={onClose}>
+              Cancel
+            </Button>
+            <Button
+              variant="flat"
+              color="default"
+              size="sm"
+              isLoading={isTesting}
+              isDisabled={isSaving}
+              onPress={() => {
+                void handleTest();
+              }}
+            >
+              Test
+            </Button>
+            <Button
+              color="primary"
+              size="sm"
+              isLoading={isSaving}
+              isDisabled={isTesting}
+              onPress={() => {
+                void handleSave();
+              }}
+            >
+              Save
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+      <ConfirmationDialog {...confirmationProps} />
+    </>
+  );
+}
+
+export function ProvidersSettings() {
+  const { data: status, refetch } = useSetupStatus();
+  const [editingKey, setEditingKey] = useState<CredentialProvider | null>(null);
+
+  const editingRow = PROVIDER_ROWS.find((r) => r.key === editingKey) ?? null;
+
+  return (
+    <SettingsPage>
+      <SettingsSection description="Connect the AI backends GAIA uses for chat, reasoning, and search.">
+        {PROVIDER_ROWS.map((row) => {
+          const configured = status?.providers?.[row.key]?.configured === true;
+
+          return (
+            <SettingsRow
+              key={row.key}
+              label={row.label}
+              description={row.description}
+              icon={<ProviderFavicon domain={row.faviconDomain} />}
+            >
+              <div className="flex items-center gap-3">
+                <StatusBadge configured={configured} />
+                <Button
+                  variant="flat"
+                  color={configured ? "default" : "primary"}
+                  size="sm"
+                  className="text-xs"
+                  onPress={() => setEditingKey(row.key)}
+                >
+                  Configure
+                </Button>
+              </div>
+            </SettingsRow>
+          );
+        })}
+      </SettingsSection>
+
+      <ConfigureProviderModal
+        row={editingRow}
+        isConfigured={
+          editingKey != null &&
+          status?.providers?.[editingKey]?.configured === true
+        }
+        onSaved={() => {
+          void refetch();
+          setEditingKey(null);
+        }}
+        onClose={() => setEditingKey(null)}
+      />
+    </SettingsPage>
+  );
+}

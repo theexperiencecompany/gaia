@@ -10,6 +10,7 @@ import MemorySettings from "@/features/settings/components/MemorySettings";
 import NotificationSettings from "@/features/settings/components/NotificationSettings";
 import PreferencesSettings from "@/features/settings/components/PreferencesSettings";
 import ProfileCardSettings from "@/features/settings/components/ProfileCardSettings";
+import { ProvidersSettings } from "@/features/settings/components/ProvidersSettings";
 import type { ModalAction } from "@/features/settings/components/SettingsMenu";
 import SkillsSettings from "@/features/settings/components/SkillsSettings";
 import { SubscriptionSettings } from "@/features/settings/components/SubscriptionSettings";
@@ -35,6 +36,8 @@ export function SectionComponent({
       return <ProfileCardSettings />;
     case "linked-accounts":
       return <LinkedAccountsSettings />;
+    case "providers":
+      return <ProvidersSettings />;
     case "subscription":
       return <SubscriptionSettings />;
     case "usage":

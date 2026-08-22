@@ -3,13 +3,14 @@
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import Spinner from "@/components/ui/spinner";
+import { providersApi } from "@/features/settings/api/providersApi";
 import { toast } from "@/lib/toast";
 
 export default function RedirectPage() {
   const router = useRouter();
 
   useEffect(() => {
-    const handleRedirect = () => {
+    const handleRedirect = async () => {
       const params = new URLSearchParams(window.location.search);
       // Check for OAuth errors
       const oauthError = params.get("oauth_error");
@@ -63,6 +64,21 @@ export default function RedirectPage() {
         // Redirect to login page on error
         router.replace("/login");
         return;
+      }
+
+      // Self-host first run: route to the setup wizard while core setup is
+      // pending (public endpoint — safe to call right after auth lands).
+      try {
+        const setupStatus = await providersApi.fetchSetupStatus();
+        if (setupStatus.needs_setup === true) {
+          router.replace("/setup");
+          return;
+        }
+      } catch (error) {
+        console.error("Failed to fetch setup status:", error);
+        toast.error(
+          "Couldn't check your instance's setup status — continuing to the app.",
+        );
       }
 
       // Default redirect to main app if no specific parameters

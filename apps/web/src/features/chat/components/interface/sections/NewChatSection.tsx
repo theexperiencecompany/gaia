@@ -2,6 +2,7 @@ import type React from "react";
 
 import Composer from "@/features/chat/components/composer/Composer";
 import StarterText from "@/features/chat/components/interface/StarterText";
+import { SetupChecklistCard } from "@/features/setup-wizard/components/SetupChecklistCard";
 
 import { ChatSuggestions } from "./ChatSuggestions";
 
@@ -29,6 +30,7 @@ export const NewChatSection: React.FC<NewChatSectionProps> = ({
         <div className="flex flex-col items-center gap-2">
           <StarterText />
         </div>
+        <SetupChecklistCard />
         <div className="mt-12 w-full max-w-7xl">
           <Composer {...composerProps} />
         </div>

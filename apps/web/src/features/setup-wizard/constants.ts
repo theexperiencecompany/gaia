@@ -1,0 +1,163 @@
+/**
+ * Static metadata for the setup wizard: step copy, provider card configs and
+ * the OpenAI-compatible presets offered inside the Custom card. Preset values
+ * mirror the backend's `app/constants/providers.py` PRESETS (contract file) —
+ * the API remains the source of truth for behavior; these only drive UI.
+ */
+
+import type { Transition } from "motion/react";
+import type { CredentialProvider } from "@/features/settings/api/providersApi";
+
+export const EASE_OUT_QUART: [number, number, number, number] = [
+  0.19, 1, 0.22, 1,
+];
+
+export const MOTION_FADE_UP = {
+  initial: { opacity: 0, y: 12 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.4, ease: EASE_OUT_QUART } satisfies Transition,
+} as const;
+
+/** Brand favicon for a provider card lives on the providers API
+ * (`providerFaviconUrl`) so wizard and settings share one source. */
+
+export interface CustomPreset {
+  key: "opencode" | "nous";
+  label: string;
+  baseUrl: string;
+  defaultModel: string;
+  faviconDomain: string;
+}
+
+/** OpenAI-compatible presets surfaced as chips inside the Custom card. */
+export const CUSTOM_PRESETS: CustomPreset[] = [
+  {
+    key: "opencode",
+    label: "OpenCode",
+    baseUrl: "https://opencode.ai/zen/go/v1",
+    defaultModel: "deepseek-v4-flash",
+    faviconDomain: "opencode.ai",
+  },
+  {
+    key: "nous",
+    label: "Nous Research",
+    baseUrl: "https://inference-api.nousresearch.com/v1",
+    defaultModel: "",
+    faviconDomain: "nousresearch.com",
+  },
+];
+
+export interface ProviderCardConfig {
+  key: CredentialProvider;
+  label: string;
+  description: string;
+  faviconDomain: string;
+  /** Favicon swaps with the selected preset (Custom card only). */
+  presetFavicon?: Record<string, string>;
+  showApiKey: boolean;
+  showBaseUrl: boolean;
+  showModel: boolean;
+  defaultBaseUrl: string;
+  defaultModel: string;
+  hasPresets: boolean;
+}
+
+export const LLM_PROVIDER_CARDS: ProviderCardConfig[] = [
+  {
+    key: "openrouter",
+    label: "OpenRouter",
+    description: "One key for every major model. Easiest way to start.",
+    faviconDomain: "openrouter.ai",
+    showApiKey: true,
+    showBaseUrl: false,
+    showModel: false,
+    defaultBaseUrl: "",
+    defaultModel: "",
+    hasPresets: false,
+  },
+  {
+    key: "gemini",
+    label: "Google Gemini",
+    description: "Google's models, with a generous free tier.",
+    faviconDomain: "ai.google.dev",
+    showApiKey: true,
+    showBaseUrl: false,
+    showModel: false,
+    defaultBaseUrl: "",
+    defaultModel: "",
+    hasPresets: false,
+  },
+  {
+    key: "ollama",
+    label: "Ollama",
+    description: "Run models locally — no API key needed.",
+    faviconDomain: "ollama.com",
+    showApiKey: false,
+    showBaseUrl: true,
+    showModel: true,
+    defaultBaseUrl: "http://host.docker.internal:11434",
+    defaultModel: "llama3.2",
+    hasPresets: false,
+  },
+  {
+    key: "custom",
+    label: "Custom / OpenAI-compatible",
+    description:
+      "Any OpenAI-compatible endpoint. Pick a preset or enter your own.",
+    faviconDomain: "opencode.ai",
+    presetFavicon: Object.fromEntries(
+      CUSTOM_PRESETS.map((p) => [p.key, p.faviconDomain]),
+    ),
+    showApiKey: true,
+    showBaseUrl: true,
+    showModel: true,
+    defaultBaseUrl: "",
+    defaultModel: "",
+    hasPresets: true,
+  },
+];
+
+export const SEARCH_PROVIDER_CARD: ProviderCardConfig = {
+  key: "tavily",
+  label: "Tavily",
+  description: "Web search results grounded in live sources.",
+  faviconDomain: "tavily.com",
+  showApiKey: true,
+  showBaseUrl: false,
+  showModel: false,
+  defaultBaseUrl: "",
+  defaultModel: "",
+  hasPresets: false,
+};
+
+export interface WizardStepMeta {
+  id: "provider" | "search" | "integrations" | "done";
+  title: string;
+  subtitle: string;
+}
+
+export const WIZARD_STEPS: WizardStepMeta[] = [
+  {
+    id: "provider",
+    title: "Choose an AI provider",
+    subtitle:
+      "GAIA needs one provider to think with. Paste an API key or point at your own endpoint — you can change this anytime in Settings.",
+  },
+  {
+    id: "search",
+    title: "Add web search",
+    subtitle:
+      "Optional. A Tavily key lets GAIA search the web for up-to-date information when answering.",
+  },
+  {
+    id: "integrations",
+    title: "Connect your accounts",
+    subtitle:
+      "Optional. Link the tools you already use so GAIA can work with them directly.",
+  },
+  {
+    id: "done",
+    title: "You're all set",
+    subtitle: "Here's what your instance has configured so far.",
+  },
+];
