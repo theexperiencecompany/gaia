@@ -262,7 +262,11 @@ def test_init_custom_llm_wires_every_kwarg_and_profile(monkeypatch):
     including its context-window profile and configurable model field."""
     from app.agents.llm import client
     from app.agents.llm.types import LLMProviderName
-    from app.constants.llm import DEFAULT_MAX_TOKENS, DEV_LLM_MAX_OUTPUT_TOKENS
+    from app.constants.llm import (
+        DEFAULT_LLM_TEMPERATURE,
+        DEFAULT_MAX_TOKENS,
+        DEV_LLM_MAX_OUTPUT_TOKENS,
+    )
 
     captured: dict[str, object] = {}
     monkeypatch.setattr(client, "ChatOpenRouter", _fake_chat_openrouter(captured))
@@ -278,6 +282,7 @@ def test_init_custom_llm_wires_every_kwarg_and_profile(monkeypatch):
     llm = client.init_custom_llm().loader_func()
 
     assert captured["model"] == "deepseek-v4-flash"
+    assert captured["temperature"] == DEFAULT_LLM_TEMPERATURE
     assert str(captured["base_url"]) == "http://localhost:9999/v1"
     assert str(captured["api_key"]) == "sk-dev"
     assert captured["max_tokens"] == DEV_LLM_MAX_OUTPUT_TOKENS
