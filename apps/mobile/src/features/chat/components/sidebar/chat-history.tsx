@@ -714,16 +714,13 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
   const { activeChatId } = useChatContext();
   const { conversations, isLoading, error, refetch } = useConversations();
   const { spacing, fontSize } = useResponsive();
-  const { invalidateConversations } = useChatQueryClient();
+  const {
+    invalidateConversations,
+    updateConversationInCache,
+    removeConversationFromCache,
+  } = useChatQueryClient();
   const streamingConversationId = useChatStore(
     (state) => state.streamingState.conversationId,
-  );
-  const removeConversation = useChatStore((state) => state.removeConversation);
-  const updateConversationTitle = useChatStore(
-    (state) => state.updateConversationTitle,
-  );
-  const updateConversationStarred = useChatStore(
-    (state) => state.updateConversationStarred,
   );
 
   const [expandedSections, setExpandedSections] = useState<
@@ -771,12 +768,16 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
               onPress: async (newName?: string) => {
                 if (!newName || newName.trim() === "") return;
                 const trimmedName = newName.trim();
-                updateConversationTitle(conversationId, trimmedName);
+                updateConversationInCache(conversationId, {
+                  title: trimmedName,
+                });
                 try {
                   await renameConversation(conversationId, trimmedName);
                   invalidateConversations();
                 } catch {
-                  updateConversationTitle(conversationId, currentTitle);
+                  updateConversationInCache(conversationId, {
+                    title: currentTitle,
+                  });
                 }
               },
             },
@@ -788,22 +789,22 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
         setRenameModal({ visible: true, conversationId, currentTitle });
       }
     },
-    [updateConversationTitle, invalidateConversations],
+    [updateConversationInCache, invalidateConversations],
   );
 
   const handleRenameConfirm = useCallback(
     async (newTitle: string) => {
       const { conversationId, currentTitle } = renameModal;
       setRenameModal((prev) => ({ ...prev, visible: false }));
-      updateConversationTitle(conversationId, newTitle);
+      updateConversationInCache(conversationId, { title: newTitle });
       try {
         await renameConversation(conversationId, newTitle);
         invalidateConversations();
       } catch {
-        updateConversationTitle(conversationId, currentTitle);
+        updateConversationInCache(conversationId, { title: currentTitle });
       }
     },
-    [renameModal, updateConversationTitle, invalidateConversations],
+    [renameModal, updateConversationInCache, invalidateConversations],
   );
 
   const handleRenameCancel = useCallback(() => {
@@ -821,7 +822,7 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
             text: "Delete",
             style: "destructive",
             onPress: async () => {
-              removeConversation(conversationId);
+              removeConversationFromCache(conversationId);
               try {
                 await deleteConversation(conversationId);
                 invalidateConversations();
@@ -833,21 +834,23 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
         ],
       );
     },
-    [removeConversation, invalidateConversations, refetch],
+    [removeConversationFromCache, invalidateConversations, refetch],
   );
 
   const handleToggleStar = useCallback(
     async (conversationId: string, currentStarred: boolean) => {
       const newStarred = !currentStarred;
-      updateConversationStarred(conversationId, newStarred);
+      updateConversationInCache(conversationId, { is_starred: newStarred });
       try {
         await toggleStarConversation(conversationId, newStarred);
         invalidateConversations();
       } catch {
-        updateConversationStarred(conversationId, currentStarred);
+        updateConversationInCache(conversationId, {
+          is_starred: currentStarred,
+        });
       }
     },
-    [updateConversationStarred, invalidateConversations],
+    [updateConversationInCache, invalidateConversations],
   );
 
   const isSearching = searchQuery.trim().length > 0;

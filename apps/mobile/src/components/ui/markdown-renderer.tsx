@@ -1,6 +1,12 @@
 import * as Linking from "expo-linking";
 import { memo, useCallback, useState } from "react";
-import { Text as RNText, View } from "react-native";
+import {
+  Image,
+  Text as RNText,
+  type StyleProp,
+  type TextStyle,
+  View,
+} from "react-native";
 import { WebView } from "react-native-webview";
 import {
   CodeBlock,
@@ -20,8 +26,13 @@ const COLORS = {
 
 // -- Types --------------------------------------------------------------------
 
-interface MarkdownRendererProps {
+export interface MarkdownRendererProps {
   content: string;
+  /**
+   * While streaming, incomplete markdown is repaired before parsing (unclosed
+   * fences/bold/etc.) so literal markers never flash mid-token.
+   */
+  isStreaming?: boolean;
 }
 
 type InlineSegment =
@@ -31,59 +42,146 @@ type InlineSegment =
   | { type: "boldItalic"; text: string }
   | { type: "code"; text: string }
   | { type: "link"; text: string; url: string }
+  | { type: "image"; alt: string; url: string }
   | { type: "strikethrough"; text: string }
   | { type: "mathInline"; text: string };
+
+interface ListItem {
+  blocks: Block[];
+  task: boolean;
+  checked: boolean;
+}
+
+type TableAlignment = "left" | "center" | "right" | null;
 
 type Block =
   | { type: "paragraph"; segments: InlineSegment[] }
   | { type: "heading"; level: number; segments: InlineSegment[] }
   | { type: "codeBlock"; language: string; code: string }
   | { type: "blockquote"; segments: InlineSegment[] }
-  | { type: "unorderedList"; items: InlineSegment[][] }
-  | { type: "orderedList"; items: InlineSegment[][] }
+  | { type: "list"; ordered: boolean; start: number; items: ListItem[] }
+  | { type: "table"; alignments: TableAlignment[]; rows: string[][] }
   | { type: "hr" }
   | { type: "mathBlock"; code: string };
 
-// -- Parsing ------------------------------------------------------------------
+// -- Streaming repair ---------------------------------------------------------
+
+/**
+ * Patch the most common incomplete-markdown states while tokens are still
+ * arriving, so partial output renders as text rather than raw markers
+ * (mirrors Streamdown's parseIncompleteMarkdown on web):
+ *  - unclosed ``` fence → close it so the half-streamed code renders as a block
+ *  - unclosed $$ math fence → close it
+ *  - dangling inline emphasis/code markers at end of text → close them
+ */
+export function repairStreamingMarkdown(md: string): string {
+  let out = md;
+
+  const fenceCount = (out.match(/^[^\S\n]*```/gm) ?? []).length;
+  if (fenceCount % 2 === 1) out += "\n```";
+
+  const mathFenceCount = (out.match(/^\$\$/gm) ?? []).length;
+  if (mathFenceCount % 2 === 1) out += "\n$$";
+
+  // Close dangling inline markers, longest first, recounting after each append
+  // so an appended marker doesn't skew later parity checks.
+  for (const marker of ["**", "__", "~~"]) {
+    const count = (
+      out.match(new RegExp(marker.replace(/\*/g, "\\*"), "g")) ?? []
+    ).length;
+    if (count % 2 === 1) out += marker;
+  }
+  const backtickCount = (out.match(/`/g) ?? []).length;
+  if (backtickCount % 2 === 1) out += "`";
+  // Single-marker emphasis (* and _): only append when the trailing run looks
+  // like an unclosed opener — a lone marker at the very end of the text.
+  for (const marker of ["*", "_"]) {
+    if (out.endsWith(marker) && !out.endsWith(marker.repeat(2))) {
+      // Count non-doubled occurrences conservatively; appending only when the
+      // text ends with exactly one avoids corrupting valid mid-text emphasis.
+      out += marker;
+    }
+  }
+
+  return out;
+}
+
+// -- Entity decoding ----------------------------------------------------------
+
+const ENTITIES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  nbsp: " ",
+  "#39": "'",
+};
+
+function decodeEntities(text: string): string {
+  return text.replace(/&(#39|amp|lt|gt|quot|nbsp);/g, (_, entity: string) => {
+    return ENTITIES[entity] ?? `&${entity};`;
+  });
+}
+
+// -- Inline parsing -----------------------------------------------------------
 
 function segmentFromMatch(match: RegExpExecArray): InlineSegment | null {
-  if (match[2] && match[3]) {
-    return { type: "link", text: match[2], url: match[3] };
-  }
-  if (match[4] || match[5]) {
-    return { type: "boldItalic", text: match[4] || match[5] };
+  if (match[1]) return { type: "image", alt: match[2], url: match[3] };
+  if (match[4] && match[5]) {
+    return { type: "link", text: match[4], url: match[5] };
   }
   if (match[6] || match[7]) {
-    return { type: "bold", text: match[6] || match[7] };
+    return { type: "boldItalic", text: match[6] || match[7] };
   }
   if (match[8] || match[9]) {
-    return { type: "italic", text: match[8] || match[9] };
+    return { type: "bold", text: match[8] || match[9] };
   }
-  if (match[10]) {
-    return { type: "strikethrough", text: match[10] };
-  }
-  if (match[11]) {
-    return { type: "mathInline", text: match[11] };
+  if (match[10] || match[11]) {
+    return { type: "italic", text: match[10] || match[11] };
   }
   if (match[12]) {
-    return { type: "code", text: match[12] };
+    return { type: "strikethrough", text: match[12] };
+  }
+  if (match[13]) {
+    return { type: "mathInline", text: match[13] };
+  }
+  if (match[14]) {
+    return { type: "code", text: match[14] };
   }
   return null;
 }
 
+// Order matters: image before link; bold-italic before bold before italic;
+// $...$ before backtick.
+const INLINE_REGEX = new RegExp(
+  [
+    /!\[([^\]]*)\]\(([^)]+)\)/.source, // 1-3 image
+    /\[([^\]]+)\]\(([^)]+)\)/.source, // 4-5 link
+    /\*\*\*([\s\S]+?)\*\*\*/.source, // 6 bold-italic ***
+    /___([\s\S]+?)___/.source, // 7 bold-italic ___
+    /\*\*([\s\S]+?)\*\*/.source, // 8 bold **
+    /__([\s\S]+?)__/.source, // 9 bold __
+    /(?<![\w*])\*(?!\s)([^*\n]+?)(?<!\s)\*(?![\w*])/.source, // 10 italic *
+    /(?<![\w_])_(?!\s)([^_\n]+?)(?<!\s)_(?![\w_])/.source, // 11 italic _
+    /~~([\s\S]+?)~~/.source, // 12 strikethrough
+    /\$([^$\n]+?)\$/.source, // 13 math inline
+    /`([^`\n]+)`/.source, // 14 code
+  ].join("|"),
+  "g",
+);
+
 function parseInline(text: string): InlineSegment[] {
   const segments: InlineSegment[] = [];
-  // Order matters: bold-italic before bold before italic; $...$ before backtick
-  const inlineRegex =
-    /(\[([^\]]+)\]\(([^)]+)\)|\*\*\*(.+?)\*\*\*|___(.+?)___|\*\*(.+?)\*\*|__(.+?)__|_(.+?)_|\*(.+?)\*|~~(.+?)~~|\$(.+?)\$|`([^`]+)`)/g;
-
+  INLINE_REGEX.lastIndex = 0;
   let lastIndex = 0;
-  let match = inlineRegex.exec(text);
+  let match = INLINE_REGEX.exec(text);
 
   while (match !== null) {
-    // Push preceding plain text
     if (match.index > lastIndex) {
-      segments.push({ type: "text", text: text.slice(lastIndex, match.index) });
+      segments.push({
+        type: "text",
+        text: decodeEntities(text.slice(lastIndex, match.index)),
+      });
     }
 
     const segment = segmentFromMatch(match);
@@ -92,19 +190,24 @@ function parseInline(text: string): InlineSegment[] {
     }
 
     lastIndex = match.index + match[0].length;
-    match = inlineRegex.exec(text);
+    match = INLINE_REGEX.exec(text);
   }
 
   if (lastIndex < text.length) {
-    segments.push({ type: "text", text: text.slice(lastIndex) });
+    segments.push({
+      type: "text",
+      text: decodeEntities(text.slice(lastIndex)),
+    });
   }
 
   if (segments.length === 0) {
-    segments.push({ type: "text", text });
+    segments.push({ type: "text", text: decodeEntities(text) });
   }
 
   return segments;
 }
+
+// -- Block parsing ------------------------------------------------------------
 
 // A single parsing step: an optional block plus the index to resume from.
 // `block === null` means lines were consumed without producing a block.
@@ -159,11 +262,13 @@ function parseHrLine(lines: string[], start: number): BlockParseResult | null {
   return { block: { type: "hr" }, next: start + 1 };
 }
 
+const HEADING_LINE_REGEX = /^(#{1,6})\s+(.+)/;
+
 function parseHeadingLine(
   lines: string[],
   start: number,
 ): BlockParseResult | null {
-  const headingMatch = lines[start].match(/^(#{1,6})\s+(.+)/);
+  const headingMatch = lines[start].match(HEADING_LINE_REGEX);
   if (!headingMatch) return null;
   return {
     block: {
@@ -175,65 +280,177 @@ function parseHeadingLine(
   };
 }
 
+// `>` with or without a trailing space opens a quote (CommonMark allows both).
+const BLOCKQUOTE_LINE_REGEX = /^\s{0,3}>\s?(.*)$/;
+
 function parseBlockquoteLines(
   lines: string[],
   start: number,
 ): BlockParseResult | null {
-  if (!lines[start].trimStart().startsWith("> ")) return null;
-  const quoteLines: string[] = [];
-  let i = start;
-  while (i < lines.length && lines[i].trimStart().startsWith("> ")) {
-    quoteLines.push(lines[i].replace(/^\s*>\s?/, ""));
+  const openMatch = lines[start].match(BLOCKQUOTE_LINE_REGEX);
+  if (!openMatch) return null;
+  const quoteLines: string[] = [openMatch[1]];
+  let i = start + 1;
+  while (i < lines.length) {
+    const match = lines[i].match(BLOCKQUOTE_LINE_REGEX);
+    if (!match) break;
+    quoteLines.push(match[1]);
     i++;
   }
   return {
-    block: { type: "blockquote", segments: parseInline(quoteLines.join(" ")) },
+    block: { type: "blockquote", segments: parseInline(quoteLines.join("\n")) },
     next: i,
   };
 }
 
+// -- Lists (nested + task lists) ----------------------------------------------
+
+const UNORDERED_ITEM_REGEX = /^(\s*)([-*+])\s+(.*)$/;
+const ORDERED_ITEM_REGEX = /^(\s*)(\d+)[.)]\s+(.*)$/;
+const TASK_CHECKBOX_REGEX = /^\[([ xX])\]\s+(.*)$/;
+
+/** Marker info for a list-item line, or null when the line opens no item. */
+function itemMarker(
+  line: string,
+  ordered: boolean,
+): { indent: number; rest: string } | null {
+  const match = ordered
+    ? line.match(ORDERED_ITEM_REGEX)
+    : line.match(UNORDERED_ITEM_REGEX);
+  if (!match) return null;
+  return { indent: match[1].length, rest: match[3] };
+}
+
+/**
+ * Parse a (possibly nested) list starting at `start`. Items at the opening
+ * line's indent delimit items; deeper-indented continuation lines belong to
+ * the current item and are recursively parsed as blocks, which is what makes
+ * nested sublists render correctly.
+ */
 function parseListLines(
   lines: string[],
   start: number,
 ): BlockParseResult | null {
-  const unordered = /^\s*[-*+]\s+/;
-  const ordered = /^\s*\d+[.)]\s+/;
-  const matcher = unordered.test(lines[start])
-    ? unordered
-    : ordered.test(lines[start])
-      ? ordered
-      : null;
-  if (!matcher) return null;
-  const items: InlineSegment[][] = [];
+  const ordered = ORDERED_ITEM_REGEX.test(lines[start]);
+  const first = itemMarker(lines[start], ordered);
+  if (!first) return null;
+
+  const baseIndent = first.indent;
+  const items: ListItem[] = [];
+
   let i = start;
-  while (i < lines.length && matcher.test(lines[i])) {
-    items.push(parseInline(lines[i].replace(matcher, "")));
+  while (i < lines.length) {
+    const line = lines[i];
+    const marker = itemMarker(line, ordered);
+
+    // A sibling item at the same level opens a new entry.
+    if (!marker || marker.indent < baseIndent) break;
+
+    const task = marker.rest.match(TASK_CHECKBOX_REGEX);
+    const itemLines = [task ? task[2] : marker.rest];
+    items.push({
+      blocks: [],
+      task: !!task,
+      checked: task ? task[1].toLowerCase() === "x" : false,
+    });
     i++;
+
+    // Continuation lines belong to this item: nested sublists (deeper-indent
+    // markers) and indented wrapped text. Anything else ends the item; the
+    // recursive parseBlocks on itemLines is what renders nested lists.
+    while (i < lines.length && lines[i].trim() !== "") {
+      const cont = lines[i];
+      const contIndent = cont.match(/^\s*/)?.[0].length ?? 0;
+      const nestedMarker = itemMarker(cont, ordered);
+      const isNested =
+        (nestedMarker && nestedMarker.indent > baseIndent) ||
+        contIndent > baseIndent + 1;
+      if (!isNested) break;
+      itemLines.push(cont.trimStart());
+      i++;
+    }
+    items[items.length - 1].blocks = parseBlocks(itemLines);
   }
+
+  const startIndex = ordered
+    ? Number.parseInt(lines[start].match(ORDERED_ITEM_REGEX)?.[2] ?? "1", 10)
+    : 1;
+
   return {
     block: {
-      type: matcher === unordered ? "unorderedList" : "orderedList",
+      type: "list",
+      ordered,
+      start: Number.isNaN(startIndex) ? 1 : startIndex,
       items,
     },
     next: i,
   };
 }
 
+// -- Tables -------------------------------------------------------------------
+
+const TABLE_DELIM_REGEX = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/;
+
+// Protect escaped pipes, split, then restore. A sentinel string rather than
+// a control character so the split stays regex-free.
+const ESCAPED_PIPE_SENTINEL = "\u0001gaia-pipe\u0001";
+function splitTableRow(line: string): string[] {
+  let trimmed = line.trim();
+  if (trimmed.startsWith("|")) trimmed = trimmed.slice(1);
+  if (trimmed.endsWith("|") && !trimmed.endsWith("\\|")) {
+    trimmed = trimmed.slice(0, -1);
+  }
+  return trimmed
+    .replace(/\\\|/g, ESCAPED_PIPE_SENTINEL)
+    .split("|")
+    .map((cell) => cell.replaceAll(ESCAPED_PIPE_SENTINEL, "|").trim());
+}
+
+function parseTableLines(
+  lines: string[],
+  start: number,
+): BlockParseResult | null {
+  if (start + 1 >= lines.length) return null;
+  const header = lines[start];
+  const delim = lines[start + 1];
+  if (!header.includes("|") || !TABLE_DELIM_REGEX.test(delim)) return null;
+
+  const alignments: TableAlignment[] = splitTableRow(delim).map((cell) => {
+    const left = cell.startsWith(":");
+    const right = cell.endsWith(":");
+    if (left && right) return "center";
+    if (right) return "right";
+    if (left) return "left";
+    return null;
+  });
+
+  const rows: string[][] = [splitTableRow(header)];
+  let i = start + 2;
+  while (i < lines.length && lines[i].includes("|") && lines[i].trim() !== "") {
+    rows.push(splitTableRow(lines[i]));
+    i++;
+  }
+
+  return { block: { type: "table", alignments, rows }, next: i };
+}
+
+// -- Paragraph ----------------------------------------------------------------
+
 function isBlockBoundary(line: string): boolean {
   return (
     line.trim() === "" ||
     line.trim() === "$$" ||
     line.trimStart().startsWith("```") ||
-    line.trimStart().startsWith("> ") ||
-    /^#{1,6}\s+/.test(line) ||
-    /^\s*[-*+]\s+/.test(line) ||
-    /^\s*\d+[.)]\s+/.test(line) ||
+    BLOCKQUOTE_LINE_REGEX.test(line) ||
+    HEADING_LINE_REGEX.test(line) ||
+    UNORDERED_ITEM_REGEX.test(line) ||
+    ORDERED_ITEM_REGEX.test(line) ||
+    TABLE_DELIM_REGEX.test(line) ||
     isHrLine(line)
   );
 }
 
 function parseParagraphLines(lines: string[], start: number): BlockParseResult {
-  // Empty line: consume without producing a block.
   if (lines[start].trim() === "") {
     return { block: null, next: start + 1 };
   }
@@ -246,24 +463,28 @@ function parseParagraphLines(lines: string[], start: number): BlockParseResult {
   return {
     block:
       paraLines.length > 0
-        ? { type: "paragraph", segments: parseInline(paraLines.join(" ")) }
+        ? {
+            // Preserve single newlines inside a paragraph (remark-breaks
+            // parity) — RNText renders \n as a visual line break.
+            type: "paragraph",
+            segments: parseInline(paraLines.join("\n")),
+          }
         : null,
     next: i,
   };
 }
 
-function parseMarkdown(raw: string): Block[] {
+function parseBlocks(lines: string[]): Block[] {
   const blocks: Block[] = [];
-  const lines = raw.split("\n");
   let i = 0;
 
   while (i < lines.length) {
-    // Order matters and mirrors the original precedence.
     const result =
       parseMathBlockLines(lines, i) ??
       parseCodeBlockLines(lines, i) ??
       parseHrLine(lines, i) ??
       parseHeadingLine(lines, i) ??
+      parseTableLines(lines, i) ??
       parseBlockquoteLines(lines, i) ??
       parseListLines(lines, i) ??
       parseParagraphLines(lines, i);
@@ -280,7 +501,8 @@ function parseMarkdown(raw: string): Block[] {
 // -- Key helpers --------------------------------------------------------------
 
 function segmentKey(seg: InlineSegment, idx: number): string {
-  return `${seg.type}-${idx}-${seg.text.slice(0, 12)}`;
+  const label = seg.type === "image" ? seg.url : seg.text;
+  return `${seg.type}-${idx}-${label.slice(0, 12)}`;
 }
 
 function blockKey(block: Block, idx: number): string {
@@ -289,26 +511,63 @@ function blockKey(block: Block, idx: number): string {
   return `${block.type}-${idx}`;
 }
 
-function listItemKey(item: InlineSegment[], idx: number): string {
-  return `li-${idx}-${item[0]?.text.slice(0, 12)}`;
+function listItemKey(item: ListItem, idx: number): string {
+  return `li-${idx}-${item.blocks[0]?.type ?? "empty"}`;
 }
 
 // -- Rendering components -----------------------------------------------------
 
-function InlineContent({ segments }: { segments: InlineSegment[] }) {
+function useBodyTextStyle() {
   const { fontSize } = useResponsive();
+  return {
+    color: COLORS.text,
+    fontSize: fontSize.base,
+    lineHeight: Math.round(fontSize.base * 1.5),
+  } as const;
+}
+
+function MarkdownImage({ url, alt }: { url: string; alt: string }) {
+  const [failed, setFailed] = useState(false);
+  const bodyStyle = useBodyTextStyle();
+  if (failed) {
+    return (
+      <RNText style={[bodyStyle, { color: COLORS.linkColor }]}>
+        {alt || url}
+      </RNText>
+    );
+  }
+  return (
+    <Image
+      source={{ uri: url }}
+      accessibilityLabel={alt}
+      resizeMode="cover"
+      style={{
+        width: "100%",
+        height: 180,
+        borderRadius: 12,
+        marginVertical: 6,
+        backgroundColor: "#1c1c1f",
+      }}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+function InlineContent({
+  segments,
+  style,
+}: {
+  segments: InlineSegment[];
+  /** Applied to the root text node; nested segments inherit font/color. */
+  style?: StyleProp<TextStyle>;
+}) {
+  const bodyStyle = useBodyTextStyle();
   const handleLinkPress = useCallback((url: string) => {
-    Linking.openURL(url);
+    void Linking.openURL(url);
   }, []);
 
   return (
-    <RNText
-      style={{
-        color: COLORS.text,
-        fontSize: fontSize.base,
-        lineHeight: Math.round(fontSize.base * 1.5),
-      }}
-    >
+    <RNText style={[bodyStyle, style]}>
       {segments.map((seg, idx) => {
         const key = segmentKey(seg, idx);
         switch (seg.type) {
@@ -350,6 +609,8 @@ function InlineContent({ segments }: { segments: InlineSegment[] }) {
                 {seg.text}
               </RNText>
             );
+          case "image":
+            return <MarkdownImage key={key} url={seg.url} alt={seg.alt} />;
           case "strikethrough":
             return (
               <RNText key={key} style={{ textDecorationLine: "line-through" }}>
@@ -377,10 +638,10 @@ function HeadingBlock({
 
   // Heading sizes mapped to design-system token scale
   const sizeMap: Record<number, number> = {
-    1: responsiveFontSize["3xl"], // 30px
-    2: responsiveFontSize["2xl"], // 24px
-    3: responsiveFontSize.xl, // 20px
-    4: responsiveFontSize.lg, // 18px
+    1: responsiveFontSize["2xl"], // 24px — h1 in a chat bubble shouldn't be display-size
+    2: responsiveFontSize.xl, // 20px
+    3: responsiveFontSize.lg, // 18px
+    4: responsiveFontSize.base, // 16px
     5: responsiveFontSize.base, // 16px
     6: responsiveFontSize.sm, // 12px
   };
@@ -393,10 +654,10 @@ function HeadingBlock({
     6: 8,
   };
   const marginBottomMap: Record<number, number> = {
-    1: 16,
-    2: 12,
+    1: 12,
+    2: 10,
     3: 8,
-    4: 8,
+    4: 6,
     5: 4,
     6: 4,
   };
@@ -406,47 +667,19 @@ function HeadingBlock({
 
   return (
     <View style={{ marginTop, marginBottom }}>
-      <RNText
+      <InlineContent
+        segments={segments}
         style={{
-          color: COLORS.text,
           fontSize,
           fontWeight: "700",
           lineHeight: Math.round(fontSize * 1.25),
         }}
-      >
-        {segments.map((seg, idx) => {
-          const key = segmentKey(seg, idx);
-          switch (seg.type) {
-            case "code":
-              return <InlineCode key={key}>{seg.text}</InlineCode>;
-            case "link":
-              return (
-                <RNText
-                  key={key}
-                  style={{
-                    color: COLORS.linkColor,
-                    textDecorationLine: "underline",
-                  }}
-                  onPress={() => Linking.openURL(seg.url)}
-                >
-                  {seg.text}
-                </RNText>
-              );
-            default:
-              return <RNText key={key}>{seg.text}</RNText>;
-          }
-        })}
-      </RNText>
+      />
     </View>
   );
 }
 
 function BlockquoteBlock({ segments }: { segments: InlineSegment[] }) {
-  const { fontSize } = useResponsive();
-  const handleLinkPress = useCallback((url: string) => {
-    Linking.openURL(url);
-  }, []);
-
   return (
     <View
       style={{
@@ -456,122 +689,176 @@ function BlockquoteBlock({ segments }: { segments: InlineSegment[] }) {
         paddingVertical: 6,
         marginVertical: 6,
         backgroundColor: "rgba(63,63,70,0.35)",
+        borderRadius: 4,
       }}
     >
-      <RNText
-        style={{
-          color: COLORS.muted,
-          fontSize: fontSize.base,
-          lineHeight: Math.round(fontSize.base * 1.5),
-          fontStyle: "italic",
-        }}
-      >
-        {segments.map((seg, idx) => {
-          const key = segmentKey(seg, idx);
-          switch (seg.type) {
-            case "text":
-              return <RNText key={key}>{seg.text}</RNText>;
-            case "bold":
-              return (
-                <RNText key={key} style={{ fontWeight: "700" }}>
-                  {seg.text}
-                </RNText>
-              );
-            case "italic":
-              return (
-                <RNText key={key} style={{ fontStyle: "italic" }}>
-                  {seg.text}
-                </RNText>
-              );
-            case "boldItalic":
-              return (
-                <RNText
-                  key={key}
-                  style={{ fontWeight: "700", fontStyle: "italic" }}
-                >
-                  {seg.text}
-                </RNText>
-              );
-            case "strikethrough":
-              return (
-                <RNText
-                  key={key}
-                  style={{ textDecorationLine: "line-through" }}
-                >
-                  {seg.text}
-                </RNText>
-              );
-            case "code":
-              return <InlineCode key={key}>{seg.text}</InlineCode>;
-            case "link":
-              return (
-                <RNText
-                  key={key}
-                  style={{
-                    color: COLORS.linkColor,
-                    textDecorationLine: "underline",
-                  }}
-                  onPress={() => handleLinkPress(seg.url)}
-                >
-                  {seg.text}
-                </RNText>
-              );
-            default:
-              return <RNText key={key}>{seg.text}</RNText>;
-          }
-        })}
-      </RNText>
+      <InlineContent
+        segments={segments}
+        style={{ color: COLORS.muted, fontStyle: "italic" }}
+      />
     </View>
   );
 }
 
 function ListBlock({
   ordered,
+  start,
   items,
 }: {
   ordered: boolean;
-  items: InlineSegment[][];
+  start: number;
+  items: ListItem[];
 }) {
-  const { fontSize } = useResponsive();
+  const bodyStyle = useBodyTextStyle();
   return (
-    <View style={{ marginVertical: 4, paddingLeft: 16 }}>
-      {items.map((item, idx) => (
-        <View
-          key={listItemKey(item, idx)}
-          style={{ flexDirection: "row", marginBottom: 8, paddingRight: 8 }}
-        >
-          {ordered ? (
-            <RNText
-              style={{
-                color: COLORS.muted,
-                fontSize: fontSize.base,
-                lineHeight: Math.round(fontSize.base * 1.5),
-                width: 24,
-              }}
-            >
-              {`${idx + 1}.`}
-            </RNText>
-          ) : (
-            <View
-              style={{
-                width: 16,
-                alignItems: "center",
-                paddingTop: 8,
-              }}
-            >
+    <View style={{ marginVertical: 4, paddingLeft: 8 }}>
+      {items.map((item, idx) => {
+        const marker = ordered ? `${start + idx}.` : null;
+        return (
+          <View
+            key={listItemKey(item, idx)}
+            style={{ flexDirection: "row", marginBottom: 6, paddingRight: 8 }}
+          >
+            {item.task ? (
+              <View style={{ width: 24, paddingTop: 3 }}>
+                {/* Checkbox drawn with views, not glyph text */}
+                <View
+                  style={{
+                    width: 16,
+                    height: 16,
+                    borderRadius: 4,
+                    borderWidth: 1.5,
+                    borderColor: item.checked ? COLORS.linkColor : COLORS.muted,
+                    backgroundColor: item.checked
+                      ? COLORS.linkColor
+                      : "transparent",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {item.checked ? (
+                    <View
+                      style={{
+                        width: 8,
+                        height: 4,
+                        borderLeftWidth: 2,
+                        borderBottomWidth: 2,
+                        borderColor: "#000",
+                        transform: [{ rotate: "-45deg" }, { translateY: -1 }],
+                      }}
+                    />
+                  ) : null}
+                </View>
+              </View>
+            ) : marker ? (
+              <RNText style={{ ...bodyStyle, color: COLORS.muted, width: 24 }}>
+                {marker}
+              </RNText>
+            ) : (
               <View
                 style={{
-                  width: 4,
-                  height: 4,
-                  borderRadius: 2,
-                  backgroundColor: COLORS.muted,
+                  width: 24,
+                  alignItems: "center",
+                  paddingTop: Math.round(bodyStyle.fontSize * 0.55),
                 }}
+              >
+                <View
+                  style={{
+                    width: 4,
+                    height: 4,
+                    borderRadius: 2,
+                    backgroundColor: COLORS.muted,
+                  }}
+                />
+              </View>
+            )}
+            <View style={{ flex: 1 }}>
+              <RenderBlocks blocks={item.blocks} />
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function TableCellText({
+  value,
+  bold,
+  align,
+}: {
+  value: string;
+  bold?: boolean;
+  align: TableAlignment;
+}) {
+  const bodyStyle = useBodyTextStyle();
+  return (
+    <RNText
+      style={[
+        bodyStyle,
+        bold ? { fontWeight: "600" } : null,
+        { textAlign: align ?? "left" },
+      ]}
+    >
+      {decodeEntities(value)}
+    </RNText>
+  );
+}
+
+function TableBlock({
+  alignments,
+  rows,
+}: {
+  alignments: TableAlignment[];
+  rows: string[][];
+}) {
+  const [header, ...body] = rows;
+  if (!header) return null;
+
+  return (
+    <View
+      style={{
+        marginVertical: 8,
+        borderRadius: 12,
+        overflow: "hidden",
+        backgroundColor: "#1f1f23",
+      }}
+    >
+      {/* Header row */}
+      <View style={{ flexDirection: "row", backgroundColor: "#27272a" }}>
+        {header.map((cell, col) => (
+          <View
+            // biome-ignore lint/suspicious/noArrayIndexKey: positional column identity; cell text can repeat
+            key={`h-${col}`}
+            style={{ flex: 1, paddingHorizontal: 10, paddingVertical: 8 }}
+          >
+            <TableCellText value={cell} bold align={alignments[col] ?? null} />
+          </View>
+        ))}
+      </View>
+      {/* Body rows */}
+      {body.map((row, rowIdx) => (
+        <View
+          // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional data with no stable identity
+          key={`r-${rowIdx}`}
+          style={{
+            flexDirection: "row",
+            borderTopWidth: 1,
+            borderTopColor: "rgba(63,63,70,0.5)",
+          }}
+        >
+          {header.map((_, col) => (
+            <View
+              // biome-ignore lint/suspicious/noArrayIndexKey: same positional column identity as the header
+              key={`c-${rowIdx}-${col}`}
+              style={{ flex: 1, paddingHorizontal: 10, paddingVertical: 8 }}
+            >
+              <TableCellText
+                value={row[col] ?? ""}
+                align={alignments[col] ?? null}
               />
             </View>
-          )}
-          <View style={{ flex: 1 }}>
-            <InlineContent segments={item} />
-          </View>
+          ))}
         </View>
       ))}
     </View>
@@ -584,7 +871,7 @@ function HorizontalRule() {
       style={{
         height: 1,
         backgroundColor: COLORS.hrColor,
-        marginVertical: 28,
+        marginVertical: 16,
       }}
     />
   );
@@ -708,19 +995,9 @@ function MathBlock({ code, inline }: { code: string; inline?: boolean }) {
   );
 }
 
-// -- Main component -----------------------------------------------------------
+// -- Block dispatcher ---------------------------------------------------------
 
-function MarkdownRendererInner({ content }: MarkdownRendererProps) {
-  if (!content || content.trim() === "") {
-    return null;
-  }
-
-  const blocks = parseMarkdown(content);
-
-  if (blocks.length === 0) {
-    return null;
-  }
-
+function RenderBlocks({ blocks }: { blocks: Block[] }) {
   return (
     <View>
       {blocks.map((block, idx) => {
@@ -732,7 +1009,7 @@ function MarkdownRendererInner({ content }: MarkdownRendererProps) {
                 key={key}
                 style={{
                   marginTop: 0,
-                  marginBottom: idx < blocks.length - 1 ? 16 : 0,
+                  marginBottom: idx < blocks.length - 1 ? 12 : 0,
                 }}
               >
                 <InlineContent segments={block.segments} />
@@ -759,10 +1036,23 @@ function MarkdownRendererInner({ content }: MarkdownRendererProps) {
             );
           case "blockquote":
             return <BlockquoteBlock key={key} segments={block.segments} />;
-          case "unorderedList":
-            return <ListBlock key={key} ordered={false} items={block.items} />;
-          case "orderedList":
-            return <ListBlock key={key} ordered={true} items={block.items} />;
+          case "list":
+            return (
+              <ListBlock
+                key={key}
+                ordered={block.ordered}
+                start={block.start}
+                items={block.items}
+              />
+            );
+          case "table":
+            return (
+              <TableBlock
+                key={key}
+                alignments={block.alignments}
+                rows={block.rows}
+              />
+            );
           case "hr":
             return <HorizontalRule key={key} />;
           case "mathBlock":
@@ -775,7 +1065,26 @@ function MarkdownRendererInner({ content }: MarkdownRendererProps) {
   );
 }
 
+// -- Main component -----------------------------------------------------------
+
+function MarkdownRendererInner({
+  content,
+  isStreaming,
+}: MarkdownRendererProps) {
+  const source = isStreaming ? repairStreamingMarkdown(content) : content;
+  if (!source || source.trim() === "") {
+    return null;
+  }
+
+  const blocks = parseBlocks(source.split("\n"));
+
+  if (blocks.length === 0) {
+    return null;
+  }
+
+  return <RenderBlocks blocks={blocks} />;
+}
+
 const MarkdownRenderer = memo(MarkdownRendererInner);
 
-export type { MarkdownRendererProps };
 export { MarkdownRenderer };

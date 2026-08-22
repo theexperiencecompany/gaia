@@ -12,12 +12,12 @@ import { useChatStore } from "@/stores/chat-store";
 import { chatApi, fetchChatStream, type Message } from "../api/chat-api";
 import { chatKeys, useConversationQuery } from "../api/queries";
 import type { AttachmentFile } from "../components/composer/attachment-preview";
-import type { ReplyToMessageData } from "../types";
+import type { Conversation, ReplyToMessageData } from "../types";
 
 const EMPTY_MESSAGES: Message[] = [];
 
-/** Delay (ms) before re-fetching conversation after the user cancels a stream. */
-const POST_CANCEL_SYNC_DELAY_MS = 2000;
+/** Delay (ms) before re-fetching conversation after a turn ends or is cancelled. */
+const POST_TURN_SYNC_DELAY_MS = 1500;
 
 export type { Message } from "../api/chat-api";
 
@@ -42,6 +42,8 @@ interface UseChatReturn {
   conversationId: string | null;
   flatListRef: React.RefObject<FlashListRef<Message> | null>;
   sendMessage: (text: string, opts?: SendMessageOptions) => Promise<void>;
+  /** Re-run the most recent send after a failure, preserving its options. */
+  retryLastMessage: () => void;
   cancelStream: () => void;
   scrollToBottom: () => void;
   refetch: () => Promise<void>;
@@ -56,6 +58,19 @@ export function useChat(
   const streamIdRef = useRef<string | null>(null);
   const streamingResponseRef = useRef<string>("");
   const streamingToolDataRef = useRef<ToolDataEntry[]>([]);
+  /**
+   * Settle function for the in-flight turn. Every terminal path (done, error,
+   * user cancel) funnels through it and only the first call wins — this is
+   * what prevents the old double-finalize races where an abort triggered
+   * onClose → onDone and re-persisted a half-finished response.
+   */
+  const settleRef = useRef<
+    ((cause: "done" | "error" | "aborted") => void) | null
+  >(null);
+  const lastRequestRef = useRef<{
+    text: string;
+    opts: SendMessageOptions;
+  } | null>(null);
   const queryClient = useQueryClient();
 
   const storeActiveChatId = useChatStore((state) => state.activeChatId);
@@ -145,8 +160,28 @@ export function useChat(
     flatListRef.current?.scrollToEnd({ animated: true });
   }, []);
 
+  /** Reconcile the optimistic local state against server truth shortly after a turn ends. */
+  const scheduleReconcile = useCallback(
+    (conversationId: string) => {
+      if (conversationId.startsWith("temp-")) return;
+      setTimeout(() => {
+        queryClient.invalidateQueries({
+          queryKey: chatKeys.messages(conversationId),
+        });
+        queryClient.invalidateQueries({
+          queryKey: chatKeys.conversations(),
+        });
+      }, POST_TURN_SYNC_DELAY_MS);
+    },
+    [queryClient],
+  );
+
   const cancelStream = useCallback(() => {
-    // Abort the local SSE connection immediately.
+    // Settle as "aborted" FIRST so the SSE close that the abort triggers can't
+    // run onDone afterwards and persist the partial response as final.
+    settleRef.current?.("aborted");
+    settleRef.current = null;
+
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
 
@@ -167,16 +202,13 @@ export function useChat(
       progressToolName: null,
     });
 
-    // Schedule a single re-fetch after the backend has had time to persist the
-    // partial response. Mirrors web's syncWithRetry but simpler: one attempt
-    // with a short delay is sufficient for the mobile use case.
+    // Pull server truth: the backend persists whatever it produced before the
+    // cancel arrived, and that partial answer should survive.
     const convId = activeConvIdRef.current;
     if (convId && !convId.startsWith("temp-")) {
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: chatKeys.messages(convId) });
-      }, POST_CANCEL_SYNC_DELAY_MS);
+      scheduleReconcile(convId);
     }
-  }, [queryClient]);
+  }, [queryClient, scheduleReconcile]);
 
   const sendMessage = useCallback(
     async (text: string, opts?: SendMessageOptions) => {
@@ -188,6 +220,17 @@ export function useChat(
       const toolCategory = opts?.toolCategory ?? null;
       const selectedWorkflow = opts?.selectedWorkflow ?? null;
       const attachments = opts?.attachments ?? [];
+
+      lastRequestRef.current = {
+        text,
+        opts: {
+          replyToMessage,
+          selectedTool,
+          toolCategory,
+          selectedWorkflow,
+          attachments,
+        },
+      };
 
       const uploadedFileIds = attachments
         .filter((a) => a.fileId)
@@ -242,6 +285,67 @@ export function useChat(
       streamingToolDataRef.current = [];
       streamIdRef.current = null;
 
+      // --- Single-settle turn finalization --------------------------------
+      // Exactly one of done / error / aborted ever runs. The SSE layer can
+      // fire multiple terminal signals (error then close, abort then close);
+      // without this guard each of them re-persisted state and raced the
+      // reconcile refetch.
+      let settled: "done" | "error" | "aborted" | null = null;
+      const settle = (cause: "done" | "error" | "aborted") => {
+        if (settled) return;
+        settled = cause;
+        settleRef.current = null;
+
+        const finalConvId = activeConvIdRef.current;
+        const liveStore = useChatStore.getState();
+
+        if (cause === "aborted") {
+          // cancelStream owns the aborted path (state reset + refetch).
+          return;
+        }
+
+        streamIdRef.current = null;
+        abortControllerRef.current = null;
+
+        const finalMessages = finalConvId
+          ? liveStore.messagesByConversation[finalConvId]
+          : undefined;
+
+        if (finalMessages && finalConvId) {
+          // Update React Query cache so the UI picks up the final messages
+          queryClient.setQueryData(
+            chatKeys.messages(finalConvId),
+            finalMessages,
+          );
+
+          // Persist to AsyncStorage so messages survive app restarts
+          chatDb.saveMessages(finalConvId, finalMessages).catch((err) => {
+            console.warn(
+              "[use-chat] Failed to persist messages on stream end:",
+              err,
+            );
+          });
+
+          liveStore.clearMessages(finalConvId);
+        }
+
+        liveStore.setStreamingState({
+          isTyping: false,
+          isStreaming: false,
+          conversationId: null,
+          progress: null,
+          progressToolName: null,
+        });
+
+        if (finalConvId) {
+          // The local accumulator is an approximation of what the server
+          // persisted (tool outputs, memory data, real timestamps). Always
+          // reconcile against server truth shortly after the turn ends.
+          scheduleReconcile(finalConvId);
+        }
+      };
+      settleRef.current = settle;
+
       try {
         const existingConvId = activeConvIdRef.current;
         const apiConversationId =
@@ -271,8 +375,8 @@ export function useChat(
               botMsgId,
               description,
             ) => {
-              const store = useChatStore.getState();
-              const msgs = store.messagesByConversation[storeKey] || [];
+              const liveStore = useChatStore.getState();
+              const msgs = liveStore.messagesByConversation[storeKey] || [];
 
               const updatedMsgs = msgs.map((msg, idx) => {
                 if (idx === msgs.length - 2) return { ...msg, id: userMsgId };
@@ -281,27 +385,35 @@ export function useChat(
               });
 
               if (!chatId && newConvId) {
-                store.setMessages(newConvId, updatedMsgs);
-                store.clearMessages(storeKey);
-                store.setStreamingState({ conversationId: newConvId });
-                store.setActiveChatId(newConvId);
+                liveStore.setMessages(newConvId, updatedMsgs);
+                liveStore.clearMessages(storeKey);
+                liveStore.setStreamingState({ conversationId: newConvId });
+                liveStore.setActiveChatId(newConvId);
 
-                store.addConversation({
-                  id: newConvId,
-                  title: description || "New conversation",
-                  created_at: new Date().toISOString(),
-                  updated_at: new Date().toISOString(),
-                });
-
-                queryClient.invalidateQueries({
-                  queryKey: chatKeys.conversations(),
-                });
+                // Show the new conversation in the sidebar immediately by
+                // prepending to the React Query cache (the sidebar's single
+                // source of truth); the background refetch confirms it.
+                queryClient.setQueryData(
+                  chatKeys.conversations(),
+                  (prev: Conversation[] | undefined) => {
+                    if (!prev) return prev;
+                    if (prev.some((c) => c.id === newConvId)) return prev;
+                    const now = new Date().toISOString();
+                    const entry = {
+                      id: newConvId,
+                      title: description || "New conversation",
+                      created_at: now,
+                      updated_at: now,
+                    };
+                    return [entry, ...prev];
+                  },
+                );
 
                 activeConvIdRef.current = newConvId;
                 setCurrentConversationId(newConvId);
                 options?.onNavigate?.(newConvId);
               } else {
-                store.setMessages(storeKey, updatedMsgs);
+                liveStore.setMessages(storeKey, updatedMsgs);
               }
             },
             onChunk: (chunk) => {
@@ -353,66 +465,32 @@ export function useChat(
                   toolData: streamingToolDataRef.current,
                 });
             },
-            onDone: () => {
-              streamIdRef.current = null;
-              const finalConvId = activeConvIdRef.current;
-              const store = useChatStore.getState();
-              const finalMessages = store.messagesByConversation[finalConvId!];
-
-              if (finalMessages && finalConvId) {
-                // Update React Query cache so the UI picks up the final messages
-                queryClient.setQueryData(
-                  chatKeys.messages(finalConvId),
-                  finalMessages,
-                );
-
-                // Persist to AsyncStorage so messages survive app restarts
-                chatDb.saveMessages(finalConvId, finalMessages).catch((err) => {
-                  console.warn(
-                    "[use-chat] Failed to persist messages on stream done:",
-                    err,
-                  );
-                });
-
-                store.clearMessages(finalConvId);
-              }
-
-              store.setStreamingState({
-                isTyping: false,
-                isStreaming: false,
-                conversationId: null,
-                progress: null,
-                progressToolName: null,
-              });
-              abortControllerRef.current = null;
-            },
+            onDone: () => settle("done"),
             onError: (error) => {
               console.error("Stream error:", error);
-              streamIdRef.current = null;
-              useChatStore.getState().setStreamingState({
-                isTyping: false,
-                isStreaming: false,
-                conversationId: null,
-                progress: null,
-                progressToolName: null,
-              });
+              // Keep everything streamed so far — only mark the message as
+              // failed. Wiping the text (the old behaviour) destroyed the
+              // partial answer the user was already reading.
               useChatStore
                 .getState()
-                .updateLastMessage(
-                  activeConvIdRef.current!,
-                  "Sorry, I encountered an error. Please try again.",
-                );
+                .updateLastAssistantMessage(activeConvIdRef.current!, {
+                  error:
+                    error.message ||
+                    "Something went wrong while generating the response.",
+                });
+              settle("error");
             },
           },
         );
         abortControllerRef.current = controller;
       } catch (error) {
         console.error("Error starting stream:", error);
-        useChatStore.getState().setStreamingState({
-          isTyping: false,
-          isStreaming: false,
-          conversationId: null,
-        });
+        useChatStore
+          .getState()
+          .updateLastAssistantMessage(activeConvIdRef.current!, {
+            error: "Couldn't reach the server. Check your connection.",
+          });
+        settle("error");
       }
     },
     [
@@ -422,8 +500,37 @@ export function useChat(
       cachedMessages,
       queryClient,
       options,
+      scheduleReconcile,
     ],
   );
+
+  const retryLastMessage = useCallback(() => {
+    const last = lastRequestRef.current;
+    const convId = activeConvIdRef.current;
+    if (!last || !convId) return;
+
+    // Drop the failed assistant message (and anything after the last user
+    // message) from both the streaming store and the query cache, then re-send.
+    const store = useChatStore.getState();
+    const msgs = store.messagesByConversation[convId];
+    if (msgs) {
+      // Drop everything after the last user message (the failed response).
+      let lastUserIdx = -1;
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].isUser) {
+          lastUserIdx = i;
+          break;
+        }
+      }
+      const kept = lastUserIdx >= 0 ? msgs.slice(0, lastUserIdx + 1) : msgs;
+      store.setMessages(convId, kept);
+      if (!convId.startsWith("temp-")) {
+        queryClient.setQueryData(chatKeys.messages(convId), kept);
+      }
+    }
+
+    void sendMessage(last.text, last.opts);
+  }, [sendMessage, queryClient]);
 
   const refetch = useCallback(async () => {
     if (currentConversationId) {
@@ -440,6 +547,7 @@ export function useChat(
     conversationId: currentConversationId,
     flatListRef,
     sendMessage,
+    retryLastMessage,
     cancelStream,
     scrollToBottom,
     refetch,

@@ -1,8 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { chatApi } from "@/features/chat/api/chat-api";
-import { chatKeys, useConversationsQuery } from "@/features/chat/api/queries";
+import {
+  chatKeys,
+  useChatQueryClient,
+  useConversationsQuery,
+} from "@/features/chat/api/queries";
 import type { Conversation, GroupedConversations } from "@/features/chat/types";
-import { useChatStore } from "@/stores/chat-store";
 
 export type { Conversation, GroupedConversations } from "@/features/chat/types";
 
@@ -20,29 +23,30 @@ interface UseConversationsReturn {
 export function useConversations(): UseConversationsReturn {
   const { data, isLoading, error, refetch } = useConversationsQuery();
   const queryClient = useQueryClient();
-  const store = useChatStore.getState();
+  const { updateConversationInCache, removeConversationFromCache } =
+    useChatQueryClient();
 
   const deleteConversation = async (id: string) => {
     await chatApi.deleteConversation(id);
-    store.removeConversation(id);
+    removeConversationFromCache(id);
     queryClient.invalidateQueries({ queryKey: chatKeys.conversations() });
   };
 
   const renameConversation = async (id: string, title: string) => {
     await chatApi.renameConversation(id, title);
-    store.updateConversationTitle(id, title);
+    updateConversationInCache(id, { title });
     queryClient.invalidateQueries({ queryKey: chatKeys.conversations() });
   };
 
   const starConversation = async (id: string) => {
     await chatApi.toggleStarConversation(id, true);
-    store.updateConversationStarred(id, true);
+    updateConversationInCache(id, { is_starred: true });
     queryClient.invalidateQueries({ queryKey: chatKeys.conversations() });
   };
 
   const unstarConversation = async (id: string) => {
     await chatApi.toggleStarConversation(id, false);
-    store.updateConversationStarred(id, false);
+    updateConversationInCache(id, { is_starred: false });
     queryClient.invalidateQueries({ queryKey: chatKeys.conversations() });
   };
 

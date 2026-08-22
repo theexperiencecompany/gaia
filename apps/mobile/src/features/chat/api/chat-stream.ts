@@ -8,6 +8,9 @@ import type {
   ReplyToMessageData,
 } from "./chat-api";
 
+/** Kill the connection if no events (incl. keepalives) arrive for this long. */
+const STREAM_STALL_TIMEOUT_MS = 45_000;
+
 export interface StreamCallbacks {
   onChunk: (text: string) => void;
   onConversationCreated?: (
@@ -232,6 +235,12 @@ export async function fetchChatStream(
         callbacks.onDone();
       },
     },
-    { body },
+    {
+      body,
+      // The backend emits keepalives during long tool runs; complete silence
+      // for this long means the stream is dead. use-chat settles the turn as
+      // an error and keeps the partial text.
+      stallTimeoutMs: STREAM_STALL_TIMEOUT_MS,
+    },
   );
 }
