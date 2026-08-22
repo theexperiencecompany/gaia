@@ -271,17 +271,22 @@ async def initialize_chroma_triggers_store() -> ChromaStore:
     server — trigger indexing is an enhancement, not core chat.
     """
     chroma_client = await ChromaClient.get_client()
-    embeddings = await providers.aget("google_embeddings")
+    raw_embeddings = await providers.aget("google_embeddings")
 
-    if embeddings is None:
+    if raw_embeddings is None:
         raise RuntimeError("Embeddings not available for triggers store")
+
+    # Same backend selection as the tools store: Google with a key, LOCAL
+    # fastembed on a bare self-host. Dims follow the active backend.
+    embeddings = raw_embeddings
+    dims = getattr(embeddings, "embedding_dims", 768)
 
     store = ChromaStore(
         client=chroma_client,
         collection_name="langgraph_triggers_store",
         index={
             "embed": embeddings,
-            "dims": 768,
+            "dims": dims,
             "fields": ["rich_description"],
         },
     )
