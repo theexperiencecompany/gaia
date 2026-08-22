@@ -121,7 +121,8 @@ function categorySections(group: CommandGroup, query: string): Section[] {
       });
   }
   for (const item of group.items) {
-    if (itemScore(query, item) > 0) rows.push(toItemRow(item));
+    // Empty query = browsing: show everything unranked.
+    if (!query.trim() || itemScore(query, item) > 0) rows.push(toItemRow(item));
   }
   return [{ id: group.id, rows }];
 }

@@ -17,19 +17,20 @@ const isBoundary = (text: string, index: number): boolean => {
   return /\p{Ll}/u.test(prev) && /\p{Lu}/u.test(text[index] ?? "");
 };
 
-/** Score one query term against one pre-lowercased field. 0 = no match. */
+/** Score one query term against one field's text (any case). 0 = no match. */
 export function scoreTerm(term: string, field: string): number {
   if (!term || !field) return 0;
+  const q = term.toLowerCase();
   const t = field.toLowerCase();
 
-  const at = t.indexOf(term);
+  const at = t.indexOf(q);
   if (at === -1) {
     // Subsequence: every term char must appear in order; reward runs and
     // word starts so "ab" ranks "About Box" above "A x B".
     let score = 0;
     let from = 0;
     let prevMatch = -2;
-    for (const ch of term) {
+    for (const ch of q) {
       let found = -1;
       for (let i = from; i < t.length; i++) {
         if (t[i] === ch) {
@@ -38,7 +39,9 @@ export function scoreTerm(term: string, field: string): number {
         }
       }
       if (found === -1) return 0;
-      score += isBoundary(t, found) ? 4 : 1;
+      // Boundary bonuses read the ORIGINAL-cased field — lowercasing would
+      // erase exactly the camelCase transitions worth rewarding.
+      score += isBoundary(field, found) ? 4 : 1;
       if (found === prevMatch + 1) score += 3;
       prevMatch = found;
       from = found + 1;
@@ -46,9 +49,9 @@ export function scoreTerm(term: string, field: string): number {
     return Math.min(40, score);
   }
 
-  if (t === term) return 100;
+  if (t === q) return 100;
   if (at === 0) return 90;
-  return isBoundary(t, at) ? 80 : 60;
+  return isBoundary(field, at) ? 80 : 60;
 }
 
 export interface ScoredField {
