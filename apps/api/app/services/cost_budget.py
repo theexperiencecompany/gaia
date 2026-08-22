@@ -134,9 +134,12 @@ async def record_model_call_usage(
     tokens (see ``llm_metering.record_llm_call``); the tokens must survive
     that so the call can be re-priced after the fact.
     """
-    tokens = input_tokens + output_tokens
+    # The request ceiling bounds runaway loops, not cache economics: a cached
+    # prefix rides nearly every call in a turn, so counting it trips the wall
+    # on ordinary multi-call turns. The durable rollup below still books raw.
+    billable_tokens = max(input_tokens - cached_tokens, 0) + output_tokens
     record_spend = user_id is not None and cost_usd > 0
-    record_tokens = root_request_id is not None and tokens > 0
+    record_tokens = root_request_id is not None and billable_tokens > 0
     has_token_data = bool(input_tokens or output_tokens or cached_tokens or reasoning_tokens)
     # The id itself, not a flag: the durable write below takes a non-optional
     # user_id, and carrying the narrowed value is what lets it type-check
@@ -179,7 +182,7 @@ async def record_model_call_usage(
                 pipe.expire(key, ttl)
         if record_tokens and root_request_id is not None:
             key = _REQUEST_TOKENS_KEY.format(root_request_id=root_request_id)
-            pipe.incrby(key, tokens)
+            pipe.incrby(key, billable_tokens)
             pipe.expire(key, REQUEST_TOKEN_COUNTER_TTL_SECONDS)
         if pipe.command_stack:
             labeled.append(("redis_usage_pipeline", pipe.execute()))

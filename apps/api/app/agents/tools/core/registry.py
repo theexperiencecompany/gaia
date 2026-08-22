@@ -296,6 +296,7 @@ class ToolRegistry:
             reminder_tool,
             research_tool,
             skill_tools,
+            subscription_tool,
             support_tool,
             todo_tool,
             tracked_todo_tools,
@@ -374,6 +375,10 @@ class ToolRegistry:
             tools=[support_tool.create_support_ticket],
             destructive_tools=set(),
         )
+        # A checkout link is inert until the user chooses to pay it, so nothing
+        # here is destructive — gating "show me how to upgrade" behind an
+        # approval prompt would be absurd.
+        self._add_category("billing", tools=[*subscription_tool.tools], destructive_tools=set())
         self._add_category("manual", tools=[*manual_tool.tools], destructive_tools=set())
         self._add_category("memory", tools=memory_tools.tools, destructive_tools=set())
         self._add_category(
