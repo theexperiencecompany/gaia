@@ -82,6 +82,11 @@ export interface CommandGroup {
   kind: CommandGroupKind;
   /** For entity groups: the page to open via the "Go to …" row. */
   path?: string;
+  /**
+   * Quick links rendered at the top of the category's drill page (e.g.
+   * Today/Upcoming views inside Todos). Filtered by query like other rows.
+   */
+  links?: { label: string; path: string }[];
   items: CommandItem[];
 }
 

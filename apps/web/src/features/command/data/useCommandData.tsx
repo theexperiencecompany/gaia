@@ -30,6 +30,8 @@ import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
 import { useComposerStore } from "@/stores/composerStore";
 import { usePricingModalStore } from "@/stores/pricingModalStore";
 import { useTodoStore } from "@/stores/todoStore";
+import { useVoiceModeActions } from "@/stores/voiceModeStore";
+import { useWhatsNewStore } from "@/stores/whatsNewStore";
 import { frecencyScore, useFrecencyStore } from "../frecency";
 import { ICON } from "../model/constants";
 import type {
@@ -94,6 +96,9 @@ export function useCommandData(host: CommandHost): CommandData {
   const { notifications, markAsRead, archiveNotification } = useNotifications();
   const { data: subscriptionStatus } = useUserSubscriptionStatus();
   const openPricing = usePricingModalStore((s) => s.openModal);
+  const openWhatsNew = useWhatsNewStore((s) => s.openModal);
+  const { enterVoiceMode } = useVoiceModeActions();
+  const createTodoAction = useTodoStore((s) => s.createTodo);
   const { openShortcutsModal } = useKeyboardShortcuts();
   const { logout } = useLogout();
   const { data: memoryList } = useQuery({
@@ -196,6 +201,7 @@ export function useCommandData(host: CommandHost): CommandData {
       accent: string,
       path: string,
       items: CommandItem[],
+      links?: { label: string; path: string }[],
     ): CommandGroup => ({
       id,
       heading,
@@ -203,6 +209,7 @@ export function useCommandData(host: CommandHost): CommandData {
       accent,
       kind: "entity",
       path,
+      links,
       items,
     });
 
@@ -211,6 +218,12 @@ export function useCommandData(host: CommandHost): CommandData {
       isSubscribed: Boolean(subscriptionStatus?.is_subscribed),
       openPricing,
       openShortcuts: openShortcutsModal,
+      openWhatsNew,
+      enterVoiceMode,
+      createTodo: async (title) => {
+        await createTodoAction({ title });
+        await loadTodos();
+      },
       logout: async () => {
         const ok = await host.confirm({
           title: "Sign out",
@@ -262,6 +275,11 @@ export function useCommandData(host: CommandHost): CommandData {
         "text-green-400",
         "/todos",
         todoItems,
+        [
+          { label: "Today", path: "/todos/today" },
+          { label: "Upcoming", path: "/todos/upcoming" },
+          { label: "Completed", path: "/todos/completed" },
+        ],
       ),
       entity(
         "notifications",
@@ -364,15 +382,32 @@ export function useCommandData(host: CommandHost): CommandData {
       const item = itemById(`chat:${chatMatch[1]}`);
       if (item) return { heading: "Current chat", item };
     }
-    if (pathname.includes("/workflows")) {
-      const id = searchParams.get("id");
-      const item = id ? itemById(`workflow:${id}`) : undefined;
-      if (item) return { heading: "Current workflow", item };
-    }
-    if (pathname.includes("/integrations")) {
-      const id = searchParams.get("id");
-      const item = id ? itemById(`integration:${id}`) : undefined;
-      if (item) return { heading: "Current integration", item };
+    // Sections that address their entity through a query param.
+    const paramRoutes = [
+      {
+        route: "/workflows",
+        param: "id",
+        type: "workflow",
+        heading: "Current workflow",
+      },
+      {
+        route: "/integrations",
+        param: "id",
+        type: "integration",
+        heading: "Current integration",
+      },
+      {
+        route: "/todos",
+        param: "todoId",
+        type: "todo",
+        heading: "Current todo",
+      },
+    ] as const;
+    for (const { route, param, type, heading } of paramRoutes) {
+      if (!pathname.includes(route)) continue;
+      const id = searchParams.get(param);
+      const item = id ? itemById(`${type}:${id}`) : undefined;
+      if (item) return { heading, item };
     }
     return null;
   }, [groups, pathname, searchParams]);

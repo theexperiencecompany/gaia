@@ -110,6 +110,16 @@ function categorySections(group: CommandGroup, query: string): Section[] {
       path: group.path,
     });
   }
+  for (const link of group.links ?? []) {
+    if (matchesText(query, link.label))
+      rows.push({
+        kind: "nav",
+        id: `link:${link.label}`,
+        label: link.label,
+        icon: <ArrowUpRight01Icon width={18} height={18} />,
+        path: link.path,
+      });
+  }
   for (const item of group.items) {
     if (itemScore(query, item) > 0) rows.push(toItemRow(item));
   }

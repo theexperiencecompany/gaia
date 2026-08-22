@@ -1,20 +1,27 @@
 "use client";
 
 import {
+  AudioWave01Icon,
   BookBookmark02Icon,
   BubbleChatAddIcon,
   CircleArrowUp02Icon,
+  CustomerSupportIcon,
   DiscordIcon,
+  Home11Icon,
   KeyboardIcon,
   Layers01Icon,
   Logout02Icon,
   MapsIcon,
+  News01Icon,
+  PinIcon,
   QuillWrite01Icon,
+  TaskAddIcon,
   WhatsappIcon,
 } from "@icons";
 import type { ReactNode } from "react";
 import { Github } from "@/components/shared/icons";
 import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
+import { toast } from "@/lib/toast";
 import { ACTION_ICON, ICON } from "../model/constants";
 import type { BuildCtx, CommandGroup, CommandItem } from "../model/types";
 
@@ -25,6 +32,9 @@ export interface CommandDeps {
   isSubscribed: boolean;
   openPricing: () => void;
   openShortcuts: () => void;
+  openWhatsNew: () => void;
+  enterVoiceMode: () => void;
+  createTodo: (title: string) => Promise<void>;
   logout: () => void;
   links: {
     discord?: string;
@@ -104,6 +114,44 @@ export function buildCommandGroups(
       },
       { subtitle: "Start a fresh conversation", keywords: "compose message" },
     ),
+    {
+      id: "cmd:new-todo",
+      type: "action",
+      title: "New todo",
+      icon: <TaskAddIcon {...ICON} />,
+      keywords: "create task add reminder",
+      primary: {
+        id: "run",
+        label: "New todo",
+        icon: <TaskAddIcon {...ACTION_ICON} />,
+        form: {
+          placeholder: "e.g. Pay the electricity bill",
+          submitLabel: "Create todo",
+          submit: async (title) => {
+            await deps.createTodo(title);
+            toast.success("Todo created");
+          },
+        },
+      },
+      actions: [],
+    },
+    cmd(
+      "voice-mode",
+      "Start voice mode",
+      <AudioWave01Icon {...ICON} />,
+      () => {
+        ctx.host.close();
+        deps.enterVoiceMode();
+      },
+      { subtitle: "Talk to GAIA", keywords: "speak talk microphone audio" },
+    ),
+    cmd(
+      "whats-new",
+      "See what's new",
+      <News01Icon {...ICON} />,
+      fire(deps.openWhatsNew),
+      { keywords: "changelog releases updates features" },
+    ),
   ];
   if (!deps.isSubscribed) {
     quickActions.push(
@@ -170,6 +218,13 @@ export function buildCommandGroups(
 
   const account: CommandItem[] = [
     cmd(
+      "support",
+      "Support & feedback",
+      <CustomerSupportIcon {...ICON} />,
+      ctx.navigate("/support"),
+      { keywords: "help contact bug feature request" },
+    ),
+    cmd(
       "shortcuts",
       "Keyboard shortcuts",
       <KeyboardIcon {...ICON} />,
@@ -182,6 +237,15 @@ export function buildCommandGroups(
     }),
   ];
 
+  const navigate: CommandItem[] = [
+    cmd("home", "Home", <Home11Icon {...ICON} />, ctx.navigate("/dashboard"), {
+      keywords: "dashboard overview start",
+    }),
+    cmd("pins", "Pins", <PinIcon {...ICON} />, ctx.navigate("/pins"), {
+      keywords: "bookmarks saved messages",
+    }),
+  ];
+
   return [
     {
       id: "actions",
@@ -190,6 +254,14 @@ export function buildCommandGroups(
       accent: "text-emerald-400",
       kind: "actions",
       items: quickActions,
+    },
+    {
+      id: "navigate",
+      heading: "Navigate",
+      icon: <Home11Icon {...ICON} />,
+      accent: "text-sky-400",
+      kind: "actions",
+      items: navigate,
     },
     {
       id: "community",
