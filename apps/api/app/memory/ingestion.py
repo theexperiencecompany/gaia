@@ -12,6 +12,7 @@ from datetime import UTC, date as date_type, datetime
 import time
 import uuid
 
+from app.config.settings import settings
 from app.constants.memory import (
     CATEGORY_PATH_MAX_DEPTH,
     DEFAULT_MEMORY_IMPORTANCE,
@@ -85,6 +86,10 @@ async def _free_cap_remaining(user_id: str, growth: int) -> int | None:
     resolving here keeps one canonical check instead of threading plan_type
     through every path.
     """
+    if settings.ENV == "selfhost":
+        # No billing ⇒ no plan tiers ⇒ memory is uncapped on self-hosted
+        # instances.
+        return None
     try:
         plan = await payment_service.get_cached_plan_type(user_id)
     except Exception as e:
