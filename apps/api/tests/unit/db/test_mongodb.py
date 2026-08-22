@@ -393,6 +393,9 @@ _INDEX_CREATORS = [
     "create_e2b_sandbox_indexes",
     "create_hil_approvals_indexes",
     "create_pending_platform_registration_indexes",
+    "create_local_credential_indexes",
+    "create_instance_settings_indexes",
+    "create_provider_credential_indexes",
 ]
 
 
