@@ -9,14 +9,17 @@ Tests cover:
 """
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import cast
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from fastapi import HTTPException
 from httpx import AsyncClient
 import pytest
 
 from app.api.v1.endpoints.onboarding import get_onboarding_personalization
+from app.constants.log_tags import LogTag
+from app.constants.todos import ONBOARDING_TODO_LIMIT
 from app.models.user_models import (
     AuthenticatedUser,
     OnboardingPreferences,
@@ -58,6 +61,8 @@ _UPDATE_PREFERENCES = "app.api.v1.endpoints.onboarding.update_onboarding_prefere
 _COMPOSIO_SERVICE = "app.api.v1.endpoints.onboarding.get_composio_service"
 _WEBSOCKET_MANAGER = "app.api.v1.endpoints.onboarding.websocket_manager"
 _REDIS_POOL_MANAGER = "app.utils.redis_utils.RedisPoolManager"
+_WF_FIND_BY_IDS = "app.api.v1.endpoints.onboarding.workflow_repository.find_by_ids"
+_TODO_LIST = "app.api.v1.endpoints.onboarding.todo_repository.list_onboarding_todos"
 
 
 def _make_onboarding_request(**overrides) -> dict:
@@ -440,14 +445,24 @@ class TestGetPersonalization:
         assert response.status_code == 404
 
     async def test_get_personalization_service_error_returns_500(self, client: AsyncClient):
-        with patch(
-            _GET_USER,
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("DB error"),
+        with (
+            patch("app.api.v1.endpoints.onboarding.log") as log,
+            patch(
+                _GET_USER,
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("DB error"),
+            ),
         ):
             response = await client.get(PERSONALIZATION_URL)
 
         assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to fetch personalization data"
+        log.error.assert_called_once_with(
+            f"{LogTag.ONBOARDING} Error fetching personalization",
+            error="DB error",
+            error_type="RuntimeError",
+            exc_info=True,
+        )
 
     async def test_get_personalization_no_phase_defaults(self, client: AsyncClient):
         """User doc with empty onboarding should return default values."""
@@ -626,3 +641,179 @@ class TestGetPersonalizationPins:
         ]
         assert len(state_logs) == 1
         assert state_logs[0].kwargs["phase"] == "initial"
+
+    async def test_full_document_passes_through_and_logs_exactly(self, client: AsyncClient):
+        """Every stored onboarding field reaches the response unchanged, and the
+        seams receive the authenticated user's id — not None or a wrong key."""
+        uid = "507f1f77bcf86cd799439011"
+        user_doc = _make_user_doc(
+            onboarding={
+                "phase": "personalization_complete",
+                "house": "Redwood",
+                "personality_phrase": "Bold Pioneer",
+                "bio_status": "completed",
+                "user_bio": "Stored bio.",
+                "overlay_color": "#101010",
+                "overlay_opacity": 77,
+                "account_number": 7,
+                "member_since": "Feb 02, 2024",
+                "suggested_workflows": ["wf-2", "wf-1"],
+                "social_profiles": [{"platform": "github", "url": "https://github.com/me"}],
+                "triage_summary": {
+                    "total_scanned": 12,
+                    "total_unread": 3,
+                    "summary": "Inbox under control.",
+                    "patterns": ["newsletters"],
+                    "important_emails": [],
+                },
+                "writing_style": {"summary": "Punchy and warm."},
+                "first_message_conversation_id": "conv-77",
+                "first_message": "Hello GAIA",
+            },
+        )
+        wf_docs = [
+            SimpleNamespace(
+                id="wf-2",
+                title="Second workflow",
+                description="d2",
+                steps=[{"title": "Step B", "description": "do b"}],
+            ),
+            SimpleNamespace(id="wf-1", title="First workflow", description="d1", steps=[]),
+        ]
+        todos = [
+            SimpleNamespace(id="t-1", title="Todo one", description="Do it", source_email=None)
+        ]
+        with (
+            patch("app.api.v1.endpoints.onboarding.log") as log,
+            patch(_GET_USER, new_callable=AsyncMock, return_value=user_doc) as get_user,
+            patch(_WF_FIND_BY_IDS, new_callable=AsyncMock, return_value=wf_docs) as find_wf,
+            patch(_TODO_LIST, new_callable=AsyncMock, return_value=todos) as list_todos,
+        ):
+            response = await client.get(PERSONALIZATION_URL)
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "phase": "personalization_complete",
+            "has_personalization": True,
+            "house": "Redwood",
+            "personality_phrase": "Bold Pioneer",
+            "user_bio": "Stored bio.",
+            "account_number": 7,
+            "member_since": "Feb 02, 2024",
+            "overlay_color": "#101010",
+            "overlay_opacity": 77,
+            "suggested_workflows": [
+                {
+                    "id": "wf-2",
+                    "title": "Second workflow",
+                    "description": "d2",
+                    "steps": [
+                        {
+                            "id": "",
+                            "title": "Step B",
+                            "category": "general",
+                            "description": "do b",
+                        }
+                    ],
+                },
+                {"id": "wf-1", "title": "First workflow", "description": "d1", "steps": []},
+            ],
+            "name": "Test User",
+            "holo_card_id": uid,
+            "first_message_conversation_id": "conv-77",
+            "first_message": "Hello GAIA",
+            "writing_style": {"style_summary": "Punchy and warm.", "example": None},
+            "social_profiles": [{"platform": "github", "url": "https://github.com/me"}],
+            "triage_summary": {
+                "total_scanned": 12,
+                "total_unread": 3,
+                "summary": "Inbox under control.",
+                "patterns": ["newsletters"],
+                "important_emails": [],
+            },
+            "onboarding_todos": [
+                {"id": "t-1", "title": "Todo one", "description": "Do it", "source_email": None}
+            ],
+        }
+        get_user.assert_awaited_once_with(uid)
+        find_wf.assert_awaited_once_with(["wf-2", "wf-1"])
+        list_todos.assert_awaited_once_with(uid, limit=ONBOARDING_TODO_LIMIT)
+        log.set.assert_called_once_with(
+            user={"id": uid},
+            onboarding={"operation": "get_personalization"},
+        )
+        assert log.info.call_args_list == [
+            call(f"{LogTag.ONBOARDING} Fetching personalization for user", user_id=uid),
+            call(
+                f"{LogTag.ONBOARDING} User onboarding state",
+                user_id=uid,
+                phase="personalization_complete",
+                bio_status="completed",
+            ),
+        ]
+
+    async def test_pending_bio_checks_gmail_for_the_authenticated_user(self, client: AsyncClient):
+        """A still-pending bio resolves the gmail connection for THIS user id."""
+        uid = "507f1f77bcf86cd799439011"
+        user_doc = _make_user_doc(onboarding={})
+        mock_composio = MagicMock()
+        mock_composio.check_connection_status = AsyncMock(return_value={"gmail": False})
+        with (
+            patch(_GET_USER, new_callable=AsyncMock, return_value=user_doc),
+            patch(_COUNT_BEFORE, new_callable=AsyncMock, return_value=0),
+            patch(_COMPOSIO_SERVICE, return_value=mock_composio),
+        ):
+            response = await client.get(PERSONALIZATION_URL)
+
+        assert response.status_code == 200
+        assert response.json()["user_bio"] == "Setting up your profile..."
+        mock_composio.check_connection_status.assert_awaited_once_with(["gmail"], uid)
+
+
+class TestGetPersonalizationFullShape:
+    async def test_minimal_doc_produces_the_exact_default_response(self, client: AsyncClient):
+        """Every literal default in the endpoint is pinned in one assertion."""
+        user_doc = UserDocument(
+            id="507f1f77bcf86cd799439011",
+            name=None,
+            onboarding={},
+            created_at=None,
+        )
+        mock_composio = MagicMock()
+        mock_composio.check_connection_status = AsyncMock(return_value={"gmail": False})
+        with (
+            patch(_GET_USER, new_callable=AsyncMock, return_value=user_doc),
+            patch(_COUNT_BEFORE, new_callable=AsyncMock, return_value=0),
+            patch(_COMPOSIO_SERVICE, return_value=mock_composio),
+        ):
+            data = (await client.get(PERSONALIZATION_URL)).json()
+
+        assert data["phase"] == "initial"
+        assert data["has_personalization"] is False
+        assert data["house"] == "Bluehaven"
+        assert data["personality_phrase"] == "Curious Adventurer"
+        assert data["overlay_color"] == "rgba(0,0,0,0)"
+        assert data["overlay_opacity"] == 40
+        assert data["name"] == "User"
+
+    async def test_log_context_is_exact(self, client: AsyncClient):
+        user_doc = UserDocument(
+            id="507f1f77bcf86cd799439011",
+            name="New User",
+            onboarding={},
+            created_at=None,
+        )
+        mock_composio = MagicMock()
+        mock_composio.check_connection_status = AsyncMock(return_value={"gmail": False})
+        with (
+            patch("app.api.v1.endpoints.onboarding.log") as log,
+            patch(_GET_USER, new_callable=AsyncMock, return_value=user_doc),
+            patch(_COUNT_BEFORE, new_callable=AsyncMock, return_value=0),
+            patch(_COMPOSIO_SERVICE, return_value=mock_composio),
+        ):
+            await client.get(PERSONALIZATION_URL)
+
+        log.set.assert_called_once_with(
+            user={"id": "507f1f77bcf86cd799439011"},
+            onboarding={"operation": "get_personalization"},
+        )
