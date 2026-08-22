@@ -686,6 +686,7 @@ class TestDigestComposition:
         assert msg.name == "search"
         info = read_offload(msg)
         assert info is not None and info["fmt"] == "json"
+        assert info["producer"] == "search"
         assert f"{9000 / 1024:.1f} KB" in msg.content  # 1024, not 1025
 
     def test_existing_additional_kwargs_are_preserved(self) -> None:
@@ -1222,5 +1223,62 @@ class TestCompactToolOutputBoundary:
         finally:
             monkeypatch.undo()
 
-        stops = [m for m, _ in recorded if "No spill and no LLM digest" in m]
-        assert any("No spill and no LLM digest available" in m for m in stops)
+        stops = [(m, k) for m, k in recorded if "No spill and no LLM digest" in m]
+        assert len(stops) == 1
+        _, kwargs = stops[0]
+        # exact payload: tool_name present (not None), nothing extra
+        assert kwargs == {"tool_name": "search"}
+
+
+class TestTruncateTierKwargs:
+    """The truncation fallback receives the caller's context intact."""
+
+    async def test_truncate_tier_receives_full_context(self) -> None:
+        import json as _json
+
+        from app.agents.middleware import compaction as cm
+
+        seen: dict = {}
+
+        def fake_truncate(**kwargs):
+            seen.update(kwargs)
+            return ToolMessage(
+                content="[Compacted in context]",
+                tool_call_id="call_9",
+                name=kwargs.get("tool_name", ""),
+            )
+
+        mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=_BrokenModel())
+        content = _json.dumps([{"i": i} for i in range(500)])
+        request = SimpleNamespace(
+            tool_call={"name": "run_query", "id": "call_9", "args": {}},
+            runtime=SimpleNamespace(
+                config={"configurable": {"user_id": "u1", "vfs_session_id": "conv1"}}
+            ),
+            state={"messages": []},
+        )
+
+        async def handler(_req):
+            return ToolMessage(
+                content=content,
+                tool_call_id="call_9",
+                name="run_query",
+                additional_kwargs={"keepme": True},
+            )
+
+        async def no_digest(llm, content_str, tool_name):
+            return None
+
+        with (
+            patch.object(cm, "_write_raw_output", side_effect=RuntimeError("no storage")),
+            patch.object(cm, "_llm_summarize_output", side_effect=no_digest),
+            patch.object(cm, "_truncate_in_context", side_effect=fake_truncate),
+        ):
+            result = await mw.awrap_tool_call(request, handler)
+            print("\nRESULT:", type(result).__name__, getattr(result, "additional_kwargs", {}))
+
+        assert seen.get("tool_name") == "run_query", seen
+        assert seen["reason"].startswith("large_output")
+        assert seen["status"] == "success"
+        assert seen["existing_additional_kwargs"] == {"keepme": True}
+        assert seen["content_str"] == content
