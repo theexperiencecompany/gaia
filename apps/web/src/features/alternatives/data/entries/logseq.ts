@@ -7,13 +7,13 @@ export const entry: AlternativeData = {
   category: "notes",
   tagline: "Open-source, local-first outliner with bidirectional linking",
   painPoints: [
-    "Outliner format is polarizing — not everyone thinks in bullet hierarchies",
+    "Outliner format is polarizing: not everyone thinks in bullet hierarchies",
     "Performance degrades significantly with large graphs",
     "Sync is limited and the mobile experience is unreliable",
     "No proactive AI or automation for capturing information automatically",
     "Requires manual maintenance to keep the graph useful",
   ],
-  metaTitle: "Best Logseq Alternative in 2026 | GAIA",
+  metaTitle: "Best Logseq Alternative in 2026",
   metaDescription:
     "Logseq requires manual note maintenance and has no proactive AI. GAIA is a proactive AI assistant with built-in graph memory. Free tier + open-source self-hosting.",
   keywords: [
@@ -33,7 +33,7 @@ export const entry: AlternativeData = {
     "self-hosted note taking",
   ],
   whyPeopleLook:
-    "Logseq's open-source, local-first approach to networked thought has attracted users who want privacy and data ownership alongside bidirectional linking. But like Obsidian, Logseq demands constant manual input. Every note, link, and tag is your responsibility. Performance issues with large graphs and a buggy mobile experience have driven many users to seek alternatives — particularly ones that combine knowledge management with proactive AI assistance.",
+    "Logseq's open-source, local-first approach to networked thought has attracted users who want privacy and data ownership alongside bidirectional linking. But like Obsidian, Logseq demands constant manual input. Every note, link, and tag is your responsibility. Performance issues with large graphs and a buggy mobile experience have driven many users to seek alternatives, particularly ones that combine knowledge management with proactive AI assistance.",
   gaiaFitScore: 3,
   gaiaReplaces: [
     "Automatic knowledge graph construction from email and calendar data",

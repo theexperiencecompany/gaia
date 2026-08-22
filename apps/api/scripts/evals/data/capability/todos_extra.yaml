@@ -1,0 +1,200 @@
+# Todos — extended coverage beyond todos.yaml: subtasks, deletion, in-place
+# correction, messy input (typos, rambling multi-clause requests), priority
+# fidelity, and the abstention case where there is nothing to create yet.
+#
+# Kept in its own file so the original todos.yaml diff stays reviewable.
+
+- id: todos-subtasks
+  ticket: "Three named subtasks must become real subtasks, not three separate todos."
+  tags: [todos]
+  prompt: "Add a todo 'plan the dinner party' with subtasks: pick the menu, write the guest list, do the shopping"
+  expected:
+    category: todos
+    communicate: ["guest list"]
+    tool_calls:
+      - {tool: create_todo}
+      - {tool: add_subtask, min_calls: 3}
+    end_state:
+      todos: [{title_contains: "dinner party", completed: false, subtask_count: 3, subtasks_completed: 0}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "all three subtasks hang off the single dinner party todo"
+        - "no separate top-level todo was created for a subtask"
+
+- id: todos-subtask-complete
+  ticket: "Completing one subtask must not complete the parent or its siblings."
+  tags: [todos, multiturn, precision]
+  setup:
+    turns:
+      - "Add a todo 'move flat' with subtasks: book the van, pack the kitchen, forward the post"
+      - "The van is booked — tick that subtask off"
+  prompt: "Add a todo 'move flat' with subtasks: book the van, pack the kitchen, forward the post"
+  expected:
+    category: todos
+    communicate: ["van"]
+    tool_calls:
+      - {tool: create_todo}
+      - {tool: add_subtask, min_calls: 3}
+      - {tool: update_subtask}
+    end_state:
+      todos: [{title_contains: "move flat", completed: false, subtask_count: 3, subtasks_completed: 1}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "only the van subtask was marked complete"
+        - "the parent todo is still open"
+
+- id: todos-delete
+  ticket: "'Delete that todo' must delete the one just created, and nothing else."
+  tags: [todos, multiturn]
+  setup:
+    turns:
+      - "Add a todo: cancel the newspaper subscription"
+      - "Actually, delete that todo"
+  prompt: "Add a todo: cancel the newspaper subscription"
+  expected:
+    category: todos
+    communicate: ["newspaper"]
+    tool_calls: [{tool: create_todo}, {tool: delete_todo}]
+    end_state:
+      answer_contains: "delete"
+      todos: [{count: 0}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms the newspaper todo was deleted"
+        - "the todo was deleted, not merely marked complete"
+
+- id: todos-correct-in-place
+  ticket: "A correction must update the existing todo, not leave two contradictory ones."
+  tags: [todos, multiturn, conflict]
+  setup:
+    turns:
+      - "Add a todo: call Dr Patel"
+      - "Sorry — it's Dr Nkemdirim, not Dr Patel. Fix that."
+  prompt: "Add a todo: call Dr Patel"
+  expected:
+    category: todos
+    communicate: ["nkemdirim"]
+    tool_calls: [{tool: create_todo}, {tool: update_todo}]
+    end_state:
+      todos: [{count: 1}, {title_contains: "nkemdirim", completed: false}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "exactly one call-the-doctor todo exists, naming Dr Nkemdirim"
+        - "no todo naming Dr Patel remains"
+
+- id: todos-typo-tolerance
+  ticket: "Typo-ridden input must still produce a correctly spelled, correctly dated todo."
+  tags: [todos]
+  prompt: "ad a todo: retrun the libary books tommorow"
+  expected:
+    category: todos
+    communicate: ["library"]
+    tool_calls: [{tool: create_todo}]
+    end_state: {todos: [{title_contains: "library", completed: false}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the stored title is spelled correctly (return the library books)"
+        - "the due date is tomorrow, as the typo'd 'tommorow' meant"
+
+- id: todos-extract-from-rambling
+  ticket: "Two actionable items buried in a rambling message; both must be captured, and nothing else."
+  tags: [todos, precision]
+  prompt: >-
+    So the weekend was a write-off, the boiler packed in again and I spent
+    Saturday on hold. Anyway — I really need to chase the plumber about the
+    warranty, and I keep forgetting to send Nadia the photos from the trip.
+    The rest can wait, honestly.
+  expected:
+    category: todos
+    communicate: ["nadia"]
+    # Gated on what was extracted, not on which todo tool wrote it: the ticket
+    # is about pulling exactly two actionable items out of the ramble. A run
+    # that captured both via `create_tracked_todo` was failed on the tool name
+    # despite the end state being exactly right. `end_state` pins both titles
+    # and their open status, and the judge rejects a third todo for the boiler.
+    end_state:
+      todos:
+        - {title_contains: "plumber", completed: false}
+        - {title_contains: "nadia", completed: false}
+    score: {gates: [communicate, end_state]}
+    judge:
+      criteria:
+        - "exactly two todos were created — the plumber and the photos for Nadia"
+        - "no todo was created for the boiler story or being on hold"
+
+- id: todos-priority-fidelity
+  ticket: "Two priorities named explicitly; each must be stored as given."
+  tags: [todos, precision]
+  prompt: "Add 'ship the release' as high priority and 'tidy my desk' as low priority"
+  expected:
+    category: todos
+    communicate: ["ship the release"]
+    tool_calls:
+      - {tool: create_todo, args: {title: "ship the release", priority: "high"}}
+      - {tool: create_todo, args: {title: "tidy my desk", priority: "low"}}
+    end_state:
+      todos:
+        - {title_contains: "release", completed: false, priority: "high"}
+        - {title_contains: "desk", completed: false, priority: "low"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the release todo is high priority and the desk todo is low priority"
+        - "the priorities were not swapped or left unset"
+
+- id: todos-bulk-delete
+  ticket: "'Delete all three' must use a bulk delete, and all three must be gone."
+  tags: [todos, multiturn]
+  setup:
+    turns:
+      - "Add three todos: rinse the cafetiere, sort the recycling, dust the shelves"
+      - "Actually delete all three of those"
+  prompt: "Add three todos: rinse the cafetiere, sort the recycling, dust the shelves"
+  expected:
+    category: todos
+    communicate: ["cafetiere"]
+    tool_calls:
+      - {tool: create_todo, min_calls: 3}
+      - {tool: bulk_delete_todos}
+    end_state:
+      todos: [{count: 0}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "all three todos were deleted"
+        - "none of them was merely marked complete"
+
+- id: todos-abstention-empty-request
+  ticket: "'Add a todo.' with no content: ask what it is instead of inventing a placeholder."
+  tags: [todos, ambiguity, negative]
+  prompt: "Add a todo."
+  expected:
+    category: todos
+    end_state:
+      todos: [{count: 0}]
+    score: {gates: [end_state]}
+    judge:
+      criteria:
+        - "the agent asks what the todo should say"
+        - "the agent must NOT create a placeholder or guessed todo"
+
+- id: todos-due-date-precision
+  ticket: "An explicit date and time must be preserved exactly on the todo."
+  tags: [todos, precision, temporal]
+  prompt: "Add a todo: submit the visa application, due on the 3rd at 09:00"
+  expected:
+    category: todos
+    communicate: ["visa application"]
+    tool_calls:
+      - {tool: create_todo, args: {due_date: "09:00"}}
+    end_state: {todos: [{title_contains: "visa application", completed: false}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the due date stored is the 3rd at 09:00, not a rounded or shifted time"
+        - "the reply states the due date back so the user can check it"

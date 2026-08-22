@@ -3,7 +3,7 @@ import uuid
 
 import pytest
 
-from app.agents.core.graph_manager import GraphManager
+from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
 from app.core.lazy_loader import providers
 
 
@@ -12,15 +12,14 @@ def _register_graph(name: str, graph: object) -> None:
     providers.register(name, loader_func=lambda: graph)
 
 
-@pytest.mark.unit
 class TestGraphManager:
     """Behavioural tests for GraphManager.get_graph using the real ProviderRegistry.
 
     All tests use UUID-suffixed names to avoid cross-test pollution in the
     shared registry singleton. No mocking of `providers` — if GraphManager
     passes the wrong key to the registry, the real registry will either raise
-    KeyError (returning None via get_graph's except branch) or return the
-    wrong object, and the assertion will fail.
+    KeyError (surfaced as GraphUnavailableError) or return the wrong object,
+    and the assertion will fail.
     """
 
     @pytest.mark.asyncio
@@ -50,26 +49,23 @@ class TestGraphManager:
         )
 
     @pytest.mark.asyncio
-    async def test_get_missing_graph(self):
+    async def test_get_missing_graph_raises(self):
         unregistered_name = f"test_sg_missing_{uuid.uuid4().hex}"
 
-        result = await GraphManager.get_graph(unregistered_name)
-
-        assert result is None
+        with pytest.raises(GraphUnavailableError, match=unregistered_name):
+            await GraphManager.get_graph(unregistered_name)
 
     @pytest.mark.asyncio
-    async def test_get_graph_returns_none_not_sentinel_when_provider_returns_none(self):
-        """get_graph must return exactly None — not a wrapper — when the provider
-        yields None, and must look up the correct key in the registry."""
+    async def test_get_graph_raises_when_provider_returns_none(self):
+        """A provider that yields None must surface as GraphUnavailableError,
+        never as a silent None return."""
         unique_name = f"test_sg_null_{uuid.uuid4().hex}"
 
         _register_graph(unique_name, None)
-        result = await GraphManager.get_graph(unique_name)
+        with pytest.raises(GraphUnavailableError, match=unique_name):
+            await GraphManager.get_graph(unique_name)
 
-        assert result is None
 
-
-@pytest.mark.unit
 class TestGraphManagerRoundTrip:
     """Verify the real registration → get_graph round-trip using the actual providers registry.
 

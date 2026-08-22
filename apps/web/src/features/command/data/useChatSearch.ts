@@ -7,7 +7,6 @@ import {
   type ComprehensiveSearchResponse,
   searchApi,
 } from "@/features/search/api/searchApi";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 const DEBOUNCE_MS = 250;
 const MIN_CHARS = 2;
@@ -28,15 +27,9 @@ export function useChatSearch(
     // Keyed to the user so cached results never leak across sessions.
     queryKey: ["command-k", "search", userEmail, debounced],
     queryFn: async () => {
-      const result = await searchApi.search(debounced);
-      trackEvent(ANALYTICS_EVENTS.SEARCH_PERFORMED, {
-        query_length: debounced.length,
-        result_count:
-          result.conversations.length +
-          result.messages.length +
-          result.notes.length,
-      });
-      return result;
+      // search:performed is captured by the API (single source of truth);
+      // no client-side capture here.
+      return searchApi.search(debounced);
     },
     enabled: isAuthenticated && debounced.length >= MIN_CHARS,
     staleTime: 30_000,

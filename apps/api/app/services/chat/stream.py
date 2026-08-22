@@ -18,6 +18,7 @@ from typing import Any
 from uuid import uuid4
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
+from langgraph.errors import GraphRecursionError
 
 from app.agents.core.agent import call_agent
 from app.agents.core.background.executor_capture import (
@@ -26,15 +27,28 @@ from app.agents.core.background.executor_capture import (
     register_executor_capture,
     teardown_executor_capture,
 )
+from app.constants.artifacts import ARTIFACT_FORWARDER_SUBSCRIBE_TIMEOUT
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT, VOICE_EXECUTOR_RESULT_TIMEOUT_S
+from app.constants.chat import GENERIC_TURN_ERROR, RECURSION_LIMIT_MESSAGE
+from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED, HIL_CLASSIFIER_HISTORY_TURNS
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
-from app.db.mongodb.collections import conversations_collection
-from app.models.message_models import MessageRequestWithHistory
+from app.db.repositories.conversations import conversation_repository
+from app.models.message_models import MessageDict, MessageRequestWithHistory
+from app.models.stream_events import (
+    ConversationDescriptionFrame,
+    ConversationInitializedFrame,
+    ErrorFrame,
+    MainResponseCompleteFrame,
+)
+from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.chat.artifact_forwarder import forward_artifact_events
 from app.services.chat.chunks import process_data_chunk
 from app.services.chat.persistence import (
     initialize_new_conversation,
     save_conversation_async,
+    user_message_content_from,
 )
 from app.services.chat.state import (
     aggregate_usage_metadata,
@@ -42,31 +56,35 @@ from app.services.chat.state import (
     merge_tool_outputs,
     recover_stream_state,
 )
-from app.services.chat.workspace import (
-    forward_artifact_events,
-    schedule_last_active_touch,
-)
+from app.services.chat.workspace import schedule_last_active_touch
+from app.services.files import FileService
+from app.services.hil.conversational import resolve_pending_from_message
+from app.services.platform_message_service import is_bot_platform
 from app.services.storage import flush_fs_metrics
+from app.utils.agent_utils import format_sse_data, format_sse_response
 from app.utils.chat_utils import generate_and_update_description
 from app.utils.stream_utils import reconstruct_subagent_groups
-from shared.py.wide_events import ChatContext, log, wide_task
+from shared.py.wide_events import ChatContext, get_trace_id, log, wide_task
 
 
 async def run_chat_stream_background(
     stream_id: str,
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     source: str | None = None,
-    start_event: asyncio.Event | None = None,
 ) -> None:
     """Run chat streaming in the background, publishing chunks to Redis.
 
     Independent of the HTTP request lifecycle — progress is saved to MongoDB on
-    completion even if the client disconnects.
+    completion even if the client disconnects. Frames land in a replayable
+    event log, so publish/subscribe timing needs no coordination.
     """
+    # get_trace_id() reads the spawning request's trace_id from this task's
+    # copied context, so the agent-run event joins with its http_request event.
     async with wide_task(
         "chat_stream",
+        trace_id=get_trace_id() or None,
         conversation_id=conversation_id,
         stream_id=stream_id,
     ):
@@ -76,7 +94,6 @@ async def run_chat_stream_background(
             user=user,
             conversation_id=conversation_id,
             source=source,
-            start_event=start_event,
         )
 
 
@@ -92,6 +109,7 @@ class _StreamState:
     __slots__ = (
         "bot_message_id",
         "complete_message",
+        "error",
         "follow_up_actions",
         "is_cancelled",
         "saved",
@@ -103,7 +121,7 @@ class _StreamState:
         "user_message_id",
     )
 
-    def __init__(self) -> None:
+    def __init__(self, turn_id: str | None = None) -> None:
         self.complete_message: str = ""
         self.tool_data: dict[str, Any] = {"tool_data": []}
         self.tool_outputs: dict[str, str] = {}
@@ -111,10 +129,17 @@ class _StreamState:
         self.follow_up_actions: list[str] = []
         self.usage_metadata: dict[str, Any] = {}
         self.is_cancelled: bool = False
+        # Terminal error for this turn, persisted onto the bot message so a
+        # reload shows what happened instead of an empty bubble.
+        self.error: str = ""
         # Whether the turn was persisted in the try block (early save). When
         # False, the finally block does a fallback save.
         self.saved: bool = False
-        self.user_message_id: str = str(uuid4())
+        # The client's send id IS the user message id (single identity — the
+        # client's optimistic record and the persisted message share one key,
+        # so there is nothing to reconcile after a reload or sync). Clients
+        # that don't send one (bots) get a server-minted id.
+        self.user_message_id: str = turn_id or str(uuid4())
         self.bot_message_id: str = str(uuid4())
         # When comms finished — stamped before any voice-mode executor wait so
         # the saved user/comms messages keep timestamps EARLIER than a delegated
@@ -125,12 +150,11 @@ class _StreamState:
 async def _run_chat_stream(
     stream_id: str,
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     source: str | None = None,
-    start_event: asyncio.Event | None = None,
 ) -> None:
-    state = _StreamState()
+    state = _StreamState(turn_id=body.turn_id)
     is_new_conversation = body.conversation_id is None
     user_id = user.get("user_id")
     artifact_task: asyncio.Task[None] | None = None
@@ -152,9 +176,45 @@ async def _run_chat_stream(
             conversation_id,
             stream_id,
             state,
-            start_event,
             is_new_conversation,
         )
+
+        # A HIL approval waiting on this conversation can be answered from a chat
+        # reply (yes/no/"do X instead") — but ONLY for button-less bot channels
+        # (WhatsApp/Telegram/Slack/Discord). Web/mobile/desktop render real
+        # Approve/Deny buttons, so they never take this LLM-classifier path; see
+        # ``_resolve_pending_approval_turn`` for the full rationale. When a bot
+        # reply resolves the approval, the turn ends here and the paused run
+        # continues on its original stream.
+        if await _resolve_pending_approval_turn(
+            body, user, conversation_id, stream_id, state, source
+        ):
+            return
+
+        forwarder_subscribed = asyncio.Event()
+        if user_id:
+            # Keep the session alive for idle-prune (fire-and-forget) and bridge
+            # the executor's artifact events to this stream. The forwarder starts
+            # BEFORE any upload seeding: pubsub has no replay, so its subscription
+            # must be live when seed_uploads publishes its 'upload' events.
+            schedule_last_active_touch(user_id, conversation_id)
+            artifact_task = asyncio.create_task(
+                forward_artifact_events(
+                    user_id,
+                    conversation_id,
+                    stream_id,
+                    state.bot_message_id,
+                    source,
+                    subscribed=forwarder_subscribed,
+                )
+            )
+
+        # For new conversations, files were uploaded without a conversation_id
+        # so they only landed in Cloudinary — not JuiceFS. Seed them now, before
+        # the agent runs, so they're on disk at the expected user-uploaded/ path.
+        if is_new_conversation and user_id and body.fileData:
+            await _wait_for_artifact_forwarder(forwarder_subscribed, stream_id)
+            await FileService.seed_uploads(body.fileData, user_id, conversation_id)
 
         # Start description generation only after the conversation row exists
         # (created in ``_publish_init_chunk``). Starting it earlier races the
@@ -162,16 +222,6 @@ async def _run_chat_stream(
         # update would silently match zero documents, leaving the title stuck at
         # "New Chat" after a refresh.
         description_task = _start_description_task(is_new_conversation, body, conversation_id, user)
-
-        if user_id:
-            # Keep the session alive for idle-prune (fire-and-forget) and bridge
-            # the executor's artifact events to this stream.
-            schedule_last_active_touch(user_id, conversation_id)
-            artifact_task = asyncio.create_task(
-                forward_artifact_events(
-                    user_id, conversation_id, stream_id, state.bot_message_id, source
-                )
-            )
 
         usage_callback = UsageMetadataCallbackHandler()
         description_task = await _consume_agent_stream(
@@ -197,13 +247,140 @@ async def _run_chat_stream(
         await _attach_executor_tool_data(stream_id, body, user, conversation_id, state)
 
         await _finalize_description(description_task, stream_id)
+        await stream_manager.publish_chunk(
+            stream_id,
+            format_sse_data(
+                MainResponseCompleteFrame(
+                    main_response_complete=True, usage=state.usage_metadata or None
+                ).model_dump(exclude_none=True)
+            ),
+        )
         await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
         await stream_manager.complete_stream(stream_id)
 
-    except Exception as e:  # noqa: BLE001 — surface to client + flag the stream
-        await _handle_stream_error(stream_id, e, start_event)
+        # The turn reached a terminal state: capture the milestone. Cancelled
+        # turns finish the same happy path (the driver ends the stream with a
+        # `cancelled` nostream marker), so branch on the flag the loop recorded.
+        if user_id:
+            event_props: dict[str, Any] = {
+                "conversation_id": conversation_id,
+                "voice_mode": body.voice_mode,
+                "is_new_conversation": is_new_conversation,
+            }
+            if source:
+                event_props["source"] = source
+            capture_event(
+                user_id,
+                (
+                    AnalyticsEvents.CHAT_MESSAGE_CANCELLED
+                    if state.is_cancelled
+                    else AnalyticsEvents.CHAT_MESSAGE_COMPLETED
+                ),
+                event_props,
+            )
+
+    except Exception as e:  # surface to client + flag the stream
+        # Persist the SAME user-facing text we stream (friendly for a recursion
+        # stop), not the raw exception — a reload shows what the user saw.
+        state.error = await _handle_stream_error(stream_id, e)
     finally:
         await _finalize_stream(stream_id, body, user, conversation_id, state, artifact_task)
+
+
+def _recent_history(messages: list[MessageDict]) -> list[MessageDict]:
+    """Recent prior turns for the approval classifier's context.
+
+    The client includes the current turn as the trailing entry when its role is
+    ``user`` (see ``user_message_content_from``); drop it so the window is only
+    prior context, then keep the last ``HIL_CLASSIFIER_HISTORY_TURNS``.
+    """
+    prior = messages[:-1] if messages and messages[-1].get("role") == "user" else messages
+    return prior[-HIL_CLASSIFIER_HISTORY_TURNS:]
+
+
+async def _resolve_pending_approval_turn(
+    body: MessageRequestWithHistory,
+    user: AuthenticatedUser,
+    conversation_id: str,
+    stream_id: str,
+    state: _StreamState,
+    source: str | None,
+) -> bool:
+    """Resolve a pending HIL approval from the user's chat reply — BOT CHANNELS ONLY.
+
+    The fast LLM classifier behind this (``resolve_pending_from_message``) reads
+    "yes" / "no" / "do X instead" out of a free-text chat reply and turns it into
+    an approve/deny on the pending approval. It exists SOLELY for button-less
+    messaging platforms — WhatsApp, Telegram, Slack, Discord — where a typed
+    reply is the only approval surface the user has.
+
+    First-party UI clients (web / mobile / desktop) render the approval card with
+    real Approve/Deny buttons, and a click is resolved deterministically through
+    ``POST /approvals/{id}/decision``. On those clients we deliberately DO NOT run
+    the classifier: asking an LLM to *guess* intent when an unambiguous button
+    already exists is pure downside — a misread could approve or decline a
+    destructive action the user never chose. The button is the source of truth on
+    any client that has one; the classifier is a fallback for the clients that
+    don't.
+
+    So this returns early for every non-bot source (``is_bot_platform`` is False
+    for web/mobile/desktop, and for the ``None``/background/workflow sources):
+    the message just runs as a normal turn and the approval stays pending for a
+    button click or the timeout sweep. Only the button-less bot channels reach
+    the classifier.
+
+    Returns ``True`` only when a bot reply approved/declined the pending action
+    (the turn is fully handled here — ack streamed + persisted — and the caller
+    must return without running the agent). Returns ``False`` otherwise: a non-bot
+    source, nothing pending, an unrelated message (already auto-denied), or no
+    user/message.
+    """
+    if not is_bot_platform(source):
+        # UI clients (web/mobile/desktop) and background/workflow runs never
+        # LLM-classify an approval — the UI has deterministic Approve/Deny
+        # buttons, so the pending approval waits for a click or the sweep.
+        return False
+
+    user_id = user.get("user_id")
+    message = user_message_content_from(body)
+    if not user_id or not message:
+        return False
+
+    try:
+        history = _recent_history(body.messages)
+        action = await resolve_pending_from_message(conversation_id, user_id, message, history)
+    except Exception as e:  # see below: chat must survive this
+        # This lookup sits on the critical path of EVERY chat message, for a feature most
+        # users have switched off. If it fails, the only safe degradation is to run the
+        # message as a normal turn: an approval the user answered stays pending (the sweep
+        # expires it) and the paused run keeps waiting — nothing destructive can run
+        # unasked, because the gate is what executes actions, not this. Breaking the whole
+        # turn instead would take chat down for everyone over an optional feature.
+        log.error(
+            f"{LogTag.HIL} Pending-approval check failed; running a normal turn",
+            error=str(e),
+            error_type=type(e).__name__,
+            conversation_id=conversation_id,
+        )
+        return False
+
+    if action not in ("approve", "deny"):
+        return False
+
+    ack = HIL_ACK_APPROVED if action == "approve" else HIL_ACK_DENIED
+    state.complete_message = ack
+    state.turn_completed_at = datetime.now(UTC)
+    await stream_manager.publish_chunk(stream_id, format_sse_response(ack))
+    await stream_manager.publish_chunk(
+        stream_id,
+        format_sse_data(
+            MainResponseCompleteFrame(main_response_complete=True).model_dump(exclude_none=True)
+        ),
+    )
+    await _persist_turn(stream_id, body, user, conversation_id, state)
+    await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
+    await stream_manager.complete_stream(stream_id)
+    return True
 
 
 def _set_stream_log_context(
@@ -237,7 +414,7 @@ def _start_description_task(
     is_new_conversation: bool,
     body: MessageRequestWithHistory,
     conversation_id: str,
-    user: dict,
+    user: AuthenticatedUser,
 ) -> asyncio.Task[str] | None:
     """Create a background task to generate a conversation description if new."""
     if not is_new_conversation:
@@ -248,8 +425,8 @@ def _start_description_task(
             conversation_id,
             last_message,
             user,
-            body.selectedTool if body.selectedTool else None,
-            body.selectedWorkflow if body.selectedWorkflow else None,
+            body.selectedTool or None,
+            body.selectedWorkflow or None,
         )
     )
 
@@ -266,37 +443,43 @@ async def _publish_description_if_ready(
         description = description_task.result()
         await stream_manager.publish_chunk(
             stream_id,
-            f"""data: {json.dumps({"conversation_description": description})}\n\n""",
+            f"data: {json.dumps(ConversationDescriptionFrame(conversation_description=description).model_dump())}\n\n",
         )
-    except Exception as e:  # noqa: BLE001 — description is non-critical
-        log.error(f"{LogTag.CHAT} Failed to get conversation description: {e}")
+    except Exception as e:  # description is non-critical
+        log.error(
+            f"{LogTag.CHAT} Failed to get conversation description",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
     return None
 
 
-async def _wait_for_http_subscriber(
-    start_event: asyncio.Event | None,
-    stream_id: str,
-) -> None:
-    """Block until the HTTP handler has subscribed to the Redis channel (or
-    5s timeout)."""
-    if not start_event or start_event.is_set():
-        return
+async def _wait_for_artifact_forwarder(subscribed: asyncio.Event, stream_id: str) -> None:
+    """Block until the artifact forwarder's pub/sub subscription is live (or
+    timeout). Seeded uploads publish artifact events with no replay — publishing
+    before the subscription exists would silently drop them."""
     try:
-        await asyncio.wait_for(start_event.wait(), timeout=5.0)
+        await asyncio.wait_for(subscribed.wait(), timeout=ARTIFACT_FORWARDER_SUBSCRIBE_TIMEOUT)
     except TimeoutError:
-        log.warning(f"{LogTag.CHAT} Stream {stream_id} HTTP subscriber timeout, proceeding anyway")
+        log.warning(
+            f"{LogTag.CHAT} Stream artifact forwarder subscribe timeout, seeding uploads anyway",
+            stream_id=stream_id,
+        )
 
 
 async def _publish_init_chunk(
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     stream_id: str,
     state: _StreamState,
-    start_event: asyncio.Event | None,
     is_new_conversation: bool,
 ) -> None:
-    """Send the first SSE frame (conversation id + message ids) to the client."""
+    """Append the identity frame (conversation id + message ids) to the log.
+
+    No subscriber coordination needed: frames land in a replayable event log,
+    so a client attaching at any point receives this frame first.
+    """
     if is_new_conversation:
         init_data = await initialize_new_conversation(
             body=body,
@@ -307,20 +490,23 @@ async def _publish_init_chunk(
             stream_id=stream_id,
         )
     else:
-        init_payload = {
-            "user_message_id": state.user_message_id,
-            "bot_message_id": state.bot_message_id,
-            "stream_id": stream_id,
-        }
+        init_frame = ConversationInitializedFrame(
+            user_message_id=state.user_message_id,
+            user_message_content=user_message_content_from(body),
+            bot_message_id=state.bot_message_id,
+            stream_id=stream_id,
+        )
+        init_payload = init_frame.model_dump(
+            exclude={"conversation_id", "conversation_description"}
+        )
         init_data = f"data: {json.dumps(init_payload)}\n\n"
 
-    await _wait_for_http_subscriber(start_event, stream_id)
     await stream_manager.publish_chunk(stream_id, init_data)
 
 
 async def _consume_agent_stream(
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     stream_id: str,
     source: str | None,
@@ -343,10 +529,15 @@ async def _consume_agent_stream(
         bot_message_id=state.bot_message_id,
         source=source,
     ):
-        if await stream_manager.is_cancelled(stream_id):
+        # Cancellation is detected and terminated by the inner graph driver
+        # (execute_graph_streaming), which owns the checkpoint write that
+        # records the interruption for the model. Breaking here would abandon
+        # that generator mid-suspend and race the record away — note the flag
+        # for bookkeeping and keep consuming; the driver ends the stream with
+        # a `cancelled` nostream marker within one graph event.
+        if not state.is_cancelled and await stream_manager.is_cancelled(stream_id):
             state.is_cancelled = True
-            log.info(f"{LogTag.CHAT} Stream {stream_id} cancelled by user")
-            break
+            log.info(f"{LogTag.CHAT} Stream cancelled by user", stream_id=stream_id)
 
         # Skip [DONE] marker — we send it after description generation.
         if chunk == "data: [DONE]\n\n":
@@ -355,8 +546,19 @@ async def _consume_agent_stream(
         description_task = await _publish_description_if_ready(stream_id, description_task)
 
         if chunk.startswith("nostream: "):
-            state.complete_message = _parse_complete_message(chunk)
+            state.complete_message, was_cancelled = _parse_complete_message(chunk)
+            state.is_cancelled = state.is_cancelled or was_cancelled
             continue
+
+        if chunk.startswith("data: ") and '"error"' in chunk:
+            # Errors reach this loop two ways: raised exceptions (caught by the
+            # orchestrator, which sets state.error) and error frames YIELDED by
+            # call_agent's setup guard. Record the latter so the persisted bot
+            # message carries the failure instead of an empty bubble.
+            with contextlib.suppress(json.JSONDecodeError):
+                payload = json.loads(chunk[len("data: ") :])
+                if isinstance(payload, dict) and payload.get("error"):
+                    state.error = str(payload["error"])
 
         if chunk.startswith("data: "):
             try:
@@ -368,20 +570,27 @@ async def _consume_agent_stream(
                     state.todo_progress_accumulated,
                     state.follow_up_actions,
                 )
-            except Exception as e:  # noqa: BLE001 — fall back to passthrough
-                log.error(f"{LogTag.CHAT} Error processing chunk: {e}")
+            except Exception as e:  # fall back to passthrough
+                log.error(
+                    f"{LogTag.CHAT} Error processing chunk",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    conversation_id=conversation_id,
+                )
                 await stream_manager.publish_chunk(stream_id, chunk)
         else:
             await stream_manager.publish_chunk(stream_id, chunk)
     return description_task
 
 
-def _parse_complete_message(chunk: str) -> str:
-    """Pull the ``complete_message`` field out of a ``nostream: {...}`` marker."""
-    nostream_json = json.loads(chunk.replace("nostream: ", ""))
-    if isinstance(nostream_json, dict) and "complete_message" in nostream_json:
-        return str(nostream_json["complete_message"])
-    return ""
+def _parse_complete_message(chunk: str) -> tuple[str, bool]:
+    """Pull ``(complete_message, cancelled)`` out of a ``nostream: {...}`` marker."""
+    nostream_json = json.loads(chunk.removeprefix("nostream: "))
+    if isinstance(nostream_json, dict):
+        return str(nostream_json.get("complete_message", "")), bool(
+            nostream_json.get("cancelled", False)
+        )
+    return "", False
 
 
 def _log_usage_summary(state: _StreamState) -> None:
@@ -389,13 +598,13 @@ def _log_usage_summary(state: _StreamState) -> None:
     event.
 
     Reads ``cache_read`` from the LangChain ``UsageMetadataCallback`` rather
-    than the wide-event ``ContextVar``. ``LLMAccountingMiddleware`` writes
-    ``cached_tokens`` per-step into the wide event from inside a LangGraph
-    node, but those writes happen in a child ``copy_context()`` frame that does
-    not propagate back to the ``wide_task`` block — so the worker rollup would
-    otherwise see ``cached_tokens=null`` even when caching fired. The callback
-    handler runs in the parent context via LangChain's tracer and accumulates
-    correctly across every model call.
+    than the wide-event ``ContextVar``. Not because in-node writes are lost —
+    since the mutable-state fix, ``LLMAccountingMiddleware``'s ``log.set``
+    calls share this task's accumulator and do land on the event — but because
+    the callback is the turn's authoritative usage source: LangChain's tracer
+    feeds it every model call, so the totals here are computed from raw
+    per-call metadata rather than from a field this function is about to
+    overwrite.
     """
     total_input, total_output, total_cached = aggregate_usage_metadata(state.usage_metadata)
     cache_hit_rate = round(total_cached / max(total_input, 1), 4) if total_input else 0.0
@@ -426,32 +635,46 @@ async def _finalize_description(
         description = await description_task
         await stream_manager.publish_chunk(
             stream_id,
-            f"""data: {json.dumps({"conversation_description": description})}\n\n""",
+            f"data: {json.dumps(ConversationDescriptionFrame(conversation_description=description).model_dump())}\n\n",
         )
-    except Exception as e:  # noqa: BLE001 — description is non-critical
-        log.error(f"{LogTag.CHAT} Failed to get conversation description: {e}")
+    except Exception as e:  # description is non-critical
+        log.error(
+            f"{LogTag.CHAT} Failed to get conversation description",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 async def _handle_stream_error(
     stream_id: str,
     error: Exception,
-    start_event: asyncio.Event | None,
-) -> None:
-    """Publish the error to the client and flag the stream as failed.
+) -> str:
+    """Publish the error to the client, flag the stream as failed, and return
+    the user-facing message so the caller can persist the SAME text.
 
     Order matters: ``set_error`` publishes the ``STREAM_ERROR_SIGNAL`` which
     breaks the subscriber loop, so the error chunk must go on the wire first.
     """
-    log.error(f"{LogTag.CHAT} Background stream error for {stream_id}: {error}")
-    await _wait_for_http_subscriber(start_event, stream_id)
-    await stream_manager.publish_chunk(stream_id, f"data: {json.dumps({'error': str(error)})}\n\n")
-    await stream_manager.set_error(stream_id, str(error))
+    log.error(f"{LogTag.CHAT} Background stream error for", stream_id=stream_id, error=error)
+    if isinstance(error, GraphRecursionError):
+        user_error = RECURSION_LIMIT_MESSAGE
+    else:
+        # str(exc) is genuinely "" for some provider errors, and a blank string is
+        # falsy on the client: no error bubble renders and the turn is filtered out.
+        user_error = str(error).strip() or GENERIC_TURN_ERROR.format(
+            error_type=type(error).__name__
+        )
+    await stream_manager.publish_chunk(
+        stream_id, f"data: {json.dumps(ErrorFrame(error=user_error).model_dump())}\n\n"
+    )
+    await stream_manager.set_error(stream_id, user_error)
+    return user_error
 
 
 async def _persist_turn(
     stream_id: str,
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     state: _StreamState,
 ) -> None:
@@ -477,6 +700,8 @@ async def _persist_turn(
         user_message_id=state.user_message_id,
         bot_message_id=state.bot_message_id,
         bot_timestamp=state.turn_completed_at,
+        error=state.error or None,
+        follow_up_actions=state.follow_up_actions or None,
     )
     state.saved = True
 
@@ -484,7 +709,7 @@ async def _persist_turn(
 async def _attach_executor_tool_data(
     stream_id: str,
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     state: _StreamState,
 ) -> None:
@@ -512,22 +737,37 @@ async def _attach_executor_tool_data(
     if not executor_td:
         return
     try:
-        await conversations_collection.update_one(
-            {
-                "user_id": user.get("user_id"),
-                "conversation_id": conversation_id,
-                "messages.message_id": state.bot_message_id,
-            },
-            {"$push": {"messages.$.tool_data": {"$each": executor_td}}},
+        matched = await conversation_repository.append_message_tool_data(
+            conversation_id,
+            user_id=user.get("user_id", ""),
+            message_id=state.bot_message_id,
+            entries=executor_td,
         )
-    except Exception as e:  # noqa: BLE001 — executor tool_data attach is best-effort
-        log.error(f"{LogTag.CHAT} Failed to update bot message tool_data: {e}")
+        if not matched:
+            # A False return means the message_id filter matched nothing, so the
+            # write silently did not happen — every executor card the user
+            # watched live is absent from the saved turn. Nothing raises, so
+            # without this the loss is invisible (see the same check in
+            # result_delivery._persist_follow_up_actions).
+            log.error(
+                f"{LogTag.CHAT} Executor tool_data attach matched no message, dropping cards",
+                conversation_id=conversation_id,
+                message_id=state.bot_message_id,
+                entries=len(executor_td),
+            )
+    except Exception as e:  # executor tool_data attach is best-effort
+        log.error(
+            f"{LogTag.CHAT} Failed to update bot message tool_data",
+            error=str(e),
+            error_type=type(e).__name__,
+            conversation_id=conversation_id,
+        )
 
 
 async def _finalize_stream(
     stream_id: str,
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     state: _StreamState,
     artifact_task: asyncio.Task[None] | None,
@@ -552,8 +792,14 @@ async def _finalize_stream(
             # Gated on ``not state.saved`` so this never double-attaches with the
             # happy/cancel path, which always runs the attach itself.
             await _attach_executor_tool_data(stream_id, body, user, conversation_id, state)
-        except Exception as save_err:  # noqa: BLE001 — best-effort fallback save
-            log.error(f"{LogTag.CHAT} Fallback save failed for stream {stream_id}: {save_err}")
+        except Exception as save_err:  # best-effort fallback save
+            log.error(
+                f"{LogTag.CHAT} Fallback save failed for stream",
+                stream_id=stream_id,
+                error=str(save_err),
+                error_type=type(save_err).__name__,
+                conversation_id=conversation_id,
+            )
 
     # Teardown must come AFTER the fallback save: the backstop attach drains the
     # session's tool events — tearing down first would leave it nothing to drain.
@@ -573,4 +819,4 @@ async def _finalize_stream(
         # elided so events without FS activity stay clean.
         **({"fs": fs_metrics} if fs_metrics else {}),
     )
-    log.debug(f"{LogTag.CHAT} Background stream {stream_id} completed and saved")
+    log.debug(f"{LogTag.CHAT} Background stream completed and saved", stream_id=stream_id)

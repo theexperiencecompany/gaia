@@ -12,19 +12,27 @@ the routing logic under test are real.
 
 import asyncio
 from contextlib import ExitStack
-from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from app.agents.core.background import executor_runner as er, session as sess
-from app.agents.core.background.executor_queue import LockState, PreparedQueuedTask
+from app.agents.core.background.executor_queue import (
+    LockState,
+    PreparedQueuedTask,
+    build_run_item,
+)
 from app.agents.core.background.session import (
     ExecutorRun,
     RunKind,
     create_session,
     get_session,
 )
+from app.constants.agents import AgentTag, wrap_agent_payload
+
+# The task text the finalize step now receives; forwarded to comms on a cancel.
+TASK = "run the standup summary"
+CARD_NOTE = wrap_agent_payload(AgentTag.RETURNED_TO_FRONTEND, "todo_data (1 todo)")
 
 
 @pytest.fixture(autouse=True)
@@ -67,13 +75,16 @@ class _Boundaries:
             patch.object(er, "pop_next_queued_run", new_callable=AsyncMock, return_value=None)
         )
         self.deliver = stack.enter_context(
-            patch.object(er, "deliver_result", new_callable=AsyncMock)
+            patch.object(er, "deliver_result", new_callable=AsyncMock, return_value=(None, None))
         )
         self.persist_cancelled = stack.enter_context(
             patch.object(er, "persist_cancelled_run", new_callable=AsyncMock)
         )
         self.note = stack.enter_context(
             patch.object(er, "build_returned_to_frontend_note", return_value="")
+        )
+        self.record_cancel = stack.enter_context(
+            patch.object(er, "record_executor_cancellation", new_callable=AsyncMock)
         )
 
 
@@ -83,15 +94,16 @@ def boundaries():
         yield _Boundaries(stack)
 
 
-@pytest.mark.unit
 class TestCancelledRouting:
     async def test_cancelled_queued_run_persists_cards_and_skips_delivery(self, boundaries) -> None:
         boundaries.stream_manager.is_cancelled.return_value = True
         run = _run(RunKind.QUEUED)
         create_session("s1", RunKind.QUEUED)
 
-        await er._finalize_executor_run(run, "partial text", "final")
+        await er._finalize_executor_run(run, TASK, "partial text", "final")
 
+        # Comms' context must record the cancellation regardless of card ownership.
+        boundaries.record_cancel.assert_awaited_once_with(run.conversation_id, run.task_id, TASK)
         boundaries.persist_cancelled.assert_awaited_once_with(run)
         boundaries.deliver.assert_not_awaited()
         # Queued stream is closed silently: no [DONE], no complete_stream.
@@ -112,8 +124,10 @@ class TestCancelledRouting:
         run = _run(RunKind.LIVE)
         create_session("s1", RunKind.LIVE)
 
-        await er._finalize_executor_run(run, "partial text", "final")
+        await er._finalize_executor_run(run, TASK, "partial text", "final")
 
+        # Cards defer to comms, but the cancellation is still recorded for context.
+        boundaries.record_cancel.assert_awaited_once_with(run.conversation_id, run.task_id, TASK)
         boundaries.persist_cancelled.assert_not_awaited()
         boundaries.deliver.assert_not_awaited()
         # Live sessions are torn down by the chat stream, not by finalize.
@@ -124,8 +138,9 @@ class TestCancelledRouting:
         run = _run(RunKind.LIVE, workflow_id="wf-1")
         create_session("s1", RunKind.LIVE)
 
-        await er._finalize_executor_run(run, "", "final")
+        await er._finalize_executor_run(run, TASK, "", "final")
 
+        boundaries.record_cancel.assert_awaited_once_with(run.conversation_id, run.task_id, TASK)
         boundaries.persist_cancelled.assert_awaited_once_with(run)
         boundaries.deliver.assert_not_awaited()
 
@@ -135,23 +150,22 @@ class TestCancelledRouting:
         boundaries.stream_manager.is_cancelled.return_value = True
         create_session("s1", RunKind.QUEUED)
 
-        await er._finalize_executor_run(_run(RunKind.QUEUED), "txt", "final")
+        await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "txt", "final")
 
         boundaries.note.assert_not_called()
 
 
-@pytest.mark.unit
 class TestCompletedRouting:
     async def test_completed_queued_run_delivers_and_closes_stream(self, boundaries) -> None:
         run = _run(RunKind.QUEUED)
         create_session("s1", RunKind.QUEUED)
-        boundaries.note.return_value = "[RETURNED_TO_FRONTEND] cards"
+        boundaries.note.return_value = CARD_NOTE
 
-        await er._finalize_executor_run(run, "result", "final")
+        await er._finalize_executor_run(run, TASK, "result", "final")
 
-        boundaries.deliver.assert_awaited_once_with(
-            run, "result", "final", "[RETURNED_TO_FRONTEND] cards"
-        )
+        boundaries.deliver.assert_awaited_once_with(run, "result", "final", CARD_NOTE)
+        # A completed run narrates and delivers — it never records a cancellation.
+        boundaries.record_cancel.assert_not_awaited()
         boundaries.persist_cancelled.assert_not_awaited()
         boundaries.stream_manager.publish_chunk.assert_awaited_once_with("s1", "data: [DONE]\n\n")
         boundaries.stream_manager.complete_stream.assert_awaited_once_with("s1")
@@ -161,9 +175,10 @@ class TestCompletedRouting:
         run = _run(RunKind.LIVE)
         create_session("s1", RunKind.LIVE)
 
-        await er._finalize_executor_run(run, "result", "final")
+        await er._finalize_executor_run(run, TASK, "result", "final")
 
         boundaries.deliver.assert_awaited_once()
+        boundaries.record_cancel.assert_not_awaited()
         # The live SSE is owned by the chat stream — finalize must not close it.
         boundaries.stream_manager.publish_chunk.assert_not_awaited()
         assert get_session("s1") is not None
@@ -171,13 +186,13 @@ class TestCompletedRouting:
     async def test_empty_result_text_skips_delivery(self, boundaries) -> None:
         create_session("s1", RunKind.LIVE)
 
-        await er._finalize_executor_run(_run(RunKind.LIVE), "", "final")
+        await er._finalize_executor_run(_run(RunKind.LIVE), TASK, "", "final")
 
         boundaries.deliver.assert_not_awaited()
+        boundaries.record_cancel.assert_not_awaited()
         boundaries.persist_cancelled.assert_not_awaited()
 
 
-@pytest.mark.unit
 class TestDoneSignalAndOrdering:
     @pytest.mark.parametrize("cancelled", [True, False])
     async def test_done_event_is_always_signalled(self, boundaries, cancelled) -> None:
@@ -186,7 +201,7 @@ class TestDoneSignalAndOrdering:
         boundaries.stream_manager.is_cancelled.return_value = cancelled
         session = create_session("s1", RunKind.LIVE)
 
-        await er._finalize_executor_run(_run(RunKind.LIVE), "txt", "final")
+        await er._finalize_executor_run(_run(RunKind.LIVE), TASK, "txt", "final")
 
         assert session.done_event.is_set()
 
@@ -200,12 +215,11 @@ class TestDoneSignalAndOrdering:
             "",
         )[1]
 
-        await er._finalize_executor_run(_run(RunKind.LIVE), "txt", "final")
+        await er._finalize_executor_run(_run(RunKind.LIVE), TASK, "txt", "final")
 
         assert done_state_at_note_time == [False]
 
 
-@pytest.mark.unit
 class TestQueueLockBugs:
     """Adversarial tests for the lock/queue lifecycle.
 
@@ -224,11 +238,10 @@ class TestQueueLockBugs:
             run=next_run,
             task="the queued ask",
             configurable={"stream_id": "queued_next"},
-            user_time=datetime(2026, 1, 1),
         )
 
         with patch.object(er, "run_executor_background", new_callable=AsyncMock) as spawn:
-            await er._finalize_executor_run(_run(RunKind.QUEUED), "partial", "final")
+            await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "partial", "final")
             await asyncio.sleep(0)
 
         boundaries.pop.assert_awaited_once_with("conv-1")
@@ -243,7 +256,7 @@ class TestQueueLockBugs:
         # The busy lock now belongs to someone else entirely.
         boundaries.lock_state.return_value = LockState.FOREIGN
 
-        await er._finalize_executor_run(_run(RunKind.QUEUED), "partial", "final")
+        await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "partial", "final")
 
         boundaries.release.assert_not_awaited()
         boundaries.pop.assert_not_awaited()  # not ours to hand off
@@ -260,11 +273,10 @@ class TestQueueLockBugs:
             run=next_run,
             task="stranded ask",
             configurable={"stream_id": "queued_next"},
-            user_time=datetime(2026, 1, 1),
         )
 
         with patch.object(er, "run_executor_background", new_callable=AsyncMock) as spawn:
-            await er._finalize_executor_run(_run(RunKind.QUEUED), "result", "final")
+            await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "result", "final")
             await asyncio.sleep(0)
 
         boundaries.pop.assert_not_awaited()  # not owner — never overwrite the lock
@@ -272,12 +284,66 @@ class TestQueueLockBugs:
         spawn.assert_awaited_once()
 
 
-@pytest.mark.unit
+class TestRecordPause:
+    """``_record_pause`` must fail the run, never the process, when the write fails.
+
+    A batch pause with no resumable context is worse than an error: it holds the
+    busy lock for its full TTL waiting on a resume that can never come. The
+    caller (``run_executor_background``) treats a False return as "fail this
+    run" — so a write failure here must surface as False, not an exception.
+    """
+
+    async def test_a_failed_write_fails_the_run_instead_of_raising(self) -> None:
+        run = _run(RunKind.LIVE)
+
+        with patch.object(
+            er, "set_resume_item", new_callable=AsyncMock, side_effect=RuntimeError("redis down")
+        ):
+            recorded = await er._record_pause(
+                run, TASK, {"user_id": "u1"}, ("appr-1", "appr-2")
+            )  # must not raise
+
+        assert recorded is False
+
+    async def test_a_successful_write_reports_true(self) -> None:
+        run = _run(RunKind.LIVE)
+
+        with patch.object(er, "set_resume_item", new_callable=AsyncMock) as set_item:
+            recorded = await er._record_pause(run, TASK, {"user_id": "u1"}, ("appr-1", "appr-2"))
+
+        assert recorded is True
+        assert set_item.await_count == 2  # every approval id in the batch gets stamped
+
+
+class TestFinalizeDeliveryFailureDoesNotStrandQueue:
+    """A delivery/close failure inside finalize must not skip the queue handoff
+    below it — otherwise queued work strands and the busy lock leaks until its
+    TTL (see the comment on the guarding except in _finalize_executor_run)."""
+
+    async def test_delivery_blowing_up_still_hands_off_the_queue(self, boundaries) -> None:
+        run = _run(RunKind.QUEUED)
+        create_session("s1", RunKind.QUEUED)
+        boundaries.deliver.side_effect = RuntimeError("delivery blew up")
+        next_run = _run(RunKind.QUEUED, stream_id="queued_next")
+        boundaries.pop.return_value = PreparedQueuedTask(
+            run=next_run,
+            task="the queued ask",
+            configurable={"stream_id": "queued_next"},
+        )
+
+        with patch.object(er, "run_executor_background", new_callable=AsyncMock) as spawn:
+            await er._finalize_executor_run(run, TASK, "result", "final")  # must not raise
+            await asyncio.sleep(0)
+
+        boundaries.pop.assert_awaited_once_with("conv-1")
+        spawn.assert_awaited_once()  # the queued task still gets spawned
+
+
 class TestQueueLockHandoff:
     async def test_no_next_task_releases_the_busy_lock_then_rechecks(self, boundaries) -> None:
         create_session("s1", RunKind.QUEUED)
 
-        await er._finalize_executor_run(_run(RunKind.QUEUED), "result", "final")
+        await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "result", "final")
 
         boundaries.pop.assert_awaited_once_with("conv-1")
         boundaries.release.assert_awaited_once()
@@ -291,19 +357,53 @@ class TestQueueLockHandoff:
             run=next_run,
             task="do the thing",
             configurable={"stream_id": "queued_next"},
-            user_time=datetime(2026, 1, 1),
         )
 
         with patch.object(er, "run_executor_background", new_callable=AsyncMock) as spawn:
-            await er._finalize_executor_run(_run(RunKind.QUEUED), "result", "final")
+            await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "result", "final")
             await asyncio.sleep(0)  # let the spawned task start
 
         spawn.assert_awaited_once_with(
             run=next_run,
             task="do the thing",
             configurable={"stream_id": "queued_next"},
-            user_time=datetime(2026, 1, 1),
         )
         # Lock handed off to the next run — must NOT be released or reclaimed.
         boundaries.release.assert_not_awaited()
         boundaries.reclaim.assert_not_awaited()
+
+
+class TestBuildRunItem:
+    """The one serialized run-context shape, written by the queue and by the HIL
+    resume store and read back by ``prepare_run_from_item``. A renamed or dropped
+    key here is invisible on write and only shows when a resumed run silently
+    loses what a queued run kept."""
+
+    def test_every_field_survives_the_round_trip_shape(self) -> None:
+        item = build_run_item(
+            task="triage my inbox",
+            task_id="task-1",
+            configurable={"user_id": "user-1", "thread_id": "conv-1"},
+            conversation_id="conv-1",
+            user_message_id="user-msg-1",
+            bot_message_id="bot-msg-1",
+        )
+
+        assert item["task"] == "triage my inbox"
+        assert item["task_id"] == "task-1"
+        assert item["conversation_id"] == "conv-1"
+        assert item["user_message_id"] == "user-msg-1"
+        assert item["bot_message_id"] == "bot-msg-1"
+
+    def test_a_plain_enqueue_carries_no_bot_message_id(self) -> None:
+        """Only a HIL pause sets it; a queued run must still carry the key, as
+        ``prepare_run_from_item`` reads it unconditionally."""
+        item = build_run_item(
+            task="t",
+            task_id=None,
+            configurable={"user_id": "user-1"},
+            conversation_id="conv-1",
+            user_message_id=None,
+        )
+
+        assert item["bot_message_id"] is None

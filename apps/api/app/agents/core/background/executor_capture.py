@@ -20,14 +20,14 @@ from app.agents.core.background.session import (
     teardown_session,
     was_executor_spawned,
 )
-from app.constants.agents import RETURNED_TO_FRONTEND_MARKER
+from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT
 from app.constants.log_tags import LogTag
-from app.models.chat_models import tool_fields
+from app.models.chat_models import ToolDataEntry, tool_fields
+from app.services.chat.chunks import normalize_custom_event
 from app.utils.stream_utils import (
     absorb_collector_event,
     apply_outputs_to_tool_data,
-    normalize_custom_event,
     reconstruct_subagent_groups,
 )
 from shared.py.wide_events import log
@@ -72,7 +72,7 @@ async def await_executor_done(
         )
 
 
-def drain_executor_tool_data(stream_id: str) -> list[dict[str, Any]]:
+def drain_executor_tool_data(stream_id: str) -> list[ToolDataEntry]:
     """Drain the session's tool events into reconstructed tool_data.
 
     Non-destructive read. Mirrors the comms-graph accumulation path:
@@ -84,17 +84,23 @@ def drain_executor_tool_data(stream_id: str) -> list[dict[str, Any]]:
     session = get_session(stream_id)
     if session is None or not session.tool_events:
         return []
-    accumulated: dict[str, Any] = {"tool_data": []}
+    entries: list[ToolDataEntry] = []
+    # The accumulator envelope is an open bag (see utils/stream_utils); only its
+    # "tool_data" list has a fixed shape, and it is this list object throughout —
+    # seeded here, mutated in place by every helper below, and rebound by
+    # reconstruct_subagent_groups, hence the re-read at the end.
+    accumulated: dict[str, Any] = {"tool_data": entries}
     outputs: dict[str, str] = {}
     for evt in session.tool_events:
-        # Hooks (e.g. GMAIL_FETCH_EMAILS) emit raw field payloads like
+        # Hooks (e.g. GMAIL_FETCH_MESSAGES) emit raw field payloads like
         # {"email_fetch_data": [...]}; normalize them to {"tool_data": {...}}
         # before absorbing, or absorb_collector_event drops them and the list
         # card never persists onto the background-executor message.
         absorb_collector_event(normalize_custom_event(evt), accumulated, outputs)
     apply_outputs_to_tool_data(accumulated["tool_data"], outputs, only_tool_name="tool_calls_data")
     reconstruct_subagent_groups(accumulated)
-    return accumulated.get("tool_data", [])
+    grouped: list[ToolDataEntry] = accumulated["tool_data"]
+    return grouped
 
 
 def build_returned_to_frontend_note(stream_id: str) -> str:
@@ -125,8 +131,8 @@ def build_returned_to_frontend_note(stream_id: str) -> str:
         return ""
 
     body = "\n".join(summary)
-    return (
-        f"{RETURNED_TO_FRONTEND_MARKER}\n"
+    return wrap_agent_payload(
+        AgentTag.RETURNED_TO_FRONTEND,
         "These native cards are already on the user's screen this turn:\n"
         f"{body}\n"
         "They visually render the RAW items, so don't re-type those items "
@@ -151,7 +157,7 @@ def build_returned_to_frontend_note(stream_id: str) -> str:
         "deliverable IN FULL per the long-form rule — every section, point, and "
         "citation — and do NOT compress it to a 'here's the breakdown' summary. "
         "This note never authorizes shrinking a report; it only stops you "
-        "re-typing rows a card already lists.\n"
+        "re-typing rows a card already lists.",
     )
 
 

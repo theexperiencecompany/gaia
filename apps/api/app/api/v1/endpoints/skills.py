@@ -23,10 +23,13 @@ from app.agents.skills.installer import (
 from app.agents.skills.models import (
     BuiltinSkillInfo,
     BuiltinSkillsResponse,
+    DiscoveredSkillInfo,
+    DiscoverSkillsResponse,
     Skill,
     SkillInlineCreateRequest,
     SkillListResponse,
     SkillTargetsResponse,
+    SkillToggleResponse,
     SkillUpdateRequest,
 )
 from app.agents.skills.registry import (
@@ -42,13 +45,15 @@ from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
 from app.constants.skills import EXECUTOR_SUBAGENT_ID, EXECUTOR_TARGET_LABEL
 from app.decorators import tiered_rate_limit
+from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/skills", tags=["skills"])
 
 
-def _get_user_id(user: dict = Depends(get_current_user)) -> str:
+def _get_user_id(user: AuthenticatedUser = Depends(get_current_user)) -> str:
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(
@@ -132,7 +137,7 @@ async def list_builtin_skills_endpoint(
 async def discover_skills_from_github(
     repo: str = Query(..., description="GitHub repo (owner/repo or full URL)"),
     branch: str = Query("main", description="Branch to search"),
-):
+) -> DiscoverSkillsResponse:
     """Discover available skills in a GitHub repository.
 
     Lists all skills found in standard locations without installing.
@@ -145,23 +150,37 @@ async def discover_skills_from_github(
         skills = await discover_skills_from_repo(repo, branch)
         log.set(result_count=len(skills))
         log.set(outcome="success")
-        return {
-            "repo": repo,
-            "branch": branch,
-            "skills": [s.to_dict() for s in skills],
-            "count": len(skills),
-        }
+        return DiscoverSkillsResponse(
+            repo=repo,
+            branch=branch,
+            skills=[
+                DiscoveredSkillInfo(
+                    name=s.name,
+                    description=s.description,
+                    path=s.path,
+                    repo_url=s.repo_url,
+                    subagent_id=s.subagent_id,
+                )
+                for s in skills
+            ],
+            count=len(skills),
+        )
     except ValueError as e:
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
     except Exception as e:
-        log.error(f"{LogTag.SKILLS} Error discovering skills from {repo}: {e}")
+        log.error(
+            f"{LogTag.SKILLS} Error discovering skills from repo",
+            repo=repo,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to discover skills from repository",
-        )
+        ) from e
 
 
 @router.post(
@@ -179,7 +198,7 @@ async def install_skill_with_auto_discover(
         None, description="Override target (executor or subagent agent_name)"
     ),
     user_id: str = Depends(_get_user_id),
-):
+) -> Skill:
     """Install a skill from a GitHub repository.
 
     Can work in two modes:
@@ -225,6 +244,14 @@ async def install_skill_with_auto_discover(
         )
         log.set(skill_id=installed.id if hasattr(installed, "id") else None)
         log.set(outcome="success")
+        capture_context_event(
+            AnalyticsEvents.SKILL_INSTALLED,
+            {
+                "skill_id": installed.id if hasattr(installed, "id") else None,
+                "target": installed.target,
+                "source": "github",
+            },
+        )
         return installed
     except HTTPException:
         raise
@@ -234,7 +261,13 @@ async def install_skill_with_auto_discover(
             detail=str(e),
         ) from e
     except Exception as e:
-        log.error(f"{LogTag.SKILLS} Error installing skill from GitHub: {e}")
+        log.error(
+            f"{LogTag.SKILLS} Error installing skill from GitHub",
+            user_id=user_id,
+            repo=repo_url,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to install skill from GitHub",
@@ -250,7 +283,7 @@ async def install_skill_with_auto_discover(
 async def create_inline_skill_endpoint(
     request: SkillInlineCreateRequest,
     user_id: str = Depends(_get_user_id),
-):
+) -> Skill:
     """Create a skill from inline components."""
     log.set(user={"id": user_id}, skill={"name": request.name, "target": request.target})
     try:
@@ -264,6 +297,14 @@ async def create_inline_skill_endpoint(
         )
         log.set(skill_id=installed.id if hasattr(installed, "id") else None)
         log.set(outcome="success")
+        capture_context_event(
+            AnalyticsEvents.SKILL_INSTALLED,
+            {
+                "skill_id": installed.id if hasattr(installed, "id") else None,
+                "target": installed.target,
+                "source": "inline",
+            },
+        )
         return installed
     except HTTPException:
         raise
@@ -273,7 +314,12 @@ async def create_inline_skill_endpoint(
             detail=str(e),
         ) from e
     except Exception as e:
-        log.error(f"{LogTag.SKILLS} Error creating inline skill: {e}")
+        log.error(
+            f"{LogTag.SKILLS} Error creating inline skill",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create skill",
@@ -319,7 +365,13 @@ async def update_skill_endpoint(
             detail=str(e),
         ) from e
     except Exception as e:
-        log.error(f"{LogTag.SKILLS} Error updating skill {skill_id}: {e}")
+        log.error(
+            f"{LogTag.SKILLS} Error updating skill",
+            user_id=user_id,
+            skill_id=skill_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update skill",
@@ -333,7 +385,7 @@ async def list_skills_endpoint(
         None, description="Filter by target (executor or subagent agent_name)"
     ),
     enabled_only: bool = Query(False, description="Only return enabled skills"),
-):
+) -> SkillListResponse:
     """List all installed skills for the current user."""
     log.set(operation="list_skills")
     try:
@@ -346,7 +398,12 @@ async def list_skills_endpoint(
         log.set(outcome="success")
         return SkillListResponse(skills=skills, total=len(skills))
     except Exception as e:
-        log.error(f"{LogTag.SKILLS} Error listing skills: {e}")
+        log.error(
+            f"{LogTag.SKILLS} Error listing skills",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to list skills",
@@ -357,7 +414,7 @@ async def list_skills_endpoint(
 async def get_skill_endpoint(
     skill_id: str,
     user_id: str = Depends(_get_user_id),
-):
+) -> Skill:
     """Get a specific installed skill by ID."""
     log.set(operation="get_skill", skill_id=skill_id)
     try:
@@ -373,45 +430,63 @@ async def get_skill_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.SKILLS} Error getting skill {skill_id}: {e}")
+        log.error(
+            f"{LogTag.SKILLS} Error getting skill",
+            user_id=user_id,
+            skill_id=skill_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve skill",
         ) from e
 
 
-@router.patch("/{skill_id}/enable", response_model=dict)
+@router.patch("/{skill_id}/enable", response_model=SkillToggleResponse)
 async def enable_skill_endpoint(
     skill_id: str,
     user_id: str = Depends(_get_user_id),
-):
+) -> SkillToggleResponse:
     """Enable a disabled skill."""
     log.set(operation="enable_skill", skill_id=skill_id)
     try:
         success = await enable_skill(user_id, skill_id)
         log.set(outcome="success")
-        return {"success": success, "skill_id": skill_id, "enabled": True}
+        return SkillToggleResponse(success=success, skill_id=skill_id, enabled=True)
     except Exception as e:
-        log.error(f"{LogTag.SKILLS} Error enabling skill {skill_id}: {e}")
+        log.error(
+            f"{LogTag.SKILLS} Error enabling skill",
+            user_id=user_id,
+            skill_id=skill_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to enable skill",
         ) from e
 
 
-@router.patch("/{skill_id}/disable", response_model=dict)
+@router.patch("/{skill_id}/disable", response_model=SkillToggleResponse)
 async def disable_skill_endpoint(
     skill_id: str,
     user_id: str = Depends(_get_user_id),
-):
+) -> SkillToggleResponse:
     """Disable a skill without uninstalling it."""
     log.set(operation="disable_skill", skill_id=skill_id)
     try:
         success = await disable_skill(user_id, skill_id)
         log.set(outcome="success")
-        return {"success": success, "skill_id": skill_id, "enabled": False}
+        return SkillToggleResponse(success=success, skill_id=skill_id, enabled=False)
     except Exception as e:
-        log.error(f"{LogTag.SKILLS} Error disabling skill {skill_id}: {e}")
+        log.error(
+            f"{LogTag.SKILLS} Error disabling skill",
+            user_id=user_id,
+            skill_id=skill_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to disable skill",
@@ -422,21 +497,31 @@ async def disable_skill_endpoint(
 async def uninstall_skill_endpoint(
     skill_id: str,
     user_id: str = Depends(_get_user_id),
-):
+) -> None:
     """Uninstall a skill and remove its files from VFS."""
     log.set(operation="uninstall_skill", skill_id=skill_id)
     try:
-        success = await uninstall_skill_full(user_id, skill_id)
-        if not success:
+        uninstalled = await uninstall_skill_full(user_id, skill_id)
+        if not uninstalled:
             raise HTTPException(
                 status_code=http_status.HTTP_404_NOT_FOUND,
                 detail=f"Skill {skill_id} not found",
             )
         log.set(outcome="success")
+        capture_context_event(
+            AnalyticsEvents.SKILL_UNINSTALLED,
+            {"skill_id": skill_id, "target": uninstalled.target},
+        )
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.SKILLS} Error uninstalling skill {skill_id}: {e}")
+        log.error(
+            f"{LogTag.SKILLS} Error uninstalling skill",
+            user_id=user_id,
+            skill_id=skill_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to uninstall skill",

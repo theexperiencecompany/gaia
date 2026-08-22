@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Ulysses is a premium writing app for macOS and iOS built for long-form writers, offering a distraction-free editor, manuscript management, and direct publishing to WordPress and Medium. GAIA is a proactive AI assistant that connects writing tasks to email, calendar, and 50+ integrations.",
   metaTitle:
-    "Ulysses Alternative with AI Workflow Automation & Cross-Platform Support | GAIA vs Ulysses",
+    "Ulysses Alternative with AI Workflow Automation & Cross-Platform Support — GAIA vs Ulysses",
   metaDescription:
     "Ulysses is a premium writing app but Apple-only and focused on writing alone. GAIA is a free, open-source Ulysses alternative with AI automation, email management, and cross-platform support across 50+ integrations.",
   keywords: [

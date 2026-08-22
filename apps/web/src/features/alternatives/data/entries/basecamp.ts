@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "To-do lists lack priority levels, due date intelligence, and AI sorting",
     "Minimal reporting and no proactive workflow assistance",
   ],
-  metaTitle: "Best Basecamp Alternative in 2026 | GAIA",
+  metaTitle: "Best Basecamp Alternative in 2026",
   metaDescription:
     "Looking for a smarter Basecamp alternative? GAIA is a proactive AI assistant with email, calendar, and task management built in. Free tier + self-hosting available.",
   keywords: [
@@ -32,7 +32,7 @@ export const entry: AlternativeData = {
     "AI-powered project management",
   ],
   whyPeopleLook:
-    "Basecamp carved out a niche with its opinionated, simple approach to project management. But simplicity has its limits. Users looking for Basecamp alternatives typically want more intelligence, not more features — they want a tool that reads their email, knows their calendar, and tells them what to focus on. Basecamp's flat-rate pricing ($99–$299/month for unlimited users) also alienates individuals and very small teams who feel they are overpaying for team features they do not need.",
+    "Basecamp carved out a niche with its opinionated, simple approach to project management. But simplicity has its limits. Users looking for Basecamp alternatives typically want more intelligence, not more features. They want a tool that reads their email, knows their calendar, and tells them what to focus on. Basecamp's flat-rate pricing ($99–$299/month for unlimited users) also alienates individuals and very small teams who feel they are overpaying for team features they do not need.",
   gaiaFitScore: 3,
   gaiaReplaces: [
     "Personal to-do management with AI-driven prioritization",

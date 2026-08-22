@@ -97,7 +97,9 @@ export function CompletedStagesTimeline({
           <div className="space-y-4">
             <OnboardingTodoCards
               todos={cardTodos}
-              onExecuteTodo={() => {}}
+              onExecuteTodo={() => {
+                /* read-only timeline: todos can't be executed from here */
+              }}
               isExecuting={false}
               executingTodoId={null}
               completedTodoIds={executedTodoIds}
@@ -136,7 +138,9 @@ export function CompletedStagesTimeline({
           <OnboardingPlatformConnect
             onConnect={connect}
             onSkip={skip}
-            onHoverPlatform={() => {}}
+            onHoverPlatform={() => {
+              /* embedded timeline: hover preview is inert */
+            }}
             hideSkip
             embedded
           />

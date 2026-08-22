@@ -15,6 +15,7 @@ import posixpath
 import time
 from typing import Any
 
+from e2b import AsyncSandbox
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
 
@@ -27,6 +28,7 @@ from app.agents.workspace.paths import (
     session_dir,
 )
 from app.constants.sandbox import WORKSPACE_TMP_SUFFIX
+from app.models.agent_models import agent_configurable
 from shared.py.wide_events import log
 
 _SESSION_EVENT_KEYS = ("bash_data", "file_data", "artifact_data")
@@ -34,10 +36,10 @@ _SESSION_EVENT_KEYS = ("bash_data", "file_data", "artifact_data")
 
 def get_user_id(config: RunnableConfig) -> str:
     """Extract user_id from config or raise a clear error."""
-    configurable = config.get("configurable", {}) if config else {}
+    configurable = agent_configurable(config)
     metadata = config.get("metadata", {}) if config else {}
     user_id = configurable.get("user_id") or metadata.get("user_id")
-    if not user_id:
+    if not isinstance(user_id, str) or not user_id:
         raise ValueError("user_id not found in RunnableConfig")
     return user_id
 
@@ -52,14 +54,15 @@ def get_session_id(config: RunnableConfig) -> str | None:
     chat artifact forwarder key on — using it would split the session dir and
     drop every artifact event). May be None for non-chat invocations
     (workflows, background tasks)."""
-    configurable = config.get("configurable", {}) if config else {}
+    configurable = agent_configurable(config)
     metadata = config.get("metadata", {}) if config else {}
-    return (
+    session_id = (
         configurable.get("vfs_session_id")
         or configurable.get("conversation_id")
         or metadata.get("conversation_id")
         or configurable.get("thread_id")
     )
+    return session_id if isinstance(session_id, str) else None
 
 
 def canonical_path(path: str, *, session_id: str | None) -> tuple[str, MountRole, str | None]:
@@ -86,12 +89,27 @@ def canonical_path(path: str, *, session_id: str | None) -> tuple[str, MountRole
     return canonical, role, conv
 
 
+def canonical_rel(path: str, *, session_id: str | None) -> tuple[str, str]:
+    """Resolve a tool-supplied path to ``(abs_path, workspace_rel)``.
+
+    Rejects a path that resolves to the workspace root itself (``rel == ""``),
+    which is not a file. Raises ``ValueError`` on that or on any path that escapes
+    ``/workspace``. Shared by the file-mining tools so their path handling can't
+    drift.
+    """
+    abs_path, _, _ = canonical_path(path, session_id=session_id)
+    rel = abs_path[len(WORKSPACE_ROOT) + 1 :] if abs_path != WORKSPACE_ROOT else ""
+    if not rel:
+        raise ValueError("path must be a file inside the workspace, not the workspace root")
+    return abs_path, rel
+
+
 def sh_quote(s: str) -> str:
     """Single-quote a string for safe inclusion in a shell command."""
     return "'" + s.replace("'", "'\"'\"'") + "'"
 
 
-async def atomic_write(sbx: Any, abs_path: str, data: bytes) -> float:
+async def atomic_write(sbx: AsyncSandbox, abs_path: str, data: bytes) -> float:
     """Write bytes into the sandbox atomically; return the file's mtime (epoch s).
 
     Writes to a temp path then `rename`s into place — atomic on the same FS, so a
@@ -140,7 +158,7 @@ def safe_emit(event: dict[str, Any], *, session_id: str | None = None) -> None:
     try:
         writer(event)
     except Exception as e:
-        log.debug(f"Stream writer failed silently: {e}")
+        log.debug("Stream writer failed silently", error_type=type(e).__name__)
 
 
 # Re-exported from the pure workspace.paths module so non-agent callers
@@ -148,6 +166,7 @@ def safe_emit(event: dict[str, Any], *, session_id: str | None = None) -> None:
 __all__ = [
     "atomic_write",
     "canonical_path",
+    "canonical_rel",
     "detect_content_type",
     "get_session_id",
     "get_user_id",

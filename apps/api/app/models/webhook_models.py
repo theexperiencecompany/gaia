@@ -3,9 +3,12 @@ Clean webhook models for Dodo Payments based on actual webhook format.
 """
 
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+
+from app.constants.log_tags import LogTag
+from shared.py.wide_events import log
 
 
 class DodoWebhookEventType(str, Enum):
@@ -114,7 +117,15 @@ class DodoWebhookEvent(BaseModel):
         if self.type.value.startswith("payment."):
             try:
                 return DodoPaymentData(**self.data)
-            except Exception:
+            except ValidationError as exc:
+                # Loud on purpose: returning None here is indistinguishable from
+                # "not a payment event", so a provider schema change would silently
+                # stop payment data reaching billing with nothing in the logs.
+                log.error(
+                    f"{LogTag.PAYMENT} Dodo payment webhook payload did not validate",
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
                 return None
         return None
 
@@ -123,7 +134,15 @@ class DodoWebhookEvent(BaseModel):
         if self.type.value.startswith("subscription."):
             try:
                 return DodoSubscriptionData(**self.data)
-            except Exception:
+            except ValidationError as exc:
+                # Loud on purpose: returning None here is indistinguishable from
+                # "not a subscription event", so a provider schema change would silently
+                # stop subscription data reaching billing with nothing in the logs.
+                log.error(
+                    f"{LogTag.PAYMENT} Dodo subscription webhook payload did not validate",
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
                 return None
         return None
 
@@ -136,6 +155,22 @@ class DodoWebhookProcessingResult(BaseModel):
     message: str
     payment_id: str | None = None
     subscription_id: str | None = None
+
+
+class DodoWebhookAckResponse(BaseModel):
+    """Acknowledgement returned to Dodo once a webhook has been accepted."""
+
+    status: Literal["success"] = "success"
+    event_type: str
+    processing_status: str
+    message: str
+
+
+class ComposioWebhookAckResponse(BaseModel):
+    """Acknowledgement returned to Composio once a webhook has been accepted."""
+
+    status: Literal["success"] = "success"
+    message: str
 
 
 class ComposioWebhookEvent(BaseModel):
@@ -154,8 +189,60 @@ class ComposioWebhookEvent(BaseModel):
 
     @field_validator("type", mode="before")
     @classmethod
-    def normalize_trigger_type(cls, v):
+    def normalize_trigger_type(cls, v: object) -> object:
         """Convert trigger type to uppercase to match TRIGGER_TYPES definition."""
         if isinstance(v, str):
             return v.upper()
         return v
+
+
+class ComposioConnectionToolkit(BaseModel):
+    """Toolkit reference on a connection-lifecycle event."""
+
+    slug: str
+
+
+class ComposioConnectionAuthConfig(BaseModel):
+    """Auth config reference on a connection-lifecycle event."""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+
+
+class ComposioConnectionData(BaseModel):
+    """``data`` of a Composio connection-lifecycle event.
+
+    Composio delivers the raw snake_case ``SingleConnectedAccountDetailedResponse``
+    (mirroring ``GET /api/v3/connected_accounts/{id}``). Only the fields GAIA acts
+    on are declared; the rest — including the ``state`` blob carrying access and
+    refresh tokens — is accepted and never read or logged.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    user_id: str
+    status: str
+    status_reason: str | None = None
+    toolkit: ComposioConnectionToolkit
+    auth_config: ComposioConnectionAuthConfig
+
+
+class ComposioConnectionEvent(BaseModel):
+    """Composio connection-lifecycle event, e.g. ``composio.connected_account.expired``.
+
+    Deliberately separate from :class:`ComposioWebhookEvent`: connection events
+    carry none of the trigger identifiers that model requires, and its ``type``
+    validator uppercases the event name so it could never match the lowercase
+    literal the SDK's type guards compare against. The envelope's own ``id`` and
+    ``timestamp`` are optional because GAIA only logs them — a webhook-version
+    drift there must not reject an event GAIA can still act on.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    type: str
+    data: ComposioConnectionData
+    id: str | None = None
+    timestamp: str | None = None

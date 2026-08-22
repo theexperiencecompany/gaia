@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nrwl/nx/refs/heads/master/packages/nx/schemas/nx-schema.json",
   "installation": {
-    "version": "latest",
+    "version": "22.7.7",
     "plugins": {
       "sources": []
     }
@@ -98,11 +98,12 @@
           "bot-discord",
           "bot-slack",
           "bot-telegram",
-          "bot-whatsapp"
+          "bot-whatsapp",
+          "bot-imessage"
         ],
         "projectsRelationship": "fixed",
         "docker": {
-          "groupPreVersionCommand": "npx nx run-many -t docker:build -p bot-discord,bot-slack,bot-telegram,bot-whatsapp --skipNxCache",
+          "groupPreVersionCommand": "npx nx run-many -t docker:build -p bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage --skipNxCache",
           "skipVersionActions": true,
           "registryUrl": "ghcr.io"
         },
@@ -119,5 +120,10 @@
       }
     }
   },
-  "analytics": false
+  "analytics": false,
+  "pluginsConfig": {
+    "@nx/js": {
+      "analyzeSourceFiles": false
+    }
+  }
 }

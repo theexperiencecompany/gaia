@@ -54,7 +54,7 @@ GMAIL_GET_UNREAD_COUNT(
 ```
 
 If query counting is unavailable in a specific environment, fallback to
-`GMAIL_FETCH_EMAILS(query="...", include_payload=false)` in parent context.
+`GMAIL_FETCH_MESSAGES(query="...", fields=["id","threadId"])` (ids only).
 
 ## Step 3: Present Cleanup Plan
 
@@ -81,9 +81,9 @@ Inbox Audit:
 
 - **Audit labels first**: Use `GMAIL_LIST_LABELS` to find the correct label IDs (especially for custom labels).
 - **Count first, fetch IDs only for approved actions**: After user confirms,
-  call `GMAIL_FETCH_EMAILS(query="...", include_payload=false)` for each
-  selected cleanup query and paginate with `next_page_token` to collect all
-  `message_id`s.
+  call `GMAIL_FETCH_MESSAGES(query="...", fields=["id","threadId"])` for each
+  selected cleanup query. It server-side paginates, so one call returns every
+  matching `message_id` (no `next_page_token` loop, no silent cap).
 - **Prefer batch operations**: Use `GMAIL_BATCH_MODIFY_MESSAGES` whenever you are modifying many emails at once (archive, mark read/unread, apply/remove labels). Chunk large operations (up to 1,000 message IDs per call).
 - **Single-message label changes**: Use `GMAIL_ADD_LABEL_TO_EMAIL` when you only need to adjust one message.
 - **Thread-wide label changes**: Use `GMAIL_MODIFY_THREAD_LABELS` to label/unlabel an entire thread.

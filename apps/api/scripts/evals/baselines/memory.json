@@ -1,0 +1,52 @@
+{
+  "suite": "memory",
+  "run_id": "memory-20260808-141758-ece13d",
+  "app_version": "api-v0.17.0-343-g6fc5c9ed8-dirty",
+  "baseline_accuracy": 0.8222,
+  "graded": 45,
+  "errored": 0,
+  "per_category": {
+    "CONTRADICTION_UPDATE": [
+      2,
+      5
+    ],
+    "DISTRACTOR_ROBUSTNESS": [
+      3,
+      4
+    ],
+    "IDENTITY_MAPPINGS": [
+      3,
+      3
+    ],
+    "INDIRECT_PARAPHRASE": [
+      5,
+      5
+    ],
+    "KNOWLEDGE_GRAPH": [
+      4,
+      4
+    ],
+    "MULTI_SESSION_CONSOLIDATION": [
+      5,
+      5
+    ],
+    "NEGATIVE_ABSTENTION": [
+      4,
+      4
+    ],
+    "PREFERENCE_PERSISTENCE": [
+      4,
+      5
+    ],
+    "SINGLE_HOP": [
+      5,
+      5
+    ],
+    "TEMPORAL_REASONING": [
+      2,
+      5
+    ]
+  },
+  "provisional": null,
+  "captured_at": "2026-08-08"
+}

@@ -44,10 +44,10 @@ if not os.getenv("ENV"):
     os.environ["ENV"] = "development"
 
 
-from composio import Composio  # noqa: E402
+from composio import Composio
 
-from app.config.oauth_config import OAUTH_INTEGRATIONS  # noqa: E402
-from app.config.settings import settings  # noqa: E402
+from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.settings import settings
 
 TOOL_NAME_PATTERN = re.compile(r"\b([A-Z][A-Z0-9]+(?:_[A-Z0-9]+)+)\b")
 CUSTOM_TOOL_FILE_PATTERNS = [
@@ -331,7 +331,7 @@ def collect_skill_tool_references(
     return references, parse_errors
 
 
-def write_json(path: Path, payload: Any) -> None:
+def write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 

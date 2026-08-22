@@ -7,6 +7,7 @@ import { useState } from "react";
 import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
 import { userInfoToStoreUser } from "@/features/auth/utils/userInfoToStoreUser";
 import { completeOnboarding } from "@/features/onboarding/api/onboardingApi";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { isDevelopment } from "@/lib/fetchAll";
 import { toast } from "@/lib/toast";
 
@@ -24,6 +25,7 @@ export function DevSkipOnboarding() {
   if (!isDevelopment()) return null;
 
   const skip = async () => {
+    trackEvent(ANALYTICS_EVENTS.ONBOARDING_SKIPPED, { source: "dev_skip" });
     setLoading(true);
     try {
       const res = await completeOnboarding({
@@ -45,7 +47,7 @@ export function DevSkipOnboarding() {
   };
 
   return (
-    <div className="fixed right-4 bottom-4 z-50 flex items-center gap-2">
+    <div className="fixed bottom-4 left-4 z-50 flex items-center gap-2">
       <Chip size="sm" color="warning" variant="flat">
         dev only
       </Chip>

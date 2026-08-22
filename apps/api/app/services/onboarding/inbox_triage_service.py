@@ -1,12 +1,11 @@
 """Triage inbox emails for onboarding — find what matters and interesting patterns."""
 
 import time
+from typing import Any
 
-from langchain_core.messages import HumanMessage
-
+from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.prompts.onboarding_prompts import INBOX_TRIAGE_PROMPT
 from app.constants.log_tags import LogTag
-from app.core.lazy_loader import providers
 from app.models.onboarding_models import InboxTriage, InboxTriageOutput
 from shared.py.wide_events import log
 
@@ -29,13 +28,13 @@ _MEANINGFUL_LABELS = {
 }
 
 
-def _is_noise_email(email: dict) -> bool:
+def _is_noise_email(email: dict[str, Any]) -> bool:
     sender = email.get("sender", "").lower()
     snippet = email.get("snippet", "").lower()[:200]
     return any(sender.startswith(prefix) for prefix in _NOISE_SENDERS) or ("unsubscribe" in snippet)
 
 
-def _format_labels(email: dict) -> str:
+def _format_labels(email: dict[str, Any]) -> str:
     labels = email.get("labelIds") or email.get("label_ids") or []
     kept = [lbl for lbl in labels if lbl in _MEANINGFUL_LABELS]
     if not kept:
@@ -46,7 +45,7 @@ def _format_labels(email: dict) -> str:
 
 async def triage_inbox(
     user_id: str,
-    emails: list[dict],
+    emails: list[dict[str, Any]],
     profession: str = "",
     focus: str = "",
 ) -> InboxTriage | None:
@@ -78,18 +77,18 @@ async def triage_inbox(
 
         email_list_text = "\n".join(email_lines)
 
-        llm = await providers.aget("gemini_llm")
-        if llm is None:
-            raise RuntimeError("LLM provider not available")
-
-        structured_llm = llm.with_structured_output(InboxTriageOutput)
         prompt = INBOX_TRIAGE_PROMPT.format(
             email_list=email_list_text,
             profession=profession or "not specified",
             focus=focus or "not specified",
         )
         t_llm = time.monotonic()
-        result: InboxTriageOutput = await structured_llm.ainvoke([HumanMessage(content=prompt)])
+        result: InboxTriageOutput = await ainvoke_structured(
+            InboxTriageOutput,
+            prompt,
+            label="onboarding_inbox_triage",
+            config=metered_config(user_id),
+        )
         llm_duration_s = round(time.monotonic() - t_llm, 2)
 
         total_unread = len(unread)

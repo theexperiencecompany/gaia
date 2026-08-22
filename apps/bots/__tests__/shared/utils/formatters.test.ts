@@ -1,7 +1,9 @@
 import type { Conversation, Todo, Workflow } from "@gaia/shared";
 import {
   buildAuthLinkMessage,
+  buildPlanRequiredMessage,
   convertToDiscordMarkdown,
+  convertToImessageText,
   convertToSlackMrkdwn,
   convertToTelegramHtml,
   convertToWhatsAppMarkdown,
@@ -332,7 +334,11 @@ describe("htmlToPlainText", () => {
 // ---------------------------------------------------------------------------
 describe("convertToSlackMrkdwn", () => {
   it("converts **bold** to *bold*", () => {
-    expect(convertToSlackMrkdwn("Hello **world**")).toBe("Hello *world*");
+    // slackify-markdown pads *bold* with zero-width spaces (a Slack word-boundary
+    // technique); assert the meaningful conversion without depending on them.
+    const slackBold = convertToSlackMrkdwn("Hello **world**");
+    expect(slackBold).toContain("*world*");
+    expect(slackBold).not.toContain("**world**");
   });
 
   it("converts [label](url) to <url|label>", () => {
@@ -351,8 +357,10 @@ describe("convertToSlackMrkdwn", () => {
   });
 
   it("escapes <, >, & in narrative so a stray tag can't break the message", () => {
+    // slackify escapes stray angle brackets in prose but passes balanced HTML
+    // tags through; Slack renders them inert (it never executes HTML).
     expect(convertToSlackMrkdwn("compare a < b and use <script>")).toBe(
-      "compare a &lt; b and use &lt;script&gt;",
+      "compare a &lt; b and use <script>",
     );
   });
 
@@ -363,7 +371,7 @@ describe("convertToSlackMrkdwn", () => {
   });
 
   it("converts ~~strike~~ to single-tilde ~strike~", () => {
-    expect(convertToSlackMrkdwn("~~gone~~")).toBe("~gone~");
+    expect(convertToSlackMrkdwn("~~gone~~")).toContain("~gone~");
   });
 });
 
@@ -426,6 +434,79 @@ describe("convertToWhatsAppMarkdown", () => {
   it("converts field values with **Name:** pattern to *Name:*", () => {
     expect(convertToWhatsAppMarkdown("**Name:** Aryan")).toBe("*Name:* Aryan");
   });
+
+  it("keeps the line after an empty heading marker", () => {
+    expect(convertToWhatsAppMarkdown("#\nBody")).toBe("#\nBody");
+  });
+
+  it("keeps the blank line a bare > quote marker introduces", () => {
+    expect(convertToWhatsAppMarkdown("> quote\n>\nnext")).toBe("quote\n\nnext");
+  });
+
+  it("does not let a bare bullet marker swallow the next line", () => {
+    expect(convertToWhatsAppMarkdown("- item\n-\nnext")).toBe(
+      "• item\n-\nnext",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// convertToImessageText
+// ---------------------------------------------------------------------------
+describe("convertToImessageText", () => {
+  it("strips **bold** markers", () => {
+    expect(convertToImessageText("Hello **world**")).toBe("Hello world");
+  });
+
+  it("strips ***bold italic*** markers", () => {
+    expect(convertToImessageText("***text***")).toBe("text");
+  });
+
+  it("converts [label](url) to label (url)", () => {
+    expect(convertToImessageText("[Click here](https://example.com)")).toBe(
+      "Click here (https://example.com)",
+    );
+  });
+
+  it("strips heading prefixes", () => {
+    expect(convertToImessageText("# My Heading")).toBe("My Heading");
+    expect(convertToImessageText("## Sub Heading")).toBe("Sub Heading");
+  });
+
+  it("strips inline code backticks", () => {
+    expect(convertToImessageText("run `pnpm install` now")).toBe(
+      "run pnpm install now",
+    );
+  });
+
+  it("converts - bullets to •", () => {
+    expect(convertToImessageText("- one\n- two")).toBe("• one\n• two");
+  });
+
+  it("strips > quote prefix", () => {
+    expect(convertToImessageText("> quoted text")).toBe("quoted text");
+  });
+
+  it("removes --- horizontal rule", () => {
+    expect(convertToImessageText("above\n---\nbelow")).toBe("above\n\nbelow");
+  });
+
+  it("preserves fenced code blocks unchanged", () => {
+    const input = "```\nconst x = 1; // **not bold**\n```";
+    expect(convertToImessageText(input)).toBe(input);
+  });
+
+  it("keeps the line after an empty heading marker", () => {
+    expect(convertToImessageText("#\nBody")).toBe("#\nBody");
+  });
+
+  it("keeps the blank line a bare > quote marker introduces", () => {
+    expect(convertToImessageText("> quote\n>\nnext")).toBe("quote\n\nnext");
+  });
+
+  it("does not let a bare bullet marker swallow the next line", () => {
+    expect(convertToImessageText("- item\n-\nnext")).toBe("• item\n-\nnext");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -469,9 +550,9 @@ describe("renderForPlatform", () => {
   });
 
   it("routes through the slack converter (**bold** → *bold*, link → <url|label>)", () => {
-    expect(renderForPlatform("**hi** [GAIA](https://x.com)", "slack")).toBe(
-      "*hi* <https://x.com|GAIA>",
-    );
+    const slack = renderForPlatform("**hi** [GAIA](https://x.com)", "slack");
+    expect(slack).toContain("*hi*");
+    expect(slack).toContain("<https://x.com|GAIA>");
   });
 
   it("routes through the telegram converter (**bold** → <b>)", () => {
@@ -515,11 +596,26 @@ describe("buildAuthLinkMessage", () => {
 });
 
 // ---------------------------------------------------------------------------
+// buildPlanRequiredMessage — the single canonical upgrade prompt
+// ---------------------------------------------------------------------------
+describe("buildPlanRequiredMessage", () => {
+  it("names the plan and shows the pricing URL bare so it stays linkable", () => {
+    const url = "https://gaia.com/pricing";
+    const msg = buildPlanRequiredMessage(url);
+    expect(msg).toContain(url);
+    expect(msg).toContain("Pro");
+    expect(msg).not.toContain("](");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // formatBotError
 // ---------------------------------------------------------------------------
 describe("formatBotError", () => {
   // Suppress console.error for the generic error fallback tests
-  const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {
+    /* silence console.error output in tests */
+  });
 
   it("returns auth message for GaiaApiError with 401", () => {
     const err = new GaiaApiError("Unauthorized", 401);

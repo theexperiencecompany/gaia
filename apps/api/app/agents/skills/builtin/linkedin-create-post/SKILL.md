@@ -120,10 +120,10 @@ LINKEDIN_CUSTOM_CREATE_POST(commentary="...", image_url="https://...", visibilit
 
 # Document
 LINKEDIN_CUSTOM_CREATE_POST(
-  commentary="...",
-  document_url="https://...",
-  document_title="...",
-  visibility="PUBLIC",
+    commentary="...",
+    document_url="https://...",
+    document_title="...",
+    visibility="PUBLIC",
 )
 
 # Link/article
@@ -131,9 +131,9 @@ LINKEDIN_CUSTOM_CREATE_POST(commentary="...", article_url="https://...", visibil
 
 # Post as an organization
 LINKEDIN_CUSTOM_CREATE_POST(
-  commentary="...",
-  organization_id="urn:li:organization:12345",
-  visibility="PUBLIC",
+    commentary="...",
+    organization_id="urn:li:organization:12345",
+    visibility="PUBLIC",
 )
 
 # Toolkit fallback for URL/article shares

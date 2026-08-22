@@ -4,6 +4,7 @@ import datetime
 from typing import Any
 
 from composio import Composio
+from composio.types import ExecuteRequestFn
 
 from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
@@ -17,13 +18,14 @@ def register_google_meet_custom_tools(composio: Composio) -> list[str]:
     @composio.tools.custom_tool(toolkit="GOOGLEMEET")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Get Google Meet context snapshot: upcoming meetings with Meet links.
 
         Zero required parameters. Returns user profile and scheduled Meet calls.
         """
+        del request, execute_request  # unused: framework-mandated custom-tool signature
         user_id = auth_credentials.get("user_id")
         if not user_id:
             raise ValueError("Missing user_id in auth_credentials")
@@ -40,14 +42,16 @@ def register_google_meet_custom_tools(composio: Composio) -> list[str]:
                 or {}
             )
         except Exception as e:
-            log.debug(f"{LogTag.TOOL} Google Meet userinfo fetch failed: {e}")
+            log.debug(
+                f"{LogTag.TOOL} Google Meet userinfo fetch failed", error_type=type(e).__name__
+            )
 
         # The calendar fetch may fail if the GOOGLEMEET connection lacks
         # calendar scope. The legacy tool gated on status_code == 200 and
         # returned an empty list — preserve that behavior so the whole tool
         # doesn't error out when only the profile is accessible.
         events_data: dict[str, Any] = {}
-        now = datetime.datetime.utcnow().isoformat() + "Z"
+        now = datetime.datetime.now(datetime.UTC).isoformat().replace("+00:00", "Z")
         try:
             events_data = (
                 proxy_request_sync(
@@ -66,7 +70,9 @@ def register_google_meet_custom_tools(composio: Composio) -> list[str]:
                 or {}
             )
         except Exception as e:
-            log.debug(f"{LogTag.TOOL} Google Meet calendar fetch failed: {e}")
+            log.debug(
+                f"{LogTag.TOOL} Google Meet calendar fetch failed", error_type=type(e).__name__
+            )
 
         upcoming_meets: list[dict[str, Any]] = []
         for event in events_data.get("items", []):

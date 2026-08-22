@@ -4,32 +4,39 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import Image from "next/image";
 import Link from "next/link";
+import { BOT_PLATFORM_ICONS, BOT_PLATFORM_LABELS } from "@/config/botPlatforms";
 import { BOTS, type BotConfig } from "../constants";
 
 const stackedIcons = [
   {
-    src: "/images/icons/macos/discord.webp",
-    alt: "Discord",
+    src: BOT_PLATFORM_ICONS.discord,
+    alt: BOT_PLATFORM_LABELS.discord,
     rotate: "-rotate-12",
     z: "z-[1]",
   },
   {
-    src: "/images/icons/macos/slack.webp",
-    alt: "Slack",
+    src: BOT_PLATFORM_ICONS.slack,
+    alt: BOT_PLATFORM_LABELS.slack,
     rotate: "-rotate-6",
     z: "z-[2]",
   },
   {
-    src: "/images/icons/macos/telegram.webp",
-    alt: "Telegram",
-    rotate: "rotate-6",
+    src: BOT_PLATFORM_ICONS.imessage,
+    alt: BOT_PLATFORM_LABELS.imessage,
+    rotate: "rotate-0",
     z: "z-[3]",
   },
   {
-    src: "/images/icons/macos/whatsapp.webp",
-    alt: "WhatsApp",
-    rotate: "rotate-12",
+    src: BOT_PLATFORM_ICONS.telegram,
+    alt: BOT_PLATFORM_LABELS.telegram,
+    rotate: "rotate-6",
     z: "z-[4]",
+  },
+  {
+    src: BOT_PLATFORM_ICONS.whatsapp,
+    alt: BOT_PLATFORM_LABELS.whatsapp,
+    rotate: "rotate-12",
+    z: "z-[5]",
   },
 ];
 
@@ -103,12 +110,12 @@ export default function BotsPage() {
           ))}
         </div>
         <div className="flex flex-col items-center gap-3">
-          <h1 className="mt-2 font-serif text-4xl font-medium text-white sm:text-6xl">
+          <h1 className="mt-2 text-center font-serif text-4xl font-medium text-white sm:text-6xl">
             Your AI, Where You Already Work
           </h1>
           <p className="max-w-xl text-center text-lg text-zinc-400">
             Chat, delegate tasks, and get answers — right inside Discord,
-            Telegram, Slack, or WhatsApp.
+            Telegram, Slack, WhatsApp, or iMessage.
           </p>
         </div>
       </section>

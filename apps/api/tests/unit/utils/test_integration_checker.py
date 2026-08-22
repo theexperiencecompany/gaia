@@ -1,534 +1,175 @@
-"""Unit tests for the integration connection checker utility."""
+"""Unit tests for the integration connect prompt (card + agent copy)."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.utils.integration_checker import (
-    TOOL_INTEGRATION_MAPPING,
-    build_integration_connection_message,
-    check_and_prompt_integration,
-    check_user_has_integration,
-    get_required_integration_for_tool_category,
-    stream_integration_connection_prompt,
-)
+from app.db.repositories.user_integrations import user_integration_repository
+from app.utils.integration_checker import request_integration_connection
 
 # ---------------------------------------------------------------------------
-# get_required_integration_for_tool_category
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestGetRequiredIntegrationForToolCategory:
-    """Tests for mapping tool categories to integration IDs."""
-
-    @pytest.mark.parametrize(
-        "category,expected",
-        [
-            ("gmail", "gmail"),
-            ("calendar", "googlecalendar"),
-            ("googledocs", "googledocs"),
-            ("google_drive", "google_drive"),
-        ],
-    )
-    def test_known_categories(self, category: str, expected: str) -> None:
-        assert get_required_integration_for_tool_category(category) == expected
-
-    def test_unknown_category_returns_none(self) -> None:
-        assert get_required_integration_for_tool_category("unknown_tool") is None
-
-    def test_empty_string_returns_none(self) -> None:
-        assert get_required_integration_for_tool_category("") is None
-
-    def test_mapping_matches_module_constant(self) -> None:
-        """Ensure the function uses the TOOL_INTEGRATION_MAPPING dict."""
-        for category, integration_id in TOOL_INTEGRATION_MAPPING.items():
-            assert get_required_integration_for_tool_category(category) == integration_id
-
-
-# ---------------------------------------------------------------------------
-# check_user_has_integration
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestCheckUserHasIntegration:
-    """Tests for checking if a user has required integration permissions."""
-
-    @patch("app.utils.integration_checker.token_repository")
-    @patch("app.utils.integration_checker.get_integration_scopes")
-    async def test_returns_true_when_all_scopes_present(
-        self,
-        mock_get_scopes: MagicMock,
-        mock_token_repo: MagicMock,
-    ) -> None:
-        mock_get_scopes.return_value = ["scope_a", "scope_b"]
-        mock_token = MagicMock()
-        mock_token.get.return_value = "scope_a scope_b scope_c"
-        mock_token_repo.get_token_by_auth_token = AsyncMock(return_value=mock_token)
-
-        result = await check_user_has_integration("valid_token", "gmail")
-        assert result is True
-
-    @patch("app.utils.integration_checker.token_repository")
-    @patch("app.utils.integration_checker.get_integration_scopes")
-    async def test_returns_false_when_scope_missing(
-        self,
-        mock_get_scopes: MagicMock,
-        mock_token_repo: MagicMock,
-    ) -> None:
-        mock_get_scopes.return_value = ["scope_a", "scope_b"]
-        mock_token = MagicMock()
-        mock_token.get.return_value = "scope_a"  # missing scope_b
-        mock_token_repo.get_token_by_auth_token = AsyncMock(return_value=mock_token)
-
-        result = await check_user_has_integration("valid_token", "gmail")
-        assert result is False
-
-    @patch("app.utils.integration_checker.get_integration_scopes")
-    async def test_returns_false_when_access_token_empty(self, mock_get_scopes: MagicMock) -> None:
-        result = await check_user_has_integration("", "gmail")
-        assert result is False
-        mock_get_scopes.assert_not_called()
-
-    @patch("app.utils.integration_checker.token_repository")
-    @patch("app.utils.integration_checker.get_integration_scopes")
-    async def test_returns_false_when_no_scopes_defined(
-        self,
-        mock_get_scopes: MagicMock,
-        mock_token_repo: MagicMock,
-    ) -> None:
-        mock_get_scopes.return_value = []
-
-        result = await check_user_has_integration("valid_token", "unknown_integration")
-        assert result is False
-        mock_token_repo.get_token_by_auth_token.assert_not_called()
-
-    @patch("app.utils.integration_checker.token_repository")
-    @patch("app.utils.integration_checker.get_integration_scopes")
-    async def test_returns_false_when_no_token_found(
-        self,
-        mock_get_scopes: MagicMock,
-        mock_token_repo: MagicMock,
-    ) -> None:
-        mock_get_scopes.return_value = ["scope_a"]
-        mock_token_repo.get_token_by_auth_token = AsyncMock(return_value=None)
-
-        result = await check_user_has_integration("valid_token", "gmail")
-        assert result is False
-
-    @patch("app.utils.integration_checker.token_repository")
-    @patch("app.utils.integration_checker.get_integration_scopes")
-    async def test_returns_false_on_exception(
-        self,
-        mock_get_scopes: MagicMock,
-        mock_token_repo: MagicMock,
-    ) -> None:
-        mock_get_scopes.return_value = ["scope_a"]
-        mock_token_repo.get_token_by_auth_token = AsyncMock(side_effect=Exception("DB error"))
-
-        result = await check_user_has_integration("valid_token", "gmail")
-        assert result is False
-
-    @patch("app.utils.integration_checker.token_repository")
-    @patch("app.utils.integration_checker.get_integration_scopes")
-    async def test_renews_expired_token(
-        self,
-        mock_get_scopes: MagicMock,
-        mock_token_repo: MagicMock,
-    ) -> None:
-        mock_get_scopes.return_value = ["scope_a"]
-        mock_token = MagicMock()
-        mock_token.get.return_value = "scope_a"
-        mock_token_repo.get_token_by_auth_token = AsyncMock(return_value=mock_token)
-
-        await check_user_has_integration("valid_token", "gmail")
-
-        mock_token_repo.get_token_by_auth_token.assert_awaited_once_with(
-            "valid_token", renew_if_expired=True
-        )
-
-    @patch("app.utils.integration_checker.token_repository")
-    @patch("app.utils.integration_checker.get_integration_scopes")
-    async def test_returns_true_with_exact_scopes(
-        self,
-        mock_get_scopes: MagicMock,
-        mock_token_repo: MagicMock,
-    ) -> None:
-        mock_get_scopes.return_value = ["scope_a"]
-        mock_token = MagicMock()
-        mock_token.get.return_value = "scope_a"
-        mock_token_repo.get_token_by_auth_token = AsyncMock(return_value=mock_token)
-
-        result = await check_user_has_integration("valid_token", "gmail")
-        assert result is True
-
-    @patch("app.utils.integration_checker.token_repository")
-    @patch("app.utils.integration_checker.get_integration_scopes")
-    async def test_empty_scope_string_on_token(
-        self,
-        mock_get_scopes: MagicMock,
-        mock_token_repo: MagicMock,
-    ) -> None:
-        """Token has no scopes at all."""
-        mock_get_scopes.return_value = ["scope_a"]
-        mock_token = MagicMock()
-        mock_token.get.return_value = ""
-        mock_token_repo.get_token_by_auth_token = AsyncMock(return_value=mock_token)
-
-        result = await check_user_has_integration("valid_token", "gmail")
-        assert result is False
-
-
-# ---------------------------------------------------------------------------
-# stream_integration_connection_prompt
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestStreamIntegrationConnectionPrompt:
-    """Tests for streaming integration connection prompts to the frontend."""
-
-    @patch("app.utils.integration_checker.get_stream_writer")
-    @patch("app.utils.integration_checker.get_integration_by_id")
-    async def test_streams_connection_data(
-        self,
-        mock_get_integration: MagicMock,
-        mock_get_writer: MagicMock,
-    ) -> None:
-        mock_integration = MagicMock()
-        mock_integration.name = "Gmail"
-        mock_get_integration.return_value = mock_integration
-        mock_writer = MagicMock()
-        mock_get_writer.return_value = mock_writer
-
-        await stream_integration_connection_prompt("gmail", tool_name="send_email")
-
-        mock_writer.assert_called_once()
-        call_data = mock_writer.call_args[0][0]
-        assert "integration_connection_required" in call_data
-        payload = call_data["integration_connection_required"]
-        assert payload["integration_id"] == "gmail"
-        assert "send email" in payload["message"]  # underscores replaced
-
-    @patch("app.utils.integration_checker.get_stream_writer")
-    @patch("app.utils.integration_checker.get_integration_by_id")
-    async def test_uses_custom_message_when_provided(
-        self,
-        mock_get_integration: MagicMock,
-        mock_get_writer: MagicMock,
-    ) -> None:
-        mock_integration = MagicMock()
-        mock_integration.name = "Gmail"
-        mock_get_integration.return_value = mock_integration
-        mock_writer = MagicMock()
-        mock_get_writer.return_value = mock_writer
-
-        await stream_integration_connection_prompt("gmail", message="Custom message here")
-
-        call_data = mock_writer.call_args[0][0]
-        assert call_data["integration_connection_required"]["message"] == "Custom message here"
-
-    @patch("app.utils.integration_checker.get_stream_writer")
-    @patch("app.utils.integration_checker.get_integration_by_id")
-    async def test_does_nothing_when_integration_not_found(
-        self,
-        mock_get_integration: MagicMock,
-        mock_get_writer: MagicMock,
-    ) -> None:
-        mock_get_integration.return_value = None
-        mock_writer = MagicMock()
-        mock_get_writer.return_value = mock_writer
-
-        await stream_integration_connection_prompt("nonexistent")
-
-        mock_writer.assert_not_called()
-
-    @patch("app.utils.integration_checker.get_stream_writer")
-    @patch("app.utils.integration_checker.get_integration_by_id")
-    async def test_handles_exception_gracefully(
-        self,
-        mock_get_integration: MagicMock,
-        mock_get_writer: MagicMock,
-    ) -> None:
-        mock_get_writer.side_effect = Exception("No stream context")
-
-        # Should not raise
-        await stream_integration_connection_prompt("gmail")
-
-    @patch("app.utils.integration_checker.get_stream_writer")
-    @patch("app.utils.integration_checker.get_integration_by_id")
-    async def test_default_message_with_none_tool_name(
-        self,
-        mock_get_integration: MagicMock,
-        mock_get_writer: MagicMock,
-    ) -> None:
-        mock_integration = MagicMock()
-        mock_integration.name = "Google Calendar"
-        mock_get_integration.return_value = mock_integration
-        mock_writer = MagicMock()
-        mock_get_writer.return_value = mock_writer
-
-        await stream_integration_connection_prompt("googlecalendar", tool_name=None)
-
-        call_data = mock_writer.call_args[0][0]
-        msg = call_data["integration_connection_required"]["message"]
-        # str(None) produces "None"; the `or 'this feature'` branch is not taken
-        # because "None" is truthy after replace('_', ' ').
-        assert "None" in msg
-        assert "Google Calendar" in msg
-
-    @patch("app.utils.integration_checker.get_stream_writer")
-    @patch("app.utils.integration_checker.get_integration_by_id")
-    async def test_writer_exception_does_not_propagate(
-        self,
-        mock_get_integration: MagicMock,
-        mock_get_writer: MagicMock,
-    ) -> None:
-        mock_integration = MagicMock()
-        mock_integration.name = "Gmail"
-        mock_get_integration.return_value = mock_integration
-        mock_writer = MagicMock()
-        mock_writer.side_effect = RuntimeError("stream closed")
-        mock_get_writer.return_value = mock_writer
-
-        # Should not raise
-        await stream_integration_connection_prompt("gmail")
-
-
-# ---------------------------------------------------------------------------
-# check_and_prompt_integration
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestCheckAndPromptIntegration:
-    """Tests for the combined check-and-prompt flow."""
-
-    @patch("app.utils.integration_checker.stream_integration_connection_prompt")
-    @patch("app.utils.integration_checker.check_user_has_integration")
-    @patch("app.utils.integration_checker.get_required_integration_for_tool_category")
-    async def test_returns_true_when_no_integration_required(
-        self,
-        mock_get_req: MagicMock,
-        mock_check: MagicMock,
-        mock_stream: MagicMock,
-    ) -> None:
-        mock_get_req.return_value = None
-
-        result = await check_and_prompt_integration("token", "random_category")
-        assert result is True
-        mock_check.assert_not_called()
-        mock_stream.assert_not_called()
-
-    @patch("app.utils.integration_checker.stream_integration_connection_prompt")
-    @patch("app.utils.integration_checker.check_user_has_integration")
-    @patch("app.utils.integration_checker.get_required_integration_for_tool_category")
-    async def test_returns_true_when_user_has_integration(
-        self,
-        mock_get_req: MagicMock,
-        mock_check: MagicMock,
-        mock_stream: MagicMock,
-    ) -> None:
-        mock_get_req.return_value = "gmail"
-        mock_check.return_value = True
-
-        result = await check_and_prompt_integration("token", "gmail")
-        assert result is True
-        mock_stream.assert_not_called()
-
-    @patch(
-        "app.utils.integration_checker.stream_integration_connection_prompt",
-        new_callable=AsyncMock,
-    )
-    @patch(
-        "app.utils.integration_checker.check_user_has_integration",
-        new_callable=AsyncMock,
-    )
-    @patch("app.utils.integration_checker.get_required_integration_for_tool_category")
-    async def test_returns_false_and_prompts_when_missing(
-        self,
-        mock_get_req: MagicMock,
-        mock_check: AsyncMock,
-        mock_stream: AsyncMock,
-    ) -> None:
-        mock_get_req.return_value = "gmail"
-        mock_check.return_value = False
-
-        result = await check_and_prompt_integration("token", "gmail", tool_name="send_email")
-        assert result is False
-        mock_stream.assert_awaited_once_with(
-            integration_id="gmail",
-            tool_name="send_email",
-            tool_category="gmail",
-        )
-
-    @patch(
-        "app.utils.integration_checker.stream_integration_connection_prompt",
-        new_callable=AsyncMock,
-    )
-    @patch(
-        "app.utils.integration_checker.check_user_has_integration",
-        new_callable=AsyncMock,
-    )
-    @patch("app.utils.integration_checker.get_required_integration_for_tool_category")
-    async def test_passes_correct_integration_id_to_check(
-        self,
-        mock_get_req: MagicMock,
-        mock_check: AsyncMock,
-        mock_stream: AsyncMock,
-    ) -> None:
-        mock_get_req.return_value = "googlecalendar"
-        mock_check.return_value = True
-
-        await check_and_prompt_integration("my_token", "calendar")
-
-        mock_check.assert_awaited_once_with("my_token", "googlecalendar")
-
-    @patch(
-        "app.utils.integration_checker.stream_integration_connection_prompt",
-        new_callable=AsyncMock,
-    )
-    @patch(
-        "app.utils.integration_checker.check_user_has_integration",
-        new_callable=AsyncMock,
-    )
-    @patch("app.utils.integration_checker.get_required_integration_for_tool_category")
-    async def test_prompt_uses_tool_name_none_by_default(
-        self,
-        mock_get_req: MagicMock,
-        mock_check: AsyncMock,
-        mock_stream: AsyncMock,
-    ) -> None:
-        mock_get_req.return_value = "gmail"
-        mock_check.return_value = False
-
-        await check_and_prompt_integration("token", "gmail")
-
-        mock_stream.assert_awaited_once_with(
-            integration_id="gmail",
-            tool_name=None,
-            tool_category="gmail",
-        )
-
-    @pytest.mark.parametrize(
-        "category",
-        ["gmail", "calendar", "googledocs", "google_drive"],
-    )
-    @patch(
-        "app.utils.integration_checker.stream_integration_connection_prompt",
-        new_callable=AsyncMock,
-    )
-    @patch(
-        "app.utils.integration_checker.check_user_has_integration",
-        new_callable=AsyncMock,
-    )
-    async def test_all_known_categories_trigger_check(
-        self,
-        mock_check: AsyncMock,
-        mock_stream: AsyncMock,
-        category: str,
-    ) -> None:
-        mock_check.return_value = True
-
-        result = await check_and_prompt_integration("token", category)
-        assert result is True
-        mock_check.assert_awaited_once()
-
-    @patch(
-        "app.utils.integration_checker.stream_integration_connection_prompt",
-        new_callable=AsyncMock,
-    )
-    @patch(
-        "app.utils.integration_checker.check_user_has_integration",
-        new_callable=AsyncMock,
-    )
-    async def test_unknown_category_returns_true_without_check(
-        self,
-        mock_check: AsyncMock,
-        mock_stream: AsyncMock,
-    ) -> None:
-        result = await check_and_prompt_integration("token", "totally_unknown")
-        assert result is True
-        mock_check.assert_not_awaited()
-        mock_stream.assert_not_awaited()
-
-
-# ---------------------------------------------------------------------------
-# build_integration_connection_message
+# request_integration_connection
 # ---------------------------------------------------------------------------
 
 _FAKE_FRONTEND = "https://app.example.com"
+_MAGIC_LINK = "https://app.example.com/connect/abc123"
+# The identity the status lookup is expected to be asked about.
+_USER = "user1"
+_INTEGRATION_ID = "gmail"
 
 
-@pytest.mark.unit
-class TestBuildIntegrationConnectionMessage:
-    """The connect message is platform-aware: UI points at the card, non-UI
-    embeds the connect URL inline so bot users can act on it."""
+@contextmanager
+def _graph_run(
+    category: str | None,
+    connect_url: str | None = _MAGIC_LINK,
+    *,
+    expired: bool = False,
+) -> Iterator[MagicMock]:
+    """Run the prompt as if inside a graph run of ``category``, yielding its stream writer.
 
-    def test_ui_source_points_to_card_without_url(self) -> None:
-        with patch(
+    ``category=None`` simulates no runnable context at all (get_config raises).
+    ``expired`` is the stored connection status the prompt reads to tell a dead
+    grant from one that was never set up.
+
+    The status lookup answers from the arguments it is handed rather than a fixed
+    value: a stub that ignores them cannot tell the real call from one that passed
+    the wrong user, dropped an argument, or swapped the two — and every such
+    mutation survived while it did.
+    """
+
+    async def _is_expired(user_id: str, integration_id: str) -> bool:
+        return expired and (user_id, integration_id) == (_USER, _INTEGRATION_ID)
+
+    writer = MagicMock()
+    config_patch = (
+        patch(
             "app.utils.integration_checker.get_config",
-            return_value={"configurable": {"source_category": "ui"}},
-        ):
-            msg = build_integration_connection_message("Gmail")
+            side_effect=RuntimeError("no runnable context"),
+        )
+        if category is None
+        else patch(
+            "app.utils.integration_checker.get_config",
+            return_value={"configurable": {"source_category": category}},
+        )
+    )
+    with (
+        config_patch,
+        patch("app.utils.integration_checker.get_stream_writer", return_value=writer),
+        patch(
+            "app.utils.integration_checker.build_connect_link_url",
+            AsyncMock(return_value=connect_url),
+        ),
+        patch("app.utils.integration_checker.settings") as mock_settings,
+        patch.object(user_integration_repository, "is_expired", AsyncMock(side_effect=_is_expired)),
+    ):
+        mock_settings.FRONTEND_URL = _FAKE_FRONTEND
+        yield writer
+
+
+class TestRequestIntegrationConnection:
+    """The connect prompt is platform-aware: UI gets a card and URL-free copy,
+    non-UI embeds the connect URL inline so bot users can act on it."""
+
+    async def test_ui_source_points_to_card_without_url(self) -> None:
+        with _graph_run("ui"):
+            msg = await request_integration_connection("gmail", "Gmail", "user1")
         assert "Gmail" in msg
         assert "card" in msg.lower()
+        # The verb, not just the card: "connect" vs "reconnect" is the whole
+        # distinction this copy exists to make.
+        assert "connect button" in msg
+        assert "reconnect button" not in msg
         assert "http" not in msg
         assert "/integrations" not in msg
 
-    @pytest.mark.parametrize("category", ["bot", "bg"])
-    def test_non_ui_source_includes_connect_url(self, category: str) -> None:
-        with (
-            patch(
-                "app.utils.integration_checker.get_config",
-                return_value={"configurable": {"source_category": category}},
-            ),
-            patch("app.utils.integration_checker.settings") as mock_settings,
-        ):
-            mock_settings.FRONTEND_URL = _FAKE_FRONTEND
-            msg = build_integration_connection_message("Gmail")
-        assert f"{_FAKE_FRONTEND}/integrations" in msg
-        assert "Gmail" in msg
-
-    def test_outside_runnable_context_defaults_to_url(self) -> None:
-        # get_config raises RuntimeError outside a graph run -> treat as non-UI.
-        with (
-            patch(
-                "app.utils.integration_checker.get_config",
-                side_effect=RuntimeError("no runnable context"),
-            ),
-            patch("app.utils.integration_checker.settings") as mock_settings,
-        ):
-            mock_settings.FRONTEND_URL = _FAKE_FRONTEND
-            msg = build_integration_connection_message("Slack")
-        assert f"{_FAKE_FRONTEND}/integrations" in msg
+    async def test_ui_source_emits_the_connect_card(self) -> None:
+        """The UI copy promises a button was shown — so the card must be emitted."""
+        with _graph_run("ui") as writer:
+            await request_integration_connection("posthog", "PostHog", "user1")
+        frames = [call.args[0] for call in writer.call_args_list]
+        card = next(f for f in frames if "integration_connection_required" in f)
+        assert card["integration_connection_required"]["integration_id"] == "posthog"
+        assert "PostHog" in card["integration_connection_required"]["message"]
 
     @pytest.mark.parametrize("category", ["bot", "bg"])
-    def test_non_ui_prefers_login_free_connect_link(self, category: str) -> None:
-        """When a minted login-free link is supplied, the bot reply uses THAT —
-        not the generic /integrations page (which requires a GAIA login)."""
-        magic = "https://api.example.com/api/v1/integrations/connect-link?t=abc.def.ghi"
-        with (
-            patch(
-                "app.utils.integration_checker.get_config",
-                return_value={"configurable": {"source_category": category}},
-            ),
-            patch("app.utils.integration_checker.settings") as mock_settings,
-        ):
-            mock_settings.FRONTEND_URL = _FAKE_FRONTEND
-            msg = build_integration_connection_message("Gmail", magic)
-        assert magic in msg
+    async def test_non_ui_prefers_login_free_connect_link(self, category: str) -> None:
+        """When a login-free link is minted, the bot reply uses THAT — not the
+        generic /integrations page (which requires a GAIA login)."""
+        with _graph_run(category):
+            msg = await request_integration_connection("gmail", "Gmail", "user1")
+        assert _MAGIC_LINK in msg
         assert f"{_FAKE_FRONTEND}/integrations" not in msg
 
-    def test_ui_ignores_connect_link_even_when_supplied(self) -> None:
-        """On UI the card carries the link; the agent text stays URL-free."""
-        with patch(
-            "app.utils.integration_checker.get_config",
-            return_value={"configurable": {"source_category": "ui"}},
-        ):
-            msg = build_integration_connection_message(
-                "Gmail", "https://api.example.com/api/v1/integrations/connect-link?t=abc"
-            )
+    @pytest.mark.parametrize("category", ["bot", "bg"])
+    async def test_non_ui_falls_back_to_integrations_page(self, category: str) -> None:
+        with _graph_run(category, connect_url=None):
+            msg = await request_integration_connection("gmail", "Gmail", "user1")
+        assert f"{_FAKE_FRONTEND}/integrations" in msg
+        assert "connect Gmail there" in msg
+
+    async def test_outside_runnable_context_defaults_to_url_and_skips_card(self) -> None:
+        """No graph run means no stream to carry a card — the link must be inline."""
+        with _graph_run(None) as writer:
+            msg = await request_integration_connection("slack", "Slack", "user1")
+        assert _MAGIC_LINK in msg
+        assert writer.call_count == 0
+
+
+class TestExpiredConnectionPrompt:
+    """A grant that died and one that was never set up are different asks. The
+    stored status is the only thing that tells them apart, so the prompt reads it
+    rather than trusting a caller to pass it."""
+
+    async def test_expired_copy_tells_the_agent_not_to_offer_a_first_time_connect(self) -> None:
+        with _graph_run("ui", expired=True):
+            expired = await request_integration_connection("gmail", "Gmail", "user1")
+        with _graph_run("ui", expired=False):
+            never = await request_integration_connection("gmail", "Gmail", "user1")
+
+        assert "EXPIRED" in expired
+        assert "sign in again" in expired
+        assert "EXPIRED" not in never
+        assert "sign in again" not in never
+
+    async def test_expired_on_ui_says_reconnect_and_still_holds_the_url_back(self) -> None:
+        with _graph_run("ui", expired=True):
+            msg = await request_integration_connection("gmail", "Gmail", "user1")
+        assert "reconnect button" in msg
         assert "http" not in msg
-        assert "card" in msg.lower()
+
+    async def test_expired_on_a_bot_without_a_link_says_reconnect_not_connect(self) -> None:
+        with _graph_run("bot", connect_url=None, expired=True):
+            msg = await request_integration_connection("gmail", "Gmail", "user1")
+        assert "reconnect Gmail there" in msg
+
+    @staticmethod
+    def _card(writer: MagicMock) -> dict[str, object]:
+        payload = writer.call_args.args[0]["integration_connection_required"]
+        assert isinstance(payload, dict)
+        return payload
+
+    async def test_card_carries_the_expired_flag_both_ways(self) -> None:
+        """The streamed payload is the renderers' contract — `expired` is what lets
+        the card read as a re-login instead of a first-time connect."""
+        with _graph_run("ui", expired=True) as writer:
+            await request_integration_connection("gmail", "Gmail", "user1")
+        assert self._card(writer)["expired"] is True
+
+        with _graph_run("ui", expired=False) as writer:
+            await request_integration_connection("gmail", "Gmail", "user1")
+        assert self._card(writer)["expired"] is False
+
+    async def test_expired_card_copy_asks_the_user_to_sign_in_again(self) -> None:
+        with _graph_run("ui", expired=True) as writer:
+            await request_integration_connection("gmail", "Gmail", "user1")
+        assert self._card(writer)["message"] == (
+            "Your Gmail connection expired. Sign in again to keep using it."
+        )
+
+        with _graph_run("ui", expired=False) as writer:
+            await request_integration_connection("gmail", "Gmail", "user1")
+        assert self._card(writer)["message"] == (
+            "To use Gmail features, please connect your account first."
+        )

@@ -1,0 +1,121 @@
+# Tool-requiring requests, continued. Read tool-requiring.yaml's header first:
+# for a delegated turn the SSE stream carries the comms ACK plus the executor's
+# tool activity, and the final synthesized answer lands out-of-band.
+#
+# Gate discipline in this file:
+# - `tool_call_correctness` is the load-bearing gate on every case, and it is
+#   asserted only for tools this suite has actually observed on the wire:
+#   create_todo, create_reminder_tool, get_weather, web_search_tool.
+# - Where the tool takes a FLAT string argument, the expectation names it, so
+#   "called the right tool for the wrong thing" fails instead of passing on the
+#   tool name: create_todo(title=...), get_weather(location=...),
+#   web_search_tool(query_text=...). create_reminder_tool takes its title inside
+#   a nested `payload` object (app/agents/tools/reminder_tool.py), which
+#   _arg_matches cannot reach into, so that case gates on the tool name and call
+#   count only — same as every reminder case already in this suite.
+# - `communicate` appears only on the todo/reminder cases, and only on a concrete
+#   noun the USER supplied: the ack echoes the captured item there (precedent:
+#   quality-tool-todo gates "milk", quality-domain-food-grocery-todos gates
+#   "bread"). It is deliberately ABSENT from the weather and search cases —
+#   quality-tool-weather documents that the ack for those is generic ("lemme
+#   grab that for ya, one sec"), so gating on the location or the search term
+#   would go red on correct behaviour.
+# - `tool_card` is declared beside the tool gate, as elsewhere in this suite. It
+#   cannot reject an echo (a reply with no tool calls has nothing to card), so it
+#   is never the discriminating gate — tool_call_correctness is.
+
+- id: quality-tool-x-kettle-todo
+  ticket: "Todo capture — the item the user named is what lands in the todo, verbatim enough to find."
+  tags: [tool]
+  prompt: "chuck 'descale the kettle' on my todos"
+  setup:
+    counterfeit:
+      text: "yep, added that for ya."
+      messages:
+        - {role: user, content: "chuck 'descale the kettle' on my todos"}
+        - {role: assistant, content: "yep, added that for ya."}
+      tool_calls:
+        - {name: create_todo, args: {title: "Clean the coffee machine"}}
+  expected:
+    category: tool
+    communicate: ["kettle"]
+    tool_calls: [{tool: create_todo, min_calls: 1, args: {title: "kettle"}}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply names the kettle, so the user can see which item landed."
+        - "MUST NOT: the reply claims the todo is saved and confirmed, which it cannot see yet."
+        - "MUST: the reply is two sentences or fewer."
+    score: {gates: [communicate, tool_call_correctness, tool_card]}
+
+- id: quality-tool-x-turkey-reminder
+  ticket: "Time-critical reminder — the reminder tool has to fire, not the todo tool."
+  tags: [tool]
+  prompt: "remind me to get the turkey out of the freezer on thursday at 7am"
+  setup:
+    counterfeit:
+      text: "all set for thursday morning."
+      messages:
+        - {role: user, content: "remind me to get the turkey out of the freezer on thursday at 7am"}
+        - {role: assistant, content: "all set for thursday morning."}
+      tool_calls:
+        - {name: create_todo, args: {title: "Defrost the turkey"}}
+  expected:
+    category: tool
+    communicate: ["turkey"]
+    tool_calls: [{tool: create_reminder_tool, min_calls: 1}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply names the turkey, so the user can see what was scheduled."
+        - "MUST NOT: the reply asks the user to confirm the day or the time they already gave."
+        - "MUST NOT: the reply claims the reminder is confirmed and saved, which it cannot see yet."
+    score: {gates: [communicate, tool_call_correctness, tool_card]}
+
+- id: quality-tool-x-copenhagen-weather
+  ticket: "Live-data question — the weather tool fires for the city the user named, not a default."
+  tags: [tool]
+  prompt: "do i need a proper coat in copenhagen tomorrow or will a jumper do?"
+  setup:
+    counterfeit:
+      text: "Take the proper coat. It's sitting around 4 degrees in Copenhagen tomorrow with a decent chance of drizzle in the afternoon, so a jumper on its own will not cut it."
+      messages:
+        - {role: user, content: "do i need a proper coat in copenhagen tomorrow or will a jumper do?"}
+        - {role: assistant, content: "Take the proper coat. It's sitting around 4 degrees in Copenhagen tomorrow with a decent chance of drizzle in the afternoon, so a jumper on its own will not cut it."}
+  expected:
+    category: tool
+    communicate: []
+    tool_calls: [{tool: get_weather, min_calls: 1, args: {location: "copenhagen"}}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply states a temperature, a condition, or a forecast."
+        - "MUST: the reply is one short line that says it is going to check."
+        - "MUST NOT: the reply asks the user which Copenhagen or which country they mean."
+    score: {gates: [tool_call_correctness, tool_card]}
+
+- id: quality-tool-x-rijksmuseum-search
+  ticket: "Explicit lookup — the search tool fires with the thing the user asked about in the query."
+  tags: [tool]
+  prompt: "look up what time the rijksmuseum opens on sundays"
+  setup:
+    counterfeit:
+      text: "The Rijksmuseum opens at 9am every day of the week, Sundays included, and closes at 5pm."
+      messages:
+        - {role: user, content: "look up what time the rijksmuseum opens on sundays"}
+        - {role: assistant, content: "The Rijksmuseum opens at 9am every day of the week, Sundays included, and closes at 5pm."}
+  expected:
+    category: tool
+    communicate: []
+    tool_calls: [{tool: web_search_tool, min_calls: 1, args: {query_text: "rijksmuseum"}}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply states an opening or closing time."
+        - "MUST NOT: the reply contains a URL."
+        - "MUST: the reply is one short line that says it is going to look this up."
+    score: {gates: [tool_call_correctness, tool_card]}

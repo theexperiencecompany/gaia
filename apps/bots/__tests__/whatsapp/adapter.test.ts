@@ -328,16 +328,16 @@ describe("WhatsAppAdapter - createWaTarget", () => {
     const target = priv.createWaTarget("15551234567");
     const richMsg = { title: "GAIA Help", sections: [] };
 
-    // richMessageToMarkdown is platform-aware: for "whatsapp" it already emits
-    // WhatsApp-native markdown, so the adapter no longer double-converts with
-    // convertToWhatsAppMarkdown — it sends the rendered output as-is.
+    // richMessageToMarkdown emits platform-agnostic CommonMark (mocked here);
+    // the target converts it for WhatsApp via the shared renderForPlatform
+    // chokepoint before sending.
     vi.mocked(richMessageToMarkdown).mockReturnValueOnce(
       "*GAIA Help*\n*Name:* Aryan",
     );
 
     await target.sendRich(richMsg);
 
-    expect(richMessageToMarkdown).toHaveBeenCalledWith(richMsg, "whatsapp");
+    expect(richMessageToMarkdown).toHaveBeenCalledWith(richMsg);
     expect(mockSendText).toHaveBeenCalledWith(
       expect.objectContaining({ body: "*GAIA Help*\n*Name:* Aryan" }),
     );
@@ -405,7 +405,9 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "whatsapp" }),
-      undefined,
+      expect.objectContaining({
+        distinctId: expect.any(String),
+      }),
     );
   });
 
@@ -471,7 +473,9 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "whatsapp" }),
-      undefined,
+      expect.objectContaining({
+        distinctId: expect.any(String),
+      }),
     );
   });
 
@@ -491,7 +495,9 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.anything(),
-      undefined,
+      expect.objectContaining({
+        distinctId: expect.any(String),
+      }),
     );
   });
 });
@@ -561,7 +567,9 @@ describe("WhatsAppAdapter - handleStreamingMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "whatsapp" }),
-      undefined,
+      expect.objectContaining({
+        distinctId: expect.any(String),
+      }),
     );
   });
 

@@ -96,18 +96,24 @@ async def web_search_tool(
         writer({"progress": f"Performing web search for '{query_text}'..."})
 
         # Perform the search with 10 results
-        search_results = await perform_search(query=query_text, count=10)
+        search_result = await perform_search(query=query_text, count=10)
 
-        web_results = search_results.get("web", [])
+        web_results = [item.model_dump() for item in search_result.web]
         # news_results = search_results.get("news", [])
-        image_results = search_results.get("images", [])
-        video_results = search_results.get("videos", [])
-        answer = search_results.get("answer", "")
+        image_results = search_result.images
+        video_results: list[str] = []
+        answer = search_result.answer
 
         elapsed_time = time.time() - start_time
         formatted_text = f"Web search completed in {elapsed_time:.2f} seconds. Found {len(web_results)} web results, {len(image_results)} images, and {len(video_results)} videos."
 
-        log.info(f"{LogTag.TOOL} {formatted_text}")
+        log.info(
+            f"{LogTag.TOOL} Web search completed",
+            duration_seconds=round(elapsed_time, 2),
+            web_result_count=len(web_results),
+            image_count=len(image_results),
+            video_count=len(video_results),
+        )
         writer({"progress": formatted_text})
 
         # Send search data to frontend via writer
@@ -121,8 +127,8 @@ async def web_search_tool(
                     "query": query_text,
                     "elapsed_time": elapsed_time,
                     "answer": answer,
-                    "response_time": search_results.get("response_time", 0),
-                    "request_id": search_results.get("request_id", ""),
+                    "response_time": 0,
+                    "request_id": "",
                     "result_count": {
                         "web": len(web_results),
                         # "news": len(news_results),
@@ -135,9 +141,9 @@ async def web_search_tool(
 
         # Return the raw search results for the LLM to use
         # Include explicit URL list so the LLM has a ground-truth set and cannot hallucinate
-        real_urls = [r.get("url", "") for r in web_results if r.get("url")]
+        real_urls = [item.url for item in search_result.web if item.url]
         return {
-            **search_results,
+            **search_result.model_dump(),
             "real_urls_from_search": real_urls,
             "integrity_note": (
                 f"Search query: '{query_text}'. "
@@ -154,7 +160,9 @@ async def web_search_tool(
         }
 
     except (TimeoutError, ConnectionError) as e:
-        log.error(f"{LogTag.TOOL} Network error in web search: {e}", exc_info=True)
+        log.error(
+            f"{LogTag.TOOL} Network error in web search", error_type=type(e).__name__, exc_info=True
+        )
         return {
             "formatted_text": "\n\nConnection timed out during web search. Please try again later.",
             "error": str(e),
@@ -162,7 +170,9 @@ async def web_search_tool(
             "integrity_note": _NO_URLS_RETRIEVED_MSG,
         }
     except ValueError as e:
-        log.error(f"{LogTag.TOOL} Value error in web search: {e}", exc_info=True)
+        log.error(
+            f"{LogTag.TOOL} Value error in web search", error_type=type(e).__name__, exc_info=True
+        )
         return {
             "formatted_text": "\n\nInvalid search parameters. Please try a different query.",
             "error": str(e),
@@ -170,7 +180,11 @@ async def web_search_tool(
             "integrity_note": _NO_URLS_RETRIEVED_MSG,
         }
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Unexpected error in web search: {e}", exc_info=True)
+        log.error(
+            f"{LogTag.TOOL} Unexpected error in web search",
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
         return {
             "formatted_text": "\n\nError performing web search. Please try again later.",
             "error": str(e),

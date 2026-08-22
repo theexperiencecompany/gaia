@@ -485,7 +485,12 @@ class TestLinearGetMyTasks:
         side_effect=lambda i: {"id": i.get("id")},
     )
     def test_get_my_tasks_overdue_filter(self, mock_fmt: MagicMock, mock_gql: MagicMock) -> None:
-        yesterday = (datetime.now().date() - timedelta(days=1)).isoformat()
+        # Pin production's "today" to the local date so the overdue comparison
+        # (due_date < today) uses the same reference as the test's date strings.
+        # Without this, _user_local_today() falls back to datetime.now(UTC).date()
+        # which can differ from local date in timezones ahead of UTC.
+        local_today = datetime.now().date()
+        yesterday = (local_today - timedelta(days=1)).isoformat()
         mock_gql.side_effect = [
             {"viewer": {"id": "u1"}},
             {
@@ -515,7 +520,8 @@ class TestLinearGetMyTasks:
         tools = _capture_tools(register_linear_custom_tools)
         fn = tools["CUSTOM_GET_MY_TASKS"]
 
-        result = fn(GetMyTasksInput(filter="overdue"), EXECUTE_REQUEST, AUTH_CREDS)
+        with patch(f"{LINEAR_MODULE}._user_local_today", return_value=local_today):
+            result = fn(GetMyTasksInput(filter="overdue"), EXECUTE_REQUEST, AUTH_CREDS)
         assert result["count"] == 1
 
     @patch(f"{LINEAR_MODULE}.graphql_request")
@@ -568,7 +574,10 @@ class TestLinearGetMyTasks:
         side_effect=lambda i: {"id": i.get("id")},
     )
     def test_get_my_tasks_today_filter(self, mock_fmt: MagicMock, mock_gql: MagicMock) -> None:
-        today = datetime.now().date().isoformat()
+        # Pin production's "today" to the local date so the equality check
+        # (due_date == today) uses the same reference as the test's date strings.
+        local_today = datetime.now().date()
+        today = local_today.isoformat()
         mock_gql.side_effect = [
             {"viewer": {"id": "u1"}},
             {
@@ -598,7 +607,8 @@ class TestLinearGetMyTasks:
         tools = _capture_tools(register_linear_custom_tools)
         fn = tools["CUSTOM_GET_MY_TASKS"]
 
-        result = fn(GetMyTasksInput(filter="today"), EXECUTE_REQUEST, AUTH_CREDS)
+        with patch(f"{LINEAR_MODULE}._user_local_today", return_value=local_today):
+            result = fn(GetMyTasksInput(filter="today"), EXECUTE_REQUEST, AUTH_CREDS)
         assert result["count"] == 1
 
     @patch(f"{LINEAR_MODULE}.graphql_request")
@@ -1359,6 +1369,46 @@ class TestLinearGetIssueActivity:
         result = fn(GetIssueActivityInput(issue_id="i1"), EXECUTE_REQUEST, AUTH_CREDS)
         assert result["activities"][0]["change_type"] == "labels_added"
 
+    @patch(f"{LINEAR_MODULE}.graphql_request")
+    def test_get_activity_labels_added_as_a_plain_list(self, mock_gql: MagicMock) -> None:
+        """QUERY_ISSUE_HISTORY selects `addedLabels { id name }`, so a non-empty
+        label change arrives as a list of label objects, not a {nodes: [...]}
+        connection. Every fixture in this repo used the connection shape *and*
+        left it empty, so the branch that reads `["addedLabels"]["nodes"]` was
+        never executed against real data.
+        """
+        mock_gql.return_value = {
+            "issue": {
+                "history": {
+                    "nodes": [
+                        {
+                            "createdAt": "2024-01-01",
+                            "actor": {"name": "Alice"},
+                            "fromState": None,
+                            "toState": None,
+                            "fromAssignee": None,
+                            "toAssignee": None,
+                            "fromPriority": None,
+                            "toPriority": None,
+                            "addedLabels": [{"id": "l1", "name": "Bug"}],
+                            "removedLabels": None,
+                        },
+                    ]
+                }
+            },
+        }
+
+        from app.agents.tools.integrations.linear_tool import (
+            register_linear_custom_tools,
+        )
+
+        tools = _capture_tools(register_linear_custom_tools)
+        fn = tools["CUSTOM_GET_ISSUE_ACTIVITY"]
+
+        result = fn(GetIssueActivityInput(issue_id="i1"), EXECUTE_REQUEST, AUTH_CREDS)
+        assert result["activities"][0]["change_type"] == "labels_added"
+        assert result["activities"][0]["labels"] == ["Bug"]
+
 
 class TestLinearGetActiveSprint:
     @patch(f"{LINEAR_MODULE}.graphql_request")
@@ -1593,7 +1643,10 @@ class TestLinearGetWorkspaceContext:
         side_effect=lambda i: {"id": i.get("id")},
     )
     def test_get_workspace_context(self, mock_fmt: MagicMock, mock_gql: MagicMock) -> None:
-        yesterday = (datetime.now().date() - timedelta(days=1)).isoformat()
+        # Pin production's "today" to the local date so the overdue comparison
+        # (due_date < today) uses the same reference as the test's date strings.
+        local_today = datetime.now().date()
+        yesterday = (local_today - timedelta(days=1)).isoformat()
         mock_gql.side_effect = [
             {
                 "viewer": {
@@ -1637,7 +1690,8 @@ class TestLinearGetWorkspaceContext:
         tools = _capture_tools(register_linear_custom_tools)
         fn = tools["CUSTOM_GET_WORKSPACE_CONTEXT"]
 
-        result = fn(GetWorkspaceContextInput(), EXECUTE_REQUEST, AUTH_CREDS)
+        with patch(f"{LINEAR_MODULE}._user_local_today", return_value=local_today):
+            result = fn(GetWorkspaceContextInput(), EXECUTE_REQUEST, AUTH_CREDS)
         assert result["user"]["name"] == "Alice"
         assert result["user"]["assigned_issue_count"] == 1
         assert len(result["teams"]) == 1

@@ -10,11 +10,14 @@ This module provides the retrieve_tools function factory that supports:
 
 import asyncio
 from collections.abc import Awaitable, Callable
+import json
 from typing import (
     Annotated,
     Any,
+    TypeAlias,
     TypedDict,
     Union,
+    cast,
 )
 
 from langchain_core.runnables import RunnableConfig
@@ -26,6 +29,7 @@ from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
 from app.agents.tools.core.registry import (
     DESKTOP_TOOL_CATEGORY,
     DESKTOP_TOOL_SPACE,
+    ToolRegistry,
     get_tool_registry,
 )
 from app.agents.tools.research_tool import deep_research
@@ -33,7 +37,9 @@ from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import search_public_integrations
+from app.models.agent_models import agent_configurable
 from app.models.chat_models import ConversationSource
+from app.override.langgraph_bigtool.utils import RetrieveToolsResult
 from app.services.integrations.integration_service import (
     get_user_available_tool_namespaces,
 )
@@ -66,7 +72,9 @@ async def _user_mcp_tool_names(user_id: str | None) -> set[str]:
         return names
     except Exception as e:
         log.warning(
-            f"{LogTag.TOOL} _user_mcp_tool_names: failed for user {user_id}: {type(e).__name__}: {e}"
+            f"{LogTag.TOOL} _user_mcp_tool_names failed",
+            user_id=user_id,
+            error_type=type(e).__name__,
         )
         return set()
 
@@ -177,9 +185,9 @@ Simple read task:
 
 Multi-tool task:
   retrieve_tools(query="fetch emails, send reply")
-  → ["GMAIL_FETCH_EMAILS", "GMAIL_REPLY_TO_THREAD", ...]
-  retrieve_tools(exact_tool_names=["GMAIL_FETCH_EMAILS", "GMAIL_REPLY_TO_THREAD"])
-  → GMAIL_FETCH_EMAILS(...) → find the thread
+  → ["GMAIL_FETCH_MESSAGES", "GMAIL_REPLY_TO_THREAD", ...]
+  retrieve_tools(exact_tool_names=["GMAIL_FETCH_MESSAGES", "GMAIL_REPLY_TO_THREAD"])
+  → GMAIL_FETCH_MESSAGES(...) → find the thread
   → GMAIL_REPLY_TO_THREAD(...) → send reply. Done.
 
 Write task with verification:
@@ -203,11 +211,22 @@ Discovery may also return subagent tools alongside regular tools.
 - They cannot be executed directly as tools."""
 
 
-class RetrieveToolsResult(TypedDict):
-    """Result from retrieve_tools function."""
+class ScoredToolHit(TypedDict):
+    """One ranked discovery hit, threaded from a search result to the final list.
 
-    tools_to_bind: list[str]
-    response: list[str]
+    ``id`` is either a tool name or a ``subagent:<id> (Name)`` key; ``score`` is
+    the backing store's relevance, absent on stores that don't rank.
+    """
+
+    id: str
+    score: float | None
+
+
+# What one entry of the gathered search fan-out yields: Chroma's typed
+# ``SearchItem``s from the tool namespaces, or the public-integration store's
+# raw dicts. Kept as a union because the two backends genuinely differ; the
+# consumer discriminates on the first element and narrows with ``cast``.
+SearchTaskResult: TypeAlias = Union[list[SearchItem], list[dict[str, Any]]]
 
 
 async def _resolve_connected_subagents(user_id: str) -> dict[str, str | None]:
@@ -279,12 +298,16 @@ async def _get_user_context(
         if include_subagents:
             connected_integrations = await _resolve_connected_subagents(user_id)
             log.info(
-                f"{LogTag.TOOL} User {user_id} connected subagents: {set(connected_integrations)}"
+                f"{LogTag.TOOL} User connected subagents",
+                user_id=user_id,
+                connected_integrations=sorted(set(connected_integrations)),
             )
 
-        log.info(f"{LogTag.TOOL} User {user_id} namespaces: {user_namespaces}")
+        log.info(
+            f"{LogTag.TOOL} User namespaces resolved", user_id=user_id, namespaces=user_namespaces
+        )
     except Exception as e:
-        log.warning(f"{LogTag.TOOL} Failed to get user namespaces: {e}")
+        log.warning(f"{LogTag.TOOL} Failed to get user namespaces", error_type=type(e).__name__)
 
     return user_namespaces, connected_integrations, internal_subagents
 
@@ -297,7 +320,7 @@ def _build_search_tasks(
     include_subagents: bool,
     limit: int,
     include_desktop: bool = False,
-) -> list[Awaitable[Union[list[SearchItem], list[dict[str, Any]]]]]:
+) -> list[Awaitable[SearchTaskResult]]:
     """Build list of search tasks to execute.
 
     The `tool_space in user_namespaces` gate is the security boundary that
@@ -307,11 +330,11 @@ def _build_search_tasks(
     to search it (always for platform integrations, only when the user
     has the integration connected for custom MCPs).
     """
-    search_tasks: list[Awaitable[Union[list[SearchItem], list[dict[str, Any]]]]] = []
+    search_tasks: list[Awaitable[SearchTaskResult]] = []
 
     # Search in tool_space
     if tool_space in user_namespaces or tool_space == "general":
-        log.info(f"{LogTag.TOOL} Adding search for tool_space: {tool_space}")
+        log.info(f"{LogTag.TOOL} Adding search for tool space", tool_space=tool_space)
         search_tasks.append(store.asearch((tool_space,), query=query, limit=limit))
     else:
         # Caller is in a subagent whose namespace they don't own. This is
@@ -346,9 +369,9 @@ def _build_search_tasks(
 
 def _process_public_integration_result(
     result: list[dict[str, Any]],
-) -> list[dict[str, str | float | None]]:
+) -> list[ScoredToolHit]:
     """Process public integration search results."""
-    processed = []
+    processed: list[ScoredToolHit] = []
 
     for item in result:
         integration_id = item.get("integration_id")
@@ -358,12 +381,7 @@ def _process_public_integration_result(
             subagent_key = (
                 f"subagent:{integration_id} ({name})" if name else f"subagent:{integration_id}"
             )
-            processed.append(
-                {
-                    "id": subagent_key,
-                    "score": item.get("relevance_score", 0),
-                }
-            )
+            processed.append(ScoredToolHit(id=subagent_key, score=item.get("relevance_score", 0)))
 
     return processed
 
@@ -371,12 +389,12 @@ def _process_public_integration_result(
 def _process_chroma_search_result(
     result: list[SearchItem],
     available_tool_names: set[str],
-    tool_registry,
+    tool_registry: ToolRegistry,
     include_subagents: bool,
     tool_space: str = "general",
-) -> list[dict[str, str | float | None]]:
+) -> list[ScoredToolHit]:
     """Process Chroma store search results."""
-    processed: list[dict[str, str | float | None]] = []
+    processed: list[ScoredToolHit] = []
 
     for item in result:
         tool_key = str(item.key)
@@ -397,14 +415,14 @@ def _process_chroma_search_result(
             else:
                 subagent_key = f"subagent:{tool_key} ({name})" if name else f"subagent:{tool_key}"
 
-            processed.append({"id": subagent_key, "score": item.score})
+            processed.append(ScoredToolHit(id=subagent_key, score=item.score))
             continue
 
         # Handle keys with subagent: prefix — skip if subagents not included
         if tool_key.startswith("subagent:"):
             if not include_subagents:
                 continue
-            processed.append({"id": tool_key, "score": item.score})
+            processed.append(ScoredToolHit(id=tool_key, score=item.score))
             continue
 
         # Filter general namespace results for subagents - only allow webpage tools
@@ -427,24 +445,24 @@ def _process_chroma_search_result(
 
         # Add regular tools
         if tool_key in available_tool_names:
-            processed.append({"id": tool_key, "score": item.score})
+            processed.append(ScoredToolHit(id=tool_key, score=item.score))
 
     return processed
 
 
 async def _process_search_results(
-    results: list[Any],
+    results: list[SearchTaskResult | BaseException],
     available_tool_names: set[str],
-    tool_registry,
+    tool_registry: ToolRegistry,
     include_subagents: bool,
     tool_space: str = "general",
-) -> list[dict[str, str | float | None]]:
+) -> list[ScoredToolHit]:
     """Process all search results and return unified list."""
-    all_results = []
+    all_results: list[ScoredToolHit] = []
 
     for idx, result in enumerate(results):
         if isinstance(result, BaseException):
-            log.warning(f"{LogTag.TOOL} Task {idx}: Search error - {result}")
+            # Already logged (with type) at the gather site in retrieve_tools.
             continue
 
         if not result:
@@ -454,8 +472,9 @@ async def _process_search_results(
         is_public_search = isinstance(result[0], dict)
 
         if is_public_search:
-            processed = _process_public_integration_result(result)
+            processed = _process_public_integration_result(cast(list[dict[str, Any]], result))
         else:
+            items = cast(list[SearchItem], result)
             try:
                 preview = [
                     {
@@ -463,16 +482,23 @@ async def _process_search_results(
                         "namespace": item.namespace if hasattr(item, "namespace") else None,
                         "score": item.score,
                     }
-                    for item in result[:20]
+                    for item in items[:20]
                 ]
                 log.debug(
-                    f"{LogTag.TOOL} Chroma search raw hits (task={idx}, tool_space={tool_space}): "
-                    f"{len(result)} items, preview={preview}"
+                    f"{LogTag.TOOL} Chroma search raw hits",
+                    task_index=idx,
+                    tool_space=tool_space,
+                    hit_count=len(result),
+                    preview=preview,
                 )
             except Exception as e:
-                log.debug(f"{LogTag.TOOL} Chroma search raw hits log failed (task={idx}): {e}")
+                log.debug(
+                    f"{LogTag.TOOL} Chroma search raw hits log failed",
+                    task_index=idx,
+                    error_type=type(e).__name__,
+                )
             processed = _process_chroma_search_result(
-                result,
+                items,
                 available_tool_names,
                 tool_registry,
                 include_subagents,
@@ -485,12 +511,12 @@ async def _process_search_results(
 
 
 def _deduplicate_and_sort(
-    results: list[dict[str, str | float | None]],
+    results: list[ScoredToolHit],
     limit: int,
 ) -> list[str]:
     """Remove duplicates, sort by score, and return top results."""
-    seen = set()
-    unique_results = []
+    seen: set[str] = set()
+    unique_results: list[ScoredToolHit] = []
 
     for r in results:
         if r["id"] not in seen:
@@ -498,6 +524,101 @@ def _deduplicate_and_sort(
             unique_results.append(r)
     unique_results.sort(key=lambda x: x["score"] or 0.0, reverse=True)
     return [str(r["id"]) for r in unique_results[:limit]]
+
+
+def _split_subagent_entry(entry: str) -> tuple[str, str | None]:
+    """``subagent:<id> (Name)`` -> (id, name)."""
+    tail = entry[len("subagent:") :]
+    if " (" in tail and tail.endswith(")"):
+        subagent_id, name = tail.split(" (", 1)
+        return subagent_id, name[:-1]
+    return tail, None
+
+
+def _render_discovery_response(
+    final_tools: list[str],
+    tool_registry: ToolRegistry,
+    connected_integrations: dict[str, str | None],
+    internal_subagents: set[str],
+    query: str | None,
+    total_candidates: int,
+    limit: int,
+) -> str:
+    """Render discovery hits as JSON in three buckets: bind, handoff, connect.
+
+    Availability is the only axis that changes what the model may do next, so it
+    is the top-level split. ``internal_subagents`` is required to tell a built-in
+    capability (always usable) from an integration the user has not connected —
+    without it every built-in was reported as needing a connection it has none of.
+    """
+    bindable: list[str] = []
+    subagents: list[tuple[str, str | None]] = []
+    for entry in final_tools:
+        if entry.startswith("subagent:"):
+            subagents.append(_split_subagent_entry(entry))
+        else:
+            bindable.append(entry)
+
+    def _tool_entry(name: str) -> dict[str, Any]:
+        category = tool_registry.get_category_of_tool(name)
+        meta = tool_registry.get_tool_meta(name)
+        entry: dict[str, Any] = {
+            "name": name,
+            "source": connected_integrations.get(category) or category
+            if category in connected_integrations
+            else "gaia",
+        }
+        if meta and meta.destructive:
+            entry["needs_approval"] = True
+        return entry
+
+    def _subagent_entry(sid: str, name: str | None) -> dict[str, str]:
+        return {"id": sid, "name": name} if name else {"id": sid}
+
+    ready = [_subagent_entry(s, n) for s, n in subagents if s in internal_subagents]
+    connected = [
+        _subagent_entry(s, n)
+        for s, n in subagents
+        if s in connected_integrations and s not in internal_subagents
+    ]
+    needs_connecting = [
+        _subagent_entry(s, n)
+        for s, n in subagents
+        if s not in connected_integrations and s not in internal_subagents
+    ]
+
+    payload: dict[str, Any] = {
+        "tools_to_bind": [_tool_entry(n) for n in bindable],
+        "subagents_builtin": ready,
+        "subagents_connected": connected,
+        "subagents_needing_connection": needs_connecting,
+    }
+    if total_candidates > limit:
+        payload["truncated"] = {"shown": len(final_tools), "total": total_candidates}
+
+    # Keyed off the SEARCH, not off what is listed: built-in subagents are injected
+    # unconditionally, so a zero-match search still returns entries. Reporting that
+    # as a find is what sent the model into re-querying the same dead index.
+    if total_candidates == 0:
+        payload["search_matched_nothing"] = True
+        payload["next"] = (
+            "The search matched NOTHING; anything listed above is a built-in that is "
+            "always offered, not a hit. Retry ONCE with a broader query naming the "
+            "action ('send email', not a product name). If you already know the exact "
+            "tool name, skip search and call retrieve_tools(exact_tool_names=[...]). "
+            "Otherwise tell the user the capability is unavailable. Never repeat the "
+            "same query."
+        )
+    else:
+        payload["next"] = (
+            "Bind with retrieve_tools(exact_tool_names=[...]) then call the tool. "
+            'Subagents are NOT bindable — use handoff(subagent_id="<id>", task="..."). '
+            "Anything under subagents_needing_connection is unusable until the user "
+            "connects it, so ask them first."
+        )
+    if query:
+        payload["query"] = query
+    return json.dumps(payload, indent=2)
 
 
 def _inject_available_subagents(
@@ -574,6 +695,12 @@ def get_retrieve_tools_function(
 ) -> Callable[..., Awaitable[RetrieveToolsResult]]:
     """Get a retrieve_tools function configured for specific context.
 
+    The ``...`` in the return type is deliberate (Type Safety items 11/14): the
+    result is handed to ``create_agent(retrieve_tools_coroutine=...)``, which
+    wraps it in a ``StructuredTool``. LangGraph then calls it by keyword with
+    ``store``/``config`` injected and the rest supplied by the model, so pinning
+    a parameter list here would describe a call shape that never happens.
+
     This unified function handles both tool discovery (semantic search) and tool binding.
     - When `query` is provided: Returns tool names for discovery (not bound)
     - When `exact_tool_names` is provided: Binds and returns validated tool names
@@ -609,7 +736,7 @@ def get_retrieve_tools_function(
             exact_tool_names=exact_tool_names,
             tool_space=tool_space,
             include_subagents=include_subagents,
-            user_id=config.get("configurable", {}).get("user_id")
+            user_id=agent_configurable(config).get("user_id")
             or config.get("metadata", {}).get("user_id"),
         )
         if not query and not exact_tool_names:
@@ -620,30 +747,35 @@ def get_retrieve_tools_function(
             return RetrieveToolsResult(
                 tools_to_bind=[],
                 response=[
-                    "retrieve_tools received no usable argument (an empty "
-                    "exact_tool_names counts as none). Next step: pass "
-                    "query='what you want to do' to discover, or "
-                    "exact_tool_names=['TOOL_NAME'] to bind a known tool. To use a "
-                    "subagent (a 'subagent:' result), do NOT call retrieve_tools "
-                    "again; call handoff(subagent_id='gmail', task='...') directly."
+                    (
+                        "retrieve_tools received no usable argument (an empty "
+                        "exact_tool_names counts as none). Next step: pass "
+                        "query='what you want to do' to discover, or "
+                        "exact_tool_names=['TOOL_NAME'] to bind a known tool. To use a "
+                        "subagent (a 'subagent:' result), do NOT call retrieve_tools "
+                        "again; call handoff(subagent_id='gmail', task='...') directly."
+                    )
                 ],
             )
 
         tool_registry = await get_tool_registry()
         available_tool_names = tool_registry.get_tool_names()
-        log.info(f"{LogTag.TOOL} Registry has {len(available_tool_names)} available tools")
+        log.info(
+            f"{LogTag.TOOL} Registry available tools",
+            available_tool_count=len(available_tool_names),
+        )
 
         # Desktop tools only surface for desktop-app conversations, and only
         # in the main agent context (subagents keep their own tool space).
         conversation_source = ConversationSource.coerce(
-            config.get("configurable", {}).get("conversation_source")
+            agent_configurable(config).get("conversation_source")
         )
         desktop_enabled = (
             conversation_source is ConversationSource.DESKTOP and tool_space == "general"
         )
 
         # Get user_id from config (try configurable first, then metadata as fallback)
-        user_id = config.get("configurable", {}).get("user_id")
+        user_id = agent_configurable(config).get("user_id")
         if not user_id:
             # Fallback to metadata
             user_id = config.get("metadata", {}).get("user_id")
@@ -673,6 +805,8 @@ def get_retrieve_tools_function(
             unknown_tool_names: list[str] = []
             out_of_scope_tool_names: list[str] = []
             requested_subagents: list[str] = []
+            # requested name -> canonical name, for the aliases we silently resolved
+            renamed_tools: dict[str, str] = {}
             for tool_name in exact_tool_names:
                 if tool_name.startswith("subagent:"):
                     # Subagents are handed off to, never bound. When subagents are
@@ -695,6 +829,8 @@ def get_retrieve_tools_function(
                     validated_tool_names.append(tool_name)
                 elif canonical := known_by_canonical.get(tool_name.replace("-", "_")):
                     validated_tool_names.append(canonical)
+                    if canonical != tool_name:
+                        renamed_tools[tool_name] = canonical
                 elif tool_name in global_tool_names_set:
                     # Known globally, but not in this agent's scope.
                     out_of_scope_tool_names.append(tool_name)
@@ -743,9 +879,27 @@ def get_retrieve_tools_function(
                     "your task here and let the executor handle them."
                 )
 
+            bind_lines: list[str] = []
+            if validated_tool_names:
+                bind_lines.append(f"Bound {len(validated_tool_names)} tools — call them directly:")
+                bind_lines.extend(f"  - {name}" for name in validated_tool_names)
+            if renamed_tools:
+                bind_lines.append(
+                    "Resolved to their canonical names — use these from now on: "
+                    + ", ".join(f"{req} -> {canon}" for req, canon in renamed_tools.items())
+                )
+            if unknown_tool_names:
+                bind_lines.append(
+                    f"Not found, nothing bound: {', '.join(unknown_tool_names)}. "
+                    "Do not retry these names; run retrieve_tools(query=...) to find "
+                    "what actually exists."
+                )
+            bind_lines.extend(line for line in response if line not in validated_tool_names)
+
             return RetrieveToolsResult(
                 tools_to_bind=validated_tool_names,
                 response=response,
+                response_text="\n".join(bind_lines),
             )
 
         # Get user context (skips subagent computation when include_subagents=False)
@@ -767,6 +921,20 @@ def get_retrieve_tools_function(
         )
 
         results = await asyncio.gather(*search_tasks, return_exceptions=True)
+
+        # Surface search failures instead of treating them as empty namespaces.
+        # A partial outage degrades to the namespaces that answered; a total
+        # outage must raise so the select_tools retry policy (and ultimately
+        # the caller) sees a failure, not a silent "no tools found".
+        failures = [r for r in results if isinstance(r, BaseException)]
+        for failure in failures:
+            log.error(
+                f"{LogTag.TOOL} retrieve_tools search task failed",
+                error=str(failure),
+                error_type=type(failure).__name__,
+            )
+        if failures and len(failures) == len(results):
+            raise failures[0]
 
         # MCP tool names don't live in the global registry anymore (resilience
         # rewrite removed the per-user mcp_{iid}_{user_id} categories). Union
@@ -846,16 +1014,25 @@ def get_retrieve_tools_function(
                 chroma_preview=chroma_preview,
             )
         )
-        if chroma_hits == 0 and tool_space != "general":
+        if chroma_hits == 0:
             log.warning(
-                f"{LogTag.TOOL} retrieve_tools: 0 ChromaDB hits for tool_space='{tool_space}' "
-                f"user={user_id} query={query!r}. Check that index_tools_to_store "
-                f"actually wrote docs for this namespace."
+                f"{LogTag.TOOL} retrieve_tools: 0 ChromaDB hits — check that index_tools_to_store actually wrote docs for this namespace",
+                tool_space=tool_space,
+                user_id=user_id,
             )
 
         return RetrieveToolsResult(
             tools_to_bind=[],
             response=final_tools,
+            response_text=_render_discovery_response(
+                final_tools,
+                tool_registry,
+                connected_integrations,
+                internal_subagents,
+                query,
+                len(all_results),
+                limit,
+            ),
         )
 
     # Assign the LLM-facing docstring from pre-built constants

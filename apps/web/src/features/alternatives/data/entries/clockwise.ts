@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "Requires team adoption to see the full benefit",
     "Does not manage communication or tasks outside of calendar",
   ],
-  metaTitle: "Best Clockwise Alternative in 2026 | GAIA",
+  metaTitle: "Best Clockwise Alternative in 2026",
   metaDescription:
     "Clockwise only optimizes your calendar. GAIA is a proactive AI assistant that manages email, tasks, and scheduling automatically. Free tier + self-hosting available.",
   keywords: [
@@ -32,7 +32,7 @@ export const entry: AlternativeData = {
     "smart scheduling AI",
   ],
   whyPeopleLook:
-    "Clockwise is excellent at defragmenting team calendars and creating focus time windows, but its intelligence ends at the calendar. It has no awareness of your email, no ability to create tasks from communication, and no proactive workflow assistance. For individuals who want a broader AI assistant — one that manages their entire productivity stack, not just their calendar — Clockwise falls short.",
+    "Clockwise is excellent at defragmenting team calendars and creating focus time windows, but its intelligence ends at the calendar. It has no awareness of your email, no ability to create tasks from communication, and no proactive workflow assistance. For individuals who want a broader AI assistant (one that manages their entire productivity stack, not just their calendar), Clockwise falls short.",
   gaiaFitScore: 3,
   gaiaReplaces: [
     "Focus time protection through calendar-aware scheduling",

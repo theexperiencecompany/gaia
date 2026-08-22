@@ -16,7 +16,7 @@ export default function StakeholderUpdateCard() {
           showBackground: false,
         })}
         <span className="flex-1 text-sm font-medium text-zinc-100">
-          Weekly Stakeholder Update — Week of March 3
+          Weekly Stakeholder Update: Week of March 3
         </span>
         <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
           Draft ready
@@ -41,10 +41,10 @@ export default function StakeholderUpdateCard() {
           Shipped:
         </p>
         <p className="text-xs text-zinc-300">
-          • Dark mode (v2.4.1) — 3 weeks early
+          • Dark mode (v2.4.1): 3 weeks early
         </p>
         <p className="text-xs text-zinc-300">
-          • Search timeout fix — user-reported resolution
+          • Search timeout fix: user-reported resolution
         </p>
 
         <p className="flex items-center gap-1 text-xs font-medium text-zinc-200 mt-2 mb-0.5">
@@ -61,7 +61,7 @@ export default function StakeholderUpdateCard() {
           Needs Decision:
         </p>
         <p className="text-xs text-zinc-300">
-          • Payment error UI spec — blocking mobile checkout
+          • Payment error UI spec: blocking mobile checkout
         </p>
 
         <p className="text-xs text-zinc-400 mt-2">Next review: March 13</p>

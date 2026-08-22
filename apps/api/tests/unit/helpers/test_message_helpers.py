@@ -6,8 +6,6 @@ from langchain_core.messages import SystemMessage
 import pytest
 
 from app.helpers.message_helpers import (
-    _get_gaia_knowledge_section,
-    _get_user_memories_section,
     create_system_message,
     format_calendar_event_context,
     format_files_list,
@@ -30,7 +28,7 @@ from app.models.message_models import (
 class TestCreateSystemMessage:
     """The main system prompt must be byte-identical across users/channels so
     implicit LLM caching hits. No `{user_name}` interpolation lives here —
-    dynamic context flows via build_dynamic_context_message."""
+    per-user context is assembled separately by ``app.agents.context``."""
 
     def test_comms_agent_static_is_per_channel(self) -> None:
         """Different user_name must produce identical content on the same
@@ -64,109 +62,6 @@ class TestCreateSystemMessage:
         comms = create_system_message(agent_type="comms")
         assert isinstance(msg, SystemMessage)
         assert msg.content == comms.content
-
-
-# ---------------------------------------------------------------------------
-# _get_user_memories_section
-# ---------------------------------------------------------------------------
-
-
-class TestGetUserMemoriesSection:
-    @pytest.mark.asyncio
-    async def test_with_memories(self) -> None:
-        mem1 = MagicMock()
-        mem1.content = "User likes coffee"
-        mem2 = MagicMock()
-        mem2.content = "User prefers dark mode"
-        mock_results = MagicMock()
-        mock_results.memories = [mem1, mem2]
-
-        with patch("app.helpers.message_helpers.memory_engine") as mock_svc:
-            mock_svc.recall = AsyncMock(return_value=mock_results)
-            result = await _get_user_memories_section("coffee", "user1")
-
-        assert "User likes coffee" in result
-        assert "User prefers dark mode" in result
-
-    @pytest.mark.asyncio
-    async def test_no_memories(self) -> None:
-        mock_results = MagicMock()
-        mock_results.memories = None
-
-        with patch("app.helpers.message_helpers.memory_engine") as mock_svc:
-            mock_svc.recall = AsyncMock(return_value=mock_results)
-            result = await _get_user_memories_section("query", "user1")
-
-        assert result == ""
-
-    @pytest.mark.asyncio
-    async def test_empty_memories_list(self) -> None:
-        mock_results = MagicMock()
-        mock_results.memories = []
-
-        with patch("app.helpers.message_helpers.memory_engine") as mock_svc:
-            mock_svc.recall = AsyncMock(return_value=mock_results)
-            result = await _get_user_memories_section("q", "u")
-
-        assert result == ""
-
-    @pytest.mark.asyncio
-    async def test_none_results(self) -> None:
-        with patch("app.helpers.message_helpers.memory_engine") as mock_svc:
-            mock_svc.recall = AsyncMock(return_value=None)
-            result = await _get_user_memories_section("q", "u")
-
-        assert result == ""
-
-    @pytest.mark.asyncio
-    async def test_exception_returns_empty(self) -> None:
-        with patch("app.helpers.message_helpers.memory_engine") as mock_svc:
-            mock_svc.recall = AsyncMock(side_effect=RuntimeError("mem fail"))
-            result = await _get_user_memories_section("q", "u")
-
-        assert result == ""
-
-
-# ---------------------------------------------------------------------------
-# _get_gaia_knowledge_section
-# ---------------------------------------------------------------------------
-
-
-class TestGetGaiaKnowledgeSection:
-    @pytest.mark.asyncio
-    async def test_with_results(self) -> None:
-        item = MagicMock()
-        item.content = "Gaia can manage calendar"
-
-        with patch("app.helpers.message_helpers.gaia_knowledge_service") as mock_svc:
-            mock_svc.search_knowledge = AsyncMock(return_value=[item])
-            result = await _get_gaia_knowledge_section("calendar")
-
-        assert "Gaia can manage calendar" in result
-
-    @pytest.mark.asyncio
-    async def test_no_results(self) -> None:
-        with patch("app.helpers.message_helpers.gaia_knowledge_service") as mock_svc:
-            mock_svc.search_knowledge = AsyncMock(return_value=[])
-            result = await _get_gaia_knowledge_section("q")
-
-        assert result == ""
-
-    @pytest.mark.asyncio
-    async def test_none_results(self) -> None:
-        with patch("app.helpers.message_helpers.gaia_knowledge_service") as mock_svc:
-            mock_svc.search_knowledge = AsyncMock(return_value=None)
-            result = await _get_gaia_knowledge_section("q")
-
-        assert result == ""
-
-    @pytest.mark.asyncio
-    async def test_exception_returns_empty(self) -> None:
-        with patch("app.helpers.message_helpers.gaia_knowledge_service") as mock_svc:
-            mock_svc.search_knowledge = AsyncMock(side_effect=RuntimeError("chroma fail"))
-            result = await _get_gaia_knowledge_section("q")
-
-        assert result == ""
 
 
 # ---------------------------------------------------------------------------
@@ -431,8 +326,8 @@ class TestFormatFilesList:
 
     def test_all_files(self) -> None:
         files = [
-            FileData(fileId="f1", url="u1", filename="a.txt"),
-            FileData(fileId="f2", url="u2", filename="b.pdf"),
+            FileData(fileId="f1", url="u1", filename="a.txt", sandbox_path="/mirrored/a.txt"),
+            FileData(fileId="f2", url="u2", filename="b.pdf", sandbox_path="/mirrored/b.pdf"),
         ]
         result = format_files_list(files)
         assert "a.txt" in result
@@ -458,6 +353,40 @@ class TestFormatFilesList:
         assert "a.txt" in result
 
     def test_conversation_id_in_path(self) -> None:
-        files = [FileData(fileId="f1", url="u", filename="a.txt")]
+        files = [FileData(fileId="f1", url="u", filename="a.txt", sandbox_path="/mirrored/a.txt")]
         result = format_files_list(files, conversation_id="conv123")
         assert "/workspace/sessions/conv123/user-uploaded/a.txt" in result
+
+    # The workspace mirror is best-effort — it needs JuiceFS, and `sandbox_path`
+    # is None whenever it was unavailable. Handing the agent a path anyway sent
+    # the executor into read/bash attempts that could only fail; it burned the
+    # recursion limit on a real GAIA .xlsx case doing exactly that.
+
+    def test_omits_the_path_when_the_file_never_reached_the_workspace(self) -> None:
+        files = [FileData(fileId="f1", url="u", filename="a.txt", sandbox_path=None)]
+        result = format_files_list(files, conversation_id="conv123")
+        assert "/workspace/sessions/conv123/user-uploaded/a.txt" not in result
+        assert "a.txt" in result
+        assert "search_uploaded_files" in result
+
+    def test_drops_the_read_bash_guide_when_nothing_is_on_disk(self) -> None:
+        files = [FileData(fileId="f1", url="u", filename="a.txt", description="a summary")]
+        result = format_files_list(files, conversation_id="conv123")
+        assert "read the file at its path" not in result
+        assert "copy into" not in result
+        assert ".summary.md" not in result
+        assert "a summary" in result
+
+    def test_keeps_the_full_guide_when_a_file_is_on_disk(self) -> None:
+        files = [
+            FileData(
+                fileId="f1",
+                url="u",
+                filename="a.txt",
+                description="a summary",
+                sandbox_path="/mirrored/a.txt",
+            )
+        ]
+        result = format_files_list(files, conversation_id="conv123")
+        assert "read the file at its path" in result
+        assert "/workspace/sessions/conv123/user-uploaded/a.txt.summary.md" in result

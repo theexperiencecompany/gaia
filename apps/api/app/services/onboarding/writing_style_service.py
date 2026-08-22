@@ -2,17 +2,16 @@
 
 from collections.abc import Awaitable, Callable
 import time
+from typing import Any
 
-from bson import ObjectId
-from langchain_core.messages import HumanMessage
-
+from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.prompts.onboarding_prompts import (
     WRITING_STYLE_EXAMPLE_PROMPT,
     WRITING_STYLE_PROMPT,
 )
+from app.constants.email import SENT_EMAIL_QUERY
 from app.constants.log_tags import LogTag
-from app.core.lazy_loader import providers
-from app.db.mongodb.collections import users_collection
+from app.db.repositories.users import user_repository
 from app.models.onboarding_models import (
     WritingStyleExampleBlocks,
     WritingStyleExampleOutput,
@@ -39,11 +38,11 @@ async def learn_writing_style(
             await on_status("Reading your sent folder")
         result = await search_messages(
             user_id=user_id,
-            query="in:sent",
+            query=SENT_EMAIL_QUERY,
             max_results=50,
         )
 
-        sent_emails = result.get("messages", [])
+        sent_emails: list[dict[str, Any]] = result.messages
         sent_count = len(sent_emails)
 
         if on_status is not None:
@@ -92,11 +91,6 @@ async def learn_writing_style(
 
         email_samples_text = "\n---\n".join(samples)
 
-        llm = await providers.aget("gemini_llm")
-        if llm is None:
-            raise RuntimeError("LLM provider not available")
-
-        structured_llm = llm.with_structured_output(WritingStyleOutput)
         prompt = WRITING_STYLE_PROMPT.format(
             profession=profession or "professional",
             email_samples=email_samples_text,
@@ -104,8 +98,11 @@ async def learn_writing_style(
         if on_status is not None:
             await on_status("Analyzing tone and phrasing")
         t_llm = time.monotonic()
-        result_data: WritingStyleOutput = await structured_llm.ainvoke(
-            [HumanMessage(content=prompt)]
+        result_data: WritingStyleOutput = await ainvoke_structured(
+            WritingStyleOutput,
+            prompt,
+            label="onboarding_writing_style",
+            config=metered_config(user_id),
         )
 
         profile = WritingStyleProfile(
@@ -142,27 +139,29 @@ async def learn_writing_style(
 
 async def regenerate_example_for_style(
     summary: str,
+    *,
+    user_id: str,
     profession: str = "",
 ) -> WritingStyleExampleBlocks | None:
     """Generate a new example email from an edited writing style summary."""
     try:
-        llm = await providers.aget("gemini_llm")
-        if llm is None:
-            raise RuntimeError("LLM provider not available")
-
-        structured_llm = llm.with_structured_output(WritingStyleExampleOutput)
         prompt = WRITING_STYLE_EXAMPLE_PROMPT.format(
             summary=summary,
             profession=profession or "professional",
         )
-        result_data: WritingStyleExampleOutput = await structured_llm.ainvoke(
-            [HumanMessage(content=prompt)]
+        result_data: WritingStyleExampleOutput = await ainvoke_structured(
+            WritingStyleExampleOutput,
+            prompt,
+            label="onboarding_writing_style_example",
+            config=metered_config(user_id),
         )
         return result_data.example
 
     except Exception as e:
         log.error(
-            f"{LogTag.ONBOARDING} writing_style Failed to regenerate example: {e}",
+            f"{LogTag.ONBOARDING} writing_style Failed to regenerate example",
+            error=str(e),
+            error_type=type(e).__name__,
             exc_info=True,
         )
         return None
@@ -170,17 +169,11 @@ async def regenerate_example_for_style(
 
 async def save_user_edited_summary(user_id: str, edited_summary: str) -> None:
     """Persist a user-edited writing style summary as the canonical style."""
-    await users_collection.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$set": {"onboarding.writing_style.user_edited_summary": edited_summary}},
-    )
-    log.info(f"{LogTag.ONBOARDING} writing_style Saved user-edited summary for {user_id}")
+    await user_repository.set_writing_style_user_summary(user_id, edited_summary)
+    log.info(f"{LogTag.ONBOARDING} writing_style Saved user-edited summary for", user_id=user_id)
 
 
 async def save_generated_example(user_id: str, example: WritingStyleExampleBlocks) -> None:
     """Persist a regenerated example email to MongoDB as structured blocks."""
-    await users_collection.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$set": {"onboarding.writing_style.example": example.model_dump()}},
-    )
-    log.info(f"{LogTag.ONBOARDING} writing_style Saved regenerated example for {user_id}")
+    await user_repository.set_writing_style_and_triage(user_id, writing_style_example=example)
+    log.info(f"{LogTag.ONBOARDING} writing_style Saved regenerated example for", user_id=user_id)

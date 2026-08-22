@@ -9,10 +9,28 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.models.chat_models import MessageModel
+from app.models.search_models import MessageSearchResult, SearchResultsResponse
+from app.services.analytics_service import AnalyticsEvents
+from app.utils.search.models import SearchResultItem, WebSearchResult
+
 SEARCH_BASE = "/api/v1"
+ANALYTICS_PATCH = "app.api.v1.endpoints.search.capture_context_event"
 
 
-@pytest.mark.unit
+@pytest.fixture(autouse=True)
+def _noop_analytics():
+    """Neutralize capture_context_event for every test in this module.
+
+    The test app runs a no-op lifespan, so the PostHog provider is never
+    registered; a bare capture_context_event call would raise KeyError on the
+    missing provider. Tests that assert on captures patch the call site again
+    and assert on their own mock.
+    """
+    with patch(ANALYTICS_PATCH):
+        yield
+
+
 class TestSearchMessages:
     """GET /api/v1/search"""
 
@@ -21,11 +39,17 @@ class TestSearchMessages:
         new_callable=AsyncMock,
     )
     async def test_search_returns_200(self, mock_search: AsyncMock, client: AsyncClient):
-        mock_search.return_value = {
-            "messages": [{"id": "msg-1", "content": "hello"}],
-            "conversations": [],
-            "notes": [],
-        }
+        mock_search.return_value = SearchResultsResponse(
+            messages=[
+                MessageSearchResult(
+                    conversation_id="conv-1",
+                    message=MessageModel(type="bot", response="hello"),
+                    snippet="hello",
+                )
+            ],
+            conversations=[],
+            notes=[],
+        )
         response = await client.get(f"{SEARCH_BASE}/search", params={"query": "hello"})
         assert response.status_code == 200
         data = response.json()
@@ -33,13 +57,15 @@ class TestSearchMessages:
         assert "conversations" in data
         assert "notes" in data
         assert len(data["messages"]) == 1
+        assert data["conversations"] == []
+        assert data["notes"] == []
 
     @patch(
         "app.api.v1.endpoints.search.search_messages",
         new_callable=AsyncMock,
     )
     async def test_search_passes_user_id(self, mock_search: AsyncMock, client: AsyncClient):
-        mock_search.return_value = {"messages": [], "conversations": [], "notes": []}
+        mock_search.return_value = SearchResultsResponse(messages=[], conversations=[], notes=[])
         await client.get(f"{SEARCH_BASE}/search", params={"query": "test"})
         mock_search.assert_awaited_once_with(
             "test",
@@ -55,13 +81,42 @@ class TestSearchMessages:
         new_callable=AsyncMock,
     )
     async def test_search_empty_results(self, mock_search: AsyncMock, client: AsyncClient):
-        mock_search.return_value = {"messages": [], "conversations": [], "notes": []}
+        mock_search.return_value = SearchResultsResponse(messages=[], conversations=[], notes=[])
         response = await client.get(f"{SEARCH_BASE}/search", params={"query": "nothing"})
         assert response.status_code == 200
         data = response.json()
         assert data["messages"] == []
-        assert data["conversations"] == []
-        assert data["notes"] == []
+
+
+class TestSearchAnalytics:
+    """Analytics captures on the search endpoint."""
+
+    @patch(
+        "app.api.v1.endpoints.search.search_messages",
+        new_callable=AsyncMock,
+    )
+    async def test_search_captures_search_performed(
+        self, mock_search: AsyncMock, client: AsyncClient
+    ):
+        mock_search.return_value = SearchResultsResponse(
+            messages=[
+                MessageSearchResult(
+                    conversation_id="conv-1",
+                    message=MessageModel(type="bot", response="hello"),
+                    snippet="hello",
+                )
+            ],
+            conversations=[],
+            notes=[],
+        )
+        with patch(ANALYTICS_PATCH) as mock_capture:
+            response = await client.get(f"{SEARCH_BASE}/search", params={"query": "hello"})
+
+        assert response.status_code == 200
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.SEARCH_PERFORMED,
+            {"mode": "keyword", "query_length": 5, "result_count": 1},
+        )
 
     @patch(
         "app.api.v1.endpoints.search.search_messages",
@@ -75,7 +130,6 @@ class TestSearchMessages:
         assert response.status_code == 500
 
 
-@pytest.mark.unit
 class TestSearchEmail:
     """GET /api/v1/search/email"""
 
@@ -84,14 +138,16 @@ class TestSearchEmail:
         new_callable=AsyncMock,
     )
     async def test_search_email_returns_200(self, mock_perform: AsyncMock, client: AsyncClient):
-        mock_perform.return_value = {
-            "web": [
-                {
-                    "title": "Contact Us",
-                    "snippet": "Email us at support@example.com",
-                }
-            ]
-        }
+        mock_perform.return_value = WebSearchResult(
+            web=[
+                SearchResultItem(
+                    url="https://example.com/contact",
+                    title="Contact Us",
+                    content="Email us at support@example.com",
+                )
+            ],
+            query="Example Corp",
+        )
         response = await client.get(f"{SEARCH_BASE}/search/email", params={"query": "Example Corp"})
         assert response.status_code == 200
         data = response.json()
@@ -115,12 +171,15 @@ class TestSearchEmail:
         "app.api.v1.endpoints.search.perform_search",
         new_callable=AsyncMock,
     )
-    async def test_search_email_no_web_key_returns_500(
+    async def test_search_email_no_web_results_returns_200_with_no_emails(
         self, mock_perform: AsyncMock, client: AsyncClient
     ):
-        mock_perform.return_value = {"images": []}
+        mock_perform.return_value = WebSearchResult(web=[], query="test")
         response = await client.get(f"{SEARCH_BASE}/search/email", params={"query": "test"})
-        assert response.status_code == 500
+        assert response.status_code == 200
+        data = response.json()
+        assert data["emails"] == []
+        assert data["combined_text"] == ""
 
     @patch(
         "app.api.v1.endpoints.search.perform_search",
@@ -129,12 +188,21 @@ class TestSearchEmail:
     async def test_search_email_deduplicates_emails(
         self, mock_perform: AsyncMock, client: AsyncClient
     ):
-        mock_perform.return_value = {
-            "web": [
-                {"title": "Page1", "snippet": "info@test.com hello info@test.com"},
-                {"title": "Page2", "snippet": "info@test.com again"},
-            ]
-        }
+        mock_perform.return_value = WebSearchResult(
+            web=[
+                SearchResultItem(
+                    url="https://example.com/1",
+                    title="Page1",
+                    content="info@test.com hello info@test.com",
+                ),
+                SearchResultItem(
+                    url="https://example.com/2",
+                    title="Page2",
+                    content="info@test.com again",
+                ),
+            ],
+            query="test",
+        )
         response = await client.get(f"{SEARCH_BASE}/search/email", params={"query": "test"})
         assert response.status_code == 200
         data = response.json()
@@ -146,7 +214,6 @@ class TestSearchEmail:
         assert response.status_code == 422
 
 
-@pytest.mark.unit
 class TestFetchUrlMetadata:
     """POST /api/v1/fetch-url-metadata"""
 

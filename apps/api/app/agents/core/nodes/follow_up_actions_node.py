@@ -4,21 +4,22 @@ conversation context and tool usage."""
 from typing import cast
 
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
-from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
 from langgraph.store.base import BaseStore
 from langgraph.types import StreamWriter
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import get_free_llm_chain, invoke_with_fallback
+from app.agents.core.integration_capabilities import (
+    get_user_integration_capabilities,
+)
+from app.agents.llm.client import ainvoke_structured
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
+from app.models.agent_models import agent_configurable
+from app.models.stream_events import MainResponseCompleteFrame
 from app.override.langgraph_bigtool.utils import State
-from app.services.integrations.user_integrations import (
-    get_user_integration_capabilities,
-)
 from app.templates.docstrings.follow_up_actions_tool_docs import (
     SUGGEST_FOLLOW_UP_ACTIONS,
 )
@@ -52,21 +53,14 @@ async def generate_follow_up_actions(
         tool_registry = await get_tool_registry()
         tool_names = tool_registry.get_tool_names()
 
-    parser = PydanticOutputParser(pydantic_object=FollowUpActions)
+    # STATIC prompt prefix (the system message) + DYNAMIC per-user/per-turn
+    # context. The byte-identical static prefix lets this call benefit from any
+    # upstream prompt caching and reduces throughput/latency.
+    dynamic_context = f"Available tools: {tool_names}\nContext: {context_text}"
 
-    # STATIC prompt prefix + DYNAMIC per-user/per-turn context message.
-    # Static byte-identical prefix lets even this free-tier chain benefit
-    # from any upstream caching and reduces throughput/latency.
-    dynamic_context = (
-        f"{parser.get_format_instructions()}\n\n"
-        f"Available tools: {tool_names}\n"
-        f"Context: {context_text}"
-    )
-
-    llm_chain = get_free_llm_chain()
     try:
-        result = await invoke_with_fallback(
-            llm_chain,
+        result = await ainvoke_structured(
+            FollowUpActions,
             [
                 SystemMessage(content=SUGGEST_FOLLOW_UP_ACTIONS),
                 SystemMessage(
@@ -76,8 +70,11 @@ async def generate_follow_up_actions(
                         "memory_message": True,
                     },
                 ),
-                HumanMessage(content=context_text),
+                # The context text already lives in the dynamic-context system
+                # message above — sending it again as the human message was a
+                # pure duplicate (~350 tokens of per-turn uncached weight).
             ],
+            label="follow_up_actions",
             config=cast(
                 RunnableConfig,
                 {
@@ -93,10 +90,9 @@ async def generate_follow_up_actions(
                 },
             ),
         )
-        actions = parser.parse(result if isinstance(result, str) else result.text)
-        return actions.actions if actions.actions else []
+        return result.actions or []
     except Exception as e:
-        log.debug(f"{LogTag.AGENT} Follow-up action generation failed: {e}")
+        log.debug(f"{LogTag.AGENT} Follow-up action generation failed", error_type=type(e).__name__)
         return []
 
 
@@ -108,11 +104,12 @@ async def follow_up_actions_node(state: State, config: RunnableConfig, store: Ba
     # Send completion marker as soon as follow-up actions start
     writer = get_stream_writer()
     try:
-        writer({"main_response_complete": True})
+        writer(MainResponseCompleteFrame(main_response_complete=True).model_dump(exclude_none=True))
     except Exception as write_error:
         # Stream is closed (user disconnected), no need to continue
         log.debug(
-            f"{LogTag.AGENT} Stream already closed when sending completion marker: {write_error}"
+            f"{LogTag.AGENT} Stream already closed when sending completion marker",
+            error_type=type(write_error).__name__,
         )
         return state
 
@@ -132,7 +129,7 @@ async def follow_up_actions_node(state: State, config: RunnableConfig, store: Ba
         _safe_write_actions(writer, [])
         return state
 
-    user_id = config.get("configurable", {}).get("user_id")
+    user_id = agent_configurable(config).get("user_id")
     recent_messages = messages[-4:] if len(messages) > 4 else messages
 
     log.set(
@@ -154,7 +151,10 @@ def _safe_write_actions(writer: StreamWriter, actions: list[str]) -> None:
     try:
         writer({"follow_up_actions": actions})
     except Exception as e:
-        log.debug(f"{LogTag.AGENT} Stream closed when sending follow-up actions: {e}")
+        log.debug(
+            f"{LogTag.AGENT} Stream closed when sending follow-up actions",
+            error_type=type(e).__name__,
+        )
 
 
 def _delegated_to_executor(messages: list[AnyMessage]) -> bool:
@@ -178,10 +178,21 @@ def _delegated_to_executor(messages: list[AnyMessage]) -> bool:
     return False
 
 
-def _pretty_print_messages(messages: list[AnyMessage], ignore_system_messages=True) -> str:
+# Bounded follow-up context: the one-shot needs the recent exchange, not
+# megabytes. A giant executor result (up to the 64k output cap) previously
+# flowed verbatim into the follow-up request — measured: a 65k-token follow-up
+# after a maxed-out executor turn, ~2% cache hit. Capping the context keeps
+# the suggestion call small (and its shared prefix meaningful). The NEWEST
+# exchange is what follow-ups react to, so the cap keeps the tail.
+_FOLLOW_UP_CONTEXT_MAX_CHARS = 6_000
+
+
+def _pretty_print_messages(messages: list[AnyMessage], ignore_system_messages: bool = True) -> str:
     pretty = ""
     for message in messages:
         if ignore_system_messages and isinstance(message, SystemMessage):
             continue
         pretty += message.pretty_repr()
-    return pretty
+    # No length guard: slicing the tail of a shorter string already returns it
+    # whole, so the branch only added a boundary nothing can observe.
+    return pretty[-_FOLLOW_UP_CONTEXT_MAX_CHARS:]

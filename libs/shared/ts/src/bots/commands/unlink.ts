@@ -7,6 +7,7 @@
  * @module
  */
 import type { BotCommand, CommandExecuteParams } from "../types";
+import { wideLog } from "../utils/wide-events";
 
 /** `/unlink` command definition. */
 export const unlinkCommand: BotCommand = {
@@ -31,7 +32,8 @@ export const unlinkCommand: BotCommand = {
           "Your account has been unlinked from GAIA.\n" +
           "Use `/auth` to reconnect at any time.",
       );
-    } catch {
+    } catch (error) {
+      wideLog.error("unlink_command_error", undefined, error);
       await target.sendEphemeral(
         "❌ Failed to unlink your account. Please try again.",
       );

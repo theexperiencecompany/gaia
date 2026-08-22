@@ -20,6 +20,7 @@ export interface Plan {
 
 export interface CreateSubscriptionRequest {
   product_id: string;
+  discount_code?: string;
 }
 
 export interface CreateSubscriptionResponse {
@@ -55,6 +56,7 @@ export interface Subscription {
   subscription_period_count?: number;
   subscription_period_interval?: string;
   cancelled_at?: string;
+  cancel_at_next_billing_date?: boolean;
 }
 
 export interface UserSubscriptionStatus {
@@ -141,6 +143,22 @@ class PricingApi {
       );
     } catch (error) {
       return handleApiError(error, "Get subscription status");
+    }
+  }
+
+  // Cancel the user's subscription (effective at the end of the billing period)
+  async cancelSubscription(): Promise<UserSubscriptionStatus> {
+    try {
+      return await apiService.post<UserSubscriptionStatus>(
+        "/payments/subscriptions/cancel",
+        {},
+        {
+          successMessage: "Subscription cancelled",
+          errorMessage: "Failed to cancel subscription",
+        },
+      );
+    } catch (error) {
+      return handleApiError(error, "Cancel subscription");
     }
   }
 }

@@ -85,7 +85,10 @@ def twitter_timeline_schema_modifier(tool: str, toolkit: str, schema: Tool) -> T
     """
     Set sensible defaults for timeline requests.
     """
-    input_params = schema.input_parameters
+    # `input_parameters` is typed as a Dict by Composio's SDK, but callers in practice
+    # (including this codebase's own test doubles) don't always hand us a real,
+    # validated `Tool`, so this stays defensive against a non-dict value.
+    input_params: object = schema.input_parameters
     if not isinstance(input_params, dict):
         return schema
 
@@ -106,7 +109,7 @@ def twitter_create_post_before_hook(
     """Stream post creation data to frontend for preview."""
     try:
         writer = get_stream_writer()
-        if not writer:  # type: ignore[truthy-function]
+        if writer is None:
             return params
 
         arguments = params.get("arguments", {})
@@ -126,7 +129,11 @@ def twitter_create_post_before_hook(
         writer(payload)
 
     except Exception as e:
-        log.error(f"{LogTag.COMPOSIO} Error in twitter_create_post_before_hook: {e}")
+        log.error(
+            f"{LogTag.COMPOSIO} Error in twitter_create_post_before_hook",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
     return params
 
@@ -138,7 +145,7 @@ def twitter_search_before_hook(
     """Send search progress to frontend."""
     try:
         writer = get_stream_writer()
-        if not writer:  # type: ignore[truthy-function]
+        if writer is None:
             return params
 
         arguments = params.get("arguments", {})
@@ -148,13 +155,19 @@ def twitter_search_before_hook(
         writer(payload)
 
     except Exception as e:
-        log.error(f"{LogTag.COMPOSIO} Error in twitter_search_before_hook: {e}")
+        log.error(
+            f"{LogTag.COMPOSIO} Error in twitter_search_before_hook",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
     return params
 
 
 @register_after_hook(tools=["TWITTER_RECENT_SEARCH", "TWITTER_FULL_ARCHIVE_SEARCH"])
-def twitter_search_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
+def twitter_search_after_hook(
+    tool: str, toolkit: str, response: ToolExecutionResponse
+) -> dict[str, Any]:
     """Process search response and send tweet data to frontend."""
     log.set(twitter_tool=tool, toolkit=toolkit)
     try:
@@ -230,12 +243,18 @@ def twitter_search_after_hook(tool: str, toolkit: str, response: ToolExecutionRe
         }
 
     except Exception as e:
-        log.error(f"{LogTag.COMPOSIO} Error in twitter_search_after_hook: {e}")
+        log.error(
+            f"{LogTag.COMPOSIO} Error in twitter_search_after_hook",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return response.get("data", {})
 
 
 @register_after_hook(tools=["TWITTER_USER_LOOKUP_BY_USERNAME", "TWITTER_USER_LOOKUP_BY_USERNAMES"])
-def twitter_user_lookup_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
+def twitter_user_lookup_after_hook(
+    tool: str, toolkit: str, response: ToolExecutionResponse
+) -> dict[str, Any]:
     """Process user lookup and stream profile data to frontend."""
     try:
         writer = get_stream_writer()
@@ -288,12 +307,18 @@ def twitter_user_lookup_after_hook(tool: str, toolkit: str, response: ToolExecut
         }
 
     except Exception as e:
-        log.error(f"{LogTag.COMPOSIO} Error in twitter_user_lookup_after_hook: {e}")
+        log.error(
+            f"{LogTag.COMPOSIO} Error in twitter_user_lookup_after_hook",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return response.get("data", {})
 
 
 @register_after_hook(tools=["TWITTER_USER_HOME_TIMELINE_BY_USER_ID"])
-def twitter_timeline_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
+def twitter_timeline_after_hook(
+    tool: str, toolkit: str, response: ToolExecutionResponse
+) -> dict[str, Any]:
     """Process timeline and stream tweets to frontend."""
     try:
         writer = get_stream_writer()
@@ -356,12 +381,18 @@ def twitter_timeline_after_hook(tool: str, toolkit: str, response: ToolExecution
         }
 
     except Exception as e:
-        log.error(f"{LogTag.COMPOSIO} Error in twitter_timeline_after_hook: {e}")
+        log.error(
+            f"{LogTag.COMPOSIO} Error in twitter_timeline_after_hook",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return response.get("data", {})
 
 
 @register_after_hook(tools=["TWITTER_FOLLOWERS_BY_USER_ID", "TWITTER_FOLLOWING_BY_USER_ID"])
-def twitter_followers_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
+def twitter_followers_after_hook(
+    tool: str, toolkit: str, response: ToolExecutionResponse
+) -> dict[str, Any]:
     """Process followers/following list and stream to frontend."""
     try:
         writer = get_stream_writer()
@@ -410,14 +441,18 @@ def twitter_followers_after_hook(tool: str, toolkit: str, response: ToolExecutio
         }
 
     except Exception as e:
-        log.error(f"{LogTag.COMPOSIO} Error in twitter_followers_after_hook: {e}")
+        log.error(
+            f"{LogTag.COMPOSIO} Error in twitter_followers_after_hook",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return response.get("data", {})
 
 
 @register_after_hook(tools=["TWITTER_CREATION_OF_A_POST"])
 def twitter_post_created_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> Any:
+) -> dict[str, Any]:
     """Send created post data to frontend."""
     try:
         writer = get_stream_writer()
@@ -446,5 +481,9 @@ def twitter_post_created_after_hook(
         }
 
     except Exception as e:
-        log.error(f"{LogTag.COMPOSIO} Error in twitter_post_created_after_hook: {e}")
+        log.error(
+            f"{LogTag.COMPOSIO} Error in twitter_post_created_after_hook",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return response.get("data", {})

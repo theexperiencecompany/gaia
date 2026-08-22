@@ -9,6 +9,7 @@ import {
   useLoginModalActions,
 } from "@/features/auth/hooks/useLoginModal";
 import { usePathname } from "@/i18n/navigation";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 // Routes where login modal should NOT be dismissable (main app routes that require auth)
 const NON_DISMISSABLE_ROUTE_PREFIXES = [
@@ -22,7 +23,6 @@ const NON_DISMISSABLE_ROUTE_PREFIXES = [
   "/pins",
   "/redirect",
   "/notifications",
-  "/goals",
   "/calendar",
   "/dashboard",
 ];
@@ -64,7 +64,13 @@ export default function LoginModal() {
           <RaisedButton
             color="#00bbff"
             className="text-md w-full text-primary-foreground!"
-            onClick={handleAuthLogin}
+            onClick={() => {
+              trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
+                location: "login_modal",
+                destination: "workos_oauth",
+              });
+              handleAuthLogin();
+            }}
           >
             <Login02Icon width={22} height={22} />
             Sign in

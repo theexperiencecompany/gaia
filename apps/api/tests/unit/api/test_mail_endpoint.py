@@ -13,11 +13,38 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.models.mail_models import (
+    BulkEmailImportanceSummariesResponse,
+    EmailImportanceSummariesResponse,
+    EmailImportanceSummaryResponse,
+    GmailDraftsResponse,
+    GmailEmailResult,
+    GmailLabelsResult,
+    GmailMessageResource,
+    GmailMessagesResponse,
+    GmailToolResult,
+)
+from app.services.analytics_service import AnalyticsEvents
+
 MAIL_BASE = "/api/v1"
+ANALYTICS_PATCH = "app.api.v1.endpoints.mail.capture_context_event"
+
+
+@pytest.fixture(autouse=True)
+def _noop_analytics():
+    """Neutralize capture_context_event for every test in this module.
+
+    The test app runs a no-op lifespan, so the PostHog provider is never
+    registered; a bare capture_context_event call would raise KeyError on the
+    missing provider. Tests that assert on captures patch the call site again
+    and assert on their own mock.
+    """
+    with patch(ANALYTICS_PATCH):
+        yield
+
 
 # All tests in this module need the integration check to pass.
 pytestmark = [
-    pytest.mark.unit,
     pytest.mark.usefixtures("_bypass_integration_check"),
 ]
 
@@ -44,11 +71,11 @@ class TestListLabels:
         new_callable=AsyncMock,
     )
     async def test_list_labels_returns_200(self, mock_labels: AsyncMock, client: AsyncClient):
-        mock_labels.return_value = {
-            "success": True,
-            "labels": [{"id": "INBOX", "name": "INBOX"}],
-            "count": 1,
-        }
+        mock_labels.return_value = GmailLabelsResult(
+            success=True,
+            labels=[{"id": "INBOX", "name": "INBOX"}],
+            count=1,
+        )
         response = await client.get(f"{MAIL_BASE}/gmail/labels")
         assert response.status_code == 200
         data = response.json()
@@ -62,7 +89,7 @@ class TestListLabels:
     async def test_list_labels_service_failure_returns_500(
         self, mock_labels: AsyncMock, client: AsyncClient
     ):
-        mock_labels.return_value = {"success": False, "error": "API error"}
+        mock_labels.return_value = GmailLabelsResult(success=False, error="API error")
         response = await client.get(f"{MAIL_BASE}/gmail/labels")
         assert response.status_code == 500
 
@@ -78,10 +105,9 @@ class TestListMessages:
         new_callable=AsyncMock,
     )
     async def test_list_messages_returns_200(self, mock_search: AsyncMock, client: AsyncClient):
-        mock_search.return_value = {
-            "messages": [{"id": "msg-1", "snippet": "Hello"}],
-            "nextPageToken": None,
-        }
+        mock_search.return_value = GmailMessagesResponse(
+            messages=[{"id": "msg-1", "snippet": "Hello"}]
+        )
         response = await client.get(f"{MAIL_BASE}/gmail/messages")
         assert response.status_code == 200
         data = response.json()
@@ -93,10 +119,9 @@ class TestListMessages:
         new_callable=AsyncMock,
     )
     async def test_list_messages_with_pagination(self, mock_search: AsyncMock, client: AsyncClient):
-        mock_search.return_value = {
-            "messages": [{"id": "msg-2"}],
-            "nextPageToken": "token-abc",
-        }
+        mock_search.return_value = GmailMessagesResponse(
+            messages=[{"id": "msg-2"}], next_page_token="token-abc"
+        )
         response = await client.get(
             f"{MAIL_BASE}/gmail/messages",
             params={"max_results": 10, "pageToken": "prev-token"},
@@ -127,10 +152,10 @@ class TestGetEmailById:
         new_callable=AsyncMock,
     )
     async def test_get_email_returns_200(self, mock_get: AsyncMock, client: AsyncClient):
-        mock_get.return_value = {
-            "success": True,
-            "message": {"id": "msg-1", "subject": "Test"},
-        }
+        mock_get.return_value = GmailEmailResult(
+            success=True,
+            message={"id": "msg-1", "subject": "Test"},
+        )
         response = await client.get(f"{MAIL_BASE}/gmail/message/msg-1")
         assert response.status_code == 200
         data = response.json()
@@ -142,10 +167,10 @@ class TestGetEmailById:
         new_callable=AsyncMock,
     )
     async def test_get_email_not_found_returns_404(self, mock_get: AsyncMock, client: AsyncClient):
-        mock_get.return_value = {
-            "success": False,
-            "error": "Message not found",
-        }
+        mock_get.return_value = GmailEmailResult(
+            success=False,
+            error="Message not found",
+        )
         response = await client.get(f"{MAIL_BASE}/gmail/message/nonexistent")
         assert response.status_code == 404
 
@@ -175,10 +200,7 @@ class TestSearchEmails:
         new_callable=AsyncMock,
     )
     async def test_search_emails_returns_200(self, mock_search: AsyncMock, client: AsyncClient):
-        mock_search.return_value = {
-            "messages": [{"id": "msg-1"}],
-            "nextPageToken": None,
-        }
+        mock_search.return_value = GmailMessagesResponse(messages=[{"id": "msg-1"}])
         response = await client.get(f"{MAIL_BASE}/gmail/search", params={"query": "invoice"})
         assert response.status_code == 200
 
@@ -187,7 +209,7 @@ class TestSearchEmails:
         new_callable=AsyncMock,
     )
     async def test_search_emails_with_filters(self, mock_search: AsyncMock, client: AsyncClient):
-        mock_search.return_value = {"messages": [], "nextPageToken": None}
+        mock_search.return_value = GmailMessagesResponse(messages=[])
         response = await client.get(
             f"{MAIL_BASE}/gmail/search",
             params={
@@ -211,7 +233,7 @@ class TestSearchEmails:
     async def test_search_emails_caps_max_results_at_20(
         self, mock_search: AsyncMock, client: AsyncClient
     ):
-        mock_search.return_value = {"messages": [], "nextPageToken": None}
+        mock_search.return_value = GmailMessagesResponse(messages=[])
         await client.get(
             f"{MAIL_BASE}/gmail/search",
             params={"query": "test", "max_results": 100},
@@ -231,7 +253,9 @@ class TestSendEmailJson:
         new_callable=AsyncMock,
     )
     async def test_send_email_json_returns_200(self, mock_send: AsyncMock, client: AsyncClient):
-        mock_send.return_value = {"id": "sent-001"}
+        mock_send.return_value = GmailToolResult.model_validate(
+            {"data": {"id": "sent-001"}, "error": None, "successful": True}
+        )
         response = await client.post(
             f"{MAIL_BASE}/gmail/send-json",
             json={
@@ -245,12 +269,151 @@ class TestSendEmailJson:
         assert data["message_id"] == "sent-001"
         assert data["status"] == "Email sent successfully"
 
+
+class TestMailAnalytics:
+    """Analytics captures on mail endpoints."""
+
+    @patch(
+        "app.api.v1.endpoints.mail.send_email",
+        new_callable=AsyncMock,
+    )
+    async def test_send_json_captures_email_sent(self, mock_send: AsyncMock, client: AsyncClient):
+        mock_send.return_value = GmailToolResult.model_validate(
+            {"data": {"id": "sent-001"}, "error": None, "successful": True}
+        )
+        with patch(ANALYTICS_PATCH) as mock_capture:
+            response = await client.post(
+                f"{MAIL_BASE}/gmail/send-json",
+                json={
+                    "to": ["recipient@example.com"],
+                    "subject": "Hello",
+                    "body": "Test email body",
+                },
+            )
+
+        assert response.status_code == 200
+        mock_capture.assert_called_once_with(AnalyticsEvents.EMAIL_SENT, {"recipient_count": 1})
+
+    @patch(
+        "app.api.v1.endpoints.mail.send_email",
+        new_callable=AsyncMock,
+    )
+    async def test_send_with_thread_captures_email_replied(
+        self, mock_send: AsyncMock, client: AsyncClient
+    ):
+        mock_send.return_value = GmailToolResult.model_validate(
+            {"data": {"id": "sent-002"}, "error": None, "successful": True}
+        )
+        with patch(ANALYTICS_PATCH) as mock_capture:
+            response = await client.post(
+                f"{MAIL_BASE}/gmail/send",
+                data={
+                    "to": "recipient@example.com",
+                    "subject": "Hello",
+                    "body": "Test email body",
+                    "thread_id": "thread-1",
+                },
+            )
+
+        assert response.status_code == 200
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.EMAIL_REPLIED,
+            {"has_attachments": False, "attachment_count": 0},
+        )
+
+    @patch(
+        "app.api.v1.endpoints.mail.send_email",
+        new_callable=AsyncMock,
+    )
+    async def test_send_without_thread_captures_email_sent(
+        self, mock_send: AsyncMock, client: AsyncClient
+    ):
+        """No thread id -> the capture names EMAIL_SENT, not EMAIL_REPLIED."""
+        mock_send.return_value = GmailToolResult.model_validate(
+            {"data": {"id": "sent-003"}, "error": None, "successful": True}
+        )
+        with patch(ANALYTICS_PATCH) as mock_capture:
+            response = await client.post(
+                f"{MAIL_BASE}/gmail/send",
+                data={
+                    "to": "recipient@example.com",
+                    "subject": "Hello",
+                    "body": "Test email body",
+                },
+            )
+
+        assert response.status_code == 200
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.EMAIL_SENT,
+            {"has_attachments": False, "attachment_count": 0},
+        )
+
+    @patch(
+        "app.api.v1.endpoints.mail.send_email",
+        new_callable=AsyncMock,
+    )
+    async def test_send_with_attachments_captures_attachment_count(
+        self, mock_send: AsyncMock, client: AsyncClient
+    ):
+        """Attachments are reported truthfully in the capture payload."""
+        mock_send.return_value = GmailToolResult.model_validate(
+            {"data": {"id": "sent-004"}, "error": None, "successful": True}
+        )
+        with patch(ANALYTICS_PATCH) as mock_capture:
+            response = await client.post(
+                f"{MAIL_BASE}/gmail/send",
+                data={
+                    "to": "recipient@example.com",
+                    "subject": "Hello",
+                    "body": "Test email body",
+                },
+                files={
+                    "attachments": (
+                        "note.txt",
+                        b"hello",
+                        "text/plain",
+                    )
+                },
+            )
+
+        assert response.status_code == 200
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.EMAIL_SENT,
+            {"has_attachments": True, "attachment_count": 1},
+        )
+
+    @patch(
+        "app.api.v1.endpoints.mail.ainvoke_structured",
+        new_callable=AsyncMock,
+    )
+    async def test_ai_compose_captures_email_composed(
+        self, mock_invoke: AsyncMock, client: AsyncClient
+    ):
+        mock_invoke.return_value = {"subject": "Hi", "body": "Hello there"}
+        with (
+            patch(
+                "app.api.v1.endpoints.mail.search_notes_by_similarity",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch(ANALYTICS_PATCH) as mock_capture,
+        ):
+            response = await client.post(
+                f"{MAIL_BASE}/mail/ai/compose",
+                json={"prompt": "Write a follow up"},
+            )
+
+        assert response.status_code == 200
+        mock_capture.assert_called_once_with(AnalyticsEvents.EMAIL_COMPOSED)
+
     @patch(
         "app.api.v1.endpoints.mail.send_email",
         new_callable=AsyncMock,
     )
     async def test_send_email_json_with_cc_bcc(self, mock_send: AsyncMock, client: AsyncClient):
-        mock_send.return_value = {"id": "sent-002"}
+        mock_send.return_value = GmailToolResult.model_validate(
+            {"data": {"id": "sent-002"}, "error": None, "successful": True}
+        )
         response = await client.post(
             f"{MAIL_BASE}/gmail/send-json",
             json={
@@ -314,7 +477,10 @@ class TestMarkAsRead:
         new_callable=AsyncMock,
     )
     async def test_mark_as_read_returns_200(self, mock_mark: AsyncMock, client: AsyncClient):
-        mock_mark.return_value = [{"id": "msg-1"}, {"id": "msg-2"}]
+        mock_mark.return_value = [
+            GmailMessageResource(id="msg-1"),
+            GmailMessageResource(id="msg-2"),
+        ]
         response = await client.post(
             f"{MAIL_BASE}/gmail/mark-as-read",
             json={"message_ids": ["msg-1", "msg-2"]},
@@ -341,7 +507,7 @@ class TestMarkAsUnread:
         new_callable=AsyncMock,
     )
     async def test_mark_as_unread_returns_200(self, mock_mark: AsyncMock, client: AsyncClient):
-        mock_mark.return_value = [{"id": "msg-1"}]
+        mock_mark.return_value = [GmailMessageResource(id="msg-1")]
         response = await client.post(
             f"{MAIL_BASE}/gmail/mark-as-unread",
             json={"message_ids": ["msg-1"]},
@@ -363,7 +529,7 @@ class TestStarEmails:
         new_callable=AsyncMock,
     )
     async def test_star_emails_returns_200(self, mock_star: AsyncMock, client: AsyncClient):
-        mock_star.return_value = [{"id": "msg-1"}]
+        mock_star.return_value = [GmailMessageResource(id="msg-1")]
         response = await client.post(
             f"{MAIL_BASE}/gmail/star",
             json={"message_ids": ["msg-1"]},
@@ -399,7 +565,7 @@ class TestUnstarEmails:
         new_callable=AsyncMock,
     )
     async def test_unstar_emails_returns_200(self, mock_unstar: AsyncMock, client: AsyncClient):
-        mock_unstar.return_value = [{"id": "msg-1"}]
+        mock_unstar.return_value = [GmailMessageResource(id="msg-1")]
         response = await client.post(
             f"{MAIL_BASE}/gmail/unstar",
             json={"message_ids": ["msg-1"]},
@@ -461,7 +627,7 @@ class TestArchiveEmails:
         new_callable=AsyncMock,
     )
     async def test_archive_returns_200(self, mock_archive: AsyncMock, client: AsyncClient):
-        mock_archive.return_value = [{"id": "msg-1"}]
+        mock_archive.return_value = [GmailMessageResource(id="msg-1")]
         response = await client.post(
             f"{MAIL_BASE}/gmail/archive",
             json={"message_ids": ["msg-1"]},
@@ -482,7 +648,7 @@ class TestMoveToInbox:
         new_callable=AsyncMock,
     )
     async def test_move_to_inbox_returns_200(self, mock_move: AsyncMock, client: AsyncClient):
-        mock_move.return_value = [{"id": "msg-1"}]
+        mock_move.return_value = [GmailMessageResource(id="msg-1")]
         response = await client.post(
             f"{MAIL_BASE}/gmail/move-to-inbox",
             json={"message_ids": ["msg-1"]},
@@ -503,12 +669,12 @@ class TestGetThread:
         new_callable=AsyncMock,
     )
     async def test_get_thread_returns_200(self, mock_fetch: AsyncMock, client: AsyncClient):
-        mock_fetch.return_value = {
-            "messages": [
+        mock_fetch.return_value = GmailToolResult(
+            messages=[
                 {"id": "msg-1", "threadId": "thread-1"},
                 {"id": "msg-2", "threadId": "thread-1"},
             ]
-        }
+        )
         response = await client.get(f"{MAIL_BASE}/gmail/thread/thread-1")
         assert response.status_code == 200
         data = response.json()
@@ -538,7 +704,9 @@ class TestCreateLabel:
         new_callable=AsyncMock,
     )
     async def test_create_label_returns_200(self, mock_create: AsyncMock, client: AsyncClient):
-        mock_create.return_value = {"id": "Label_1", "name": "Important"}
+        mock_create.return_value = GmailToolResult.model_validate(
+            {"id": "Label_1", "name": "Important"}
+        )
         response = await client.post(
             f"{MAIL_BASE}/gmail/labels",
             json={"name": "Important"},
@@ -562,7 +730,9 @@ class TestUpdateLabel:
         new_callable=AsyncMock,
     )
     async def test_update_label_returns_200(self, mock_update: AsyncMock, client: AsyncClient):
-        mock_update.return_value = {"id": "Label_1", "name": "Renamed"}
+        mock_update.return_value = GmailToolResult.model_validate(
+            {"id": "Label_1", "name": "Renamed"}
+        )
         response = await client.put(
             f"{MAIL_BASE}/gmail/labels/Label_1",
             json={"name": "Renamed"},
@@ -609,7 +779,7 @@ class TestApplyLabels:
         new_callable=AsyncMock,
     )
     async def test_apply_labels_returns_200(self, mock_apply: AsyncMock, client: AsyncClient):
-        mock_apply.return_value = [{"id": "msg-1"}]
+        mock_apply.return_value = [GmailMessageResource(id="msg-1")]
         response = await client.post(
             f"{MAIL_BASE}/gmail/messages/apply-label",
             json={"message_ids": ["msg-1"], "label_ids": ["Label_1"]},
@@ -636,7 +806,7 @@ class TestRemoveLabels:
         new_callable=AsyncMock,
     )
     async def test_remove_labels_returns_200(self, mock_remove: AsyncMock, client: AsyncClient):
-        mock_remove.return_value = [{"id": "msg-1"}]
+        mock_remove.return_value = [GmailMessageResource(id="msg-1")]
         response = await client.post(
             f"{MAIL_BASE}/gmail/messages/remove-label",
             json={"message_ids": ["msg-1"], "label_ids": ["Label_1"]},
@@ -656,10 +826,9 @@ class TestCreateDraft:
         new_callable=AsyncMock,
     )
     async def test_create_draft_returns_200(self, mock_create: AsyncMock, client: AsyncClient):
-        mock_create.return_value = {
-            "id": "draft-001",
-            "message": {"id": "msg-draft-001"},
-        }
+        mock_create.return_value = GmailToolResult.model_validate(
+            {"id": "draft-001", "message": {"id": "msg-draft-001"}}
+        )
         response = await client.post(
             f"{MAIL_BASE}/gmail/drafts",
             json={
@@ -692,10 +861,7 @@ class TestListDrafts:
         new_callable=AsyncMock,
     )
     async def test_list_drafts_returns_200(self, mock_list: AsyncMock, client: AsyncClient):
-        mock_list.return_value = {
-            "drafts": [{"id": "draft-001"}],
-            "nextPageToken": None,
-        }
+        mock_list.return_value = GmailDraftsResponse(drafts=[{"id": "draft-001"}])
         response = await client.get(f"{MAIL_BASE}/gmail/drafts")
         assert response.status_code == 200
 
@@ -711,7 +877,9 @@ class TestGetDraft:
         new_callable=AsyncMock,
     )
     async def test_get_draft_returns_200(self, mock_get: AsyncMock, client: AsyncClient):
-        mock_get.return_value = {"id": "draft-001", "message": {"id": "msg-001"}}
+        mock_get.return_value = GmailToolResult.model_validate(
+            {"id": "draft-001", "message": {"id": "msg-001"}}
+        )
         response = await client.get(f"{MAIL_BASE}/gmail/drafts/draft-001")
         assert response.status_code == 200
 
@@ -736,10 +904,9 @@ class TestUpdateDraft:
         new_callable=AsyncMock,
     )
     async def test_update_draft_returns_200(self, mock_update: AsyncMock, client: AsyncClient):
-        mock_update.return_value = {
-            "id": "draft-001",
-            "message": {"id": "msg-updated"},
-        }
+        mock_update.return_value = GmailToolResult.model_validate(
+            {"id": "draft-001", "message": {"id": "msg-updated"}}
+        )
         response = await client.put(
             f"{MAIL_BASE}/gmail/drafts/draft-001",
             json={
@@ -790,12 +957,12 @@ class TestSendDraft:
         new_callable=AsyncMock,
     )
     async def test_send_draft_returns_200(self, mock_send: AsyncMock, client: AsyncClient):
-        mock_send.return_value = {
-            "successful": True,
-            "id": "sent-001",
-            "threadId": "thread-001",
-        }
-        response = await client.post(f"{MAIL_BASE}/gmail/drafts/draft-001/send")
+        mock_send.return_value = GmailToolResult.model_validate(
+            {"successful": True, "id": "sent-001", "threadId": "thread-001"}
+        )
+        with patch(ANALYTICS_PATCH) as mock_capture:
+            response = await client.post(f"{MAIL_BASE}/gmail/drafts/draft-001/send")
+        mock_capture.assert_called_once_with(AnalyticsEvents.EMAIL_SENT)
         assert response.status_code == 200
         data = response.json()
         assert data["successful"] is True
@@ -806,10 +973,9 @@ class TestSendDraft:
         new_callable=AsyncMock,
     )
     async def test_send_draft_failure_returns_500(self, mock_send: AsyncMock, client: AsyncClient):
-        mock_send.return_value = {
-            "successful": False,
-            "error": "Draft expired",
-        }
+        mock_send.return_value = GmailToolResult.model_validate(
+            {"successful": False, "error": "Draft expired"}
+        )
         response = await client.post(f"{MAIL_BASE}/gmail/drafts/draft-001/send")
         assert response.status_code == 500
 
@@ -825,21 +991,40 @@ class TestGetImportanceSummaries:
         new_callable=AsyncMock,
     )
     async def test_returns_200(self, mock_svc: AsyncMock, client: AsyncClient):
-        mock_svc.return_value = {"summaries": [], "count": 0}
+        mock_svc.return_value = EmailImportanceSummariesResponse(
+            status="success", emails=[], count=0, filtered_by_importance=False
+        )
         response = await client.get(f"{MAIL_BASE}/gmail/importance-summaries")
         assert response.status_code == 200
+        # Asserted against a literal, not the model: this is the wire contract
+        # the web client reads, and it must not move when the service's return
+        # type does.
+        assert response.json() == {
+            "status": "success",
+            "emails": [],
+            "count": 0,
+            "filtered_by_importance": False,
+        }
 
     @patch(
         "app.api.v1.endpoints.mail.get_importance_summaries_service",
         new_callable=AsyncMock,
     )
     async def test_with_params(self, mock_svc: AsyncMock, client: AsyncClient):
-        mock_svc.return_value = {"summaries": [], "count": 0}
+        mock_svc.return_value = EmailImportanceSummariesResponse(
+            status="success", emails=[], count=0, filtered_by_importance=True
+        )
         response = await client.get(
             f"{MAIL_BASE}/gmail/importance-summaries",
             params={"limit": 10, "important_only": True},
         )
         assert response.status_code == 200
+        assert response.json() == {
+            "status": "success",
+            "emails": [],
+            "count": 0,
+            "filtered_by_importance": True,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -853,13 +1038,24 @@ class TestGetSingleImportanceSummary:
         new_callable=AsyncMock,
     )
     async def test_returns_200(self, mock_svc: AsyncMock, client: AsyncClient):
-        mock_svc.return_value = {
-            "is_important": True,
-            "importance_level": "HIGH",
-            "summary": "Action required",
-        }
+        mock_svc.return_value = EmailImportanceSummaryResponse(
+            status="success",
+            email={
+                "is_important": True,
+                "importance_level": "HIGH",
+                "summary": "Action required",
+            },
+        )
         response = await client.get(f"{MAIL_BASE}/gmail/importance-summary/msg-1")
         assert response.status_code == 200
+        assert response.json() == {
+            "status": "success",
+            "email": {
+                "is_important": True,
+                "importance_level": "HIGH",
+                "summary": "Action required",
+            },
+        }
 
     @patch(
         "app.api.v1.endpoints.mail.get_single_importance_summary_service",
@@ -882,12 +1078,27 @@ class TestBulkImportanceSummaries:
         new_callable=AsyncMock,
     )
     async def test_returns_200(self, mock_svc: AsyncMock, client: AsyncClient):
-        mock_svc.return_value = {"summaries": {}, "count": 0}
+        mock_svc.return_value = BulkEmailImportanceSummariesResponse(
+            status="success",
+            emails={},
+            found_count=0,
+            missing_count=2,
+            found_message_ids=[],
+            missing_message_ids=["msg-1", "msg-2"],
+        )
         response = await client.post(
             f"{MAIL_BASE}/gmail/importance-summaries/bulk",
             json={"message_ids": ["msg-1", "msg-2"]},
         )
         assert response.status_code == 200
+        assert response.json() == {
+            "status": "success",
+            "emails": {},
+            "found_count": 0,
+            "missing_count": 2,
+            "found_message_ids": [],
+            "missing_message_ids": ["msg-1", "msg-2"],
+        }
 
     async def test_missing_message_ids_returns_422(self, client: AsyncClient):
         response = await client.post(

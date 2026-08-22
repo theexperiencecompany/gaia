@@ -236,7 +236,7 @@ export default function ViewEmail({
   };
 
   const handleSendReply = async () => {
-    if (!editor || !replyTo || !replyTo.id) return;
+    if (!editor || !replyTo?.id) return;
 
     const content = editor.getHTML();
     if (!content || content === "<p></p>") {
@@ -264,7 +264,6 @@ export default function ViewEmail({
       //   subject: `Re: ${replyTo.subject || ""}`,
       //   body: content,
       // });
-      // trackEvent(ANALYTICS_EVENTS.EMAIL_REPLIED, { mail_id: replyTo.id, thread_id: replyTo.threadId });
 
       toast.error("ArrowTurnBackwardIcon functionality is not yet implemented");
       setShowReplyEditor(false);

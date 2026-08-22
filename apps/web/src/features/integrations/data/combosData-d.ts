@@ -9,8 +9,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     toolBSlug: "jira",
     tagline:
       "Sync personal Todoist tasks with Jira tickets without leaving your flow",
-    metaTitle:
-      "Todoist + Jira Integration - Personal Tasks Meet Team Tickets | GAIA",
+    metaTitle: "Todoist + Jira Integration - Personal Tasks Meet Team Tickets",
     metaDescription:
       "Connect Todoist and Jira with GAIA. Automatically create Jira issues from Todoist tasks, sync your assigned Jira tickets into Todoist, and keep your personal and team workflows aligned.",
     keywords: [
@@ -98,7 +97,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Bridge personal Todoist task capture with ClickUp team project management",
     metaTitle:
-      "Todoist + ClickUp Integration - Personal Tasks Meet Team Projects | GAIA",
+      "Todoist + ClickUp Integration - Personal Tasks Meet Team Projects",
     metaDescription:
       "Connect Todoist and ClickUp with GAIA. Sync your personal Todoist tasks into ClickUp spaces, create ClickUp tasks from Todoist captures, and keep individual and team workflows aligned.",
     keywords: [
@@ -147,7 +146,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       {
         step: "Map projects and define promotion rules",
         description:
-          "Define which Todoist projects correspond to ClickUp spaces and lists. Set rules for when GAIA should automatically promote a Todoist task to ClickUp — for example, tasks tagged with a specific label or assigned a certain priority.",
+          "Define which Todoist projects correspond to ClickUp spaces and lists. Set rules for when GAIA should automatically promote a Todoist task to ClickUp, for example tasks tagged with a specific label or assigned a certain priority.",
       },
       {
         step: "GAIA syncs tasks in both directions continuously",
@@ -184,7 +183,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Sync personal Todoist tasks to team Trello boards without manual copying",
     metaTitle:
-      "Todoist + Trello Integration - From Personal Inbox to Team Board | GAIA",
+      "Todoist + Trello Integration - From Personal Inbox to Team Board",
     metaDescription:
       "Connect Todoist and Trello with GAIA. Automatically create Trello cards from Todoist tasks, sync card updates back to Todoist, and keep your personal and team Kanban views in step.",
     keywords: [
@@ -270,7 +269,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Keep personal Todoist tasks and Linear engineering issues in perfect sync",
     metaTitle:
-      "Todoist + Linear Integration - Personal Tasks and Engineering Issues Unified | GAIA",
+      "Todoist + Linear Integration - Personal Tasks and Engineering Issues Unified",
     metaDescription:
       "Connect Todoist and Linear with GAIA. Sync assigned Linear issues into your Todoist inbox, escalate Todoist tasks to Linear, and maintain a single view of your engineering and personal workload.",
     keywords: [
@@ -357,7 +356,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Turn GitHub issues assigned to you into Todoist tasks automatically",
     metaTitle:
-      "Todoist + GitHub Integration - Code Issues in Your Personal Task Manager | GAIA",
+      "Todoist + GitHub Integration - Code Issues in Your Personal Task Manager",
     metaDescription:
       "Connect Todoist and GitHub with GAIA. Sync GitHub issues and pull request reviews assigned to you into Todoist, create GitHub issues from Todoist tasks, and manage your dev workload in one place.",
     keywords: [
@@ -369,7 +368,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       "developer task manager GitHub",
     ],
     intro:
-      "GitHub is where software development happens: issues are filed, pull requests are reviewed, and bugs are tracked. Todoist is where many developers manage everything else — personal projects, meeting actions, and daily to-dos. The problem is that GitHub notifications are overwhelming and GitHub's own task tracking is built for collaboration, not personal GTD-style organization. Important issues and PR reviews get buried in notification noise.\n\nGAIA bridges Todoist and GitHub so your development obligations surface cleanly in your personal task manager. When a GitHub issue is assigned to you or a PR is ready for your review, GAIA creates a Todoist task with the repository name, issue number, and a direct link. When you resolve a task in Todoist, GAIA can close or comment on the linked GitHub issue. You can also capture a task in Todoist and have GAIA create a corresponding GitHub issue for visibility on the team's board.\n\nThis integration is built for developers who want GitHub accountability without living in GitHub's notification UI, and for open-source contributors who manage multiple repositories and need a consolidated personal view of their obligations.",
+      "GitHub is where software development happens: issues are filed, pull requests are reviewed, and bugs are tracked. Todoist is where many developers manage everything else: personal projects, meeting actions, and daily to-dos. The problem is that GitHub notifications are overwhelming and GitHub's own task tracking is built for collaboration, not personal GTD-style organization. Important issues and PR reviews get buried in notification noise.\n\nGAIA bridges Todoist and GitHub so your development obligations surface cleanly in your personal task manager. When a GitHub issue is assigned to you or a PR is ready for your review, GAIA creates a Todoist task with the repository name, issue number, and a direct link. When you resolve a task in Todoist, GAIA can close or comment on the linked GitHub issue. You can also capture a task in Todoist and have GAIA create a corresponding GitHub issue for visibility on the team's board.\n\nThis integration is built for developers who want GitHub accountability without living in GitHub's notification UI, and for open-source contributors who manage multiple repositories and need a consolidated personal view of their obligations.",
     useCases: [
       {
         title: "Auto-create Todoist tasks from GitHub issue assignments",
@@ -406,7 +405,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       {
         step: "Choose which repositories and event types to sync",
         description:
-          "Select the GitHub repositories GAIA should monitor and the event types that trigger Todoist task creation — issue assignments, PR review requests, mentions, or all of the above.",
+          "Select the GitHub repositories GAIA should monitor and the event types that trigger Todoist task creation: issue assignments, PR review requests, mentions, or all of the above.",
       },
       {
         step: "GAIA creates and manages tasks automatically",
@@ -443,7 +442,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Create Todoist tasks from Slack messages and share completions back to your team",
     metaTitle:
-      "Todoist + Slack Integration - Tasks from Messages, Updates to Channels | GAIA",
+      "Todoist + Slack Integration - Tasks from Messages, Updates to Channels",
     metaDescription:
       "Connect Todoist and Slack with GAIA. Turn Slack messages into Todoist tasks instantly, receive task reminders in Slack, and share completed work back to your team's channels automatically.",
     keywords: [
@@ -493,7 +492,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       {
         step: "Define capture triggers and notification preferences",
         description:
-          "Choose how you want to trigger task creation — emoji reaction, slash command, or keyword mention — and set which Todoist project new Slack-sourced tasks should land in. Configure which task completions should post back to Slack.",
+          "Choose how you want to trigger task creation (emoji reaction, slash command, or keyword mention) and set which Todoist project new Slack-sourced tasks should land in. Configure which task completions should post back to Slack.",
       },
       {
         step: "GAIA captures and closes the loop automatically",
@@ -532,7 +531,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Attach Drive files to Todoist tasks and create tasks from Drive activity automatically",
     metaTitle:
-      "Todoist + Google Drive Integration - Tasks Linked to Docs and Files | GAIA",
+      "Todoist + Google Drive Integration - Tasks Linked to Docs and Files",
     metaDescription:
       "Connect Todoist and Google Drive with GAIA. Attach Drive documents to Todoist tasks, create tasks when Drive files need review, and keep your document-related work organized in your personal task manager.",
     keywords: [
@@ -581,7 +580,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       {
         step: "Set up Drive activity triggers and attachment preferences",
         description:
-          "Tell GAIA which Drive events should create Todoist tasks — new shares, comments requesting review, or file edits — and which Todoist project those tasks should land in.",
+          "Tell GAIA which Drive events should create Todoist tasks (new shares, comments requesting review, or file edits) and which Todoist project those tasks should land in.",
       },
       {
         step: "GAIA creates tasks, attaches files, and keeps both in sync",
@@ -618,7 +617,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Share task progress in Discord and create Todoist tasks from Discord messages",
     metaTitle:
-      "Todoist + Discord Integration - Task Management for Discord Communities | GAIA",
+      "Todoist + Discord Integration - Task Management for Discord Communities",
     metaDescription:
       "Connect Todoist and Discord with GAIA. Create Todoist tasks from Discord messages, share task completions to Discord channels, and keep community or team action items organized in your personal task manager.",
     keywords: [
@@ -630,7 +629,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       "Todoist Discord workflow",
     ],
     intro:
-      "Discord has evolved far beyond gaming into a platform where dev communities, open-source projects, and distributed teams coordinate daily. Action items, decisions, and commitments regularly surface in Discord conversations, but they're ephemeral — buried by the next message within minutes. Todoist is where those action items need to land, but manually copying from Discord to Todoist is friction that rarely happens consistently.\n\nGAIA connects the two so that capturing a Discord message as a Todoist task takes a single command or reaction. Whether you're in a project planning channel, a support server, or a team voice chat follow-up thread, GAIA can extract the relevant content, create a structured Todoist task, and confirm the capture without disrupting the conversation. Completed tasks can be posted back to the Discord channel as a brief update so community members or teammates know what's been resolved.\n\nThis integration is especially useful for open-source maintainers tracking community issues from Discord, community managers juggling action items across multiple servers, and remote teams who use Discord as their primary communication platform.",
+      "Discord has evolved far beyond gaming into a platform where dev communities, open-source projects, and distributed teams coordinate daily. Action items, decisions, and commitments regularly surface in Discord conversations, but they're ephemeral, buried by the next message within minutes. Todoist is where those action items need to land, but manually copying from Discord to Todoist is friction that rarely happens consistently.\n\nGAIA connects the two so that capturing a Discord message as a Todoist task takes a single command or reaction. Whether you're in a project planning channel, a support server, or a team voice chat follow-up thread, GAIA can extract the relevant content, create a structured Todoist task, and confirm the capture without disrupting the conversation. Completed tasks can be posted back to the Discord channel as a brief update so community members or teammates know what's been resolved.\n\nThis integration is especially useful for open-source maintainers tracking community issues from Discord, community managers juggling action items across multiple servers, and remote teams who use Discord as their primary communication platform.",
     useCases: [
       {
         title: "Capture Discord messages as Todoist tasks",
@@ -667,7 +666,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       {
         step: "Set up capture commands and notification channels",
         description:
-          "Configure how task capture is triggered in Discord — slash command, bot mention, or emoji reaction — and which Todoist project captures land in. Set which Todoist task events should post back to Discord and to which channel.",
+          "Configure how task capture is triggered in Discord (slash command, bot mention, or emoji reaction) and which Todoist project captures land in. Set which Todoist task events should post back to Discord and to which channel.",
       },
       {
         step: "GAIA bridges Discord conversations and Todoist tasks",
@@ -705,7 +704,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Create Todoist follow-up tasks from HubSpot CRM activities and sync deal tasks automatically",
     metaTitle:
-      "Todoist + HubSpot Integration - CRM Activities Into Personal Tasks | GAIA",
+      "Todoist + HubSpot Integration - CRM Activities Into Personal Tasks",
     metaDescription:
       "Connect Todoist and HubSpot with GAIA. Automatically create Todoist follow-up tasks from HubSpot deal stages and contact activities, and push completed tasks back to HubSpot as logged activities.",
     keywords: [
@@ -754,7 +753,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       {
         step: "Define HubSpot triggers and task templates",
         description:
-          "Choose which HubSpot events create Todoist tasks — deal stage changes, email opens, meeting completions, or form submissions — and define the task template including due date rules and Todoist project destination.",
+          "Choose which HubSpot events create Todoist tasks (deal stage changes, email opens, meeting completions, or form submissions) and define the task template including due date rules and Todoist project destination.",
       },
       {
         step: "GAIA automates the CRM-to-task and task-to-CRM loop",
@@ -792,7 +791,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Schedule sprint ceremonies from Jira milestones and add events from Jira directly to your calendar",
     metaTitle:
-      "Google Calendar + Jira Integration - Jira Milestones on Your Calendar | GAIA",
+      "Google Calendar + Jira Integration - Jira Milestones on Your Calendar",
     metaDescription:
       "Connect Google Calendar and Jira with GAIA. Automatically schedule sprint events from Jira, add milestone due dates to your calendar, and ensure your engineering schedule reflects your Jira project timeline.",
     keywords: [
@@ -804,7 +803,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       "engineering schedule Jira calendar",
     ],
     intro:
-      "Jira holds your team's sprint plans, milestones, and release dates, but those dates rarely appear automatically in the calendar tool your entire organization uses to schedule meetings and block time. Engineers and project managers end up manually creating calendar events for sprint ceremonies, release dates, and milestone reviews — work that is error-prone and quickly goes stale when Jira dates change.\n\nGAIA connects Google Calendar and Jira so your project timeline is always reflected in your calendar. Sprint start and end dates become calendar events automatically. Milestone due dates appear as all-day events with the right context. Release dates block time in the relevant engineers' calendars. When a sprint date changes in Jira, GAIA updates the corresponding calendar event so everyone stays aligned without manual re-entry.\n\nThis integration is essential for engineering teams who use Google Calendar as their primary scheduling tool and Jira as their project management source of truth, particularly where coordination with non-engineering stakeholders requires calendar visibility of development milestones.",
+      "Jira holds your team's sprint plans, milestones, and release dates, but those dates rarely appear automatically in the calendar tool your entire organization uses to schedule meetings and block time. Engineers and project managers end up manually creating calendar events for sprint ceremonies, release dates, and milestone reviews, work that is error-prone and quickly goes stale when Jira dates change.\n\nGAIA connects Google Calendar and Jira so your project timeline is always reflected in your calendar. Sprint start and end dates become calendar events automatically. Milestone due dates appear as all-day events with the right context. Release dates block time in the relevant engineers' calendars. When a sprint date changes in Jira, GAIA updates the corresponding calendar event so everyone stays aligned without manual re-entry.\n\nThis integration is essential for engineering teams who use Google Calendar as their primary scheduling tool and Jira as their project management source of truth, particularly where coordination with non-engineering stakeholders requires calendar visibility of development milestones.",
     useCases: [
       {
         title: "Auto-schedule sprint ceremonies from Jira",
@@ -880,7 +879,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Sync ClickUp task deadlines to Google Calendar and create tasks from calendar events",
     metaTitle:
-      "Google Calendar + ClickUp Integration - Deadlines on Your Calendar | GAIA",
+      "Google Calendar + ClickUp Integration - Deadlines on Your Calendar",
     metaDescription:
       "Connect Google Calendar and ClickUp with GAIA. Automatically sync ClickUp task due dates to Google Calendar, create ClickUp tasks from calendar events, and keep your schedule and project management aligned.",
     keywords: [
@@ -892,7 +891,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       "ClickUp schedule Google Calendar",
     ],
     intro:
-      "ClickUp is your team's project hub, packed with tasks, deadlines, and dependencies across multiple spaces and lists. Google Calendar is where you and your stakeholders manage time. The problem is that ClickUp task deadlines rarely make it onto anyone's calendar unless someone manually creates an event — which means important deadlines are invisible to anyone not actively checking ClickUp.\n\nGAIA bridges Google Calendar and ClickUp so deadlines are always calendar-visible. Task due dates from the ClickUp lists you care about appear automatically as Google Calendar events, giving you and your team a deadline view alongside your meetings and appointments. When a calendar event represents a deliverable, GAIA can create the corresponding ClickUp task so your project management stays in sync with your schedule.\n\nThis integration helps project managers who review schedules in Google Calendar but manage work in ClickUp, and individual contributors who want their ClickUp task deadlines surfaced in the calendar tool they already live in.",
+      "ClickUp is your team's project hub, packed with tasks, deadlines, and dependencies across multiple spaces and lists. Google Calendar is where you and your stakeholders manage time. The problem is that ClickUp task deadlines rarely make it onto anyone's calendar unless someone manually creates an event, which means important deadlines are invisible to anyone not actively checking ClickUp.\n\nGAIA bridges Google Calendar and ClickUp so deadlines are always calendar-visible. Task due dates from the ClickUp lists you care about appear automatically as Google Calendar events, giving you and your team a deadline view alongside your meetings and appointments. When a calendar event represents a deliverable, GAIA can create the corresponding ClickUp task so your project management stays in sync with your schedule.\n\nThis integration helps project managers who review schedules in Google Calendar but manage work in ClickUp, and individual contributors who want their ClickUp task deadlines surfaced in the calendar tool they already live in.",
     useCases: [
       {
         title: "Sync ClickUp task due dates to Google Calendar",
@@ -902,7 +901,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       {
         title: "Create ClickUp tasks from calendar events",
         description:
-          "When you add a calendar event that represents a deliverable — a client presentation, a product demo, or a project kickoff — GAIA creates a linked ClickUp task in the appropriate space and list so the work gets tracked.",
+          "When you add a calendar event that represents a deliverable (a client presentation, a product demo, or a project kickoff), GAIA creates a linked ClickUp task in the appropriate space and list so the work gets tracked.",
       },
       {
         title: "Update calendar events when ClickUp deadlines shift",
@@ -929,7 +928,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       {
         step: "Configure deadline sync and task creation rules",
         description:
-          "Set which ClickUp task properties trigger calendar event creation — assignee, priority, list membership, or custom field values. Define which Google Calendar receives ClickUp-sourced events.",
+          "Set which ClickUp task properties trigger calendar event creation: assignee, priority, list membership, or custom field values. Define which Google Calendar receives ClickUp-sourced events.",
       },
       {
         step: "GAIA maintains the deadline-to-calendar pipeline automatically",
@@ -968,7 +967,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Add Trello card due dates to Google Calendar and create cards from calendar events",
     metaTitle:
-      "Google Calendar + Trello Integration - Trello Deadlines on Your Calendar | GAIA",
+      "Google Calendar + Trello Integration - Trello Deadlines on Your Calendar",
     metaDescription:
       "Connect Google Calendar and Trello with GAIA. Automatically create Google Calendar events from Trello card due dates, generate Trello cards from calendar events, and keep your board and schedule in sync.",
     keywords: [
@@ -980,7 +979,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       "Trello schedule Google Calendar",
     ],
     intro:
-      "Trello boards give your team a visual overview of project work, but the due dates on Trello cards are only visible to people actively looking at the board. Google Calendar is where everyone — including stakeholders who never log into Trello — checks schedules and deadlines. The disconnect means that delivery dates set in Trello are invisible in the place where people make time commitments.\n\nGAIA connects Google Calendar and Trello so Trello card due dates appear as calendar events automatically. When a card's due date is set or changed, the calendar event updates in real time. When a meeting or event in Google Calendar represents a deliverable, GAIA can create the corresponding Trello card in the right board and list so the work gets tracked. Both tools stay synchronized without any manual duplication.\n\nThis is particularly valuable for small teams that use Trello for project tracking and Google Calendar for scheduling and client-facing commitments, and for project managers who need to give non-Trello stakeholders visibility into delivery timelines.",
+      "Trello boards give your team a visual overview of project work, but the due dates on Trello cards are only visible to people actively looking at the board. Google Calendar is where everyone, including stakeholders who never log into Trello, checks schedules and deadlines. The disconnect means that delivery dates set in Trello are invisible in the place where people make time commitments.\n\nGAIA connects Google Calendar and Trello so Trello card due dates appear as calendar events automatically. When a card's due date is set or changed, the calendar event updates in real time. When a meeting or event in Google Calendar represents a deliverable, GAIA can create the corresponding Trello card in the right board and list so the work gets tracked. Both tools stay synchronized without any manual duplication.\n\nThis is particularly valuable for small teams that use Trello for project tracking and Google Calendar for scheduling and client-facing commitments, and for project managers who need to give non-Trello stakeholders visibility into delivery timelines.",
     useCases: [
       {
         title: "Create calendar events from Trello card due dates",
@@ -1036,7 +1035,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
         question:
           "Does GAIA support multiple Trello boards synced to separate Google Calendars?",
         answer:
-          "Yes. You can map individual Trello boards to specific Google Calendars — for example, routing a client board's due dates to a shared client calendar while keeping internal board dates on a team-only calendar.",
+          "Yes. You can map individual Trello boards to specific Google Calendars, for example routing a client board's due dates to a shared client calendar while keeping internal board dates on a team-only calendar.",
       },
       {
         question:
@@ -1055,8 +1054,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     toolBSlug: "hubspot",
     tagline:
       "Sync meeting invites with HubSpot contacts and log calls to your CRM automatically",
-    metaTitle:
-      "Google Calendar + HubSpot Integration - CRM-Connected Meetings | GAIA",
+    metaTitle: "Google Calendar + HubSpot Integration - CRM-Connected Meetings",
     metaDescription:
       "Connect Google Calendar and HubSpot with GAIA. Automatically log Google Calendar meetings to HubSpot, sync contact details to calendar invites, and ensure every client interaction is captured in your CRM.",
     keywords: [
@@ -1068,7 +1066,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       "HubSpot calendar event sync",
     ],
     intro:
-      "Sales and customer success teams live between two critical tools: Google Calendar for scheduling client meetings and HubSpot for managing the CRM records of those same clients. The problem is that these two systems rarely talk to each other. Meetings happen in Google Calendar but are manually logged in HubSpot — or worse, never logged at all. Contact details in HubSpot aren't visible in calendar invites. The result is a CRM that is perpetually behind and a team that wastes time on manual data entry.\n\nGAIA bridges Google Calendar and HubSpot so that client meetings are automatically enriched with CRM data and automatically logged as activities. When you schedule a meeting with a known HubSpot contact, GAIA adds their company, deal stage, and recent activity to the calendar event description so you're prepared. When the meeting ends, GAIA logs it as a HubSpot activity with attendees, duration, and any notes you add, keeping your CRM accurate without any manual entry.\n\nThis integration is essential for sales reps, account executives, and customer success managers who need their meeting and CRM records to stay in perfect alignment without the overhead of double data entry.",
+      "Sales and customer success teams live between two critical tools: Google Calendar for scheduling client meetings and HubSpot for managing the CRM records of those same clients. The problem is that these two systems rarely talk to each other. Meetings happen in Google Calendar but are manually logged in HubSpot, or worse, never logged at all. Contact details in HubSpot aren't visible in calendar invites. The result is a CRM that is perpetually behind and a team that wastes time on manual data entry.\n\nGAIA bridges Google Calendar and HubSpot so that client meetings are automatically enriched with CRM data and automatically logged as activities. When you schedule a meeting with a known HubSpot contact, GAIA adds their company, deal stage, and recent activity to the calendar event description so you're prepared. When the meeting ends, GAIA logs it as a HubSpot activity with attendees, duration, and any notes you add, keeping your CRM accurate without any manual entry.\n\nThis integration is essential for sales reps, account executives, and customer success managers who need their meeting and CRM records to stay in perfect alignment without the overhead of double data entry.",
     useCases: [
       {
         title: "Enrich calendar invites with HubSpot contact data",
@@ -1142,7 +1140,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Schedule billing cycle events and payment reminder deadlines directly from Stripe",
     metaTitle:
-      "Google Calendar + Stripe Integration - Billing Cycles on Your Calendar | GAIA",
+      "Google Calendar + Stripe Integration - Billing Cycles on Your Calendar",
     metaDescription:
       "Connect Google Calendar and Stripe with GAIA. Automatically create calendar events for Stripe subscription renewals, failed payment follow-ups, and invoice due dates so your billing schedule is always visible.",
     keywords: [
@@ -1154,7 +1152,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       "Stripe invoice due date calendar",
     ],
     intro:
-      "Stripe manages your subscription billing, invoice schedules, and payment processing, but those financial events rarely appear in your team's calendar. Finance and operations teams need to know when major renewals are due, when trial periods end, and when significant invoices need follow-up — but this visibility currently requires logging into Stripe or running manual reports. Important billing events are invisible to the people who need to act on them.\n\nGAIA bridges Google Calendar and Stripe so your billing timeline becomes a first-class part of your team's schedule. Subscription renewal dates appear as calendar events with customer name and MRR value so account managers can reach out proactively. Failed payment follow-up reminders appear automatically after a charge fails. Invoice due dates become calendar events for your finance team so collections efforts are timely and organized.\n\nThis integration is particularly valuable for SaaS businesses where subscription renewals, churn prevention, and collections are operational priorities that deserve calendar visibility alongside other team activities.",
+      "Stripe manages your subscription billing, invoice schedules, and payment processing, but those financial events rarely appear in your team's calendar. Finance and operations teams need to know when major renewals are due, when trial periods end, and when significant invoices need follow-up, but this visibility currently requires logging into Stripe or running manual reports. Important billing events are invisible to the people who need to act on them.\n\nGAIA bridges Google Calendar and Stripe so your billing timeline becomes a first-class part of your team's schedule. Subscription renewal dates appear as calendar events with customer name and MRR value so account managers can reach out proactively. Failed payment follow-up reminders appear automatically after a charge fails. Invoice due dates become calendar events for your finance team so collections efforts are timely and organized.\n\nThis integration is particularly valuable for SaaS businesses where subscription renewals, churn prevention, and collections are operational priorities that deserve calendar visibility alongside other team activities.",
     useCases: [
       {
         title: "Subscription renewal events on the team calendar",
@@ -1191,7 +1189,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       {
         step: "Configure billing event types and calendar routing",
         description:
-          "Select which Stripe events should create calendar events — renewals, failed payments, invoice due dates, trial expirations — and which Google Calendar should receive each event type.",
+          "Select which Stripe events should create calendar events (renewals, failed payments, invoice due dates, trial expirations) and which Google Calendar should receive each event type.",
       },
       {
         step: "GAIA keeps your billing calendar current automatically",
@@ -1229,7 +1227,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Sync Microsoft Teams meetings to Google Calendar so your schedule is always complete",
     metaTitle:
-      "Google Calendar + Microsoft Teams Integration - One Complete Schedule | GAIA",
+      "Google Calendar + Microsoft Teams Integration - One Complete Schedule",
     metaDescription:
       "Connect Google Calendar and Microsoft Teams with GAIA. Automatically sync Teams meeting invites to Google Calendar, create Teams meetings from Google Calendar events, and maintain a single unified schedule.",
     keywords: [
@@ -1317,7 +1315,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Post Google Calendar event reminders to Discord channels automatically",
     metaTitle:
-      "Google Calendar + Discord Integration - Event Reminders in Discord | GAIA",
+      "Google Calendar + Discord Integration - Event Reminders in Discord",
     metaDescription:
       "Connect Google Calendar and Discord with GAIA. Automatically post event reminders and schedule announcements to Discord channels, and create calendar events from Discord community discussions.",
     keywords: [
@@ -1366,7 +1364,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       {
         step: "Configure reminder timing and notification format",
         description:
-          "Set how far in advance GAIA posts reminders — for example, 24 hours and 1 hour before — and customize the message format including which event details to include and how mentions should be used.",
+          "Set how far in advance GAIA posts reminders (for example, 24 hours and 1 hour before) and customize the message format including which event details to include and how mentions should be used.",
       },
       {
         step: "GAIA posts reminders and manages announcements automatically",
@@ -1385,7 +1383,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
         question:
           "Can GAIA mention specific Discord roles when posting event reminders?",
         answer:
-          "Yes. You can configure GAIA to mention specific Discord roles in event reminder posts — for example, mentioning the @everyone or @team role for different event types — to ensure the right people are notified.",
+          "Yes. You can configure GAIA to mention specific Discord roles in event reminder posts (for example, mentioning the @everyone or @team role for different event types) to ensure the right people are notified.",
       },
       {
         question:
@@ -1405,7 +1403,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Attach Drive docs to calendar events and create event notes in Drive automatically",
     metaTitle:
-      "Google Calendar + Google Drive Integration - Meetings Linked to Documents | GAIA",
+      "Google Calendar + Google Drive Integration - Meetings Linked to Documents",
     metaDescription:
       "Connect Google Calendar and Google Drive with GAIA. Automatically attach relevant Drive documents to calendar events, create meeting notes docs for upcoming meetings, and organize Drive files by meeting context.",
     keywords: [
@@ -1417,7 +1415,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       "document meeting calendar Google",
     ],
     intro:
-      "Every meeting on your Google Calendar has documents associated with it — agendas, presentation decks, reference materials, and notes — but those files live in Google Drive disconnected from the calendar event. You spend the minutes before each meeting hunting through Drive for the right document, and after meetings, notes end up scattered in random Drive folders with no connection to the calendar entry that generated them.\n\nGAIA connects Google Calendar and Google Drive so meetings and documents are always linked. Before a scheduled meeting, GAIA identifies relevant Drive documents by project name, attendee, or keyword and attaches them to the calendar event so everything you need is one click away. After each meeting, GAIA creates a structured notes document in the right Drive folder, pre-filled with the attendee list, agenda, and action item template, ready for you to fill in during the call.\n\nThis integration is invaluable for professionals who run frequent meetings and need instant document access, for project managers who need meeting notes consistently organized in Drive, and for teams who want their calendar to serve as the single entry point for all meeting-related material.",
+      "Every meeting on your Google Calendar has documents associated with it (agendas, presentation decks, reference materials, and notes), but those files live in Google Drive disconnected from the calendar event. You spend the minutes before each meeting hunting through Drive for the right document, and after meetings, notes end up scattered in random Drive folders with no connection to the calendar entry that generated them.\n\nGAIA connects Google Calendar and Google Drive so meetings and documents are always linked. Before a scheduled meeting, GAIA identifies relevant Drive documents by project name, attendee, or keyword and attaches them to the calendar event so everything you need is one click away. After each meeting, GAIA creates a structured notes document in the right Drive folder, pre-filled with the attendee list, agenda, and action item template, ready for you to fill in during the call.\n\nThis integration is invaluable for professionals who run frequent meetings and need instant document access, for project managers who need meeting notes consistently organized in Drive, and for teams who want their calendar to serve as the single entry point for all meeting-related material.",
     useCases: [
       {
         title: "Auto-attach relevant Drive docs to calendar events",
@@ -1432,7 +1430,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       {
         title: "Organize Drive files by meeting context",
         description:
-          "GAIA creates a Drive folder for each recurring meeting series and saves related documents — agendas, notes, presentations — to that folder automatically, building an organized archive of meeting materials over time.",
+          "GAIA creates a Drive folder for each recurring meeting series and saves related documents (agendas, notes, presentations) to that folder automatically, building an organized archive of meeting materials over time.",
       },
       {
         title: "Share Drive docs with all calendar attendees",
@@ -1454,7 +1452,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       {
         step: "Configure document matching and notes template preferences",
         description:
-          "Define how GAIA should search for relevant Drive documents — by folder, shared owner, keyword match, or project label. Choose your preferred meeting notes template and the Drive folder structure for meeting archives.",
+          "Define how GAIA should search for relevant Drive documents: by folder, shared owner, keyword match, or project label. Choose your preferred meeting notes template and the Drive folder structure for meeting archives.",
       },
       {
         step: "GAIA links documents to meetings and manages the notes lifecycle",
@@ -1473,7 +1471,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
         question:
           "Can GAIA create meeting notes in a specific Drive folder structure?",
         answer:
-          "Yes. You can define a folder structure template — for example, by year, month, and project — and GAIA will create each meeting notes doc in the correct folder automatically, building a consistent archive over time.",
+          "Yes. You can define a folder structure template (for example, by year, month, and project) and GAIA will create each meeting notes doc in the correct folder automatically, building a consistent archive over time.",
       },
       {
         question:
@@ -1493,7 +1491,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Schedule design reviews from Figma milestones and create calendar events from Figma project timelines",
     metaTitle:
-      "Google Calendar + Figma Integration - Design Reviews on Your Calendar | GAIA",
+      "Google Calendar + Figma Integration - Design Reviews on Your Calendar",
     metaDescription:
       "Connect Google Calendar and Figma with GAIA. Automatically schedule design review meetings from Figma project milestones, link Figma files to calendar events, and keep your design timeline visible on your calendar.",
     keywords: [
@@ -1542,7 +1540,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       {
         step: "Configure milestone triggers and calendar event templates",
         description:
-          "Define which Figma events create calendar events — version tags, milestone comments, handoff status changes — and set the calendar event template including attendees, duration, and agenda format.",
+          "Define which Figma events create calendar events (version tags, milestone comments, handoff status changes) and set the calendar event template including attendees, duration, and agenda format.",
       },
       {
         step: "GAIA links design milestones to your calendar automatically",
@@ -1579,8 +1577,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     toolB: "Google Calendar",
     toolBSlug: "google-calendar",
     tagline: "Turn tasks into calendar events and deadlines into time blocks",
-    metaTitle:
-      "Todoist + Google Calendar Automation - Sync Tasks and Events | GAIA",
+    metaTitle: "Todoist + Google Calendar Automation - Sync Tasks and Events",
     metaDescription:
       "Automate Todoist and Google Calendar with GAIA. Convert tasks with due dates into calendar events, block time for high-priority work, and keep your schedule aligned with your to-do list automatically.",
     keywords: [
@@ -1592,7 +1589,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       "connect Todoist and Google Calendar",
     ],
     intro:
-      "Todoist captures everything you need to do, and Google Calendar structures when you will do it — but without a connection between them, tasks pile up without time allocated and calendar events get created without linking back to the underlying work. The result is a schedule that doesn't reflect reality and a task list that never shrinks.\n\nGAIA connects Todoist and Google Calendar so your commitments and your time stay in sync. When you add a task with a due date in Todoist, GAIA can automatically create a corresponding Google Calendar event and block the time needed to complete it. When a meeting ends and action items emerge, GAIA can capture them as Todoist tasks with deadlines derived from the calendar event details.\n\nThis integration is particularly valuable for individuals who plan projects in Todoist but struggle to protect calendar time for deep work, and for teams who want every project deadline reflected on a shared calendar so capacity is visible at a glance.",
+      "Todoist captures everything you need to do, and Google Calendar structures when you will do it, but without a connection between them, tasks pile up without time allocated and calendar events get created without linking back to the underlying work. The result is a schedule that doesn't reflect reality and a task list that never shrinks.\n\nGAIA connects Todoist and Google Calendar so your commitments and your time stay in sync. When you add a task with a due date in Todoist, GAIA can automatically create a corresponding Google Calendar event and block the time needed to complete it. When a meeting ends and action items emerge, GAIA can capture them as Todoist tasks with deadlines derived from the calendar event details.\n\nThis integration is particularly valuable for individuals who plan projects in Todoist but struggle to protect calendar time for deep work, and for teams who want every project deadline reflected on a shared calendar so capacity is visible at a glance.",
     useCases: [
       {
         title: "Auto-create calendar events from Todoist due dates",
@@ -1624,7 +1621,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       {
         step: "Connect Todoist and Google Calendar to GAIA",
         description:
-          "Authenticate both accounts in GAIA's integration settings using OAuth. GAIA only requests the scopes it needs — task read/write for Todoist and event read/write for Google Calendar.",
+          "Authenticate both accounts in GAIA's integration settings using OAuth. GAIA only requests the scopes it needs: task read/write for Todoist and event read/write for Google Calendar.",
       },
       {
         step: "Configure your sync preferences",
@@ -1634,7 +1631,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       {
         step: "GAIA keeps tasks and calendar in sync automatically",
         description:
-          "From that point on, GAIA monitors both platforms in real time — creating events when tasks are added, updating times when deadlines shift, and flagging conflicts before they become problems.",
+          "From that point on, GAIA monitors both platforms in real time: creating events when tasks are added, updating times when deadlines shift, and flagging conflicts before they become problems.",
       },
     ],
     faqs: [
@@ -1673,7 +1670,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Surface Salesforce action items in Todoist and log work back automatically",
     metaTitle:
-      "Todoist + Salesforce Automation - Bridge CRM Tasks and Personal Planning | GAIA",
+      "Todoist + Salesforce Automation - Bridge CRM Tasks and Personal Planning",
     metaDescription:
       "Connect Todoist and Salesforce with GAIA. Create Todoist tasks from Salesforce opportunities, log activity back to CRM records, and keep your sales workflow on track without switching tools.",
     keywords: [
@@ -1685,7 +1682,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       "connect Todoist and Salesforce",
     ],
     intro:
-      "Salesforce is the system of record for enterprise sales teams, but its task management interface is rarely where reps do their best planning. Most high-performing account executives maintain a parallel personal task list — often in Todoist — to actually run their day. The problem is that keeping two systems in sync requires manual updates that eat into selling time and almost inevitably lead to one system falling behind.\n\nGAIA automates the bridge between Todoist and Salesforce so your personal planner and your CRM tell the same story. When a Salesforce opportunity reaches a critical stage or a task is due, GAIA creates the corresponding Todoist item so it appears in your daily plan. When you complete that task, GAIA logs the activity back in Salesforce against the right opportunity, contact, or account so the CRM record stays current without you ever opening Salesforce just to log a note.\n\nThis integration suits enterprise account executives who manage complex deals in Salesforce but plan their days in Todoist, and sales operations teams who want activity compliance across the organization without forcing reps to change their personal workflow.",
+      "Salesforce is the system of record for enterprise sales teams, but its task management interface is rarely where reps do their best planning. Most high-performing account executives maintain a parallel personal task list, often in Todoist, to actually run their day. The problem is that keeping two systems in sync requires manual updates that eat into selling time and almost inevitably lead to one system falling behind.\n\nGAIA automates the bridge between Todoist and Salesforce so your personal planner and your CRM tell the same story. When a Salesforce opportunity reaches a critical stage or a task is due, GAIA creates the corresponding Todoist item so it appears in your daily plan. When you complete that task, GAIA logs the activity back in Salesforce against the right opportunity, contact, or account so the CRM record stays current without you ever opening Salesforce just to log a note.\n\nThis integration suits enterprise account executives who manage complex deals in Salesforce but plan their days in Todoist, and sales operations teams who want activity compliance across the organization without forcing reps to change their personal workflow.",
     useCases: [
       {
         title: "Create Todoist tasks from Salesforce opportunity stages",
@@ -1710,7 +1707,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       {
         title: "Post-meeting follow-up workflow",
         description:
-          "After logging a Salesforce meeting, GAIA creates a set of standard follow-up tasks in Todoist — send recap email, update opportunity stage, schedule next call — so every meeting leads to clear next actions.",
+          "After logging a Salesforce meeting, GAIA creates a set of standard follow-up tasks in Todoist (send recap email, update opportunity stage, schedule next call) so every meeting leads to clear next actions.",
       },
     ],
     howItWorks: [
@@ -1763,7 +1760,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     toolBSlug: "zoom",
     tagline: "Turn Zoom meeting outcomes into Todoist tasks automatically",
     metaTitle:
-      "Todoist + Zoom Automation - Capture Meeting Action Items as Tasks | GAIA",
+      "Todoist + Zoom Automation - Capture Meeting Action Items as Tasks",
     metaDescription:
       "Connect Todoist and Zoom with GAIA. Automatically create Todoist tasks from Zoom meeting action items, get pre-meeting task reminders, and ensure every meeting leads to tracked follow-ups.",
     keywords: [
@@ -1775,7 +1772,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       "connect Todoist and Zoom",
     ],
     intro:
-      "Zoom meetings generate commitments — someone agrees to send a document, another person will follow up with a client, a decision is made that requires someone to update the project plan. But without a reliable system for capturing these commitments the moment they're made, action items evaporate as quickly as the meeting window closes.\n\nGAIA connects Zoom and Todoist so meeting outcomes flow directly into your task manager. When a Zoom meeting ends, GAIA can process the transcript to identify action items and create Todoist tasks for each, assigned to the right person with a realistic due date. Before a meeting starts, GAIA checks your Todoist list for tasks related to that meeting's attendees or project and surfaces them as a pre-meeting briefing so you walk in prepared.\n\nThis integration is essential for anyone who runs or participates in regular meetings and wants to close the gap between what gets committed in a call and what actually gets tracked and executed. It is particularly powerful for team leads, project managers, and client-facing professionals who have multiple meetings per day.",
+      "Zoom meetings generate commitments: someone agrees to send a document, another person will follow up with a client, a decision is made that requires someone to update the project plan. But without a reliable system for capturing these commitments the moment they're made, action items evaporate as quickly as the meeting window closes.\n\nGAIA connects Zoom and Todoist so meeting outcomes flow directly into your task manager. When a Zoom meeting ends, GAIA can process the transcript to identify action items and create Todoist tasks for each, assigned to the right person with a realistic due date. Before a meeting starts, GAIA checks your Todoist list for tasks related to that meeting's attendees or project and surfaces them as a pre-meeting briefing so you walk in prepared.\n\nThis integration is essential for anyone who runs or participates in regular meetings and wants to close the gap between what gets committed in a call and what actually gets tracked and executed. It is particularly powerful for team leads, project managers, and client-facing professionals who have multiple meetings per day.",
     useCases: [
       {
         title: "Auto-extract action items from Zoom transcripts",
@@ -1800,7 +1797,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       {
         title: "Follow-up deadline tracking",
         description:
-          "When action items are captured from a Zoom meeting, GAIA sets due dates based on what was said — 'by end of week' becomes Friday, 'tomorrow' becomes the next business day — and alerts you if they are not completed in time.",
+          "When action items are captured from a Zoom meeting, GAIA sets due dates based on what was said ('by end of week' becomes Friday, 'tomorrow' becomes the next business day) and alerts you if they are not completed in time.",
       },
     ],
     howItWorks: [
@@ -1817,7 +1814,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       {
         step: "GAIA processes meetings and creates tasks automatically",
         description:
-          "After each qualifying Zoom meeting, GAIA processes the transcript, extracts action items, and creates Todoist tasks — all within minutes of the meeting ending.",
+          "After each qualifying Zoom meeting, GAIA processes the transcript, extracts action items, and creates Todoist tasks, all within minutes of the meeting ending.",
       },
     ],
     faqs: [
@@ -1854,8 +1851,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     toolBSlug: "teams",
     tagline:
       "Surface Todoist tasks in Teams and capture action items from chats",
-    metaTitle:
-      "Todoist + Microsoft Teams Automation - Tasks and Chat in Sync | GAIA",
+    metaTitle: "Todoist + Microsoft Teams Automation - Tasks and Chat in Sync",
     metaDescription:
       "Connect Todoist and Microsoft Teams with GAIA. Get task reminders in Teams channels, capture action items from Teams conversations, and keep your personal task list visible where your team collaborates.",
     keywords: [
@@ -1867,7 +1863,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       "connect Todoist and Teams",
     ],
     intro:
-      "Microsoft Teams is the communication backbone of millions of organizations, hosting everything from quick chat messages to full project discussions. But the action items that emerge from those conversations routinely disappear into the chat history, never making it to a task manager. Todoist users who rely on it for personal planning find themselves manually transcribing chat commitments into tasks — a slow, error-prone process that means many follow-ups simply never get captured.\n\nGAIA bridges Todoist and Microsoft Teams so your task manager and your team chat reinforce each other. Task reminders and deadline alerts surface as Teams notifications in the channels where your team is active. Conversely, when an action item surfaces in a Teams message or meeting chat, GAIA can capture it as a Todoist task with one command, preserving the original message as context.\n\nThis integration is particularly powerful in organizations that run on Microsoft 365, where Teams is the daily hub but individual contributors want the simplicity of Todoist for personal planning. It removes the friction of switching between platforms while ensuring commitments made in chat always make it to the task list.",
+      "Microsoft Teams is the communication backbone of millions of organizations, hosting everything from quick chat messages to full project discussions. But the action items that emerge from those conversations routinely disappear into the chat history, never making it to a task manager. Todoist users who rely on it for personal planning find themselves manually transcribing chat commitments into tasks, a slow, error-prone process that means many follow-ups simply never get captured.\n\nGAIA bridges Todoist and Microsoft Teams so your task manager and your team chat reinforce each other. Task reminders and deadline alerts surface as Teams notifications in the channels where your team is active. Conversely, when an action item surfaces in a Teams message or meeting chat, GAIA can capture it as a Todoist task with one command, preserving the original message as context.\n\nThis integration is particularly powerful in organizations that run on Microsoft 365, where Teams is the daily hub but individual contributors want the simplicity of Todoist for personal planning. It removes the friction of switching between platforms while ensuring commitments made in chat always make it to the task list.",
     useCases: [
       {
         title: "Task due-date alerts in Teams channels",
@@ -1943,8 +1939,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     toolB: "Figma",
     toolBSlug: "figma",
     tagline: "Connect design work in Figma with task tracking in Todoist",
-    metaTitle:
-      "Todoist + Figma Automation - Link Design Tasks and Figma Files | GAIA",
+    metaTitle: "Todoist + Figma Automation - Link Design Tasks and Figma Files",
     metaDescription:
       "Connect Todoist and Figma with GAIA. Create Todoist tasks from Figma comments and feedback, link design files to tasks, and track design work progress without leaving your task manager.",
     keywords: [
@@ -1956,7 +1951,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       "connect Todoist and Figma",
     ],
     intro:
-      "Design work lives in Figma — components, prototypes, and iterations accumulate across files and projects. But the feedback, revisions, and handoff tasks that design work generates need to be tracked somewhere more structured than Figma comments, which get buried as the file evolves. Designers often end up with a long list of revision requests scattered across Figma comment threads that are difficult to prioritize and even harder to mark as complete.\n\nGAIA connects Figma and Todoist so design feedback becomes actionable tasks and tracked work stays linked to the files it relates to. When a stakeholder leaves a comment on a Figma file, GAIA can capture it as a Todoist task assigned to the designer responsible for that component. When a Todoist task is linked to a Figma frame, GAIA surfaces the file link in the task so designers can jump directly to the relevant canvas without hunting through projects.\n\nThis integration is valuable for product designers managing feedback from multiple stakeholders across several files, for design teams using Todoist to coordinate shared work, and for design leads who want visibility into revision backlogs without subscribing to Figma comment notifications that overwhelm the inbox.",
+      "Design work lives in Figma: components, prototypes, and iterations accumulate across files and projects. But the feedback, revisions, and handoff tasks that design work generates need to be tracked somewhere more structured than Figma comments, which get buried as the file evolves. Designers often end up with a long list of revision requests scattered across Figma comment threads that are difficult to prioritize and even harder to mark as complete.\n\nGAIA connects Figma and Todoist so design feedback becomes actionable tasks and tracked work stays linked to the files it relates to. When a stakeholder leaves a comment on a Figma file, GAIA can capture it as a Todoist task assigned to the designer responsible for that component. When a Todoist task is linked to a Figma frame, GAIA surfaces the file link in the task so designers can jump directly to the relevant canvas without hunting through projects.\n\nThis integration is valuable for product designers managing feedback from multiple stakeholders across several files, for design teams using Todoist to coordinate shared work, and for design leads who want visibility into revision backlogs without subscribing to Figma comment notifications that overwhelm the inbox.",
     useCases: [
       {
         title: "Convert Figma comments to Todoist tasks",
@@ -1971,7 +1966,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       {
         title: "Design handoff checklist",
         description:
-          "When a Figma file is marked ready for development, GAIA creates a handoff checklist in Todoist — export assets, update component documentation, notify the engineering team — so handoffs are consistent.",
+          "When a Figma file is marked ready for development, GAIA creates a handoff checklist in Todoist (export assets, update component documentation, notify the engineering team) so handoffs are consistent.",
       },
       {
         title: "Revision round tracking",
@@ -2034,7 +2029,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     toolB: "Stripe",
     toolBSlug: "stripe",
     tagline: "Turn Stripe payment events into actionable tasks automatically",
-    metaTitle: "Todoist + Stripe Automation - Payment Events to Tasks | GAIA",
+    metaTitle: "Todoist + Stripe Automation - Payment Events to Tasks",
     metaDescription:
       "Connect Todoist and Stripe with GAIA. Create Todoist tasks from Stripe payment failures, subscription events, and churn signals so your team acts on revenue-critical moments immediately.",
     keywords: [
@@ -2046,7 +2041,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       "connect Todoist and Stripe",
     ],
     intro:
-      "Stripe processes the revenue events that keep a business running, but the human follow-up those events require — reaching out after a failed payment, welcoming a new subscriber, investigating a dispute — has to happen in a separate tool. Without a direct connection between Stripe's event stream and your task manager, critical follow-ups depend on someone monitoring the Stripe dashboard and manually creating tasks, a process that is slow, inconsistent, and easy to neglect during busy periods.\n\nGAIA connects Stripe and Todoist so revenue-critical events automatically generate the right follow-up tasks. A failed payment creates an outreach task for your billing team. A subscription cancellation triggers a win-back checklist. A new enterprise signup kicks off the onboarding task sequence. Your team responds to every important Stripe event as a structured, tracked task rather than an email notification that gets buried.\n\nThis integration is particularly valuable for SaaS companies, subscription businesses, and e-commerce operators who want to minimize churn and maximize revenue recovery without building custom automation or relying on engineers to write webhook handlers.",
+      "Stripe processes the revenue events that keep a business running, but the human follow-up those events require (reaching out after a failed payment, welcoming a new subscriber, investigating a dispute) has to happen in a separate tool. Without a direct connection between Stripe's event stream and your task manager, critical follow-ups depend on someone monitoring the Stripe dashboard and manually creating tasks, a process that is slow, inconsistent, and easy to neglect during busy periods.\n\nGAIA connects Stripe and Todoist so revenue-critical events automatically generate the right follow-up tasks. A failed payment creates an outreach task for your billing team. A subscription cancellation triggers a win-back checklist. A new enterprise signup kicks off the onboarding task sequence. Your team responds to every important Stripe event as a structured, tracked task rather than an email notification that gets buried.\n\nThis integration is particularly valuable for SaaS companies, subscription businesses, and e-commerce operators who want to minimize churn and maximize revenue recovery without building custom automation or relying on engineers to write webhook handlers.",
     useCases: [
       {
         title: "Failed payment follow-up tasks",
@@ -2056,12 +2051,12 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       {
         title: "Subscription cancellation win-back workflow",
         description:
-          "When a Stripe subscription is cancelled, GAIA creates a win-back task checklist — send retention offer, log cancellation reason, update CRM — so every cancellation gets a structured response.",
+          "When a Stripe subscription is cancelled, GAIA creates a win-back task checklist (send retention offer, log cancellation reason, update CRM) so every cancellation gets a structured response.",
       },
       {
         title: "New subscriber onboarding tasks",
         description:
-          "When a new Stripe subscription is created, GAIA triggers a Todoist onboarding checklist — welcome email, account setup verification, first check-in call — so every new customer is handled consistently.",
+          "When a new Stripe subscription is created, GAIA triggers a Todoist onboarding checklist (welcome email, account setup verification, first check-in call) so every new customer is handled consistently.",
       },
       {
         title: "Dispute and chargeback response",
@@ -2100,7 +2095,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       {
         question: "Can I include Stripe customer data in the task description?",
         answer:
-          "Yes. GAIA pulls relevant Stripe event data — customer name, email, amount, subscription plan — and inserts it into the task description template so tasks have full context.",
+          "Yes. GAIA pulls relevant Stripe event data (customer name, email, amount, subscription plan) and inserts it into the task description template so tasks have full context.",
       },
       {
         question: "Is this safe for production Stripe accounts?",
@@ -2123,8 +2118,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     toolBSlug: "airtable",
     tagline:
       "Sync Airtable records with Todoist tasks for structured project tracking",
-    metaTitle:
-      "Todoist + Airtable Automation - Connect Records and Tasks | GAIA",
+    metaTitle: "Todoist + Airtable Automation - Connect Records and Tasks",
     metaDescription:
       "Connect Todoist and Airtable with GAIA. Create Todoist tasks from Airtable records, sync task status back to your database, and keep your project database and personal task list aligned automatically.",
     keywords: [
@@ -2214,7 +2208,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     toolBSlug: "loom",
     tagline:
       "Turn Loom video feedback into Todoist tasks and attach videos to work items",
-    metaTitle: "Todoist + Loom Automation - Video Feedback to Tasks | GAIA",
+    metaTitle: "Todoist + Loom Automation - Video Feedback to Tasks",
     metaDescription:
       "Connect Todoist and Loom with GAIA. Convert Loom video feedback and comments into Todoist tasks, attach Loom videos to tasks for context, and keep async video reviews tracked and actionable.",
     keywords: [
@@ -2226,7 +2220,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       "connect Todoist and Loom",
     ],
     intro:
-      "Loom has transformed how teams share feedback and instructions — a short video conveys nuance that a written comment never could. But Loom videos that contain actionable feedback present a tracking challenge: the reviewer records the video, the recipient watches it, and then the specific action items in the video need to make their way into a task manager. Without automation, this handoff requires the viewer to manually create tasks from what they heard, a step that gets skipped when things get busy.\n\nGAIA connects Loom and Todoist to make video feedback automatically actionable. When a Loom video is shared with you, GAIA can transcribe it, extract the action items mentioned, and create Todoist tasks for each. When you create a Todoist task for a piece of work, GAIA can attach the relevant Loom video link so whoever picks up the task has the full video context alongside the task description.\n\nThis integration is particularly useful for design reviewers and product managers who share Loom walkthroughs with action items, for managers who use Loom to delegate work asynchronously, and for teams where async-first communication is the norm and video feedback needs to translate reliably into tracked tasks.",
+      "Loom has transformed how teams share feedback and instructions: a short video conveys nuance that a written comment never could. But Loom videos that contain actionable feedback present a tracking challenge: the reviewer records the video, the recipient watches it, and then the specific action items in the video need to make their way into a task manager. Without automation, this handoff requires the viewer to manually create tasks from what they heard, a step that gets skipped when things get busy.\n\nGAIA connects Loom and Todoist to make video feedback automatically actionable. When a Loom video is shared with you, GAIA can transcribe it, extract the action items mentioned, and create Todoist tasks for each. When you create a Todoist task for a piece of work, GAIA can attach the relevant Loom video link so whoever picks up the task has the full video context alongside the task description.\n\nThis integration is particularly useful for design reviewers and product managers who share Loom walkthroughs with action items, for managers who use Loom to delegate work asynchronously, and for teams where async-first communication is the norm and video feedback needs to translate reliably into tracked tasks.",
     useCases: [
       {
         title: "Extract Todoist tasks from Loom video transcripts",
@@ -2263,7 +2257,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       {
         step: "Set your video-to-task rules",
         description:
-          "Configure which Loom videos trigger task extraction — all shared videos, only those in specific workspaces, or videos with specific tags. Choose the Todoist project where tasks are created.",
+          "Configure which Loom videos trigger task extraction: all shared videos, only those in specific workspaces, or videos with specific tags. Choose the Todoist project where tasks are created.",
       },
       {
         step: "GAIA turns video feedback into tracked tasks",
@@ -2308,7 +2302,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Sync sales meetings with Salesforce and auto-log CRM activity from your calendar",
     metaTitle:
-      "Google Calendar + Salesforce Automation - Sync Meetings and CRM | GAIA",
+      "Google Calendar + Salesforce Automation - Sync Meetings and CRM",
     metaDescription:
       "Connect Google Calendar and Salesforce with GAIA. Automatically log calendar meetings as Salesforce activities, create follow-up tasks from sales calls, and keep your CRM timeline accurate without manual entry.",
     keywords: [
@@ -2320,7 +2314,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       "connect Google Calendar and Salesforce",
     ],
     intro:
-      "Every sales call on your Google Calendar should have a corresponding activity record in Salesforce — but manually logging each meeting after it happens is one of the most resisted tasks in the sales profession. Reps log calls inconsistently, details get forgotten by end of day, and managers lose the pipeline visibility they need to coach effectively. The CRM timeline becomes a fiction rather than an accurate record.\n\nGAIA connects Google Calendar and Salesforce to make CRM logging automatic. When a sales meeting appears on your calendar, GAIA links it to the relevant Salesforce opportunity, contact, or account. When the meeting ends, GAIA creates the activity record with attendees, duration, and a summary derived from any notes you've added. Follow-up tasks from the call land in Salesforce Tasks automatically so the next step is always recorded.\n\nThis integration is designed for account executives who want accurate CRM records without the administrative friction, for sales managers who need consistent pipeline activity data across the team, and for RevOps teams who build reporting on top of Salesforce activity logs that are currently incomplete.",
+      "Every sales call on your Google Calendar should have a corresponding activity record in Salesforce, but manually logging each meeting after it happens is one of the most resisted tasks in the sales profession. Reps log calls inconsistently, details get forgotten by end of day, and managers lose the pipeline visibility they need to coach effectively. The CRM timeline becomes a fiction rather than an accurate record.\n\nGAIA connects Google Calendar and Salesforce to make CRM logging automatic. When a sales meeting appears on your calendar, GAIA links it to the relevant Salesforce opportunity, contact, or account. When the meeting ends, GAIA creates the activity record with attendees, duration, and a summary derived from any notes you've added. Follow-up tasks from the call land in Salesforce Tasks automatically so the next step is always recorded.\n\nThis integration is designed for account executives who want accurate CRM records without the administrative friction, for sales managers who need consistent pipeline activity data across the team, and for RevOps teams who build reporting on top of Salesforce activity logs that are currently incomplete.",
     useCases: [
       {
         title: "Auto-log calendar meetings as Salesforce activities",
@@ -2335,7 +2329,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       {
         title: "Follow-up task creation from sales calls",
         description:
-          "After a calendar meeting linked to a Salesforce opportunity, GAIA creates follow-up tasks in Salesforce — send proposal, update stage, schedule next call — based on a configurable template.",
+          "After a calendar meeting linked to a Salesforce opportunity, GAIA creates follow-up tasks in Salesforce (send proposal, update stage, schedule next call) based on a configurable template.",
       },
       {
         title: "Opportunity next step updates",
@@ -2387,7 +2381,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
         question:
           "Can GAIA update the Salesforce opportunity stage based on the meeting?",
         answer:
-          "GAIA can update the stage if you configure a rule — for example, a meeting tagged as 'Demo' advances the opportunity to Demonstration. Stage changes require your approval before they are applied.",
+          "GAIA can update the stage if you configure a rule, for example a meeting tagged as 'Demo' advances the opportunity to Demonstration. Stage changes require your approval before they are applied.",
       },
     ],
   },
@@ -2401,7 +2395,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Keep your Airtable project database in sync with Google Calendar events",
     metaTitle:
-      "Google Calendar + Airtable Automation - Sync Events and Records | GAIA",
+      "Google Calendar + Airtable Automation - Sync Events and Records",
     metaDescription:
       "Connect Google Calendar and Airtable with GAIA. Create Airtable records from calendar events, update event dates when database records change, and keep your project database and schedule aligned.",
     keywords: [
@@ -2413,7 +2407,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       "connect Google Calendar and Airtable",
     ],
     intro:
-      "Airtable is a powerful project database, but its built-in calendar view and Google Calendar are two separate things — changes in one don't automatically reflect in the other. Teams end up maintaining dates in both places, leading to scheduling conflicts, missed deadlines, and the constant question of which system has the correct date when they disagree.\n\nGAIA keeps Google Calendar and Airtable synchronized so your project database and your schedule are always telling the same story. When a date field changes in an Airtable record, GAIA updates the corresponding Google Calendar event. When you create a new Google Calendar event for a project milestone, GAIA creates or updates the Airtable record to match. The two systems become a single source of truth for when things happen.\n\nThis integration is particularly useful for content teams who plan publishing schedules in Airtable but need deliverable dates on Google Calendar, for project managers who track milestones in Airtable and want them on a shared calendar for stakeholder visibility, and for event planners who maintain detailed event records in Airtable alongside operational Google Calendar schedules.",
+      "Airtable is a powerful project database, but its built-in calendar view and Google Calendar are two separate things: changes in one don't automatically reflect in the other. Teams end up maintaining dates in both places, leading to scheduling conflicts, missed deadlines, and the constant question of which system has the correct date when they disagree.\n\nGAIA keeps Google Calendar and Airtable synchronized so your project database and your schedule are always telling the same story. When a date field changes in an Airtable record, GAIA updates the corresponding Google Calendar event. When you create a new Google Calendar event for a project milestone, GAIA creates or updates the Airtable record to match. The two systems become a single source of truth for when things happen.\n\nThis integration is particularly useful for content teams who plan publishing schedules in Airtable but need deliverable dates on Google Calendar, for project managers who track milestones in Airtable and want them on a shared calendar for stakeholder visibility, and for event planners who maintain detailed event records in Airtable alongside operational Google Calendar schedules.",
     useCases: [
       {
         title: "Sync Airtable date fields to Google Calendar events",
@@ -2463,7 +2457,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
         question:
           "Can GAIA sync multiple Airtable tables to different Google Calendars?",
         answer:
-          "Yes. You can map each Airtable table or view to a different Google Calendar — marketing milestones to the marketing calendar, product releases to the engineering calendar.",
+          "Yes. You can map each Airtable table or view to a different Google Calendar: marketing milestones to the marketing calendar, product releases to the engineering calendar.",
       },
       {
         question:
@@ -2495,7 +2489,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     tagline:
       "Record Loom video briefs for upcoming meetings and share recaps automatically",
     metaTitle:
-      "Google Calendar + Loom Automation - Meeting Briefs and Video Recaps | GAIA",
+      "Google Calendar + Loom Automation - Meeting Briefs and Video Recaps",
     metaDescription:
       "Connect Google Calendar and Loom with GAIA. Get reminded to record Loom pre-meeting briefs, automatically share post-meeting Loom recaps with attendees, and reduce synchronous meeting load.",
     keywords: [
@@ -2507,7 +2501,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       "connect Google Calendar and Loom",
     ],
     intro:
-      "The best meetings start with shared context and end with a clear record — but most meetings do neither. Attendees arrive without reviewing relevant background, and decisions made during the call are poorly documented afterward. Loom offers a simple way to record context-setting briefs before meetings and concise recaps after them, but without automation, creating and sharing those videos requires discipline that's hard to maintain across a full calendar.\n\nGAIA connects Google Calendar and Loom to build async context into every meeting automatically. When a meeting appears on your calendar, GAIA can remind you to record a Loom brief so attendees arrive informed. After the meeting, GAIA prompts you to record a recap and then shares the Loom link with all attendees directly, creating a searchable async record without manual distribution.\n\nThis integration is particularly valuable for distributed teams across time zones where pre-read context reduces the need for long synchronous meetings, for managers who run recurring check-ins where a brief async update could replace a full meeting, and for teams committed to async-first communication who want their calendar workflows to reflect that principle.",
+      "The best meetings start with shared context and end with a clear record, but most meetings do neither. Attendees arrive without reviewing relevant background, and decisions made during the call are poorly documented afterward. Loom offers a simple way to record context-setting briefs before meetings and concise recaps after them, but without automation, creating and sharing those videos requires discipline that's hard to maintain across a full calendar.\n\nGAIA connects Google Calendar and Loom to build async context into every meeting automatically. When a meeting appears on your calendar, GAIA can remind you to record a Loom brief so attendees arrive informed. After the meeting, GAIA prompts you to record a recap and then shares the Loom link with all attendees directly, creating a searchable async record without manual distribution.\n\nThis integration is particularly valuable for distributed teams across time zones where pre-read context reduces the need for long synchronous meetings, for managers who run recurring check-ins where a brief async update could replace a full meeting, and for teams committed to async-first communication who want their calendar workflows to reflect that principle.",
     useCases: [
       {
         title: "Pre-meeting Loom brief reminders",

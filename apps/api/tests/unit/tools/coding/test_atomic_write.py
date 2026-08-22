@@ -17,8 +17,6 @@ import pytest
 from app.agents.tools.coding._context import atomic_write
 from app.constants.sandbox import WORKSPACE_TMP_SUFFIX
 
-pytestmark = pytest.mark.unit
-
 
 def _fake_sbx(entry_mtime: datetime | None) -> tuple[AsyncMock, dict]:
     """A sandbox whose files.rename returns EntryInfo-like obj with given mtime.
@@ -35,7 +33,7 @@ def _fake_sbx(entry_mtime: datetime | None) -> tuple[AsyncMock, dict]:
     def _write(path: str, data: bytes) -> None:
         calls["write"].append((path, data))
 
-    def _rename(src: str, dst: str):  # noqa: ANN202
+    def _rename(src: str, dst: str):
         calls["rename"].append((src, dst))
         return _Info()
 

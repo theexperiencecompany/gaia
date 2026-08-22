@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Inflection AI's empathetic personal conversational AI",
   description:
     "Pi is Inflection AI's conversational AI designed to be an empathetic personal companion — thoughtful, supportive, and focused on dialogue. GAIA is a proactive AI productivity assistant that manages your email, calendar, tasks, and workflows while also being conversational.",
-  metaTitle: "Pi AI Alternative for Productivity Management | GAIA vs Pi",
+  metaTitle: "Pi AI Alternative for Productivity Management — GAIA vs Pi",
   metaDescription:
     "Pi is great for conversation but won't manage your inbox or automate tasks. GAIA is an open-source alternative that proactively handles your workflow across email, calendar, and 50+ integrations.",
   keywords: [

@@ -1,5 +1,8 @@
 """Unit tests for context_utils: execute_tool, fetch_all_providers, resolve_providers."""
 
+from concurrent.futures import TimeoutError as FuturesTimeout
+from datetime import UTC, datetime, timedelta
+import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -26,6 +29,13 @@ class _SampleOutputModel(BaseModel):
     count: int
 
 
+class _DatedOutputModel(BaseModel):
+    """Model with a datetime field — the python/json dump modes differ on it."""
+
+    name: str
+    run_at: datetime
+
+
 class _StrictOutputModel(BaseModel):
     """Model whose fields don't match typical tool output — triggers validation failure."""
 
@@ -45,7 +55,6 @@ def _make_composio_service(result: dict[str, Any]) -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestExecuteTool:
     """Tests for execute_tool (sync, calls Composio service)."""
 
@@ -55,11 +64,11 @@ class TestExecuteTool:
             {"successful": True, "data": {"emails": [1, 2, 3]}}
         )
 
-        result = execute_tool("GMAIL_FETCH_EMAILS", {"limit": 10}, "user_123")
+        result = execute_tool("GMAIL_FETCH_MESSAGES", {"limit": 10}, "user_123")
 
         assert result == {"emails": [1, 2, 3]}
         mock_get_service.return_value.composio.tools.execute.assert_called_once_with(
-            slug="GMAIL_FETCH_EMAILS",
+            slug="GMAIL_FETCH_MESSAGES",
             arguments={"limit": 10},
             user_id="user_123",
             dangerously_skip_version_check=True,
@@ -74,7 +83,7 @@ class TestExecuteTool:
         )
 
         with pytest.raises(Exception, match="Auth token expired"):
-            execute_tool("GMAIL_FETCH_EMAILS", {}, "user_123")
+            execute_tool("GMAIL_FETCH_MESSAGES", {}, "user_123")
 
     @patch(_COMPOSIO_SERVICE_PATCH)
     def test_unsuccessful_execution_raises_fallback_message_when_no_error_key(
@@ -82,8 +91,8 @@ class TestExecuteTool:
     ) -> None:
         mock_get_service.return_value = _make_composio_service({"successful": False})
 
-        with pytest.raises(Exception, match="GMAIL_FETCH_EMAILS failed"):
-            execute_tool("GMAIL_FETCH_EMAILS", {}, "user_123")
+        with pytest.raises(Exception, match="GMAIL_FETCH_MESSAGES failed"):
+            execute_tool("GMAIL_FETCH_MESSAGES", {}, "user_123")
 
     @patch(_COMPOSIO_SERVICE_PATCH)
     def test_with_output_model_validation_succeeds(self, mock_get_service: MagicMock) -> None:
@@ -94,6 +103,24 @@ class TestExecuteTool:
         result = execute_tool("SOME_TOOL", {}, "user_123", output_model=_SampleOutputModel)
 
         assert result == {"name": "Test", "count": 42}
+
+    @patch(_COMPOSIO_SERVICE_PATCH)
+    @pytest.mark.regression
+    def test_output_model_datetimes_come_back_json_safe(self, mock_get_service: MagicMock) -> None:
+        """The return crosses into agent text as JSON — a validated datetime must
+        be an ISO string, not the native object json.dumps cannot encode."""
+        run_at = datetime.now(UTC) + timedelta(hours=1)
+        mock_get_service.return_value = _make_composio_service(
+            {"successful": True, "data": {"name": "Job", "run_at": run_at}}
+        )
+
+        result = execute_tool("SOME_TOOL", {}, "user_123", output_model=_DatedOutputModel)
+
+        json.dumps(result)
+        assert isinstance(result["run_at"], str)
+        # Pydantic's JSON mode renders UTC with a Z suffix; parse it back to
+        # compare instants rather than pin one spelling.
+        assert datetime.fromisoformat(result["run_at"].replace("Z", "+00:00")) == run_at
 
     @patch(_COMPOSIO_SERVICE_PATCH)
     def test_with_output_model_validation_fails_returns_raw_data(
@@ -150,7 +177,6 @@ class TestExecuteTool:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestFetchAllProviders:
     """Tests for fetch_all_providers (parallel execution with ThreadPoolExecutor)."""
 
@@ -190,26 +216,41 @@ class TestFetchAllProviders:
         assert result["good"] == {"ok": True}
         assert "bad" not in result
 
-    @patch("app.utils.context_utils.PROVIDER_TIMEOUT_SECONDS", 0.001)
-    @patch("app.utils.context_utils.execute_tool")
-    def test_timeout_on_one_provider_skipped(self, mock_execute: MagicMock) -> None:
+    def test_timeout_on_one_provider_skipped(self) -> None:
         """A provider that exceeds the timeout should be skipped."""
-        import time
 
-        def side_effect(slug: str, params: dict, uid: str) -> dict:
-            if slug == "SLOW_GATHER":
-                time.sleep(1)  # Well beyond the 0.001s timeout
-                return {"slow": True}
-            return {"fast": True}
+        class _ImmediateFuture:
+            """Future stub that returns a canned value or raises a timeout.
 
-        mock_execute.side_effect = side_effect
+            Drives fetch_all_providers' timeout branch without real threads or
+            sleeping — the timeout decision lives in future.result(timeout=...).
+            """
+
+            def __init__(self, outcome: tuple[str, dict[str, Any] | None] | type[FuturesTimeout]):
+                self._outcome = outcome
+
+            def result(self, timeout: float | None = None) -> tuple[str, dict[str, Any] | None]:
+                if self._outcome is FuturesTimeout:
+                    raise FuturesTimeout()
+                return self._outcome
+
+        def fake_submit(fn: Any, provider: str) -> _ImmediateFuture:
+            if provider == "slow_provider":
+                return _ImmediateFuture(FuturesTimeout)
+            return _ImmediateFuture(("fast_provider", {"fast": True}))
 
         provider_tools = {
             "fast_provider": "FAST_GATHER",
             "slow_provider": "SLOW_GATHER",
         }
 
-        result = fetch_all_providers(["fast_provider", "slow_provider"], provider_tools, "user_1")
+        with patch(
+            "app.utils.context_utils._CONTEXT_EXECUTOR.submit",
+            side_effect=fake_submit,
+        ):
+            result = fetch_all_providers(
+                ["fast_provider", "slow_provider"], provider_tools, "user_1"
+            )
 
         assert "fast_provider" in result
         assert result["fast_provider"] == {"fast": True}
@@ -274,7 +315,6 @@ class TestFetchAllProviders:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 @pytest.mark.asyncio
 class TestResolveProviders:
     """Tests for resolve_providers (async, resolves which providers to query)."""

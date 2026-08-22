@@ -1,14 +1,24 @@
 "use client";
 
+import { Button, ButtonGroup } from "@heroui/button";
 import { Chip } from "@heroui/chip";
+import {
+  Dropdown,
+  DropdownItem,
+  DropdownMenu,
+  DropdownTrigger,
+} from "@heroui/react";
 import { Tooltip } from "@heroui/tooltip";
 import {
+  Alert01Icon,
+  ArrowDown01Icon,
   CursorMagicSelection03Icon,
   DateTimeIcon,
   Mail01Icon,
   UserCircle02Icon,
 } from "@icons";
 import Image from "next/image";
+import { useState } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
 import {
@@ -17,7 +27,7 @@ import {
 } from "@/features/workflows/utils/creator";
 import { cn } from "@/lib/utils";
 
-import type { Workflow } from "../../api/workflowApi";
+import type { IntegrationRef, Workflow } from "@/types/features/workflowTypes";
 
 /**
  * Get relative time display (e.g., "in 2h", "in 3d")
@@ -214,15 +224,39 @@ interface CreatorAvatarProps {
   };
   size?: number;
   showTooltip?: boolean;
+  /** Render the creator's name beside the avatar (verified when it's ours) */
+  showName?: boolean;
 }
 
 export function CreatorAvatar({
   creator,
   size = 27,
   showTooltip = true,
+  showName = false,
 }: CreatorAvatarProps) {
   const avatarSrc = resolveCreatorAvatar(creator);
   const displayName = resolveCreatorName(creator);
+
+  if (showName) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <div className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full">
+          {avatarSrc ? (
+            <Image
+              src={avatarSrc}
+              alt={displayName}
+              width={100}
+              height={100}
+              className="object-contain"
+            />
+          ) : (
+            <UserCircle02Icon className="h-4 w-4 text-zinc-400" />
+          )}
+        </div>
+        <span className="truncate text-xs text-zinc-400">{displayName}</span>
+      </div>
+    );
+  }
 
   const avatar = (
     <div className="flex items-center gap-2">
@@ -233,7 +267,7 @@ export function CreatorAvatar({
             alt={displayName}
             width={size}
             height={size}
-            className="rounded-full h-7 w-7"
+            className="rounded-full h-7 w-7 object-contain"
           />
         ) : (
           <UserCircle02Icon className="h-7 w-7 text-zinc-400" />
@@ -255,5 +289,146 @@ export function CreatorAvatar({
     >
       {avatar}
     </Tooltip>
+  );
+}
+
+interface MissingIntegrationsWarningProps {
+  missingIntegrations: IntegrationRef[];
+}
+
+/** Canonical copy for the "this workflow needs integrations connected" alert,
+ *  shared by the card warning tooltip and the workflow-modal banner. */
+export function missingIntegrationsMessage(
+  missingIntegrations: IntegrationRef[],
+): string {
+  const names = missingIntegrations.map((i) => i.name).join(", ");
+  return `Connect ${names} to enable this workflow.`;
+}
+
+/**
+ * The status a workflow with unconnected integrations has instead of
+ * activated/deactivated: it cannot run either way until they are connected.
+ * Shaped like the activation chip it stands in for, and shared with the modal
+ * header so the card and the modal can never disagree about the same workflow.
+ */
+export function NeedsSetupChip({ size = "sm" }: { size?: "sm" | "md" | "lg" }) {
+  return (
+    <Chip
+      color="warning"
+      variant="flat"
+      size={size}
+      radius="sm"
+      className="cursor-default"
+      startContent={<Alert01Icon width={13} height={13} />}
+    >
+      Needs setup
+    </Chip>
+  );
+}
+
+export function MissingIntegrationsWarning({
+  missingIntegrations,
+}: Readonly<MissingIntegrationsWarningProps>) {
+  if (!missingIntegrations.length) return null;
+
+  return (
+    <Tooltip
+      content={missingIntegrationsMessage(missingIntegrations)}
+      placement="top"
+      delay={200}
+      closeDelay={0}
+      classNames={{ content: "bg-zinc-800 text-xs max-w-56 text-center" }}
+    >
+      <NeedsSetupChip />
+    </Tooltip>
+  );
+}
+
+interface MissingIntegrationsAlertProps {
+  /** Integrations the workflow needs but the user hasn't connected. */
+  missingIntegrations: IntegrationRef[];
+  /** Id currently connecting (shows a spinner; disables the others). */
+  connectingId: string | null;
+  onConnect: (integrationId: string) => void;
+}
+
+/** Full banner version of {@link MissingIntegrationsWarning}: the same message
+ *  plus a connect button per integration. Used in the workflow modal where
+ *  there is room to act on it. */
+export function MissingIntegrationsAlert({
+  missingIntegrations,
+  connectingId,
+  onConnect,
+}: Readonly<MissingIntegrationsAlertProps>) {
+  const { getIntegrationIconUrl } = useIntegrationLookup();
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+  if (!missingIntegrations.length) return null;
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-yellow-500/10 px-4 py-3 text-sm text-yellow-300">
+      <span className="flex items-center gap-2">
+        <Alert01Icon width={16} height={16} className="shrink-0" />
+        <span>{missingIntegrationsMessage(missingIntegrations)}</span>
+      </span>
+
+      {missingIntegrations.length === 1 ? (
+        <Button
+          color="warning"
+          variant="flat"
+          size="sm"
+          isLoading={!!connectingId}
+          isDisabled={!!connectingId}
+          onPress={() => onConnect(missingIntegrations[0].id)}
+        >
+          Connect {missingIntegrations[0].name}
+        </Button>
+      ) : (
+        <ButtonGroup color="warning" variant="flat" size="sm">
+          <Button
+            isLoading={!!connectingId}
+            isDisabled={!!connectingId}
+            onPress={() => setIsDropdownOpen((o) => !o)}
+          >
+            Connect Apps
+          </Button>
+          <Dropdown
+            placement="bottom-end"
+            isOpen={isDropdownOpen}
+            onOpenChange={setIsDropdownOpen}
+          >
+            <DropdownTrigger>
+              <Button isIconOnly isDisabled={!!connectingId}>
+                <ArrowDown01Icon className="size-3.5" />
+              </Button>
+            </DropdownTrigger>
+            <DropdownMenu aria-label="Missing integrations to connect">
+              {missingIntegrations.map((integration) => {
+                const iconUrl = getIntegrationIconUrl(integration.id);
+                return (
+                  <DropdownItem
+                    key={integration.id}
+                    onPress={() => onConnect(integration.id)}
+                    startContent={
+                      iconUrl ? (
+                        <Image
+                          src={iconUrl}
+                          alt={integration.name}
+                          width={16}
+                          height={16}
+                          className="rounded-sm"
+                        />
+                      ) : undefined
+                    }
+                  >
+                    Connect {integration.name}
+                  </DropdownItem>
+                );
+              })}
+            </DropdownMenu>
+          </Dropdown>
+        </ButtonGroup>
+      )}
+    </div>
   );
 }

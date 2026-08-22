@@ -48,7 +48,7 @@ const faqs = [
   {
     question: "Is my email data private?",
     answer:
-      "On the cloud tier, your data is processed with strict security controls and never used for model training. On the self-hosted tier, your email content never leaves your own infrastructure — GAIA processes everything locally using your own LLM API key.",
+      "On the cloud tier, your data is processed with strict security controls, and content from your connected accounts is never used to improve our services. To generate responses, email content is shared with third-party AI model providers as described in our Privacy Policy. On the self-hosted tier, your email content never leaves your own infrastructure — GAIA processes everything locally using your own LLM API key.",
   },
 ];
 

@@ -1,5 +1,5 @@
+import { Link } from "@heroui/link";
 import type { Metadata } from "next";
-
 import JsonLd from "@/components/seo/JsonLd";
 import {
   generateBreadcrumbSchema,
@@ -46,17 +46,18 @@ const PrivacyPolicy = () => {
         <div className="privacy-policy w-full max-w-(--breakpoint-xl) px-4 pb-6 pt-24 sm:px-6 lg:px-8">
           <h1 className="mb-4 text-2xl font-bold">Privacy Policy</h1>
           <p className="mb-4">
-            <strong>Effective Date:</strong> July 3, 2025
+            <strong>Effective Date:</strong> August 7, 2026
           </p>
           <p className="mb-4">
-            This Privacy Policy (this "Policy") describes how GAIA ("Company,"
-            "GAIA," "we," "us," or "our") collects, uses, stores, processes, and
-            discloses personal information in connection with our artificial
-            intelligence assistant services and platform (the "Service"). This
-            Policy applies to all users of the Service and is incorporated by
-            reference into our Terms of Service Agreement. BY USING THE SERVICE,
-            YOU CONSENT TO THE COLLECTION, USE, AND DISCLOSURE OF YOUR PERSONAL
-            INFORMATION AS DESCRIBED IN THIS POLICY.
+            This Privacy Policy (this "Policy") describes how The Experience
+            Company, Inc. ("Company," "GAIA," "we," "us," or "our") collects,
+            uses, stores, processes, and discloses personal information in
+            connection with our artificial intelligence assistant services and
+            platform (the "Service"). This Policy applies to all users of the
+            Service and is incorporated by reference into our Terms of Service
+            Agreement. BY USING THE SERVICE, YOU CONSENT TO THE COLLECTION, USE,
+            AND DISCLOSURE OF YOUR PERSONAL INFORMATION AS DESCRIBED IN THIS
+            POLICY.
           </p>
 
           <h2 className="mt-4 mb-2 text-xl font-semibold">
@@ -100,6 +101,10 @@ const PrivacyPolicy = () => {
             <h3 className="mt-4 mb-2 text-lg font-semibold">
               1.2 Information We Collect Automatically
             </h3>
+            <p className="mb-2">
+              The information described in this section is linked to your
+              account and is not anonymous.
+            </p>
             <ul className="mb-4 ml-6 list-disc">
               <li>
                 <strong>Device Information:</strong> IP address, device type,
@@ -109,7 +114,8 @@ const PrivacyPolicy = () => {
               <li>
                 <strong>Usage Data:</strong> Information about how you use the
                 Service, including features accessed, time spent, interaction
-                patterns, and performance metrics;
+                patterns, and performance metrics. This data is associated with
+                your account identifier;
               </li>
               <li>
                 <strong>Location Data:</strong> General location information
@@ -139,6 +145,12 @@ const PrivacyPolicy = () => {
                 account including but not limited to email, calendar events,
                 contacts, and documents as authorized by you through Google's
                 OAuth consent process;
+              </li>
+              <li>
+                <strong>Connected Integrations:</strong> When you connect a
+                third-party account (such as Slack, Notion, or GitHub), we
+                receive data from that account as authorized by you during the
+                connection process;
               </li>
               <li>
                 <strong>Analytics Providers:</strong> Information from
@@ -215,15 +227,22 @@ const PrivacyPolicy = () => {
                 and to improve functionality;
               </li>
               <li>
-                Conducting research and analytics to enhance our AI models and
-                algorithms;
-              </li>
-              <li>
                 Monitoring and analyzing trends, usage, and activities in
                 connection with the Service;
               </li>
               <li>Developing new features, services, and products.</li>
             </ul>
+            <p className="mb-4">
+              <strong>
+                We may use content you submit to the Service to improve our
+                services and products.
+              </strong>{" "}
+              We do not use content from your connected third-party integrations
+              — including emails, calendar events, contacts, and other data
+              retrieved from accounts you connect — to improve our services.
+              Content from connected accounts is used solely to operate the
+              Service at your direction.
+            </p>
 
             <h3 className="mt-4 mb-2 text-lg font-semibold">
               2.4 Security and Legal Compliance
@@ -259,7 +278,19 @@ const PrivacyPolicy = () => {
             </p>
 
             <h3 className="mt-4 mb-2 text-lg font-semibold">
-              3.1 Service Providers
+              3.1 AI Model Providers
+            </h3>
+            <p className="mb-4">
+              To generate responses, we share content you submit with
+              third-party AI model providers who process it on our behalf. This
+              may include the contents of messages, files, and data retrieved
+              from accounts you have connected. We do not use content from your
+              connected third-party integrations to improve our services, as
+              described in Section 2.3.
+            </p>
+
+            <h3 className="mt-4 mb-2 text-lg font-semibold">
+              3.2 Service Providers
             </h3>
             <p className="mb-2">
               We may share your information with trusted third-party service
@@ -268,6 +299,10 @@ const PrivacyPolicy = () => {
             <ul className="mb-4 ml-6 list-disc">
               <li>Cloud hosting and infrastructure providers;</li>
               <li>Payment processing companies;</li>
+              <li>
+                Integration platforms that connect the Service to your
+                third-party accounts;
+              </li>
               <li>Customer support and communication platforms;</li>
               <li>Analytics and monitoring services;</li>
               <li>Security and fraud prevention services.</li>
@@ -281,7 +316,7 @@ const PrivacyPolicy = () => {
             </p>
 
             <h3 className="mt-4 mb-2 text-lg font-semibold">
-              3.2 Legal Requirements
+              3.3 Legal Requirements
             </h3>
             <p className="mb-2">
               We may disclose your information when required by law or when we
@@ -304,7 +339,7 @@ const PrivacyPolicy = () => {
             </ul>
 
             <h3 className="mt-4 mb-2 text-lg font-semibold">
-              3.3 Business Transfers
+              3.4 Business Transfers
             </h3>
             <p className="mb-4">
               In the event of a merger, acquisition, or sale of all or a portion
@@ -315,7 +350,114 @@ const PrivacyPolicy = () => {
           </div>
 
           <h2 className="mt-4 mb-2 text-xl font-semibold">
-            4. Cookies and Tracking Technologies
+            4. Google User Data and Limited Use
+          </h2>
+          <div className="mb-4">
+            <p className="mb-4">
+              GAIA's use and transfer of information received from Google APIs
+              to any other app will adhere to the{" "}
+              <Link
+                className="text-blue-500 underline"
+                href="https://developers.google.com/terms/api-services-user-data-policy"
+                isExternal
+                showAnchorIcon={false}
+              >
+                Google API Services User Data Policy
+              </Link>
+              , including the Limited Use requirements.
+            </p>
+            <p className="mb-2">In particular:</p>
+            <ul className="mb-4 ml-6 list-disc">
+              <li>
+                We use Google user data only to provide or improve user-facing
+                features that are prominent in the Service;
+              </li>
+              <li>
+                We do not use Google user data to develop or improve generalized
+                artificial intelligence or machine learning models;
+              </li>
+              <li>
+                We do not transfer or sell Google user data for advertising,
+                marketing, or any other unrelated purpose;
+              </li>
+              <li>
+                We do not allow humans to read Google user data unless we have
+                your affirmative consent for specific messages, it is necessary
+                for security purposes or to comply with applicable law, or the
+                data has been aggregated and anonymized for internal operations;
+              </li>
+              <li>
+                You may disconnect any Google integration at any time from your
+                account settings, and you may revoke our access directly through
+                your{" "}
+                <Link
+                  className="text-blue-500 underline"
+                  href="https://myaccount.google.com/permissions"
+                  isExternal
+                  showAnchorIcon={false}
+                >
+                  Google Account permissions page
+                </Link>
+                .
+              </li>
+            </ul>
+          </div>
+
+          <h2 className="mt-4 mb-2 text-xl font-semibold">
+            5. How the Assistant Acts on Your Behalf
+          </h2>
+          <div className="mb-4">
+            <h3 className="mt-4 mb-2 text-lg font-semibold">
+              5.1 Autonomous Actions
+            </h3>
+            <p className="mb-2">
+              GAIA is an agentic assistant. When you connect an integration, the
+              assistant can read from and write to that account on your behalf.
+              Depending on the integrations you enable and the instructions you
+              give, this may include:
+            </p>
+            <ul className="mb-4 ml-6 list-disc">
+              <li>
+                Reading, drafting, sending, labelling, and archiving email;
+              </li>
+              <li>Creating, modifying, and deleting calendar events;</li>
+              <li>
+                Posting messages and reading conversations in connected chat
+                platforms;
+              </li>
+              <li>
+                Creating, updating, and deleting records in other connected
+                tools;
+              </li>
+              <li>
+                Running scheduled workflows and background tasks that act
+                without you being present.
+              </li>
+            </ul>
+            <p className="mb-4">
+              Certain actions we classify as destructive require your explicit
+              approval before they are carried out. You can review connected
+              integrations, disable them, and revoke their access at any time
+              from your account settings.
+            </p>
+
+            <h3 className="mt-4 mb-2 text-lg font-semibold">
+              5.2 Automated Decision-Making
+            </h3>
+            <p className="mb-4">
+              The Service uses automated processing to decide which content is
+              relevant to you, which notifications to send, and which actions to
+              take or suggest in response to your instructions. We do not use
+              automated decision-making to produce legal effects concerning you
+              or effects of similarly significant impact, such as decisions
+              about credit, employment, insurance, or access to essential
+              services. You may contact us at any time to request human review
+              of an automated action taken by the Service.
+            </p>
+          </div>
+
+          <h2 className="mt-4 mb-2 text-xl font-semibold">
+            6. Cookies and Tracking Technologies
           </h2>
           <div className="mb-4">
             <p className="mb-2">
@@ -325,7 +467,7 @@ const PrivacyPolicy = () => {
             </p>
 
             <h3 className="mt-4 mb-2 text-lg font-semibold">
-              4.1 Types of Cookies
+              6.1 Types of Cookies
             </h3>
             <ul className="mb-4 ml-6 list-disc">
               <li>
@@ -347,7 +489,7 @@ const PrivacyPolicy = () => {
             </ul>
 
             <h3 className="mt-4 mb-2 text-lg font-semibold">
-              4.2 Cookie Management
+              6.2 Cookie Management
             </h3>
             <p className="mb-4">
               You can control cookies through your browser settings. However,
@@ -357,7 +499,7 @@ const PrivacyPolicy = () => {
             </p>
           </div>
 
-          <h2 className="mt-4 mb-2 text-xl font-semibold">5. Data Security</h2>
+          <h2 className="mt-4 mb-2 text-xl font-semibold">7. Data Security</h2>
           <div className="mb-4">
             <p className="mb-2">
               We implement appropriate technical and organizational measures to
@@ -398,7 +540,25 @@ const PrivacyPolicy = () => {
           </div>
 
           <h2 className="mt-4 mb-2 text-xl font-semibold">
-            6. Your Rights and Choices
+            8. Data Breach Notification
+          </h2>
+          <div className="mb-4">
+            <p className="mb-4">
+              If we become aware of a breach of security leading to the
+              accidental or unlawful destruction, loss, alteration, unauthorized
+              disclosure of, or access to your personal information, we will
+              notify the relevant supervisory authorities within seventy-two
+              (72) hours of becoming aware of it, where required by applicable
+              law. Where the breach is likely to result in a high risk to your
+              rights and freedoms, we will also notify you without undue delay.
+              Our notice will describe the nature of the breach, the categories
+              of data affected, the likely consequences, and the measures we
+              have taken or propose to take in response.
+            </p>
+          </div>
+
+          <h2 className="mt-4 mb-2 text-xl font-semibold">
+            9. Your Rights and Choices
           </h2>
           <div className="mb-4">
             <p className="mb-2">
@@ -407,7 +567,7 @@ const PrivacyPolicy = () => {
             </p>
 
             <h3 className="mt-4 mb-2 text-lg font-semibold">
-              6.1 Access and Portability
+              9.1 Access and Portability
             </h3>
             <p className="mb-2">You have the right to:</p>
             <ul className="mb-4 ml-6 list-disc">
@@ -420,7 +580,7 @@ const PrivacyPolicy = () => {
             </ul>
 
             <h3 className="mt-4 mb-2 text-lg font-semibold">
-              6.2 Correction and Deletion
+              9.2 Correction and Deletion
             </h3>
             <p className="mb-2">You have the right to:</p>
             <ul className="mb-4 ml-6 list-disc">
@@ -437,7 +597,7 @@ const PrivacyPolicy = () => {
             </ul>
 
             <h3 className="mt-4 mb-2 text-lg font-semibold">
-              6.3 Restriction and Objection
+              9.3 Restriction and Objection
             </h3>
             <p className="mb-2">You have the right to:</p>
             <ul className="mb-4 ml-6 list-disc">
@@ -449,13 +609,56 @@ const PrivacyPolicy = () => {
               <li>Opt-out of marketing communications.</li>
             </ul>
 
-            <p className="mb-4">
-              To exercise these rights, please contact us using the information
-              provided in Section 10.
+            <h3 className="mt-4 mb-2 text-lg font-semibold">
+              9.4 How to Exercise Your Rights
+            </h3>
+            <p className="mb-2">
+              To exercise any of the rights described above, email us at{" "}
+              <a
+                className="text-blue-500 underline"
+                href="mailto:support@heygaia.so"
+              >
+                support@heygaia.so
+              </a>{" "}
+              from the email address associated with your account, or submit a
+              request through our{" "}
+              <a className="text-blue-500 underline" href="/contact">
+                contact page
+              </a>
+              , and tell us which right you wish to exercise.
             </p>
+            <ul className="mb-4 ml-6 list-disc">
+              <li>
+                For requests from the EEA, UK, or Switzerland, we will
+                acknowledge your request and respond within one month, with a
+                possible extension of up to two additional months for complex or
+                numerous requests (as permitted by the GDPR);
+              </li>
+              <li>
+                For all other requests, we will acknowledge your request and
+                respond within forty-five (45) days. If we need more time, we
+                will tell you why and how much longer we need;
+              </li>
+              <li>
+                We may ask you for additional information to verify your
+                identity before acting on a request, but we will not require
+                access to the email address on your account as a precondition;
+              </li>
+              <li>
+                Exercising these rights is free of charge, and we will not
+                discriminate against you for doing so;
+              </li>
+              <li>
+                You may request deletion of your account and the personal
+                information associated with it at any time, and we will process
+                deletion requests through the process described above.
+              </li>
+            </ul>
           </div>
 
-          <h2 className="mt-4 mb-2 text-xl font-semibold">7. Data Retention</h2>
+          <h2 className="mt-4 mb-2 text-xl font-semibold">
+            10. Data Retention
+          </h2>
           <div className="mb-4">
             <p className="mb-2">
               We retain your personal information only for as long as necessary
@@ -481,8 +684,9 @@ const PrivacyPolicy = () => {
               <li>
                 <strong>Google User Data:</strong> Retained only as long as
                 necessary to provide our services or as required by law. You can
-                request deletion of your Google user data at any time through
-                your account settings or by contacting us directly.
+                request deletion of your Google user data at any time by
+                contacting us or submitting a request through the process in
+                Section 9.4.
               </li>
             </ul>
             <p className="mb-4">
@@ -497,7 +701,29 @@ const PrivacyPolicy = () => {
           </div>
 
           <h2 className="mt-4 mb-2 text-xl font-semibold">
-            8. International Data Transfers
+            11. Children's Privacy
+          </h2>
+          <div className="mb-4">
+            <p className="mb-4">
+              The Service is not directed to, and is not intended for use by,
+              anyone under the age of eighteen (18). We do not knowingly collect
+              personal information from children. If we learn that we have
+              collected personal information from a person under 18, we will
+              delete that information and terminate the associated account. If
+              you believe a child has provided us with personal information,
+              please contact us at{" "}
+              <a
+                className="text-blue-500 underline"
+                href="mailto:support@heygaia.so"
+              >
+                support@heygaia.so
+              </a>{" "}
+              and we will act promptly.
+            </p>
+          </div>
+
+          <h2 className="mt-4 mb-2 text-xl font-semibold">
+            12. International Data Transfers
           </h2>
           <div className="mb-4">
             <p className="mb-4">
@@ -523,7 +749,7 @@ const PrivacyPolicy = () => {
           </div>
 
           <h2 className="mt-4 mb-2 text-xl font-semibold">
-            9. Third-Party Services and Links
+            13. Third-Party Services and Links
           </h2>
           <div className="mb-4">
             <p className="mb-4">
@@ -536,7 +762,7 @@ const PrivacyPolicy = () => {
           </div>
 
           <h2 className="mt-4 mb-2 text-xl font-semibold">
-            10. Changes to This Privacy Policy
+            14. Changes to This Privacy Policy
           </h2>
           <div className="mb-4">
             <p className="mb-4">
@@ -560,7 +786,7 @@ const PrivacyPolicy = () => {
           </div>
 
           <h2 className="mt-4 mb-2 text-xl font-semibold">
-            11. Contact Information
+            15. Contact Information
           </h2>
           <div className="mb-4">
             <p className="mb-4">
@@ -568,6 +794,8 @@ const PrivacyPolicy = () => {
               Privacy Policy or our data practices, please contact us at:
             </p>
             <p className="mb-4">
+              The Experience Company, Inc.
+              <br />
               Email:{" "}
               <a
                 className="text-blue-500 underline"
@@ -579,37 +807,58 @@ const PrivacyPolicy = () => {
           </div>
 
           <h2 className="mt-4 mb-2 text-xl font-semibold">
-            12. Jurisdiction-Specific Provisions
+            16. Jurisdiction-Specific Provisions
           </h2>
           <div className="mb-4">
             <h3 className="mt-4 mb-2 text-lg font-semibold">
-              12.1 California Residents
+              16.1 United States State Privacy Rights
             </h3>
             <p className="mb-2">
-              If you are a California resident, you have additional rights under
-              the California Consumer Privacy Act (CCPA):
+              If you are a resident of a US state with a comprehensive consumer
+              privacy law (including California, Texas, Virginia, Colorado,
+              Connecticut, Delaware, and others), you have the following rights,
+              which we extend to all US residents regardless of whether the law
+              of your state currently applies to us:
             </p>
             <ul className="mb-4 ml-6 list-disc">
               <li>
                 Right to know what personal information is collected and how it
                 is used;
               </li>
+              <li>
+                Right to access and obtain a portable copy of your personal
+                information;
+              </li>
+              <li>Right to correct inaccurate personal information;</li>
               <li>Right to request deletion of personal information;</li>
               <li>
-                Right to opt-out of the sale of personal information (we do not
-                sell personal information);
+                Right to opt-out of the sale or sharing of personal information.
+                We do not sell or share personal information, and we have not
+                done so in the preceding twelve (12) months;
               </li>
               <li>
-                Right to non-discrimination for exercising your privacy rights.
+                Right to opt-out of targeted advertising. We do not use your
+                personal information for targeted advertising;
+              </li>
+              <li>
+                Right to non-discrimination for exercising your privacy rights;
+              </li>
+              <li>
+                Right to appeal a denied request by replying to our response.
               </li>
             </ul>
+            <p className="mb-4">
+              To exercise any of these rights, follow the process in Section
+              9.4.
+            </p>
 
             <h3 className="mt-4 mb-2 text-lg font-semibold">
-              12.2 European Economic Area (EEA) Residents
+              16.2 European Economic Area (EEA) and United Kingdom Residents
             </h3>
             <p className="mb-2">
-              If you are located in the EEA, you have additional rights under
-              the General Data Protection Regulation (GDPR):
+              If you are located in the EEA or the United Kingdom, you have
+              additional rights under the General Data Protection Regulation
+              (GDPR) and the UK GDPR:
             </p>
             <ul className="mb-4 ml-6 list-disc">
               <li>
@@ -618,13 +867,18 @@ const PrivacyPolicy = () => {
                 obligations;
               </li>
               <li>
+                Response timeline: Requests from the EEA, UK, or Switzerland are
+                handled within one month, extendable by up to two months for
+                complex or numerous requests, as described in Section 9.4;
+              </li>
+              <li>
                 Right to lodge a complaint with your local data protection
                 authority;
               </li>
               <li>Right to data portability in machine-readable format;</li>
               <li>
                 Enhanced rights regarding automated decision-making and
-                profiling.
+                profiling, as described in Section 5.2.
               </li>
             </ul>
           </div>

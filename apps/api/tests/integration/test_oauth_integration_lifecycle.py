@@ -13,6 +13,7 @@ Tests exercise the real service logic from:
 - app.services.integrations.integration_resolver (resolve from platform/custom)
 - app.config.oauth_config (integration definitions, scopes)
 - app.services.oauth.oauth_service (status checks, connection handling)
+- app.services.workflow.integration_pause (workflow resume on reconnect)
 
 Mocking boundaries:
 - Redis (oauth state storage)
@@ -22,9 +23,10 @@ Mocking boundaries:
 - MCP client (external MCP connections)
 """
 
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -32,6 +34,11 @@ from app.config.oauth_config import (
     OAUTH_INTEGRATIONS,
     get_integration_by_id,
     get_integration_scopes,
+)
+from app.models.integration_models import (
+    Integration,
+    UserIntegrationDocument,
+    UserIntegrationStatus,
 )
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import OAuthIntegration
@@ -54,6 +61,9 @@ from app.services.oauth.oauth_state_service import (
     create_oauth_state,
     is_safe_redirect_path,
     validate_and_consume_oauth_state,
+)
+from app.services.workflow.integration_pause import (
+    resume_workflows_for_reconnected_integration,
 )
 
 # ---------------------------------------------------------------------------
@@ -99,88 +109,85 @@ def _make_mock_redis() -> AsyncMock:
     return redis
 
 
-def _make_mock_collection() -> AsyncMock:
-    """Create a mock MongoDB collection with an in-memory document store."""
-    docs: list[dict[str, Any]] = []
-    collection = AsyncMock()
+class _FakeUserIntegrationRepo:
+    """In-memory stand-in for ``user_integration_repository``.
 
-    async def _find_one(query: dict[str, Any]) -> dict[str, Any] | None:
-        for doc in docs:
-            if all(doc.get(k) == v for k, v in query.items()):
-                return doc
-        return None
+    Preserves the upsert/delete semantics the service layer relies on — one
+    record per ``(user_id, integration_id)``, ``connected_at`` stamped on the
+    connected transition and ``expired_at``/``expired_reason`` on the expired one
+    (cleared again on reconnect) — so the lifecycle/idempotence/isolation
+    assertions hold at the repository seam. The repository's Mongo+Redis
+    behaviour itself is covered by
+    ``tests/contracts/test_user_integrations_repository.py``.
+    """
 
-    async def _insert_one(doc: dict[str, Any]) -> MagicMock:
-        docs.append(dict(doc))
-        result = MagicMock()
-        result.inserted_id = f"inserted_{len(docs)}"
-        return result
+    def __init__(self) -> None:
+        self.docs: dict[tuple[str, str], UserIntegrationDocument] = {}
 
-    async def _update_one(
-        query: dict[str, Any], update: dict[str, Any], upsert: bool = False
-    ) -> MagicMock:
-        result = MagicMock()
-        result.modified_count = 0
-        result.upserted_id = None
-        result.matched_count = 0
+    async def set_status(
+        self,
+        user_id: str,
+        integration_id: str,
+        *,
+        status: UserIntegrationStatus,
+        expired_reason: str | None = None,
+        connected_account_id: str | None = None,
+    ) -> bool:
+        key = (user_id, integration_id)
+        existing = self.docs.get(key)
+        now = datetime.now(UTC)
+        fields: dict[str, Any] = {
+            "user_id": user_id,
+            "integration_id": integration_id,
+            "status": status,
+            "created_at": existing.created_at if existing else now,
+        }
+        if connected_account_id is not None:
+            fields["connected_account_id"] = connected_account_id
+        elif existing is not None:
+            fields["connected_account_id"] = existing.connected_account_id
+        if existing is not None and existing.connected_at is not None:
+            fields["connected_at"] = existing.connected_at
+        if existing is not None and status != "connected":
+            fields["expired_at"] = existing.expired_at
+            fields["expired_reason"] = existing.expired_reason
+        if status == "connected":
+            fields["connected_at"] = now
+            fields["expired_at"] = None
+            fields["expired_reason"] = None
+        elif status == "expired":
+            fields["expired_at"] = now
+            fields["expired_reason"] = expired_reason
+        self.docs[key] = UserIntegrationDocument.model_validate(fields)
+        return True
 
-        target = None
-        for doc in docs:
-            if all(doc.get(k) == v for k, v in query.items()):
-                target = doc
-                break
+    async def get_for_user(
+        self, user_id: str, integration_id: str
+    ) -> UserIntegrationDocument | None:
+        return self.docs.get((user_id, integration_id))
 
-        if target:
-            result.matched_count = 1
-            set_data = update.get("$set", {})
-            if set_data:
-                target.update(set_data)
-                result.modified_count = 1
-        elif upsert:
-            new_doc = dict(query)
-            set_data = update.get("$set", {})
-            set_on_insert = update.get("$setOnInsert", {})
-            new_doc.update(set_data)
-            new_doc.update(set_on_insert)
-            docs.append(new_doc)
-            result.upserted_id = f"upserted_{len(docs)}"
+    async def delete_for_user(self, user_id: str, integration_id: str) -> bool:
+        return self.docs.pop((user_id, integration_id), None) is not None
 
-        return result
+    @property
+    def stored(self) -> list[UserIntegrationDocument]:
+        return list(self.docs.values())
 
-    async def _delete_one(query: dict[str, Any]) -> MagicMock:
-        result = MagicMock()
-        result.deleted_count = 0
-        for i, doc in enumerate(docs):
-            if all(doc.get(k) == v for k, v in query.items()):
-                docs.pop(i)
-                result.deleted_count = 1
-                break
-        return result
 
-    def _find(query: dict[str, Any]) -> AsyncMock:
-        matching = [doc for doc in docs if all(doc.get(k) == v for k, v in query.items())]
-        cursor = AsyncMock()
-        cursor.to_list = AsyncMock(return_value=matching)
-        cursor.sort = MagicMock(return_value=cursor)
-
-        # Support async iteration
-        cursor.__aiter__ = MagicMock(return_value=iter(matching).__iter__())
-
-        async def _aiter():
-            for doc in matching:
-                yield doc
-
-        cursor.__aiter__ = lambda self: _aiter()
-        return cursor
-
-    collection.find_one = AsyncMock(side_effect=_find_one)
-    collection.insert_one = AsyncMock(side_effect=_insert_one)
-    collection.update_one = AsyncMock(side_effect=_update_one)
-    collection.delete_one = AsyncMock(side_effect=_delete_one)
-    collection.find = MagicMock(side_effect=_find)
-    collection._docs = docs
-
-    return collection
+@contextmanager
+def _patched_repo(repo: _FakeUserIntegrationRepo):
+    """Install ``repo`` behind both service modules that reach the singleton."""
+    with (
+        patch(
+            "app.services.integrations.user_integration_status.user_integration_repository",
+            repo,
+        ),
+        patch(
+            "app.services.integrations.user_integrations.user_integration_repository",
+            repo,
+        ),
+    ):
+        yield
 
 
 # ---------------------------------------------------------------------------
@@ -372,31 +379,22 @@ class TestUserIntegrationStatusTracking:
 
     async def test_create_new_integration_status(self) -> None:
         """Upsert creates a new record when none exists."""
-        mock_collection = _make_mock_collection()
+        repo = _FakeUserIntegrationRepo()
 
-        with (
-            patch(
-                "app.services.integrations.user_integration_status.user_integrations_collection",
-                mock_collection,
-            ),
-            patch(
-                "app.services.integrations.user_integration_status.CacheInvalidator.__call__",
-                lambda self, func: func,
-            ),
-        ):
+        with _patched_repo(repo):
             result = await update_user_integration_status(USER_ID, "gmail", "created")
 
-            assert result is True
-            assert len(mock_collection._docs) == 1
-            doc = mock_collection._docs[0]
-            assert doc["user_id"] == USER_ID
-            assert doc["integration_id"] == "gmail"
-            assert doc["status"] == "created"
+        assert result is True
+        assert len(repo.stored) == 1
+        doc = repo.stored[0]
+        assert doc.user_id == USER_ID
+        assert doc.integration_id == "gmail"
+        assert doc.status == "created"
 
     async def test_update_existing_status_to_connected(self) -> None:
         """Upsert updates an existing record from 'created' to 'connected'."""
-        mock_collection = _make_mock_collection()
-        mock_collection._docs.append(
+        repo = _FakeUserIntegrationRepo()
+        repo.docs[(USER_ID, "gmail")] = UserIntegrationDocument.model_validate(
             {
                 "user_id": USER_ID,
                 "integration_id": "gmail",
@@ -405,47 +403,47 @@ class TestUserIntegrationStatusTracking:
             }
         )
 
-        with (
-            patch(
-                "app.services.integrations.user_integration_status.user_integrations_collection",
-                mock_collection,
-            ),
-            patch(
-                "app.services.integrations.user_integration_status.CacheInvalidator.__call__",
-                lambda self, func: func,
-            ),
-        ):
+        with _patched_repo(repo):
             result = await update_user_integration_status(USER_ID, "gmail", "connected")
 
-            assert result is True
-            doc = mock_collection._docs[0]
-            assert doc["status"] == "connected"
-            assert "connected_at" in doc
+        assert result is True
+        assert len(repo.stored) == 1
+        doc = repo.stored[0]
+        assert doc.status == "connected"
+        assert doc.connected_at is not None
+
+    async def test_callback_for_a_never_added_integration_creates_it_connected(self) -> None:
+        """A callback can be the first write for an integration — nothing pre-creates it.
+
+        Composio can hand back an account for an integration the user never
+        explicitly added, so the connected transition has to insert, not just update.
+        """
+        repo = _FakeUserIntegrationRepo()
+
+        with _patched_repo(repo):
+            result = await update_user_integration_status(
+                USER_ID, "gmail", "connected", connected_account_id="ca_new"
+            )
+
+        assert result is True
+        assert len(repo.stored) == 1
+        doc = repo.stored[0]
+        assert doc.status == "connected"
+        assert doc.connected_at is not None
+        assert doc.connected_account_id == "ca_new"
+        assert doc.expired_at is None
+        assert doc.expired_reason is None
 
     async def test_upsert_is_idempotent(self) -> None:
         """Calling upsert twice with same status does not create duplicates."""
-        mock_collection = _make_mock_collection()
+        repo = _FakeUserIntegrationRepo()
 
-        with (
-            patch(
-                "app.services.integrations.user_integration_status.user_integrations_collection",
-                mock_collection,
-            ),
-            patch(
-                "app.services.integrations.user_integration_status.CacheInvalidator.__call__",
-                lambda self, func: func,
-            ),
-        ):
+        with _patched_repo(repo):
             await update_user_integration_status(USER_ID, "gmail", "created")
             await update_user_integration_status(USER_ID, "gmail", "created")
 
-            # Only one document should exist
-            matching = [
-                d
-                for d in mock_collection._docs
-                if d["user_id"] == USER_ID and d["integration_id"] == "gmail"
-            ]
-            assert len(matching) == 1
+        matching = [d for d in repo.stored if d.user_id == USER_ID and d.integration_id == "gmail"]
+        assert len(matching) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -462,7 +460,11 @@ class TestComposioIntegrationConnection:
 
         mock_composio = AsyncMock()
         mock_composio.connect_account = AsyncMock(
-            return_value={"redirect_url": "https://accounts.google.com/o/oauth2/auth?client_id=xxx"}
+            return_value={
+                "status": "pending",
+                "redirect_url": "https://accounts.google.com/o/oauth2/auth?client_id=xxx",
+                "connection_id": "ca_initiated",
+            }
         )
 
         with (
@@ -497,7 +499,11 @@ class TestComposioIntegrationConnection:
 
         mock_composio = AsyncMock()
         mock_composio.connect_account = AsyncMock(
-            return_value={"redirect_url": "https://oauth.example.com/auth"}
+            return_value={
+                "status": "pending",
+                "redirect_url": "https://oauth.example.com/auth",
+                "connection_id": "ca_initiated",
+            }
         )
 
         mock_create_state = AsyncMock(return_value="state_abc123")
@@ -535,7 +541,11 @@ class TestComposioIntegrationConnection:
 
         mock_composio = AsyncMock()
         mock_composio.connect_account = AsyncMock(
-            return_value={"redirect_url": "https://oauth.example.com/auth"}
+            return_value={
+                "status": "pending",
+                "redirect_url": "https://oauth.example.com/auth",
+                "connection_id": "ca_initiated",
+            }
         )
 
         mock_update_status = AsyncMock(return_value=True)
@@ -562,7 +572,12 @@ class TestComposioIntegrationConnection:
                 redirect_path="/integrations",
             )
 
-            mock_update_status.assert_called_once_with(USER_ID, "gmail", "created")
+            # `created` before the redirect (so an abandoned connect still leaves a
+            # record), then again with the id Composio minted at initiate time.
+            assert mock_update_status.await_args_list == [
+                call(USER_ID, "gmail", "created"),
+                call(USER_ID, "gmail", "created", connected_account_id="ca_initiated"),
+            ]
 
 
 # ---------------------------------------------------------------------------
@@ -791,41 +806,23 @@ class TestConnectionStatusLifecycle:
 
     async def test_connect_sets_connected_disconnect_removes(self) -> None:
         """Status transitions: created -> connected -> removed on disconnect."""
-        mock_collection = _make_mock_collection()
+        repo = _FakeUserIntegrationRepo()
 
-        with (
-            patch(
-                "app.services.integrations.user_integration_status.user_integrations_collection",
-                mock_collection,
-            ),
-            patch(
-                "app.services.integrations.user_integration_status.CacheInvalidator.__call__",
-                lambda self, func: func,
-            ),
-            patch(
-                "app.services.integrations.user_integrations.user_integrations_collection",
-                mock_collection,
-            ),
-            patch(
-                "app.services.integrations.user_integrations.CacheInvalidator.__call__",
-                lambda self, func: func,
-            ),
-        ):
+        with _patched_repo(repo):
             # Step 1: Create
             await update_user_integration_status(USER_ID, "gmail", "created")
-            doc = mock_collection._docs[0]
-            assert doc["status"] == "created"
+            assert repo.stored[0].status == "created"
 
             # Step 2: Connect
             await update_user_integration_status(USER_ID, "gmail", "connected")
-            doc = mock_collection._docs[0]
-            assert doc["status"] == "connected"
-            assert "connected_at" in doc
+            doc = repo.stored[0]
+            assert doc.status == "connected"
+            assert doc.connected_at is not None
 
             # Step 3: Disconnect (remove)
             removed = await remove_user_integration(USER_ID, "gmail")
             assert removed is True
-            assert len(mock_collection._docs) == 0
+            assert len(repo.stored) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -839,42 +836,93 @@ class TestReconnectionFlow:
 
     async def test_reconnection_creates_fresh_record(self) -> None:
         """After disconnect+reconnect, only one record exists for the integration."""
-        mock_collection = _make_mock_collection()
+        repo = _FakeUserIntegrationRepo()
 
-        with (
-            patch(
-                "app.services.integrations.user_integration_status.user_integrations_collection",
-                mock_collection,
-            ),
-            patch(
-                "app.services.integrations.user_integration_status.CacheInvalidator.__call__",
-                lambda self, func: func,
-            ),
-            patch(
-                "app.services.integrations.user_integrations.user_integrations_collection",
-                mock_collection,
-            ),
-            patch(
-                "app.services.integrations.user_integrations.CacheInvalidator.__call__",
-                lambda self, func: func,
-            ),
-        ):
+        with _patched_repo(repo):
             # Connect
             await update_user_integration_status(USER_ID, "gmail", "connected")
-            assert len(mock_collection._docs) == 1
+            assert len(repo.stored) == 1
 
             # Disconnect
             await remove_user_integration(USER_ID, "gmail")
-            assert len(mock_collection._docs) == 0
+            assert len(repo.stored) == 0
 
             # Reconnect
             await update_user_integration_status(USER_ID, "gmail", "connected")
-            assert len(mock_collection._docs) == 1
+            assert len(repo.stored) == 1
 
-            doc = mock_collection._docs[0]
-            assert doc["status"] == "connected"
-            assert doc["user_id"] == USER_ID
-            assert doc["integration_id"] == "gmail"
+            doc = repo.stored[0]
+            assert doc.status == "connected"
+            assert doc.user_id == USER_ID
+            assert doc.integration_id == "gmail"
+
+    async def test_reconnect_after_expiry_clears_the_expiry_stamps(self) -> None:
+        """A reconnected integration must not read as connected-but-broken.
+
+        Stale ``expired_at``/``expired_reason`` on a live record would make the
+        integration look dead to anything that reads them.
+        """
+        repo = _FakeUserIntegrationRepo()
+
+        with _patched_repo(repo):
+            await update_user_integration_status(USER_ID, "gmail", "connected")
+            await update_user_integration_status(
+                USER_ID, "gmail", "expired", expired_reason="refresh_token_revoked"
+            )
+
+            expired = repo.stored[0]
+            assert expired.status == "expired"
+            assert expired.expired_at is not None
+            assert expired.expired_reason == "refresh_token_revoked"
+
+            await update_user_integration_status(USER_ID, "gmail", "connected")
+
+            reconnected = repo.stored[0]
+            assert reconnected.status == "connected"
+            assert reconnected.expired_at is None
+            assert reconnected.expired_reason is None
+
+
+# ---------------------------------------------------------------------------
+# Tests — Workflow Resume On Reconnect
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestWorkflowResumeOnReconnect:
+    """resume_workflows_for_reconnected_integration: which paused workflows come back."""
+
+    async def test_reconnect_leaves_workflows_waiting_on_another_integration_paused(
+        self,
+    ) -> None:
+        """Reconnecting Gmail resumes only the Gmail workflow, not the whole paused batch.
+
+        Every paused workflow carries the same INTEGRATION_EXPIRED reason, so the
+        per-workflow requirement check is the only thing keeping a Notion workflow
+        from being re-armed against a still-dead integration.
+        """
+        notion_workflow = MagicMock(id="wf-notion")
+        gmail_workflow = MagicMock(id="wf-gmail")
+
+        with (
+            patch("app.services.workflow.integration_pause.workflow_repository") as repo,
+            patch(
+                "app.services.workflow.integration_pause.compute_required_integrations"
+            ) as required,
+            patch("app.services.workflow.integration_pause.WorkflowService") as service,
+        ):
+            # Notion first: a resume that stopped at the first non-match would
+            # never reach the Gmail workflow behind it.
+            repo.find_paused_for_reason = AsyncMock(return_value=[notion_workflow, gmail_workflow])
+            required.side_effect = lambda steps, trigger: (
+                {"gmail"} if steps is gmail_workflow.steps else {"notion"}
+            )
+            service.activate_workflow = AsyncMock()
+
+            resumed = await resume_workflows_for_reconnected_integration(USER_ID, "gmail")
+
+        assert resumed == 1
+        service.activate_workflow.assert_awaited_once_with("wf-gmail", USER_ID)
 
 
 # ---------------------------------------------------------------------------
@@ -888,88 +936,53 @@ class TestMultiProviderSupport:
 
     async def test_two_providers_stored_independently(self) -> None:
         """Gmail and Slack records are independent - connecting one does not affect the other."""
-        mock_collection = _make_mock_collection()
+        repo = _FakeUserIntegrationRepo()
 
-        with (
-            patch(
-                "app.services.integrations.user_integration_status.user_integrations_collection",
-                mock_collection,
-            ),
-            patch(
-                "app.services.integrations.user_integration_status.CacheInvalidator.__call__",
-                lambda self, func: func,
-            ),
-        ):
+        with _patched_repo(repo):
             # Connect Gmail
             await update_user_integration_status(USER_ID, "gmail", "connected")
             # Connect Slack
             await update_user_integration_status(USER_ID, "slack", "connected")
 
-            assert len(mock_collection._docs) == 2
+        assert len(repo.stored) == 2
 
-            gmail_doc = next(d for d in mock_collection._docs if d["integration_id"] == "gmail")
-            slack_doc = next(d for d in mock_collection._docs if d["integration_id"] == "slack")
+        gmail_doc = next(d for d in repo.stored if d.integration_id == "gmail")
+        slack_doc = next(d for d in repo.stored if d.integration_id == "slack")
 
-            assert gmail_doc["status"] == "connected"
-            assert slack_doc["status"] == "connected"
+        assert gmail_doc.status == "connected"
+        assert slack_doc.status == "connected"
 
     async def test_disconnecting_one_does_not_affect_other(self) -> None:
         """Removing Gmail leaves Slack untouched."""
-        mock_collection = _make_mock_collection()
+        repo = _FakeUserIntegrationRepo()
 
-        with (
-            patch(
-                "app.services.integrations.user_integration_status.user_integrations_collection",
-                mock_collection,
-            ),
-            patch(
-                "app.services.integrations.user_integration_status.CacheInvalidator.__call__",
-                lambda self, func: func,
-            ),
-            patch(
-                "app.services.integrations.user_integrations.user_integrations_collection",
-                mock_collection,
-            ),
-            patch(
-                "app.services.integrations.user_integrations.CacheInvalidator.__call__",
-                lambda self, func: func,
-            ),
-        ):
+        with _patched_repo(repo):
             await update_user_integration_status(USER_ID, "gmail", "connected")
             await update_user_integration_status(USER_ID, "slack", "connected")
 
             # Remove Gmail only
             await remove_user_integration(USER_ID, "gmail")
 
-            assert len(mock_collection._docs) == 1
-            remaining = mock_collection._docs[0]
-            assert remaining["integration_id"] == "slack"
-            assert remaining["status"] == "connected"
+        assert len(repo.stored) == 1
+        remaining = repo.stored[0]
+        assert remaining.integration_id == "slack"
+        assert remaining.status == "connected"
 
     async def test_different_users_same_provider_isolated(self) -> None:
         """Two users connecting Gmail have independent records."""
-        mock_collection = _make_mock_collection()
+        repo = _FakeUserIntegrationRepo()
 
-        with (
-            patch(
-                "app.services.integrations.user_integration_status.user_integrations_collection",
-                mock_collection,
-            ),
-            patch(
-                "app.services.integrations.user_integration_status.CacheInvalidator.__call__",
-                lambda self, func: func,
-            ),
-        ):
+        with _patched_repo(repo):
             await update_user_integration_status(USER_ID, "gmail", "connected")
             await update_user_integration_status(USER_ID_2, "gmail", "connected")
 
-            assert len(mock_collection._docs) == 2
+        assert len(repo.stored) == 2
 
-            user1_doc = next(d for d in mock_collection._docs if d["user_id"] == USER_ID)
-            user2_doc = next(d for d in mock_collection._docs if d["user_id"] == USER_ID_2)
+        user1_doc = next(d for d in repo.stored if d.user_id == USER_ID)
+        user2_doc = next(d for d in repo.stored if d.user_id == USER_ID_2)
 
-            assert user1_doc["integration_id"] == "gmail"
-            assert user2_doc["integration_id"] == "gmail"
+        assert user1_doc.integration_id == "gmail"
+        assert user2_doc.integration_id == "gmail"
 
 
 # ---------------------------------------------------------------------------
@@ -1009,42 +1022,42 @@ class TestIntegrationResolver:
 
     async def test_resolve_custom_integration_from_mongodb(self) -> None:
         """Resolving a custom integration falls back to MongoDB."""
-        custom_doc = {
-            "integration_id": "my-custom-server",
-            "name": "My Custom Server",
-            "description": "A custom MCP server",
-            "category": "custom",
-            "managed_by": "mcp",
-            "requires_auth": False,
-            "auth_type": "none",
-            "mcp_config": {
-                "server_url": "https://custom.example.com/mcp",
+        custom = Integration.model_validate(
+            {
+                "integration_id": "my-custom-server",
+                "name": "My Custom Server",
+                "description": "A custom MCP server",
+                "category": "custom",
+                "managed_by": "mcp",
                 "requires_auth": False,
-            },
-        }
+                "auth_type": "none",
+                "mcp_config": {
+                    "server_url": "https://custom.example.com/mcp",
+                    "requires_auth": False,
+                },
+            }
+        )
 
         with patch(
-            "app.services.integrations.integration_resolver.integrations_collection"
-        ) as mock_col:
-            mock_col.find_one = AsyncMock(return_value=custom_doc)
-
+            "app.services.integrations.integration_resolver.integration_repository.get",
+            AsyncMock(return_value=custom),
+        ):
             resolved = await IntegrationResolver.resolve("my-custom-server")
 
-            assert resolved is not None
-            assert resolved.integration_id == "my-custom-server"
-            assert resolved.source == "custom"
-            assert resolved.managed_by == "mcp"
-            assert resolved.mcp_config is not None
-            assert resolved.mcp_config.server_url == "https://custom.example.com/mcp"
-            assert resolved.custom_doc is not None
+        assert resolved is not None
+        assert resolved.integration_id == "my-custom-server"
+        assert resolved.source == "custom"
+        assert resolved.managed_by == "mcp"
+        assert resolved.mcp_config is not None
+        assert resolved.mcp_config.server_url == "https://custom.example.com/mcp"
+        assert resolved.custom_doc is not None
 
     async def test_resolve_nonexistent_returns_none(self) -> None:
         """Resolving a non-existent integration returns None."""
         with patch(
-            "app.services.integrations.integration_resolver.integrations_collection"
-        ) as mock_col:
-            mock_col.find_one = AsyncMock(return_value=None)
-
+            "app.services.integrations.integration_resolver.integration_repository.get",
+            AsyncMock(return_value=None),
+        ):
             resolved = await IntegrationResolver.resolve("does_not_exist_xyz")
             assert resolved is None
 
@@ -1052,20 +1065,28 @@ class TestIntegrationResolver:
         """Platform integration is returned even if a custom doc exists with same ID."""
         # "gmail" exists in OAUTH_INTEGRATIONS, so even if MongoDB had a doc
         # with integration_id="gmail", the platform one wins.
-        with patch(
-            "app.services.integrations.integration_resolver.integrations_collection"
-        ) as mock_col:
-            # This should not even be called since platform check succeeds first
-            mock_col.find_one = AsyncMock(
-                return_value={"integration_id": "gmail", "name": "Fake Gmail"}
+        mock_get = AsyncMock(
+            return_value=Integration.model_validate(
+                {
+                    "integration_id": "gmail",
+                    "name": "Fake Gmail",
+                    "description": "custom",
+                    "category": "custom",
+                    "managed_by": "mcp",
+                }
             )
-
+        )
+        with patch(
+            "app.services.integrations.integration_resolver.integration_repository.get",
+            mock_get,
+        ):
             resolved = await IntegrationResolver.resolve("gmail")
 
-            assert resolved is not None
-            assert resolved.source == "platform"
-            assert resolved.name == "Gmail"  # Not "Fake Gmail"
-            mock_col.find_one.assert_not_called()
+        assert resolved is not None
+        assert resolved.source == "platform"
+        assert resolved.name == "Gmail"  # Not "Fake Gmail"
+        # The custom-integration repository lookup is never reached for a platform id.
+        mock_get.assert_not_called()
 
     async def test_get_mcp_config_for_mcp_integration(self) -> None:
         """get_mcp_config returns MCPConfig for MCP-based integrations."""
@@ -1194,7 +1215,7 @@ class TestMCPIntegrationConnection:
                 AsyncMock(return_value=mock_mcp_client),
             ),
             patch(
-                "app.services.integrations.integration_connection_service.invalidate_mcp_status_cache",
+                "app.services.integrations.integration_connection_service.invalidate_user_integration_caches",
                 AsyncMock(),
             ),
         ):
@@ -1232,10 +1253,8 @@ class TestMCPIntegrationConnection:
                 "app.services.integrations.integration_connection_service.update_user_integration_status",
                 AsyncMock(return_value=True),
             ),
-            patch(
-                "app.services.integrations.integration_connection_service.invalidate_mcp_status_cache",
-                AsyncMock(),
-            ),
+            # Bearer success path: invalidate_user_integration_caches is NOT called;
+            # only update_user_integration_status is (no patch needed for caches here)
         ):
             response = await connect_mcp_integration(
                 user_id=USER_ID,
@@ -1272,7 +1291,7 @@ class TestMCPIntegrationConnection:
                 return_value=mock_token_store,
             ),
             patch(
-                "app.services.integrations.integration_connection_service.invalidate_mcp_status_cache",
+                "app.services.integrations.integration_connection_service.invalidate_user_integration_caches",
                 AsyncMock(),
             ),
         ):

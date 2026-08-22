@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "Cannot read email or create tasks from communication",
     "Scheduling links and calendar buffers don't replace a full AI assistant",
   ],
-  metaTitle: "Best Reclaim.ai Alternative in 2026 | GAIA",
+  metaTitle: "Best Reclaim.ai Alternative in 2026",
   metaDescription:
     "Reclaim.ai only optimizes your calendar. GAIA is a proactive AI assistant that manages email, tasks, and scheduling together. Free tier + open-source self-hosting.",
   keywords: [
@@ -32,7 +32,7 @@ export const entry: AlternativeData = {
     "smart scheduling AI",
   ],
   whyPeopleLook:
-    "Reclaim.ai does a good job of protecting focus time and scheduling habits, but it is fundamentally a calendar optimization tool. It has no visibility into your email, no task creation from communication, and no proactive intelligence beyond protecting calendar blocks. Users searching for Reclaim alternatives typically want a more complete productivity assistant — one that manages the full loop from email to task to calendar without manual input at each step.",
+    "Reclaim.ai does a good job of protecting focus time and scheduling habits, but it is fundamentally a calendar optimization tool. It has no visibility into your email, no task creation from communication, and no proactive intelligence beyond protecting calendar blocks. Users searching for Reclaim alternatives typically want a more complete productivity assistant: one that manages the full loop from email to task to calendar without manual input at each step.",
   gaiaFitScore: 4,
   gaiaReplaces: [
     "Calendar conflict detection and proactive scheduling suggestions",

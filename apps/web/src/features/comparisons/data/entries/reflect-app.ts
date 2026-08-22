@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "AI-powered networked note-taking with backlinks and daily notes",
   description:
     "Reflect is a networked note-taking app that mirrors the way your brain works, with backlinks, daily notes, calendar integration, and AI writing assistance. GAIA is a proactive AI productivity OS that connects your email, calendar, tasks, and 50+ tools into a single intelligent assistant that acts before you ask.",
-  metaTitle: "Reflect Alternative with AI Email & Workflows | GAIA vs Reflect",
+  metaTitle: "Reflect Alternative with AI Email & Workflows — GAIA vs Reflect",
   metaDescription:
     "Reflect helps you think through networked notes but won't manage your inbox or automate workflows. GAIA is an open-source Reflect alternative with AI email management, workflow automation, and graph-based memory spanning your entire work context.",
   keywords: [

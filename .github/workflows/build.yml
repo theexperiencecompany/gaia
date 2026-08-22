@@ -5,10 +5,14 @@ on:
   # External trigger from another workflow/job.
   repository_dispatch:
     types: [build]
-  # Manual trigger with deploy-mode overrides for operators.
+  # Manual trigger with deploy-mode overrides for operators. Backend only:
+  # the frontend deploys itself via Cloudflare Workers Builds on every master
+  # push, independent of CI.
   workflow_dispatch:
     inputs:
-      # `auto` follows Nx affected for backend, and always syncs frontend on master.
+      # `auto` follows Nx affected; `deploy` forces the backend deploy
+      # regardless of affected-detection or lane results (the drift remedy);
+      # `none` builds/publishes without deploying.
       deployment_mode:
         description: "Manual deploy mode"
         required: false
@@ -16,9 +20,7 @@ on:
         type: choice
         options:
           - auto
-          - backend-only
-          - frontend-only
-          - both
+          - deploy
           - none
   # Reusable workflow entrypoint used by main quality workflow.
   workflow_call:
@@ -43,11 +45,22 @@ jobs:
     outputs:
       api_affected: ${{ steps.affected.outputs.api }}
       bots_affected: ${{ steps.affected.outputs.bots }}
+      # True only when a push step for an affected scope actually succeeded —
+      # tracked separately from this job's overall .result because a later
+      # step (e.g. Discord command sync) can fail AFTER images already landed
+      # in GHCR, which would otherwise misreport a real publish as "nothing
+      # published" and hide drift instead of surfacing it.
+      images_published: ${{ steps.publish-status.outputs.published }}
+      # Immutable per-commit tags (nx production scheme YYMM.DD.<shortsha>)
+      # for this run's releases; empty when a group wasn't released. The
+      # deploy pins the Swarm stack to these instead of :latest.
+      apps_tag: ${{ steps.image-tags.outputs.apps_tag }}
+      bots_tag: ${{ steps.image-tags.outputs.bots_tag }}
 
     steps:
       # Prepare repository + tooling so Nx can calculate affected projects.
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -67,13 +80,13 @@ jobs:
           nx-cloud-access-token: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
 
       - name: Sync Python dependencies (Nx cached)
-        run: npx nx sync api
+        run: pnpm exec nx sync api
         env:
           NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
 
       # Login early so the affected check can query GHCR for missing images.
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -83,8 +96,11 @@ jobs:
       - name: Check affected projects
         id: affected
         run: |
+          # Fail loud: a broken nx invocation must fail this job, not silently
+          # yield an empty list (which would skip image builds and deploys).
+          set -euo pipefail
           # nx may output JSON arrays or one-per-line; normalize to newline-separated.
-          AFFECTED="$(npx nx show projects --affected 2>/dev/null | tr -d '[]"' | tr ',' '\n' | sed '/^$/d' || true)"
+          AFFECTED="$(pnpm exec nx show projects --affected | tr -d '[]"' | tr ',' '\n' | sed '/^$/d')"
 
           echo "Affected projects:"
           echo "$AFFECTED"
@@ -96,7 +112,7 @@ jobs:
             api=true
           fi
 
-          if echo "$AFFECTED" | grep -qx "bot-discord" || echo "$AFFECTED" | grep -qx "bot-slack" || echo "$AFFECTED" | grep -qx "bot-telegram" || echo "$AFFECTED" | grep -qx "bot-whatsapp"; then
+          if echo "$AFFECTED" | grep -qx "bot-discord" || echo "$AFFECTED" | grep -qx "bot-slack" || echo "$AFFECTED" | grep -qx "bot-telegram" || echo "$AFFECTED" | grep -qx "bot-whatsapp" || echo "$AFFECTED" | grep -qx "bot-imessage"; then
             bots=true
           fi
 
@@ -118,7 +134,8 @@ jobs:
                if image_missing "ghcr.io/theexperiencecompany/gaia-bot-discord:latest" || \
                   image_missing "ghcr.io/theexperiencecompany/gaia-bot-slack:latest" || \
                   image_missing "ghcr.io/theexperiencecompany/gaia-bot-telegram:latest" || \
-                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-whatsapp:latest"; then
+                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-whatsapp:latest" || \
+                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-imessage:latest"; then
                 echo "⚠️ Bot image(s) missing from GHCR — forcing build"
                 bots=true
               fi
@@ -143,20 +160,23 @@ jobs:
 
       # Publish API image tags when API-related scope changed.
       - name: Release apps Docker images
+        id: release-apps
         if: steps.affected.outputs.api == 'true'
-        run: npx nx release --group=apps --dockerVersionScheme=${{ steps.version.outputs.scheme }} --yes --verbose
+        run: pnpm exec nx release --group=apps --dockerVersionScheme=${{ steps.version.outputs.scheme }} --yes --verbose
 
       # Publish bot image tags when bot scope changed.
       - name: Release bots Docker images
+        id: release-bots
         if: steps.affected.outputs.bots == 'true'
-        run: npx nx release --group=bots --dockerVersionScheme=${{ steps.version.outputs.scheme }} --yes --verbose
+        run: pnpm exec nx release --group=bots --dockerVersionScheme=${{ steps.version.outputs.scheme }} --yes --verbose
 
       # Fallback: nx release may skip publishing on first run (no prior version
       # history). Ensure locally-built bot images are pushed to GHCR regardless.
       - name: Ensure bot images are pushed to GHCR
+        id: ensure-bot-images
         if: steps.affected.outputs.bots == 'true'
         run: |
-          for bot in discord slack telegram whatsapp; do
+          for bot in discord slack telegram whatsapp imessage; do
             img="ghcr.io/theexperiencecompany/gaia-bot-${bot}:latest"
             if docker image inspect "$img" &>/dev/null; then
               echo "Pushing $img..."
@@ -165,6 +185,44 @@ jobs:
               echo "⚠️  $img not found locally, skipping"
             fi
           done
+
+      # Captured right after the push steps, before Discord command sync —
+      # that step can fail on an unrelated Discord API error and must never
+      # cause a real publish to be reported as "nothing published".
+      - name: Record image publish outcome
+        id: publish-status
+        if: always()
+        env:
+          API_AFFECTED: ${{ steps.affected.outputs.api }}
+          BOTS_AFFECTED: ${{ steps.affected.outputs.bots }}
+          API_RELEASE_OUTCOME: ${{ steps.release-apps.outcome }}
+          BOTS_RELEASE_OUTCOME: ${{ steps.release-bots.outcome }}
+          BOTS_PUSH_OUTCOME: ${{ steps.ensure-bot-images.outcome }}
+        run: |
+          published=false
+          if [ "$API_AFFECTED" = "true" ] && [ "$API_RELEASE_OUTCOME" = "success" ]; then
+            published=true
+          fi
+          if [ "$BOTS_AFFECTED" = "true" ] && [ "$BOTS_RELEASE_OUTCOME" = "success" ] && [ "$BOTS_PUSH_OUTCOME" = "success" ]; then
+            published=true
+          fi
+          echo "published=$published" >> "$GITHUB_OUTPUT"
+
+      # Resolve the immutable tags the release steps just pushed (read from the
+      # local image store, never recomputed) and guarantee they exist in GHCR,
+      # so the deploy can pin services to exactly this run's images. Placed
+      # after publish-status deliberately: this step can fail, and the publish
+      # outcome must already be recorded when it does — a resolve failure then
+      # fails the lane, blocks the deploy, and surfaces as an orphan alert
+      # rather than as a silent "nothing published".
+      - name: Resolve immutable image tags
+        id: image-tags
+        if: steps.affected.outputs.api == 'true' || steps.affected.outputs.bots == 'true'
+        env:
+          VERSION_SCHEME: ${{ steps.version.outputs.scheme }}
+          APPS_RELEASE_OUTCOME: ${{ steps.release-apps.outcome }}
+          BOTS_RELEASE_OUTCOME: ${{ steps.release-bots.outcome }}
+        run: bash scripts/ci/resolve-image-tags.sh
 
       # Discord command sync is only meaningful for production bot deploys.
       - name: Register Discord slash commands
@@ -179,17 +237,24 @@ jobs:
         if: steps.affected.outputs.api != 'true' && steps.affected.outputs.bots != 'true'
         run: echo "No affected API/bot Docker projects, skipping build"
 
+  # Publishes the gaia-web image consumed by docker-compose.selfhost.yml.
+  # This is a package publish for self-hosters, not a production deploy —
+  # the hosted frontend deploys itself via Cloudflare Workers Builds.
   docker-web:
     runs-on: blacksmith-2vcpu-ubuntu-2404
     permissions:
       contents: read
       packages: write
       actions: read
-
     steps:
       # Prepare repository + tooling for affected check and optional image build.
+      # Full history: nx-set-shas resolves NX_BASE to the pre-push master SHA,
+      # which a shallow clone does not contain ("fatal: bad object" in the
+      # affected check). docker-release fetches full history for the same reason.
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set Nx SHAs
         uses: nrwl/nx-set-shas@v4
@@ -203,8 +268,11 @@ jobs:
       - name: Check if web is affected
         id: web-affected
         run: |
+          # Fail loud: a broken nx invocation must fail this job, not silently
+          # yield an empty list (which would skip the web image build).
+          set -euo pipefail
           # nx may output JSON arrays or one-per-line; normalize to newline-separated.
-          AFFECTED="$(npx nx show projects --affected 2>/dev/null | tr -d '[]"' | tr ',' '\n' | sed '/^$/d' || true)"
+          AFFECTED="$(pnpm exec nx show projects --affected | tr -d '[]"' | tr ',' '\n' | sed '/^$/d')"
           if echo "$AFFECTED" | grep -qx "web"; then
             echo "web=true" >> $GITHUB_OUTPUT
           else
@@ -216,7 +284,7 @@ jobs:
       # Registry/buildx setup is only needed when web image should be rebuilt.
       - name: Log in to GHCR
         if: steps.web-affected.outputs.web == 'true'
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -266,17 +334,17 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Determine image tag
         id: tag
@@ -291,7 +359,7 @@ jobs:
           fi
 
       - name: Build and push Grafana image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: infra/docker/observability/grafana
           file: infra/docker/observability/grafana/Dockerfile
@@ -301,14 +369,35 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/gaia-grafana:${{ github.sha }}
 
   deployment-plan:
-    # Keep deploy planning behind all build lanes so trigger jobs never race ahead.
-    needs: [docker-release, docker-web, docker-grafana]
+    # Keep deploy planning behind the build lanes so trigger-deploy never
+    # races ahead, but never let a failed/cancelled lane skip planning
+    # outright — the lane's result is evaluated explicitly by
+    # compute-deploy-plan.sh instead of relying on implicit all-success
+    # gating (the pre-`always()` behavior: any lane result other than
+    # 'success' skipped this whole job, and with it trigger-deploy, even
+    # when the deploy was ready to ship). Backend only: the frontend deploys
+    # itself via Cloudflare Workers Builds on every master push.
+    needs: [docker-release, docker-grafana]
+    if: always()
     runs-on: ubuntu-latest
     outputs:
       backend_deploy: ${{ steps.plan.outputs.backend_deploy }}
-      frontend_deploy: ${{ steps.plan.outputs.frontend_deploy }}
+      backend_orphaned: ${{ steps.plan.outputs.backend_orphaned }}
+      docker_release_result: ${{ steps.plan.outputs.docker_release_result }}
+      # Immutable tag pass-through for trigger-deploy (it can't `needs:` the
+      # build lanes directly without re-gating on their success). Empty tags
+      # mean "deploy whatever :latest currently points at" — the manual-mode
+      # drift remedy and the pre-parameterization behavior.
+      apps_image_tag: ${{ needs.docker-release.outputs.apps_tag || '' }}
+      bots_image_tag: ${{ needs.docker-release.outputs.bots_tag || '' }}
+      # docker-grafana pushes :<full sha> unconditionally every run; pin it
+      # only when that lane actually succeeded this run.
+      grafana_image_tag: ${{ needs.docker-grafana.result == 'success' && github.sha || '' }}
     steps:
-      # Single decision point that translates backend affected + manual mode into deploy booleans.
+      - uses: actions/checkout@v7
+      # Single decision point that translates the lane result + affected +
+      # manual mode into the deploy boolean, and flags a backend image
+      # publish whose deploy did not run.
       - name: Compute deploy plan
         id: plan
         env:
@@ -318,58 +407,40 @@ jobs:
           MANUAL_MODE_EVENT: ${{ github.event.inputs.deployment_mode || '' }}
           API_AFFECTED: ${{ needs.docker-release.outputs.api_affected || 'false' }}
           BOTS_AFFECTED: ${{ needs.docker-release.outputs.bots_affected || 'false' }}
-        run: |
-          set -euo pipefail
+          DOCKER_RELEASE_RESULT: ${{ needs.docker-release.result }}
+          BACKEND_IMAGES_PUBLISHED: ${{ needs.docker-release.outputs.images_published || 'false' }}
+        run: bash scripts/ci/compute-deploy-plan.sh
 
-          backend_deploy=false
-          frontend_deploy=false
-          manual_mode="${MANUAL_MODE_INPUT:-}"
-
-          if [ -z "$manual_mode" ]; then
-            manual_mode="${MANUAL_MODE_EVENT:-}"
-          fi
-          if [ -z "$manual_mode" ]; then
-            manual_mode="auto"
-          fi
-
-          if [ "$REF" != "refs/heads/master" ]; then
-            echo "Not on master; deploy jobs disabled."
-          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            case "$manual_mode" in
-              auto)
-                if [ "$API_AFFECTED" = "true" ] || [ "$BOTS_AFFECTED" = "true" ]; then
-                  backend_deploy=true
-                fi
-                # Frontend sync to Vercel source repo is always allowed on master.
-                frontend_deploy=true
-                ;;
-              backend-only)
-                backend_deploy=true
-                ;;
-              frontend-only)
-                frontend_deploy=true
-                ;;
-              both)
-                backend_deploy=true
-                frontend_deploy=true
-                ;;
-              none)
-                ;;
-              *)
-                echo "::error::Invalid deployment_mode '$manual_mode'. Use auto, backend-only, frontend-only, both, or none."
-                exit 1
-                ;;
-            esac
-          else
-            if [ "$API_AFFECTED" = "true" ] || [ "$BOTS_AFFECTED" = "true" ]; then
-              backend_deploy=true
-            fi
-            frontend_deploy=true
-          fi
-
-          echo "backend_deploy=$backend_deploy" >> "$GITHUB_OUTPUT"
-          echo "frontend_deploy=$frontend_deploy" >> "$GITHUB_OUTPUT"
-          echo "Deploy plan => backend: $backend_deploy, frontend: $frontend_deploy"
+  # Loud, self-explaining alert for the exact incident this workflow used to
+  # hide: an image lane published to GHCR as :latest but its deploy did not
+  # run, for any reason (lane failure, cancellation, or the plan choosing not
+  # to deploy). Without this, production silently drifts from what's
+  # published, and any container restart on the Swarm host picks up the
+  # undeployed build with no warning.
+  notify-publish-without-deploy:
+    needs: [deployment-plan]
+    if: always() && needs.deployment-plan.outputs.backend_orphaned == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # continue-on-error on the send step only: the alert content is fully
+      # logged by the script either way, and a webhook hiccup must not turn
+      # an otherwise-green run red — the run didn't get worse because Discord
+      # dropped a message about it.
+      - name: Notify Discord — publish without deploy
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          COLOR: "#ff6b6b"
+          MESSAGE: |
+            🚨 **Publish Without Deploy Detected**
+            **Commit:** `${{ github.sha }}`
+            **Branch:** ${{ github.ref_name }}
+            **Actor:** ${{ github.actor }}
+            **Backend images (api/voice-agent/bots) were published to GHCR as `:latest` but the backend deploy did NOT run.** docker-release result: `${{ needs.deployment-plan.outputs.docker_release_result }}`.
+            Production may now be running a stale image while a newer one sits in GHCR tagged `:latest`. Any container restart on the Swarm host will silently pick up the undeployed build.
+            **To deploy now:** fix the red lane, then run `gh workflow run build.yml --ref master -f deployment_mode=deploy` — this redeploys whatever is currently tagged `:latest` in GHCR regardless of this run's affected-detection or lane results.
+        run: bash scripts/ci/notify-discord.sh
 
   # Trigger backend production deploy only when deploy plan allows it.
   trigger-deploy:
@@ -378,11 +449,7 @@ jobs:
     uses: ./.github/workflows/deploy-swarm-prod.yml
     with:
       action: deploy
-    secrets: inherit
-
-  # Trigger web production deploy only when deploy plan allows it.
-  trigger-web:
-    needs: [deployment-plan]
-    if: needs.deployment-plan.outputs.frontend_deploy == 'true'
-    uses: ./.github/workflows/deploy-frontend.yml
+      apps_image_tag: ${{ needs.deployment-plan.outputs.apps_image_tag }}
+      bots_image_tag: ${{ needs.deployment-plan.outputs.bots_image_tag }}
+      grafana_image_tag: ${{ needs.deployment-plan.outputs.grafana_image_tag }}
     secrets: inherit

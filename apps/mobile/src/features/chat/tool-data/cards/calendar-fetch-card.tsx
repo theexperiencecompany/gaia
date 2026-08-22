@@ -248,9 +248,9 @@ export function CalendarFetchCard({ data }: CalendarFetchCardProps) {
 
                   {/* Events for this day */}
                   <View className="gap-2">
-                    {dayEvents.map((event, index) => (
+                    {dayEvents.map((event) => (
                       <EventRow
-                        key={`${dateString}-${event.summary}-${index}`}
+                        key={`${event.start_time}-${event.summary}`}
                         event={event}
                       />
                     ))}

@@ -1,6 +1,30 @@
-"""Chat persistence constants."""
+"""Chat constants."""
 
 import re
+
+# Max characters of an uploaded file's summary inlined into the agent's turn
+# context. Sized so small files (images, short PDFs) come through in full; only
+# large multi-page summaries truncate, with the complete text always available in
+# the `<file>.summary.md` sidecar.
+UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS = 4000
+
+# Upper bound for a single incoming chat message. History growth is handled by
+# the summarization middleware, but one gigantic message would blow the model
+# call itself — reject it at the request boundary instead. Generous on purpose:
+# the web composer converts pastes over ~10k chars into .txt attachments, so
+# normal traffic never gets near this.
+MAX_MESSAGE_LENGTH = 50_000
+
+# Shown when a turn dies and the provider exception carries no message of its
+# own. Names the exception type so a support report still identifies the failure.
+GENERIC_TURN_ERROR = "Something went wrong while generating this response ({error_type})."
+
+# A recursion-limit stop is an expected degradation, not an infrastructure
+# failure — never show the raw "Recursion limit of N reached..." internals.
+RECURSION_LIMIT_MESSAGE = (
+    "I hit my step limit on this one before finishing. "
+    "Ask me to continue and I'll pick up where I left off."
+)
 
 # Matches bot-emitted artifact references in three shapes — ``./artifacts/x``,
 # ``/artifacts/x``, and plain ``artifacts/x`` — so each can be rewritten to an

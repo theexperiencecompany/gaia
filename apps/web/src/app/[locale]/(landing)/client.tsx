@@ -2,18 +2,12 @@
 
 import dynamic from "next/dynamic";
 import Image from "next/image";
-import { useCallback, useEffect, useState } from "react";
-import HeroImage from "@/features/landing/components/hero/HeroImage";
+import { useEffect } from "react";
+import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
-import { TimeOfDayToggle } from "@/features/landing/components/shared/TimeOfDayToggle";
 import type { LatestRelease } from "@/features/landing/utils/getLatestRelease";
-import {
-  getNextTimeOfDay,
-  getTimeOfDay,
-  isDarkTimeOfDay,
-  type TimeOfDay,
-} from "@/features/landing/utils/timeOfDay";
+import { homepageFAQs } from "@/lib/faq";
 
 function SectionLoader() {
   return (
@@ -32,44 +26,36 @@ const ChatDemoSection = dynamic(
   () => import("@/features/landing/components/demo/ChatDemoSection"),
   { loading: SectionLoader },
 );
-const TimeSavedCounter = dynamic(
-  () => import("@/features/landing/components/sections/TimeSavedCounter"),
-  { loading: SectionLoader, ssr: false },
-);
-// const BuiltForEveryone = dynamic(
-//   () => import("@/features/landing/components/sections/BuiltForEveryone"),
-//   { loading: SectionLoader, ssr: false },
-// );
 const TiredBoringAssistants = dynamic(
   () => import("@/features/landing/components/sections/TiredBoringAssistants"),
   { loading: SectionLoader },
 );
-const MemoryShowcaseSection = dynamic(
-  () => import("@/features/landing/components/sections/MemoryShowcaseSection"),
+const RunsYourDaySection = dynamic(
+  () => import("@/features/landing/components/sections/RunsYourDaySection"),
   { loading: SectionLoader },
 );
-const WorkflowSection = dynamic(
-  () => import("@/features/landing/components/sections/WorkflowSection"),
+const WorkflowsSection = dynamic(
+  () => import("@/features/landing/components/sections/WorkflowsSection"),
+  { loading: SectionLoader },
+);
+const MemorySection = dynamic(
+  () => import("@/features/landing/components/sections/MemorySection"),
   { loading: SectionLoader },
 );
 const UseCasesSectionLanding = dynamic(
   () => import("@/features/landing/components/sections/Productivity"),
   { loading: SectionLoader },
 );
-const TodoShowcaseSection = dynamic(
-  () => import("@/features/landing/components/sections/TodoShowcaseSection"),
-  { loading: SectionLoader },
-);
 const BotsShowcaseSection = dynamic(
   () => import("@/features/landing/components/sections/BotsShowcaseSection"),
   { loading: SectionLoader },
 );
-const ComparisonGrid = dynamic(
-  () => import("@/features/landing/components/sections/ComparisonGrid"),
-  { loading: SectionLoader },
-);
 const OpenSource = dynamic(
   () => import("@/features/landing/components/sections/OpenSource"),
+  { loading: SectionLoader },
+);
+const PricingSection = dynamic(
+  () => import("@/features/landing/components/sections/PricingSection"),
   { loading: SectionLoader },
 );
 const FAQAccordion = dynamic(
@@ -79,46 +65,16 @@ const FAQAccordion = dynamic(
     })),
   { loading: SectionLoader },
 );
-const LandingDownloadSection = dynamic(
-  () =>
-    import("@/features/download/components/DownloadPage").then((mod) => ({
-      default: mod.LandingDownloadSection,
-    })),
-  { loading: SectionLoader },
-);
 const FinalSection = dynamic(
   () => import("@/features/landing/components/sections/FinalSection"),
   { loading: SectionLoader },
 );
 
 export default function LandingPageClient({
-  initialTimeOfDay,
   latestRelease,
 }: {
-  initialTimeOfDay: TimeOfDay;
   latestRelease: LatestRelease | null;
 }) {
-  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>(initialTimeOfDay);
-  const [clickCount, setClickCount] = useState(0);
-  const isDark = isDarkTimeOfDay(timeOfDay);
-
-  const handleTextClick = () => {
-    const next = clickCount + 1;
-    setClickCount(next);
-    if (next % 3 === 0) {
-      setTimeOfDay((prev) => getNextTimeOfDay(prev));
-    }
-  };
-
-  const handleTimeChange = useCallback(() => {
-    setTimeOfDay((prev) => getNextTimeOfDay(prev));
-  }, []);
-
-  useEffect(() => {
-    const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    setTimeOfDay(getTimeOfDay(userTimezone));
-  }, []);
-
   useEffect(() => {
     document.documentElement.style.overflowY = "scroll";
 
@@ -130,78 +86,70 @@ export default function LandingPageClient({
   return (
     <LazyMotionProvider>
       <div className="relative overflow-hidden">
-        <div className="absolute inset-0 h-screen w-full opacity-100">
-          <HeroImage timeOfDay={timeOfDay} />
-        </div>
-
+        {/* Hero — alpine-valley wallpaper behind the headline */}
         <section className="relative flex min-h-screen w-full flex-col items-center justify-center">
-          <HeroSection
-            isDark={isDark}
-            onTextClick={handleTextClick}
-            latestRelease={latestRelease}
+          <div className="absolute inset-0 z-0 h-full w-full">
+            {/* Webp loads first for the LCP; the higher-quality PNG then
+                fades in on top (lazy + low priority, never blocks the LCP). */}
+            <ProgressiveImage
+              webpSrc="/images/wallpapers/ethereal_alpine_valley.webp"
+              pngSrc="/images/wallpapers/ethereal_alpine_valley.png"
+              alt="Hero wallpaper"
+              priority
+              sizes="100vw"
+            />
+          </div>
+          <div className="pointer-events-none absolute inset-0 z-0 bg-black/0" />
+          {/* Top fade under the fixed navbar so nav text stays legible
+              over the bright sky */}
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[20vh] bg-linear-to-b from-black/70 to-transparent" />
+          {/* Bottom fade into the demo section below */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-[20vh] bg-linear-to-t from-black to-transparent" />
+
+          <HeroSection isDark latestRelease={latestRelease} />
+        </section>
+
+        {/* Live demo — its own section over the bands-gradient wallpaper */}
+        <section className="relative z-20 w-full py-16 sm:py-12 mb-12 sm:mb-16">
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[10vh] bg-linear-to-b from-black to-transparent" />
+          <Image
+            src="/images/wallpapers/bands_gradient_1.webp"
+            alt=""
+            fill
+            sizes="100vw"
+            className="z-0 object-cover"
           />
-          <div className="absolute bottom-6 right-6 z-[1002]">
-            <TimeOfDayToggle timeOfDay={timeOfDay} onPress={handleTimeChange} />
+          <div className="relative z-10">
+            <ChatDemoSection />
           </div>
         </section>
 
-        <section className="relative z-20 w-full py-16 sm:py-12 mb-12 sm:mb-16">
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[10vh] bg-linear-to-b from-black to-transparent" />
-
-          <Image
-            src="/images/wallpapers/bands_gradient_1.webp"
-            alt="Gradient background"
-            width={1920}
-            height={1080}
-            sizes="100vw"
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              position: "absolute",
-              top: 0,
-              left: 0,
-            }}
-            className="-z-10 opacity-90"
-            loading="lazy"
-          />
-          <ChatDemoSection />
-        </section>
-
-        <TimeSavedCounter />
-
         <div>
+          {/* The core promise — GAIA runs your day, told in the chats you use */}
+          <RunsYourDaySection />
+
           {/* Capabilities — what GAIA does */}
           <TiredBoringAssistants />
+
+          {/* The mechanism — schedules and triggers, told in a text thread */}
+          <WorkflowsSection />
+
+          {/* Depth — it knows you, not just your tools */}
+          <MemorySection />
 
           {/* Reach — where you can use it */}
           <BotsShowcaseSection />
 
-          <WorkflowSection />
           <UseCasesSectionLanding />
-
-          {/* Memory — an assistant that actually knows you */}
-          <MemoryShowcaseSection />
-          <TodoShowcaseSection />
-
-          {/* Decision — how it stacks up, trust, price */}
-          <ComparisonGrid />
-
-          {/* Positioning — why GAIA exists */}
-          {/* <BuiltForEveryone /> */}
 
           <OpenSource />
 
+          {/* Decision — price */}
+          <PricingSection />
+
           {/* Objections + final CTA */}
-          <FAQAccordion />
-          <LandingDownloadSection />
-          <FinalSection
-            showSocials={false}
-            timeOfDay={timeOfDay}
-            isDark={isDark}
-            onTextClick={handleTextClick}
-            onTimeChange={handleTimeChange}
-          />
+          <FAQAccordion faqs={homepageFAQs} />
+          <FinalSection showSocials={false} />
         </div>
       </div>
     </LazyMotionProvider>

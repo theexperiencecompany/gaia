@@ -1,13 +1,9 @@
 import type {
   NotificationActionStyle,
   NotificationActionType,
-  PlatformLink,
-  PlatformLinksResponse,
   NotificationStatus as SharedNotificationStatus,
 } from "@shared/types";
 import type { NotificationSource } from "../notifications";
-
-export type { PlatformLink, PlatformLinksResponse };
 
 export enum NotificationType {
   INFO = "info",
@@ -78,7 +74,7 @@ export interface WorkflowParameters {
   user_id?: string;
   notification_id?: string;
   entity_id?: string;
-  entity_type?: "todo" | "calendar" | "email" | "goal" | "note";
+  entity_type?: "todo" | "calendar" | "email" | "note";
 
   // Action parameters
   action?: string;
@@ -115,7 +111,6 @@ export interface ModalProps {
   emailId?: string;
   email_id?: string; // Alternative naming for email ID
   calendarEventId?: string;
-  goalId?: string;
   noteId?: string;
 
   // Action contexts
@@ -246,7 +241,6 @@ export interface NotificationMetadata {
   todo_id?: string;
   calendar_event_id?: string;
   email_id?: string;
-  goal_id?: string;
   project_id?: string;
 
   // Context information
@@ -384,7 +378,6 @@ export interface ActionResult {
 export enum BulkActions {
   MARK_READ = "mark_read",
   ARCHIVE = "archive",
-  DELETE = "delete",
 }
 
 // Streamed by the send_notification agent tool — rendered as a chat tool card
@@ -403,10 +396,6 @@ export interface SendNotificationData {
 export interface BulkActionRequest {
   notification_ids: string[];
   action: BulkActions;
-}
-
-export interface SnoozeRequest {
-  snooze_until: string;
 }
 
 export interface NotificationResponse {

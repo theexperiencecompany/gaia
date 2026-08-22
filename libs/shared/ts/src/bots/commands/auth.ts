@@ -8,6 +8,7 @@
  */
 import type { BotCommand, CommandExecuteParams } from "../types";
 import { buildAuthLinkMessage } from "../utils/formatters";
+import { wideLog } from "../utils/wide-events";
 
 /** `/auth` command definition. */
 export const authCommand: BotCommand = {
@@ -33,7 +34,8 @@ export const authCommand: BotCommand = {
         ctx.profile,
       );
       await target.sendEphemeral(buildAuthLinkMessage(authUrl));
-    } catch {
+    } catch (error) {
+      wideLog.error("auth_command_error", undefined, error);
       await target.sendEphemeral(
         "❌ Failed to generate auth link. Please try again.",
       );

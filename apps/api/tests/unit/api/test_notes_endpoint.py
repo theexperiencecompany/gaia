@@ -14,7 +14,24 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.services.analytics_service import AnalyticsEvents
+
 NOTES_BASE = "/api/v1/notes"
+ANALYTICS_PATCH = "app.api.v1.endpoints.notes.capture_context_event"
+
+
+@pytest.fixture(autouse=True)
+def _noop_analytics():
+    """Neutralize capture_context_event for every test in this module.
+
+    The test app runs a no-op lifespan, so the PostHog provider is never
+    registered; a bare capture_context_event call would raise KeyError on the
+    missing provider. Tests that assert on captures patch the call site again
+    and assert on their own mock.
+    """
+    with patch(ANALYTICS_PATCH):
+        yield
+
 
 FAKE_NOTE_RESPONSE = {
     "id": "note-001",
@@ -27,7 +44,6 @@ FAKE_NOTE_RESPONSE = {
 }
 
 
-@pytest.mark.unit
 class TestCreateNote:
     """POST /api/v1/notes"""
 
@@ -88,7 +104,6 @@ class TestCreateNote:
         assert response.status_code == 500
 
 
-@pytest.mark.unit
 class TestGetNote:
     """GET /api/v1/notes/{note_id}"""
 
@@ -116,7 +131,6 @@ class TestGetNote:
         assert response.status_code == 500
 
 
-@pytest.mark.unit
 class TestGetAllNotes:
     """GET /api/v1/notes"""
 
@@ -155,7 +169,6 @@ class TestGetAllNotes:
         assert response.status_code == 500
 
 
-@pytest.mark.unit
 class TestUpdateNote:
     """PUT /api/v1/notes/{note_id}"""
 
@@ -214,7 +227,6 @@ class TestUpdateNote:
         assert response.status_code == 500
 
 
-@pytest.mark.unit
 class TestDeleteNote:
     """DELETE /api/v1/notes/{note_id}"""
 
@@ -238,3 +250,46 @@ class TestDeleteNote:
         mock_delete.side_effect = Exception("Delete failed")
         response = await client.delete(f"{NOTES_BASE}/note-001")
         assert response.status_code == 500
+
+
+class TestNoteAnalytics:
+    """Analytics captures on note mutation endpoints."""
+
+    @patch(
+        "app.api.v1.endpoints.notes.create_note_service",
+        new_callable=AsyncMock,
+    )
+    async def test_create_captures_note_created(self, mock_create: AsyncMock, client: AsyncClient):
+        mock_create.return_value = FAKE_NOTE_RESPONSE
+        with patch(ANALYTICS_PATCH) as mock_capture:
+            response = await client.post(
+                NOTES_BASE,
+                json={"content": "<p>Test note</p>", "plaintext": "Test note"},
+            )
+        assert response.status_code == 201
+        mock_capture.assert_called_once_with(AnalyticsEvents.NOTE_CREATED)
+
+    @patch(
+        "app.api.v1.endpoints.notes.update_note",
+        new_callable=AsyncMock,
+    )
+    async def test_update_captures_note_updated(self, mock_update: AsyncMock, client: AsyncClient):
+        mock_update.return_value = FAKE_NOTE_RESPONSE
+        with patch(ANALYTICS_PATCH) as mock_capture:
+            response = await client.put(
+                f"{NOTES_BASE}/note-001",
+                json={"content": "<p>Updated</p>", "plaintext": "Updated"},
+            )
+        assert response.status_code == 200
+        mock_capture.assert_called_once_with(AnalyticsEvents.NOTE_UPDATED)
+
+    @patch(
+        "app.api.v1.endpoints.notes.delete_note",
+        new_callable=AsyncMock,
+    )
+    async def test_delete_captures_note_deleted(self, mock_delete: AsyncMock, client: AsyncClient):
+        mock_delete.return_value = None
+        with patch(ANALYTICS_PATCH) as mock_capture:
+            response = await client.delete(f"{NOTES_BASE}/note-001")
+        assert response.status_code == 204
+        mock_capture.assert_called_once_with(AnalyticsEvents.NOTE_DELETED)

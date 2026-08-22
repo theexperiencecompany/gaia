@@ -130,6 +130,15 @@
       "cache": true,
       "inputs": ["default", "{projectRoot}/tsconfig.json", "^production"]
     },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm vitest run --config vitest.config.ts",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true,
+      "inputs": ["default", "^production"]
+    },
     "lint": {
       "executor": "nx:run-commands",
       "options": {

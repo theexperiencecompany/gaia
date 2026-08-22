@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useElectron } from "@/hooks/useElectron";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { useHeyGaia } from "../hooks/useHeyGaia";
 
 /**
@@ -22,7 +23,10 @@ export function WakeListenerClient() {
   });
 
   useEffect(() => {
-    if (lastDetection) notifyWakeWord();
+    if (lastDetection) {
+      trackEvent(ANALYTICS_EVENTS.WAKE_WORD_DETECTED);
+      notifyWakeWord();
+    }
   }, [lastDetection, notifyWakeWord]);
 
   return (

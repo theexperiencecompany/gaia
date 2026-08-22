@@ -28,11 +28,13 @@ import {
   buildAuthLinkMessage,
   createBotLogger,
   extractSubcommandArgs,
+  fetchBytesCapped,
   friendlyMediaError,
   handleStreamingChat,
   hashLogIdentifier,
   htmlToPlainText,
   type IncomingMedia,
+  MEDIA_READ_TIMEOUT_MS,
   type MediaKind,
   type OutboundAttachment,
   type PlatformName,
@@ -43,15 +45,37 @@ import {
   type SentMessage,
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,
+  withWideEvent,
 } from "@gaia/shared";
 import type { Message } from "@grammyjs/types";
-import { Bot, type Context, InputFile } from "grammy";
+import { Bot, type Context, GrammyError, InputFile } from "grammy";
 
 /** Telegram's sendPhoto byte cap; larger images are sent as documents. */
 const TELEGRAM_PHOTO_MAX_BYTES = 10 * 1024 * 1024;
 // Telegram caps media captions (sendPhoto/sendDocument) at 1024 chars; an
 // over-limit caption rejects the whole upload, so the file would never arrive.
 const TELEGRAM_CAPTION_MAX_CHARS = 1024;
+
+/** Telegram clears the "typing…" chat action after ~5s; refresh on that cadence. */
+const TELEGRAM_TYPING_REFRESH_INTERVAL_MS = 5000;
+
+/**
+ * True when Telegram rejected a message because of its HTML markup — a 400 whose
+ * text mentions entity/tag parsing. Network, rate-limit (429), and server (5xx)
+ * failures do not match, so the caller re-throws them instead of pointlessly
+ * resending as plain text over a broken connection. grammY carries the Telegram
+ * reason in `GrammyError.description`; other throwers put it in `message`.
+ */
+function isTelegramHtmlParseError(error: unknown): boolean {
+  if (error instanceof GrammyError) {
+    if (error.error_code !== 400) return false;
+    return /can't parse|parse entities|start tag|end tag|entities/i.test(
+      error.description,
+    );
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return /can't parse|parse entities|start tag|end tag|entities/i.test(message);
+}
 
 /**
  * Telegram-specific implementation of the GAIA bot adapter.
@@ -84,6 +108,8 @@ export interface TelegramMedia {
   filename?: string;
   /** Telegram file_id, resolved to a download URL via getFile. */
   fileId: string;
+  /** Size Telegram declares for the file, when it reports one. */
+  sizeBytes?: number;
 }
 
 /**
@@ -104,6 +130,7 @@ export function extractTelegramMedia(msg: Message): TelegramMedia | null {
       isVoiceNote: false,
       mimeType: "image/jpeg",
       fileId: largest.file_id,
+      sizeBytes: largest.file_size,
     };
   }
   if (msg.voice) {
@@ -112,6 +139,7 @@ export function extractTelegramMedia(msg: Message): TelegramMedia | null {
       isVoiceNote: true,
       mimeType: msg.voice.mime_type ?? "audio/ogg",
       fileId: msg.voice.file_id,
+      sizeBytes: msg.voice.file_size,
     };
   }
   if (msg.audio) {
@@ -121,6 +149,7 @@ export function extractTelegramMedia(msg: Message): TelegramMedia | null {
       mimeType: msg.audio.mime_type ?? "audio/mpeg",
       filename: msg.audio.file_name,
       fileId: msg.audio.file_id,
+      sizeBytes: msg.audio.file_size,
     };
   }
   if (msg.document) {
@@ -130,6 +159,7 @@ export function extractTelegramMedia(msg: Message): TelegramMedia | null {
       mimeType: msg.document.mime_type ?? "application/octet-stream",
       filename: msg.document.file_name,
       fileId: msg.document.file_id,
+      sizeBytes: msg.document.file_size,
     };
   }
   const video = msg.video ?? msg.video_note ?? msg.animation;
@@ -139,6 +169,7 @@ export function extractTelegramMedia(msg: Message): TelegramMedia | null {
       isVoiceNote: false,
       mimeType: "video/mp4",
       fileId: video.file_id,
+      sizeBytes: video.file_size,
     };
   }
   if (msg.sticker) {
@@ -147,6 +178,7 @@ export function extractTelegramMedia(msg: Message): TelegramMedia | null {
       isVoiceNote: false,
       mimeType: "image/webp",
       fileId: msg.sticker.file_id,
+      sizeBytes: msg.sticker.file_size,
     };
   }
   return null;
@@ -173,9 +205,30 @@ export class TelegramAdapter extends BaseBotAdapter {
     this.token = token;
 
     this.bot = new Bot(this.token);
-    this.bot.catch((err) => {
-      this.adapterLogger.error("bot_runtime_error", undefined, err);
-    });
+    // grammY's terminal error handler: anything a middleware throws and nobody
+    // caught ends here. It is a unit of work like any other — the update that
+    // blew up, who sent it, and why — so it gets its own canonical event
+    // instead of a lone error line with no trace_id.
+    this.bot.catch((err) =>
+      withWideEvent(
+        "bot_runtime_error",
+        {
+          platform: this.platform,
+          component: "adapter",
+          user_hash: hashLogIdentifier(err.ctx?.from?.id),
+          channel_hash: hashLogIdentifier(err.ctx?.chat?.id),
+          update_id: err.ctx?.update?.update_id,
+        },
+        async () => {
+          // Re-thrown so the boundary marks the event failed and records the
+          // real error in errors[]; a handler-reports-success event here would
+          // hide every middleware crash.
+          throw err.error;
+        },
+        // This IS the last-resort handler — the error is already emitted, and
+        // letting it escape would take the bot process down.
+      ).catch(() => undefined),
+    );
     // Cache the bot username upfront to avoid calling getMe() on every message
     const botInfo = await this.bot.api.getMe();
     this.botUsername = botInfo.username;
@@ -259,7 +312,7 @@ export class TelegramAdapter extends BaseBotAdapter {
       const isPrivate = ctx.chat.type === "private";
       this.adapterLogger.info("message_received", {
         user_hash: hashLogIdentifier(userId),
-        chat_hash: hashLogIdentifier(ctx.chat.id),
+        channel_hash: hashLogIdentifier(ctx.chat.id),
         chat_type: ctx.chat.type,
         is_private: isPrivate,
       });
@@ -334,7 +387,7 @@ export class TelegramAdapter extends BaseBotAdapter {
           startWithRetry(35_000);
         } else {
           this.adapterLogger.error("long_poll_fatal", undefined, err);
-          void this.shutdown()
+          void this.shutdown("long_poll_fatal")
             .catch((shutdownErr) =>
               this.adapterLogger.error(
                 "shutdown_failed",
@@ -373,7 +426,16 @@ export class TelegramAdapter extends BaseBotAdapter {
   ): Promise<Message.TextMessage> {
     try {
       return await send(html, { parse_mode: "HTML" });
-    } catch {
+    } catch (error) {
+      // Only recover from genuine HTML parse rejections. Network timeouts, 429
+      // rate limits, and 5xx errors must re-throw so the normal retry/failure
+      // path handles them instead of hammering a broken connection with a resend.
+      if (!isTelegramHtmlParseError(error)) throw error;
+      // Telegram rejected the HTML (usually an unbalanced entity). Recover by
+      // sending plain text, but log it — silent fallback hides markdown bugs.
+      this.adapterLogger.warn("telegram_html_parse_fallback", {
+        reason: error instanceof Error ? error.message : String(error),
+      });
       return await send(htmlToPlainText(html));
     }
   }
@@ -423,8 +485,15 @@ export class TelegramAdapter extends BaseBotAdapter {
   /**
    * Edits a message as Telegram HTML. A "message is not modified" error (thrown
    * when the new text equals the current text) is ignored; any other failure
-   * retries as stripped plain text, and a final failure is reported via
-   * `onError`. Centralises the fallback every Telegram edit path needs.
+   * retries as stripped plain text. Centralises the fallback every Telegram
+   * edit path needs.
+   *
+   * A failure of that retry is reported via `onError` **and rethrown**. It used
+   * to be swallowed, which made a rejected edit — an expired message, or text
+   * the API refused — look like a successful delivery to the caller: the stream
+   * logged `chat_stream_completed` while the user was still looking at stale
+   * text. Callers that can recover (the shared streamer resends as a new
+   * message) need the throw to know they must.
    */
   private async editHtml(
     edit: (text: string, opts?: { parse_mode: "HTML" }) => Promise<unknown>,
@@ -441,6 +510,7 @@ export class TelegramAdapter extends BaseBotAdapter {
         await edit(htmlToPlainText(html));
       } catch (err) {
         onError(err);
+        throw err;
       }
     }
   }
@@ -464,12 +534,6 @@ export class TelegramAdapter extends BaseBotAdapter {
         return;
       }
 
-      this.adapterLogger.info("slash_command_received", {
-        command: "gaia",
-        user_hash: hashLogIdentifier(userId),
-        chat_hash: hashLogIdentifier(ctx.chat?.id),
-      });
-
       await this.handleTelegramStreaming(ctx, userId, message);
     });
   }
@@ -489,19 +553,13 @@ export class TelegramAdapter extends BaseBotAdapter {
     const chatId = ctx.chat?.id;
     if (!chatId) return;
 
-    this.adapterLogger.info("streaming_started", {
-      user_hash: hashLogIdentifier(userId),
-      chat_hash: hashLogIdentifier(chatId),
-      message_length: message.length,
-    });
-
     const loading = await ctx.reply("Thinking...");
     let currentMessageId = loading.message_id;
 
     // Typing indicator with 5s refresh (Telegram expires it after ~5s).
     const clearTyping = this.startTypingIndicator(
       () => ctx.api.sendChatAction(chatId, "typing"),
-      5000,
+      TELEGRAM_TYPING_REFRESH_INTERVAL_MS,
     );
 
     try {
@@ -527,7 +585,10 @@ export class TelegramAdapter extends BaseBotAdapter {
             (e) =>
               this.adapterLogger.error(
                 "edit_message_text_failed",
-                { chat_id: chatId, message_id: currentMessageId },
+                {
+                  channel_hash: hashLogIdentifier(chatId),
+                  message_id: currentMessageId,
+                },
                 e,
               ),
           );
@@ -546,7 +607,10 @@ export class TelegramAdapter extends BaseBotAdapter {
               (e) =>
                 this.adapterLogger.error(
                   "edit_message_text_failed",
-                  { chat_id: chatId, message_id: newMessage.message_id },
+                  {
+                    channel_hash: hashLogIdentifier(chatId),
+                    message_id: newMessage.message_id,
+                  },
                   e,
                 ),
             );
@@ -581,7 +645,10 @@ export class TelegramAdapter extends BaseBotAdapter {
                 (e) =>
                   this.adapterLogger.error(
                     "auth_message_failed",
-                    { chat_id: chatId, user_id: userId },
+                    {
+                      channel_hash: hashLogIdentifier(chatId),
+                      user_hash: hashLogIdentifier(userId),
+                    },
                     e,
                   ),
               );
@@ -589,7 +656,10 @@ export class TelegramAdapter extends BaseBotAdapter {
           } catch (e) {
             this.adapterLogger.error(
               "auth_message_failed",
-              { chat_id: chatId, user_id: userId },
+              {
+                channel_hash: hashLogIdentifier(chatId),
+                user_hash: hashLogIdentifier(userId),
+              },
               e,
             );
             // DM failed (privacy settings) — update group message with fallback
@@ -601,7 +671,10 @@ export class TelegramAdapter extends BaseBotAdapter {
             } catch (fallbackErr) {
               this.adapterLogger.error(
                 "auth_fallback_message_failed",
-                { chat_id: chatId, user_id: userId },
+                {
+                  channel_hash: hashLogIdentifier(chatId),
+                  user_hash: hashLogIdentifier(userId),
+                },
                 fallbackErr,
               );
             }
@@ -609,20 +682,28 @@ export class TelegramAdapter extends BaseBotAdapter {
         },
         async (errMsg: string) => {
           clearTyping();
-          await this.editHtml(
-            (t, opts) =>
-              ctx.api.editMessageText(chatId, currentMessageId, t, opts),
-            renderForPlatform(errMsg, "telegram"),
-            (e) =>
-              this.adapterLogger.error(
-                "edit_message_text_failed",
-                { chat_id: chatId, message_id: currentMessageId },
-                e,
-              ),
-          );
+          try {
+            await this.editHtml(
+              (t, opts) =>
+                ctx.api.editMessageText(chatId, currentMessageId, t, opts),
+              errMsg,
+              (e) =>
+                this.adapterLogger.error(
+                  "edit_message_text_failed",
+                  {
+                    channel_hash: hashLogIdentifier(chatId),
+                    message_id: currentMessageId,
+                  },
+                  e,
+                ),
+            );
+          } catch {
+            // This is already the error path — the failure is logged by the
+            // onError callback above, and there is no further fallback to try.
+          }
         },
         STREAMING_DEFAULTS.telegram,
-        this.analytics,
+        await this.analyticsFor(userId),
       );
     } finally {
       clearTyping();
@@ -660,18 +741,12 @@ export class TelegramAdapter extends BaseBotAdapter {
       caption = stripTelegramMention(caption, this.botUsername) || undefined;
     }
 
-    this.adapterLogger.info("media_message_received", {
-      user_hash: hashLogIdentifier(userId),
-      chat_hash: hashLogIdentifier(ctx.chat?.id),
-      media_kind: extracted.kind,
-      is_voice_note: extracted.isVoiceNote,
-    });
-
     const media: IncomingMedia = {
       kind: extracted.kind,
       isVoiceNote: extracted.isVoiceNote,
       mimeType: extracted.mimeType,
       filename: extracted.filename,
+      sizeBytes: extracted.sizeBytes,
       caption,
     };
     await this.handleTelegramMedia(ctx, userId, media, extracted.fileId);
@@ -689,12 +764,14 @@ export class TelegramAdapter extends BaseBotAdapter {
 
     try {
       await ctx.api.sendChatAction(chatId, "typing");
-    } catch {}
+    } catch {
+      /* typing action is best-effort */
+    }
 
     try {
       const outcome = await this.resolveIncomingMedia(
         media,
-        () => this.downloadTelegramFile(fileId),
+        (maxBytes) => this.downloadTelegramFile(fileId, maxBytes),
         userId,
         chatId.toString(),
       );
@@ -711,35 +788,41 @@ export class TelegramAdapter extends BaseBotAdapter {
     } catch (err) {
       this.adapterLogger.error(
         "media_message_failed",
-        { chat_id: chatId, media_kind: media.kind },
+        { channel_hash: hashLogIdentifier(chatId), media_kind: media.kind },
         err,
       );
       try {
         await ctx.reply(
           friendlyMediaError(media.kind, err, this.gaia.getPricingUrl()),
         );
-      } catch {}
+      } catch {
+        /* the error notice itself failing is not actionable */
+      }
     }
   }
 
   /**
-   * Downloads a Telegram file by id. `getFile` returns a path under the Bot API
-   * file endpoint; we fetch the raw bytes from there. Telegram caps Bot API
-   * downloads at 20 MB — larger files throw and surface as a friendly error.
+   * Downloads a Telegram file by id, reading at most `maxBytes`. `getFile`
+   * returns a path under the Bot API file endpoint; we stream the raw bytes
+   * from there and stop at the cap, so an oversize file is never buffered
+   * whole. Telegram caps Bot API downloads at 20 MB — larger files throw and
+   * surface as a friendly error.
    */
-  private async downloadTelegramFile(fileId: string): Promise<Uint8Array> {
+  private async downloadTelegramFile(
+    fileId: string,
+    maxBytes: number,
+  ): Promise<Uint8Array> {
     const file = await this.bot.api.getFile(fileId);
     if (!file.file_path) {
       throw new Error("Telegram getFile returned no file_path");
     }
     const url = `https://api.telegram.org/file/bot${this.token}/${file.file_path}`;
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(
-        `Telegram file download failed with status ${res.status}`,
-      );
-    }
-    return new Uint8Array(await res.arrayBuffer());
+    return fetchBytesCapped(
+      url,
+      maxBytes,
+      "Telegram file",
+      MEDIA_READ_TIMEOUT_MS,
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -781,7 +864,10 @@ export class TelegramAdapter extends BaseBotAdapter {
           (e) =>
             this.adapterLogger.error(
               "edit_message_text_failed",
-              { chat_id: targetChat, message_id: messageId },
+              {
+                channel_hash: hashLogIdentifier(targetChat),
+                message_id: messageId,
+              },
               e,
             ),
         ),
@@ -821,7 +907,7 @@ export class TelegramAdapter extends BaseBotAdapter {
         // richMessageToMarkdown renders Telegram-flavoured CommonMark; convert
         // it to HTML through the same chokepoint as every other outbound send.
         const html = renderForPlatform(
-          richMessageToMarkdown(richMsg, "telegram"),
+          richMessageToMarkdown(richMsg),
           "telegram",
         );
         // In groups, DM rich content for privacy; in private chats, send normally
@@ -837,10 +923,13 @@ export class TelegramAdapter extends BaseBotAdapter {
       },
 
       startTyping: async () => {
-        if (!chatId) return () => {};
+        if (!chatId)
+          return () => {
+            /* no chat to type into */
+          };
         return this.startTypingIndicator(
           () => api.sendChatAction(chatId, "typing"),
-          5000,
+          TELEGRAM_TYPING_REFRESH_INTERVAL_MS,
         );
       },
     };

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.constants.log_tags import LogTag
+from app.db.repositories.user_integrations import user_integration_repository
 from app.models.integration_instructions_models import InstructionsEditor
 from app.schemas.integrations.requests import (
     AddUserIntegrationRequest,
@@ -16,6 +17,7 @@ from app.schemas.integrations.responses import (
     IntegrationInstructionsResponse,
     IntegrationSuccessResponse,
 )
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.integration_instructions_service import (
     get_instructions_record,
     upsert_instructions,
@@ -45,16 +47,30 @@ async def add_integration_to_workspace(
         )
         user_integration = await add_user_integration_service(user_id, request.integration_id)
         log.set(outcome="success")
+        # No-auth integrations land directly in `connected` (the service stamps
+        # the status); OAuth/bearer-managed ones complete at their callback and
+        # capture INTEGRATION_CONNECTED there.
+        if user_integration.status == "connected":
+            capture_context_event(
+                AnalyticsEvents.INTEGRATION_CONNECTED,
+                {"integration_id": user_integration.integration_id, "source": "workspace"},
+            )
         return AddUserIntegrationResponse(
             message="Integration added to workspace",
             integration_id=user_integration.integration_id,
             connection_status=user_integration.status,
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error adding integration: {e}")
-        raise HTTPException(status_code=500, detail="Failed to add integration")
+        log.error(
+            f"{LogTag.INTEGRATION} Error adding integration",
+            integration_id=request.integration_id,
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise HTTPException(status_code=500, detail="Failed to add integration") from e
 
 
 @router.delete("/{integration_id}", response_model=IntegrationSuccessResponse)
@@ -70,9 +86,31 @@ async def remove_integration_from_workspace(
             user={"id": user_id},
             integration={"id": integration_id},
         )
+        # Removing a connected integration severs the connection, so attribute
+        # it the same as an explicit disconnect; a never-connected record is
+        # just removed. Analytics-only read: a failed status lookup must never
+        # block the removal itself.
+        try:
+            was_connected = await user_integration_repository.is_connected(user_id, integration_id)
+        except Exception as e:
+            log.warning(
+                f"{LogTag.INTEGRATION} Failed to read connection status before removal",
+                integration_id=integration_id,
+                user_id=user_id,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+            # None and False are equally falsy here, so a None-mutation of
+            # this fallback is behaviorally unreachable. pragma: no mutate
+            was_connected = False  # pragma: no mutate
         removed = await remove_user_integration(user_id, integration_id)
         if not removed:
             raise HTTPException(status_code=404, detail="Integration not found in workspace")
+        if was_connected:
+            capture_context_event(
+                AnalyticsEvents.INTEGRATION_DISCONNECTED,
+                {"integration_id": integration_id},
+            )
         log.set(outcome="success")
         return IntegrationSuccessResponse(
             message="Integration removed from workspace",
@@ -81,8 +119,14 @@ async def remove_integration_from_workspace(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error removing integration: {e}")
-        raise HTTPException(status_code=500, detail="Failed to remove integration")
+        log.error(
+            f"{LogTag.INTEGRATION} Error removing integration",
+            integration_id=integration_id,
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise HTTPException(status_code=500, detail="Failed to remove integration") from e
 
 
 @router.get(
@@ -120,8 +164,16 @@ async def get_integration_instructions(
             updated_at=record.updated_at,
         )
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error fetching integration instructions: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch integration instructions")
+        log.error(
+            f"{LogTag.INTEGRATION} Error fetching integration instructions",
+            integration_id=integration_id,
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=500, detail="Failed to fetch integration instructions"
+        ) from e
 
 
 @router.put(
@@ -163,7 +215,15 @@ async def update_integration_instructions(
     except HTTPException:
         raise
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error updating integration instructions: {e}")
-        raise HTTPException(status_code=500, detail="Failed to update integration instructions")
+        log.error(
+            f"{LogTag.INTEGRATION} Error updating integration instructions",
+            integration_id=integration_id,
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=500, detail="Failed to update integration instructions"
+        ) from e

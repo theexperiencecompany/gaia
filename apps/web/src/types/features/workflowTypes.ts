@@ -13,7 +13,6 @@
 import type { ExecutionConfig, WorkflowMetadata } from "@shared/types";
 import type {
   TriggerConfig,
-  TriggerFieldSchema,
   TriggerSchema,
 } from "@/features/workflows/triggers/types";
 import type { ContentCreator } from "@/types/shared/contentTypes";
@@ -59,10 +58,8 @@ export interface PublicWorkflowStep {
 // ============================================================================
 
 // Re-export trigger types for convenience
-export type { TriggerConfig, TriggerFieldSchema, TriggerSchema };
-
 // Re-export shared types that are identical between web and mobile
-export type { ExecutionConfig, WorkflowMetadata };
+export type { ExecutionConfig, TriggerConfig, TriggerSchema, WorkflowMetadata };
 
 // ============================================================================
 // COMMUNITY & EXPLORE WORKFLOW TYPES
@@ -78,6 +75,16 @@ export interface CommunityWorkflow {
   title: string;
   description: string;
   prompt?: string;
+  /** User-chosen icon slug (gaia-icons component name) */
+  icon?: string | null;
+  /** Hex color for the user-chosen icon */
+  icon_color?: string | null;
+  /** Set on built-in workflows GAIA provisions when an integration is connected */
+  system_workflow_key?: string | null;
+  /** Integration whose connection provisions this workflow */
+  source_integration?: string | null;
+  /** The card's real trigger — reproduced when the user adds it */
+  trigger_config?: TriggerConfig;
   steps: PublicWorkflowStep[];
   created_at: string;
   creator: ContentCreator;
@@ -106,6 +113,13 @@ export interface UseCase {
   description: string;
   detailed_description?: string;
   action_type: "prompt" | "workflow";
+  /** User-chosen icon slug (gaia-icons component name) */
+  icon?: string | null;
+  /** Hex color for the user-chosen icon */
+  icon_color?: string | null;
+  system_workflow_key?: string | null;
+  source_integration?: string | null;
+  trigger_config?: TriggerConfig;
   integrations: string[]; // Tool category names
   categories: string[]; // Same as CommunityWorkflow categories
   published_id: string;
@@ -131,12 +145,22 @@ export interface WorkflowData {
   steps: WorkflowStepData[];
 }
 
+/** Lightweight integration reference returned in workflow responses. */
+export interface IntegrationRef {
+  id: string;
+  name: string;
+}
+
 // Complete workflow entity
 export interface Workflow {
   id: string;
   title: string;
   description: string;
   prompt: string;
+  /** User-chosen icon slug (gaia-icons component name); shown when the workflow has no integration icons */
+  icon?: string | null;
+  /** Hex color for the user-chosen icon */
+  icon_color?: string | null;
   steps: WorkflowStepType[];
   trigger_config: TriggerConfig;
   execution_config?: ExecutionConfig;
@@ -169,8 +193,17 @@ export interface Workflow {
   source_integration?: string;
   system_workflow_key?: string;
 
-  /** Integration slugs the user picked to bias step generation */
-  selected_integrations?: string[];
+  /**
+   * Integration ids this workflow uses — picked by the user or identified from
+   * intent. Scopes the tool palette when generating steps. Never stores
+   * connection state; see required/missing below.
+   */
+  integration_ids?: string[];
+
+  /** Integrations required by the workflow's steps (computed at read time) */
+  required_integrations?: IntegrationRef[];
+  /** Required integrations the user has not connected yet (computed at read time) */
+  missing_integrations?: IntegrationRef[];
 }
 
 // API request types
@@ -178,6 +211,12 @@ export interface CreateWorkflowRequest {
   title: string;
   description?: string;
   prompt: string;
+  /** User-chosen icon slug (gaia-icons component name) */
+  icon?: string | null;
+  /** Hex color for the user-chosen icon */
+  icon_color?: string | null;
+  /** Built-in workflow key — makes create idempotent against the provisioner */
+  system_workflow_key?: string | null;
   trigger_config: TriggerConfig;
   steps?: WorkflowStepData[]; // Optional: pre-existing steps from explore/community workflows
   execution_config?: ExecutionConfig;
@@ -185,8 +224,8 @@ export interface CreateWorkflowRequest {
   generate_immediately?: boolean;
   /** Whether GAIA sends the automatic completion notification after each run */
   notify_on_completion?: boolean;
-  /** Integration slugs selected by the user to hint step generation */
-  selected_integrations?: string[];
+  /** Integration ids this workflow uses; scopes the tool palette when generating steps */
+  integration_ids?: string[];
 }
 
 export interface WorkflowExecutionRequest {
@@ -195,17 +234,6 @@ export interface WorkflowExecutionRequest {
 }
 
 // API response types
-export interface WorkflowStatusResponse {
-  workflow_id: string;
-  activated: boolean;
-  current_step_index: number;
-  total_steps: number;
-  progress_percentage: number;
-  last_updated: string;
-  error_message?: string;
-  logs: string[];
-}
-
 export interface WorkflowListResponse {
   workflows: Workflow[];
   total_count: number;

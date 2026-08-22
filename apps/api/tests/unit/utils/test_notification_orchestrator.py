@@ -4,8 +4,6 @@ from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionResult,
@@ -123,7 +121,6 @@ def _make_action(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestOrchestratorInit:
     """Tests for orchestrator initialisation and component registration."""
 
@@ -165,7 +162,6 @@ class TestOrchestratorInit:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateNotification:
     """Tests for NotificationOrchestrator.create_notification."""
 
@@ -206,7 +202,6 @@ class TestCreateNotification:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestDeliverNotification:
     """Tests for the internal _deliver_notification pipeline."""
 
@@ -365,7 +360,6 @@ class TestDeliverNotification:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestAutoInjectedChannels:
     """Tests for auto-injection of channels when none are explicitly requested."""
 
@@ -469,7 +463,6 @@ class TestAutoInjectedChannels:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetChannelPrefs:
     """Tests for _get_channel_prefs error handling."""
 
@@ -484,8 +477,13 @@ class TestGetChannelPrefs:
             prefs = await orch._get_channel_prefs("user-1")
             assert prefs == {"telegram": True, "discord": False}
 
-    async def test_returns_all_disabled_on_error(self) -> None:
-        """On DB failure, all channels default to disabled (safe fallback)."""
+    async def test_returns_all_enabled_on_error(self) -> None:
+        """On DB failure, all channels default to enabled (DEFAULT_CHANNEL_PREFERENCES).
+
+        An unreadable preference document means the preference is *unknown*, not
+        opted-out.  Erring toward delivery (one stray message during a rare outage)
+        is safer than silently dropping notifications the user asked for.
+        """
         orch = NotificationOrchestrator(storage=MagicMock())
         with patch(
             "app.utils.notification.orchestrator.fetch_channel_preferences",
@@ -493,9 +491,9 @@ class TestGetChannelPrefs:
             side_effect=RuntimeError("db down"),
         ):
             prefs = await orch._get_channel_prefs("user-1")
-            # Every key should be False
+            # Every key should be True (DEFAULT_CHANNEL_PREFERENCES — all enabled)
             for val in prefs.values():
-                assert val is False
+                assert val is True
 
 
 # ---------------------------------------------------------------------------
@@ -503,7 +501,6 @@ class TestGetChannelPrefs:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestDeliverViaChannel:
     """Tests for _deliver_via_channel error handling."""
 
@@ -550,7 +547,6 @@ class TestDeliverViaChannel:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestExecuteAction:
     """Tests for NotificationOrchestrator.execute_action."""
 
@@ -733,7 +729,6 @@ class TestExecuteAction:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestMarkAsRead:
     """Tests for NotificationOrchestrator.mark_as_read."""
 
@@ -777,7 +772,6 @@ class TestMarkAsRead:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestArchiveNotification:
     """Tests for NotificationOrchestrator.archive_notification."""
 
@@ -815,7 +809,6 @@ class TestArchiveNotification:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetNotifications:
     """Tests for notification retrieval methods."""
 
@@ -832,8 +825,8 @@ class TestGetNotifications:
         results = await orch.get_user_notifications("user-1")
 
         assert len(results) == 2
-        assert results[0]["id"] == "n-1"
-        assert results[1]["id"] == "n-2"
+        assert results[0].id == "n-1"
+        assert results[1].id == "n-2"
 
     async def test_get_user_notifications_passes_filters(self) -> None:
         """All filter parameters are forwarded to storage."""
@@ -862,7 +855,7 @@ class TestGetNotifications:
         )
 
     async def test_get_notification_returns_serialized(self) -> None:
-        """get_notification returns a serialized dict for a found record."""
+        """get_notification returns a NotificationView for a found record."""
         storage = AsyncMock()
         record = _make_record()
         storage.get_notification.return_value = record
@@ -871,7 +864,7 @@ class TestGetNotifications:
         result = await orch.get_notification("notif-1", "user-1")
 
         assert result is not None
-        assert result["id"] == record.id
+        assert result.id == record.id
 
     async def test_get_notification_returns_none_when_not_found(self) -> None:
         """get_notification returns None when storage returns None."""
@@ -889,7 +882,6 @@ class TestGetNotifications:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestBulkActions:
     """Tests for NotificationOrchestrator.bulk_actions."""
 
@@ -971,7 +963,6 @@ class TestBulkActions:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestSerializeNotification:
     """Tests for the _serialize_notification helper."""
 
@@ -991,7 +982,7 @@ class TestSerializeNotification:
         ]
 
         orch = NotificationOrchestrator(storage=MagicMock())
-        data = await orch._serialize_notification(record)
+        data = orch._serialize_notification(record).model_dump(mode="json")
 
         assert data["id"] == record.id
         assert data["user_id"] == record.user_id
@@ -1015,7 +1006,7 @@ class TestSerializeNotification:
         record.read_at = None
 
         orch = NotificationOrchestrator(storage=MagicMock())
-        data = await orch._serialize_notification(record)
+        data = orch._serialize_notification(record).model_dump(mode="json")
 
         assert data["delivered_at"] is None
         assert data["read_at"] is None
@@ -1026,7 +1017,7 @@ class TestSerializeNotification:
         record = _make_record(request=request)
 
         orch = NotificationOrchestrator(storage=MagicMock())
-        data = await orch._serialize_notification(record)
+        data = orch._serialize_notification(record).model_dump(mode="json")
 
         assert data["content"]["actions"] == []
 
@@ -1036,6 +1027,6 @@ class TestSerializeNotification:
         record.channels = []
 
         orch = NotificationOrchestrator(storage=MagicMock())
-        data = await orch._serialize_notification(record)
+        data = orch._serialize_notification(record).model_dump(mode="json")
 
         assert data["channels"] == []

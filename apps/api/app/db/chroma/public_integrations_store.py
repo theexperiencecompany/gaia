@@ -32,10 +32,17 @@ async def index_public_integration(
             ids=[integration_id],
             metadatas=[{"integration_id": integration_id}],
         )
-        log.info(f"{LogTag.CHROMA} Indexed public integration {integration_id} in ChromaDB")
+        log.info(
+            f"{LogTag.CHROMA} Indexed public integration in ChromaDB", integration_id=integration_id
+        )
 
     except Exception as e:
-        log.error(f"{LogTag.CHROMA} Failed to index public integration {integration_id}: {e}")
+        log.error(
+            f"{LogTag.CHROMA} Failed to index public integration",
+            integration_id=integration_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
@@ -50,16 +57,23 @@ async def remove_public_integration(integration_id: str) -> None:
             create_if_not_exists=True,
         )
         await chroma.adelete(ids=[integration_id])
-        log.info(f"{LogTag.CHROMA} Removed public integration {integration_id} from ChromaDB")
+        log.info(
+            f"{LogTag.CHROMA} Removed public integration from ChromaDB",
+            integration_id=integration_id,
+        )
 
     except Exception as e:
-        log.error(f"{LogTag.CHROMA} Failed to remove public integration {integration_id}: {e}")
+        log.error(
+            f"{LogTag.CHROMA} Failed to remove public integration",
+            integration_id=integration_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 async def search_public_integrations(
     query: str,
     limit: int = 20,
-    category: str | None = None,
 ) -> list[dict]:
     """Search public integrations. Returns list of {integration_id, relevance_score}."""
     log.set(vector=VectorContext(operation="query", collection=COLLECTION_NAME, n_results=limit))
@@ -88,5 +102,11 @@ async def search_public_integrations(
         return matches
 
     except Exception as e:
-        log.error(f"{LogTag.CHROMA} Failed to search public integrations: {e}")
-        return []
+        # Re-raise so an unreachable ChromaDB isn't reported as "no matching
+        # integrations" — tool retrieval needs the failure to distinguish a
+        # total search outage, and the marketplace endpoint should 500 honestly
+        # rather than render an empty catalog.
+        log.error(
+            f"{LogTag.CHROMA} Failed to search public integrations", error_type=type(e).__name__
+        )
+        raise

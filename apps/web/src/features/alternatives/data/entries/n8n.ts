@@ -14,7 +14,7 @@ export const entry: AlternativeData = {
     "Cloud version is expensive for what self-hosted n8n provides",
     "No memory or context awareness between workflow executions",
   ],
-  metaTitle: "Best n8n Alternative in 2026 | GAIA",
+  metaTitle: "Best n8n Alternative in 2026",
   metaDescription:
     "n8n is powerful but technical. GAIA is an open-source proactive AI assistant with built-in automation that non-technical users can actually use. Free tier available.",
   keywords: [
@@ -34,7 +34,7 @@ export const entry: AlternativeData = {
     "Zapier alternative with AI reasoning",
   ],
   whyPeopleLook:
-    "n8n is beloved by developers and technical users who want open-source workflow automation they can self-host and customize. But its visual node editor, JavaScript code nodes, and self-hosting requirements make it inaccessible to non-technical users. People searching for n8n alternatives often want something that provides the openness and self-hosting of n8n but with a more accessible interface — preferably with AI reasoning built in rather than requiring manual JavaScript logic.",
+    "n8n is beloved by developers and technical users who want open-source workflow automation they can self-host and customize. But its visual node editor, JavaScript code nodes, and self-hosting requirements make it inaccessible to non-technical users. People searching for n8n alternatives often want something that provides the openness and self-hosting of n8n but with a more accessible interface, preferably with AI reasoning built in rather than requiring manual JavaScript logic.",
   gaiaFitScore: 3,
   gaiaReplaces: [
     "Self-hosted automation for email, calendar, and task workflows",

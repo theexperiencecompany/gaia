@@ -6,9 +6,7 @@ app.agents.llm.client — mocking only external LLM API calls at the I/O
 boundary. Covers:
 - Provider priority ordering
 - Preferred provider selection
-- Fallback on primary failure (invoke_with_fallback)
-- All-providers-fail error propagation
-- Free LLM chain construction
+- Configurable-alternatives wiring
 - Model pricing lookup
 - Token cost calculation
 """
@@ -16,9 +14,10 @@ boundary. Covers:
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage
+from langchain_google_genai.chat_models import ChatGoogleGenerativeAIError
 import pytest
 
 from app.agents.llm.client import (
@@ -27,9 +26,9 @@ from app.agents.llm.client import (
     _create_configurable_llm,
     _get_available_providers,
     _get_ordered_providers,
-    get_free_llm_chain,
+    ainvoke_llm,
     init_llm,
-    invoke_with_fallback,
+    register_llm_providers,
 )
 from app.config.model_pricing import (
     DEFAULT_PRICING,
@@ -37,6 +36,8 @@ from app.config.model_pricing import (
     calculate_token_cost,
     get_model_pricing,
 )
+from app.config.settings import settings
+from app.constants.llm import DEFAULT_LLM_PROVIDER
 from app.core.lazy_loader import MissingKeyStrategy, ProviderRegistry
 
 
@@ -49,36 +50,26 @@ def _make_mock_llm(name: str = "mock_llm") -> MagicMock:
     return mock
 
 
-def _make_async_llm(response_content: str = "ok") -> AsyncMock:
-    """Create an async-invocable mock LLM."""
-    llm = AsyncMock()
-    llm.ainvoke.return_value = AIMessage(content=response_content)
-    llm.__class__ = type("MockLLM", (), {"__name__": "MockLLM"})
-    return llm
-
-
 @pytest.mark.integration
 class TestProviderPriorityOrdering:
     """Verify provider ordering follows PROVIDER_PRIORITY and respects preferences."""
 
     def test_default_priority_order(self) -> None:
-        """Without a preferred provider, ordering follows PROVIDER_PRIORITY (gemini > openai > openrouter)."""
+        """Without a preferred provider, ordering follows PROVIDER_PRIORITY
+        (openrouter > gemini — the default provider leads)."""
         mock_gemini = _make_mock_llm("gemini")
-        mock_openai = _make_mock_llm("openai")
         mock_openrouter = _make_mock_llm("openrouter")
 
         available = {
-            "openai": mock_openai,
             "gemini": mock_gemini,
             "openrouter": mock_openrouter,
         }
 
         ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=True)
 
-        assert len(ordered) == 3
-        assert ordered[0]["name"] == "gemini"
-        assert ordered[1]["name"] == "openai"
-        assert ordered[2]["name"] == "openrouter"
+        assert len(ordered) == 2
+        assert ordered[0]["name"] == "openrouter"
+        assert ordered[1]["name"] == "gemini"
 
     def test_preferred_provider_goes_first(self) -> None:
         """When a preferred_provider is given and available, it leads the list."""
@@ -127,15 +118,15 @@ class TestProviderPriorityOrdering:
 
     def test_fallback_disabled_no_preferred_still_returns_priority_order(self) -> None:
         """With fallback_enabled=False but no preferred provider, ordered list still populated from priority."""
-        mock_openai = _make_mock_llm("openai")
-        available = {"openai": mock_openai}
+        mock_openrouter = _make_mock_llm("openrouter")
+        available = {"openrouter": mock_openrouter}
 
         # When no ordered (preferred) providers, fallback_enabled=False still adds from priority
         # because the condition is `if fallback_enabled or not ordered`
         ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=False)
 
         assert len(ordered) == 1
-        assert ordered[0]["name"] == "openai"
+        assert ordered[0]["name"] == "openrouter"
 
 
 @pytest.mark.integration
@@ -158,30 +149,32 @@ class TestProviderInitialization:
     def test_init_llm_returns_configurable_with_multiple_providers(self) -> None:
         """With multiple providers, init_llm wraps them with configurable_alternatives."""
         mock_gemini = _make_mock_llm("gemini")
-        mock_openai = _make_mock_llm("openai")
+        mock_openrouter = _make_mock_llm("openrouter")
 
-        available = {"gemini": mock_gemini, "openai": mock_openai}
+        available = {"gemini": mock_gemini, "openrouter": mock_openrouter}
 
         with patch("app.agents.llm.client._get_available_providers", return_value=available):
             init_llm()
 
-        # Primary is gemini, and configurable_alternatives is called with openai
-        mock_gemini.configurable_alternatives.assert_called_once()
-        call_kwargs = mock_gemini.configurable_alternatives.call_args[1]
-        assert "openai" in call_kwargs
+        # Primary is openrouter (priority 1), and configurable_alternatives is
+        # called on it with gemini as the alternative.
+        mock_openrouter.configurable_alternatives.assert_called_once()
+        call_kwargs = mock_openrouter.configurable_alternatives.call_args[1]
+        assert call_kwargs["default_key"] == "openrouter"
+        assert "gemini" in call_kwargs
 
-    def test_init_llm_preferred_provider_openai(self) -> None:
-        """Requesting openai as preferred provider makes it the primary."""
+    def test_init_llm_preferred_provider_openrouter(self) -> None:
+        """Requesting openrouter as preferred provider makes it the primary."""
         mock_gemini = _make_mock_llm("gemini")
-        mock_openai = _make_mock_llm("openai")
+        mock_openrouter = _make_mock_llm("openrouter")
 
-        available = {"gemini": mock_gemini, "openai": mock_openai}
+        available = {"gemini": mock_gemini, "openrouter": mock_openrouter}
 
         with patch("app.agents.llm.client._get_available_providers", return_value=available):
-            init_llm(preferred_provider="openai")
+            init_llm(preferred_provider="openrouter")
 
-        # openai should be primary — its configurable_alternatives should be called
-        mock_openai.configurable_alternatives.assert_called_once()
+        # openrouter should be primary — its configurable_alternatives should be called
+        mock_openrouter.configurable_alternatives.assert_called_once()
 
     def test_init_llm_invalid_provider_raises_value_error(self) -> None:
         """Requesting a non-existent provider raises ValueError."""
@@ -207,123 +200,10 @@ class TestProviderInitialization:
             "app.agents.llm.client._get_available_providers",
             return_value={"gemini": mock_gemini},
         ):
-            result = init_llm(preferred_provider="openai", fallback_enabled=False)
+            result = init_llm(preferred_provider="openrouter", fallback_enabled=False)
 
-        # Since openai is not available and ordered is empty, gemini fills in
+        # Since openrouter is not available and ordered is empty, gemini fills in
         assert result is mock_gemini
-
-
-@pytest.mark.integration
-class TestFreeLLMMode:
-    """Verify get_free_llm_chain()."""
-
-    def test_get_free_llm_chain_returns_gemini(self) -> None:
-        """get_free_llm_chain returns a single Gemini LLM when GOOGLE_API_KEY exists."""
-        with patch("app.agents.llm.client.settings") as mock_settings:
-            mock_settings.GOOGLE_API_KEY = "google-key"
-
-            with patch("app.agents.llm.client.ChatGoogleGenerativeAI") as mock_gemini:
-                mock_gemini.return_value = _make_mock_llm("gemini")
-
-                chain = get_free_llm_chain()
-
-                assert len(chain) == 1
-                mock_gemini.assert_called_once()
-
-    def test_get_free_llm_chain_no_google_key_raises(self) -> None:
-        """get_free_llm_chain raises RuntimeError when GOOGLE_API_KEY is missing."""
-        with patch("app.agents.llm.client.settings") as mock_settings:
-            mock_settings.GOOGLE_API_KEY = None
-
-            with pytest.raises(
-                RuntimeError, match="No LLM provider configured for auxiliary tasks"
-            ):
-                get_free_llm_chain()
-
-
-@pytest.mark.integration
-class TestInvokeWithFallback:
-    """Test the invoke_with_fallback function that tries LLMs in sequence."""
-
-    async def test_first_llm_succeeds(self) -> None:
-        """When the first LLM succeeds, its response is returned and the second is never called."""
-        llm1 = _make_async_llm("response from llm1")
-        llm2 = _make_async_llm("response from llm2")
-
-        messages = [HumanMessage(content="hello")]
-        result = await invoke_with_fallback([llm1, llm2], messages)
-
-        assert result.content == "response from llm1"
-        llm1.ainvoke.assert_awaited_once()
-        llm2.ainvoke.assert_not_awaited()
-
-    async def test_fallback_on_primary_failure(self) -> None:
-        """When the first LLM raises, the second is tried and its response returned."""
-        llm1 = _make_async_llm()
-        llm1.ainvoke.side_effect = Exception("API rate limit exceeded")
-
-        llm2 = _make_async_llm("fallback response")
-
-        messages = [HumanMessage(content="hello")]
-        result = await invoke_with_fallback([llm1, llm2], messages)
-
-        assert result.content == "fallback response"
-        llm1.ainvoke.assert_awaited_once()
-        llm2.ainvoke.assert_awaited_once()
-
-    async def test_all_providers_fail_raises_runtime_error(self) -> None:
-        """When all LLMs in the chain fail, a RuntimeError is raised with the last error."""
-        llm1 = _make_async_llm()
-        llm1.ainvoke.side_effect = Exception("provider 1 down")
-
-        llm2 = _make_async_llm()
-        llm2.ainvoke.side_effect = Exception("provider 2 down")
-
-        messages = [HumanMessage(content="hello")]
-
-        with pytest.raises(RuntimeError, match="All LLM providers failed.*provider 2 down"):
-            await invoke_with_fallback([llm1, llm2], messages)
-
-        llm1.ainvoke.assert_awaited_once()
-        llm2.ainvoke.assert_awaited_once()
-
-    async def test_single_provider_failure_raises(self) -> None:
-        """A single-provider chain that fails raises RuntimeError."""
-        llm1 = _make_async_llm()
-        llm1.ainvoke.side_effect = ConnectionError("connection refused")
-
-        messages = [HumanMessage(content="hello")]
-
-        with pytest.raises(RuntimeError, match="All LLM providers failed"):
-            await invoke_with_fallback([llm1], messages)
-
-    async def test_config_forwarded_to_llm(self) -> None:
-        """The optional RunnableConfig is forwarded to each LLM invoke call."""
-        llm1 = _make_async_llm("ok")
-        config = {"configurable": {"thread_id": "test-thread"}}
-
-        messages = [HumanMessage(content="hello")]
-        await invoke_with_fallback([llm1], messages, config=config)
-
-        llm1.ainvoke.assert_awaited_once_with(messages, config=config)
-
-    async def test_third_provider_succeeds_after_two_failures(self) -> None:
-        """Chain of three: first two fail, third succeeds."""
-        llm1 = _make_async_llm()
-        llm1.ainvoke.side_effect = Exception("llm1 error")
-
-        llm2 = _make_async_llm()
-        llm2.ainvoke.side_effect = Exception("llm2 error")
-
-        llm3 = _make_async_llm("llm3 success")
-
-        messages = [HumanMessage(content="hello")]
-        result = await invoke_with_fallback([llm1, llm2, llm3], messages)
-
-        assert result.content == "llm3 success"
-        llm1.ainvoke.assert_awaited_once()
-        llm2.ainvoke.assert_awaited_once()
-        llm3.ainvoke.assert_awaited_once()
 
 
 @pytest.mark.integration
@@ -376,6 +256,9 @@ class TestModelPricing:
         mock_model = MagicMock()
         mock_model.pricing_per_1k_input_tokens = 0.005
         mock_model.pricing_per_1k_output_tokens = 0.015
+        # Explicitly set cached pricing to None so production derives it from
+        # the DEFAULT_CACHED_INPUT_FRACTION (0.25 * input_cost = 0.00125).
+        mock_model.pricing_per_1k_cached_input_tokens = None
 
         with patch(
             "app.config.model_pricing.get_model_by_id",
@@ -384,7 +267,11 @@ class TestModelPricing:
         ):
             pricing = await get_model_pricing("gpt-4o")
 
-        assert pricing == ModelPricing(input_cost_per_1k=0.005, output_cost_per_1k=0.015)
+        assert pricing == ModelPricing(
+            input_cost_per_1k=0.005,
+            output_cost_per_1k=0.015,
+            cached_input_cost_per_1k=0.005 * 0.25,
+        )
 
     async def test_get_model_pricing_handles_exception_gracefully(self) -> None:
         """On exception from the model service, DEFAULT_PRICING is returned."""
@@ -435,14 +322,14 @@ class TestProviderConstants:
                 f"PROVIDER_PRIORITY[{priority}] = '{provider_name}' not found in PROVIDER_MODELS"
             )
 
-    def test_default_priority_is_gemini(self) -> None:
-        """Priority 1 (the default) should be gemini."""
-        assert PROVIDER_PRIORITY[1] == "gemini"
+    def test_default_priority_matches_the_default_provider(self) -> None:
+        """Priority 1 is the provider serving DEFAULT_MODEL_NAME — the fallback
+        chain must start at the lane the app actually defaults to."""
+        assert PROVIDER_PRIORITY[1] == DEFAULT_LLM_PROVIDER == "openrouter"
 
     def test_provider_models_have_expected_keys(self) -> None:
-        """PROVIDER_MODELS must contain gemini, openai, and openrouter."""
+        """PROVIDER_MODELS must contain gemini and openrouter."""
         assert "gemini" in PROVIDER_MODELS
-        assert "openai" in PROVIDER_MODELS
         assert "openrouter" in PROVIDER_MODELS
 
 
@@ -451,7 +338,7 @@ class TestGetAvailableProviders:
     """Test _get_available_providers retrieves from the lazy provider registry."""
 
     def _build_registry(self, present_providers: dict[str, Any]) -> ProviderRegistry:
-        """Build a ProviderRegistry with all three LLM slots registered.
+        """Build a ProviderRegistry with all LLM slots registered.
 
         Providers listed in `present_providers` get a real loader that returns
         the given instance. Missing providers get a loader that returns None
@@ -462,6 +349,7 @@ class TestGetAvailableProviders:
             "openai_llm": present_providers.get("openai_llm"),
             "gemini_llm": present_providers.get("gemini_llm"),
             "openrouter_llm": present_providers.get("openrouter_llm"),
+            "custom_llm": present_providers.get("custom_llm"),
         }
         for name, instance in all_slots.items():
             if instance is not None:
@@ -483,15 +371,14 @@ class TestGetAvailableProviders:
 
     def test_returns_only_registered_providers(self) -> None:
         """Only providers whose keys are configured appear in the result."""
-        mock_openai_llm = _make_mock_llm("openai_llm")
-        registry = self._build_registry({"openai_llm": mock_openai_llm})
+        mock_openrouter_llm = _make_mock_llm("openrouter_llm")
+        registry = self._build_registry({"openrouter_llm": mock_openrouter_llm})
 
         with patch("app.agents.llm.client.providers", registry):
             available = _get_available_providers()
 
-        assert "openai" in available
+        assert "openrouter" in available
         assert "gemini" not in available
-        assert "openrouter" not in available
 
     def test_returns_empty_when_no_providers_have_keys(self) -> None:
         """When all providers have missing keys, available dict is empty."""
@@ -501,3 +388,88 @@ class TestGetAvailableProviders:
             available = _get_available_providers()
 
         assert available == {}
+
+
+@pytest.mark.integration
+class TestProductionProviderRegistration:
+    """Drives the REAL register_llm_providers().
+
+    `_build_registry` above always registers all four slots and varies only the
+    keys, so production's actual state — custom_llm never registered, because it
+    is gated on ENV=development — was unrepresentable, and the KeyError it raised
+    went unseen by every tier.
+    """
+
+    @pytest.mark.regression
+    def test_production_registration_leaves_provider_lookup_working(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        registry = ProviderRegistry()
+        # Registration writes to lazy_loader.providers, the lookup reads
+        # client.providers; both must point at the throwaway or the global
+        # singleton leaks into every later test.
+        monkeypatch.setattr("app.core.lazy_loader.providers", registry)
+        monkeypatch.setattr("app.agents.llm.client.providers", registry)
+        monkeypatch.setattr(settings, "ENV", "production")
+
+        register_llm_providers()
+
+        # Literals rather than LLMProviderKey/LLMProviderName: the regression
+        # gate re-runs this file against the base revision, where those enums
+        # do not exist yet, and an import error there proves nothing.
+        with pytest.raises(KeyError):
+            registry.get("custom_llm")
+
+        # That KeyError went straight out through init_llm and took every agent
+        # graph down. Which providers stay available depends on the ambient keys
+        # (CI has none), so only the never-registered slot is asserted.
+        assert "custom" not in _get_available_providers()
+
+
+@pytest.mark.integration
+class TestAinvokeFallbackRouting:
+    """End-to-end routing of ainvoke_llm from a failing primary to the default fallback."""
+
+    @staticmethod
+    def _retrying(primary: MagicMock, retried: MagicMock) -> None:
+        # ainvoke_llm wraps via with_llm_retry(primary) -> primary.with_retry(...).
+        primary.with_retry = MagicMock(return_value=retried)
+
+    @staticmethod
+    def _runnable() -> NonCallableMagicMock:
+        # NonCallable because real Runnables aren't callable — ainvoke_llm treats
+        # a callable fallback as a lazy factory.
+        return NonCallableMagicMock()
+
+    async def test_primary_failure_routes_to_default_fallback(self) -> None:
+        primary = self._runnable()
+        retried = self._runnable()
+        # ChatGoogleGenerativeAIError (langchain-google-genai's wrapper around
+        # Gemini 4xx) is a fallback exception but not a retryable one, so the
+        # retry wrapper raises immediately into the fallback path.
+        retried.ainvoke = AsyncMock(
+            side_effect=ChatGoogleGenerativeAIError("primary provider down")
+        )
+        self._retrying(primary, retried)
+
+        fallback = self._runnable()
+        fallback.with_retry = MagicMock(return_value=fallback)
+        fallback.ainvoke = AsyncMock(return_value=AIMessage(content="from default model"))
+
+        result = await ainvoke_llm(
+            primary, [HumanMessage(content="hi")], fallback=fallback, label="test"
+        )
+
+        assert result.content == "from default model"
+        fallback.ainvoke.assert_awaited_once()
+
+    async def test_primary_failure_without_fallback_propagates(self) -> None:
+        primary = self._runnable()
+        retried = self._runnable()
+        retried.ainvoke = AsyncMock(
+            side_effect=ChatGoogleGenerativeAIError("primary provider down")
+        )
+        self._retrying(primary, retried)
+
+        with pytest.raises(ChatGoogleGenerativeAIError):
+            await ainvoke_llm(primary, [HumanMessage(content="hi")], label="test")

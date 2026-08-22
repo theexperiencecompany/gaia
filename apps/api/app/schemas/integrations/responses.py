@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 from pydantic.alias_generators import to_camel
 
 from app.models.integration_instructions_models import InstructionsEditor
+from app.models.integration_models import UserIntegrationStatus
 from app.models.oauth_models import IntegrationContent
 from app.schemas.common import SuccessResponse
 
@@ -24,7 +25,7 @@ class CloneCountMixin(BaseModel):
 
     @field_validator("clone_count", mode="before", check_fields=False)
     @classmethod
-    def coerce_clone_count(cls, v):
+    def coerce_clone_count(cls, v: object) -> object:
         """Coerce None to 0 for clone_count."""
         return v if v is not None else 0
 
@@ -57,7 +58,7 @@ class IntegrationSuccessResponse(SuccessResponse, CamelModel):
 
 class AddUserIntegrationResponse(SuccessResponse, CamelModel):
     integration_id: str
-    connection_status: Literal["created", "connected"]
+    connection_status: UserIntegrationStatus
 
 
 class IntegrationInstructionsResponse(CamelModel):
@@ -85,6 +86,10 @@ class CreateCustomIntegrationResponse(SuccessResponse, CamelModel):
 class IntegrationTool(BaseModel):
     name: str
     description: str | None = None
+    # HIL default: this tool is gated (irreversible) unless the user overrides it.
+    # Only meaningful for curated Composio toolkits; MCP tools always report False
+    # (their gating is resolved at runtime by the classifier, not pre-known here).
+    destructive: bool = False
 
 
 class IntegrationResponse(CamelModel, CloneCountMixin):
@@ -131,7 +136,9 @@ class MyIntegrationItem(CamelModel, CloneCountMixin):
     category: str
     source: Literal["platform", "custom"]
     managed_by: Literal["self", "composio", "mcp", "internal"]
-    status: Literal["connected", "created", "not_connected"]
+    status: Literal["connected", "created", "expired", "not_connected"]
+    # When the upstream grant died, so the UI can say how long it has been broken.
+    expired_at: datetime | None = None
     requires_auth: bool = False
     auth_type: Literal["none", "oauth", "bearer"] | None = None
     is_featured: bool = False

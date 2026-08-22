@@ -23,7 +23,8 @@ from datetime import UTC, datetime, timedelta
 from app.agents.workspace.skill_loader import library_hash
 from app.config.settings import settings
 from app.core.lazy_loader import providers
-from app.db.mongodb.collections import conversations_collection, users_collection
+from app.db.repositories.conversations import conversation_repository
+from app.db.repositories.users import user_repository
 from app.services._vfs_scheduler import make_scheduler
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.storage import provision_user_workspace
@@ -48,14 +49,13 @@ schedule_user_provision = make_scheduler(_provision, log_name="user_provision")
 async def _active_user_ids(active_days: int) -> list[str]:
     """User ids with a conversation updated within ``active_days``."""
     cutoff = datetime.now(UTC) - timedelta(days=active_days)
-    ids = await conversations_collection.distinct("user_id", {"updatedAt": {"$gte": cutoff}})
-    return [str(uid) for uid in ids if uid]
+    ids = await conversation_repository.active_user_ids_since(cutoff)
+    return [uid for uid in ids if uid]
 
 
 async def _all_user_ids() -> list[str]:
     """Every user id."""
-    cursor = users_collection.find({}, {"_id": 1})
-    return [str(doc["_id"]) async for doc in cursor]
+    return await user_repository.list_all_ids()
 
 
 async def sync_stale_user_workspaces(
@@ -89,7 +89,7 @@ async def sync_stale_user_workspaces(
         try:
             await provision_user_workspace(user_id, await get_connected_integration_ids(user_id))
             synced += 1
-        except Exception as e:  # noqa: BLE001 — one bad user must not abort the batch
+        except Exception as e:  # one bad user must not abort the batch
             log.warning("workspace_sync.user_failed", user_id=user_id, error=str(e))
 
     log.info(

@@ -17,16 +17,17 @@ from app.services.storage.sessions.artifacts import (
     list_user_uploaded,
     pin_session_artifact,
     resolve_session_path,
+    session_dir_inodes,
     stat_artifact,
 )
 from app.services.storage.sessions.lifecycle import (
     chmod_path,
     delete_session_dir,
-    ensure_session_dirs,
     list_session_ids,
     list_stale_sessions,
     materialize_user_integrations,
     provision_user_workspace,
+    sessions_root_inode,
     touch_session_last_active,
 )
 
@@ -34,7 +35,6 @@ __all__ = [
     "ArtifactInfo",
     "chmod_path",
     "delete_session_dir",
-    "ensure_session_dirs",
     "list_artifacts",
     "list_session_ids",
     "list_stale_sessions",
@@ -43,6 +43,8 @@ __all__ = [
     "pin_session_artifact",
     "provision_user_workspace",
     "resolve_session_path",
+    "session_dir_inodes",
+    "sessions_root_inode",
     "stat_artifact",
     "touch_session_last_active",
 ]

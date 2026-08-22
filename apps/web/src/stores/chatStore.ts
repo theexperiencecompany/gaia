@@ -5,6 +5,7 @@ import type { SelectedCalendarEventData } from "@/features/chat/hooks/useCalenda
 import type { IConversation, IMessage } from "@/lib/db/chatDb";
 import { db, dbEventEmitter } from "@/lib/db/chatDb";
 import type { ReplyToMessageData } from "@/stores/replyToMessageStore";
+import type { ArtifactData } from "@/types/features/toolDataTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared/fileTypes";
 
@@ -25,18 +26,20 @@ export interface OptimisticMessage {
   selectedCalendarEvent?: SelectedCalendarEventData | null;
   replyToMessage?: ReplyToMessageData | null;
   metadata?: Record<string, unknown>;
+  // The send never reached the backend. For a new conversation this bubble is
+  // the only record of the message, so it is marked rather than cleared.
+  failed?: boolean;
 }
 
 interface ChatState {
   conversations: IConversation[];
   messagesByConversation: Record<string, IMessage[]>;
+  // Per-conversation artifact registry, keyed by path. The runtime lookup layer
+  // for resolving a message's path references to full ArtifactData. Hydrated
+  // from IConversation.artifacts on load/sync and updated live by SSE; persisted
+  // back to IndexedDB at end-of-stream.
+  artifactsByConversation: Record<string, Record<string, ArtifactData>>;
   activeConversationId: string | null;
-  streamingConversationId: string | null; // ID of conversation currently streaming
-  // Conversation whose SSE stream has closed but is still awaiting a background
-  // executor's final result message (delivered separately via WebSocket). The
-  // turn is not visually "done" until that arrives, so the loading indicator
-  // stays on and follow-up actions stay suppressed during this window.
-  executorPendingConversationId: string | null;
   hydrationCompleted: boolean; // True when IndexedDB hydration is done
   // Single optimistic message for new conversations (not yet persisted to IndexedDB)
   // Only ONE optimistic message can exist at a time - enforced by using single object instead of array
@@ -52,23 +55,29 @@ interface ChatState {
     messages: IMessage[],
   ) => void;
   addOrUpdateMessage: (message: IMessage) => void;
+  /** Replace an existing message without re-sorting — the per-tick streaming
+   *  write path. Falls back to insert (sorted) if the message isn't present. */
+  updateMessageInPlace: (message: IMessage) => void;
   removeConversation: (conversationId: string) => void;
   removeMessage: (messageId: string, conversationId: string) => void;
+  setConversationArtifacts: (
+    conversationId: string,
+    artifacts: ArtifactData[],
+  ) => void;
   setActiveConversationId: (id: string | null) => void;
-  setStreamingConversationId: (id: string | null) => void;
-  setExecutorPendingConversationId: (id: string | null) => void;
   setHydrationCompleted: (completed: boolean) => void;
   // Optimistic message management for new conversations (single message only)
   setOptimisticMessage: (message: OptimisticMessage | null) => void;
   clearOptimisticMessage: () => void;
+  /** Flag the optimistic message as undelivered, keeping it on screen. */
+  markOptimisticMessageFailed: () => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
   conversations: [],
   messagesByConversation: {},
+  artifactsByConversation: {},
   activeConversationId: null,
-  streamingConversationId: null, // Track which conversation is streaming
-  executorPendingConversationId: null, // Awaiting a background executor's result
   hydrationCompleted: false, // Becomes true when IndexedDB hydration is done
   // Single optimistic message for new conversations (prevents IndexedDB pollution)
   // Only one message at a time - enforced by type
@@ -138,6 +147,39 @@ export const useChatStore = create<ChatState>((set) => ({
       };
     }),
 
+  updateMessageInPlace: (message) =>
+    set((state) => {
+      const { conversationId } = message;
+      const existingMessages =
+        state.messagesByConversation[conversationId] ?? [];
+      const index = existingMessages.findIndex(
+        (existing) => existing.id === message.id,
+      );
+
+      // Not present yet — fall back to the sorted insert path.
+      if (index === -1) {
+        const inserted = [...existingMessages, message].toSorted(
+          (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+        );
+        return {
+          messagesByConversation: {
+            ...state.messagesByConversation,
+            [conversationId]: inserted,
+          },
+        };
+      }
+
+      // Same id, same createdAt — position is stable, skip the re-sort.
+      const updated = existingMessages.slice();
+      updated[index] = message;
+      return {
+        messagesByConversation: {
+          ...state.messagesByConversation,
+          [conversationId]: updated,
+        },
+      };
+    }),
+
   removeConversation: (conversationId) =>
     set((state) => {
       const conversations = state.conversations.filter(
@@ -152,17 +194,10 @@ export const useChatStore = create<ChatState>((set) => ({
           ? null
           : state.activeConversationId;
 
-      // Clear streaming indicator if the removed conversation was being streamed
-      const streamingConversationId =
-        state.streamingConversationId === conversationId
-          ? null
-          : state.streamingConversationId;
-
       return {
         conversations,
         messagesByConversation: remainingMessages,
         activeConversationId,
-        streamingConversationId,
       };
     }),
 
@@ -182,12 +217,23 @@ export const useChatStore = create<ChatState>((set) => ({
       };
     }),
 
+  // Server registry entries persist only per-file fields (path, size, mtime,
+  // content type) — the conversation id is the document key, not an element
+  // field. Stamp it back on as session_id so every map entry is a complete
+  // ArtifactData (fetch URLs are built from session_id).
+  setConversationArtifacts: (conversationId, artifacts) =>
+    set((state) => ({
+      artifactsByConversation: {
+        ...state.artifactsByConversation,
+        [conversationId]: Object.fromEntries(
+          artifacts
+            .filter((a) => a?.path)
+            .map((a) => [a.path, { ...a, session_id: conversationId }]),
+        ),
+      },
+    })),
+
   setActiveConversationId: (id) => set({ activeConversationId: id }),
-
-  setStreamingConversationId: (id) => set({ streamingConversationId: id }),
-
-  setExecutorPendingConversationId: (id) =>
-    set({ executorPendingConversationId: id }),
 
   setHydrationCompleted: (completed) => set({ hydrationCompleted: completed }),
 
@@ -197,6 +243,13 @@ export const useChatStore = create<ChatState>((set) => ({
 
   // Clear the optimistic message (set to null)
   clearOptimisticMessage: () => set({ optimisticMessage: null }),
+
+  markOptimisticMessageFailed: () =>
+    set((state) => ({
+      optimisticMessage: state.optimisticMessage
+        ? { ...state.optimisticMessage, failed: true }
+        : null,
+    })),
 }));
 
 // Hydrate immediately on module load (before any React renders)
@@ -214,6 +267,15 @@ const startHydration = async () => {
     ]);
 
     useChatStore.getState().setConversations(conversations);
+
+    // Seed the artifact lookup map from each conversation's persisted registry.
+    for (const conversation of conversations) {
+      if (conversation.artifacts?.length) {
+        useChatStore
+          .getState()
+          .setConversationArtifacts(conversation.id, conversation.artifacts);
+      }
+    }
 
     // Group messages by conversationId client-side (instant, no I/O)
     const messagesByConversation = allMessages.reduce(
@@ -244,6 +306,17 @@ const startHydration = async () => {
 if (typeof window !== "undefined") {
   startHydration();
 }
+
+// Stable empty reference so conversations with no artifacts don't trigger
+// re-renders by returning a fresh object each call.
+const EMPTY_ARTIFACT_MAP: Record<string, ArtifactData> = {};
+
+/** Path→ArtifactData map for a conversation, for resolving message references. */
+export const useConversationArtifacts = (conversationId: string) =>
+  useChatStore(
+    (state) =>
+      state.artifactsByConversation[conversationId] ?? EMPTY_ARTIFACT_MAP,
+  );
 
 // Event-driven synchronization with IndexedDB
 // Hydration happens at module load (above), this just sets up event listeners

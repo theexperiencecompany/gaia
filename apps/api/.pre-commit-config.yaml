@@ -15,7 +15,9 @@ repos:
       - id: bandit
         name: Bandit Security Check
         language: system
-        entry: uvx bandit -r app --exclude app/agents/prompts
+        # Load [tool.bandit] skips from the root pyproject.toml — bandit's config
+        # discovery only looks in the hook cwd (apps/api), which has no section.
+        entry: bash -c "uvx bandit -c \"$(git rev-parse --show-toplevel)/pyproject.toml\" -r app --exclude app/agents/prompts"
         types: [python]
         pass_filenames: false
         priority: 0
@@ -24,6 +26,33 @@ repos:
         name: Pip Audit
         language: system
         entry: bash -c "uv export --no-dev --frozen --no-emit-header 2>/dev/null | uvx pip-audit --disable-pip --no-deps -r /dev/stdin"
+        pass_filenames: false
+        priority: 0
+
+      - id: outbound-topology-parity
+        name: Outbound topology parity (Python <-> TypeScript)
+        language: system
+        entry: python3 apps/api/scripts/check_outbound_topology_parity.py
+        files: ^(apps/api/(app/models/chat_models\.py|scripts/check_outbound_topology_parity\.py)|libs/shared/ts/src/bots/consumer/topology\.ts)$
+        pass_filenames: false
+        priority: 0
+
+      - id: gaia-python-lints
+        name: GAIA custom Python lints (route contract, service classes, wide events)
+        language: system
+        entry: python3 tools/lints/run.py apps/api/app
+        files: ^(apps/api/app/.*\.py|tools/lints/.*\.py)$
+        pass_filenames: false
+        priority: 0
+
+      - id: gaia-ignore-ratchet
+        name: Ruff ignore-list ratchet (ignore / per-file-ignores may only shrink)
+        language: system
+        # The api sub-config runs with cwd=apps/api, but the script lives at
+        # the repo root, and it needs Python >= 3.11 for tomllib — neither the
+        # relative path nor the system python3 works here.
+        entry: ../../.venv/bin/python ../../tools/lints/check_ignore_ratchet.py
+        files: ^(pyproject\.toml|tools/lints/(check_ignore_ratchet\.py|ignore_ratchet_baseline\.txt))$
         pass_filenames: false
         priority: 0
 

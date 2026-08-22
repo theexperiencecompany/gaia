@@ -6,12 +6,10 @@ import {
   ArrowLeft02Icon,
   ArrowRight02Icon,
   CircleArrowRight02Icon,
-  SquareLockIcon,
 } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import Image from "next/image";
-import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { Link } from "@/i18n/navigation";
@@ -26,6 +24,7 @@ import {
   cascadeDurationMs,
   useStaggeredMessages as useStaggeredMessagesShared,
 } from "../iphone/useStaggeredMessages";
+import { InViewMount } from "../shared/InViewMount";
 import LargeHeader from "../shared/LargeHeader";
 
 interface ActionLink {
@@ -48,27 +47,13 @@ interface DemoConfig {
 interface Platform {
   id: ChatPlatform;
   name: string;
-  icon: string | ReactNode;
-  comingSoon?: boolean;
+  icon: string;
   primaryAction: ActionLink;
   phone: PhoneConfig;
   demo: DemoConfig;
 }
 
 const AVATAR_ARYAN = "/aryan-avatar.webp";
-
-function IMessageChipIcon({ size = 20 }: { size?: number }) {
-  return (
-    // biome-ignore lint/a11y/noSvgWithoutTitle: decorative brand icon, hidden from a11y tree
-    <svg width={size} height={size} viewBox="0 0 20 20" aria-hidden>
-      <rect width="20" height="20" rx="4.5" fill="#25D057" />
-      <path
-        d="M10 3.8C6.63 3.8 3.9 6.22 3.9 9.2c0 1.67.84 3.16 2.16 4.16-.04.58-.29 1.54-1.21 2.24 0 0 1.78.06 3.2-1.05.59.15 1.2.25 1.87.25 3.37 0 6.1-2.42 6.1-5.4S13.37 3.8 10 3.8z"
-        fill="white"
-      />
-    </svg>
-  );
-}
 
 const PLATFORMS: Platform[] = [
   {
@@ -85,31 +70,25 @@ const PLATFORMS: Platform[] = [
       title: "GAIA",
       messages: [
         {
-          from: "me",
-          text: "what's on my plate today?",
-          time: "9:14",
-          status: "read",
-        },
-        {
           from: "them",
-          text: "4 meetings back to back from 9.30, plus that investor draft you flagged yesterday",
-          time: "9:14",
+          text: "morning ☀️ you've got 4 back to back from 9.30, plus that investor draft you flagged yesterday",
+          time: "9:02",
         },
         {
           from: "them",
           text: "want me to push standup to 11 so you have a coffee window?",
-          time: "9:14",
+          time: "9:02",
         },
         {
           from: "me",
           text: "yes pls. also remind me to call mom at 8 🙏",
-          time: "9:15",
+          time: "9:04",
           status: "read",
         },
         {
           from: "them",
           text: "done & done 🫡",
-          time: "9:15",
+          time: "9:04",
         },
       ],
     },
@@ -129,31 +108,25 @@ const PLATFORMS: Platform[] = [
       subtitle: "bot",
       messages: [
         {
-          from: "me",
-          text: "summarise my inbox",
+          from: "them",
+          text: "heads up: 12 unread since last night. only 3 actually need you, the rest is noise",
           time: "14:02",
-          status: "read",
         },
         {
           from: "them",
-          text: "you've got 12 unread. 3 actually need you, the rest is noise",
-          time: "14:03",
-        },
-        {
-          from: "them",
-          text: "drafting replies to the linear founder + the recruiter rn",
-          time: "14:03",
+          text: "already drafted replies to the linear founder + the recruiter, they're waiting on your ok",
+          time: "14:02",
         },
         {
           from: "me",
-          text: "also book me to NYC next thursday",
+          text: "perfect. also book me to NYC next thursday",
           time: "14:04",
           status: "read",
         },
         {
           from: "them",
-          text: "looking… delta has $189 out at 8am, lands 11ish. lock it in?",
-          time: "14:04",
+          text: "delta has $189 out at 8am, lands 11ish. holding the fare, say the word and I'll book it ✈️",
+          time: "14:05",
         },
       ],
     },
@@ -172,14 +145,8 @@ const PLATFORMS: Platform[] = [
       subtitle: "42 members",
       messages: [
         {
-          author: "Aryan",
-          avatar: AVATAR_ARYAN,
-          text: "@GAIA standup post for design? pull from yesterday's threads",
-          time: "10:24 AM",
-        },
-        {
           author: "GAIA",
-          text: "pulled this from 4 open PRs and 6 figma comments since yesterday 🧵",
+          text: "standup draft for design is ready, pulled from 4 open PRs and 6 figma comments overnight 🧵",
           time: "10:24 AM",
           reactions: [
             { emoji: "🎉", count: 4 },
@@ -194,7 +161,7 @@ const PLATFORMS: Platform[] = [
         },
         {
           author: "GAIA",
-          text: "on it. DMing you the draft in 30s",
+          text: "posted. PM reply drafted, DMing it to you in 30s",
           time: "10:26 AM",
         },
       ],
@@ -214,18 +181,11 @@ const PLATFORMS: Platform[] = [
       title: "general",
       messages: [
         {
-          author: "Aryan",
-          avatar: AVATAR_ARYAN,
-          authorColor: "#F47FFF",
-          text: "@GAIA ship digest for the week?",
-          time: "9:14 PM",
-          reactions: [{ emoji: "👍", count: 3 }],
-        },
-        {
           author: "GAIA",
           authorColor: "#9CC3FF",
-          text: "12 PRs merged, 4 features shipped, 2 incidents resolved 🚀",
+          text: "weekly ship digest is in: 12 PRs merged, 4 features shipped, 2 incidents resolved 🚀",
           time: "9:14 PM",
+          reactions: [{ emoji: "👍", count: 3 }],
         },
         {
           author: "Aryan",
@@ -246,26 +206,22 @@ const PLATFORMS: Platform[] = [
   {
     id: "imessage",
     name: "iMessage",
-    icon: <IMessageChipIcon />,
-    comingSoon: true,
-    primaryAction: { label: "Coming Soon", href: "" },
+    icon: "/images/icons/macos/imessage.webp",
+    primaryAction: {
+      label: "Connect Your Number",
+      href: "/settings/linked-accounts",
+    },
     phone: { screenBackground: "#FFFFFF" },
     demo: {
       title: "GAIA",
       messages: [
         {
-          from: "me",
-          text: "reschedule my 3pm to tomorrow same time",
-          time: "2:58 PM",
-          status: "read",
-        },
-        {
           from: "them",
-          text: "done. rescheduled and invite updated",
+          text: "your 3pm clashes with the dentist. moved it to tomorrow, same time, invite updated",
         },
         {
           from: "me",
-          text: "also add a note to call sarah before it",
+          text: "lifesaver. add a note to call sarah before it",
           time: "3:04 PM",
           status: "read",
         },
@@ -278,7 +234,7 @@ const PLATFORMS: Platform[] = [
   },
 ];
 
-export default function BotsShowcaseSection() {
+function BotsShowcaseDemo() {
   const [activeId, setActiveId] = useState<ChatPlatform>(PLATFORMS[0].id);
   const [autoRotate, setAutoRotate] = useState(true);
   const active = PLATFORMS.find((p) => p.id === activeId) ?? PLATFORMS[0];
@@ -333,10 +289,36 @@ export default function BotsShowcaseSection() {
   }, [inView, autoRotate, active]);
 
   return (
-    <section
-      ref={sectionRef}
-      className="relative flex w-full flex-col items-center px-4 py-20 sm:px-6 sm:py-24 lg:px-8"
-    >
+    <div ref={sectionRef} className="flex w-full flex-col items-center gap-8">
+      <PlatformChips
+        platforms={PLATFORMS}
+        activeId={activeId}
+        onSelect={handleSelect}
+      />
+
+      <div ref={phoneRef}>
+        <PhoneFrame platform={active} messages={visibleMessages} />
+      </div>
+
+      <FloatingCTA
+        isFloating={isCtaFloating}
+        action={active.primaryAction}
+        actionKey={active.id}
+        iconSrc={active.icon}
+        onPrev={handlePrev}
+        onNext={handleNext}
+      />
+    </div>
+  );
+}
+
+/**
+ * Section shell: the heading/copy is server-rendered for SEO; the heavy
+ * interactive phone demo is lazy-mounted only when it scrolls near the viewport.
+ */
+export default function BotsShowcaseSection() {
+  return (
+    <section className="relative flex w-full flex-col items-center px-4 py-20 sm:px-6 sm:py-24 lg:px-8">
       <div className="flex w-full max-w-6xl flex-col items-center gap-8">
         <LargeHeader
           chipText="Available everywhere"
@@ -344,26 +326,9 @@ export default function BotsShowcaseSection() {
           subHeadingText="No new app to learn. Just open the one you already have open."
           centered
         />
-
-        <PlatformChips
-          platforms={PLATFORMS}
-          activeId={activeId}
-          onSelect={handleSelect}
-        />
-
-        <div ref={phoneRef}>
-          <PhoneFrame platform={active} messages={visibleMessages} />
-        </div>
-
-        <FloatingCTA
-          isFloating={isCtaFloating}
-          action={active.primaryAction}
-          actionKey={active.id}
-          iconSrc={typeof active.icon === "string" ? active.icon : undefined}
-          comingSoon={active.comingSoon}
-          onPrev={handlePrev}
-          onNext={handleNext}
-        />
+        <InViewMount minHeight="640px" className="w-full">
+          <BotsShowcaseDemo />
+        </InViewMount>
       </div>
     </section>
   );
@@ -398,15 +363,13 @@ function FloatingCTA({
   action,
   actionKey,
   iconSrc,
-  comingSoon,
   onPrev,
   onNext,
 }: {
   isFloating: boolean;
   action: ActionLink;
   actionKey: string;
-  iconSrc: string | undefined;
-  comingSoon?: boolean;
+  iconSrc: string;
   onPrev: () => void;
   onNext: () => void;
 }) {
@@ -424,7 +387,6 @@ function FloatingCTA({
           actionKey={actionKey}
           action={action}
           iconSrc={iconSrc}
-          comingSoon={comingSoon}
           onPrev={onPrev}
           onNext={onNext}
         />
@@ -445,7 +407,6 @@ function FloatingCTA({
                 actionKey={actionKey}
                 action={action}
                 iconSrc={iconSrc}
-                comingSoon={comingSoon}
                 onPrev={onPrev}
                 onNext={onNext}
               />
@@ -461,14 +422,12 @@ function CTAGroup({
   actionKey,
   action,
   iconSrc,
-  comingSoon,
   onPrev,
   onNext,
 }: {
   actionKey: string;
   action: ActionLink;
-  iconSrc: string | undefined;
-  comingSoon?: boolean;
+  iconSrc: string;
   onPrev: () => void;
   onNext: () => void;
 }) {
@@ -500,7 +459,6 @@ function CTAGroup({
         actionKey={actionKey}
         action={action}
         iconSrc={iconSrc}
-        comingSoon={comingSoon}
       />
     </div>
   );
@@ -510,12 +468,10 @@ function PlatformCTASwitcher({
   actionKey,
   action,
   iconSrc,
-  comingSoon,
 }: {
   actionKey: string;
   action: ActionLink;
-  iconSrc: string | undefined;
-  comingSoon?: boolean;
+  iconSrc: string;
 }) {
   return (
     <AnimatePresence mode="wait" initial={false}>
@@ -526,7 +482,7 @@ function PlatformCTASwitcher({
         exit={{ opacity: 0, y: -4 }}
         transition={{ duration: 0.18, ease: "easeOut" }}
       >
-        <PrimaryCTA action={action} iconSrc={iconSrc} comingSoon={comingSoon} />
+        <PrimaryCTA action={action} iconSrc={iconSrc} />
       </m.div>
     </AnimatePresence>
   );
@@ -595,23 +551,14 @@ function PlatformChips({
             onClick={() => onSelect(p.id)}
             className="cursor-pointer select-none"
             startContent={
-              typeof p.icon === "string" ? (
-                <Image
-                  src={p.icon}
-                  alt=""
-                  width={20}
-                  height={20}
-                  className="h-5 w-5 shrink-0 rounded"
-                  aria-hidden
-                />
-              ) : (
-                <span
-                  className="flex h-5 w-5 shrink-0 items-center justify-center"
-                  aria-hidden
-                >
-                  {p.icon}
-                </span>
-              )
+              <Image
+                src={p.icon}
+                alt=""
+                width={20}
+                height={20}
+                className="h-5 w-5 shrink-0 rounded"
+                aria-hidden
+              />
             }
           >
             {p.name}
@@ -670,41 +617,20 @@ function PhoneFrame({
 function PrimaryCTA({
   action,
   iconSrc,
-  comingSoon,
 }: {
   action: ActionLink;
-  iconSrc: string | undefined;
-  comingSoon?: boolean;
+  iconSrc: string;
 }) {
-  if (comingSoon) {
-    return (
-      <RaisedButton
-        color="#52525B"
-        className="h-10 cursor-not-allowed rounded-full pr-4 pl-3 before:rounded-full"
-        tabIndex={-1}
-        aria-disabled="true"
-        onClick={(e) => e.preventDefault()}
-      >
-        <span className="flex items-center gap-2">
-          <SquareLockIcon size={18} />
-          Coming Soon
-        </span>
-      </RaisedButton>
-    );
-  }
-
   const buttonContent = (
     <span className="flex items-center gap-2">
-      {iconSrc && (
-        <Image
-          src={iconSrc}
-          alt=""
-          width={28}
-          height={28}
-          aria-hidden
-          className="h-7 w-7 shrink-0 rounded"
-        />
-      )}
+      <Image
+        src={iconSrc}
+        alt=""
+        width={28}
+        height={28}
+        aria-hidden
+        className="h-7 w-7 shrink-0 rounded"
+      />
       {action.label}
       <CircleArrowRight02Icon size={18} />
     </span>

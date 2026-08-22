@@ -27,6 +27,7 @@ import {
   createBotLogger,
   extractSubcommandArgs,
   handleStreamingChat,
+  hashLogIdentifier,
   type OutboundAttachment,
   type PlatformName,
   type RichMessage,
@@ -134,11 +135,6 @@ export class SlackAdapter extends BaseBotAdapter {
       this.app.command(
         `/${commandName}`,
         async ({ command, ack, respond, client }) => {
-          this.adapterLogger.info("slash_command_received", {
-            command: commandName,
-            user_id: command.user_id,
-            channel_id: command.channel_id,
-          });
           await ack();
 
           const userId = command.user_id;
@@ -178,11 +174,6 @@ export class SlackAdapter extends BaseBotAdapter {
       const userId = event.user;
       const channelId = event.channel;
 
-      this.adapterLogger.info("app_mention_received", {
-        user_id: userId,
-        channel_id: channelId,
-      });
-
       if (!userId) return;
 
       if (!content) {
@@ -204,11 +195,6 @@ export class SlackAdapter extends BaseBotAdapter {
       if (msg.channel_type !== "im") return;
       if (!msg.text || !msg.user || !msg.channel) return;
 
-      this.adapterLogger.info("dm_message_received", {
-        user_id: msg.user,
-        channel_id: msg.channel,
-      });
-
       await this.handleSlackStreaming(client, msg.channel, msg.user, msg.text);
     });
   }
@@ -216,7 +202,6 @@ export class SlackAdapter extends BaseBotAdapter {
   /** Starts the Slack Bolt app. */
   protected async start(): Promise<void> {
     await this.app.start();
-    this.adapterLogger.info("socket_mode_started");
   }
 
   /** Stops the Slack Bolt app. */
@@ -307,11 +292,6 @@ export class SlackAdapter extends BaseBotAdapter {
    */
   private registerGaiaCommand(): void {
     this.app.command("/gaia", async ({ command, ack, client }) => {
-      this.adapterLogger.info("slash_command_received", {
-        command: "gaia",
-        user_id: command.user_id,
-        channel_id: command.channel_id,
-      });
       await ack();
 
       const userId = command.user_id;
@@ -343,12 +323,6 @@ export class SlackAdapter extends BaseBotAdapter {
     userId: string,
     message: string,
   ): Promise<void> {
-    this.adapterLogger.info("streaming_started", {
-      user_id: userId,
-      channel_id: channelId,
-      message_length: message.length,
-    });
-
     const result = await client.chat.postMessage({
       channel: channelId,
       text: "Thinking...",
@@ -357,8 +331,8 @@ export class SlackAdapter extends BaseBotAdapter {
     const ts = (result as { ts?: string }).ts;
     if (!ts) {
       this.adapterLogger.warn("post_message_missing_ts", {
-        user_id: userId,
-        channel_id: channelId,
+        user_hash: hashLogIdentifier(userId),
+        channel_hash: hashLogIdentifier(channelId),
       });
       try {
         await client.chat.postEphemeral({
@@ -370,8 +344,8 @@ export class SlackAdapter extends BaseBotAdapter {
         this.adapterLogger.error(
           "post_ephemeral_fallback_failed",
           {
-            user_id: userId,
-            channel_id: channelId,
+            user_hash: hashLogIdentifier(userId),
+            channel_hash: hashLogIdentifier(channelId),
           },
           fallbackErr,
         );
@@ -408,16 +382,32 @@ export class SlackAdapter extends BaseBotAdapter {
         };
       },
       async (authUrl: string) => {
-        // Send auth URL as ephemeral to avoid exposing tokens publicly
+        const authMessage = renderForPlatform(
+          buildAuthLinkMessage(authUrl),
+          "slack",
+        );
+        // In a DM (channel id starts with "D") there is no risk of exposing the
+        // token to others, and chat.postEphemeral is unreliable there — so put
+        // the link straight into the placeholder message where it always shows.
+        if (channelId.startsWith("D")) {
+          await client.chat.update({
+            channel: channelId,
+            ts: currentTs,
+            text: authMessage,
+          });
+          return;
+        }
+        // In a public channel, keep the token out of the visible message and
+        // deliver the link as an ephemeral only the requesting user can see.
         await client.chat.update({
           channel: channelId,
           ts: currentTs,
-          text: "Authentication required. Check the message below.",
+          text: "🔒 Authentication required — check the private message below to link your account.",
         });
         await client.chat.postEphemeral({
           channel: channelId,
           user: userId,
-          text: renderForPlatform(buildAuthLinkMessage(authUrl), "slack"),
+          text: authMessage,
         });
       },
       async (errMsg: string) => {
@@ -428,7 +418,7 @@ export class SlackAdapter extends BaseBotAdapter {
         });
       },
       STREAMING_DEFAULTS.slack,
-      this.analytics,
+      await this.analyticsFor(userId),
     );
   }
 
@@ -493,17 +483,20 @@ export class SlackAdapter extends BaseBotAdapter {
       },
 
       sendRich: async (msg: RichMessage): Promise<SentMessage> => {
-        const markdown = richMessageToMarkdown(msg, "slack");
+        const markdown = renderForPlatform(richMessageToMarkdown(msg), "slack");
         await respond({ text: markdown, response_type: "ephemeral" });
         return {
           id: "ephemeral",
-          edit: async (_t: string) => {},
+          edit: async (_t: string) => {
+            /* ephemeral messages cannot be edited */
+          },
         };
       },
 
       startTyping: async () => {
-        // Slack has no typing indicator API for bots
-        return () => {};
+        return () => {
+          /* Slack has no typing indicator API for bots */
+        };
       },
     };
   }

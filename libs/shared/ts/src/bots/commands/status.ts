@@ -7,6 +7,7 @@
  * @module
  */
 import type { BotCommand, CommandExecuteParams } from "../types";
+import { wideLog } from "../utils/wide-events";
 
 /** `/status` command definition. */
 export const statusCommand: BotCommand = {
@@ -33,13 +34,15 @@ export const statusCommand: BotCommand = {
           await target.sendEphemeral(
             `❌ Not linked yet.\n\n🔗 Link your account: ${authUrl}`,
           );
-        } catch {
+        } catch (error) {
+          wideLog.error("status_command_error", undefined, error);
           await target.sendEphemeral(
             "❌ Not linked yet. Use /auth to link your account.",
           );
         }
       }
-    } catch {
+    } catch (error) {
+      wideLog.error("status_command_error", undefined, error);
       await target.sendEphemeral("Error checking status. Please try again.");
     }
   },

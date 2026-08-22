@@ -63,6 +63,97 @@ function toCanonicalProject(p: ChatTodoProject): Project {
   };
 }
 
+function TodoStatsView({ stats }: { stats: TodoToolStats }) {
+  return (
+    <div className="mt-3 w-fit min-w-[400px] rounded-2xl rounded-bl-none bg-zinc-800 p-4">
+      <div className="mb-3 text-sm">Task Overview</div>
+      <div className="grid grid-cols-3 gap-2">
+        <div className="rounded-xl bg-zinc-900 p-3 text-center">
+          <p className="text-xl font-semibold text-zinc-100">{stats.total}</p>
+          <p className="text-xs text-zinc-500">Total</p>
+        </div>
+        <div className="rounded-xl bg-zinc-900 p-3 text-center">
+          <p className="text-xl font-semibold text-green-500">
+            {stats.completed}
+          </p>
+          <p className="text-xs text-zinc-500">Done</p>
+        </div>
+        <div className="rounded-xl bg-zinc-900 p-3 text-center">
+          <p className="text-xl font-semibold text-yellow-500">
+            {stats.pending}
+          </p>
+          <p className="text-xs text-zinc-500">Pending</p>
+        </div>
+        {stats.overdue > 0 && (
+          <div className="rounded-xl bg-zinc-900 p-3 text-center">
+            <p className="text-xl font-semibold text-red-500">
+              {stats.overdue}
+            </p>
+            <p className="text-xs text-zinc-500">Overdue</p>
+          </div>
+        )}
+        {stats.today > 0 && (
+          <div className="rounded-xl bg-zinc-900 p-3 text-center">
+            <p className="text-xl font-semibold text-blue-500">{stats.today}</p>
+            <p className="text-xs text-zinc-500">Today</p>
+          </div>
+        )}
+        {stats.upcoming > 0 && (
+          <div className="rounded-xl bg-zinc-900 p-3 text-center">
+            <p className="text-xl font-semibold text-purple-500">
+              {stats.upcoming}
+            </p>
+            <p className="text-xs text-zinc-500">Soon</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TodoProjectsView({
+  projects,
+  onOpenProject,
+}: {
+  projects: ChatTodoProject[];
+  onOpenProject: (projectId: string) => void;
+}) {
+  return (
+    <div className="mt-3 w-fit min-w-[400px] rounded-2xl rounded-bl-none bg-zinc-800 p-4">
+      <div className="mb-3 text-sm">Your Projects</div>
+      <div className="space-y-2">
+        {projects.map((project) => (
+          <div
+            key={project.id}
+            className="flex cursor-pointer items-center justify-between rounded-xl bg-zinc-900 p-3 hover:bg-zinc-900/70"
+            onClick={() => onOpenProject(project.id)}
+          >
+            <div className="flex items-center gap-3">
+              {project.color && (
+                <div
+                  className="h-3 w-3 rounded-full"
+                  style={{ backgroundColor: project.color }}
+                />
+              )}
+              <span className="text-sm font-medium text-zinc-100">
+                {project.name}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-zinc-500">
+              {project.todo_count !== undefined && (
+                <span>{project.todo_count} tasks</span>
+              )}
+              {project.completion_percentage !== undefined && (
+                <span>• {Math.round(project.completion_percentage)}%</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function TodoSection({
   todos,
   projects,
@@ -75,90 +166,18 @@ export default function TodoSection({
 
   // Statistics View
   if (action === "stats" && stats) {
-    return (
-      <div className="mt-3 w-fit min-w-[400px] rounded-2xl rounded-bl-none bg-zinc-800 p-4">
-        <div className="mb-3 text-sm">Task Overview</div>
-        <div className="grid grid-cols-3 gap-2">
-          <div className="rounded-xl bg-zinc-900 p-3 text-center">
-            <p className="text-xl font-semibold text-zinc-100">{stats.total}</p>
-            <p className="text-xs text-zinc-500">Total</p>
-          </div>
-          <div className="rounded-xl bg-zinc-900 p-3 text-center">
-            <p className="text-xl font-semibold text-green-500">
-              {stats.completed}
-            </p>
-            <p className="text-xs text-zinc-500">Done</p>
-          </div>
-          <div className="rounded-xl bg-zinc-900 p-3 text-center">
-            <p className="text-xl font-semibold text-yellow-500">
-              {stats.pending}
-            </p>
-            <p className="text-xs text-zinc-500">Pending</p>
-          </div>
-          {stats.overdue > 0 && (
-            <div className="rounded-xl bg-zinc-900 p-3 text-center">
-              <p className="text-xl font-semibold text-red-500">
-                {stats.overdue}
-              </p>
-              <p className="text-xs text-zinc-500">Overdue</p>
-            </div>
-          )}
-          {stats.today > 0 && (
-            <div className="rounded-xl bg-zinc-900 p-3 text-center">
-              <p className="text-xl font-semibold text-blue-500">
-                {stats.today}
-              </p>
-              <p className="text-xs text-zinc-500">Today</p>
-            </div>
-          )}
-          {stats.upcoming > 0 && (
-            <div className="rounded-xl bg-zinc-900 p-3 text-center">
-              <p className="text-xl font-semibold text-purple-500">
-                {stats.upcoming}
-              </p>
-              <p className="text-xs text-zinc-500">Soon</p>
-            </div>
-          )}
-        </div>
-      </div>
-    );
+    return <TodoStatsView stats={stats} />;
   }
 
   // Projects View
   if (projects && projects.length > 0 && !todos) {
     return (
-      <div className="mt-3 w-fit min-w-[400px] rounded-2xl rounded-bl-none bg-zinc-800 p-4">
-        <div className="mb-3 text-sm">Your Projects</div>
-        <div className="space-y-2">
-          {projects.map((project) => (
-            <div
-              key={project.id}
-              className="flex cursor-pointer items-center justify-between rounded-xl bg-zinc-900 p-3 hover:bg-zinc-900/70"
-              onClick={() => router.push(`/todos/project/${project.id}`)}
-            >
-              <div className="flex items-center gap-3">
-                {project.color && (
-                  <div
-                    className="h-3 w-3 rounded-full"
-                    style={{ backgroundColor: project.color }}
-                  />
-                )}
-                <span className="text-sm font-medium text-zinc-100">
-                  {project.name}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-zinc-500">
-                {project.todo_count !== undefined && (
-                  <span>{project.todo_count} tasks</span>
-                )}
-                {project.completion_percentage !== undefined && (
-                  <span>• {Math.round(project.completion_percentage)}%</span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      <TodoProjectsView
+        projects={projects}
+        onOpenProject={(projectId) =>
+          router.push(`/todos/project/${projectId}`)
+        }
+      />
     );
   }
 

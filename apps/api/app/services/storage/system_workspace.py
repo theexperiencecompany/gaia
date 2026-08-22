@@ -42,6 +42,7 @@ from app.services.storage.juicefs import (
     _host_base_and_rel,
     _mount_root,
     _require_mount,
+    ensure_safe_path_id,
 )
 from shared.py.wide_events import log
 
@@ -115,8 +116,9 @@ async def ensure_system_subtree() -> bool:
             # Log loudly and degrade gracefully — the worker must not crash because
             # of a storage fault; per-user copies will be used instead.
             log.error(
-                f"{LogTag.STORAGE} system_subtree I/O error — JuiceFS fault, "
-                f"per-user copies will be used instead: {exc}"
+                f"{LogTag.STORAGE} system_subtree I/O error — JuiceFS fault, per-user copies will be used instead",
+                error=str(exc),
+                error_type=type(exc).__name__,
             )
             return False
         return True
@@ -172,7 +174,18 @@ async def link_system_files_into_workspace(user_id: str) -> int:
     Returns the number of links created/changed. No-op safe: steady-state calls
     return 0, and if the shared subtree isn't present it returns 0 so the
     copy-writers transparently fall back to per-user copies.
+
+    Raises ``ValueError`` on a ``user_id`` that isn't a single safe path
+    component.
     """
+    # Checked before anything else, including the availability short-circuit:
+    # `_link_location` joins user_id straight into the host path and
+    # `_place_symlink` unlinks whatever it finds, so an id like "../_system"
+    # would replace the ONE shared copy every user points at with a
+    # self-referential symlink — and the hash marker then stops
+    # ensure_system_subtree from ever repairing it. Mirrors the guard juicefs
+    # already applies to conversation_id.
+    ensure_safe_path_id(user_id, label="user_id")
     if not system_subtree_available():
         return 0
 
@@ -187,7 +200,7 @@ async def link_system_files_into_workspace(user_id: str) -> int:
 
     count = await asyncio.to_thread(_link)
     if count:
-        log.info(f"{LogTag.STORAGE} linked {count} system files for {user_id}")
+        log.info(f"{LogTag.STORAGE} linked system files for", count=count, user_id=user_id)
     return count
 
 

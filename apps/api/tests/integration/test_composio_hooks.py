@@ -12,7 +12,6 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
-from langchain_core.tools import ToolException
 import pytest
 
 from app.services.composio.custom_tools.context_tool import (
@@ -24,9 +23,6 @@ from app.utils.composio_hooks.gmail_hooks import (
     gmail_attachment_after_hook,
     gmail_compose_before_hook,
     gmail_drafts_after_hook,
-    gmail_fetch_after_hook,
-    gmail_fetch_emails_before_hook,
-    gmail_fetch_emails_schema_modifier,
     gmail_message_detail_after_hook,
     gmail_send_email_schema_modifier,
 )
@@ -407,47 +403,6 @@ class TestMasterHooks:
 class TestGmailBeforeHooks:
     """Test Gmail-specific before_execute hooks."""
 
-    def test_fetch_emails_hard_limit_raises_tool_exception(self) -> None:
-        """Requesting too many emails in full mode raises ToolException."""
-
-        params = _make_params(
-            arguments={
-                "max_results": 50,
-                "verbose": True,
-                "include_payload": True,
-            }
-        )
-
-        with pytest.raises(ToolException, match="Result set too large"):
-            gmail_fetch_emails_before_hook("GMAIL_FETCH_EMAILS", "gmail", params)
-
-    def test_fetch_emails_within_limit_passes(self) -> None:
-        """Requesting within the limit returns params unchanged."""
-
-        params = _make_params(
-            arguments={
-                "max_results": 10,
-                "verbose": True,
-            }
-        )
-
-        result = gmail_fetch_emails_before_hook("GMAIL_FETCH_EMAILS", "gmail", params)
-        assert result is params
-
-    def test_fetch_emails_non_full_mode_allows_large_requests(self) -> None:
-        """Non-full mode (verbose=False, include_payload=False) allows large requests."""
-
-        params = _make_params(
-            arguments={
-                "max_results": 100,
-                "verbose": False,
-                "include_payload": False,
-            }
-        )
-
-        result = gmail_fetch_emails_before_hook("GMAIL_FETCH_EMAILS", "gmail", params)
-        assert result is params
-
     def test_compose_hook_maps_to_field_to_recipient_email(self) -> None:
         """The compose before hook maps 'to' to 'recipient_email' when needed."""
 
@@ -512,79 +467,6 @@ class TestGmailBeforeHooks:
 class TestGmailAfterHooks:
     """Test Gmail-specific after_execute hooks."""
 
-    def test_fetch_after_hook_processes_list_messages(self) -> None:
-        """The fetch after hook calls process_list_messages_response on raw data."""
-
-        raw_response: ToolExecutionResponse = {
-            "data": {
-                "messages": [
-                    {
-                        "id": "msg1",
-                        "threadId": "thread1",
-                        "payload": {
-                            "headers": [
-                                {"name": "From", "value": "sender@test.com"},
-                                {"name": "Subject", "value": "Test"},
-                                {
-                                    "name": "Date",
-                                    "value": "Mon, 1 Jan 2024 00:00:00 +0000",
-                                },
-                            ],
-                        },
-                        "snippet": "Test snippet",
-                    }
-                ],
-                "resultSizeEstimate": 1,
-            },
-            "successful": True,
-        }
-
-        with patch(
-            "app.utils.composio_hooks.gmail_hooks.get_stream_writer",
-            return_value=MagicMock(),
-        ):
-            with patch(
-                "app.utils.composio_hooks.gmail_hooks.process_list_messages_response",
-                return_value={
-                    "messages": [
-                        {
-                            "id": "msg1",
-                            "threadId": "thread1",
-                            "from": "sender@test.com",
-                            "subject": "Test",
-                            "time": "Mon, 1 Jan 2024",
-                        }
-                    ],
-                    "resultSize": 1,
-                },
-            ) as mock_process:
-                result = gmail_fetch_after_hook("GMAIL_FETCH_EMAILS", "gmail", raw_response)
-
-        mock_process.assert_called_once_with(raw_response["data"])
-        assert "messages" in result
-        assert result["messages"][0]["id"] == "msg1"
-
-    def test_fetch_after_hook_handles_error_response(self) -> None:
-        """When the response has no data or an error, the hook returns raw data gracefully."""
-
-        raw_response: ToolExecutionResponse = {
-            "data": {"error": "something went wrong"},
-            "successful": False,
-        }
-
-        with patch(
-            "app.utils.composio_hooks.gmail_hooks.get_stream_writer",
-            return_value=MagicMock(),
-        ):
-            with patch(
-                "app.utils.composio_hooks.gmail_hooks.process_list_messages_response",
-                side_effect=Exception("parse error"),
-            ):
-                result = gmail_fetch_after_hook("GMAIL_FETCH_EMAILS", "gmail", raw_response)
-
-        # Should fall back to raw data on error
-        assert result == raw_response["data"]
-
     def test_message_detail_after_hook_processes_single_message(self) -> None:
         """The message detail hook calls detailed_message_template."""
 
@@ -646,31 +528,6 @@ class TestGmailSchemaModifiers:
 
         assert "draft" in result.description.lower()
         assert "GMAIL_CREATE_EMAIL_DRAFT" in result.description
-
-    def test_fetch_emails_schema_sets_defaults(self) -> None:
-        """GMAIL_FETCH_EMAILS schema gets default max_results and label_ids."""
-
-        schema = _make_tool_schema(
-            slug="GMAIL_FETCH_EMAILS",
-            description="Fetch emails",
-            input_parameters={
-                "properties": {
-                    "max_results": {"type": "integer", "default": 1},
-                    "label_ids": {"type": "array"},
-                    "format": {"type": "string"},
-                },
-                "required": [],
-                "type": "object",
-            },
-        )
-
-        result = gmail_fetch_emails_schema_modifier("GMAIL_FETCH_EMAILS", "gmail", schema)
-
-        props = result.input_parameters["properties"]
-        assert props["max_results"]["default"] == 10
-        assert props["label_ids"]["default"] == ["INBOX"]
-        assert props["format"]["default"] == "full"
-        assert "SEARCH SYNTAX" in result.description
 
 
 # ---------------------------------------------------------------------------
@@ -1076,19 +933,6 @@ class TestRedditHooks:
 @pytest.mark.integration
 class TestHookFailurePropagation:
     """Test how hook failures are handled."""
-
-    def test_before_hook_tool_exception_propagates(self) -> None:
-        """ToolException raised in a before hook propagates (not swallowed)."""
-
-        params = _make_params(
-            arguments={
-                "max_results": 999,
-                "verbose": True,
-            }
-        )
-
-        with pytest.raises(ToolException):
-            gmail_fetch_emails_before_hook("GMAIL_FETCH_EMAILS", "gmail", params)
 
     def test_registry_swallows_generic_errors_in_hooks(self) -> None:
         """The registry's execute_before_hooks catches generic errors per hook."""

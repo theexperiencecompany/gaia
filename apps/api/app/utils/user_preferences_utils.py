@@ -9,6 +9,21 @@ from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 
+def onboarding_preferences(
+    onboarding: dict[str, Any] | None,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """The ``(preferences, writing_style)`` pair off a raw ``onboarding`` blob.
+
+    Every root call site that hands a user's onboarding data to
+    ``build_agent_config`` or a comms ``SectionContext`` reads the same two keys
+    off the same shape (``UserDocument.onboarding`` / ``AuthenticatedUser.onboarding``)
+    — pulled out once so that reading doesn't drift between call sites.
+    """
+    if not onboarding:
+        return None, None
+    return onboarding.get("preferences"), onboarding.get("writing_style")
+
+
 def format_response_style_instruction(response_style: str) -> str:
     """Map a user's response-style preference to an agent instruction."""
     style_map = {
@@ -59,7 +74,11 @@ def build_user_context_parts(preferences: dict[str, Any]) -> list[str]:
                 parts.append(f"Special Instructions: {instructions}")
 
     except Exception as e:
-        log.warning(f"{LogTag.AGENT} Error building user context parts: {e!s}")
+        log.warning(
+            f"{LogTag.AGENT} Error building user context parts",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
     return parts
 
@@ -89,7 +108,7 @@ def format_writing_style_for_prompt(
     return "\n".join(lines)
 
 
-def _example_blocks_to_text(raw: Any) -> str:
+def _example_blocks_to_text(raw: object) -> str:
     """Render example blocks dict ({greeting, body[], signoff, name}) or legacy string as text."""
     if isinstance(raw, str):
         return raw
@@ -136,5 +155,9 @@ def format_user_preferences_for_agent(
         return None
 
     except Exception as e:
-        log.error(f"{LogTag.AGENT} Error formatting user preferences for agent: {e!s}")
+        log.error(
+            f"{LogTag.AGENT} Error formatting user preferences for agent",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return None

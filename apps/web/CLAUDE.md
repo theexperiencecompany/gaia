@@ -88,6 +88,15 @@ const todos = await apiService.get<Todo[]>("/api/todos");
 - Every major feature area that renders independently should be wrapped in an `ErrorBoundary`.
 - Use the shared one at `src/components/shared/ErrorBoundary.tsx` — do not create new ones. It catches rendering errors and reports to PostHog automatically.
 
+## Analytics (PostHog)
+
+Naming, identity and the no-PII rule are in the root `CLAUDE.md`. Web specifics:
+
+- `trackEvent(ANALYTICS_EVENTS.X, { ... })` from `src/lib/analytics.ts` — never `posthog.capture` directly, and never a bare string event name. Add new names to `ANALYTICS_EVENTS` in that file.
+- Users are identified by the **backend user id** (`useFetchUser`), not the WorkOS id or email, so web events join the API's.
+- Ingestion is proxied through `/ingest/*` so ad blockers cannot drop it; those rewrites follow `NEXT_PUBLIC_POSTHOG_HOST` (`next.config.mjs`), and `skipTrailingSlashRedirect: true` is required for it.
+- Prefer capturing server-side when the backend already sees the action — a client capture is the one an ad blocker eats. Capture on success, not on click.
+
 ## State Management
 
 Zustand (v5). Stores live in `src/stores/` and are named `use<Name>Store`.
@@ -150,6 +159,10 @@ Always use HeroUI over raw HTML or custom implementations. HeroUI handles access
 
 **`DropdownTrigger` rule** — always pass a HeroUI `<Button>` (or a component using `useButton`) as the child, never a raw `<button>` or `<div>`. HeroUI propagates `onPress`, `ref`, and ARIA attributes to its own Button; raw elements miss the keyboard/accessibility wiring.
 
+**Raw `<button>` is a documented exception, never a default.** A raw `<button>` is allowed ONLY where HeroUI `<Button>` provably cannot reproduce the required layout/styling without fighting the component. Every such instance must be listed here so the exception stays auditable:
+
+- _(none currently — all interactive buttons use HeroUI `<Button>`.)_
+
 **Do not override HeroUI default styling.** Use variant/color props (`variant="flat"`, `color="primary"`, etc.) first. Custom `classNames` / `className` / inline `style` are acceptable only for one-off layout adjustments (`w-full`, `max-w-*`) or when the user explicitly asks for a visual customisation — never to override HeroUI's internal color or shape tokens. Overrides make components fragile across theme changes and upgrades.
 
 **OpenUI components** must render **outside** the `imessage-bubble` wrapper, never inside it. Both use `bg-zinc-800`, so rendering inside makes them invisible against the bubble. See `apps/web/src/config/openui/CLAUDE.md` for the full OpenUI lifecycle and component checklist.
@@ -192,8 +205,19 @@ Use `loadFeatureTranslations` to lazy-load per-feature message files rather than
 
 - No inline imports — all imports at the top of the file.
 - Never use the `any` type.
-- Do not create test cases unless explicitly asked.
+- Tests are first-class: new features and refactors ship a test at the right tier; every bug ships a failing-then-passing test (see the repo root CLAUDE.md Testing section).
 - **Do not run `nx build web` or `pnpm build`** unless explicitly asked — builds are slow and not needed during development.
 - Biome handles both linting and formatting — do not add ESLint or Prettier config.
+- Lint warnings are debt, not noise — fix each one in the change that surfaces it (decompose the over-complex function, name the empty block, drop the dead re-export). Never leave a Biome warning behind, downgrade a rule, or suppress what is fixable. A targeted `// biome-ignore` with a reason, or a file-scoped config override, is allowed ONLY when the warning is provably unfixable (e.g. an authed dynamic `<img>` next/image cannot optimize, an override stylesheet whose job is beating inline styles, re-exporting an external package's surface) — the justification must live at the suppression site.
 - Strict TypeScript (`strict: true`). Path alias `@/` maps to `src/`.
 - `@shared/*` maps to `libs/shared/ts/src/` for shared TypeScript utilities.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

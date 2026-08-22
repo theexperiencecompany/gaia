@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.3.7/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.7/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -88,7 +88,9 @@
         "noUselessLoneBlockStatements": "error",
         "noExcessiveCognitiveComplexity": {
           "level": "warn",
-          "options": { "maxAllowedComplexity": 25 }
+          "options": {
+            "maxAllowedComplexity": 25
+          }
         }
       },
       "correctness": {
@@ -108,19 +110,24 @@
         "noNamespace": "error",
         "useConsistentArrayType": {
           "level": "error",
-          "options": { "syntax": "shorthand" }
+          "options": {
+            "syntax": "shorthand"
+          }
         },
         "useShorthandFunctionType": "error"
       },
       "suspicious": {
+        "noImportCycles": "error",
         "noArrayIndexKey": "error",
         "noExplicitAny": "error",
         "noConsole": {
           "level": "warn",
-          "options": { "allow": ["error", "warn", "info", "debug"] }
+          "options": {
+            "allow": ["error", "warn", "info", "debug"]
+          }
         },
         "useIterableCallbackReturn": "off",
-        "noEmptyBlockStatements": "warn",
+        "noEmptyBlockStatements": "error",
         "noEvolvingTypes": "error",
         "noDebugger": "error",
         "noShadowRestrictedNames": "error",
@@ -133,9 +140,10 @@
       },
       "performance": {
         "noBarrelFile": "off",
-        "noReExportAll": "warn",
+        "noReExportAll": "error",
         "noAccumulatingSpread": "error",
-        "noDelete": "error"
+        "noDelete": "error",
+        "noImgElement": "error"
       },
       "security": {
         "noDangerouslySetInnerHtmlWithChildren": "error",
@@ -172,10 +180,34 @@
   ],
   "overrides": [
     {
+      "includes": ["apps/web/src/features/desktop-popup/desktop-popup.css"],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "noImportantStyles": "off"
+          }
+        }
+      }
+    },
+    {
       "includes": ["apps/web/**"],
       "linter": {
         "domains": {
           "next": "recommended"
+        }
+      }
+    },
+    {
+      "includes": [
+        "apps/web/src/components/seo/JsonLd.tsx",
+        "apps/web/src/components/ui/chart.tsx",
+        "apps/web/src/features/whats-new/components/WhatsNewContent.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "security": {
+            "noDangerouslySetInnerHtml": "off"
+          }
         }
       }
     },
@@ -219,9 +251,6 @@
       "includes": ["**/types.ts", "**/types/**", "**/*.types.ts", "**/*.d.ts"],
       "linter": {
         "rules": {
-          "performance": {
-            "noReExportAll": "off"
-          },
           "correctness": {
             "noUnusedVariables": "off"
           }

@@ -2,7 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
-import { PlayIcon, ZapIcon } from "@icons";
+import { PlayIcon } from "@icons";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
@@ -14,16 +14,21 @@ import { toast } from "@/lib/toast";
 import { useAppendToInput } from "@/stores/composerStore";
 import type {
   CommunityWorkflow,
+  IntegrationRef,
   PublicWorkflowStep,
+  TriggerConfig,
   Workflow,
 } from "@/types/features/workflowTypes";
+import type { ContentCreator } from "@/types/shared/contentTypes";
 import { formatRunCount } from "@/utils/formatters";
 import { useWorkflowCreation } from "../../hooks/useWorkflowCreation";
 import { getTriggerDisplayInfo } from "../../triggers/utils";
+import { isSystemCreator } from "../../utils/creator";
 import {
   ActivationStatus,
   CreatorAvatar,
   getNextRunDisplay,
+  MissingIntegrationsWarning,
   SystemWorkflowChip,
   TriggerDisplay,
 } from "./WorkflowCardComponents";
@@ -40,6 +45,16 @@ interface UnifiedWorkflowCardProps {
   title?: string;
   description?: string;
   steps?: PublicWorkflowStep[];
+  /** User-chosen icon slug (gaia-icons component name) */
+  icon?: string | null;
+  /** Hex color for the user-chosen icon */
+  iconColor?: string | null;
+  /** Built-in workflow key — keeps "add" idempotent with the provisioner */
+  systemWorkflowKey?: string | null;
+  /** The trigger this card advertises, reproduced on add */
+  triggerConfig?: TriggerConfig;
+  /** Author, for cards built from flat props rather than a workflow object */
+  creator?: ContentCreator;
   totalExecutions?: number;
   slug?: string;
   prompt?: string;
@@ -66,31 +81,28 @@ interface UnifiedWorkflowCardProps {
 
   // Button customization
   actionButtonLabel?: string;
+
+  // Explicit missing integrations override (for cards that don't pass a full workflow object)
+  missingIntegrations?: IntegrationRef[];
 }
 
-export default function UnifiedWorkflowCard({
-  workflow,
-  communityWorkflow,
-  title: propTitle,
-  description: propDescription,
-  steps: propSteps,
-  totalExecutions: propTotalExecutions,
-  slug,
-  prompt,
-  actionType: propActionType,
-  variant = "explore",
-  showTrigger,
-  showExecutions = true,
-  showActivationStatus = false,
-  showCreator,
-  useBlurEffect = false,
-  showDescriptionAsTooltip = false,
-  primaryAction,
-  onCardClick,
-  onActionComplete,
-  actionButtonLabel,
-  href,
-}: UnifiedWorkflowCardProps) {
+export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
+  const {
+    workflow,
+    communityWorkflow,
+    description: propDescription,
+    slug,
+    prompt,
+    actionType: propActionType,
+    variant = "explore",
+    showExecutions = true,
+    useBlurEffect = false,
+    showDescriptionAsTooltip = false,
+    onCardClick,
+    onActionComplete,
+    actionButtonLabel,
+    href,
+  } = props;
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
@@ -102,30 +114,24 @@ export default function UnifiedWorkflowCard({
   const { integrations } = useIntegrations();
   const appendToInput = useAppendToInput();
 
-  // Normalize data from different sources
-  const title = propTitle || workflow?.title || communityWorkflow?.title || "";
-  const displayDescription =
-    propDescription ||
-    workflow?.description ||
-    communityWorkflow?.description ||
-    "";
-  const steps = propSteps || workflow?.steps || communityWorkflow?.steps || [];
-  const totalExecutions =
-    propTotalExecutions ??
-    workflow?.total_executions ??
-    communityWorkflow?.total_executions ??
-    0;
-  const creator = communityWorkflow?.creator || workflow?.creator;
-
-  // Determine display settings based on variant
-  const shouldShowTrigger = showTrigger ?? (variant === "user" && !!workflow);
-  const shouldShowCreator =
-    showCreator ?? (variant === "community" && !!creator);
-  const shouldShowActivation =
-    showActivationStatus ?? (variant === "user" && !!workflow);
-
-  // Determine primary action based on variant and props
-  const resolvedAction = primaryAction ?? getDefaultAction(variant);
+  // Normalize data + display settings from the various supported prop sources.
+  const {
+    title,
+    displayDescription,
+    steps,
+    customIcon,
+    customIconColor,
+    systemWorkflowKey,
+    sourceTriggerConfig,
+    totalExecutions,
+    creator,
+    shouldShowTrigger,
+    shouldShowCreator,
+    shouldShowActivation,
+    resolvedAction,
+    resolvedMissingIntegrations,
+    isClickable,
+  } = deriveWorkflowCardConfig(props);
 
   // Get trigger info for user workflows
   const triggerDisplay = workflow
@@ -138,6 +144,11 @@ export default function UnifiedWorkflowCard({
     if (!workflow || isLoading) return;
     setIsLoading(true);
     try {
+      trackEvent(ANALYTICS_EVENTS.WORKFLOWS_EXECUTED, {
+        workflow_id: workflow.id,
+        step_count: workflow.steps?.length || 0,
+        trigger_type: workflow.trigger_config.type,
+      });
       selectWorkflow(workflow, { autoSend: true });
       onActionComplete?.();
     } catch (error) {
@@ -173,10 +184,12 @@ export default function UnifiedWorkflowCard({
         description:
           communityWorkflow?.description || propDescription || undefined,
         prompt: communityWorkflow?.prompt || displayDescription || title,
-        trigger_config: {
+        // Reproduce the trigger the card advertises; manual only as a fallback.
+        trigger_config: sourceTriggerConfig ?? {
           type: "manual" as const,
           enabled: true,
         },
+        system_workflow_key: systemWorkflowKey,
         // Pass formatted steps if available to avoid regeneration
         ...(formattedSteps &&
           formattedSteps.length > 0 && {
@@ -190,6 +203,12 @@ export default function UnifiedWorkflowCard({
 
       if (result.success && result.workflow) {
         toast.success("Workflow created successfully!", { id: toastId });
+        trackEvent(ANALYTICS_EVENTS.WORKFLOWS_CREATED, {
+          workflow_id: result.workflow.id,
+          step_count: result.workflow.steps?.length || 0,
+          trigger_type: "manual",
+          has_schedule: false,
+        });
         selectWorkflow(result.workflow, { autoSend: variant === "suggestion" });
         onActionComplete?.();
       }
@@ -203,7 +222,8 @@ export default function UnifiedWorkflowCard({
 
   const handleInsertPrompt = () => {
     if (prompt) {
-      trackEvent(ANALYTICS_EVENTS.USE_CASES_PROMPT_INSERTED, { title });
+      // `title` is user-authored free text — intentionally not sent.
+      trackEvent(ANALYTICS_EVENTS.USE_CASES_PROMPT_INSERTED);
       appendToInput(prompt);
       router.push("/c");
       onActionComplete?.();
@@ -265,10 +285,14 @@ export default function UnifiedWorkflowCard({
 
   // Render tool icons using the shared component
   const renderToolIcons = () => (
-    <WorkflowIcons steps={steps} iconSize={25} maxIcons={3} />
+    <WorkflowIcons
+      steps={steps}
+      icon={customIcon}
+      iconColor={customIconColor}
+      iconSize={25}
+      maxIcons={3}
+    />
   );
-
-  const isClickable = !!href || onCardClick || resolvedAction !== "none";
 
   const cardContent = (
     <div
@@ -285,8 +309,16 @@ export default function UnifiedWorkflowCard({
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-2">{renderToolIcons()}</div>
         <div className="flex items-center gap-2">
-          {shouldShowActivation && workflow && (
-            <ActivationStatus activated={workflow.activated} />
+          {resolvedMissingIntegrations?.length ? (
+            // The warning replaces the activation badge: a workflow with
+            // unconnected integrations can't run, so its activated/deactivated
+            // state is moot until they're connected.
+            <MissingIntegrationsWarning
+              missingIntegrations={resolvedMissingIntegrations}
+            />
+          ) : (
+            shouldShowActivation &&
+            workflow && <ActivationStatus activated={workflow.activated} />
           )}
         </div>
       </div>
@@ -304,7 +336,11 @@ export default function UnifiedWorkflowCard({
 
       <div className="mt-auto">
         <div className="mt-1 flex items-center justify-between gap-2">
-          <div className="space-y-1">
+          <div className="min-w-0 space-y-1">
+            {shouldShowCreator && creator && (
+              <CreatorAvatar creator={creator} showName />
+            )}
+
             {shouldShowTrigger && triggerDisplay && (
               <TriggerDisplay
                 triggerType={workflow?.trigger_config.type || "manual"}
@@ -337,9 +373,6 @@ export default function UnifiedWorkflowCard({
 
           <div className="flex items-center gap-3">
             {workflow?.is_system_workflow && <SystemWorkflowChip />}
-            {shouldShowCreator && creator && (
-              <CreatorAvatar creator={creator} />
-            )}
 
             {resolvedAction !== "none" && (
               <span className="relative z-[2]">
@@ -374,6 +407,88 @@ export default function UnifiedWorkflowCard({
   ) : (
     cardContent
   );
+}
+
+// Resolve the card's display data and settings from the various supported prop
+// shapes (full Workflow, CommunityWorkflow, or simplified direct props).
+function deriveWorkflowCardConfig(props: UnifiedWorkflowCardProps) {
+  const {
+    workflow,
+    communityWorkflow,
+    title: propTitle,
+    description: propDescription,
+    steps: propSteps,
+    icon: propIcon,
+    iconColor: propIconColor,
+    systemWorkflowKey: propSystemWorkflowKey,
+    triggerConfig: propTriggerConfig,
+    creator: propCreator,
+    totalExecutions: propTotalExecutions,
+    variant = "explore",
+    showTrigger,
+    showActivationStatus = false,
+    showCreator,
+    primaryAction,
+    onCardClick,
+    href,
+    missingIntegrations: propMissingIntegrations,
+  } = props;
+
+  const title = propTitle || workflow?.title || communityWorkflow?.title || "";
+  const displayDescription =
+    propDescription ||
+    workflow?.description ||
+    communityWorkflow?.description ||
+    "";
+  const steps = propSteps || workflow?.steps || communityWorkflow?.steps || [];
+  const customIcon = propIcon ?? workflow?.icon ?? communityWorkflow?.icon;
+  const customIconColor =
+    propIconColor ?? workflow?.icon_color ?? communityWorkflow?.icon_color;
+  const totalExecutions =
+    propTotalExecutions ??
+    workflow?.total_executions ??
+    communityWorkflow?.total_executions ??
+    0;
+  const creator =
+    propCreator || communityWorkflow?.creator || workflow?.creator;
+
+  const shouldShowTrigger = showTrigger ?? (variant === "user" && !!workflow);
+  // A byline credits a community author; our own workflows don't need one.
+  const shouldShowCreator =
+    (showCreator ?? variant === "community") &&
+    !!creator &&
+    !isSystemCreator(creator);
+  const shouldShowActivation =
+    showActivationStatus ?? (variant === "user" && !!workflow);
+
+  const resolvedAction = primaryAction ?? getDefaultAction(variant);
+  const resolvedMissingIntegrations =
+    propMissingIntegrations ?? workflow?.missing_integrations;
+  const isClickable = !!href || onCardClick || resolvedAction !== "none";
+  const systemWorkflowKey =
+    propSystemWorkflowKey ??
+    communityWorkflow?.system_workflow_key ??
+    undefined;
+  const sourceTriggerConfig =
+    propTriggerConfig ?? communityWorkflow?.trigger_config;
+
+  return {
+    title,
+    displayDescription,
+    steps,
+    customIcon,
+    customIconColor,
+    systemWorkflowKey,
+    sourceTriggerConfig,
+    totalExecutions,
+    creator,
+    shouldShowTrigger,
+    shouldShowCreator,
+    shouldShowActivation,
+    resolvedAction,
+    resolvedMissingIntegrations,
+    isClickable,
+  };
 }
 
 // Helper function to determine default action based on variant
@@ -437,7 +552,6 @@ function WorkflowActionButton({
   size = "sm",
 }: WorkflowActionButtonProps) {
   const buttonVariant = variant === "flat" ? "flat" : "solid";
-  const showIcon = label !== "Run Workflow";
 
   return (
     <Button
@@ -447,7 +561,6 @@ function WorkflowActionButton({
       className={`font-medium rounded-xl ${variant === "flat" ? "text-primary" : ""}`}
       isLoading={isLoading}
       onPress={(e) => onPress(e as unknown as React.MouseEvent)}
-      endContent={showIcon ? <ZapIcon width={16} height={16} /> : undefined}
     >
       {label}
     </Button>

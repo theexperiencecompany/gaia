@@ -6,7 +6,6 @@ background task that feeds the transcript through
 zero added latency on the turn.
 """
 
-import asyncio
 import contextlib
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
@@ -20,39 +19,13 @@ from app.constants.memory import (
     MemorySourceType,
 )
 from app.memory.engine import memory_engine
+from app.models.agent_models import agent_configurable
 from app.override.langgraph_bigtool.utils import State
+from app.utils.background_tasks import spawn_background_task
+from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import UserContext, log, wide_task
 
 MAX_TOOL_OUTPUT_SIZE = 500
-
-# Module-level set to hold references to background tasks, preventing GC
-# Tasks are automatically removed from the set when they complete via done callback
-_background_tasks: set[asyncio.Task] = set()
-
-
-def _task_done_callback(task: asyncio.Task) -> None:
-    """Callback to remove completed tasks from the background tasks set."""
-    _background_tasks.discard(task)
-
-
-def _get_user_id(config: RunnableConfig) -> str | None:
-    """Extract user_id from config for user memory namespace."""
-    return config.get("configurable", {}).get("user_id")
-
-
-def _get_user_name(config: RunnableConfig) -> str | None:
-    """Extract the user's display name from config for fact attribution."""
-    return config.get("configurable", {}).get("user_name")
-
-
-def _get_subagent_id(config: RunnableConfig) -> str | None:
-    """Extract subagent ID from config for memory namespace."""
-    return config.get("configurable", {}).get("subagent_id")
-
-
-def _get_session_id(config: RunnableConfig) -> str | None:
-    """Extract session/thread ID for memory correlation."""
-    return config.get("configurable", {}).get("thread_id")
 
 
 def _check_worth_learning(messages: list[AnyMessage]) -> tuple[bool, str]:
@@ -69,7 +42,7 @@ def _check_worth_learning(messages: list[AnyMessage]) -> tuple[bool, str]:
     """
     for msg in messages:
         if isinstance(msg, HumanMessage):
-            if len(_extract_text_content(msg.content).strip()) >= MIN_USER_CONTENT_CHARS:
+            if len(extract_text_content(msg.content).strip()) >= MIN_USER_CONTENT_CHARS:
                 return True, "OK"
     return False, "No substantive user message"
 
@@ -92,7 +65,7 @@ def _format_messages_for_user_memory(
 
     for msg in messages:
         if isinstance(msg, HumanMessage):
-            content = _extract_text_content(msg.content)
+            content = extract_text_content(msg.content)
             if content:
                 formatted.append({"role": "user", "content": content})
 
@@ -102,36 +75,19 @@ def _format_messages_for_user_memory(
                     tool_content = f"[TOOL CALL: {call['name']}({call.get('args', {})})]"
                     formatted.append({"role": "assistant", "content": tool_content})
             elif msg.content:
-                formatted.append({"role": "assistant", "content": str(msg.content)})
+                formatted.append(
+                    {"role": "assistant", "content": extract_text_content(msg.content)}
+                )
 
         elif isinstance(msg, ToolMessage):
-            # Truncate tool OUTPUTS only - they're usually large API responses
-            content = str(msg.content)
+            # Truncate tool OUTPUTS only - they're usually large API responses.
+            # Text-extract first so inline media blocks never leak base64 here.
+            content = extract_text_content(msg.content)
             if len(content) > MAX_TOOL_OUTPUT_SIZE:
                 content = content[:MAX_TOOL_OUTPUT_SIZE] + "... [truncated]"
             formatted.append({"role": "assistant", "content": f"[TOOL RESULT: {content}]"})
 
     return formatted
-
-
-def _extract_text_content(content) -> str:
-    """Extract text from potentially multimodal message content.
-
-    Handles both simple strings and list-of-blocks format.
-    """
-    if isinstance(content, str):
-        return content
-
-    if isinstance(content, list):
-        text_parts = []
-        for item in content:
-            if isinstance(item, str):
-                text_parts.append(item)
-            elif isinstance(item, dict) and item.get("type") == "text":
-                text_parts.append(item.get("text", ""))
-        return " ".join(text_parts)
-
-    return str(content)
 
 
 async def _store_user_memory_background(
@@ -187,10 +143,11 @@ async def memory_node(
     messages = state.get("messages", [])
 
     # Extract all config values upfront
-    user_id = _get_user_id(config)
-    subagent_id = _get_subagent_id(config)
-    session_id = _get_session_id(config)
-    user_name = _get_user_name(config)
+    configurable = agent_configurable(config)
+    user_id = configurable.get("user_id")
+    subagent_id = configurable.get("subagent_id")
+    session_id = configurable.get("thread_id")
+    user_name = configurable.get("user_name")
 
     # Look up extraction prompt from registry using subagent_id
     extraction_prompt = get_memory_extraction_prompt(subagent_id) if subagent_id else None
@@ -198,11 +155,11 @@ async def memory_node(
     # Quick validation - skip trivial conversations
     should_learn, reason = _check_worth_learning(messages)
     if not should_learn:
-        log.debug(f"{LogTag.AGENT} Memory learning skipped: {reason}")
+        log.debug(f"{LogTag.AGENT} Memory learning skipped", reason=reason)
         return state
 
     if user_id:
-        task = asyncio.create_task(
+        task = spawn_background_task(
             _store_user_memory_background(
                 messages=messages,
                 user_id=user_id,
@@ -213,11 +170,10 @@ async def memory_node(
             ),
             name="user_memory",
         )
-
-        _background_tasks.add(task)
-        task.add_done_callback(_task_done_callback)
         log.debug(
-            f"{LogTag.AGENT} Memory learning spawned ({subagent_id or 'agent'}): {task.get_name()}"
+            f"{LogTag.AGENT} Memory learning spawned",
+            subagent_id=subagent_id,
+            task_name=task.get_name(),
         )
 
     return state

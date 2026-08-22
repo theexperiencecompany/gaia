@@ -26,6 +26,16 @@ SUBAGENT_CACHE_TTL = ONE_HOUR_TTL
 # routing). Eventually consistent: a plan change takes effect within the TTL.
 SUBSCRIPTION_PLAN_CACHE_PREFIX = "subscription:"
 SUBSCRIPTION_PLAN_CACHE_TTL = FIVE_MINUTES_TTL
+# The plan catalogue itself, keyed by whether inactive plans are included. Seeded
+# by scripts/payment_setup.py, which drops every key after writing.
+ACTIVE_PLANS_CACHE_KEY = "plans:active"
+ALL_PLANS_CACHE_KEY = "plans:all"
+PLANS_CACHE_KEYS = (ACTIVE_PLANS_CACHE_KEY, ALL_PLANS_CACHE_KEY)
+# The tracked-todo summary injected into comms context. Deliberately short: the
+# list changes as the agent works, and a stale pin is worse than the lookup it
+# saves. Keyed by user alone, so only the unpinned summary may use it.
+TRACKED_TODOS_SUMMARY_CACHE_KEY = "tracked_todos:summary:{user_id}"
+TRACKED_TODOS_SUMMARY_CACHE_TTL = 60
 OAUTH_STATE_TTL = TEN_MINUTES_TTL
 OAUTH_DISCOVERY_TTL = ONE_DAY_TTL
 MCP_TOOLS_CACHE_TTL = ONE_DAY_TTL
@@ -53,6 +63,26 @@ WORKFLOW_GENERATION_CACHE_TTL = ONE_DAY_TTL
 SUBAGENT_GRAPH_CACHE_MAX_SIZE = 100
 SUBAGENT_GRAPH_CACHE_TTL_SECONDS = TEN_MINUTES_TTL
 SUBAGENT_GRAPH_CLEANUP_INTERVAL_SECONDS = 60
+
+# Repository layer — semantic aliases over the shared TTLs (single source of
+# truth). Entity rows are hot and long-lived; query caches are shorter because
+# they fan out per argument set. The generation counter (not a TTL) is what
+# actually invalidates them, so these bounds only cap worst-case staleness.
+REPO_ENTITY_TTL = ONE_DAY_TTL
+REPO_QUERY_TTL = ONE_HOUR_TTL
+# Scope segment for non-user-scoped (global) repositories.
+REPO_GLOBAL_SCOPE = "global"
+# Debounce window for UserRepository.touch_last_active — one write per user per
+# minute (Redis SET NX EX gate), so per-request auth never storms Mongo.
+LAST_ACTIVE_DEBOUNCE_SECONDS = 60
+
+# Per-repository cache-key prefixes (one namespace per domain).
+NOTE_CACHE_PREFIX = "note"
+TODO_CACHE_PREFIX = "todo"
+PROJECT_CACHE_PREFIX = "project"
+USER_CACHE_PREFIX = "user"
+# Redis SET NX EX gate that debounces UserRepository.touch_last_active.
+LAST_ACTIVE_GATE_PREFIX = "last_active_gate"
 
 # Cache key prefixes
 TEAM_CACHE_PREFIX = "team"
@@ -84,9 +114,26 @@ USER_SKILLS_CACHE_KEY = "skills:user:{user_id}:agent:{agent_name}"
 # v2: the listing now merges in-memory builtin skills; bump busts stale empty entries.
 SKILLS_TEXT_CACHE_KEY = "skills:text:v2:{user_id}:{agent_name}"
 INTEGRATION_INSTRUCTIONS_CACHE_KEY = "integration_instructions:{user_id}"
-STREAM_CHANNEL_PREFIX = "stream:channel:"
+# Conversation-level artifact registry (single source of truth for a
+# conversation's agent-written files). Long TTL with event-driven invalidation
+# on every upsert/remove — a chat turn reads it once instead of re-scanning the
+# costly JuiceFS dir.
+CONV_ARTIFACTS_CACHE_PATTERN = "conv_artifacts:{user_id}:{conv_id}"
+# A user's uploaded-file listings; busted on every file upload/update/delete.
+FILES_CACHE_PATTERN = "files:{user_id}:*"
 STREAM_SIGNAL_PREFIX = "stream:signal:"
 STREAM_PROGRESS_PREFIX = "stream:progress:"
+# Replayable per-stream event log (Redis Stream). Entry ids double as SSE ids,
+# so any subscriber can attach late or reconnect with Last-Event-ID and replay.
+STREAM_EVENTS_PREFIX = "stream:events:"
+STREAM_EVENTS_MAXLEN = 4096
+# Reverse index {user_id}:{conversation_id} -> stream_id for the in-flight chat
+# turn, so a reloaded client can rediscover and re-attach to a live stream.
+STREAM_ACTIVE_PREFIX = "stream:active:"
+# Turn-send dedup: {user_id}:{turn_id} -> stream_id, claimed atomically (SETNX)
+# so a retried POST can't persist the same turn twice.
+STREAM_TURN_DEDUP_PREFIX = "stream:turn:"
+STREAM_TURN_DEDUP_TTL = TEN_MINUTES_TTL
 STATE_KEY_PREFIX = "oauth_state"
 # Single-use login-free integration-connect codes: code -> {user_id, integration_id}.
 CONNECT_LINK_PREFIX = "connect_link"
@@ -107,6 +154,10 @@ DESKTOP_RELEASE_CACHE_TTL = THIRTY_MINUTES_TTL
 # late result). The tool deletes the key as soon as it resolves, so this TTL
 # only bounds the orphaned-on-crash case.
 DESKTOP_REQUEST_TTL_GRACE_SECONDS = 15
+# Remembers a declined call for the rest of the turn (keyed by stream_id) so a
+# retrying agent is auto-denied instead of re-prompting the user for the same
+# action.
+HIL_DECLINED_PREFIX = "hil:declined:"
 EXECUTOR_BUSY_PREFIX = "executor:busy:"
 EXECUTOR_BUSY_TTL = THIRTY_MINUTES_TTL
 EXECUTOR_QUEUE_PREFIX = "executor:queue:"
@@ -122,3 +173,7 @@ ELEVENLABS_SHARED_VOICES_CACHE_KEY = "voice:elevenlabs_shared_voices"
 # answer before sending [DONE] anyway. Real action turns resolve in a few
 # seconds; on timeout the answer still reaches the user via the WebSocket push.
 VOICE_EXECUTOR_RESULT_TIMEOUT_S = 90.0
+
+# One-shot gate (SET NX) for the "priority compute used this month" in-app notice,
+# so a degraded pro user is told once per month, not once per turn.
+COST_BUDGET_NOTIFIED_KEY = "cost_budget_notified:{user_id}:{window}"

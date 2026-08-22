@@ -1,6 +1,6 @@
 import asyncio
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import cast
 
 from langchain_core.language_models import LanguageModelLike
 from langgraph.checkpoint.memory import InMemorySaver
@@ -8,16 +8,19 @@ from langgraph.checkpoint.memory import InMemorySaver
 from app.agents.core.graph_builder.checkpointer_manager import (
     get_checkpointer_manager,
 )
+from app.agents.core.graph_manager import CompiledAgentGraph
 from app.agents.core.nodes import (
     follow_up_actions_node,
-    manage_system_prompts_node,
     memory_node,
 )
-from app.agents.core.nodes.filter_messages import filter_messages_node
+from app.agents.core.nodes.pre_model_hooks import (
+    comms_pre_model_hooks,
+    worker_pre_model_hooks,
+)
 from app.agents.core.subagents.handoff_tools import handoff as handoff_tool
 from app.agents.core.subagents.provider_subagents import register_subagent_providers
+from app.agents.core.subagents.spawn_agent import get_spawn_graph
 from app.agents.llm.client import init_llm
-from app.agents.llm.retry_policies import COMMS_RETRY_POLICY, EXECUTOR_RETRY_POLICY
 from app.agents.middleware import create_comms_middleware, create_executor_middleware
 from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.tools import memory_tools
@@ -30,10 +33,10 @@ from app.agents.tools.core.tool_runtime_config import (
 from app.agents.tools.executor_tool import call_executor, cancel_executor
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
 from app.agents.tools.wait_for_subagents_tool import wait_for_subagents as wait_for_subagents_tool
+from app.constants.general import WAIT_FOR_SUBAGENTS_NAME
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.override.langgraph_bigtool.create_agent import create_agent
-from app.override.langgraph_bigtool.hooks import HookType
 from shared.py.wide_events import log
 
 
@@ -41,7 +44,7 @@ from shared.py.wide_events import log
 async def build_executor_graph(
     chat_llm: LanguageModelLike | None = None,
     in_memory_checkpointer: bool = False,
-):
+) -> AsyncIterator[CompiledAgentGraph]:
     """Construct and compile the executor agent graph with handoff tools."""
     if chat_llm is None:
         chat_llm = init_llm()
@@ -56,12 +59,12 @@ async def build_executor_graph(
     tool_dict = tool_registry.get_tool_dict()
     tool_dict.update({"handoff": handoff_tool})
     tool_dict.update({t.name: t for t in todo_tools})
-    tool_dict.update({"wait_for_subagents": wait_for_subagents_tool})
+    tool_dict.update({WAIT_FOR_SUBAGENTS_NAME: wait_for_subagents_tool})
 
     todo_hook = create_todo_pre_model_hook(source="executor")
 
     # Spawned subagents must not see executor-only orchestration tools.
-    excluded_subagent_tools = {"handoff", "wait_for_subagents"}
+    excluded_subagent_tools = {"handoff", WAIT_FOR_SUBAGENTS_NAME}
 
     middleware = create_executor_middleware(
         subagent_excluded_tools=excluded_subagent_tools,
@@ -81,12 +84,9 @@ async def build_executor_graph(
         subagent_mw.set_llm(chat_llm)
         subagent_mw.set_tools(registry=tool_dict)
         subagent_mw.set_store(store)
+        subagent_mw.set_spawn_graph_provider(get_spawn_graph)
 
-    pre_model_hooks: list[HookType] = [
-        cast(HookType, filter_messages_node),
-        manage_system_prompts_node,
-        todo_hook,
-    ]
+    pre_model_hooks = worker_pre_model_hooks(todo_hook)
 
     builder = create_agent(
         llm=chat_llm,
@@ -108,10 +108,11 @@ async def build_executor_graph(
             "complete_tracked_todo",
             "search_todo_context",
             "list_tracked_todos",
+            "save_learned_skill",
         ],
         middleware=middleware,
         pre_model_hooks=pre_model_hooks,
-        agent_retry_policy=EXECUTOR_RETRY_POLICY,
+        require_finish_to_end=True,
     )
 
     checkpointer_manager = await get_checkpointer_manager()
@@ -148,7 +149,7 @@ async def build_executor_graph(
     strategy=MissingKeyStrategy.WARN,
     auto_initialize=False,
 )
-async def build_executor_agent():
+async def build_executor_agent() -> CompiledAgentGraph:
     """Build and return the executor agent with full tool access."""
     log.debug(f"{LogTag.AGENT} Building executor agent with lazy providers")
 
@@ -161,7 +162,7 @@ async def build_executor_agent():
 async def build_comms_graph(
     chat_llm: LanguageModelLike | None = None,
     in_memory_checkpointer: bool = False,
-):
+) -> AsyncIterator[CompiledAgentGraph]:
     """Build the comms agent graph with only the executor tool."""
     if chat_llm is None:
         chat_llm = init_llm()
@@ -175,10 +176,7 @@ async def build_comms_graph(
 
     middleware = create_comms_middleware()
 
-    pre_model_hooks: list[HookType] = [
-        cast(HookType, filter_messages_node),
-        manage_system_prompts_node,
-    ]
+    pre_model_hooks = comms_pre_model_hooks()
 
     builder = create_agent(
         llm=chat_llm,
@@ -199,7 +197,6 @@ async def build_comms_graph(
             # via add_memory persist — conversational disclosures are lost.
             memory_node,
         ],
-        agent_retry_policy=COMMS_RETRY_POLICY,
     )
 
     checkpointer_manager = await get_checkpointer_manager()
@@ -226,7 +223,7 @@ async def build_comms_graph(
     strategy=MissingKeyStrategy.WARN,
     auto_initialize=False,
 )
-async def build_comms_agent():
+async def build_comms_agent() -> CompiledAgentGraph:
     """Build and return the comms agent using lazy providers."""
     log.debug(f"{LogTag.AGENT} Building comms agent with lazy providers")
 
@@ -235,7 +232,7 @@ async def build_comms_agent():
     return graph
 
 
-def build_graphs():
+def build_graphs() -> None:
     """Build comms and executor agents and register subagent providers."""
     log.info(f"{LogTag.AGENT} Building core agent graphs...")
 

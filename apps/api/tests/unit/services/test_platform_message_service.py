@@ -17,7 +17,6 @@ from app.services import platform_message_service as pms
 from app.services.outbound_delivery import OutboundResult
 
 
-@pytest.mark.unit
 class TestIsBotPlatform:
     @pytest.mark.parametrize(
         "source",
@@ -34,7 +33,6 @@ class TestIsBotPlatform:
         assert pms.is_bot_platform(source) is False
 
 
-@pytest.mark.unit
 class TestDeliverMessageToPlatform:
     @pytest.mark.parametrize("source", sorted(BOT_CONVERSATION_SOURCES, key=lambda s: s.value))
     async def test_publishes_to_resolved_platform(self, source: ConversationSource) -> None:
@@ -71,7 +69,6 @@ class TestDeliverMessageToPlatform:
         pub.assert_not_awaited()
 
 
-@pytest.mark.unit
 class TestBotPlatformConsistency:
     """Every bot source must be routable by is_bot_platform and categorised as
     a BOT by SourceCategory."""

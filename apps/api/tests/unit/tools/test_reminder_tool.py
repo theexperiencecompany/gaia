@@ -1,10 +1,10 @@
 """Unit tests for app.agents.tools.reminder_tool."""
 
 from datetime import timedelta
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
+from app.models.reminder_models import StaticReminderPayload
 
 # ---------------------------------------------------------------------------
 # Module-level patch for rate limiting
@@ -53,7 +53,6 @@ def _reminder_mock(**overrides: Any) -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateReminderTool:
     @patch(f"{MODULE}.reminder_scheduler")
     @patch(f"{MODULE}.CreateReminderToolRequest")
@@ -120,7 +119,6 @@ class TestCreateReminderTool:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestListUserRemindersTool:
     @patch(f"{MODULE}.reminder_scheduler")
     async def test_happy_path(self, mock_scheduler: MagicMock) -> None:
@@ -164,7 +162,6 @@ class TestListUserRemindersTool:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetReminderTool:
     @patch(f"{MODULE}.reminder_scheduler")
     async def test_happy_path(self, mock_scheduler: MagicMock) -> None:
@@ -207,7 +204,6 @@ class TestGetReminderTool:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestDeleteReminderTool:
     @patch(f"{MODULE}.reminder_scheduler")
     async def test_happy_path(self, mock_scheduler: MagicMock) -> None:
@@ -254,7 +250,6 @@ class TestDeleteReminderTool:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUpdateReminderTool:
     @patch(f"{MODULE}.reminder_scheduler")
     async def test_happy_path_repeat(self, mock_scheduler: MagicMock) -> None:
@@ -266,8 +261,11 @@ class TestUpdateReminderTool:
             config=_cfg(), reminder_id="rem-1", repeat="0 9 * * *"
         )
         assert result == {"status": "updated"}
-        call_args = mock_scheduler.update_reminder.call_args
-        assert call_args[0][1]["repeat"] == "0 9 * * *"
+        update = mock_scheduler.update_reminder.call_args[0][1]
+        assert update.repeat == "0 9 * * *"
+        # Only the field the caller touched is set — the repository's $set uses
+        # exclude_unset, so anything else here would null out stored data.
+        assert update.model_fields_set == {"repeat"}
 
     @patch(f"{MODULE}.reminder_scheduler")
     async def test_update_with_stop_after_and_tz(self, mock_scheduler: MagicMock) -> None:
@@ -282,8 +280,8 @@ class TestUpdateReminderTool:
             stop_after_timezone_offset="+05:30",
         )
         assert result == {"status": "updated"}
-        update_data = mock_scheduler.update_reminder.call_args[0][1]
-        assert update_data["stop_after"].utcoffset() == timedelta(hours=5, minutes=30)
+        update = mock_scheduler.update_reminder.call_args[0][1]
+        assert update.stop_after.utcoffset() == timedelta(hours=5, minutes=30)
 
     @patch(f"{MODULE}.reminder_scheduler")
     async def test_update_failed(self, mock_scheduler: MagicMock) -> None:
@@ -330,11 +328,27 @@ class TestUpdateReminderTool:
         from app.agents.tools.reminder_tool import update_reminder_tool
 
         result = await update_reminder_tool.coroutine(  # type: ignore[attr-defined]
-            config=_cfg(), reminder_id="rem-1", payload={"title": "New title"}
+            config=_cfg(),
+            reminder_id="rem-1",
+            payload={"title": "New title", "body": "New body"},
         )
         assert result == {"status": "updated"}
-        update_data = mock_scheduler.update_reminder.call_args[0][1]
-        assert update_data["payload"]["title"] == "New title"
+        update = mock_scheduler.update_reminder.call_args[0][1]
+        assert update.payload == StaticReminderPayload(title="New title", body="New body")
+
+    @patch(f"{MODULE}.reminder_scheduler")
+    async def test_update_with_incomplete_payload_rejected(self, mock_scheduler: MagicMock) -> None:
+        """A payload missing ``body`` never reaches the scheduler — StaticReminderPayload
+        requires both fields, and the reminder document would be unreadable without it."""
+        mock_scheduler.update_reminder = AsyncMock(return_value=True)
+
+        from app.agents.tools.reminder_tool import update_reminder_tool
+
+        result = await cast(Any, update_reminder_tool).coroutine(
+            config=_cfg(), reminder_id="rem-1", payload={"title": "New title"}
+        )
+        assert "body" in result["error"]
+        mock_scheduler.update_reminder.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -342,7 +356,6 @@ class TestUpdateReminderTool:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestSearchRemindersTool:
     @patch(f"{MODULE}.reminder_scheduler")
     async def test_happy_path(self, mock_scheduler: MagicMock) -> None:

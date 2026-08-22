@@ -19,7 +19,7 @@ async def warmup_tools_cache() -> None:
     lazily per provider when a subagent is first created. Non-fatal: on failure the
     catalog is indexed on first use instead.
     """
-    log.set(service="tools_warmup", operation="warmup_tools_cache")
+    log.set(component="tools_warmup", operation="warmup_tools_cache")
     log.info(f"{LogTag.TOOL} Warming up tools cache...")
     try:
         tool_registry = await get_tool_registry()
@@ -28,4 +28,8 @@ async def warmup_tools_cache() -> None:
             f"{LogTag.TOOL} Provider catalog metadata indexed (tools materialized lazily on use)"
         )
     except Exception as e:
-        log.warning(f"{LogTag.TOOL} Tools catalog warmup failed (non-fatal): {e}")
+        log.warning(
+            f"{LogTag.TOOL} Tools catalog warmup failed (non-fatal)",
+            error=str(e),
+            error_type=type(e).__name__,
+        )

@@ -3,12 +3,12 @@ GitHub trigger handler.
 """
 
 import asyncio
-from typing import Any
+from typing import Any, ClassVar
 
 from composio.types import ToolExecutionResponse
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import workflows_collection
+from app.db.repositories.workflows import workflow_repository
 from app.models.composio_schemas import (
     GitHubCommitEventPayload,
     GitHubIssueAddedEventPayload,
@@ -17,13 +17,14 @@ from app.models.composio_schemas import (
     GitHubPullRequestEventPayload,
     GitHubStarAddedEventPayload,
 )
+from app.models.trigger_config import TriggerOption
 from app.models.trigger_configs import (
     GitHubCommitEventConfig,
     GitHubIssueAddedConfig,
     GitHubPrEventConfig,
     GitHubStarAddedConfig,
 )
-from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
+from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
 from app.utils.exceptions import TriggerRegistrationError
@@ -33,21 +34,21 @@ from shared.py.wide_events import log
 class GitHubTriggerHandler(TriggerHandler):
     """Handler for GitHub triggers."""
 
-    SUPPORTED_TRIGGERS = [
+    SUPPORTED_TRIGGERS: ClassVar[list[str]] = [
         "github_commit_event",
         "github_pr_event",
         "github_star_added",
         "github_issue_added",
     ]
 
-    SUPPORTED_EVENTS = {
+    SUPPORTED_EVENTS: ClassVar[set[str]] = {
         "GITHUB_COMMIT_EVENT",
         "GITHUB_PULL_REQUEST_EVENT",
         "GITHUB_STAR_ADDED_EVENT",
         "GITHUB_ISSUE_ADDED_EVENT",
     }
 
-    TRIGGER_TO_COMPOSIO = {
+    TRIGGER_TO_COMPOSIO: ClassVar[dict[str, str]] = {
         "github_commit_event": "GITHUB_COMMIT_EVENT",
         "github_pr_event": "GITHUB_PULL_REQUEST_EVENT",
         "github_star_added": "GITHUB_STAR_ADDED_EVENT",
@@ -69,8 +70,8 @@ class GitHubTriggerHandler(TriggerHandler):
         user_id: str,
         integration_id: str,
         parent_ids: list[str] | None = None,
-        **kwargs: Any,
-    ) -> list[dict[str, Any]]:
+        **kwargs: str,
+    ) -> list[TriggerOption]:
         """Get dynamic options for GitHub trigger config fields."""
         composio_service = get_composio_service()
 
@@ -104,7 +105,12 @@ class GitHubTriggerHandler(TriggerHandler):
 
         # Check response status
         if not result["successful"]:
-            log.error(f"{LogTag.TRIGGER} GitHub API error: {result['error']}")
+            log.error(
+                f"{LogTag.TRIGGER} GitHub API error",
+                error=result["error"],
+                user_id=user_id,
+                integration_id=integration_id,
+            )
             return []
 
         # Extract and parse data
@@ -120,15 +126,17 @@ class GitHubTriggerHandler(TriggerHandler):
         options = []
         for repo in repos:
             if repo.full_name:
-                options.append({"value": repo.full_name, "label": repo.full_name})
+                options.append(TriggerOption(value=repo.full_name, label=repo.full_name))
 
-        log.info(f"{LogTag.TRIGGER} Returning {len(options)} GitHub repository options")
+        log.info(
+            f"{LogTag.TRIGGER} Returning GitHub repository options", options_count=len(options)
+        )
         return options
 
     async def register(
         self,
         user_id: str,
-        workflow_id: str,
+        _workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:
@@ -219,33 +227,23 @@ class GitHubTriggerHandler(TriggerHandler):
                 elif "issue_added" in event_type.lower():
                     GitHubIssueAddedEventPayload.model_validate(data)
             except Exception as e:
-                log.debug(f"{LogTag.TRIGGER} GitHub payload validation failed: {e}")
+                log.debug(
+                    f"{LogTag.TRIGGER} GitHub payload validation failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
 
-            query = {
-                "activated": True,
-                "trigger_config.type": TriggerType.INTEGRATION,
-                "trigger_config.enabled": True,
-                "trigger_config.composio_trigger_ids": trigger_id,
-            }
-
-            cursor = workflows_collection.find(query)
             workflows: list[Workflow] = []
-
-            async for workflow_doc in cursor:
-                try:
-                    workflow_doc["id"] = workflow_doc.get("_id")
-                    if "_id" in workflow_doc:
-                        del workflow_doc["_id"]
-                    workflow = Workflow(**workflow_doc)
-                    workflows.append(workflow)
-                except Exception as e:
-                    log.error(f"{LogTag.TRIGGER} Error processing workflow document: {e}")
-                    continue
-
+            workflows.extend(await workflow_repository.find_active_by_composio_trigger(trigger_id))
             return workflows
 
         except Exception as e:
-            log.error(f"{LogTag.TRIGGER} Error finding workflows for trigger {trigger_id}: {e}")
+            log.error(
+                f"{LogTag.TRIGGER} Error finding workflows for trigger",
+                trigger_id=trigger_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return []
 
 

@@ -1,5 +1,6 @@
 """Unit tests for subagent_runner.py and subagent_helpers.py."""
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import (
@@ -10,14 +11,21 @@ from langchain_core.messages import (
 )
 import pytest
 
+from app.agents.context.assemble import AssembledContext
+from app.agents.context.slots import PromptSlot
+from app.agents.context.tiers import AgentTier
+from app.agents.core.graph_manager import GraphUnavailableError
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     build_initial_messages,
     execute_subagent_stream,
     prepare_executor_execution,
 )
+from app.agents.llm.lane import AgentRole
+from app.constants.llm import DEV_MODEL_OPTIONS, EXECUTOR_RECURSION_LIMIT
 from app.models.mcp_config import SubAgentConfig
 from app.models.subagent_models import Subagent
+from tests._harness.context_chain import slots_of
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -109,112 +117,147 @@ def _make_integration(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestBuildInitialMessages:
-    @pytest.mark.asyncio
-    async def test_returns_four_messages(self):
-        """Shape is [static, dynamic_context, time_msg, human_task].
+    """Shape is ``[static, dynamic_stable, memory_recall?, human_task, time]`` —
+    canonical slot order, so the pre-model hooks normalise correct input rather
+    than correcting this tier's output."""
 
-        The time HumanMessage is separated from the user task so minute
-        ticks don't reset the ``system_instruction`` cache boundary.
-        """
-        sys_msg = SystemMessage(content="System prompt")
-        ctx_msg = SystemMessage(content="Context")
-
-        with patch(
-            "app.agents.core.subagents.subagent_runner.create_agent_context_message",
+    @staticmethod
+    def _assembled(volatile: SystemMessage | None = None) -> Any:
+        return patch(
+            "app.agents.core.subagents.subagent_runner.assemble_context",
             new_callable=AsyncMock,
-            return_value=ctx_msg,
-        ):
+            return_value=AssembledContext(
+                stable=SystemMessage(
+                    content="Context", additional_kwargs={"dynamic_context": True}
+                ),
+                volatile=volatile,
+            ),
+        )
+
+    @pytest.mark.asyncio
+    async def test_seed_is_static_then_stable_then_task_then_clock(self):
+        sys_msg = SystemMessage(content="System prompt")
+
+        with self._assembled():
             result = await build_initial_messages(
                 system_message=sys_msg,
+                tier=AgentTier.EXECUTOR,
                 agent_name="test_agent",
                 configurable={"user_timezone": "Asia/Kolkata"},
                 task="Do the thing",
             )
 
-        assert len(result) == 4
+        assert slots_of(result) == [
+            PromptSlot.STATIC,
+            PromptSlot.DYNAMIC_STABLE,
+            PromptSlot.CONVERSATION,
+            PromptSlot.TIME,
+        ]
         assert result[0] is sys_msg
-        assert result[1] is ctx_msg
-        # result[2] is the build_current_time_message HumanMessage
-        assert isinstance(result[2], HumanMessage)
-        assert result[2].additional_kwargs.get("time_context") is True
-        # result[3] is the task
-        assert isinstance(result[3], HumanMessage)
-        assert result[3].content == "Do the thing"
+        assert result[2].content == "Do the thing"
+
+    @pytest.mark.asyncio
+    async def test_volatile_content_is_slotted_before_the_conversation(self):
+        """It has to stay inside the leading system block — Gemini drops any
+        system message that follows a non-system one."""
+        volatile = SystemMessage(content="recall", additional_kwargs={"memory_recall": True})
+
+        with self._assembled(volatile=volatile):
+            result = await build_initial_messages(
+                system_message=SystemMessage(content="sys"),
+                tier=AgentTier.EXECUTOR,
+                agent_name="agent",
+                configurable={},
+                task="task",
+            )
+
+        assert slots_of(result) == [
+            PromptSlot.STATIC,
+            PromptSlot.DYNAMIC_STABLE,
+            PromptSlot.MEMORY_RECALL,
+            PromptSlot.CONVERSATION,
+            PromptSlot.TIME,
+        ]
+
+    @pytest.mark.asyncio
+    async def test_clock_is_last_and_is_not_a_system_message(self):
+        with self._assembled():
+            result = await build_initial_messages(
+                system_message=SystemMessage(content="sys"),
+                tier=AgentTier.EXECUTOR,
+                agent_name="agent",
+                configurable={"user_timezone": "Asia/Kolkata"},
+                task="task",
+            )
+
+        assert isinstance(result[-1], HumanMessage)
+        assert result[-1].additional_kwargs.get("time_context") is True
 
     @pytest.mark.asyncio
     async def test_human_message_has_visible_to(self):
-        with patch(
-            "app.agents.core.subagents.subagent_runner.create_agent_context_message",
-            new_callable=AsyncMock,
-            return_value=SystemMessage(content="ctx"),
-        ):
+        with self._assembled():
             result = await build_initial_messages(
                 system_message=SystemMessage(content="sys"),
+                tier=AgentTier.EXECUTOR,
                 agent_name="my_agent",
                 configurable={},
                 task="task",
             )
 
-        # Task HumanMessage is now at index 3 (after the time_msg at 2)
-        human_msg = result[3]
+        human_msg = next(m for m in result if m.type == "human" and m.content == "task")
         assert "my_agent" in human_msg.additional_kwargs["visible_to"]
 
     @pytest.mark.asyncio
     async def test_retrieval_query_defaults_to_task(self):
-        with patch(
-            "app.agents.core.subagents.subagent_runner.create_agent_context_message",
-            new_callable=AsyncMock,
-            return_value=SystemMessage(content="ctx"),
-        ) as mock_ctx:
+        with self._assembled() as mock_assemble:
             await build_initial_messages(
                 system_message=SystemMessage(content="sys"),
+                tier=AgentTier.EXECUTOR,
                 agent_name="agent",
                 configurable={},
                 task="my search query",
             )
 
-        kwargs = mock_ctx.call_args.kwargs
-        assert kwargs["query"] == "my search query"
+        assert mock_assemble.call_args.args[0].query == "my search query"
 
     @pytest.mark.asyncio
-    async def test_retrieval_query_overridden(self):
-        with patch(
-            "app.agents.core.subagents.subagent_runner.create_agent_context_message",
-            new_callable=AsyncMock,
-            return_value=SystemMessage(content="ctx"),
-        ) as mock_ctx:
+    async def test_retrieval_query_overrides_an_enhanced_task(self):
+        """The executor injects routing hints into the task text; retrieving
+        against those would pollute the semantic search with our own words."""
+        with self._assembled() as mock_assemble:
             await build_initial_messages(
                 system_message=SystemMessage(content="sys"),
+                tier=AgentTier.EXECUTOR,
                 agent_name="agent",
                 configurable={},
                 task="enhanced task with hints",
                 retrieval_query="original query",
             )
 
-        kwargs = mock_ctx.call_args.kwargs
-        assert kwargs["query"] == "original query"
+        assert mock_assemble.call_args.args[0].query == "original query"
 
     @pytest.mark.asyncio
-    async def test_user_id_and_subagent_id_passed(self):
-        with patch(
-            "app.agents.core.subagents.subagent_runner.create_agent_context_message",
-            new_callable=AsyncMock,
-            return_value=SystemMessage(content="ctx"),
-        ) as mock_ctx:
+    async def test_tier_and_ids_reach_the_assembler(self):
+        """The tier selects which sections apply, so passing the wrong one is
+        how a subagent silently loses provider metadata."""
+        with self._assembled() as mock_assemble:
             await build_initial_messages(
                 system_message=SystemMessage(content="sys"),
+                tier=AgentTier.PROVIDER_SUBAGENT,
                 agent_name="agent",
                 configurable={},
                 task="task",
                 user_id="uid-1",
                 subagent_id="github_agent",
+                integration_id="github",
             )
 
-        kwargs = mock_ctx.call_args.kwargs
-        assert kwargs["user_id"] == "uid-1"
-        assert kwargs["subagent_id"] == "github_agent"
+        ctx = mock_assemble.call_args.args[0]
+        assert ctx.tier is AgentTier.PROVIDER_SUBAGENT
+        assert ctx.user_id == "uid-1"
+        assert ctx.subagent_id == "github_agent"
+        assert ctx.integration_id == "github"
 
 
 # ---------------------------------------------------------------------------
@@ -222,16 +265,17 @@ class TestBuildInitialMessages:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestExecuteSubagentStream:
     @pytest.mark.asyncio
     async def test_accumulates_ai_content(self):
         chunk1 = AIMessageChunk(content="Hello ")
         chunk2 = AIMessageChunk(content="world")
+        tool_msg = ToolMessage(content="done", tool_call_id="tc-acc")
 
         async def _fake_astream(*args, **kwargs):
             yield ("messages", (chunk1, {}))
             yield ("messages", (chunk2, {}))
+            yield ("messages", (tool_msg, {}))
 
         mock_graph = MagicMock()
         mock_graph.astream = _fake_astream
@@ -241,7 +285,8 @@ class TestExecuteSubagentStream:
         with patch("app.agents.core.subagents.subagent_runner.log"):
             result = await execute_subagent_stream(ctx)
 
-        assert result == "Hello world"
+        assert not result.paused
+        assert result.text == "Hello world"
 
     @pytest.mark.asyncio
     async def test_silent_messages_skipped(self):
@@ -257,7 +302,8 @@ class TestExecuteSubagentStream:
         with patch("app.agents.core.subagents.subagent_runner.log"):
             result = await execute_subagent_stream(ctx)
 
-        assert result == "Task completed"  # default when no content
+        assert not result.paused
+        assert result.text == "Task completed"  # default when no content
 
     @pytest.mark.asyncio
     async def test_empty_message_returns_default(self):
@@ -272,7 +318,8 @@ class TestExecuteSubagentStream:
         with patch("app.agents.core.subagents.subagent_runner.log"):
             result = await execute_subagent_stream(ctx)
 
-        assert result == "Task completed"
+        assert not result.paused
+        assert result.text == "Task completed"
 
     @pytest.mark.asyncio
     async def test_tool_message_emits_tool_output(self):
@@ -295,7 +342,8 @@ class TestExecuteSubagentStream:
         assert call_data["tool_output"]["tool_call_id"] == "tc-1"
 
     @pytest.mark.asyncio
-    async def test_tool_message_content_truncated(self):
+    async def test_tool_message_content_not_truncated(self):
+        """tool_output streams the full content without truncation."""
         long_content = "x" * 5000
         tool_msg = ToolMessage(content=long_content, tool_call_id="tc-2")
         stream_writer = MagicMock()
@@ -311,7 +359,7 @@ class TestExecuteSubagentStream:
             await execute_subagent_stream(ctx, stream_writer=stream_writer)
 
         output = stream_writer.call_args[0][0]["tool_output"]["output"]
-        assert len(output) == 3000
+        assert output == long_content
 
     @pytest.mark.asyncio
     async def test_updates_emit_tool_data(self):
@@ -420,7 +468,8 @@ class TestExecuteSubagentStream:
             result = await execute_subagent_stream(ctx, stream_writer=None)
 
         # Should not raise
-        assert result == "Task completed"
+        assert not result.paused
+        assert result.text == "Task completed"
 
     @pytest.mark.asyncio
     async def test_cancellation_breaks_stream(self):
@@ -448,8 +497,11 @@ class TestExecuteSubagentStream:
         ):
             result = await execute_subagent_stream(ctx)
 
-        # Only first chunk processed before cancellation on the second
-        assert result == "First "
+        # Only first chunk was accumulated before cancellation broke the loop.
+        # When no tool ran the runner wraps the content in a diagnostic message;
+        # verify "First " appears and "Second" does not (cancellation succeeded).
+        assert "First " in result.text
+        assert "Second" not in result.text
 
     @pytest.mark.asyncio
     async def test_non_tuple_events_skipped(self):
@@ -458,6 +510,7 @@ class TestExecuteSubagentStream:
         async def _fake_astream(*args, **kwargs):
             yield ("a", "b", "c")  # 3-tuple, should be skipped
             yield ("messages", (AIMessageChunk(content="ok"), {}))
+            yield ("messages", (ToolMessage(content="done", tool_call_id="tc-skip"), {}))
 
         mock_graph = MagicMock()
         mock_graph.astream = _fake_astream
@@ -466,7 +519,8 @@ class TestExecuteSubagentStream:
         with patch("app.agents.core.subagents.subagent_runner.log"):
             result = await execute_subagent_stream(ctx)
 
-        assert result == "ok"
+        assert not result.paused
+        assert result.text == "ok"
 
     @pytest.mark.asyncio
     async def test_integration_metadata_passed_to_extract(self):
@@ -498,8 +552,117 @@ class TestExecuteSubagentStream:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestPrepareExecutorExecution:
+    @pytest.fixture(autouse=True)
+    def _mock_uploaded_files(self):
+        # prepare_executor_execution surfaces conversation uploads via
+        # FileService.list_conversation_files (a Motor query). Unit tests must
+        # not touch the DB, so stub it out for the whole class.
+        with patch(
+            "app.agents.core.subagents.subagent_runner.FileService.list_conversation_files",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            yield
+
+    def _prepare_patches(self, build_config, graph=None):
+        """Everything prepare_executor_execution reaches outside itself."""
+        return (
+            patch(
+                "app.agents.core.graph_manager.GraphManager.get_graph",
+                new_callable=AsyncMock,
+                return_value=graph if graph is not None else MagicMock(name="executor_graph"),
+            ),
+            patch(
+                "app.agents.core.subagents.subagent_runner.build_agent_config",
+                build_config,
+            ),
+            patch(
+                "app.helpers.message_helpers.create_system_message",
+                return_value=SystemMessage(content="executor sys"),
+            ),
+            patch(
+                "app.agents.core.subagents.subagent_runner.assemble_context",
+                new_callable=AsyncMock,
+                return_value=AssembledContext(
+                    stable=SystemMessage(
+                        content="ctx", additional_kwargs={"dynamic_context": True}
+                    ),
+                    volatile=None,
+                ),
+            ),
+        )
+
+    @pytest.mark.asyncio
+    async def test_the_executors_config_is_built_from_the_conversation_it_belongs_to(self):
+        """The executor gets its OWN config, derived from comms's. Every argument
+        here is load-bearing: the thread it resumes on, the bag it inherits (which
+        carries comms's resolved lane), its memory namespace, its VFS session and
+        its deeper recursion budget.
+        """
+        build_config = AsyncMock(return_value={"configurable": {"thread_id": "executor_t1"}})
+        configurable = {
+            "user_id": "u1",
+            "thread_id": "t1",
+            "email": "t@t.com",
+            "user_name": "Test",
+        }
+        graph, config, system, context = self._prepare_patches(build_config)
+        with graph, config, system, context:
+            await prepare_executor_execution(task="run tests", configurable=configurable)
+
+        assert build_config.call_args.args == ()
+        assert build_config.call_args.kwargs == {
+            "conversation_id": "t1",
+            "user": {"user_id": "u1", "email": "t@t.com", "name": "Test"},
+            "thread_id": "executor_t1",
+            "base_configurable": configurable,
+            "agent_name": "executor_agent",
+            "role": AgentRole.EXECUTOR,
+            "dev_option": None,
+            "subagent_id": "executor_agent",
+            "vfs_session_id": "t1",
+            "recursion_limit": EXECUTOR_RECURSION_LIMIT,
+        }
+
+    @pytest.mark.asyncio
+    async def test_the_dev_executor_model_comms_stashed_becomes_this_runs_dev_option(self):
+        """DEV-ONLY: without this the executor silently inherits comms's lane and
+        the header's executor picker does nothing."""
+        build_config = AsyncMock(return_value={"configurable": {"thread_id": "executor_t1"}})
+        graph, config, system, context = self._prepare_patches(build_config)
+        with graph, config, system, context:
+            await prepare_executor_execution(
+                task="run tests",
+                configurable={
+                    "user_id": "u1",
+                    "thread_id": "t1",
+                    "email": "t@t.com",
+                    "user_name": "Test",
+                    "dev_executor_model": "minimax-m3",
+                },
+            )
+
+        assert build_config.call_args.kwargs["dev_option"] == DEV_MODEL_OPTIONS["minimax-m3"]
+
+    @pytest.mark.asyncio
+    async def test_an_unknown_stashed_id_selects_no_dev_option(self):
+        build_config = AsyncMock(return_value={"configurable": {"thread_id": "executor_t1"}})
+        graph, config, system, context = self._prepare_patches(build_config)
+        with graph, config, system, context:
+            await prepare_executor_execution(
+                task="run tests",
+                configurable={
+                    "user_id": "u1",
+                    "thread_id": "t1",
+                    "email": "t@t.com",
+                    "user_name": "Test",
+                    "dev_executor_model": "no-such-model",
+                },
+            )
+
+        assert build_config.call_args.kwargs["dev_option"] is None
+
     @pytest.mark.asyncio
     async def test_happy_path(self):
         mock_graph = MagicMock(name="executor_graph")
@@ -519,9 +682,14 @@ class TestPrepareExecutorExecution:
                 return_value=SystemMessage(content="executor sys"),
             ),
             patch(
-                "app.agents.core.subagents.subagent_runner.create_agent_context_message",
+                "app.agents.core.subagents.subagent_runner.assemble_context",
                 new_callable=AsyncMock,
-                return_value=SystemMessage(content="ctx"),
+                return_value=AssembledContext(
+                    stable=SystemMessage(
+                        content="ctx", additional_kwargs={"dynamic_context": True}
+                    ),
+                    volatile=None,
+                ),
             ),
         ):
             ctx, error = await prepare_executor_execution(
@@ -545,7 +713,7 @@ class TestPrepareExecutorExecution:
         with patch(
             "app.agents.core.graph_manager.GraphManager.get_graph",
             new_callable=AsyncMock,
-            return_value=None,
+            side_effect=GraphUnavailableError("executor_agent", "provider failed in test"),
         ):
             ctx, error = await prepare_executor_execution(
                 task="task",
@@ -576,9 +744,14 @@ class TestPrepareExecutorExecution:
                 return_value=SystemMessage(content="executor sys"),
             ),
             patch(
-                "app.agents.core.subagents.subagent_runner.create_agent_context_message",
+                "app.agents.core.subagents.subagent_runner.assemble_context",
                 new_callable=AsyncMock,
-                return_value=SystemMessage(content="ctx"),
+                return_value=AssembledContext(
+                    stable=SystemMessage(
+                        content="ctx", additional_kwargs={"dynamic_context": True}
+                    ),
+                    volatile=None,
+                ),
             ),
             patch(
                 "app.agents.core.subagents.subagent_runner.get_subagent_by_id",
@@ -596,9 +769,14 @@ class TestPrepareExecutorExecution:
             )
 
         assert error is None
-        # The human message (last in initial_state["messages"]) should have the hint
-        human_msg = ctx.initial_state["messages"][-1]
-        assert "DIRECT EXECUTION HINT" in human_msg.content
+        # Found by slot, not position: the clock now trails the task, so an
+        # index-based lookup would silently read the wrong message.
+        task_msg = next(
+            m
+            for m in ctx.initial_state["messages"]
+            if m.type == "human" and not m.additional_kwargs.get("time_context")
+        )
+        assert "DIRECT EXECUTION HINT" in task_msg.content
 
     @pytest.mark.asyncio
     async def test_no_hint_without_tool_category(self):
@@ -619,9 +797,14 @@ class TestPrepareExecutorExecution:
                 return_value=SystemMessage(content="executor sys"),
             ),
             patch(
-                "app.agents.core.subagents.subagent_runner.create_agent_context_message",
+                "app.agents.core.subagents.subagent_runner.assemble_context",
                 new_callable=AsyncMock,
-                return_value=SystemMessage(content="ctx"),
+                return_value=AssembledContext(
+                    stable=SystemMessage(
+                        content="ctx", additional_kwargs={"dynamic_context": True}
+                    ),
+                    volatile=None,
+                ),
             ),
         ):
             ctx, error = await prepare_executor_execution(
@@ -654,9 +837,14 @@ class TestPrepareExecutorExecution:
                 return_value=SystemMessage(content="sys"),
             ),
             patch(
-                "app.agents.core.subagents.subagent_runner.create_agent_context_message",
+                "app.agents.core.subagents.subagent_runner.assemble_context",
                 new_callable=AsyncMock,
-                return_value=SystemMessage(content="ctx"),
+                return_value=AssembledContext(
+                    stable=SystemMessage(
+                        content="ctx", additional_kwargs={"dynamic_context": True}
+                    ),
+                    volatile=None,
+                ),
             ),
         ):
             ctx, error = await prepare_executor_execution(
@@ -687,9 +875,14 @@ class TestPrepareExecutorExecution:
                 return_value=SystemMessage(content="sys"),
             ),
             patch(
-                "app.agents.core.subagents.subagent_runner.create_agent_context_message",
+                "app.agents.core.subagents.subagent_runner.assemble_context",
                 new_callable=AsyncMock,
-                return_value=SystemMessage(content="ctx"),
+                return_value=AssembledContext(
+                    stable=SystemMessage(
+                        content="ctx", additional_kwargs={"dynamic_context": True}
+                    ),
+                    volatile=None,
+                ),
             ),
         ):
             await prepare_executor_execution(
@@ -706,21 +899,19 @@ class TestPrepareExecutorExecution:
 # ---------------------------------------------------------------------------
 
 
-from app.agents.core.subagents.subagent_helpers import (  # noqa: E402
+from app.agents.core.subagents.subagent_helpers import (
     build_subagent_system_prompt,
-    create_agent_context_message,
     create_subagent_system_message,
 )
 
 
-@pytest.mark.unit
 class TestBuildSubagentSystemPrompt:
     @pytest.mark.asyncio
     async def test_returns_static_base_prompt_without_user_metadata(self):
         """The static subagent prompt must be byte-identical across users.
 
-        Provider metadata (usernames, emails) flows through the dynamic
-        context message — see create_agent_context_message — so the static
+        Provider metadata (usernames, emails) is assembled separately by
+        ``app.agents.context`` and delivered in its own message, so the static
         prefix the LLM receives stays cacheable.
         """
         integration = _make_integration("github")
@@ -731,13 +922,13 @@ class TestBuildSubagentSystemPrompt:
                 return_value=integration,
             ),
             patch(
-                "app.agents.core.subagents.subagent_helpers.get_provider_metadata",
+                "app.agents.context.sections.get_provider_metadata",
                 new_callable=AsyncMock,
                 return_value={"Username": "testuser"},
             ) as mock_meta,
             patch("app.agents.core.subagents.subagent_helpers.log"),
         ):
-            result = await build_subagent_system_prompt("github", user_id="u1")
+            result = await build_subagent_system_prompt("github")
 
         assert "You are the GitHub agent." in result
         assert "USER CONTEXT FOR GITHUB" not in result
@@ -745,49 +936,36 @@ class TestBuildSubagentSystemPrompt:
         mock_meta.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_no_metadata_when_no_user_id(self):
-        integration = _make_integration("github")
-
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
-                return_value=integration,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_provider_metadata",
-                new_callable=AsyncMock,
-            ) as mock_meta,
-        ):
-            result = await build_subagent_system_prompt("github")
-
-        mock_meta.assert_not_awaited()
-        assert "You are the GitHub agent." in result
-
-    @pytest.mark.asyncio
     async def test_integration_not_found_uses_custom_prompt(self):
+        from app.agents.prompts.custom_mcp_prompts import CUSTOM_MCP_SUBAGENT_PROMPT
+
         with patch(
-            "app.agents.core.subagents.subagent_helpers.get_integration_by_id",
+            "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
             return_value=None,
         ):
             result = await build_subagent_system_prompt("custom_tool_123")
 
-        # Should return the CUSTOM_MCP_SUBAGENT_PROMPT or the base_system_prompt
-        assert isinstance(result, str)
+        assert result == CUSTOM_MCP_SUBAGENT_PROMPT
+
+    @pytest.mark.asyncio
+    async def test_integration_not_found_prefers_base_system_prompt(self):
+        with patch(
+            "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
+            return_value=None,
+        ):
+            result = await build_subagent_system_prompt(
+                "custom_tool_123", base_system_prompt="Explicit override"
+            )
+
+        assert result == "Explicit override"
 
     @pytest.mark.asyncio
     async def test_base_system_prompt_override(self):
         integration = _make_integration("github")
 
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
-                return_value=integration,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_provider_metadata",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
+        with patch(
+            "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
+            return_value=integration,
         ):
             result = await build_subagent_system_prompt(
                 "github", base_system_prompt="Custom prompt"
@@ -796,45 +974,9 @@ class TestBuildSubagentSystemPrompt:
         assert result == "Custom prompt"
 
     @pytest.mark.asyncio
-    async def test_metadata_fetch_error_handled(self):
-        integration = _make_integration("github")
-
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
-                return_value=integration,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_provider_metadata",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("DB down"),
-            ),
-            patch("app.agents.core.subagents.subagent_helpers.log"),
-        ):
-            result = await build_subagent_system_prompt("github", user_id="u1")
-
-        # Should not raise, returns prompt without metadata
-        assert "You are the GitHub agent." in result
-
-    @pytest.mark.asyncio
-    async def test_empty_metadata_no_context_injected(self):
-        integration = _make_integration("github")
-
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
-                return_value=integration,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_provider_metadata",
-                new_callable=AsyncMock,
-                return_value={},
-            ),
-            patch("app.agents.core.subagents.subagent_helpers.log"),
-        ):
-            result = await build_subagent_system_prompt("github", user_id="u1")
-
-        assert "USER CONTEXT" not in result
+    async def test_blank_integration_id_returns_empty(self):
+        with patch("app.agents.core.subagents.subagent_helpers.log"):
+            assert await build_subagent_system_prompt("") == ""
 
 
 # ---------------------------------------------------------------------------
@@ -842,7 +984,6 @@ class TestBuildSubagentSystemPrompt:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateSubagentSystemMessage:
     @pytest.mark.asyncio
     async def test_returns_system_message(self):
@@ -851,295 +992,7 @@ class TestCreateSubagentSystemMessage:
             new_callable=AsyncMock,
             return_value="Test prompt",
         ):
-            result = await create_subagent_system_message(
-                integration_id="github",
-                agent_name="github_agent",
-            )
+            result = await create_subagent_system_message(integration_id="github")
 
         assert isinstance(result, SystemMessage)
         assert result.content == "Test prompt"
-
-
-# ---------------------------------------------------------------------------
-# create_agent_context_message
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestCreateAgentContextMessage:
-    @pytest.mark.asyncio
-    async def test_returns_system_message_without_clock(self):
-        """The clock intentionally does NOT live in the dynamic-context
-        system message. It rides in a HumanMessage built by
-        ``build_current_time_message`` so the ``system_instruction`` prefix
-        stays stable across minute boundaries.
-        """
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_available_skills_text",
-                new_callable=AsyncMock,
-                return_value="",
-            ),
-        ):
-            result = await create_agent_context_message(
-                configurable={"user_name": "Alice"},
-            )
-
-        assert isinstance(result, SystemMessage)
-        assert "Current UTC Time:" not in result.content
-        assert "User Local Time:" not in result.content
-
-    @pytest.mark.asyncio
-    async def test_includes_user_name(self):
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_available_skills_text",
-                new_callable=AsyncMock,
-                return_value="",
-            ),
-        ):
-            result = await create_agent_context_message(
-                configurable={"user_name": "Bob"},
-            )
-
-        assert "User Name: Bob" in result.content
-
-    @pytest.mark.asyncio
-    async def test_includes_user_timezone(self):
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_available_skills_text",
-                new_callable=AsyncMock,
-                return_value="",
-            ),
-        ):
-            result = await create_agent_context_message(
-                configurable={
-                    "user_timezone": "Asia/Kolkata",
-                },
-            )
-
-        assert "User Timezone: Asia/Kolkata" in result.content
-        # Local clock moved out of the dynamic system message. It's emitted
-        # as a HumanMessage by ``build_current_time_message`` instead.
-        assert "User Local Time:" not in result.content
-
-    @pytest.mark.asyncio
-    async def test_memories_included(self):
-        mem = MagicMock()
-        mem.content = "User prefers dark mode"
-        mock_results = MagicMock()
-        mock_results.memories = [mem]
-
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
-                new_callable=AsyncMock,
-                return_value=mock_results,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_available_skills_text",
-                new_callable=AsyncMock,
-                return_value="",
-            ),
-            patch("app.agents.core.subagents.subagent_helpers.log"),
-        ):
-            result = await create_agent_context_message(
-                configurable={},
-                user_id="u1",
-                query="preferences",
-            )
-
-        assert "User prefers dark mode" in result.content
-
-    @pytest.mark.asyncio
-    async def test_skills_included(self):
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_available_skills_text",
-                new_callable=AsyncMock,
-                return_value="SKILLS:\n- search_github",
-            ),
-            patch("app.agents.core.subagents.subagent_helpers.log"),
-        ):
-            result = await create_agent_context_message(
-                configurable={},
-                user_id="u1",
-                subagent_id="github_agent",
-            )
-
-        assert "SKILLS:" in result.content
-        assert "search_github" in result.content
-
-    @pytest.mark.asyncio
-    async def test_no_memories_without_user_id(self):
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
-                new_callable=AsyncMock,
-            ) as mock_search,
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_available_skills_text",
-                new_callable=AsyncMock,
-                return_value="",
-            ),
-        ):
-            await create_agent_context_message(
-                configurable={},
-                query="hello",
-            )
-
-        mock_search.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_no_memories_without_query(self):
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
-                new_callable=AsyncMock,
-            ) as mock_search,
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_available_skills_text",
-                new_callable=AsyncMock,
-                return_value="",
-            ),
-        ):
-            await create_agent_context_message(
-                configurable={},
-                user_id="u1",
-            )
-
-        mock_search.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_memory_error_handled(self):
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("mem error"),
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_available_skills_text",
-                new_callable=AsyncMock,
-                return_value="",
-            ),
-            patch("app.agents.core.subagents.subagent_helpers.log"),
-        ):
-            result = await create_agent_context_message(
-                configurable={},
-                user_id="u1",
-                query="test",
-            )
-
-        # Should not raise; just won't have memories
-        assert isinstance(result, SystemMessage)
-
-    @pytest.mark.asyncio
-    async def test_skills_error_handled(self):
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_available_skills_text",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("skills error"),
-            ),
-            patch("app.agents.core.subagents.subagent_helpers.log"),
-        ):
-            result = await create_agent_context_message(
-                configurable={},
-                user_id="u1",
-            )
-
-        assert isinstance(result, SystemMessage)
-
-    @pytest.mark.asyncio
-    async def test_user_timezone_offset(self):
-        """A fixed-offset home zone is rendered verbatim as the timezone line."""
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_available_skills_text",
-                new_callable=AsyncMock,
-                return_value="",
-            ),
-        ):
-            result = await create_agent_context_message(
-                configurable={"user_timezone": "+05:30"},
-            )
-
-        assert "User Timezone: +05:30" in result.content
-
-    @pytest.mark.asyncio
-    async def test_no_timezone_line_without_user_timezone(self):
-        """With no home zone in the config, no timezone line is added."""
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_available_skills_text",
-                new_callable=AsyncMock,
-                return_value="",
-            ),
-            patch("app.agents.core.subagents.subagent_helpers.log"),
-        ):
-            result = await create_agent_context_message(
-                configurable={},
-            )
-
-        assert isinstance(result, SystemMessage)
-        assert "User Timezone:" not in result.content
-
-    @pytest.mark.asyncio
-    async def test_dynamic_context_marker(self):
-        """Context messages carry ``dynamic_context`` in additional_kwargs so
-        manage_system_prompts_node can keep only the latest one per run. The
-        legacy ``memory_message`` key is still present for back-compat with
-        older persisted state."""
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_helpers.memory_engine.recall",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_available_skills_text",
-                new_callable=AsyncMock,
-                return_value="",
-            ),
-        ):
-            result = await create_agent_context_message(configurable={})
-
-        assert result.additional_kwargs.get("dynamic_context") is True
-        assert result.additional_kwargs.get("memory_message") is True

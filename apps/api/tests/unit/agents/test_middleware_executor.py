@@ -8,15 +8,17 @@ import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain.agents.middleware import AgentMiddleware
+from langchain.agents.middleware import AgentMiddleware, SummarizationMiddleware
 from langchain.agents.middleware.types import (
     ModelRequest,
     ModelResponse,
     ToolCallRequest,
 )
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
+from langchain_google_genai.chat_models import _parse_chat_history
 import pytest
 
 from app.agents.middleware.executor import (
@@ -24,6 +26,16 @@ from app.agents.middleware.executor import (
     _has_override,
 )
 from app.override.langgraph_bigtool.utils import State
+from app.services.analytics_service import AnalyticsEvents
+
+
+@pytest.fixture(autouse=True)
+def _no_real_analytics():
+    """Keep every test hermetic: TOOL_USED events are asserted through this
+    mock and never reach a real PostHog client."""
+    with patch("app.agents.middleware.executor.capture_event") as mock_capture:
+        yield mock_capture
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -53,8 +65,6 @@ def _make_config(**overrides: Any) -> RunnableConfig:
 
 class _NoOpMiddleware(AgentMiddleware):
     """Middleware with no overrides — all methods raise NotImplementedError."""
-
-    pass
 
 
 class _BeforeModelMiddleware(AgentMiddleware):
@@ -136,12 +146,40 @@ class _ReturnsNoneBeforeModel(AgentMiddleware):
         return None
 
 
+class _MessagesAppendingMiddleware(AgentMiddleware):
+    """Middleware that appends one message, the way LangChain hooks are meant to."""
+
+    async def abefore_model(self, state: Any, runtime: Any) -> dict[str, Any]:
+        return {"messages": [HumanMessage(content="injected", id="injected-1")]}
+
+
+def _summarizing_executor(trigger_after: int, keep: int) -> MiddlewareExecutor:
+    """Executor wrapping the real ``SummarizationMiddleware``, tuned to fire immediately."""
+    summarizer = GenericFakeChatModel(messages=iter([AIMessage(content="SUMMARY")] * 50))
+    return MiddlewareExecutor(
+        [
+            SummarizationMiddleware(
+                model=summarizer,
+                trigger=("messages", trigger_after),
+                keep=("messages", keep),
+            )
+        ]
+    )
+
+
+def _long_history(turns: int) -> list[HumanMessage | AIMessage]:
+    messages: list[HumanMessage | AIMessage] = []
+    for i in range(turns):
+        messages.append(HumanMessage(content=f"user turn {i}", id=f"h{i}"))
+        messages.append(AIMessage(content=f"assistant turn {i}", id=f"a{i}"))
+    return messages
+
+
 # ---------------------------------------------------------------------------
 # _has_override
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestHasOverride:
     def test_no_override_on_base(self) -> None:
         mw = _NoOpMiddleware()
@@ -186,7 +224,6 @@ class TestHasOverride:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestMiddlewareExecutorInit:
     def test_no_middleware(self) -> None:
         executor = MiddlewareExecutor()
@@ -207,7 +244,6 @@ class TestMiddlewareExecutorInit:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestExecuteBeforeModel:
     @patch(
         "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",
@@ -295,7 +331,6 @@ class TestExecuteBeforeModel:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestExecuteAfterModel:
     @patch(
         "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",
@@ -342,11 +377,139 @@ class TestExecuteAfterModel:
 
 
 # ---------------------------------------------------------------------------
+# hook returns are state *updates*, resolved through the channel reducers
+# ---------------------------------------------------------------------------
+
+
+class TestExecuteBeforeModelStateUpdates:
+    """A middleware hook returns a LangGraph *state update*, not replacement state.
+
+    The executor runs those hooks inside a single bigtool node, so it — not the
+    graph — has to resolve them through the channel reducers. Merging them with
+    ``dict.update`` instead is what put a ``RemoveMessage(REMOVE_ALL_MESSAGES)``
+    tombstone at position 0 of the list handed to the model, 500ing the executor
+    endpoint in production.
+    """
+
+    @patch(
+        "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",
+        return_value=MagicMock(),
+    )
+    async def test_summarization_tombstone_never_reaches_model_input(
+        self, mock_rt: MagicMock
+    ) -> None:
+        executor = _summarizing_executor(trigger_after=6, keep=2)
+        state = _make_state(messages=_long_history(10))
+
+        result = await executor.execute_before_model(state, _make_config())
+
+        assert not any(isinstance(m, RemoveMessage) for m in result["messages"]), (
+            "RemoveMessage tombstones are control-plane markers for the state "
+            "reducer and must never survive into the model's message list"
+        )
+
+    @patch(
+        "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",
+        return_value=MagicMock(),
+    )
+    async def test_summarized_messages_are_accepted_by_the_real_provider_serializer(
+        self, mock_rt: MagicMock
+    ) -> None:
+        """The production symptom, pinned to the real serializer that raised it.
+
+        ``langchain_google_genai._parse_chat_history`` is the function that
+        raised "Unexpected message with type RemoveMessage at the position 0"
+        in the traceback behind the 500s. It runs before any network call, so
+        the real one is used here rather than a stand-in.
+        """
+        executor = _summarizing_executor(trigger_after=6, keep=2)
+        state = _make_state(messages=_long_history(10))
+
+        result = await executor.execute_before_model(state, _make_config())
+
+        _parse_chat_history(result["messages"], convert_system_message_to_human=False)
+
+    @patch(
+        "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",
+        return_value=MagicMock(),
+    )
+    async def test_summarization_drops_the_summarized_history(self, mock_rt: MagicMock) -> None:
+        """The tombstone must be *applied*, not merely dropped.
+
+        Filtering the sentinel out without honouring it would leave the full
+        pre-summarization history in front of the model — no crash, but
+        summarization silently doing nothing, which is the harder bug to see.
+        """
+        executor = _summarizing_executor(trigger_after=6, keep=2)
+        state = _make_state(messages=_long_history(10))
+
+        result = await executor.execute_before_model(state, _make_config())
+
+        surviving_ids = {m.id for m in result["messages"]}
+        assert "h0" not in surviving_ids and "a0" not in surviving_ids
+        assert len(result["messages"]) < 20
+
+    @patch(
+        "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",
+        return_value=MagicMock(),
+    )
+    async def test_message_update_appends_instead_of_replacing_history(
+        self, mock_rt: MagicMock
+    ) -> None:
+        """A hook returning one message must not wipe the conversation.
+
+        ``LLMAccountingMiddleware.abefore_model`` is documented to start
+        returning ``{"messages": [AIMessage("Credit limit reached…")]}`` for
+        credit gating; under ``dict.update`` that would hand the model a
+        one-message conversation.
+        """
+        executor = MiddlewareExecutor([_MessagesAppendingMiddleware()])
+        state = _make_state(messages=_long_history(2))
+
+        result = await executor.execute_before_model(state, _make_config())
+
+        assert [m.id for m in result["messages"]] == ["h0", "a0", "h1", "a1", "injected-1"]
+
+    @patch(
+        "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",
+        return_value=MagicMock(),
+    )
+    async def test_non_message_keys_are_still_last_write_wins(self, mock_rt: MagicMock) -> None:
+        executor = MiddlewareExecutor([_AsyncBeforeModelMiddleware()])
+        state = _make_state(async_key="stale")
+
+        result = await executor.execute_before_model(state, _make_config())
+
+        assert result["async_key"] == "from_async_before_model"
+
+
+class TestExecuteAfterModelStateUpdates:
+    """``execute_after_model`` merges hook returns the same way and needs the same fix."""
+
+    @patch(
+        "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",
+        return_value=MagicMock(),
+    )
+    async def test_message_update_appends_instead_of_replacing_history(
+        self, mock_rt: MagicMock
+    ) -> None:
+        class _AppendingAfterMiddleware(AgentMiddleware):
+            async def aafter_model(self, state: Any, runtime: Any) -> dict[str, Any]:
+                return {"messages": [AIMessage(content="appended", id="appended-1")]}
+
+        executor = MiddlewareExecutor([_AppendingAfterMiddleware()])
+        state = _make_state(messages=_long_history(2))
+
+        result = await executor.execute_after_model(state, _make_config())
+
+        assert [m.id for m in result["messages"]] == ["h0", "a0", "h1", "a1", "appended-1"]
+
+
+# ---------------------------------------------------------------------------
 # wrap_model_invocation
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestWrapModelInvocation:
     @patch(
         "app.agents.middleware.executor.create_model_request",
@@ -559,8 +722,57 @@ class TestWrapModelInvocation:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestWrapToolInvocation:
+    async def test_tool_used_captured(self, _no_real_analytics) -> None:
+        tool_call = {"name": "test_tool", "args": {}, "id": "call_1"}
+        expected = ToolMessage(content="tool result", tool_call_id="call_1")
+        invoke_fn = AsyncMock(return_value=expected)
+
+        with (
+            patch("app.agents.middleware.executor.create_tool_call_request"),
+            patch(
+                "app.agents.middleware.executor.BigtoolToolRuntime.from_graph_context",
+                return_value=MagicMock(),
+            ),
+        ):
+            executor = MiddlewareExecutor([])
+            state = _make_state()
+            result = await executor.wrap_tool_invocation(
+                tool_call, None, state, _make_config(), None, invoke_fn
+            )
+
+        assert result.content == "tool result"
+        _no_real_analytics.assert_called_once()
+        assert _no_real_analytics.call_args.args[0] == "user_123"
+        assert _no_real_analytics.call_args.args[1] == AnalyticsEvents.TOOL_USED
+        assert _no_real_analytics.call_args.args[2] == {"tool_name": "test_tool"}
+
+    async def test_tool_used_skipped_without_user_id(self, _no_real_analytics) -> None:
+        tool_call = {"name": "test_tool", "args": {}, "id": "call_1"}
+        expected = ToolMessage(content="tool result", tool_call_id="call_1")
+        invoke_fn = AsyncMock(return_value=expected)
+
+        with (
+            patch("app.agents.middleware.executor.create_tool_call_request"),
+            patch(
+                "app.agents.middleware.executor.BigtoolToolRuntime.from_graph_context",
+                return_value=MagicMock(),
+            ),
+        ):
+            executor = MiddlewareExecutor([])
+            state = _make_state()
+            result = await executor.wrap_tool_invocation(
+                tool_call,
+                None,
+                state,
+                _make_config(configurable={"thread_id": "thread_abc"}),
+                None,
+                invoke_fn,
+            )
+
+        assert result.content == "tool result"
+        _no_real_analytics.assert_not_called()
+
     @patch(
         "app.agents.middleware.executor.create_tool_call_request",
     )
@@ -701,7 +913,6 @@ class TestWrapToolInvocation:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestHasWrapMethods:
     def test_has_wrap_model_call_true(self) -> None:
         executor = MiddlewareExecutor([_WrapModelMiddleware()])
@@ -738,7 +949,6 @@ class TestHasWrapMethods:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCancelledErrorPropagation:
     @patch(
         "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",

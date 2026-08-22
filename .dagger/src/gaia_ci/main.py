@@ -38,6 +38,22 @@ _IGNORE = [
     ".agents/plans",
 ]
 
+# Service images pinned by digest (tag kept for readability). Keep in sync
+# with scripts/ci/start-test-services.sh (the CI variant of this topology).
+_POSTGRES_IMAGE = "postgres:16.14-alpine3.24@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777"
+_REDIS_IMAGE = (
+    "redis:7.4.9-alpine3.21@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99"
+)
+_MONGO_IMAGE = (
+    "mongo:7.0.37@sha256:340c1c56fb10e95cf79ff547f8664b96bc6ead9909bc355238cbf865a9695a6f"
+)
+_CHROMA_IMAGE = (
+    "chromadb/chroma:1.5.9@sha256:1e0b73a187a28757c572acba508c46f48c9e8b0acaf5c20e6d95cdedce1acdf6"
+)
+_RABBITMQ_IMAGE = (
+    "rabbitmq:3.13.7-alpine@sha256:d7af1c87c5f1eda13fcfca06db452bf3aeab6619fc3358b68535c0c02c4e52bc"
+)
+
 # Type alias for the annotated source directory used by all functions.
 Source = Annotated[
     dagger.Directory,
@@ -68,12 +84,14 @@ class GaiaCi:
                 [
                     "sh",
                     "-c",
-                    "apt-get update"
-                    " && apt-get install -y --no-install-recommends"
-                    " python3 python3-pip python3-venv python3-dev"
-                    " git curl build-essential libpq-dev"
-                    " && apt-get clean"
-                    " && rm -rf /var/lib/apt/lists/*",
+                    (
+                        "apt-get update"
+                        " && apt-get install -y --no-install-recommends"
+                        " python3 python3-pip python3-venv python3-dev"
+                        " git curl build-essential libpq-dev"
+                        " && apt-get clean"
+                        " && rm -rf /var/lib/apt/lists/*"
+                    ),
                 ]
             )
             .with_exec(
@@ -124,6 +142,10 @@ class GaiaCi:
                     "**/package.json",
                     "**/pyproject.toml",
                     "libs/**",
+                    # pnpm.patchedDependencies in the root package.json points here;
+                    # --frozen-lockfile reads the patch files during install, so they
+                    # must exist in this dependency layer (before the full source mount).
+                    "patches/**",
                 ],
             )
             .with_exec(["pnpm", "install", "--frozen-lockfile"])
@@ -203,16 +225,20 @@ class GaiaCi:
         We key off that authoritative code rather than grepping a summary line
         that Dagger can truncate from long logs. A missing sentinel means the run
         never finished cleanly (e.g. an xdist worker crash) and is a failure.
+
+        On failure the full pytest output is attached to the error so the failing
+        test names and tracebacks surface in the CI log — Dagger otherwise drops a
+        raising function's captured stdout, leaving only the bare exit code.
         """
         codes = re.findall(r"GAIA_PYTEST_EXIT=(\d+)", output)
         if not codes:
             raise RuntimeError(
                 "pytest did not report an exit code — the run was interrupted "
-                "(worker crash or container error), treating as a failure."
+                f"(worker crash or container error), treating as a failure.\n\n{output}"
             )
         code = int(codes[-1])
         if code != 0:
-            raise RuntimeError(f"pytest failed with exit code {code}.")
+            raise RuntimeError(f"pytest failed with exit code {code}.\n\n{output}")
 
     @function
     async def test_python(self, source: Source) -> str:
@@ -286,7 +312,7 @@ class GaiaCi:
         """Start a PostgreSQL 16 service container."""
         return (
             dag.container()
-            .from_("postgres:16-alpine")
+            .from_(_POSTGRES_IMAGE)
             .with_env_variable("POSTGRES_USER", "gaia")
             .with_env_variable("POSTGRES_PASSWORD", "gaia")
             .with_env_variable("POSTGRES_DB", "gaia_test")
@@ -299,7 +325,7 @@ class GaiaCi:
         """Start a Redis 7 service container with 32 databases for xdist worker isolation."""
         return (
             dag.container()
-            .from_("redis:7-alpine")
+            .from_(_REDIS_IMAGE)
             .with_exposed_port(6379)
             .with_exec(["redis-server", "--databases", "32"])
             .as_service()
@@ -310,7 +336,7 @@ class GaiaCi:
         """Start a MongoDB 7 service container."""
         return (
             dag.container()
-            .from_("mongo:7")
+            .from_(_MONGO_IMAGE)
             .with_env_variable("MONGO_INITDB_ROOT_USERNAME", "gaia")
             .with_env_variable("MONGO_INITDB_ROOT_PASSWORD", "gaia")
             .with_exposed_port(27017)
@@ -320,12 +346,12 @@ class GaiaCi:
     @function
     def chroma_service(self) -> dagger.Service:
         """Start a ChromaDB service container."""
-        return dag.container().from_("chromadb/chroma:latest").with_exposed_port(8000).as_service()
+        return dag.container().from_(_CHROMA_IMAGE).with_exposed_port(8000).as_service()
 
     @function
     def rabbitmq_service(self) -> dagger.Service:
         """Start a RabbitMQ 3 service container."""
-        return dag.container().from_("rabbitmq:3-alpine").with_exposed_port(5672).as_service()
+        return dag.container().from_(_RABBITMQ_IMAGE).with_exposed_port(5672).as_service()
 
     def _service_test_container(self, source: Source) -> dagger.Container:
         """Create a test container wired to all live service containers.
@@ -356,6 +382,17 @@ class GaiaCi:
                 "DATABASE_URL",
                 dag.set_secret(
                     "db-url",
+                    "postgresql://gaia:gaia@postgres:5432/gaia_test",  # pragma: allowlist secret
+                ),
+            )
+            # POSTGRES_URL is the env var that settings.POSTGRES_URL reads (Pydantic
+            # field). Memory tests (tests/memory/conftest.py) read settings.POSTGRES_URL
+            # directly, so it must be set in addition to DATABASE_URL (which the
+            # integration/service/e2e conftest reads via os.environ directly).
+            .with_secret_variable(
+                "POSTGRES_URL",
+                dag.set_secret(
+                    "postgres-url",
                     "postgresql://gaia:gaia@postgres:5432/gaia_test",  # pragma: allowlist secret
                 ),
             )

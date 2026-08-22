@@ -34,7 +34,7 @@ async def get_my_integrations(user_id: str) -> MyIntegrationsResponse:
     """All integrations visible to the user — every platform integration plus
     their own custom ones — each tagged with connection status and `tool_count`.
     Cached under `tools:user:{user_id}:*`, so the integration mutators bust it."""
-    log.set(service="my_integrations", operation="get_my_integrations", user={"id": user_id})
+    log.set(component="my_integrations", operation="get_my_integrations", user={"id": user_id})
 
     config = build_integrations_config()
     status_map, added, category_counts = await asyncio.gather(
@@ -72,6 +72,7 @@ async def get_my_integrations(user_id: str) -> MyIntegrationsResponse:
                 source="platform",
                 managed_by=cfg.managed_by,
                 status=status,
+                expired_at=ui.expired_at if ui is not None else None,
                 requires_auth=cfg.requires_auth,
                 auth_type=cfg.auth_type,
                 is_featured=cfg.is_featured,
@@ -95,6 +96,7 @@ async def get_my_integrations(user_id: str) -> MyIntegrationsResponse:
                 source="custom",
                 managed_by=integ.managed_by,
                 status=ui.status,
+                expired_at=ui.expired_at,
                 requires_auth=integ.requires_auth,
                 auth_type=integ.auth_type,
                 is_featured=integ.is_featured,

@@ -1,22 +1,32 @@
 """
 Workflow subagent structured output schema and parser.
 
-Uses Pydantic models with LangChain's PydanticOutputParser for reliable parsing.
-
 The workflow subagent can respond in two modes:
 1. Clarifying questions - asks user for more information
 2. Finalized workflow - ready to create the workflow draft
+
+The expected JSON block format lives in the subagent prompt
+(app/agents/prompts/workflow_prompts.py); this module validates it.
 """
 
 import json
 import re
-from typing import Literal
+from typing import Any, Literal
 
-from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 
 from app.constants.log_tags import LogTag
+from app.models.workflow_models import TriggerType
 from shared.py.wide_events import log
+
+# The assistant speaks "scheduled"; every other layer (TriggerConfig, the REST
+# API, the frontend) speaks TriggerType.SCHEDULE == "schedule". This is the one
+# place the two vocabularies meet — translate here, never downstream.
+TRIGGER_TYPE_BY_DRAFT_TYPE: dict[str, TriggerType] = {
+    "manual": TriggerType.MANUAL,
+    "scheduled": TriggerType.SCHEDULE,
+    "integration": TriggerType.INTEGRATION,
+}
 
 # =============================================================================
 # PYDANTIC MODELS FOR STRUCTURED OUTPUT
@@ -51,20 +61,34 @@ class FinalizedOutput(BaseModel):
     trigger_slug: str | None = Field(
         default=None, description="Trigger slug for integration triggers"
     )
+    integration_ids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Integration ids this workflow depends on (e.g. ['gmail', 'slack']), "
+            "including the trigger integration. Used to warn the user about "
+            "disconnected dependencies; record them whether connected or not."
+        ),
+    )
     direct_create: bool = Field(
         default=False,
         description="True only for simple, unambiguous workflows where no user feedback is needed",
     )
 
-    def to_stream_payload(self) -> dict:
+    @property
+    def backend_trigger_type(self) -> TriggerType:
+        """This draft's trigger in the vocabulary the rest of the system uses."""
+        return TRIGGER_TYPE_BY_DRAFT_TYPE.get(self.trigger_type, TriggerType.MANUAL)
+
+    def to_stream_payload(self) -> dict[str, Any]:
         """Convert to the format expected by frontend stream handler."""
         return {
             "workflow_draft": {
                 "suggested_title": self.title,
                 "suggested_description": self.description,
                 "prompt": self.prompt,
-                "trigger_type": self.trigger_type,
+                "trigger_type": self.backend_trigger_type.value,
                 "trigger_slug": self.trigger_slug,
+                "integration_ids": self.integration_ids,
                 "cron_expression": self.cron_expression,
                 "direct_create": self.direct_create,
             }
@@ -98,137 +122,89 @@ class ParseResult:
 # PARSER
 # =============================================================================
 
-# Create parsers for format instructions
-clarifying_parser = PydanticOutputParser(pydantic_object=ClarifyingOutput)
-finalized_parser = PydanticOutputParser(pydantic_object=FinalizedOutput)
+
+def _result_from_payload(data: dict[str, Any], response: str) -> ParseResult | None:
+    """Turn one decoded JSON object into a ParseResult, or None if it isn't ours."""
+    output_type = data.get("type")
+
+    if output_type == "finalized":
+        try:
+            draft = FinalizedOutput(**data)
+        except Exception as e:
+            log.warning(
+                f"{LogTag.WORKFLOW} Failed to parse finalized output",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            return ParseResult(
+                mode="parse_error",
+                parse_error=f"Invalid finalized output: {e!s}",
+                raw_response=response,
+            )
+
+        if draft.trigger_type == "scheduled" and not draft.cron_expression:
+            return ParseResult(
+                mode="parse_error",
+                parse_error="Scheduled trigger requires 'cron_expression' field",
+                raw_response=response,
+            )
+
+        if draft.trigger_type == "integration" and not draft.trigger_slug:
+            return ParseResult(
+                mode="parse_error",
+                parse_error="Integration trigger requires 'trigger_slug' field from search_triggers",
+                raw_response=response,
+            )
+
+        log.info(f"{LogTag.WORKFLOW} Successfully parsed finalized workflow", title=draft.title)
+        return ParseResult(mode="finalized", draft=draft, raw_response=response)
+
+    if output_type == "clarifying":
+        try:
+            clarifying = ClarifyingOutput(**data)
+            log.info(f"{LogTag.WORKFLOW} Successfully parsed clarifying response")
+            return ParseResult(mode="clarifying", message=clarifying.message, raw_response=response)
+        except Exception:
+            return ParseResult(
+                mode="clarifying",
+                message=data.get("message", response),
+                raw_response=response,
+            )
+
+    return None
 
 
-def get_format_instructions() -> str:
-    """Get format instructions for the subagent prompt."""
-    return """
-You MUST include a JSON block in your response. Two formats:
+def _json_candidates(response: str) -> list[str]:
+    """Every substring of the reply that might be the structured output.
 
-For clarifying questions:
-```json
-{
-    "type": "clarifying",
-    "message": "Your question to the user"
-}
-```
-
-For finalized workflow:
-```json
-{
-    "type": "finalized",
-    "title": "Workflow Title",
-    "description": "Short 1-2 sentence summary for display in UI cards",
-    "prompt": "Detailed step-by-step instructions for the workflow. Include numbered steps (1, 2, 3...), specific integrations to use, what data to gather, actions to take, and expected outputs.",
-    "trigger_type": "manual|scheduled|integration",
-    "cron_expression": "0 9 * * *",
-    "trigger_slug": "GMAIL_NEW_MESSAGE",
-    "direct_create": false
-}
-```
-
-IMPORTANT:
-- description: Keep SHORT (1-2 sentences) - just for UI display
-- prompt: Be DETAILED and COMPREHENSIVE - this is what the AI uses to execute the workflow
-  • Include numbered steps (1, 2, 3...)
-  • Mention integrations by name (Gmail, Slack, Calendar, etc.)
-  • What data to gather and from where
-  • Expected format of outputs
-- cron_expression: Required for scheduled, omit for others (use USER'S LOCAL TIME, not UTC)
-- trigger_slug: Required for integration, omit for others  
-- direct_create: Set true ONLY for simple, unambiguous manual/scheduled workflows
-"""
+    Fenced blocks first (what the prompt asks for), then the whole reply: the
+    model sometimes emits a bare JSON object with no fence, and without this
+    fallback that raw JSON is handed to the user verbatim as the "question".
+    """
+    fenced = re.findall(r"```(?:json)?\s*\n?(.*?)\n?```", response, re.DOTALL)
+    return [*fenced, response]
 
 
 def parse_subagent_response(response: str) -> ParseResult:
+    """Extract the workflow assistant's structured output from its reply.
+
+    Falls back to treating the whole reply as a clarifying message when it
+    carries no recognizable JSON payload.
     """
-    Parse the workflow subagent's response to extract structured output.
-
-    Extracts JSON from markdown code blocks, then validates with Pydantic.
-
-    Args:
-        response: The full text response from the subagent
-
-    Returns:
-        ParseResult with mode, data, and any errors
-    """
-    # Simple approach: find content between ```json and ``` (or just ``` and ```)
-    # Use raw string to avoid escaping issues
-    json_block_pattern = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)
-
-    matches = json_block_pattern.findall(response)
-
-    # Try each match to find valid JSON with "type" field
-    for match in matches:
-        match = match.strip()
-        if not match:
+    for candidate in _json_candidates(response):
+        candidate = candidate.strip()
+        if not candidate:
             continue
-
         try:
-            data = json.loads(match)
-            if isinstance(data, dict) and "type" in data:
-                output_type = data.get("type")
-
-                if output_type == "finalized":
-                    try:
-                        draft = FinalizedOutput(**data)
-                    except Exception as e:
-                        log.warning(f"{LogTag.WORKFLOW} Failed to parse finalized output: {e}")
-                        return ParseResult(
-                            mode="parse_error",
-                            parse_error=f"Invalid finalized output: {e!s}",
-                            raw_response=response,
-                        )
-
-                    # Additional validation
-                    if draft.trigger_type == "scheduled" and not draft.cron_expression:
-                        return ParseResult(
-                            mode="parse_error",
-                            parse_error="Scheduled trigger requires 'cron_expression' field",
-                            raw_response=response,
-                        )
-
-                    if draft.trigger_type == "integration" and not draft.trigger_slug:
-                        return ParseResult(
-                            mode="parse_error",
-                            parse_error="Integration trigger requires 'trigger_slug' field from search_triggers",
-                            raw_response=response,
-                        )
-
-                    log.info(
-                        f"{LogTag.WORKFLOW} Successfully parsed finalized workflow: {draft.title}"
-                    )
-                    return ParseResult(
-                        mode="finalized",
-                        draft=draft,
-                        raw_response=response,
-                    )
-
-                if output_type == "clarifying":
-                    try:
-                        clarifying = ClarifyingOutput(**data)
-                        log.info(f"{LogTag.WORKFLOW} Successfully parsed clarifying response")
-                        return ParseResult(
-                            mode="clarifying",
-                            message=clarifying.message,
-                            raw_response=response,
-                        )
-                    except Exception:
-                        # Fall back to raw message from data
-                        return ParseResult(
-                            mode="clarifying",
-                            message=data.get("message", response),
-                            raw_response=response,
-                        )
-
+            data = json.loads(candidate)
         except json.JSONDecodeError:
-            # This match wasn't valid JSON, try next one
             continue
+        if not isinstance(data, dict) or "type" not in data:
+            continue
+        result = _result_from_payload(data, response)
+        if result is not None:
+            return result
 
-    # No structured output found - treat as conversational message
     log.debug(
         f"{LogTag.WORKFLOW} No structured JSON found in subagent response, treating as message"
     )

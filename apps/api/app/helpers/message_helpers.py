@@ -1,10 +1,9 @@
-import asyncio
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Any, Literal
 
-from bson import ObjectId
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from app.agents.context.slots import TIME_CONTEXT_MARKER
 from app.agents.prompts.onboarding_prompts import (
     ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT,
 )
@@ -19,18 +18,10 @@ from app.agents.templates.agent_template import (
     EXECUTOR_PROMPT_TEMPLATE,
     get_comms_static_prompt,
 )
-from app.agents.workspace.paths import (
-    safe_upload_filename,
-    session_dir,
-)
-from app.db.mongodb.collections import (
-    conversations_collection,
-    todos_collection,
-    users_collection,
-)
-from app.db.redis import get_cache, set_cache
-from app.memory.engine import memory_engine
-from app.memory.mappers import entry_to_note
+from app.agents.workspace.paths import safe_upload_filename
+from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS
+from app.db.repositories.conversations import conversation_repository
+from app.db.repositories.users import user_repository
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
@@ -38,19 +29,9 @@ from app.models.message_models import (
     SelectedWorkflowData,
 )
 from app.models.user_models import OnboardingPhase
-from app.services.gaia_knowledge_service import gaia_knowledge_service
-from app.services.integrations.user_integrations import get_connected_integrations_named
-from app.services.tracked_todo_service import tracked_todo_service
-from app.services.workflow import WorkflowService
+from app.services.workflow.service import WorkflowService
 from app.utils.timezone import Timezone
-from app.utils.user_preferences_utils import (
-    format_user_preferences_for_agent,
-)
 from shared.py.wide_events import log
-
-# Sentinel marker on dynamic-context SystemMessages so
-# manage_system_prompts_node can keep only the latest one.
-DYNAMIC_CONTEXT_MARKER = "dynamic_context"
 
 
 def create_system_message(
@@ -68,9 +49,8 @@ def create_system_message(
     addendum (OpenUI on web/mobile/desktop; text-only restrictions on
     messaging platforms). The executor prompt is single-variant.
 
-    All user, time, and memory context is delivered in the dynamic-context
-    message produced by ``build_dynamic_context_message`` and does NOT live
-    in this static prefix.
+    All user, time, and memory context is assembled by ``app.agents.context``
+    and delivered in its own messages — never in this static prefix.
     """
     del user_id, user_name  # intentionally unused — static prefix only
     if agent_type == "executor":
@@ -102,392 +82,13 @@ def build_current_time_message(
             local_now = Timezone.parse(user_timezone).now().strftime("%A, %B %d, %Y, %H:%M")
             parts.append(f"[User Local Time ({user_timezone}): {local_now}]")
         except Exception as e:
-            log.warning(f"Error formatting user local time: {e}")
+            log.warning(
+                "Error formatting user local time", error=str(e), error_type=type(e).__name__
+            )
     return HumanMessage(
         content="\n".join(parts),
-        additional_kwargs={"time_context": True},
+        additional_kwargs={TIME_CONTEXT_MARKER: True},
     )
-
-
-async def _get_user_memories_section(query: str, user_id: str) -> str:
-    """
-    Search for user's conversation memories and format them.
-
-    Args:
-        query: The search query
-        user_id: The user's ID
-
-    Returns:
-        Formatted memories section or empty string
-    """
-    try:
-        results = await memory_engine.recall(user_id, query, limit=5)
-        if results.memories:
-            log.info(f"Added {len(results.memories)} memories to context")
-            return (
-                "\n\nBased on our previous conversations (bracketed dates say when "
-                "something happened / was last mentioned):\n"
-                + "\n".join(f"- {entry_to_note(mem)}" for mem in results.memories)
-            )
-    except Exception as e:
-        log.warning(f"Error retrieving memories: {e}")
-
-    return ""
-
-
-async def _get_core_memory_section(user_id: str) -> str:
-    """Always-injected memory core: user/memory/agenda docs + recent journal.
-
-    Redis-cached inside the engine (plan F1, sub-5ms steady state).
-    """
-    try:
-        core_context = await memory_engine.get_core_context(user_id)
-        if core_context:
-            return f"What you remember about this user (memory core):\n{core_context}"
-    except Exception as e:
-        log.warning(f"Error retrieving core memory context: {e}")
-
-    return ""
-
-
-async def _empty_section() -> str:
-    """Awaitable empty section, for gathers with conditionally skipped fetches."""
-    return ""
-
-
-async def _get_gaia_knowledge_section(query: str) -> str:
-    """
-    Search GAIA knowledge base (ChromaDB) and format results.
-
-    Args:
-        query: The search query
-
-    Returns:
-        Formatted knowledge section or empty string
-    """
-    try:
-        results = await gaia_knowledge_service.search_knowledge(query=query, limit=5)
-        if results:
-            log.info(f"Added {len(results)} knowledge items to context")
-            return "\n\nAbout Gaia (your identity and capabilities):\n" + "\n".join(
-                f"- {result.content}" for result in results
-            )
-    except Exception as e:
-        log.warning(f"Error retrieving GAIA knowledge: {e}")
-
-    return ""
-
-
-async def _get_tracked_todos_section(user_id: str, active_todo_id: str | None = None) -> str:
-    """Fetch active tracked-todo summary with 60s Redis cache.
-
-    When active_todo_id is set, bypasses cache so the pinned-todo marker
-    reflects the current binding rather than a stale list.
-    """
-    if active_todo_id:
-        # Pinned view is per-run-binding — caching it would cross-pollinate
-        # other turns. Cheap call, not worth caching.
-        return await tracked_todo_service.get_active_tracked_summary(
-            user_id, active_todo_id=active_todo_id
-        )
-
-    cache_key = f"tracked_todos:summary:{user_id}"
-
-    try:
-        cached = await get_cache(cache_key)
-        if cached:
-            return cached if isinstance(cached, str) else str(cached)
-    except Exception as cache_err:
-        log.debug("tracked_todo_summary.cache_get_failed", error=str(cache_err))
-
-    summary = await tracked_todo_service.get_active_tracked_summary(user_id)
-
-    if summary:
-        try:
-            await set_cache(cache_key, summary, ttl=60)
-        except Exception as cache_err:
-            log.debug("tracked_todo_summary.cache_set_failed", error=str(cache_err))
-
-    return summary
-
-
-BACKGROUND_EXECUTION_BANNER = (
-    "🤖 BACKGROUND EXECUTION (no human is reading this turn)\n"
-    "   - You were woken by a scheduled trigger. There is no user to ask.\n"
-    "   - Do NOT ask clarifying questions, present plans for approval, or seek confirmation.\n"
-    '   - Do NOT produce conversational acknowledgements ("Sure, I\'ll…", "Let me know if…").\n'
-    "   - Just execute. If you need a decision you cannot make, write the question into "
-    "the active todo's canvas (Context section) and stop.\n"
-    "   - Your output is consumed by the system, not a human. Be terse and action-only."
-)
-
-
-def build_workspace_session_banner(session_id: str) -> str:
-    """State the absolute path of the agent's own session directory.
-
-    The agent never otherwise learns its conversation/session id, so a prompt
-    that asks it to report an absolute ``/workspace/sessions/<id>/...`` path
-    forces it to guess — and a weak model fabricates one, writing the
-    deliverable outside the session the artifact watcher scans, where it is
-    silently lost. Stating the real path removes the guess.
-    """
-    return f"Session directory: {session_dir(session_id)}"
-
-
-def _format_active_todo_banner(todo: dict) -> str:
-    title = todo.get("title", "Untitled")
-    todo_id = str(todo.get("_id") or todo.get("id") or "")
-    return (
-        "🎯 ACTIVE TODO (this run is bound to this todo)\n"
-        f"   id: {todo_id}\n"
-        f"   title: {title}\n"
-        "\n"
-        "   Default write target for this turn: this todo's canvas.\n"
-        f'   - Use `update_tracked_todo_canvas(todo_id="{todo_id}", ...)` for any progress, outcome, or learning from this run.\n'
-        "   - Use `add_memory(...)` ONLY for durable cross-cutting facts unrelated to this todo (rare).\n"
-        "   - To work on a different todo, you must reference it explicitly by id."
-    )
-
-
-async def _build_active_todo_banner(user_id: str, active_todo_id: str | None) -> str:
-    if not active_todo_id:
-        return ""
-    try:
-        doc = await todos_collection.find_one({"_id": ObjectId(active_todo_id), "user_id": user_id})
-        if not doc:
-            return ""
-        return _format_active_todo_banner(doc)
-    except Exception as e:
-        log.warning("active_todo_banner_fetch_failed", error=str(e))
-        return ""
-
-
-def _mark_dynamic_context(msg: SystemMessage) -> SystemMessage:
-    """Mark a SystemMessage as dynamic context.
-
-    Uses additional_kwargs so LangGraph / pydantic serialization preserves it
-    across checkpointer round-trips. `manage_system_prompts_node` keeps only
-    the latest message carrying this marker.
-    """
-    msg.additional_kwargs[DYNAMIC_CONTEXT_MARKER] = True
-    # Back-compat: existing filter logic looks at `memory_message` too.
-    msg.additional_kwargs.setdefault("memory_message", True)
-    return msg
-
-
-# Default header for the comms agent: pure capability awareness.
-CONNECTED_INTEGRATIONS_HEADER = (
-    "Connected integrations (hand off to the matching subagent to use them):"
-)
-
-# Header for the executor, which is the agent that actually performs handoffs.
-# States that the list is live (fetched this turn), names the parenthesised id
-# as the handoff subagent_id, and guards against treating always-available
-# built-in subagents as "not connected" just because they are not listed here.
-EXECUTOR_CONNECTED_INTEGRATIONS_HEADER = (
-    "CONNECTED INTEGRATIONS (live snapshot of the user's currently connected accounts as of "
-    "this turn; this is the latest connected set, so trust it over retrieve_tools for what is "
-    "connected). To act on one, handoff to its subagent using the id in parentheses as the "
-    "handoff subagent_id. If the user asks for a provider that is NOT listed here, it is not "
-    "connected yet, so tell them to connect it instead of attempting the handoff. Built-in "
-    "subagents (reminders, todos, gaia_knowledge_guide, docgen) are always available and are "
-    "not listed here:"
-)
-
-
-async def build_connected_integrations_manifest(
-    user_id: str,
-    header: str = CONNECTED_INTEGRATIONS_HEADER,
-) -> str:
-    """One line per connected integration so the agent knows what it can reach.
-
-    Capability awareness only — the agent learns Slack/Linear/GitHub/etc. are
-    available without first running tool retrieval. Detailed tool schemas still
-    come from ``retrieve_tools`` at inference time. Names (platform and custom
-    MCP) are resolved and cached by ``get_connected_integrations_named``.
-
-    The parenthesised id is also the ``subagent_id`` the executor passes to
-    ``handoff``. ``header`` lets each agent frame the same list for its own use
-    (comms gets capability awareness; the executor gets handoff instructions).
-    Each line reads ``- Name (id)``, collapsing to ``- id`` only when the name
-    is the id itself, so a custom integration whose name equals its id never
-    renders the value twice.
-    """
-    try:
-        items = await get_connected_integrations_named(user_id)
-    except Exception as e:
-        log.warning(f"Error building connected-integrations manifest: {e}")
-        return ""
-    if not items:
-        return ""
-    lines = [header]
-    for item in items:
-        iid, name = item["id"], item["name"]
-        lines.append(f"- {name} ({iid})" if name and name != iid else f"- {iid}")
-    return "\n".join(lines)
-
-
-async def build_dynamic_context_message(
-    user_id: str | None,
-    query: str | None,
-    user_name: str | None = None,
-    user_timezone: str | None = None,
-    user_preferences: dict | None = None,
-    writing_style: dict | None = None,
-    source: str | None = None,
-    include_openui: bool = False,
-    memories_text: str | None = None,
-    skills_text: str | None = None,
-    active_todo_id: str | None = None,
-    execution_mode: Literal["interactive", "background"] = "interactive",
-) -> SystemMessage:
-    """Build the single dynamic-context system message.
-
-    This message is placed AFTER the static main prompt. It carries the
-    per-user, per-turn content: user name, timezone, preferences, memories,
-    GAIA knowledge, installable skills, the tracked-todos summary, and — on
-    bound / headless runs — the run-binding banners. OpenUI / platform
-    restrictions and the clock are NOT here any more:
-
-    - Output-format addendums (OpenUI or text-only) are part of the static
-      per-channel prompt so they cache across every user on that channel.
-    - Current time lives in a HumanMessage so minute ticks never invalidate
-      the ``system_instruction`` prefix.
-
-    Within this message, content is ordered so the byte-identical-across-
-    turns sections come first (user name → timezone → preferences), then
-    the per-turn fetches (memories, GAIA knowledge, skills). The provider
-    caches bytes 0..N where byte N is the first to differ between turns —
-    so stable content up front maximises the cache hit length.
-
-    Args:
-        user_id: For memory/knowledge retrieval. If None, skips ChromaDB calls.
-        query: Search query for memory/knowledge retrieval.
-        user_name: User's display name.
-        user_timezone: IANA timezone string (used to format the address in the
-            static body; the actual clock is emitted in a HumanMessage).
-        user_preferences: Onboarding preferences.
-        source: Conversation source (web, whatsapp, telegram, ...). Preserved
-            on the wide event for observability; doesn't change what's here.
-        include_openui: Preserved for signature compatibility. OpenUI now
-            lives in the static per-channel prompt, not this message.
-        memories_text: Pre-fetched memories section. If provided, skips the
-            ChromaDB lookup.
-        skills_text: Pre-fetched skills section. Same rationale as memories.
-        active_todo_id: When this run is bound to a tracked todo, appends the
-            active-todo banner (canvas write-target directive) LAST, so the
-            cached stable prefix is untouched and the directive gets recency.
-        execution_mode: When "background" (headless scheduled run), appends the
-            background-execution banner so the agent stays terse and action-only.
-
-    Returns:
-        A SystemMessage marked with ``dynamic_context=True`` in
-        ``additional_kwargs``.
-    """
-    del include_openui  # accepted for back-compat; OpenUI is in static prompt now
-    try:
-        user_stable_parts: list[str] = []
-        variable_parts: list[str] = []
-
-        # --- Stable across turns for this user -----------------------------
-        if user_name:
-            user_stable_parts.append(f"User Name: {user_name}")
-        if user_timezone:
-            user_stable_parts.append(f"User Timezone: {user_timezone}")
-        if user_preferences or writing_style:
-            if formatted := format_user_preferences_for_agent(
-                user_preferences or {}, writing_style=writing_style
-            ):
-                user_stable_parts.append(f"User Preferences:\n{formatted}")
-        # Connected-integrations manifest sits with the stable prefix: it only
-        # changes when the user connects/disconnects an integration, not per turn.
-        if user_id:
-            if manifest := await build_connected_integrations_manifest(user_id):
-                user_stable_parts.append(manifest)
-
-        # --- Fetches (may change turn-to-turn) -----------------------------
-        # Core memory context (engine-cached, invalidated on ingestion) is
-        # fetched in the same gather as the per-query lookups and injected
-        # first: it is the always-on "what GAIA knows about this user" block.
-        if memories_text is not None:
-            memories_section = memories_text
-            gaia_knowledge_section = ""
-            if user_id:
-                core_memory_section, gaia_knowledge_section = await asyncio.gather(
-                    _get_core_memory_section(user_id),
-                    _get_gaia_knowledge_section(query) if query else _empty_section(),
-                )
-            else:
-                core_memory_section = ""
-        elif user_id and query:
-            core_memory_section, memories_section, gaia_knowledge_section = await asyncio.gather(
-                _get_core_memory_section(user_id),
-                _get_user_memories_section(query, user_id),
-                _get_gaia_knowledge_section(query),
-            )
-        else:
-            core_memory_section = await _get_core_memory_section(user_id) if user_id else ""
-            memories_section = ""
-            gaia_knowledge_section = ""
-
-        if core_memory_section:
-            variable_parts.append(core_memory_section)
-        if memories_section:
-            variable_parts.append(memories_section.lstrip("\n"))
-        if gaia_knowledge_section:
-            variable_parts.append(gaia_knowledge_section.lstrip("\n"))
-        if skills_text:
-            variable_parts.append(skills_text)
-
-        # Tracked-todos summary + run-binding banners — appended LAST so the
-        # cached stable prefix above is never disturbed, and so these directives
-        # land with recency right before the user's turn. The active-todo banner
-        # and background banner only appear on bound / headless runs.
-        active_todo_banner = ""
-        if user_id:
-            tracked_todos_section, active_todo_banner = await asyncio.gather(
-                _get_tracked_todos_section(user_id, active_todo_id),
-                _build_active_todo_banner(user_id, active_todo_id),
-            )
-            if tracked_todos_section:
-                variable_parts.append(tracked_todos_section.lstrip("\n"))
-        if execution_mode == "background":
-            variable_parts.append(BACKGROUND_EXECUTION_BANNER)
-        if active_todo_banner:
-            variable_parts.append(active_todo_banner)
-
-        content_sections = [
-            "\n".join(user_stable_parts),
-            "\n\n".join(variable_parts),
-        ]
-        content = "\n\n".join(s for s in content_sections if s)
-
-        log.set(
-            dynamic_context={
-                "source": source or "web",
-                "has_core_memory": bool(core_memory_section),
-                "has_memories": bool(memories_section),
-                "has_gaia_knowledge": bool(gaia_knowledge_section),
-                "has_skills": bool(skills_text),
-                "used_pinned_memories": memories_text is not None,
-                "has_active_todo": bool(active_todo_id),
-                "execution_mode": execution_mode,
-                "char_count": len(content),
-                "user_stable_chars": sum(len(p) for p in user_stable_parts),
-                "variable_chars": sum(len(p) for p in variable_parts),
-            }
-        )
-
-        return _mark_dynamic_context(SystemMessage(content=content))
-
-    except Exception as e:
-        log.error(f"Error creating dynamic context message: {e}")
-        # Return a byte-stable empty message so a persistent failure here
-        # doesn't change the prompt prefix every minute and silently
-        # invalidate the implicit prompt cache. The clock lives in a
-        # HumanMessage built by build_current_time_message, so omitting
-        # time here is safe.
-        return _mark_dynamic_context(SystemMessage(content=""))
 
 
 def format_tool_selection_message(
@@ -528,7 +129,9 @@ Execute immediately without asking for clarification."""
 async def format_workflow_execution_message(
     selected_workflow: SelectedWorkflowData,
     user_id: str | None = None,
-    trigger_context: dict | None = None,
+    # Open by construction: schedulers spread arbitrary provider trigger data
+    # through this alongside the agent's own keys, so there is no fixed shape.
+    trigger_context: dict[str, Any] | None = None,
     existing_content: str = "",
 ) -> str:
     """Format workflow execution message, handling both manual and automated triggers."""
@@ -538,7 +141,13 @@ async def format_workflow_execution_message(
         try:
             workflow = await WorkflowService.get_workflow(selected_workflow.id, user_id)
         except Exception as e:
-            log.error(f"Failed to fetch workflow {selected_workflow.id}: {e}")
+            log.error(
+                "Failed to fetch workflow",
+                id=selected_workflow.id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
 
     # Use fresh database data if available, otherwise use passed data
     if workflow and workflow.steps:
@@ -659,11 +268,8 @@ async def get_onboarding_system_prompt_if_applicable(
 ) -> str | None:
     """Return the onboarding system prompt for onboarding/demo turns, else ``None``."""
     try:
-        conv = await conversations_collection.find_one(
-            {"conversation_id": conversation_id},
-            {"is_onboarding_conversation": 1, "messages": 1},
-        )
-        is_tagged_onboarding = bool(conv and conv.get("is_onboarding_conversation"))
+        probe = await conversation_repository.get_onboarding_probe(conversation_id)
+        is_tagged_onboarding = bool(probe and probe.is_onboarding_conversation)
         is_run_now_demo = bool(
             latest_user_message and latest_user_message.lstrip().startswith(_RUN_NOW_DEMO_PREFIX)
         )
@@ -672,30 +278,26 @@ async def get_onboarding_system_prompt_if_applicable(
             return None
 
         if is_tagged_onboarding:
-            message_count = len(conv.get("messages", [])) if conv else 0
+            message_count = probe.message_count if probe else 0
             if message_count >= 7:
-                await users_collection.update_one(
-                    {"_id": ObjectId(user_id)},
-                    {"$set": {"onboarding.phase": OnboardingPhase.COMPLETED}},
-                )
+                await user_repository.set_onboarding_phase(user_id, OnboardingPhase.COMPLETED)
                 log.info(
-                    f"[onboarding_prompt] Auto-completed onboarding for {user_id} after {message_count} messages"
+                    "[onboarding_prompt] Auto-completed onboarding for after messages",
+                    user_id=user_id,
+                    message_count=message_count,
                 )
                 return None
 
-        user_doc = await users_collection.find_one(
-            {"_id": ObjectId(user_id)},
-            {"onboarding.phase": 1, "name": 1, "onboarding.preferences": 1},
-        )
+        user_doc = await user_repository.get(user_id)
         if not user_doc:
             return None
 
-        phase = user_doc.get("onboarding", {}).get("phase", "initial")
+        onboarding = user_doc.onboarding or {}
+        phase = onboarding.get("phase", "initial")
         if phase == OnboardingPhase.COMPLETED:
             return None
 
-        name = user_doc.get("name", "there")
-        onboarding = user_doc.get("onboarding", {})
+        name = user_doc.name or "there"
         profession = onboarding.get("preferences", {}).get("profession", "")
         triage_summary = onboarding.get("triage_summary", "")
 
@@ -711,7 +313,13 @@ async def get_onboarding_system_prompt_if_applicable(
         )
 
     except Exception as e:
-        log.warning(f"[onboarding_prompt] Failed to check onboarding conversation: {e}")
+        log.warning(
+            "[onboarding_prompt] Failed to check onboarding conversation",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+            conversation_id=conversation_id,
+        )
         return None
 
 
@@ -719,14 +327,22 @@ def format_files_list(
     files_data: list[FileData] | None,
     file_ids: list[str] | None = None,
     conversation_id: str | None = None,
+    *,
+    include_processing_guide: bool = True,
 ) -> str:
-    """Surface uploaded files to the agent as concrete FS paths.
+    """Surface uploaded files to an agent with path and summary.
 
-    The agent reads/writes files via bash/read/write/edit; the upload
-    pipeline mirrors every attachment into the session's read-only
-    `user-uploaded/` dir. Tell the agent the on-disk path explicitly and
-    point at the session GUIDE for the action conventions — no
-    `query_files` tool indirection, no path guessing.
+    Each attachment is shown with its on-disk path and a truncated summary (so
+    the reader knows what the file is without a tool call). The summary text is
+    enriched server-side by the caller; this helper only formats. Pure — no
+    DB/FS access.
+
+    ``include_processing_guide`` controls the audience:
+    - ``True`` (executor): adds the `full summary` sidecar pointer and the full
+      read/bash/scratch/artifacts how-to — the executor holds those tools.
+    - ``False`` (comms): a lean block — name, path, summary, and a single line
+      telling it to delegate real file work. Comms has no file tools; the
+      executor-voice how-to only baits it into over-delegating.
     """
     if not files_data or (file_ids is not None and not file_ids):
         return ""
@@ -736,6 +352,7 @@ def format_files_list(
         return ""
 
     lines: list[str] = []
+    any_on_disk = False
     for file in files:
         try:
             on_disk = safe_upload_filename(file.filename)
@@ -745,20 +362,65 @@ def format_files_list(
             path = f"/workspace/sessions/{conversation_id}/user-uploaded/{on_disk}"
         else:
             path = f"./user-uploaded/{on_disk}"
-        lines.append(f"- {file.filename}  →  `{path}`")
+        # Only advertise the path when the file really reached the workspace.
+        # The mirror is best-effort (it needs JuiceFS), so on a native API — or
+        # any deployment where it failed — this path does not exist, and naming
+        # it anyway sends the executor into read/bash attempts that can only
+        # fail. `search_uploaded_files` needs no mount and is the honest route.
+        on_disk_available = file.sandbox_path is not None
+        any_on_disk = any_on_disk or on_disk_available
+        # The id is shown because `search_uploaded_files(file_id=...)` needs one;
+        # without it an agent scoping to a single file can only guess the
+        # filename, which matches nothing.
+        if on_disk_available:
+            lines.append(f"- {file.filename}  (id: {file.fileId})  →  `{path}`")
+        else:
+            lines.append(
+                f"- {file.filename}  (id: {file.fileId}) — not on disk, use `search_uploaded_files`"
+            )
+        if file.description:
+            summary = file.description.strip()
+            if len(summary) > UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS:
+                summary = summary[:UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS].rstrip() + "…"
+            lines.append(f"    summary: {summary}")
+            if conversation_id and include_processing_guide and on_disk_available:
+                lines.append(f"    full summary: `{path}.summary.md`")
 
     if not lines:
         return ""
 
     file_block = "\n".join(lines)
+
+    if not include_processing_guide:
+        return (
+            f"\n[Uploaded files]\n{file_block}\n\n"
+            "Answer simple questions from these summaries directly; for the full "
+            "contents or any work on the files, delegate to the executor.\n"
+        )
+
+    if not any_on_disk:
+        # Nothing was mirrored into the workspace, so every read/bash instruction
+        # below would send the agent at a path that does not exist.
+        return (
+            f"\n[Uploaded files]\n{file_block}\n\n"
+            "These files are not present in the workspace, so read/bash cannot "
+            "open them. Use `search_uploaded_files` to retrieve their extracted "
+            "content, and answer from what it returns.\n"
+        )
+
     return f"""
-[Attached files for this turn]
+[Uploaded files]
 {file_block}
 
-These files are on the conversation filesystem in `./user-uploaded/`
-(read-only). To process them: copy into `./scratch/`, do your work,
-and write any user-visible output into `./artifacts/` — files written
-there render as cards in the chat immediately.
+How to work with these files:
+- What is it? — the `summary` above already says; read the `full summary` file
+  for the complete write-up.
+- Need the raw content? — read the file at its path with read/bash. Files shown
+  without a path are not on disk; use `search_uploaded_files` for those.
+- Searching across several uploaded files? — use `search_uploaded_files`.
+The files live in `./user-uploaded/` (read-only). To process them: copy into
+`./scratch/`, do your work, and write user-visible output into `./artifacts/`
+— files written there render as cards in the chat immediately.
 
 See `/workspace/sessions/{conversation_id or "<conv>"}/GUIDE.md` for the
 full layout and conventions, and `/workspace/INDEX.md` for the top level.

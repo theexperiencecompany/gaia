@@ -79,7 +79,7 @@
     "type-check": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm type",
+        "command": "pnpm type && pnpm exec tsc -p e2e/tsconfig.json --noEmit",
         "cwd": "{projectRoot}"
       },
       "cache": true,
@@ -89,10 +89,25 @@
         "^production"
       ]
     },
+    "e2e": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec playwright test",
+        "cwd": "{projectRoot}"
+      },
+      "cache": false
+    },
     "clean": {
       "executor": "nx:run-commands",
       "options": {
         "command": "rm -rf .next node_modules .turbo",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm vitest run --config vitest.config.ts",
         "cwd": "{projectRoot}"
       }
     }

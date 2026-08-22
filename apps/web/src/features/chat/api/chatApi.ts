@@ -2,16 +2,80 @@ import {
   type EventSourceMessage,
   fetchEventSource,
 } from "@microsoft/fetch-event-source";
+import type {
+  ApprovalDecisionPayload,
+  BatchApprovalDecisionPayload,
+  BatchApprovalDecisionResponse,
+} from "@shared/chat";
 
 import type { DesktopToolResult } from "@shared/desktop-tools";
 import { apiService } from "@/lib/api/service";
 import { desktopClientHeaders } from "@/lib/electron/api";
+import { streamLog, streamLogError } from "@/lib/streamLogger";
 import { getBrowserTimezone } from "@/lib/timezone";
+import { toast } from "@/lib/toast";
 import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import { useComposerStore } from "@/stores/composerStore";
 import type { MessageType } from "@/types/features/convoTypes";
+import type { ArtifactData } from "@/types/features/toolDataTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared/fileTypes";
+import {
+  getErrorMessage,
+  handleRateLimitError,
+} from "@/utils/interceptorUtils";
+
+/** Thrown when the backend rejects a send whose turn_id was already claimed —
+ *  the original request is (or was) processing; the retry must not re-run. */
+export class DuplicateTurnError extends Error {
+  constructor() {
+    super("This send was already accepted by the server");
+    this.name = "DuplicateTurnError";
+  }
+}
+
+/** Thrown when a send is rejected by a usage wall (429). The rate-limit
+ *  upsell toast is shown at throw time, so downstream failure handling must
+ *  not add a generic error toast on top. */
+export class RateLimitError extends Error {
+  constructor(message?: string) {
+    super(message || "Usage limit reached");
+    this.name = "RateLimitError";
+  }
+}
+
+const HTTP_CONFLICT = 409;
+const HTTP_GONE = 410;
+const HTTP_TOO_MANY_REQUESTS = 429;
+
+export interface ChatStreamRequest {
+  inputText: string;
+  /** Prior turns as role/content pairs — the caller owns history assembly. */
+  history: { role: "user" | "assistant"; content: string }[];
+  /** Target conversation; null asks the backend to create one. */
+  conversationId: string | null;
+  /** Client id for this SEND, stable across retries — backend dedup key. */
+  turnId: string | null;
+  onMessage: (
+    event: EventSourceMessage,
+  ) => undefined | string | Promise<undefined | string>;
+  /** `sawDone` is false when the connection ended without `[DONE]` — a
+   *  truncated turn, not a finished one. */
+  onClose: (sawDone: boolean) => void;
+  onError: (err: Error) => void;
+  controller: AbortController;
+  fileData: FileData[];
+  selectedTool: string | null;
+  toolCategory: string | null;
+  selectedWorkflow: WorkflowData | null;
+  selectedCalendarEvent: SelectedCalendarEventData | null;
+  replyToMessage: {
+    id: string;
+    content: string;
+    role: "user" | "assistant";
+  } | null;
+  isOnboardingDemo: boolean;
+}
 
 export interface FileUploadResponse {
   fileId: string;
@@ -79,6 +143,24 @@ export interface ConversationSyncItem {
   last_updated?: string;
 }
 
+export interface SyncedConversation {
+  conversation_id: string;
+  description: string;
+  starred?: boolean;
+  is_system_generated?: boolean;
+  is_onboarding_conversation?: boolean;
+  system_purpose?: SystemPurpose;
+  is_unread?: boolean;
+  createdAt: string;
+  updatedAt?: string;
+  messages: MessageType[];
+  artifacts?: ArtifactData[];
+  /** Stream id of the conversation's in-flight turn, null when idle — the
+   *  re-attach discovery for reloads, carried on the sync response so opening
+   *  a conversation costs a single request. */
+  active_stream_id: string | null;
+}
+
 export const chatApi = {
   // Fetch conversations with pagination
   fetchConversations: async (
@@ -96,20 +178,7 @@ export const chatApi = {
   // Batch sync conversations - only fetch stale conversations
   batchSyncConversations: async (
     conversations: ConversationSyncItem[],
-  ): Promise<{
-    conversations: {
-      conversation_id: string;
-      description: string;
-      starred?: boolean;
-      is_system_generated?: boolean;
-      is_onboarding_conversation?: boolean;
-      system_purpose?: SystemPurpose;
-      is_unread?: boolean;
-      createdAt: string;
-      updatedAt?: string;
-      messages: MessageType[];
-    }[];
-  }> => {
+  ): Promise<{ conversations: SyncedConversation[] }> => {
     return apiService.post(
       "/conversations/batch-sync",
       { conversations },
@@ -121,9 +190,15 @@ export const chatApi = {
   },
 
   // File upload
-  uploadFile: async (file: File): Promise<FileUploadResponse> => {
+  uploadFile: async (
+    file: File,
+    conversationId?: string,
+  ): Promise<FileUploadResponse> => {
     const formData = new FormData();
     formData.append("file", file);
+    if (conversationId) {
+      formData.append("conversation_id", conversationId);
+    }
 
     // No errorMessage override: let the backend detail surface (e.g. the 413
     // "File size exceeds the N MB limit." or 415 unsupported-type message)
@@ -246,42 +321,24 @@ export const chatApi = {
   },
 
   // Fetch chat stream
-  fetchChatStream: async (
-    inputText: string,
-    convoMessages: MessageType[],
-    conversationId: string | null | undefined,
-    onMessage: (
-      event: EventSourceMessage,
-    ) => undefined | string | Promise<undefined | string>,
-    onClose: () => void,
-    onError: (err: Error) => void,
-    fileData: FileData[] = [],
-    selectedTool: string | null = null,
-    toolCategory: string | null = null,
-    externalController?: AbortController,
-    selectedWorkflow: WorkflowData | null = null,
-    selectedCalendarEvent: SelectedCalendarEventData | null = null,
-    replyToMessage: {
-      id: string;
-      content: string;
-      role: "user" | "assistant";
-    } | null = null,
-    isOnboardingDemo: boolean = false,
-  ) => {
-    const controller = externalController || new AbortController();
-    // Extract fileIds from fileData for backward compatibility
-    const fileIds = fileData.map((file) => file.fileId);
-
-    // If conversationId is not provided, try to extract it from the URL
-    if (conversationId === undefined && typeof window !== "undefined") {
-      const match = window.location.pathname.match(/\/c\/([^/]+)(?:\/|$)/);
-      if (match) conversationId = match[1];
-    }
-
-    // "new" is a UI sentinel for "create a new conversation" — backend expects null
-    if (conversationId === "new") {
-      conversationId = null;
-    }
+  fetchChatStream: async (request: ChatStreamRequest) => {
+    const {
+      inputText,
+      history,
+      conversationId,
+      turnId,
+      onMessage,
+      onClose,
+      onError,
+      controller,
+      fileData,
+      selectedTool,
+      toolCategory,
+      selectedWorkflow,
+      selectedCalendarEvent,
+      replyToMessage,
+      isOnboardingDemo,
+    } = request;
 
     // Guard against double onClose — [DONE] in onmessage fires onClose, then
     // the SSE library fires onclose when the connection ends.  Without this
@@ -307,10 +364,37 @@ export const chatApi = {
         },
         credentials: "include",
         signal: controller.signal,
+        // Default onopen only validates content-type; a 409 (duplicate turn_id
+        // claim) must surface as a typed error so the session can reconcile
+        // instead of showing a failure for a send that IS being processed.
+        async onopen(response) {
+          if (response.status === HTTP_CONFLICT) {
+            throw new DuplicateTurnError();
+          }
+          // Usage wall (message count or cost budget exhausted): render the
+          // rate-limit upsell UI here — the axios interceptor never sees this
+          // request — and throw typed so failure handling skips its generic toast.
+          if (response.status === HTTP_TOO_MANY_REQUESTS) {
+            const data: unknown = await response.json().catch(() => undefined);
+            if (!handleRateLimitError(data)) {
+              toast.error("Too many requests. Please try again later.");
+            }
+            throw new RateLimitError(getErrorMessage(data));
+          }
+          if (
+            !response.ok ||
+            !response.headers.get("content-type")?.includes("text/event-stream")
+          ) {
+            throw new Error(
+              `Unexpected chat-stream response (${response.status})`,
+            );
+          }
+        },
         body: JSON.stringify({
-          conversation_id: conversationId || null,
+          conversation_id: conversationId,
+          turn_id: turnId,
           message: inputText,
-          fileIds,
+          fileIds: fileData.map((file) => file.fileId),
           fileData,
           selectedTool,
           toolCategory,
@@ -321,27 +405,28 @@ export const chatApi = {
           use_default_models: useDefaultModels,
           comms_model: useDefaultModels ? null : commsModel,
           executor_model: useDefaultModels ? null : executorModel,
-          messages: convoMessages
-            .slice(-30)
-            .filter(({ response }) => response.trim().length > 0)
-            .map(({ type, response }, _index, _array) => ({
-              role: type === "bot" ? "assistant" : type,
-              content: response,
-            })),
+          messages: history.slice(-30),
         }),
 
         onmessage(event) {
+          // Transport-level record of the raw frame, before any parsing or
+          // dispatch can drop it. This and the executor subscription below are
+          // the app's only two SSE readers, so nothing bypasses the recording.
+          streamLog("sse", "frame", {
+            conversationId,
+            detail: { raw: event.data },
+          });
           const errorResult = onMessage(event);
 
           if (event.data === "[DONE]") {
             doneReceived = true;
-            onClose();
+            onClose(true);
             return;
           }
 
-          // onMessage (handleStreamEvent) is async — handle errors from the Promise.
-          // No queue/gate needed: handleNewConversation updates the Zustand store
-          // synchronously before any awaits, so subsequent events can render immediately.
+          // onMessage is async — surface errors from the Promise. No queue/gate
+          // needed: conversation binding updates the Zustand store synchronously
+          // before any awaits, so subsequent events can render immediately.
           if (errorResult instanceof Promise) {
             errorResult.then((err) => {
               if (err) {
@@ -357,13 +442,18 @@ export const chatApi = {
           }
         },
         onclose() {
+          streamLog("sse", "connection-closed", { conversationId });
           // Only call onClose if [DONE] didn't already trigger it.
           // Connection drops without [DONE] (e.g. network failure) still need cleanup.
           if (!doneReceived) {
-            onClose();
+            onClose(false);
           }
         },
         onerror: (err) => {
+          streamLogError("sse", "connection-error", {
+            conversationId,
+            detail: { message: err.message },
+          });
           console.error("[chatApi] Stream error:", {
             error: err,
             message: err.message,
@@ -379,9 +469,10 @@ export const chatApi = {
   subscribeToExecutorStream: async (
     streamId: string,
     onMessage: (event: EventSourceMessage) => void,
-    onClose: () => void,
+    onClose: (sawDone: boolean) => void,
     onError: (err: Error) => void,
     signal: AbortSignal,
+    lastEventId?: string,
   ): Promise<void> => {
     let doneReceived = false;
 
@@ -393,23 +484,32 @@ export const chatApi = {
         headers: {
           Accept: "text/event-stream",
           ...desktopClientHeaders(),
+          // Resume cursor — the backend replays everything after this entry.
+          ...(lastEventId ? { "Last-Event-ID": lastEventId } : {}),
         },
         credentials: "include",
         signal,
         onmessage(event) {
+          streamLog("sse", "frame", {
+            detail: { raw: event.data, streamId },
+          });
           if (event.data === "[DONE]") {
             doneReceived = true;
-            onClose();
+            onClose(true);
             return;
           }
           onMessage(event);
         },
         onclose() {
+          streamLog("sse", "connection-closed");
           if (!doneReceived) {
-            onClose();
+            onClose(false);
           }
         },
         onerror(err) {
+          streamLogError("sse", "connection-error", {
+            detail: { message: err.message },
+          });
           onError(err);
           throw err; // stops retry attempts
         },
@@ -425,5 +525,41 @@ export const chatApi = {
     await apiService.post("/desktop/tool-result", result, {
       silent: true,
     });
+  },
+
+  /**
+   * Relay a HIL approval decision to the awaiting agent gate. Silent — the
+   * caller surfaces real failures; a 410 (already resolved elsewhere) resolves
+   * over the stream regardless, so it's swallowed here rather than surfaced.
+   */
+  postApprovalDecision: async (
+    approvalId: string,
+    decision: ApprovalDecisionPayload,
+  ): Promise<void> => {
+    try {
+      await apiService.post(`/approvals/${approvalId}/decision`, decision, {
+        silent: true,
+      });
+    } catch (error) {
+      const status = (error as { response?: { status?: number } })?.response
+        ?.status;
+      if (status === HTTP_GONE) return;
+      throw error;
+    }
+  },
+
+  /**
+   * Decide several pending approvals in one submission (the batch review's
+   * "Approve all"/"Decline all"). Per-approval outcomes come back in the
+   * response — an already-resolved item never fails the rest.
+   */
+  postApprovalBatchDecision: async (
+    payload: BatchApprovalDecisionPayload,
+  ): Promise<BatchApprovalDecisionResponse> => {
+    return apiService.post<BatchApprovalDecisionResponse>(
+      "/approvals/batch-decision",
+      payload,
+      { silent: true },
+    );
   },
 };

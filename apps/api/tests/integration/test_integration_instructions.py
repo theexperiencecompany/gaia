@@ -19,7 +19,9 @@ from uuid import uuid4
 
 import pytest
 
-from app.agents.core.subagents import subagent_helpers
+from app.agents.context import sections
+from app.agents.context.section_context import SectionContext
+from app.agents.context.tiers import AgentTier
 from app.agents.tools import integration_instructions_tools as tool_mod
 from app.agents.workspace.skill_loader import library_hash
 from app.models.integration_instructions_models import (
@@ -75,6 +77,29 @@ class FakeCollection:
             new["_id"] = f"oid-{len(self.docs)}"
             self.docs.append(new)
 
+    # async to match the awaited Motor collection interface the repository relies on.
+    async def find_one_and_update(  # NOSONAR python:S7503
+        self,
+        flt: dict,
+        update: dict,
+        *,
+        upsert: bool = False,
+        return_document: Any = None,
+        array_filters: Any = None,
+    ) -> dict | None:
+        for doc in self.docs:
+            if _matches(doc, flt):
+                doc.update(update.get("$set", {}))
+                return dict(doc)
+        if upsert:
+            new = {k: v for k, v in flt.items() if not isinstance(v, dict)}
+            new.update(update.get("$setOnInsert", {}))
+            new.update(update.get("$set", {}))
+            new["_id"] = f"oid-{len(self.docs)}"
+            self.docs.append(new)
+            return dict(new)
+        return None
+
     # async to match the awaited Motor collection interface the service relies on.
     async def find_one(  # NOSONAR python:S7503
         self, flt: dict, projection: Any = None
@@ -97,7 +122,9 @@ def fake_collection(monkeypatch: pytest.MonkeyPatch) -> FakeCollection:
 
     monkeypatch.setattr(redis_cache, "redis", None)
     fake = FakeCollection()
-    monkeypatch.setattr(svc, "integration_instructions_collection", fake)
+    # The service now reaches Mongo through the repository, whose base resolves
+    # the collection via get_async_collection — patch that one boundary.
+    monkeypatch.setattr("app.db.repositories.base.get_async_collection", lambda _name: fake)
     return fake
 
 
@@ -294,10 +321,14 @@ async def test_tool_requires_user_id(fake_collection: FakeCollection) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# 6. Subagent context injection (real _fetch_instructions_block).              #
+# 6. Subagent context injection (real custom-instructions section).            #
 # --------------------------------------------------------------------------- #
 def _stub_integration(name: str):
     return type("Stub", (), {"name": name})()
+
+
+def _slack_ctx(user_id: str) -> SectionContext:
+    return SectionContext(tier=AgentTier.PROVIDER_SUBAGENT, user_id=user_id, integration_id="slack")
 
 
 async def test_context_block_injected_when_set(
@@ -307,16 +338,14 @@ async def test_context_block_injected_when_set(
     await svc.upsert_instructions(
         uid, "slack", "focus on #eng and #design", InstructionsEditor.USER
     )
-    monkeypatch.setattr(
-        subagent_helpers, "get_integration_by_id", lambda _id: _stub_integration("Slack")
-    )
-    block = await subagent_helpers._fetch_instructions_block("slack", uid)
+    monkeypatch.setattr(sections, "get_integration_by_id", lambda _id: _stub_integration("Slack"))
+    block = await sections._custom_instructions(_slack_ctx(uid))
     assert "focus on #eng and #design" in block
     assert "SLACK" in block.upper()
 
 
 async def test_context_block_empty_when_unset(fake_collection: FakeCollection) -> None:
-    block = await subagent_helpers._fetch_instructions_block("slack", _uid())
+    block = await sections._custom_instructions(_slack_ctx(_uid()))
     assert block == ""
 
 
@@ -325,8 +354,6 @@ async def test_context_block_empty_for_whitespace_only(
 ) -> None:
     uid = _uid()
     await svc.upsert_instructions(uid, "slack", "   ", InstructionsEditor.USER)
-    monkeypatch.setattr(
-        subagent_helpers, "get_integration_by_id", lambda _id: _stub_integration("Slack")
-    )
-    block = await subagent_helpers._fetch_instructions_block("slack", uid)
+    monkeypatch.setattr(sections, "get_integration_by_id", lambda _id: _stub_integration("Slack"))
+    block = await sections._custom_instructions(_slack_ctx(uid))
     assert block == "", "whitespace-only instructions produced a noisy context block"

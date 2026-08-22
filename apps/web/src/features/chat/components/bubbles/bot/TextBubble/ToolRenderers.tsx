@@ -1,3 +1,4 @@
+import type { ApprovalRequestData } from "@shared/chat";
 import type React from "react";
 import type {
   MemoryData,
@@ -36,6 +37,7 @@ import type {
   RedditSearchData,
 } from "@/types/features/redditTypes";
 import type { SearchResults } from "@/types/features/searchTypes";
+import ApprovalRequestGroup from "../ApprovalRequestGroup";
 import { CalendarDeleteSection } from "../CalendarDeleteSection";
 import { CalendarEditSection } from "../CalendarEditSection";
 import CalendarEventSection from "../CalendarEventSection";
@@ -45,8 +47,6 @@ import EmailComposeSection from "../EmailComposeSection";
 import EmailSentSection from "../EmailSentSection";
 import FileArtifactSection from "../FileArtifactSection";
 import GoogleDocsSection from "../GoogleDocsSection";
-import GoalSection from "../goals/GoalSection";
-import type { GoalAction } from "../goals/types";
 import MemoryCard from "../MemoryCard";
 import NotificationListSection from "../NotificationListSection";
 import PeopleSearchSection from "../PeopleSearchSection";
@@ -259,21 +259,6 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
       message={data.message}
     />
   ),
-  goal_data: (data, index) => {
-    const g = data;
-    return (
-      <GoalSection
-        key={`tool-goal-${index}`}
-        goals={g.goals}
-        stats={g.stats}
-        action={g.action as GoalAction}
-        message={g.message}
-        goal_id={g.goal_id}
-        deleted_goal_id={g.deleted_goal_id}
-        error={g.error}
-      />
-    );
-  },
   notification_data: (data, index) => (
     <NotificationListSection
       key={`tool-notifications-${index}`}
@@ -448,7 +433,38 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     const items = (Array.isArray(data) ? data : [data]) as MemoryData[];
     return <MemoryCard key={`tool-memory-${index}`} items={items} />;
   },
+
+  // HIL approval — grouped so a run needing many decisions doesn't stack a full
+  // card each: pending ones show side by side, settled ones are removed (the
+  // assistant's reply already reflects them). Each approval_id is a single entry
+  // (pending→resolved replaced in place via upsertApprovalToolData); grouping
+  // collects them into the array.
+  approval_request: (data, index) => {
+    const raw = (Array.isArray(data) ? data : [data]) as ApprovalRequestData[];
+    // A resumed stream replays the gate-time PENDING frame after the decision
+    // already settled it — collapse by approval_id, settled wins over pending.
+    const byId = new Map<string, ApprovalRequestData>();
+    for (const item of raw) {
+      const prev = byId.get(item.approval_id);
+      if (!prev || prev.status === "pending" || item.status !== "pending") {
+        byId.set(item.approval_id, item);
+      }
+    }
+    const items = [...byId.values()];
+    return (
+      <ApprovalRequestGroup
+        key={`approval-group-${items[0]?.approval_id || index}`}
+        items={items}
+      />
+    );
+  },
 };
+
+/** Whether a tool_data entry has a card registered at all. A missing entry is a
+ *  silent drop (`renderTool` returns null), which the render audit records. */
+export function hasToolRenderer(name: ToolName): boolean {
+  return name in TOOL_RENDERERS;
+}
 
 export function renderTool<K extends ToolName>(
   name: K,

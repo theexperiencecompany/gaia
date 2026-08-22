@@ -2,17 +2,17 @@
 Google Docs trigger handler.
 """
 
-from typing import Any
+from typing import Any, ClassVar
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import workflows_collection
+from app.db.repositories.workflows import workflow_repository
 from app.models.composio_schemas import GoogleDocsPageAddedPayload
 from app.models.trigger_configs import (
     GoogleDocsDocumentDeletedConfig,
     GoogleDocsDocumentUpdatedConfig,
     GoogleDocsNewDocumentConfig,
 )
-from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
+from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.triggers.base import TriggerHandler
 from app.utils.exceptions import TriggerRegistrationError
 from shared.py.wide_events import log
@@ -21,19 +21,19 @@ from shared.py.wide_events import log
 class GoogleDocsTriggerHandler(TriggerHandler):
     """Handler for Google Docs triggers."""
 
-    SUPPORTED_TRIGGERS = [
+    SUPPORTED_TRIGGERS: ClassVar[list[str]] = [
         "google_docs_new_document",
         "google_docs_document_deleted",
         "google_docs_document_updated",
     ]
 
-    SUPPORTED_EVENTS = {
+    SUPPORTED_EVENTS: ClassVar[set[str]] = {
         "GOOGLEDOCS_PAGE_ADDED_TRIGGER",
         "GOOGLEDOCS_DOCUMENT_DELETED_TRIGGER",
         "GOOGLEDOCS_DOCUMENT_UPDATED_TRIGGER",
     }
 
-    TRIGGER_TO_COMPOSIO = {
+    TRIGGER_TO_COMPOSIO: ClassVar[dict[str, str]] = {
         "google_docs_new_document": "GOOGLEDOCS_PAGE_ADDED_TRIGGER",
         "google_docs_document_deleted": "GOOGLEDOCS_DOCUMENT_DELETED_TRIGGER",
         "google_docs_document_updated": "GOOGLEDOCS_DOCUMENT_UPDATED_TRIGGER",
@@ -50,7 +50,7 @@ class GoogleDocsTriggerHandler(TriggerHandler):
     async def register(
         self,
         user_id: str,
-        workflow_id: str,
+        _workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:
@@ -96,37 +96,27 @@ class GoogleDocsTriggerHandler(TriggerHandler):
         """Find workflows matching a Google Docs trigger event."""
         log.set_ns("trigger", integration_id="google_docs", trigger_type=event_type)
         try:
-            query = {
-                "activated": True,
-                "trigger_config.type": TriggerType.INTEGRATION,
-                "trigger_config.enabled": True,
-                "trigger_config.composio_trigger_ids": trigger_id,
-            }
-
             # Optional: validate payload
             try:
                 GoogleDocsPageAddedPayload.model_validate(data)
             except Exception as e:
-                log.debug(f"{LogTag.TRIGGER} Google Docs payload validation failed: {e}")
+                log.debug(
+                    f"{LogTag.TRIGGER} Google Docs payload validation failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
 
-            cursor = workflows_collection.find(query)
             workflows: list[Workflow] = []
-
-            async for workflow_doc in cursor:
-                try:
-                    workflow_doc["id"] = workflow_doc.get("_id")
-                    if "_id" in workflow_doc:
-                        del workflow_doc["_id"]
-                    workflow = Workflow(**workflow_doc)
-                    workflows.append(workflow)
-                except Exception as e:
-                    log.error(f"{LogTag.TRIGGER} Error processing workflow document: {e}")
-                    continue
-
+            workflows.extend(await workflow_repository.find_active_by_composio_trigger(trigger_id))
             return workflows
 
         except Exception as e:
-            log.error(f"{LogTag.TRIGGER} Error finding workflows for trigger {trigger_id}: {e}")
+            log.error(
+                f"{LogTag.TRIGGER} Error finding workflows for trigger",
+                trigger_id=trigger_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return []
 
 

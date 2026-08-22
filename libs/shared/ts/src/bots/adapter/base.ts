@@ -33,12 +33,13 @@
  * @module
  */
 
-import { Analytics, BOT_EVENTS } from "../../analytics";
+import { Analytics, type AnalyticsContext, BOT_EVENTS } from "../../analytics";
 import { GaiaClient } from "../api";
 import { loadConfig } from "../config";
 import type { OutboundAttachment } from "../consumer/envelope";
 import { OutboundConsumer } from "../consumer/outbound-consumer";
 import type {
+  AuthStatus,
   BotCommand,
   BotConfig,
   CommandContext,
@@ -50,7 +51,6 @@ import {
   type BotLogger,
   createBotLogger,
   hashLogIdentifier,
-  sanitizeErrorForLog,
 } from "../utils/logger";
 import {
   type IncomingMedia,
@@ -58,6 +58,7 @@ import {
   OUTBOUND_FILE_LIMITS,
   processBotMedia,
 } from "../utils/media";
+import { wideLog, withWideEvent } from "../utils/wide-events";
 import { BotServer } from "./base-server";
 
 /**
@@ -105,6 +106,16 @@ export abstract class BaseBotAdapter {
   /** Server-side PostHog analytics. No-op when POSTHOG_API_KEY is absent. */
   protected analytics: Analytics = new Analytics(undefined);
 
+  /**
+   * Resolved PostHog distinct_id per platform user, for the life of the process.
+   *
+   * A cache, not a source of truth: the link state lives in MongoDB behind
+   * `checkAuthStatus`. It exists because the id is needed on every event and an
+   * HTTP round trip per capture would put the analytics path in the latency
+   * budget of every message.
+   */
+  private readonly distinctIdCache = new Map<string, string>();
+
   /** Shared structured logger for adapter lifecycle and command execution. */
   protected logger: BotLogger = createBotLogger("shared", "base-adapter");
 
@@ -145,76 +156,99 @@ export abstract class BaseBotAdapter {
    * 4. {@link registerEvents} — register event listeners
    * 5. {@link start} — connect to the platform
    *
+   * Emits one canonical `bot_boot` wide event covering the whole sequence, so a
+   * bot that dies during startup says why — with a duration and an outcome —
+   * instead of leaving a "boot_started" line and silence.
+   *
    * @param commands - Array of unified {@link BotCommand} definitions to register.
    */
   async boot(commands: BotCommand[]): Promise<void> {
     this.logger = createBotLogger(this.platform, "base-adapter");
-    this.logger.info("boot_started", { command_count: commands.length });
 
-    this.config = await loadConfig();
-    this.gaia = new GaiaClient(
-      this.config.gaiaApiUrl,
-      this.config.gaiaApiKey,
-      this.config.gaiaFrontendUrl,
+    await withWideEvent(
+      "bot_boot",
+      {
+        platform: this.platform,
+        component: "base-adapter",
+        command_count: commands.length,
+      },
+      async () => {
+        this.config = await loadConfig();
+        this.gaia = new GaiaClient(
+          this.config.gaiaApiUrl,
+          this.config.gaiaApiKey,
+          this.config.gaiaFrontendUrl,
+        );
+        this.analytics = new Analytics(this.config.posthogApiKey);
+
+        for (const cmd of commands) {
+          this.commands.set(cmd.name, cmd);
+        }
+        // Create the shared HTTP server before registerEvents() so subclasses
+        // can mount custom routes (e.g. WhatsApp /webhook) on this.botServer.app.
+        const serverPort =
+          Number(process.env.BOT_SERVER_PORT) || this.defaultServerPort;
+        this._botServer = new BotServer(this.platform, serverPort);
+        wideLog.set({ server_port: serverPort });
+
+        let platformStarted = false;
+        try {
+          await this.initialize();
+          await this.registerCommands(commands);
+          await this.registerEvents();
+          await this.start();
+          platformStarted = true;
+
+          // Consume backend-originated outbound messages (executor replies,
+          // reminders) and deliver them via this platform's send primitive.
+          this.startOutboundConsumer();
+
+          // Start the server after registerEvents() so all routes are mounted.
+          await this._botServer.start();
+        } catch (error) {
+          wideLog.set({
+            boot_stage: platformStarted ? "serving" : "connecting",
+          });
+          if (platformStarted) {
+            await this.stop().catch(() => undefined);
+          }
+          await this._outboundConsumer?.stop().catch(() => undefined);
+          this._outboundConsumer = null;
+          await this._botServer?.stop().catch(() => undefined);
+          this._botServer = null;
+          throw error;
+        }
+      },
     );
-    this.analytics = new Analytics(this.config.posthogApiKey);
-
-    for (const cmd of commands) {
-      this.commands.set(cmd.name, cmd);
-    }
-    // Create the shared HTTP server before registerEvents() so subclasses
-    // can mount custom routes (e.g. WhatsApp /webhook) on this.botServer.app.
-    const serverPort =
-      Number(process.env.BOT_SERVER_PORT) || this.defaultServerPort;
-    this._botServer = new BotServer(this.platform, serverPort);
-
-    let platformStarted = false;
-    try {
-      await this.initialize();
-      await this.registerCommands(commands);
-      await this.registerEvents();
-      await this.start();
-      platformStarted = true;
-
-      // Consume backend-originated outbound messages (executor replies,
-      // reminders) and deliver them via this platform's send primitive.
-      this.startOutboundConsumer();
-
-      // Start the server after registerEvents() so all routes are mounted.
-      await this._botServer.start();
-    } catch (error) {
-      if (platformStarted) {
-        await this.stop().catch(() => undefined);
-      }
-      await this._outboundConsumer?.stop().catch(() => undefined);
-      this._outboundConsumer = null;
-      await this._botServer?.stop().catch(() => undefined);
-      this._botServer = null;
-      throw error;
-    }
-
-    this.logger.info("boot_completed", { gaia_api_configured: true });
   }
 
   /**
    * Gracefully shuts down the adapter.
    *
-   * Called from process signal handlers (SIGINT, SIGTERM).
-   * Delegates to the platform-specific {@link stop} implementation.
+   * Called from the process signal handlers wired by `runBotProcess`, and from
+   * any adapter that decides it cannot keep running. Delegates to the
+   * platform-specific {@link stop} implementation and emits one canonical
+   * `bot_shutdown` wide event naming what triggered it.
+   *
+   * @param trigger - What asked for the shutdown (`"SIGTERM"`, `"long_poll_fatal"`, …).
    */
-  async shutdown(): Promise<void> {
-    this.logger.info("shutdown_started");
-    if (this._outboundConsumer) {
-      await this._outboundConsumer.stop();
-      this._outboundConsumer = null;
-    }
-    await this.stop();
-    if (this._botServer) {
-      await this._botServer.stop();
-      this._botServer = null;
-    }
-    await this.analytics.shutdown();
-    this.logger.info("shutdown_completed");
+  async shutdown(trigger: string): Promise<void> {
+    await withWideEvent(
+      "bot_shutdown",
+      { platform: this.platform, component: "base-adapter", trigger },
+      async () => {
+        if (this._outboundConsumer) {
+          await this._outboundConsumer.stop();
+          this._outboundConsumer = null;
+        }
+        await this.stop();
+        if (this._botServer) {
+          await this._botServer.stop();
+          this._botServer = null;
+        }
+        await this.analytics.shutdown();
+      },
+    );
   }
 
   /**
@@ -226,12 +260,9 @@ export abstract class BaseBotAdapter {
    */
   private startOutboundConsumer(): void {
     const url = this.config.rabbitmqUrl;
-    if (!url) {
-      this.logger.warn("outbound_consumer_disabled", {
-        reason: "RABBITMQ_URL not set",
-      });
-      return;
-    }
+    // loadConfig() already warned (config_optional_missing / RABBITMQ_URL) on
+    // this same boot event — saying it twice does not make it truer.
+    if (!url) return;
     this._outboundConsumer = new OutboundConsumer(
       this.platform,
       url,
@@ -316,12 +347,26 @@ export abstract class BaseBotAdapter {
     );
     const limit = OUTBOUND_FILE_LIMITS[this.platform];
     if (artifact.data.length > limit) {
-      this.logger.warn("outbound_file_too_large", {
-        platform: this.platform,
-        filename: attachment.filename,
+      // `platform` is already on every line's envelope — repeating it as a
+      // field collides with the reserved key and lands as `ctx_platform`.
+      wideLog.warning("outbound_file_too_large", {
+        attachment_filename: attachment.filename,
         bytes: artifact.data.length,
         limit,
       });
+      // A generated artifact the user never receives. Captured, not just
+      // logged: this is a product failure with a per-platform size cause, and
+      // its rate is the signal for raising a limit or chunking the output.
+      this.analytics.capture(
+        await this.resolveDistinctId(destinationId),
+        BOT_EVENTS.FILE_DELIVERED,
+        {
+          success: false,
+          reason: "too_large",
+          bytes: artifact.data.length,
+          limit,
+        },
+      );
       await this.deliverOutbound(
         destinationId,
         renderForPlatform(
@@ -344,10 +389,18 @@ export abstract class BaseBotAdapter {
     destinationId: string,
     attachment: OutboundAttachment,
   ): Promise<void> {
-    this.logger.warn("outbound_file_fallback_text", {
-      platform: this.platform,
-      filename: attachment.filename,
+    wideLog.warning("outbound_file_fallback_text", {
+      attachment_filename: attachment.filename,
     });
+    // The base implementation IS the "this platform can't send files" path —
+    // platforms that can (WhatsApp) override the whole method and capture their
+    // own success. Reaching here always means the user got text instead of the
+    // artifact they asked for.
+    this.analytics.capture(
+      await this.resolveDistinctId(destinationId),
+      BOT_EVENTS.FILE_DELIVERED,
+      { success: false, reason: "platform_unsupported" },
+    );
     await this.deliverOutbound(
       destinationId,
       `I created *${attachment.filename}*, but I can't send files on ${this.platform} yet.`,
@@ -376,90 +429,99 @@ export abstract class BaseBotAdapter {
     args: Record<string, string | number | boolean | undefined> = {},
     rawText?: string,
   ): Promise<void> {
-    const distinctId = `${this.platform}:${target.userId}`;
+    const distinctId = await this.resolveDistinctId(target.userId);
+    const userHash = hashLogIdentifier(target.userId);
+    const channelHash = hashLogIdentifier(target.channelId);
 
-    // No identify() — platform-handle PII (username, display_name) is
-    // intentionally not shipped to PostHog. Profiles are auto-created from
-    // the first capture using the distinctId.
+    await withWideEvent(
+      "command",
+      {
+        platform: this.platform,
+        component: "base-adapter",
+        command: name,
+        user_hash: userHash,
+        channel_hash: channelHash,
+      },
+      async () => {
+        // No identify() — platform-handle PII (username, display_name) is
+        // intentionally not shipped to PostHog. Profiles are auto-created from
+        // the first capture using the distinctId.
 
-    this.analytics.capture(distinctId, BOT_EVENTS.MESSAGE_RECEIVED, {
-      interaction_type: "command",
-      command: name,
-      has_args: Object.keys(args).length > 0,
-      has_raw_text: !!rawText,
-      channel_id: target.channelId,
-    });
+        this.analytics.capture(distinctId, BOT_EVENTS.MESSAGE_RECEIVED, {
+          interaction_type: "command",
+          command: name,
+          has_args: Object.keys(args).length > 0,
+          has_raw_text: !!rawText,
+        });
 
-    if (name === "auth") {
-      this.analytics.capture(distinctId, BOT_EVENTS.AUTH_INITIATED, {
-        channel_id: target.channelId,
-      });
-    }
+        if (name === "auth") {
+          wideLog.audit("auth_link_requested", { user_hash: userHash });
+          this.analytics.capture(distinctId, BOT_EVENTS.AUTH_INITIATED, {});
+        }
 
-    const command = this.commands.get(name);
-    if (!command) {
-      await target.sendEphemeral(`Unknown command: /${name}`);
-      return;
-    }
+        const command = this.commands.get(name);
+        if (!command) {
+          wideLog.warning("unknown_command", { command: name });
+          await target.sendEphemeral(`Unknown command: /${name}`);
+          return;
+        }
 
-    const ctx = this.buildContext(
-      target.userId,
-      target.channelId,
-      target.profile,
+        const ctx = this.buildContext(
+          target.userId,
+          target.channelId,
+          target.profile,
+        );
+
+        const startMs = Date.now();
+        try {
+          await command.execute({
+            gaia: this.gaia,
+            target,
+            ctx,
+            args,
+            rawText,
+          });
+          this.analytics.capture(distinctId, BOT_EVENTS.COMMAND_EXECUTED, {
+            command: name,
+            duration_ms: Date.now() - startMs,
+            success: true,
+          });
+        } catch (error) {
+          const durationMs = Date.now() - startMs;
+          const errorType = error instanceof Error ? error.name : "Unknown";
+          wideLog.error(
+            "command_dispatch_failed",
+            {
+              command: name,
+              user_hash: userHash,
+              channel_hash: channelHash,
+              duration_ms: durationMs,
+              error_type: errorType,
+            },
+            error,
+          );
+          // Capture only the error class name. Raw messages can contain file
+          // paths, request IDs, or upstream-echoed tokens — never ship them.
+          this.analytics.capture(distinctId, BOT_EVENTS.COMMAND_EXECUTED, {
+            command: name,
+            duration_ms: durationMs,
+            success: false,
+            error_type: errorType,
+          });
+          this.analytics.capture(distinctId, BOT_EVENTS.ERROR, {
+            context: `command:${name}`,
+            error_type: errorType,
+          });
+          const errMsg = formatBotError(error);
+          try {
+            await target.sendEphemeral(errMsg);
+          } catch {
+            // Target may be expired (e.g. Discord interaction timeout).
+            wideLog.warning("error_notice_send_failed", { command: name });
+          }
+        }
+      },
     );
-
-    const startMs = Date.now();
-    try {
-      this.logger.info("command_dispatch_started", {
-        command: name,
-        user_hash: hashLogIdentifier(target.userId),
-        channel_hash: hashLogIdentifier(target.channelId),
-      });
-      await command.execute({ gaia: this.gaia, target, ctx, args, rawText });
-      this.analytics.capture(distinctId, BOT_EVENTS.COMMAND_EXECUTED, {
-        command: name,
-        duration_ms: Date.now() - startMs,
-        success: true,
-        channel_id: target.channelId,
-      });
-      this.logger.info("command_dispatch_completed", {
-        command: name,
-        user_hash: hashLogIdentifier(target.userId),
-        channel_hash: hashLogIdentifier(target.channelId),
-        duration_ms: Date.now() - startMs,
-      });
-    } catch (error) {
-      const durationMs = Date.now() - startMs;
-      const errorType = error instanceof Error ? error.name : "Unknown";
-      this.logger.error("command_dispatch_failed", {
-        command: name,
-        user_hash: hashLogIdentifier(target.userId),
-        channel_hash: hashLogIdentifier(target.channelId),
-        duration_ms: durationMs,
-        error_type: errorType,
-        ...sanitizeErrorForLog(error),
-      });
-      // Capture only the error class name. Raw messages can contain file
-      // paths, request IDs, or upstream-echoed tokens — never ship them.
-      this.analytics.capture(distinctId, BOT_EVENTS.COMMAND_EXECUTED, {
-        command: name,
-        duration_ms: durationMs,
-        success: false,
-        error_type: errorType,
-        channel_id: target.channelId,
-      });
-      this.analytics.capture(distinctId, BOT_EVENTS.ERROR, {
-        context: `command:${name}`,
-        error_type: errorType,
-        channel_id: target.channelId,
-      });
-      const errMsg = formatBotError(error);
-      try {
-        await target.sendEphemeral(errMsg);
-      } catch {
-        // Target may be expired (e.g. Discord interaction timeout)
-      }
-    }
   }
 
   /**
@@ -485,19 +547,95 @@ export abstract class BaseBotAdapter {
     };
   }
 
-  /** Users greeted this process, so the welcome fires at most once each. */
+  /** Unlinked users greeted this process, deduped so the welcome does not repeat on every message. */
   private readonly welcomedUsers = new Set<string>();
 
   /**
-   * One-shot welcome gate shared by adapters that greet a user on first
-   * contact (Discord DM embed, WhatsApp text). Returns true the first time it
-   * sees a user this process and false thereafter, so a caller can guard its
-   * platform-specific welcome with a single check instead of each adapter
-   * maintaining its own `Set`.
+   * The PostHog distinct_id for a platform user: their stable GAIA user id once
+   * the account is linked, otherwise `"<platform>:<platformUserId>"`.
+   *
+   * Keying on the GAIA id is what lets a person's bot activity land on the same
+   * profile as their web and API activity — the backend already attributes bot
+   * chat turns that way (`bot.py::chat`), so without this the same turn produced
+   * two people. An unlinked user genuinely has no GAIA identity yet, so the
+   * platform id stands in until they link; {@link alias} then folds that history
+   * into the real profile.
+   *
+   * A failed lookup degrades to the platform id rather than dropping the event:
+   * an event on the anonymous profile is recoverable, a missing one is not.
    */
-  protected shouldSendWelcome(userId: string): boolean {
+  protected async resolveDistinctId(platformUserId: string): Promise<string> {
+    const cached = this.distinctIdCache.get(platformUserId);
+    if (cached) return cached;
+
+    const platformDistinctId = `${this.platform}:${platformUserId}`;
+    let status: AuthStatus;
+    try {
+      status = await this.gaia.checkAuthStatus(this.platform, platformUserId);
+    } catch (error) {
+      this.logger.error(
+        "analytics_identity_resolve_failed",
+        { user_hash: hashLogIdentifier(platformUserId) },
+        error,
+      );
+      return platformDistinctId;
+    }
+
+    if (!status.user_id) return platformDistinctId;
+
+    // First resolution for this user in this process: stitch whatever they did
+    // before linking onto the GAIA profile. Cached below, so it fires once per
+    // process rather than per message.
+    this.analytics.alias(platformDistinctId, status.user_id);
+    this.distinctIdCache.set(platformUserId, status.user_id);
+    return status.user_id;
+  }
+
+  /**
+   * The analytics client bound to this user's resolved identity, for handing to
+   * shared helpers like {@link handleStreamingChat}.
+   */
+  protected async analyticsFor(
+    platformUserId: string,
+  ): Promise<AnalyticsContext> {
+    return {
+      client: this.analytics,
+      distinctId: await this.resolveDistinctId(platformUserId),
+    };
+  }
+
+  /**
+   * Welcome gate shared by adapters that greet a user on first contact (Discord
+   * DM embed, WhatsApp text).
+   *
+   * Greets a user ONLY while they have not linked their GAIA account. Linked
+   * users never see the welcome — deterministically, because the decision is
+   * driven by the persistent auth status (MongoDB), not by process memory. This
+   * fixes the bug where a restart re-greeted already-linked users. For an
+   * unlinked user it still fires at most once per process so the greeting does
+   * not repeat on every message while they remain unlinked.
+   */
+  protected async shouldSendWelcome(userId: string): Promise<boolean> {
     if (this.welcomedUsers.has(userId)) return false;
+    // Mark in-flight before the await so two concurrent first messages can't
+    // both pass the check and send duplicate welcomes. Cleared again whenever
+    // the user turns out to be authenticated or the check fails.
     this.welcomedUsers.add(userId);
+    try {
+      const status = await this.gaia.checkAuthStatus(this.platform, userId);
+      if (status.authenticated) {
+        this.welcomedUsers.delete(userId);
+        return false;
+      }
+    } catch (error) {
+      this.welcomedUsers.delete(userId);
+      this.logger.error(
+        "welcome_auth_check_failed",
+        { user_hash: hashLogIdentifier(userId) },
+        error,
+      );
+      return false;
+    }
     return true;
   }
 
@@ -514,9 +652,13 @@ export abstract class BaseBotAdapter {
     sendTyping: () => Promise<unknown>,
     refreshMs: number,
   ): () => void {
-    void sendTyping().catch(() => {});
+    void sendTyping().catch(() => {
+      /* transient typing-indicator send failures are intentionally swallowed */
+    });
     const interval = setInterval(() => {
-      void sendTyping().catch(() => {});
+      void sendTyping().catch(() => {
+        /* transient typing-indicator send failures are intentionally swallowed */
+      });
     }, refreshMs);
     return () => clearInterval(interval);
   }
@@ -531,18 +673,50 @@ export abstract class BaseBotAdapter {
    * method injects the shared GAIA client and builds the user context so every
    * adapter calls one inherited method and stays byte-for-byte consistent.
    * `download` is a thunk so unsupported kinds never incur a download.
+   *
+   * Owns the media pipeline's wide-event boundary: the download, the Whisper
+   * transcription and the upload all happen before any chat boundary exists, so
+   * without this every attachment's latency and rejection reason was dark.
    */
   protected resolveIncomingMedia(
     media: IncomingMedia,
-    download: () => Promise<Uint8Array>,
+    download: (maxBytes: number) => Promise<Uint8Array>,
     userId: string,
     channelId?: string,
   ): Promise<MediaOutcome> {
-    return processBotMedia(
-      this.gaia,
-      media,
-      download,
-      this.buildContext(userId, channelId),
+    return withWideEvent(
+      "media_intake",
+      {
+        platform: this.platform,
+        component: "base-adapter",
+        user_hash: hashLogIdentifier(userId),
+        channel_hash: hashLogIdentifier(channelId),
+        media_kind: media.kind,
+        is_voice_note: media.isVoiceNote,
+      },
+      async () => {
+        // Every inbound attachment on every platform funnels through here, so
+        // this is the one place the upload can be counted. `outcome` separates
+        // an attachment GAIA actually ingested ("chat") from one it turned away
+        // as unsupported or oversize ("reply") — the rejection rate is the
+        // number worth watching. No filename: it is user content.
+        const outcome = await processBotMedia(
+          this.gaia,
+          media,
+          download,
+          this.buildContext(userId, channelId),
+        );
+        this.analytics.capture(
+          await this.resolveDistinctId(userId),
+          BOT_EVENTS.FILE_UPLOADED,
+          {
+            media_kind: media.kind,
+            is_voice_note: Boolean(media.isVoiceNote),
+            outcome: outcome.action === "chat" ? "ingested" : "rejected",
+          },
+        );
+        return outcome;
+      },
     );
   }
 }

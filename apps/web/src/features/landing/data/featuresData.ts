@@ -5,14 +5,7 @@ import { MULTI_PLATFORM_FEATURES } from "./features/multiPlatform";
 import { PRODUCTIVITY_FEATURES } from "./features/productivity";
 import type { FeatureCategory, FeatureData } from "./featuresData.types";
 
-export type {
-  FeatureBenefit,
-  FeatureCategory,
-  FeatureData,
-  FeatureFAQ,
-  FeatureUseCase,
-  HowItWorksStep,
-} from "./featuresData.types";
+export type { FeatureCategory, FeatureData } from "./featuresData.types";
 
 export const FEATURE_CATEGORIES: FeatureCategory[] = [
   "AI Intelligence",

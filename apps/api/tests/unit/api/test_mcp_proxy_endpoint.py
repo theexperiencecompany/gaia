@@ -9,24 +9,39 @@ and error handling are verified.
 from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
-import pytest
+from mcp.types import (
+    CallToolResult,
+    ListPromptsResult,
+    ListResourcesResult,
+    ListResourceTemplatesResult,
+    Prompt,
+    ReadResourceResult,
+    Resource,
+    ResourceTemplate,
+    TextContent,
+    TextResourceContents,
+)
+from pydantic import AnyUrl
+
+from app.services.analytics_service import AnalyticsEvents
 
 API = "/api/v1/mcp"
 
 
-@pytest.mark.unit
 class TestProxyToolCall:
     """POST /api/v1/mcp/proxy/tool-call"""
 
     async def test_tool_call_success(self, client: AsyncClient) -> None:
-        mock_result = {
-            "content": [{"type": "text", "text": "hello"}],
-            "is_error": False,
-        }
-        with patch(
-            "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
-            new_callable=AsyncMock,
-        ) as mock_get:
+        mock_result = CallToolResult(
+            content=[TextContent(type="text", text="hello")], isError=False
+        )
+        with (
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
+                new_callable=AsyncMock,
+            ) as mock_get,
+            patch("app.api.v1.endpoints.mcp_proxy.capture_context_event") as mock_capture,
+        ):
             mock_client = AsyncMock()
             mock_client.call_tool_on_server.return_value = mock_result
             mock_get.return_value = mock_client
@@ -40,15 +55,23 @@ class TestProxyToolCall:
             )
         assert resp.status_code == 200
         data = resp.json()
-        assert data["content"] == [{"type": "text", "text": "hello"}]
+        assert data["content"][0]["type"] == "text"
+        assert data["content"][0]["text"] == "hello"
         assert data["is_error"] is False
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.TOOL_USED,
+            {"tool_name": "test_tool", "source": "mcp_app"},
+        )
 
     async def test_tool_call_with_error_flag(self, client: AsyncClient) -> None:
-        mock_result = {"content": [], "isError": True}
-        with patch(
-            "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
-            new_callable=AsyncMock,
-        ) as mock_get:
+        mock_result = CallToolResult(content=[], isError=True)
+        with (
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
+                new_callable=AsyncMock,
+            ) as mock_get,
+            patch("app.api.v1.endpoints.mcp_proxy.capture_context_event") as mock_capture,
+        ):
             mock_client = AsyncMock()
             mock_client.call_tool_on_server.return_value = mock_result
             mock_get.return_value = mock_client
@@ -61,6 +84,10 @@ class TestProxyToolCall:
             )
         assert resp.status_code == 200
         assert resp.json()["is_error"] is True
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.TOOL_USED,
+            {"tool_name": "failing_tool", "source": "mcp_app"},
+        )
 
     async def test_tool_call_service_error(self, client: AsyncClient) -> None:
         with patch(
@@ -95,15 +122,14 @@ class TestProxyToolCall:
         assert resp.status_code == 401
 
 
-@pytest.mark.unit
 class TestProxyResourcesList:
     """POST /api/v1/mcp/proxy/resources/list"""
 
     async def test_resources_list_success(self, client: AsyncClient) -> None:
-        mock_result = {
-            "resources": [{"uri": "file:///a.txt", "name": "a.txt"}],
-            "next_cursor": "cur1",
-        }
+        mock_result = ListResourcesResult(
+            resources=[Resource(uri=AnyUrl("file:///a.txt"), name="a.txt")],
+            nextCursor="cur1",
+        )
         with patch(
             "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
             new_callable=AsyncMock,
@@ -121,7 +147,7 @@ class TestProxyResourcesList:
         assert data["next_cursor"] == "cur1"
 
     async def test_resources_list_with_cursor(self, client: AsyncClient) -> None:
-        mock_result: dict[str, object] = {"resources": [], "nextCursor": None}
+        mock_result = ListResourcesResult(resources=[])
         with patch(
             "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
             new_callable=AsyncMock,
@@ -159,15 +185,13 @@ class TestProxyResourcesList:
         assert resp.status_code == 401
 
 
-@pytest.mark.unit
 class TestProxyResourceTemplatesList:
     """POST /api/v1/mcp/proxy/resources/templates/list"""
 
     async def test_templates_list_success(self, client: AsyncClient) -> None:
-        mock_result = {
-            "resource_templates": [{"uri_template": "file:///{path}", "name": "file"}],
-            "next_cursor": None,
-        }
+        mock_result = ListResourceTemplatesResult(
+            resourceTemplates=[ResourceTemplate(uriTemplate="file:///{path}", name="file")]
+        )
         with patch(
             "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
             new_callable=AsyncMock,
@@ -183,12 +207,12 @@ class TestProxyResourceTemplatesList:
         data = resp.json()
         assert len(data["resource_templates"]) == 1
 
-    async def test_templates_list_camel_case_response(self, client: AsyncClient) -> None:
-        """Server returns camelCase keys — endpoint normalises them."""
-        mock_result = {
-            "resourceTemplates": [{"uriTemplate": "file:///{x}", "name": "t"}],
-            "nextCursor": "c2",
-        }
+    async def test_templates_list_serializes_camel_case(self, client: AsyncClient) -> None:
+        """The SDK's camelCase fields reach the client under their alias names."""
+        mock_result = ListResourceTemplatesResult(
+            resourceTemplates=[ResourceTemplate(uriTemplate="file:///{x}", name="t")],
+            nextCursor="c2",
+        )
         with patch(
             "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
             new_callable=AsyncMock,
@@ -202,7 +226,7 @@ class TestProxyResourceTemplatesList:
             )
         assert resp.status_code == 200
         data = resp.json()
-        assert len(data["resource_templates"]) == 1
+        assert data["resource_templates"][0]["uriTemplate"] == "file:///{x}"
         assert data["next_cursor"] == "c2"
 
     async def test_templates_list_service_error(self, client: AsyncClient) -> None:
@@ -227,14 +251,13 @@ class TestProxyResourceTemplatesList:
         assert resp.status_code == 401
 
 
-@pytest.mark.unit
 class TestProxyResourceRead:
     """POST /api/v1/mcp/proxy/resources/read"""
 
     async def test_resource_read_success(self, client: AsyncClient) -> None:
-        mock_result = {
-            "contents": [{"uri": "file:///a.txt", "text": "hello world"}],
-        }
+        mock_result = ReadResourceResult(
+            contents=[TextResourceContents(uri=AnyUrl("file:///a.txt"), text="hello world")]
+        )
         with patch(
             "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
             new_callable=AsyncMock,
@@ -284,15 +307,11 @@ class TestProxyResourceRead:
         assert resp.status_code == 401
 
 
-@pytest.mark.unit
 class TestProxyPromptsList:
     """POST /api/v1/mcp/proxy/prompts/list"""
 
     async def test_prompts_list_success(self, client: AsyncClient) -> None:
-        mock_result = {
-            "prompts": [{"name": "greet", "description": "Say hi"}],
-            "next_cursor": None,
-        }
+        mock_result = ListPromptsResult(prompts=[Prompt(name="greet", description="Say hi")])
         with patch(
             "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
             new_callable=AsyncMock,
@@ -310,7 +329,7 @@ class TestProxyPromptsList:
         assert data["prompts"][0]["name"] == "greet"
 
     async def test_prompts_list_with_cursor(self, client: AsyncClient) -> None:
-        mock_result = {"prompts": [], "nextCursor": "c3"}
+        mock_result = ListPromptsResult(prompts=[], nextCursor="c3")
         with patch(
             "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
             new_callable=AsyncMock,

@@ -1,19 +1,13 @@
-"use client";
-
-import { useParams } from "next/navigation";
-
 import TodoListPage from "@/features/todo/components/TodoListPage";
 
-export default function ProjectTodosPage() {
-  const params = useParams();
-  const projectId = params.projectId as string;
+interface ProjectTodosPageProps {
+  params: Promise<{ projectId: string }>;
+}
 
-  // Get projects to find the project name
-  // const { projects } = useTodoData({ autoLoad: false });
-
-  // const project = useMemo(() => {
-  //   return projects.find((p) => p.id === projectId);
-  // }, [projects, projectId]);
+export default async function ProjectTodosPage({
+  params,
+}: Readonly<ProjectTodosPageProps>) {
+  const { projectId } = await params;
 
   return <TodoListPage filters={{ project_id: projectId, completed: false }} />;
 }

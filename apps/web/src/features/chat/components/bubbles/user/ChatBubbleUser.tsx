@@ -1,3 +1,5 @@
+import { Button } from "@heroui/button";
+import { RedoIcon } from "@icons";
 import Image from "next/image";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -17,6 +19,91 @@ import ChatBubbleFilePreview from "./ChatBubbleFilePreview";
 
 const DEFAULT_FILE_DATA: FileData[] = [];
 
+function scrollToMessage(messageId: string) {
+  const messageElement = document.getElementById(messageId);
+  if (!messageElement) return;
+  messageElement.scrollIntoView({ behavior: "smooth", block: "center" });
+  messageElement.style.transition = "all 0.3s ease";
+  messageElement.style.scale = "1.02";
+  setTimeout(() => {
+    messageElement.style.scale = "1";
+  }, 300);
+}
+
+function resolveUserBubbleStyles(
+  isEmojiOnly: boolean,
+  emojiCount: number,
+  fullWidth: boolean,
+): { bubbleClassName: string; textClassName: string } {
+  let bubbleClassName = "imessage-bubble imessage-from-me";
+  let textClassName = `flex ${fullWidth ? "max-w-full" : "max-w-[30vw]"} text-wrap whitespace-pre-wrap select-text`;
+
+  if (isEmojiOnly) {
+    if (emojiCount === 1) {
+      bubbleClassName = "select-none"; // No bubble background
+      textClassName += " text-5xl leading-none";
+    } else if (emojiCount === 2) textClassName += " text-4xl";
+    else if (emojiCount === 3) textClassName += " text-3xl";
+  }
+
+  return { bubbleClassName, textClassName };
+}
+
+interface BubbleIndicatorsProps {
+  fileData: FileData[];
+  selectedTool: ChatBubbleUserProps["selectedTool"];
+  toolCategory: ChatBubbleUserProps["toolCategory"];
+  selectedWorkflow: ChatBubbleUserProps["selectedWorkflow"];
+  selectedCalendarEvent: ChatBubbleUserProps["selectedCalendarEvent"];
+  replyToMessage: ChatBubbleUserProps["replyToMessage"];
+}
+
+function BubbleIndicators({
+  fileData,
+  selectedTool,
+  toolCategory,
+  selectedWorkflow,
+  selectedCalendarEvent,
+  replyToMessage,
+}: BubbleIndicatorsProps) {
+  return (
+    <>
+      {fileData.length > 0 && <ChatBubbleFilePreview files={fileData} />}
+
+      {selectedTool && (
+        <div className="flex justify-end top-1.5 relative">
+          <SelectedToolIndicator
+            toolName={selectedTool}
+            toolCategory={toolCategory}
+          />
+        </div>
+      )}
+
+      {selectedWorkflow && (
+        <div className="flex justify-end">
+          <SelectedWorkflowIndicator workflow={selectedWorkflow} />
+        </div>
+      )}
+
+      {selectedCalendarEvent && (
+        <div className="flex justify-end">
+          <SelectedCalendarEventIndicator event={selectedCalendarEvent} />
+        </div>
+      )}
+
+      {replyToMessage && (
+        <div className="flex justify-end">
+          <SelectedReplyIndicator
+            replyToMessage={replyToMessage}
+            isDisplayOnly={true}
+            onNavigate={scrollToMessage}
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function ChatBubbleUser({
   text,
   date,
@@ -28,6 +115,7 @@ export default function ChatBubbleUser({
   selectedCalendarEvent,
   replyToMessage,
   queued,
+  failed,
   disableActions = false,
   onRetry,
   isRetrying,
@@ -55,16 +143,11 @@ export default function ChatBubbleUser({
   const emojiCount = isEmojiOnly ? getEmojiCount(text) : 0;
 
   // Determine styles based on emoji count
-  let bubbleClassName = "imessage-bubble imessage-from-me";
-  let textClassName = `flex ${fullWidth ? "max-w-full" : "max-w-[30vw]"} text-wrap whitespace-pre-wrap select-text`;
-
-  if (isEmojiOnly) {
-    if (emojiCount === 1) {
-      bubbleClassName = "select-none"; // No bubble background
-      textClassName += " text-5xl leading-none";
-    } else if (emojiCount === 2) textClassName += " text-4xl";
-    else if (emojiCount === 3) textClassName += " text-3xl";
-  }
+  const { bubbleClassName, textClassName } = resolveUserBubbleStyles(
+    isEmojiOnly,
+    emojiCount,
+    fullWidth,
+  );
 
   return (
     <div
@@ -79,51 +162,14 @@ export default function ChatBubbleUser({
               queued ? "opacity-50" : "opacity-100"
             }`}
           >
-            {fileData.length > 0 && <ChatBubbleFilePreview files={fileData} />}
-
-            {selectedTool && (
-              <div className="flex justify-end top-1.5 relative">
-                <SelectedToolIndicator
-                  toolName={selectedTool}
-                  toolCategory={toolCategory}
-                />
-              </div>
-            )}
-
-            {selectedWorkflow && (
-              <div className="flex justify-end">
-                <SelectedWorkflowIndicator workflow={selectedWorkflow} />
-              </div>
-            )}
-
-            {selectedCalendarEvent && (
-              <div className="flex justify-end">
-                <SelectedCalendarEventIndicator event={selectedCalendarEvent} />
-              </div>
-            )}
-
-            {replyToMessage && (
-              <div className="flex justify-end">
-                <SelectedReplyIndicator
-                  replyToMessage={replyToMessage}
-                  isDisplayOnly={true}
-                  onNavigate={(messageId) => {
-                    const messageElement = document.getElementById(messageId);
-                    if (messageElement) {
-                      messageElement.scrollIntoView({
-                        behavior: "smooth",
-                        block: "center",
-                      });
-                      messageElement.style.transition = "all 0.3s ease";
-                      messageElement.style.scale = "1.02";
-                      setTimeout(() => {
-                        messageElement.style.scale = "1";
-                      }, 300);
-                    }
-                  }}
-                />
-              </div>
-            )}
+            <BubbleIndicators
+              fileData={fileData}
+              selectedTool={selectedTool}
+              toolCategory={toolCategory}
+              selectedWorkflow={selectedWorkflow}
+              selectedCalendarEvent={selectedCalendarEvent}
+              replyToMessage={replyToMessage}
+            />
 
             {text?.trim() && (
               <div className={bubbleClassName}>
@@ -168,8 +214,37 @@ export default function ChatBubbleUser({
           </div>
         )}
 
+        {/* Undelivered: a persistent label + retry, not the hover-only actions
+            row — a send that never landed must be visible without hovering. */}
+        {!disableActions && !queued && failed && (
+          <div
+            className={`flex items-center gap-2 ${hideAvatar ? "pr-1" : "pr-13"} pb-1`}
+          >
+            <span className="text-xs text-zinc-400 select-none">
+              Not delivered
+            </span>
+            {onRetry && (
+              <Button
+                className="h-7 min-w-0 px-2 text-xs"
+                isDisabled={isRetrying}
+                onPress={onRetry}
+                radius="full"
+                size="sm"
+                startContent={
+                  <div className={isRetrying ? "animate-spin" : ""}>
+                    <RedoIcon height={13} width={13} />
+                  </div>
+                }
+                variant="flat"
+              >
+                Retry
+              </Button>
+            )}
+          </div>
+        )}
+
         {/* Actions row below bubble, aligned under content (not avatar) */}
-        {!disableActions && !queued && (
+        {!disableActions && !queued && !failed && (
           <div
             className={`flex flex-col items-end gap-1 ${hideAvatar ? "pr-1" : "pr-13"} pb-1 opacity-0 transition-all group-hover:opacity-100`}
           >

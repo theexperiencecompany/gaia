@@ -1,11 +1,17 @@
 "use client";
 
+import { Chip } from "@heroui/chip";
 import { Spinner } from "@heroui/spinner";
 import { PuzzleIcon, ToolsIcon } from "@icons";
+import type { ApprovalStatus } from "@shared/chat";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { useState } from "react";
-import { BrainIcon, ChevronDown } from "@/components/shared/icons";
+import {
+  BrainIcon,
+  ChevronDown,
+  ShieldAlertIcon,
+} from "@/components/shared/icons";
 import { CompactMarkdown } from "@/components/ui/CompactMarkdown";
 import type { ToolCallEntry } from "@/config/registries/toolRegistry";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
@@ -18,6 +24,45 @@ const expandTransition = {
   duration: 0.2,
   ease: [0.32, 0.72, 0, 1] as const,
 };
+
+// A tool call blocked on a HIL approval shows this amber marker in place of the
+// running spinner, so the tree explains *why* the step is stuck (the approval
+// card below carries the actual approve/deny action).
+function WaitingForApprovalPill() {
+  return (
+    <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-amber-400">
+      <ShieldAlertIcon width={13} height={13} />
+      Waiting for approval
+    </span>
+  );
+}
+
+// A settled decision rides its tool's own row — one place tells the whole story.
+const APPROVAL_CHIP: Record<
+  string,
+  { label: string; color: "success" | "danger" | "warning" }
+> = {
+  approved: { label: "Approved", color: "success" },
+  auto_approved: { label: "Auto-approved", color: "success" },
+  denied: { label: "Denied", color: "danger" },
+  timeout: { label: "Expired", color: "warning" },
+  abandoned: { label: "Expired", color: "warning" },
+};
+
+function ApprovalOutcomeChip({ status }: Readonly<{ status: ApprovalStatus }>) {
+  const chip = APPROVAL_CHIP[status];
+  if (!chip) return null;
+  return (
+    <Chip
+      size="sm"
+      variant="flat"
+      color={chip.color}
+      className="ml-2 h-5 text-[10px]"
+    >
+      {chip.label}
+    </Chip>
+  );
+}
 
 // ── Top-level tool call row ─────────────────────────────────────────────────
 
@@ -69,11 +114,17 @@ function ToolCallRow({
   isLast,
   getIconUrl,
   getIntegrationName,
+  awaitingApproval,
+  approvalStatus,
 }: Readonly<{
   call: ToolCallEntry;
   isLast: boolean;
   getIconUrl: (c: ToolCallEntry) => string | undefined;
   getIntegrationName: (c: ToolCallEntry) => string | undefined;
+  /** This tool call is blocked on a pending HIL approval. */
+  awaitingApproval: boolean;
+  /** Settled HIL outcome for this call, rendered as a chip on the row. */
+  approvalStatus?: ApprovalStatus;
 }>) {
   const [expanded, setExpanded] = useState(false);
 
@@ -168,6 +219,12 @@ function ToolCallRow({
                 height={14}
               />
             )}
+            {awaitingApproval && (
+              <span className="ml-2">
+                <WaitingForApprovalPill />
+              </span>
+            )}
+            {approvalStatus && <ApprovalOutcomeChip status={approvalStatus} />}
           </div>
           {hasCategoryText && (
             <p className="text-[11px] text-zinc-600 leading-tight">
@@ -278,14 +335,33 @@ export function StepRow(
     isLast: boolean;
     getIconUrl: (c: ToolCallEntry) => string | undefined;
     getIntegrationName: (c: ToolCallEntry) => string | undefined;
+    pendingApprovalToolCallIds: Set<string>;
+    approvalStatusByToolCallId?: Map<string, ApprovalStatus>;
   }>,
 ) {
+  const {
+    pendingApprovalToolCallIds,
+    approvalStatusByToolCallId,
+    ...rowProps
+  } = props;
   if (props.call.reasoning != null) {
     return (
       <ThinkingStepRow reasoning={props.call.reasoning} isLast={props.isLast} />
     );
   }
-  return <ToolCallRow {...props} />;
+  const awaitingApproval =
+    !!props.call.tool_call_id &&
+    pendingApprovalToolCallIds.has(props.call.tool_call_id);
+  const approvalStatus = props.call.tool_call_id
+    ? approvalStatusByToolCallId?.get(props.call.tool_call_id)
+    : undefined;
+  return (
+    <ToolCallRow
+      {...rowProps}
+      awaitingApproval={awaitingApproval}
+      approvalStatus={approvalStatus}
+    />
+  );
 }
 
 // ── Subagent row (Option B style) ───────────────────────────────────────────
@@ -296,6 +372,8 @@ export function SubagentRow({
   isStreaming,
   getIconUrl,
   getIntegrationName,
+  pendingApprovalToolCallIds,
+  approvalStatusByToolCallId,
 }: Readonly<{
   group: EnrichedSubagentGroup;
   isLast: boolean;
@@ -305,6 +383,10 @@ export function SubagentRow({
   isStreaming: boolean;
   getIconUrl: (c: ToolCallEntry) => string | undefined;
   getIntegrationName: (c: ToolCallEntry) => string | undefined;
+  /** tool_call_ids blocked on a pending HIL approval — surfaces "Waiting for
+   *  approval" on the matching step and this subagent's header. */
+  pendingApprovalToolCallIds: Set<string>;
+  approvalStatusByToolCallId?: Map<string, ApprovalStatus>;
 }>) {
   // Running only while the stream is open: completed_at is null both for a
   // genuinely-running subagent AND for one whose end event never arrived, so
@@ -317,6 +399,13 @@ export function SubagentRow({
   // excluded (rendered separately as nested SubagentRows).
   const visibleSteps = group.tool_calls.filter(
     (tc) => tc.tool_name !== "spawn_subagent",
+  );
+  // One of this subagent's steps is blocked on approval — the header shows the
+  // amber marker instead of the neutral spinner so the pause reads as
+  // intentional, not a hang.
+  const awaitingApproval = visibleSteps.some(
+    (tc) =>
+      !!tc.tool_call_id && pendingApprovalToolCallIds.has(tc.tool_call_id),
   );
   // Count only real tool calls for the label (thinking blocks aren't "tools").
   const toolCount = visibleSteps.filter((s) => s.reasoning == null).length;
@@ -350,7 +439,11 @@ export function SubagentRow({
             <span className="text-xs font-medium text-zinc-400 group-hover/sa:text-zinc-300 transition-colors mr-auto">
               {group.subagent_name}
             </span>
-            <Spinner size="sm" color="default" />
+            {awaitingApproval ? (
+              <WaitingForApprovalPill />
+            ) : (
+              <Spinner size="sm" color="default" />
+            )}
             <ChevronDown
               className={`text-zinc-600 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
               width={14}
@@ -379,6 +472,8 @@ export function SubagentRow({
                       isLast={tIdx === visibleSteps.length - 1}
                       getIconUrl={getIconUrl}
                       getIntegrationName={getIntegrationName}
+                      pendingApprovalToolCallIds={pendingApprovalToolCallIds}
+                      approvalStatusByToolCallId={approvalStatusByToolCallId}
                     />
                   ))}
                 </div>
@@ -461,6 +556,8 @@ export function SubagentRow({
                         }
                         getIconUrl={getIconUrl}
                         getIntegrationName={getIntegrationName}
+                        pendingApprovalToolCallIds={pendingApprovalToolCallIds}
+                        approvalStatusByToolCallId={approvalStatusByToolCallId}
                       />
                     ))}
                   </div>
@@ -476,6 +573,8 @@ export function SubagentRow({
                         isStreaming={isStreaming}
                         getIconUrl={getIconUrl}
                         getIntegrationName={getIntegrationName}
+                        pendingApprovalToolCallIds={pendingApprovalToolCallIds}
+                        approvalStatusByToolCallId={approvalStatusByToolCallId}
                       />
                     ))}
                   </div>

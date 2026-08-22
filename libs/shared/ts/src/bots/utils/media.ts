@@ -16,6 +16,8 @@
  */
 import type { GaiaClient } from "../api";
 import type { BotFileData, BotUserContext, PlatformName } from "../types";
+import { getHttpStatus } from "./logger";
+import { wideLog } from "./wide-events";
 
 const MB = 1024 * 1024;
 
@@ -26,6 +28,13 @@ export const BOT_MEDIA_LIMITS = {
   /** OpenAI Whisper hard cap, matched by the backend transcribe endpoint. */
   audio: 25 * MB,
 } as const;
+
+/**
+ * How long an adapter waits for a platform to deliver media bytes before
+ * giving up with a {@link MediaReadTimeoutError}. Shared so a stalled download
+ * behaves identically on every platform.
+ */
+export const MEDIA_READ_TIMEOUT_MS = 30_000;
 
 /**
  * Max bytes a backend-originated artifact may be to deliver on each platform.
@@ -40,10 +49,15 @@ export const OUTBOUND_FILE_LIMITS: Record<PlatformName, number> = {
   slack: 50 * MB,
   telegram: 50 * MB, // bot API sendDocument limit
   whatsapp: 100 * MB, // WhatsApp document limit
+  imessage: 50 * MB, // Photon caps are undocumented; conservative floor
 };
 
 /** Normalised media kind, identical across platforms. */
 export type MediaKind = "image" | "audio" | "video" | "document" | "sticker";
+
+function mediaByteLimit(kind: MediaKind): number {
+  return kind === "audio" ? BOT_MEDIA_LIMITS.audio : BOT_MEDIA_LIMITS.file;
+}
 
 /**
  * Platform-agnostic descriptor of an inbound media message. Each adapter maps
@@ -60,6 +74,7 @@ export interface IncomingMedia {
   filename?: string;
   /** Caption sent alongside the media, used as the prompt when present. */
   caption?: string;
+  sizeBytes?: number;
 }
 
 /**
@@ -75,9 +90,42 @@ export function unsupportedMediaMessage(kind: string): string {
   const labels: Record<string, string> = {
     video: "videos",
     sticker: "stickers",
+    contact: "contact cards",
+    contacts: "contact cards",
+    richlink: "link previews",
   };
   const label = labels[kind] ?? `${kind} messages`;
   return `I can't process ${label} yet — please send your message as text, an image, a document, or a voice note. Type /help for available commands.`;
+}
+
+/**
+ * Reply for media the platform announced but delivered no way to fetch — the
+ * payload carries metadata with no attachment handle, so there is nothing to
+ * download and no error worth surfacing as a failure. Distinct from
+ * {@link unsupportedMediaMessage}, which answers a kind GAIA chooses not to
+ * process: here the kind is supported and the bytes simply never arrive.
+ */
+export function unfetchableMediaMessage(
+  kind: MediaKind,
+  isVoiceNote: boolean,
+): string {
+  if (isVoiceNote) {
+    return "Voice notes aren't supported here yet — please type your message instead.";
+  }
+  return `That ${kind} arrived without its file, so there's nothing for me to open. Please try sending it again.`;
+}
+
+/**
+ * Thrown by an adapter's download thunk when the platform stops delivering
+ * bytes before the deadline. Carried as an error rather than an outcome so it
+ * unwinds the same path as an upload/transcribe failure, where
+ * {@link friendlyMediaError} turns it into the reply the user sees.
+ */
+export class MediaReadTimeoutError extends Error {
+  constructor(message = "media read timed out") {
+    super(message);
+    this.name = "MediaReadTimeoutError";
+  }
 }
 
 /**
@@ -90,10 +138,11 @@ export function friendlyMediaError(
   err: unknown,
   pricingUrl?: string,
 ): string {
-  const status = (err as { status?: number })?.status;
-  const responseStatus = (err as { response?: { status?: number } })?.response
-    ?.status;
-  const code = status ?? responseStatus;
+  if (err instanceof MediaReadTimeoutError) {
+    return `That ${kind} took too long to download. Please try sending it again.`;
+  }
+
+  const code = (err as { status?: number })?.status ?? getHttpStatus(err);
 
   if (code === 401 || code === 403) {
     return "I need you to link your GAIA account first before I can read attachments. Send /auth to get started.";
@@ -160,38 +209,81 @@ export function extensionForMime(mimeType: string, fallback: string): string {
   return lookup[mime] ?? fallback;
 }
 
+function rejectOversizeMedia(
+  kind: MediaKind,
+  bytes: number,
+  limit: number,
+): MediaOutcome {
+  const isAudio = kind === "audio";
+  wideLog.warning(
+    isAudio ? "media_over_audio_limit" : "media_over_file_limit",
+    {
+      media_kind: kind,
+      bytes,
+      limit,
+    },
+  );
+  wideLog.setNs("media", {
+    action: "reply",
+    rejected: isAudio ? "audio_too_large" : "file_too_large",
+  });
+  return {
+    action: "reply",
+    text: isAudio
+      ? `That voice note is too large to transcribe (limit: ${
+          limit / MB
+        } MB). Please send a shorter message.`
+      : `That file is too large to process (limit: ${
+          limit / MB
+        } MB). Please share a smaller file.`,
+  };
+}
+
 /**
  * Turns an inbound media message into the next action for the adapter:
  * transcribe audio into a chat turn, upload an image/document and attach it,
  * reject an unsupported kind, or reject an oversize payload.
  *
  * `downloadBytes` is a thunk so unsupported kinds (video, sticker) never incur
- * a download. The only side effects are the GAIA upload/transcribe network
- * calls, injected via {@link GaiaClient}; everything else is pure, which keeps
- * the routing logic testable with a fake client and no platform SDK.
+ * a download, and a platform that declares `sizeBytes` skips it for an
+ * oversize payload too. It receives the largest number of bytes still worth
+ * fetching — one past the cap, the fewest that prove it was exceeded — and an
+ * adapter whose transport can stream must stop there rather than buffer an
+ * untrusted attachment whole. The only side effects are the GAIA
+ * upload/transcribe network calls, injected via {@link GaiaClient}; everything
+ * else is pure, which keeps the routing logic testable with a fake client and
+ * no platform SDK.
+ *
+ * Every exit records why it took the branch it did under the event's `media`
+ * namespace (`BaseBotAdapter.resolveIncomingMedia` opens the boundary), so a
+ * user whose attachment "did nothing" is answerable from the log instead of
+ * from a guess.
  */
 export async function processBotMedia(
   gaia: GaiaClient,
   media: IncomingMedia,
-  downloadBytes: () => Promise<Uint8Array>,
+  downloadBytes: (maxBytes: number) => Promise<Uint8Array>,
   ctx: BotUserContext,
 ): Promise<MediaOutcome> {
   if (media.kind === "video" || media.kind === "sticker") {
+    wideLog.setNs("media", { action: "reply", rejected: "unsupported_kind" });
     return { action: "reply", text: unsupportedMediaMessage(media.kind) };
   }
 
-  const bytes = await downloadBytes();
+  const limit = mediaByteLimit(media.kind);
+  if (media.sizeBytes !== undefined && media.sizeBytes > limit) {
+    wideLog.setNs("media", { declared_bytes: media.sizeBytes });
+    return rejectOversizeMedia(media.kind, media.sizeBytes, limit);
+  }
+
+  const bytes = await downloadBytes(limit + 1);
+  wideLog.setNs("media", { bytes: bytes.byteLength });
+
+  if (bytes.byteLength > limit) {
+    return rejectOversizeMedia(media.kind, bytes.byteLength, limit);
+  }
 
   if (media.kind === "audio") {
-    if (bytes.byteLength > BOT_MEDIA_LIMITS.audio) {
-      return {
-        action: "reply",
-        text: `That voice note is too large to transcribe (limit: ${
-          BOT_MEDIA_LIMITS.audio / MB
-        } MB). Please send a shorter message.`,
-      };
-    }
-
     const filename = media.isVoiceNote
       ? "voice-note.ogg"
       : `audio${extensionForMime(media.mimeType, ".ogg")}`;
@@ -203,6 +295,8 @@ export async function processBotMedia(
     ).trim();
 
     if (!transcript) {
+      wideLog.warning("media_transcript_empty", { media_kind: media.kind });
+      wideLog.setNs("media", { action: "reply", rejected: "empty_transcript" });
       return {
         action: "reply",
         text: "I couldn't understand that audio. Could you try recording again or sending a text message?",
@@ -213,17 +307,11 @@ export async function processBotMedia(
     const text = media.caption
       ? `${media.caption.trim()}\n\n${transcript}`
       : transcript;
+    wideLog.setNs("media", {
+      action: "chat",
+      transcript_length: transcript.length,
+    });
     return { action: "chat", text, attachments: [] };
-  }
-
-  // image | document
-  if (bytes.byteLength > BOT_MEDIA_LIMITS.file) {
-    return {
-      action: "reply",
-      text: `That file is too large to process (limit: ${
-        BOT_MEDIA_LIMITS.file / MB
-      } MB). Please share a smaller file.`,
-    };
   }
 
   const filename =

@@ -10,12 +10,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { authApi } from "@/features/auth/api/authApi";
 import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
 import { CustomResponseStyleInput } from "@/features/settings/components/CustomResponseStyleInput";
+import { HilApprovalMode } from "@/features/settings/components/HilApprovalMode";
 import { StatusIndicator } from "@/features/settings/components/StatusIndicator";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { mergedOnboardingUpdate } from "@/features/settings/utils/onboardingPreferences";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import {
   getCurrentBrowserTimezone,
@@ -126,12 +126,6 @@ export default function PreferencesSettings({
           }
 
           toast.success("Preferences saved");
-          trackEvent(ANALYTICS_EVENTS.SETTINGS_PREFERENCES_CHANGED, {
-            profession: updatedPreferences.profession,
-            response_style: updatedPreferences.response_style,
-            timezone_changed:
-              timezone !== lastSavedPreferences.current.timezone,
-          });
           lastSavedPreferences.current = updatedPreferences;
         } else {
           // Rollback on failure
@@ -379,6 +373,8 @@ export default function PreferencesSettings({
             )}
         </SettingsRow>
       </SettingsSection>
+
+      <HilApprovalMode />
 
       <SettingsSection>
         <SettingsRow

@@ -6,6 +6,9 @@ Provides type-safe event tracking with consistent naming conventions.
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
+from uuid import NAMESPACE_URL, uuid5
+
+from posthog import Posthog
 
 from app.constants.auth import LOGIN_METHOD_WORKOS
 from app.core.lazy_loader import providers
@@ -22,22 +25,120 @@ class AnalyticsEvents(StrEnum):
     USER_LOGGED_IN = "user:logged_in"
     USER_LOGGED_OUT = "user:logged_out"
 
+    # Core product actions
+    CHAT_MESSAGE_SUBMITTED = "chat:message_submitted"
+    # The other half of submitted: a turn stopped at a gate, carrying why.
+    # Without it a refusal is a MISSING event, and missing is
+    # indistinguishable from a user who never typed.
+    CHAT_MESSAGE_REFUSED = "chat:message_refused"
+    WORKFLOW_CREATED = "workflow:created"
+    WORKFLOW_EXECUTED = "workflow:executed"
+    WORKFLOW_ACTIVATED = "workflow:activated"
+    WORKFLOW_PUBLISHED = "workflow:published"
+    PAYMENT_CHECKOUT_STARTED = "payment:checkout_started"
+    SUBSCRIPTION_CANCELLATION_REQUESTED = "subscription:cancellation_requested"
+    FEEDBACK_MESSAGE_SUBMITTED = "feedback:message_submitted"
+    SESSION_ARTIFACT_PINNED = "session:artifact_pinned"
+    PROFILE_UPDATED = "profile:updated"
+
+    # Lifecycle email
+    NURTURE_EMAIL_SENT = "nurture:email_sent"
+
     # Payments (used by payment webhook processing)
     PAYMENT_SUCCEEDED = "payment:succeeded"
     PAYMENT_FAILED = "payment:failed"
-    PAYMENT_REFUNDED = "payment:refunded"
 
     # Subscription lifecycle (used by payment webhook processing)
     SUBSCRIPTION_ACTIVATED = "subscription:activated"
     SUBSCRIPTION_RENEWED = "subscription:renewed"
     SUBSCRIPTION_CANCELLED = "subscription:cancelled"
     SUBSCRIPTION_EXPIRED = "subscription:expired"
-    SUBSCRIPTION_FAILED = "subscription:failed"
+    RATE_LIMIT_HIT = "rate_limit_hit"
+
+    # Conversations
+    CONVERSATION_CREATED = "chat:conversation_created"
+    CONVERSATION_RENAMED = "chat:conversation_renamed"
+    CONVERSATION_STARRED = "chat:conversation_starred"
+    CONVERSATION_DELETED = "chat:conversation_deleted"
+    CHAT_MESSAGE_COMPLETED = "chat:message_completed"
+    CHAT_MESSAGE_CANCELLED = "chat:message_cancelled"
+
+    # Files
+    FILE_UPLOADED = "chat:file_uploaded"
+
+    # Todos
+    TODO_CREATED = "todos:created"
+    TODO_UPDATED = "todos:updated"
+    # Toggled, not completed: the same event fires for un-completing, and the
+    # value is what the frontend's TODOS_TOGGLED already emits.
+    TODO_TOGGLED = "todos:toggled"
+    TODO_DELETED = "todos:deleted"
+
+    CALENDAR_EVENT_CREATED = "calendar:event_created"
+    CALENDAR_EVENT_UPDATED = "calendar:event_updated"
+    CALENDAR_EVENT_DELETED = "calendar:event_deleted"
+
+    EMAIL_SENT = "email:sent"
+    EMAIL_REPLIED = "email:replied"
+    # NOT the same as the web's email:compose_opened, which is the user opening
+    # the modal. This fires when the ASSISTANT finishes composing a draft — a
+    # different action that happened to be wearing the same name.
+    EMAIL_COMPOSED = "email:draft_composed"
+
+    # Memory
+    MEMORY_CLEARED = "memory:cleared"
+    MEMORY_ITEM_DELETED = "memory:item_deleted"
+
+    # Notes
+    NOTE_CREATED = "notes:created"
+    NOTE_UPDATED = "notes:updated"
+    NOTE_DELETED = "notes:deleted"
+
+    # Reminders
+    REMINDER_CREATED = "reminder:created"
+    REMINDER_COMPLETED = "reminder:completed"
+    REMINDER_DELETED = "reminder:deleted"
+
+    # Bot-originated actions with no web equivalent
+    BOT_SESSION_RESET = "bot:session_reset"
+    BOT_AUDIO_TRANSCRIBED = "bot:audio_transcribed"
+
+    # Search
+    SEARCH_PERFORMED = "search:performed"
+
+    NOTIFICATION_PREFERENCE_UPDATED = "settings:notifications_toggled"
+
+    # Onboarding
+    ONBOARDING_STEP_COMPLETED = "onboarding:step_completed"
+    ONBOARDING_COMPLETED = "onboarding:completed"
+
+    # Integrations
+    INTEGRATION_CONNECTED = "integration:connected"
+    INTEGRATION_DISCONNECTED = "integration:disconnected"
+
+    # Skills
+    SKILL_INSTALLED = "skill:installed"
+    SKILL_UNINSTALLED = "skill:uninstalled"
+
+    # Support
+    SUPPORT_TICKET_SUBMITTED = "support:form_submitted"
+
+    # Settings / profile
+    SETTINGS_PREFERENCES_CHANGED = "settings:preferences_changed"
+
+    # Worker / agent lifecycle
+    AGENT_RUN_STARTED = "agent:run_started"
+    AGENT_RUN_COMPLETED = "agent:run_completed"
+    AGENT_RUN_FAILED = "agent:run_failed"
+    TOOL_USED = "tool:used"
+
+    USAGE_QUERIED = "usage:queried"
 
 
-def _get_posthog_client():
+def _get_posthog_client() -> Posthog | None:
     """Get the PostHog client from providers."""
-    return providers.get("posthog")
+    client: Posthog | None = providers.get("posthog")
+    return client
 
 
 def identify_user(
@@ -48,9 +149,8 @@ def identify_user(
     Identify a user in PostHog with their properties.
 
     Args:
-        user_id: PostHog distinct_id - use EMAIL for consistency with frontend.
-                 Frontend identifies users by email, so backend must match.
-        properties: User properties to set
+        user_id: Stable PostHog distinct_id from the application's user record.
+        properties: Person properties to set
     """
     client = _get_posthog_client()
     if client is None:
@@ -65,25 +165,58 @@ def identify_user(
             properties={"first_seen": datetime.now(UTC).isoformat()},
         )
     except Exception as e:
-        log.error(f"Failed to identify user in PostHog: {e}")
+        log.error(
+            "Failed to identify user in PostHog",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
+
+
+def capture_context_event(
+    event: str,
+    properties: dict[str, Any] | None = None,
+) -> None:
+    """Capture an event attributed by the active PostHog request context."""
+    client = _get_posthog_client()
+    if client is None:
+        log.debug("PostHog client not available, skipping event", event=event)
+        return
+
+    try:
+        client.capture(
+            event=event,
+            properties={
+                **(properties or {}),
+                "timestamp": datetime.now(UTC).isoformat(),
+            },
+        )
+    except Exception as e:
+        log.error(
+            "Failed to capture event in PostHog",
+            event=event,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 def capture_event(
     user_id: str,
     event: str,
     properties: dict[str, Any] | None = None,
+    dedupe_key: str | None = None,
 ) -> None:
-    """
-    Capture an analytics event in PostHog.
+    """Capture an analytics event in PostHog, attributed to ``user_id``.
 
-    Args:
-        user_id: Unique identifier for the user
-        event: Event name
-        properties: Event properties
+    ``dedupe_key`` makes the capture idempotent: pass a value derived from the
+    thing that happened (a run id, a user plus a phase) and PostHog collapses
+    repeats of it into one event. Anything emitted from a retryable worker task
+    needs one — an ARQ retry re-runs the whole body, and without a key the
+    second pass simply counts the milestone twice.
     """
     client = _get_posthog_client()
     if client is None:
-        log.debug(f"PostHog client not available, skipping event: {event}")
+        log.debug("PostHog client not available, skipping event", event=event)
         return
 
     log.set(analytics={"user_id": user_id, "event": event})
@@ -92,13 +225,27 @@ def capture_event(
             **(properties or {}),
             "timestamp": datetime.now(UTC).isoformat(),
         }
+        # A stable uuid is PostHog's dedupe key — the same one twice is stored
+        # once. uuid5 so the same inputs always produce the same id, on any
+        # worker, on any retry.
         client.capture(
             event=event,
             distinct_id=user_id,
             properties=event_properties,
+            **(
+                {"uuid": str(uuid5(NAMESPACE_URL, f"{event}:{user_id}:{dedupe_key}"))}
+                if dedupe_key
+                else {}
+            ),
         )
     except Exception as e:
-        log.error(f"Failed to capture event {event} in PostHog: {e}")
+        log.error(
+            "Failed to capture event in PostHog",
+            event=event,
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
 
 
 def track_signup(
@@ -118,11 +265,9 @@ def track_signup(
         signup_method: How the user signed up (workos, google, email)
         properties: Additional properties
     """
-    # First identify the user
     identify_user(
-        email,
+        user_id,
         {
-            "user_id": user_id,
             "email": email,
             "name": name,
             "signup_method": signup_method,
@@ -130,14 +275,10 @@ def track_signup(
         },
     )
 
-    # Then capture the signup event
     capture_event(
-        email,
+        user_id,
         AnalyticsEvents.USER_SIGNED_UP,
         {
-            "user_id": user_id,
-            "email": email,
-            "name": name,
             "signup_method": signup_method,
             **(properties or {}),
         },
@@ -162,9 +303,8 @@ def track_login(
         properties: Additional properties
     """
     identify_user(
-        email,
+        user_id,
         {
-            "user_id": user_id,
             "email": email,
             "name": name,
             "last_login_method": login_method,
@@ -173,12 +313,9 @@ def track_login(
     )
 
     capture_event(
-        email,
+        user_id,
         AnalyticsEvents.USER_LOGGED_IN,
         {
-            "user_id": user_id,
-            "email": email,
-            "name": name,
             "login_method": login_method,
             **(properties or {}),
         },
@@ -187,7 +324,6 @@ def track_login(
 
 def track_logout(
     user_id: str,
-    email: str,
     properties: dict[str, Any] | None = None,
 ) -> None:
     """
@@ -195,17 +331,12 @@ def track_logout(
 
     Args:
         user_id: User's unique identifier
-        email: User's email address
         properties: Additional properties
     """
     capture_event(
-        email,
+        user_id,
         AnalyticsEvents.USER_LOGGED_OUT,
-        {
-            "user_id": user_id,
-            "email": email,
-            **(properties or {}),
-        },
+        properties,
     )
 
 
@@ -285,7 +416,12 @@ def track_subscription_event(
     try:
         client.set(distinct_id=user_id, properties=metadata)
     except Exception as e:
-        log.error(f"Failed to update user subscription properties: {e}")
+        log.error(
+            "Failed to update user subscription properties",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
 
 
 def track_payment_event(

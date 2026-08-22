@@ -3,12 +3,13 @@ Google Sheets trigger handler with cascading dropdown support.
 """
 
 import asyncio
-from typing import Any
+from collections.abc import Sequence
+from typing import Any, ClassVar
 
 from composio.types import ToolExecutionResponse
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import workflows_collection
+from app.db.repositories.workflows import workflow_repository
 from app.models.composio_schemas import (
     GoogleSheetsGetSheetNamesData,
     GoogleSheetsGetSheetNamesInput,
@@ -17,11 +18,12 @@ from app.models.composio_schemas import (
     GoogleSheetsSearchSpreadsheetsData,
     GoogleSheetsSearchSpreadsheetsInput,
 )
+from app.models.trigger_config import TriggerOption, TriggerOptionGroup
 from app.models.trigger_configs import (
     GoogleSheetsNewRowConfig,
     GoogleSheetsNewSheetConfig,
 )
-from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
+from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
 from app.utils.exceptions import TriggerRegistrationError
@@ -31,18 +33,18 @@ from shared.py.wide_events import log
 class GoogleSheetsTriggerHandler(TriggerHandler):
     """Handler for Google Sheets triggers with multi-select support."""
 
-    SUPPORTED_TRIGGERS = [
+    SUPPORTED_TRIGGERS: ClassVar[list[str]] = [
         "google_sheets_new_row",
         "google_sheets_new_sheet",
     ]
 
-    SUPPORTED_EVENTS = {
+    SUPPORTED_EVENTS: ClassVar[set[str]] = {
         "GOOGLEDOCS_NEW_ROWS_TRIGGER",
         "GOOGLESHEETS_NEW_ROWS_TRIGGER",
         "GOOGLESHEETS_NEW_SHEET_ADDED_TRIGGER",
     }
 
-    TRIGGER_TO_COMPOSIO = {
+    TRIGGER_TO_COMPOSIO: ClassVar[dict[str, str]] = {
         "google_sheets_new_row": "GOOGLESHEETS_NEW_ROWS_TRIGGER",
         "google_sheets_new_sheet": "GOOGLESHEETS_NEW_SHEET_ADDED_TRIGGER",
     }
@@ -62,9 +64,13 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
         user_id: str,
         integration_id: str,
         parent_ids: list[str] | None = None,
-        **kwargs: Any,
-    ) -> list[dict[str, Any]]:
-        """Get dynamic options for Google Sheets trigger config fields."""
+        **_kwargs: str,
+    ) -> Sequence[TriggerOption | TriggerOptionGroup]:
+        """Get dynamic options for Google Sheets trigger config fields.
+
+        ``spreadsheet_ids`` yields flat options; ``sheet_names`` yields one
+        group per parent spreadsheet.
+        """
         try:
             composio_service = get_composio_service()
 
@@ -94,7 +100,12 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
 
                 # Check response status
                 if not result["successful"]:
-                    log.error(f"{LogTag.TRIGGER} Google Sheets API error: {result['error']}")
+                    log.error(
+                        f"{LogTag.TRIGGER} Google Sheets API error",
+                        error=result["error"],
+                        user_id=user_id,
+                        integration_id=integration_id,
+                    )
                     return []
 
                 # Extract and parse data
@@ -115,10 +126,11 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                     if is_shared and not is_owned_by_me:
                         label = f"{sheet.name} (Shared)"
 
-                    options.append({"value": sheet.id, "label": label})
+                    options.append(TriggerOption(value=sheet.id, label=label))
 
                 log.info(
-                    f"{LogTag.TRIGGER} Returning {len(options)} Google Sheets spreadsheet options"
+                    f"{LogTag.TRIGGER} Returning Google Sheets spreadsheet options",
+                    options_count=len(options),
                 )
                 return options
 
@@ -135,7 +147,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                 # Fetch sheet names for all spreadsheets in parallel
                 async def fetch_sheets_for_spreadsheet(
                     spreadsheet_id: str,
-                ) -> dict[str, Any] | None:
+                ) -> TriggerOptionGroup | None:
                     """Fetch sheet names for a single spreadsheet."""
                     input_model = GoogleSheetsGetSheetNamesInput(spreadsheet_id=spreadsheet_id)
                     sheets_result: ToolExecutionResponse = await asyncio.to_thread(
@@ -145,8 +157,9 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
 
                     if not sheets_result["successful"]:
                         log.error(
-                            f"{LogTag.TRIGGER} Failed to get sheet names for {spreadsheet_id}: "
-                            f"{sheets_result['error']}"
+                            f"{LogTag.TRIGGER} Failed to get sheet names for",
+                            spreadsheet_id=spreadsheet_id,
+                            sheets_result_error=sheets_result["error"],
                         )
                         return None
 
@@ -157,12 +170,14 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                         return None
 
                     # Use spreadsheet_id as group name for now
-                    options = [
-                        {"value": f"{spreadsheet_id}::{name}", "label": name}
-                        for name in sheet_names
-                        if name
-                    ]
-                    return {"group": spreadsheet_id, "options": options}
+                    return TriggerOptionGroup(
+                        group=spreadsheet_id,
+                        options=[
+                            TriggerOption(value=f"{spreadsheet_id}::{name}", label=name)
+                            for name in sheet_names
+                            if name
+                        ],
+                    )
 
                 # Run all fetches in parallel
                 results = await asyncio.gather(
@@ -171,21 +186,31 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                 )
 
                 # Filter out None/errors and collect results
-                grouped_results = [r for r in results if isinstance(r, dict) and r is not None]
+                grouped_results = [r for r in results if isinstance(r, TriggerOptionGroup)]
 
-                log.info(f"{LogTag.TRIGGER} Returning {len(grouped_results)} grouped sheet options")
+                log.info(
+                    f"{LogTag.TRIGGER} Returning grouped sheet options",
+                    grouped_results_count=len(grouped_results),
+                )
                 return grouped_results
 
             return []
 
         except Exception as e:
-            log.error(f"{LogTag.TRIGGER} Failed to get Google Sheets options for {field_name}: {e}")
+            log.error(
+                f"{LogTag.TRIGGER} Failed to get Google Sheets options for",
+                field_name=field_name,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+                integration_id=integration_id,
+            )
             return []
 
     async def register(
         self,
         user_id: str,
-        workflow_id: str,
+        _workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:
@@ -199,7 +224,12 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
         """
         composio_slug = self.TRIGGER_TO_COMPOSIO.get(trigger_name)
         if not composio_slug:
-            log.error(f"{LogTag.TRIGGER} Unknown Google Sheets trigger: {trigger_name}")
+            log.error(
+                f"{LogTag.TRIGGER} Unknown Google Sheets trigger",
+                trigger_name=trigger_name,
+                user_id=user_id,
+                workflow_id=_workflow_id,
+            )
             raise TriggerRegistrationError(
                 f"Unknown Google Sheets trigger: {trigger_name}",
                 trigger_name,
@@ -232,7 +262,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
 
         # Build list of trigger configs to register
         configs: list[dict[str, Any]] = []
-        spreadsheets_to_monitor = spreadsheet_ids if spreadsheet_ids else [None]  # type: ignore
+        spreadsheets_to_monitor = spreadsheet_ids if spreadsheet_ids else [None]
 
         for spreadsheet_id in spreadsheets_to_monitor:
             if trigger_name == "google_sheets_new_row" and sheet_names:
@@ -269,13 +299,6 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
         """Find workflows matching a Google Sheets trigger event."""
         log.set_ns("trigger", integration_id="google_sheets", trigger_type=event_type)
         try:
-            query = {
-                "activated": True,
-                "trigger_config.type": TriggerType.INTEGRATION,
-                "trigger_config.enabled": True,
-                "trigger_config.composio_trigger_ids": trigger_id,
-            }
-
             # optional: validate payload if it's a new row event
             # Validate payload
             try:
@@ -284,26 +307,23 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                 elif "new_sheet" in event_type.lower():
                     GoogleSheetsNewSheetAddedPayload.model_validate(data)
             except Exception as e:
-                log.debug(f"{LogTag.TRIGGER} Google Sheets payload validation failed: {e}")
+                log.debug(
+                    f"{LogTag.TRIGGER} Google Sheets payload validation failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
 
-            cursor = workflows_collection.find(query)
             workflows: list[Workflow] = []
-
-            async for workflow_doc in cursor:
-                try:
-                    workflow_doc["id"] = workflow_doc.get("_id")
-                    if "_id" in workflow_doc:
-                        del workflow_doc["_id"]
-                    workflow = Workflow(**workflow_doc)
-                    workflows.append(workflow)
-                except Exception as e:
-                    log.error(f"{LogTag.TRIGGER} Error processing workflow document: {e}")
-                    continue
-
+            workflows.extend(await workflow_repository.find_active_by_composio_trigger(trigger_id))
             return workflows
 
         except Exception as e:
-            log.error(f"{LogTag.TRIGGER} Error finding workflows for trigger {trigger_id}: {e}")
+            log.error(
+                f"{LogTag.TRIGGER} Error finding workflows for trigger",
+                trigger_id=trigger_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return []
 
 

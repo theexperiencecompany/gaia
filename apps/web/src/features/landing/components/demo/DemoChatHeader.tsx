@@ -9,18 +9,10 @@ import {
   SearchIcon,
   SidebarLeft01Icon,
   SidebarRight01Icon,
-  Target02Icon,
   ZapIcon,
 } from "@icons";
-import dynamic from "next/dynamic";
 import type { ComponentType, SVGAttributes } from "react";
 import type { DemoPage } from "./types";
-
-// DemoModelPicker uses HeroUI Select which generates react-aria IDs that differ
-// between SSR and client. Lazy-load it client-only to avoid the hydration mismatch.
-const DemoModelPicker = dynamic(() => import("./DemoModelPicker"), {
-  ssr: false,
-});
 
 const PAGE_META: Record<
   Exclude<DemoPage, "chats">,
@@ -31,7 +23,6 @@ const PAGE_META: Record<
   workflows: { Icon: ZapIcon, title: "Workflows" },
   integrations: { Icon: ConnectIcon, title: "Integrations" },
   todos: { Icon: CheckListIcon, title: "Todos" },
-  goals: { Icon: Target02Icon, title: "Goals" },
 };
 
 interface DemoChatHeaderProps {
@@ -92,10 +83,7 @@ export default function DemoChatHeader({
 
   return (
     <div className="flex h-11 shrink-0 items-center justify-between px-3">
-      <div className="flex items-center gap-1">
-        {sidebarToggle}
-        <DemoModelPicker />
-      </div>
+      <div className="flex items-center gap-1">{sidebarToggle}</div>
       <div className="flex items-center">
         {[
           { Icon: SearchIcon, label: "Search" },

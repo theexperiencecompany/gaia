@@ -16,6 +16,7 @@ will fail immediately:
 Requires: PostgreSQL running at localhost:5432 with database gaia_test.
 """
 
+from collections.abc import Callable, Iterator
 import contextlib
 
 # ---------------------------------------------------------------------------
@@ -28,14 +29,20 @@ from uuid import uuid4
 
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langgraph.store.base import BaseStore
 from psycopg_pool import AsyncConnectionPool
 import pytest
 
+from app.agents.core.graph_builder import build_graph as build_graph_module
 from app.agents.core.graph_builder.build_graph import build_comms_graph
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
+from app.agents.core.nodes import pre_model_hooks as pre_model_hooks_module
 from app.agents.core.nodes.filter_messages import filter_messages_node
+from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
+from app.constants.general import FINISH_TASK_NAME
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
 from tests.helpers import (
@@ -43,8 +50,31 @@ from tests.helpers import (
 )
 
 POSTGRES_TEST_URL = os.environ.get(
-    "DATABASE_URL", "postgresql://gaia:gaia@localhost:5432/gaia_test"
+    "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/gaia_test"
 )
+
+# The hooks build_comms_graph declares, in the order the graph must run them.
+# executor_status_hook must stay before manage_system_prompts_node so the
+# status frame lands inside the system block (Gemini drops trailing system
+# messages).
+COMMS_PRE_MODEL_HOOKS = [
+    "filter_messages_node",
+    "executor_status_hook",
+    "manage_system_prompts_node",
+]
+COMMS_END_GRAPH_HOOKS = ["follow_up_actions_node", "memory_node"]
+COMMS_HOOKS = COMMS_PRE_MODEL_HOOKS + COMMS_END_GRAPH_HOOKS
+
+# "select_tools" is absent because the comms graph is built with
+# disable_retrieve_tools=True.
+COMMS_GRAPH_NODES = {
+    "__start__",
+    "agent",
+    "tools",
+    FINISH_TASK_NAME,
+    "reject_unbound_tools",
+    "end_graph_hooks",
+}
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -64,7 +94,7 @@ def _thread_config(extra: dict[str, Any] | None = None) -> dict:
 
 def _make_store_mock() -> MagicMock:
     """Return a mock that satisfies langgraph.store.base.BaseStore."""
-    store = MagicMock()
+    store = MagicMock(spec=BaseStore)
     store.aget = AsyncMock(return_value=None)
     store.aput = AsyncMock(return_value=None)
     store.asearch = AsyncMock(return_value=[])
@@ -76,15 +106,9 @@ def _follow_up_io_patches() -> list:
     """Return patches for follow_up_actions_node I/O boundaries."""
     return [
         patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_free_llm_chain",
-            return_value=MagicMock(),
-        ),
-        patch(
-            "app.agents.core.nodes.follow_up_actions_node.invoke_with_fallback",
+            "app.agents.core.nodes.follow_up_actions_node.ainvoke_structured",
             new_callable=AsyncMock,
-            return_value=AIMessage(
-                content='{"actions": ["Action 1", "Action 2", "Action 3", "Action 4"]}'
-            ),
+            return_value=FollowUpActions(actions=["Action 1", "Action 2", "Action 3", "Action 4"]),
         ),
         patch(
             "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",
@@ -134,6 +158,46 @@ def _apply_patches(store_mock: MagicMock, extra_patches: list | None = None):
         for p in extra_patches or []:
             stack.enter_context(p)
         yield
+
+
+def _recording_hook(name: str, real: Callable, calls: list[str]) -> Callable:
+    """Wrap a hook so its execution is recorded, then delegate to the real one.
+
+    Async hooks return a coroutine that ``execute_hooks`` awaits afterwards, so
+    recording at call time still yields the true sequential order.
+    """
+
+    def hook(state: Any, config: Any, store: Any) -> Any:
+        calls.append(name)
+        return real(state, config, store)
+
+    return hook
+
+
+@contextlib.contextmanager
+def _record_hook_execution(names: list[str]) -> Iterator[list[str]]:
+    """Patch the named hooks with recording wrappers, in whichever module the
+    graph builder resolves them from.
+
+    Pre-model hooks are composed in ``pre_model_hooks``; the end-graph hooks are
+    still named directly in ``build_graph``. Patched where each is looked up,
+    because patching the definition site would leave the already-imported name
+    in the composer untouched and the recorder silently empty.
+
+    Yields the list the wrappers append to, so a test can assert exactly which
+    hooks the compiled graph ran and in what order.
+    """
+    calls: list[str] = []
+    with contextlib.ExitStack() as stack:
+        for name in names:
+            module = next(
+                (m for m in (pre_model_hooks_module, build_graph_module) if hasattr(m, name)),
+                None,
+            )
+            assert module is not None, f"no module exposes hook {name!r} to patch"
+            real = getattr(module, name)
+            stack.enter_context(patch.object(module, name, _recording_hook(name, real, calls)))
+        yield calls
 
 
 @contextlib.contextmanager
@@ -189,7 +253,8 @@ async def pg_checkpointer():
 
     Sets up the checkpoint tables and yields the checkpointer.
     Cleans up the connection pool on teardown.
-    Skips the test if PostgreSQL is not reachable.
+    Real-infra tier: skips at setup without dialing when USE_REAL_SERVICES is
+    not explicitly "1"; when opted in, a missing Postgres is a loud failure.
     """
     connection_kwargs = {
         "autocommit": True,
@@ -202,12 +267,12 @@ async def pg_checkpointer():
         open=False,
         timeout=10,
     )
-    try:
-        await pool.open(wait=True, timeout=10)
-    except Exception:
-        if os.environ.get("USE_REAL_SERVICES", "1") == "1":
-            raise  # In CI with real services, Postgres must be running
+    if os.environ.get("USE_REAL_SERVICES") != "1":
+        # Not opted in: skip without ever dialing localhost (hermetic run).
         pytest.skip("PostgreSQL not available at " + POSTGRES_TEST_URL)
+    # Opted in (e.g., the Dagger CI container): a missing Postgres propagates
+    # as a loud failure instead of a skip.
+    await pool.open(wait=True, timeout=10)
 
     checkpointer = AsyncPostgresSaver(conn=pool)
     await checkpointer.setup()
@@ -222,13 +287,13 @@ async def pg_checkpointer_manager():
     """Create a real CheckpointerManager backed by test PostgreSQL.
 
     Uses the production CheckpointerManager class directly.
-    Skips the test if PostgreSQL is not reachable.
+    Real-infra tier: skips at setup without dialing when USE_REAL_SERVICES is
+    not explicitly "1"; when opted in, a missing Postgres is a loud failure.
     """
-    manager = CheckpointerManager(conninfo=POSTGRES_TEST_URL, max_pool_size=5)
-    try:
-        await manager.setup()
-    except Exception:
+    if os.environ.get("USE_REAL_SERVICES") != "1":
         pytest.skip("PostgreSQL not available at " + POSTGRES_TEST_URL)
+    manager = CheckpointerManager(conninfo=POSTGRES_TEST_URL, max_pool_size=5)
+    await manager.setup()
 
     yield manager
 
@@ -244,30 +309,63 @@ async def pg_checkpointer_manager():
 class TestGraphCompilationWithPostgres:
     """Test 1: Graph compilation with real PostgreSQL checkpointer."""
 
-    async def test_comms_graph_compiles_with_postgres_checkpointer(self, pg_checkpointer_manager):
-        """build_comms_graph compiles successfully when backed by a real
-        PostgreSQL checkpointer manager. The compiled graph must expose
-        the standard LangGraph API (ainvoke, astream, aget_state)."""
+    async def test_comms_graph_wires_hooks_with_postgres_checkpointer(
+        self, pg_checkpointer_manager
+    ):
+        """The graph compiled against a real checkpointer manager must use that
+        manager's PostgreSQL saver, expose the production node set, and run every
+        hook build_comms_graph declares, in the declared order."""
+        store_mock = _make_store_mock()
+        fake_llm = create_fake_llm(["ok"])
+
+        with (
+            _apply_patches_with_checkpointer(store_mock, pg_checkpointer_manager),
+            _record_hook_execution(COMMS_HOOKS) as executed,
+        ):
+            async with build_comms_graph(chat_llm=fake_llm) as graph:
+                assert set(graph.nodes) == COMMS_GRAPH_NODES
+                assert graph.checkpointer is pg_checkpointer_manager.get_checkpointer()
+
+                await graph.ainvoke(
+                    {"messages": [HumanMessage(content="Hook wiring probe")]},
+                    config=_thread_config(),
+                )
+
+        assert executed == COMMS_HOOKS
+
+    async def test_comms_graph_wires_hooks_with_in_memory_fallback(self):
+        """When the checkpointer manager is unavailable, the graph falls back to
+        InMemorySaver — with the same node set and the same hooks still wired."""
+        store_mock = _make_store_mock()
+        fake_llm = create_fake_llm(["ok"])
+
+        with (
+            _apply_patches(store_mock),
+            _record_hook_execution(COMMS_HOOKS) as executed,
+        ):
+            async with build_comms_graph(chat_llm=fake_llm) as graph:
+                assert set(graph.nodes) == COMMS_GRAPH_NODES
+                assert isinstance(graph.checkpointer, InMemorySaver)
+
+                await graph.ainvoke(
+                    {"messages": [HumanMessage(content="Hook wiring probe")]},
+                    config=_thread_config(),
+                )
+
+        assert executed == COMMS_HOOKS
+
+    async def test_in_memory_flag_overrides_available_postgres_manager(
+        self, pg_checkpointer_manager
+    ):
+        """in_memory_checkpointer=True must win even when a PostgreSQL manager
+        is available — otherwise callers that ask for a throwaway thread would
+        silently persist to the shared database."""
         store_mock = _make_store_mock()
         fake_llm = create_fake_llm(["ok"])
 
         with _apply_patches_with_checkpointer(store_mock, pg_checkpointer_manager):
-            async with build_comms_graph(chat_llm=fake_llm) as graph:
-                assert graph is not None
-                assert hasattr(graph, "ainvoke")
-                assert hasattr(graph, "astream")
-                assert hasattr(graph, "aget_state")
-
-    async def test_comms_graph_compiles_with_in_memory_fallback(self):
-        """When checkpointer_manager returns None, build_comms_graph falls
-        back to InMemorySaver without error."""
-        store_mock = _make_store_mock()
-        fake_llm = create_fake_llm(["ok"])
-
-        with _apply_patches(store_mock):
             async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
-                assert graph is not None
-                assert hasattr(graph, "ainvoke")
+                assert isinstance(graph.checkpointer, InMemorySaver)
 
 
 @pytest.mark.integration
@@ -633,9 +731,9 @@ class TestPreModelHooksExecution:
 
     async def test_manage_system_prompts_keeps_latest_only(self, pg_checkpointer):
         """Send multiple non-memory system prompts. The
-        manage_system_prompts_node keeps only the latest one before the
-        LLM call, but the checkpoint retains all of them (pre-model hooks
-        modify state ephemerally). The graph must complete without error."""
+        manage_system_prompts_node keeps only the latest one, and since the
+        prompt-accumulation fix that pruning is durable: the stale copy is
+        tombstoned out of the checkpoint too."""
         from langgraph.store.memory import InMemoryStore
 
         fake_llm = create_fake_llm(["System prompt managed"])
@@ -665,15 +763,16 @@ class TestPreModelHooksExecution:
             config=config,
         )
 
-        # Both system prompts remain in persisted state (pre-model hooks
-        # only modify ephemerally for the LLM call)
+        # Only the latest system prompt persists — the stale copy is
+        # tombstoned out of the checkpoint by the model node.
         system_msgs = [m for m in result["messages"] if m.type == "system"]
         non_memory = [
             m for m in system_msgs if not m.additional_kwargs.get("memory_message", False)
         ]
-        assert len(non_memory) == 2, (
-            f"Both system prompts should remain in persisted state, found {len(non_memory)}"
+        assert len(non_memory) == 1, (
+            f"Exactly the latest system prompt should persist, found {len(non_memory)}"
         )
+        assert "New system prompt" in str(non_memory[0].content)
 
         # Graph completed with AI response
         ai_msgs = [m for m in result["messages"] if isinstance(m, AIMessage)]
@@ -808,7 +907,7 @@ class TestErrorDuringInvocation:
             "First turn's AI response must survive the failed second invocation"
         )
 
-    async def test_state_recoverable_after_error(self, pg_checkpointer):
+    async def test_state_recoverable_after_error(self, pg_checkpointer, no_model_fallback):
         """After an LLM error, a subsequent successful invocation on the
         same thread must work correctly, accumulating onto the pre-error state."""
         from langgraph.store.memory import InMemoryStore

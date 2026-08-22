@@ -24,18 +24,18 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from langchain_core.callbacks import BaseCallbackHandler  # noqa: E402
-from langchain_core.messages import HumanMessage, SystemMessage  # noqa: E402
-from langchain_core.outputs import LLMResult  # noqa: E402
-from pydantic import BaseModel, Field  # noqa: E402
+from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.outputs import LLMResult
+from pydantic import BaseModel, Field
 
-from app.agents.llm.client import register_llm_providers  # noqa: E402
-from app.constants.memory import MemorySourceType  # noqa: E402
-from app.db.chroma.chromadb import init_chroma  # noqa: E402
-from app.db.postgresql import init_postgresql_engine  # noqa: E402
-from app.memory.engine import memory_engine  # noqa: E402
-from app.memory.extraction import _invoke_structured  # noqa: E402
-from app.memory.mappers import entry_to_note  # noqa: E402
+from app.agents.llm.client import register_llm_providers
+from app.constants.memory import MemorySourceType
+from app.db.chroma.chromadb import init_chroma
+from app.db.postgresql import init_postgresql_engine
+from app.memory.engine import memory_engine
+from app.memory.extraction import _invoke_structured
+from app.memory.mappers import entry_to_note
 
 _DATE_FORMAT = "%Y/%m/%d %H:%M"
 
@@ -67,7 +67,7 @@ class CostMeter(BaseCallbackHandler):
             + self.output_tokens / 1_000_000 * _USD_PER_1M_OUTPUT
         )
 
-    def on_llm_end(self, response: LLMResult, **kwargs: object) -> None:
+    def on_llm_end(self, response: LLMResult, **_kwargs: object) -> None:
         usage = (response.llm_output or {}).get("usage_metadata") or (
             response.llm_output or {}
         ).get("token_usage")
@@ -256,13 +256,13 @@ async def _run_question(
             flush=True,
         )
         if diagnose and not correct:
-            await _print_diagnosis(user_id, item, notes, model_answer)
+            await _print_diagnosis(user_id, item, notes)
         return qtype, correct, model_answer
     finally:
         await memory_engine.delete_all(user_id)
 
 
-async def _print_diagnosis(item_user: str, item: dict, notes: list[str], answer: str) -> None:
+async def _print_diagnosis(item_user: str, item: dict, notes: list[str]) -> None:
     """Classify where the chain broke: extraction, retrieval, or answering."""
     stored = await memory_engine.list_memories(item_user, page=1, page_size=200)
     gold = str(item["answer"]).lower()

@@ -23,6 +23,7 @@ const BASE_BUBBLE_DEFAULTS = {
   memory_data: undefined,
   todo_progress: undefined,
   replyToMessage: undefined,
+  error: undefined,
   disableActions: true,
 } as const;
 

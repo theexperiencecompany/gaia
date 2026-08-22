@@ -14,8 +14,6 @@ import pytest
 
 from app.services.storage.sessions.artifacts import _list_files, list_artifacts, stat_artifact
 
-pytestmark = pytest.mark.unit
-
 
 def _write(base: Path, rel: str, data: str = "x") -> None:
     p = base / rel
@@ -71,6 +69,9 @@ def mount(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = tmp_path / "jfs"
     root.mkdir()
     monkeypatch.setattr("app.services.storage.juicefs._mount_root", lambda: root)
+    # _is_mounted() checks .is_mount() which returns False for a tmpdir; patch it
+    # so _require_mount() doesn't raise JuiceFSUnavailable in tests.
+    monkeypatch.setattr("app.services.storage.juicefs._is_mounted", lambda: True)
     return root
 
 
@@ -123,6 +124,7 @@ async def test_stat_artifact_path_is_clean_when_mount_root_is_symlinked(
     link = tmp_path / "link_mount"
     link.symlink_to(real, target_is_directory=True)
     monkeypatch.setattr("app.services.storage.juicefs._mount_root", lambda: link)
+    monkeypatch.setattr("app.services.storage.juicefs._is_mounted", lambda: True)
 
     adir = real / "users" / "u1" / "sessions" / "c1" / "artifacts"
     adir.mkdir(parents=True)

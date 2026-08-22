@@ -1,19 +1,26 @@
 from collections.abc import Callable
 from datetime import UTC, datetime
 import json
-import re
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 from langchain_core.messages import ToolCall
 
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools.core.registry import get_tool_registry
-from app.constants.agents import INTERNAL_AGENT_MARKERS
+from app.constants.agents import INTERNAL_AGENT_TAG_PATTERN
 from app.constants.cache import HANDOFF_NAME_CACHE_PREFIX
 from app.constants.log_tags import LogTag
 from app.constants.tool_labels import TOOL_DISPLAY_NAMES, humanize_tool_name
-from app.db.mongodb.collections import integrations_collection
+from app.db.repositories.integrations import integration_repository
 from app.decorators.caching import Cacheable
+from app.models.chat_models import ToolDataEntry
+from app.models.stream_events import (
+    ResponseFrame,
+    SubagentEndPayload,
+    SubagentStartPayload,
+    ToolCallsDataEntry,
+    ToolCallsDataEntryData,
+)
 from app.services.chat.chunks import extract_tool_data
 from shared.py.wide_events import log
 
@@ -21,19 +28,16 @@ from shared.py.wide_events import log
 StreamWriterCallable = Callable[[dict[str, Any]], None]
 
 
-def strip_internal_agent_markers(text: str) -> str:
-    """Remove internal routing markers an agent may have echoed into user text.
+def strip_internal_agent_tags(text: str) -> str:
+    """Remove internal channel tags an agent may have echoed into user text.
 
-    Markers like ``[EXECUTOR_RESULT]`` wrap the payload handed to comms for
+    Tags like ``<executor_result>`` frame the payload handed to comms for
     re-voicing; they are context for the agent, never part of the user-facing
     reply. A weak model occasionally parrots them verbatim, so strip them
-    deterministically as a hard backstop before delivery.
+    deterministically as a hard backstop before delivery. Only the tags go — the
+    text they framed is the answer the model wrote around.
     """
-    pattern = re.compile(
-        "|".join(re.escape(marker) for marker in INTERNAL_AGENT_MARKERS),
-        flags=re.IGNORECASE,
-    )
-    return pattern.sub("", text).strip()
+    return INTERNAL_AGENT_TAG_PATTERN.sub("", text).strip()
 
 
 class IntegrationMetadata(TypedDict, total=False):
@@ -71,10 +75,8 @@ def parse_subagent_id(subagent_id: str) -> tuple[str, str | None]:
 @Cacheable(key_pattern=f"{HANDOFF_NAME_CACHE_PREFIX}:{{clean_id}}", ttl=3600)
 async def _lookup_custom_integration_name(clean_id: str) -> str | None:
     """Look up custom integration name from MongoDB with caching."""
-    custom = await integrations_collection.find_one(
-        {"integration_id": {"$regex": f"^{clean_id}", "$options": "i"}}, {"name": 1}
-    )
-    return custom.get("name") if custom else None
+    custom = await integration_repository.find_by_id_prefix(clean_id)
+    return custom.name if custom else None
 
 
 async def _resolve_handoff_display_name(subagent_id: str) -> str:
@@ -88,7 +90,9 @@ async def _resolve_handoff_display_name(subagent_id: str) -> str:
     if platform_subagent:
         return platform_subagent.name
 
-    cached_name = await _lookup_custom_integration_name(clean_id)
+    # @Cacheable erases the wrapped function's return type to Any (see
+    # app/decorators/caching.py); cast back to the real annotated contract.
+    cached_name = cast("str | None", await _lookup_custom_integration_name(clean_id))
     if cached_name:
         return cached_name
 
@@ -102,56 +106,30 @@ def format_subagent_start_event(
     icon_url: str | None = None,
     tool_category: str | None = None,
     parent_subagent_id: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Format a subagent_start SSE payload."""
-    payload: dict = {
-        "subagent_id": subagent_id,
-        "subagent_name": subagent_name,
-        "agent_type": agent_type,
-        "started_at": datetime.now(UTC).isoformat(),
-    }
-    if icon_url:
-        payload["icon_url"] = icon_url
-    if tool_category:
-        payload["tool_category"] = tool_category
-    if parent_subagent_id:
-        payload["parent_subagent_id"] = parent_subagent_id
-    return payload
+    return SubagentStartPayload(
+        subagent_id=subagent_id,
+        subagent_name=subagent_name,
+        agent_type=agent_type,
+        started_at=datetime.now(UTC).isoformat(),
+        icon_url=icon_url,
+        tool_category=tool_category,
+        parent_subagent_id=parent_subagent_id,
+    ).model_dump(exclude_none=True)
 
 
 def format_subagent_end_event(
     subagent_id: str,
     duration_ms: int,
     token_count: int | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Format a subagent_end SSE payload."""
-    return {
-        "subagent_id": subagent_id,
-        "duration_ms": duration_ms,
-        "token_count": token_count,
-    }
-
-
-async def emit_subagent_tool_calls(
-    stream_writer: StreamWriterCallable,
-    subagent_id: str,
-    tool_calls: list[ToolCall],
-    user_id: str | None = None,
-) -> None:
-    """Emit tool_data events for each tool call made inside a spawned subagent.
-
-    Reuses ``format_tool_call_entry`` so categories, icons, and special-tool
-    display names match the post-execution path; otherwise e.g. ``vfs_read``
-    renders with its raw name as the category instead of ``filesystem``.
-
-    With ``user_id``, MCP tool calls resolve their integration metadata via
-    the user's MCPClient (MCP tools no longer live in the global registry).
-    """
-    for tc in tool_calls:
-        entry = await format_tool_call_entry(tc, user_id=user_id)
-        if entry is None:
-            continue
-        stream_writer({"tool_data": {**entry, "subagent_id": subagent_id}})
+    return SubagentEndPayload(
+        subagent_id=subagent_id,
+        duration_ms=duration_ms,
+        token_count=token_count,
+    ).model_dump()
 
 
 async def format_tool_call_entry(
@@ -160,7 +138,7 @@ async def format_tool_call_entry(
     integration_id: str | None = None,
     integration_name: str | None = None,
     user_id: str | None = None,
-) -> dict | None:
+) -> ToolDataEntry | None:
     """Format a tool call as a tool_data entry for frontend streaming.
 
     Emitted once per tool call from the 'updates' stream when complete args
@@ -251,7 +229,7 @@ async def format_tool_call_entry(
 
     # Look up mcp_ui metadata. Try the global registry first (covers platform
     # tools); fall back to MCPClient._tools for per-user MCP tools.
-    mcp_ui: dict | None = None
+    mcp_ui: dict[str, Any] | None = None
     mcp_server_url: str | None = None
     try:
         registry_tools = tool_registry.get_all_tools_for_search()
@@ -263,8 +241,16 @@ async def format_tool_call_entry(
                     mcp_ui = tool_meta.get("mcp_ui")
                     mcp_server_url = tool_meta.get("mcp_server_url")
                 break
-    except Exception:  # nosec B110
-        pass
+    except Exception as registry_error:
+        # A registry miss is recoverable — the per-user MCPClient lookup below is
+        # the fallback — but it must not be silent: an outage here strips the UI
+        # metadata from every platform tool at once, and the card just renders
+        # plain with nothing to explain why.
+        log.debug(
+            f"{LogTag.AGENT} Tool registry lookup failed for mcp_ui metadata",
+            error=str(registry_error),
+            error_type=type(registry_error).__name__,
+        )
 
     if mcp_ui is None and user_id:
         mcp_ui, mcp_server_url = await _resolve_mcp_ui_metadata(tool_name_raw, user_id)
@@ -273,23 +259,29 @@ async def format_tool_call_entry(
     if integration_id and not is_core_tool and not icon_url and user_id:
         icon_url, integration_name = await _resolve_mcp_icon_name(integration_id)
 
-    return {
-        "tool_name": "tool_calls_data",
-        "tool_category": tool_category or "",
-        "data": {
-            "tool_name": tool_name_raw,
-            "tool_category": tool_category or "",
-            "message": tool_display_name,
-            "show_category": show_category,
-            "tool_call_id": tool_call.get("id"),
-            "inputs": tool_call.get("args", {}),
-            "icon_url": icon_url,
-            "integration_name": integration_name,
-        },
-        "timestamp": timestamp,
-        "mcp_ui": mcp_ui,
-        "mcp_server_url": mcp_server_url,
-    }
+    # ToolCallsDataEntry declares exactly the ToolDataEntry keys this variant
+    # carries, in the byte order the frontend parser expects — so its dump IS a
+    # ToolDataEntry by construction (Type Safety item 12).
+    return cast(
+        ToolDataEntry,
+        ToolCallsDataEntry(
+            tool_name="tool_calls_data",
+            tool_category=tool_category or "",
+            data=ToolCallsDataEntryData(
+                tool_name=tool_name_raw,
+                tool_category=tool_category or "",
+                message=tool_display_name,
+                show_category=show_category,
+                tool_call_id=tool_call.get("id"),
+                inputs=tool_call.get("args", {}),
+                icon_url=icon_url,
+                integration_name=integration_name,
+            ),
+            timestamp=timestamp,
+            mcp_ui=mcp_ui,
+            mcp_server_url=mcp_server_url,
+        ).model_dump(),
+    )
 
 
 async def _resolve_mcp_integration_id(tool_name: str, user_id: str) -> str | None:
@@ -300,20 +292,28 @@ async def _resolve_mcp_integration_id(tool_name: str, user_id: str) -> str | Non
     or the user has no connected MCP that exposes it.
     """
     from app.services.mcp.mcp_client import (
-        get_mcp_client,  # noqa: PLC0415  (lazy: avoid import cycle)
+        get_mcp_client,
     )
 
     try:
         mcp_client = await get_mcp_client(user_id)
         return mcp_client.find_integration(tool_name)
     except Exception as e:
-        log.warning(f"{LogTag.AGENT} MCP integration lookup failed for {tool_name}: {e}")
+        log.warning(
+            f"{LogTag.AGENT} MCP integration lookup failed for",
+            tool_name=tool_name,
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         return None
 
 
-async def _resolve_mcp_ui_metadata(tool_name: str, user_id: str) -> tuple[dict | None, str | None]:
+async def _resolve_mcp_ui_metadata(
+    tool_name: str, user_id: str
+) -> tuple[dict[str, Any] | None, str | None]:
     """Pull mcp_ui + mcp_server_url off the user's MCPClient tool object."""
-    from app.services.mcp.mcp_client import get_mcp_client  # noqa: PLC0415
+    from app.services.mcp.mcp_client import get_mcp_client
 
     try:
         mcp_client = await get_mcp_client(user_id)
@@ -325,17 +325,23 @@ async def _resolve_mcp_ui_metadata(tool_name: str, user_id: str) -> tuple[dict |
                         return meta.get("mcp_ui"), meta.get("mcp_server_url")
                     return None, None
     except Exception as e:
-        log.warning(f"{LogTag.AGENT} MCP UI metadata lookup failed for {tool_name}: {e}")
+        log.warning(
+            f"{LogTag.AGENT} MCP UI metadata lookup failed for",
+            tool_name=tool_name,
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
     return None, None
 
 
 async def _resolve_mcp_icon_name(integration_id: str) -> tuple[str | None, str | None]:
     """Fetch (icon_url, integration_name) for an integration via Redis-cached Mongo."""
-    from app.constants.cache import (  # noqa: PLC0415
+    from app.constants.cache import (
         CUSTOM_INT_METADATA_CACHE_PREFIX,
         CUSTOM_INT_METADATA_TTL,
     )
-    from app.db.redis import get_cache, set_cache  # noqa: PLC0415
+    from app.db.redis import get_cache, set_cache
 
     cache_key = f"{CUSTOM_INT_METADATA_CACHE_PREFIX}:{integration_id}"
     cached = await get_cache(cache_key)
@@ -343,35 +349,38 @@ async def _resolve_mcp_icon_name(integration_id: str) -> tuple[str | None, str |
         return cached.get("icon_url"), cached.get("integration_name")
 
     try:
-        integration = await integrations_collection.find_one(
-            {"integration_id": integration_id}, {"name": 1, "icon_url": 1}
-        )
+        integration = await integration_repository.get(integration_id)
         if not integration:
             await set_cache(cache_key, {}, ttl=CUSTOM_INT_METADATA_TTL)
             return None, None
-        metadata = {
-            "icon_url": integration.get("icon_url"),
+        metadata: dict[str, str | None] = {
+            "icon_url": integration.icon_url,
             "integration_id": integration_id,
-            "integration_name": integration.get("name"),
+            "integration_name": integration.name,
         }
         await set_cache(cache_key, metadata, ttl=CUSTOM_INT_METADATA_TTL)
         return metadata["icon_url"], metadata["integration_name"]
     except Exception as e:
-        log.warning(f"{LogTag.AGENT} MCP icon/name lookup failed for {integration_id}: {e}")
+        log.warning(
+            f"{LogTag.AGENT} MCP icon/name lookup failed for",
+            integration_id=integration_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return None, None
 
 
 def format_sse_response(content: str) -> str:
     """Wrap text content as a JSON-encoded SSE ``data:`` line."""
-    return f"data: {json.dumps({'response': content})}\n\n"
+    return f"data: {json.dumps(ResponseFrame(response=content).model_dump())}\n\n"
 
 
-def format_sse_data(data: dict) -> str:
+def format_sse_data(data: dict[str, Any]) -> str:
     """Wrap a dict as a JSON-encoded SSE ``data:`` line."""
     return f"data: {json.dumps(data)}\n\n"
 
 
-def process_custom_event_for_tools(payload) -> dict:
+def process_custom_event_for_tools(payload: dict[str, Any]) -> dict[str, Any]:
     """Extract tool execution data from a custom LangGraph event payload.
 
     Returns the extracted tool data, or an empty dict on failure / no data.
@@ -379,7 +388,9 @@ def process_custom_event_for_tools(payload) -> dict:
     try:
         serialized = json.dumps(payload) if payload else "{}"
         new_data = extract_tool_data(serialized)
-        return new_data if new_data else {}
+        return new_data or {}
     except Exception as e:
-        log.error(f"{LogTag.AGENT} Error extracting tool data: {e}")
+        log.error(
+            f"{LogTag.AGENT} Error extracting tool data", error=str(e), error_type=type(e).__name__
+        )
         return {}

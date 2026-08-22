@@ -31,7 +31,9 @@ import { RaisedButton } from "@/components/ui/raised-button";
 import { appConfig } from "@/config/appConfig";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import DummyComposer from "@/features/landing/components/demo/DummyComposer";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
+import { InViewMount } from "../shared/InViewMount";
 import DemoCalendarView from "./calendar-demo/DemoCalendarView";
 import DemoChatHeader from "./DemoChatHeader";
 import { DemoFinalCard } from "./DemoFinalCards";
@@ -40,7 +42,6 @@ import DemoSidebar from "./DemoSidebar";
 import DemoToolCalls from "./DemoToolCalls";
 import DemoDashboardView from "./dashboard-demo/DemoDashboardView";
 import { BASE_TIMINGS, slideUp, tx, USE_CASES } from "./demoConstants";
-import DemoGoalsView from "./goals-demo/DemoGoalsView";
 import DemoIntegrationsView from "./integrations-demo/DemoIntegrationsView";
 import MiniWaveSpinner from "./MiniWaveSpinner";
 import DemoTodosView from "./todos-demo/DemoTodosView";
@@ -96,7 +97,6 @@ const MemoDemoNotificationsPopover = memo(DemoNotificationsPopover);
 const MemoDemoDashboardView = memo(DemoDashboardView);
 const MemoDemoCalendarView = memo(DemoCalendarView);
 const MemoDemoWorkflowsView = memo(DemoWorkflowsView);
-const MemoDemoGoalsView = memo(DemoGoalsView);
 const MemoDemoIntegrationsView = memo(DemoIntegrationsView);
 const MemoDemoTodosView = memo(DemoTodosView);
 
@@ -168,7 +168,7 @@ const OgImage = memo(function OgImage() {
   );
 });
 
-export default function ChatDemoSection() {
+function ChatDemoWindow() {
   const [activePage, setActivePage] = useState<DemoPage>("chats");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedIntegrationId, setSelectedIntegrationId] = useState<
@@ -426,12 +426,6 @@ export default function ChatDemoSection() {
             <MemoDemoWorkflowsView />
           </div>
         );
-      case "goals":
-        return (
-          <div className="flex flex-1 overflow-hidden">
-            <MemoDemoGoalsView />
-          </div>
-        );
       case "integrations":
         return (
           <div className="flex flex-1 overflow-hidden">
@@ -457,24 +451,14 @@ export default function ChatDemoSection() {
       ref={containerRef}
       className="relative flex w-full flex-col items-center"
     >
-      <div
-        className={`mb-4 text-center ${isInView ? "animate-in fade-in slide-in-from-bottom-4 duration-[400ms]" : "opacity-0"}`}
-      >
-        <p className="mb-2 text-sm uppercase tracking-widest text-primary">
-          See it in action
-        </p>
-        <h2 className="text-5xl sm:text-6xl font-serif tracking-tight text-white font-normal">
-          Your GAIA, actually working
-        </h2>
-      </div>
-
       {/* Demo window */}
       <div
         className={cn(
           "overflow-hidden rounded-3xl h-[600px] sm:h-[720px] w-[95vw] sm:w-[85vw]",
+          "transition-[opacity,transform] duration-500 ease-out",
           isInView
-            ? "animate-in fade-in slide-in-from-bottom-6 zoom-in-95 duration-500"
-            : "opacity-0",
+            ? "opacity-100 translate-y-0 scale-100"
+            : "opacity-0 translate-y-6 scale-95",
         )}
         style={
           {
@@ -496,7 +480,7 @@ export default function ChatDemoSection() {
               rel="noopener noreferrer"
               href={`https://${appConfig.site.domain}`}
             >
-              {appConfig.site.name} — {appConfig.site.domain}
+              {appConfig.site.name}: {appConfig.site.domain}
             </a>
           </div>
         </div>
@@ -579,6 +563,15 @@ export default function ChatDemoSection() {
                                 <RaisedButton
                                   color={"#00bbff"}
                                   className="text-black!"
+                                  onClick={() => {
+                                    trackEvent(
+                                      ANALYTICS_EVENTS.CTA_GET_STARTED_CLICKED,
+                                      {
+                                        button_text: "Get Started",
+                                        location: "chat_demo",
+                                      },
+                                    );
+                                  }}
                                 >
                                   Get Started
                                   <ChevronRight width={16} height={16} />
@@ -780,7 +773,7 @@ export default function ChatDemoSection() {
       {/* Use case chips + retry — only for chat demo */}
       {activePage === "chats" && (
         <div
-          className={`relative mt-6 flex w-full flex-wrap items-center justify-end sm:justify-between gap-2 max-w-7xl px-4 sm:px-6 ${isInView ? "animate-in fade-in slide-in-from-bottom-3 duration-[400ms] delay-200" : "opacity-0"}`}
+          className={`relative mt-6 flex w-full flex-wrap items-center justify-end sm:justify-between gap-2 max-w-7xl px-4 sm:px-6 transition-[opacity,transform] duration-[400ms] ease-out ${isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"}`}
         >
           <div className="hidden sm:block" />
           <div className="flex flex-wrap items-center justify-center gap-2">
@@ -810,6 +803,20 @@ export default function ChatDemoSection() {
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Section shell: the heavy animated demo window is lazy-mounted only when it
+ * scrolls near the viewport. Headless — it lives inside the hero section.
+ */
+export default function ChatDemoSection() {
+  return (
+    <div className="relative flex w-full flex-col items-center">
+      <InViewMount minHeight="600px" className="flex w-full justify-center">
+        <ChatDemoWindow />
+      </InViewMount>
     </div>
   );
 }

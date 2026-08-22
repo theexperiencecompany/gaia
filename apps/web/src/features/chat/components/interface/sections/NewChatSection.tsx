@@ -10,14 +10,10 @@ interface NewChatSectionProps {
     inputRef: React.RefObject<HTMLTextAreaElement | null>;
     scrollToBottom: () => void;
     fileUploadRef: React.RefObject<{
-      openFileUploadModal: () => void;
-      handleDroppedFiles: (files: File[]) => void;
+      attachFiles: (files: File[]) => Promise<void>;
     } | null>;
     appendToInputRef: React.RefObject<((text: string) => void) | null>;
-    droppedFiles: File[];
-    onDroppedFilesProcessed: () => void;
     hasMessages: boolean;
-    conversationId?: string;
     voiceModeActive: () => void;
   };
   showUseCases: boolean;

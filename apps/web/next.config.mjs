@@ -37,7 +37,26 @@ const withBundleAnalyzer = bundleAnalyzer({
 // to Next's built-in image optimizer, otherwise every image 404s off-edge.
 const useCloudflareImageLoader = process.env.IMAGE_LOADER === "cloudflare";
 
+// PostHog is proxied through /ingest so ingestion stays first-party and
+// survives ad blockers. The destinations follow NEXT_PUBLIC_POSTHOG_HOST
+// rather than being pinned to the US cloud, so an EU or self-hosted
+// deployment ingests into its own region instead of shipping data across a
+// data-residency boundary. PostHog Cloud serves the SDK bundles from a
+// sibling `<region>-assets` host; a self-hosted instance serves them from the
+// same origin, which is what the unmatched case falls through to.
+const posthogHost = (
+  process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com"
+).replace(/\/+$/, "");
+const posthogAssetsHost = posthogHost.replace(
+  /^(https?:\/\/)(us|eu)\.i\.posthog\.com$/,
+  "$1$2-assets.i.posthog.com",
+);
+
 const nextConfig = {
+  // Next's dev-server dedup locks on distDir, refusing a second `next dev` for
+  // the same directory. A dedicated dist dir (agents driving the app while a
+  // human dev server runs) lifts that without touching the default build.
+  ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
   productionBrowserSourceMaps: true,
   // OpenNext file-traces every `public/*.wasm` into the Worker as a wasm chunk
   // (it shows up even in unrelated routes' .nft.json), which collects the
@@ -118,14 +137,21 @@ const nextConfig = {
       "node:diagnostics_channel": "diagnostics_channel",
     },
   },
-  serverExternalPackages: ["moment", "moment-timezone"],
   experimental: {
-    // optimizeCss disabled: @opennextjs/aws unconditionally cpSyncs
-    // .next/static/css when this is on, but Next 16 + Turbopack does not
-    // emit that directory in this build (no separate CSS chunks), so the
-    // bundle step crashes with ENOENT. Bug exists across @opennextjs/aws
-    // 3.9.16 → main; critters has nothing to inline anyway, so this was
-    // a no-op.
+    // prefetchInlining stays OFF until OpenNext serves Next's segment-prefetch
+    // protocol. As of @opennextjs/cloudflare 1.20.2 it does not: /_tree
+    // requests get the full build-time RSC payload back, with no
+    // x-nextjs-postponed header. With inlining on, that payload carries the
+    // InliningHintsStale bit; OpenNext serves that same payload for every
+    // /_tree prefetch, so the client marks the route cache entry immediately
+    // stale and refetches in an infinite ~5 req/s loop for every viewport-
+    // visible <Link> (observed on heygaia.io /signup, 2026-08-18).
+    prefetchInlining: false,
+    // optimizeCss stays OFF. Two reasons, both verified: (1) it crashes the
+    // Cloudflare/OpenNext bundle (unconditional cpSync of .next/static/css,
+    // which Turbopack doesn't emit -> ENOENT); (2) tested on a webpack build it
+    // does NOT inline the critical CSS — the render-blocking stylesheet <link>s
+    // remain — so it provides no FCP benefit while adding the `critters` risk.
     optimizePackageImports: [
       "mermaid",
       "react-syntax-highlighter",
@@ -204,15 +230,20 @@ const nextConfig = {
     ...(useCloudflareImageLoader
       ? { loader: "custom", loaderFile: "./image-loader.ts" }
       : {}),
+    // Kept on: remote SVGs are relied upon (cdn.simpleicons.org logos, the
+    // ProductHunt featured.svg badge, integration icon URLs). Next serves
+    // remote SVGs with a restrictive CSP for images, so this is scoped to the
+    // image pipeline only.
     dangerouslyAllowSVG: true,
     minimumCacheTTL: 2_592_000, // 30 days — overrides short upstream Cache-Control (e.g. GitHub's 5 min)
+    // Image sources are open-ended (user avatars from arbitrary OAuth
+    // providers, LLM/backend-driven integration icon URLs, Unsplash, map tiles,
+    // etc.), so the https host set can't be safely enumerated without breaking
+    // images. The http wildcard is dropped — every real source is https, and
+    // allowing plaintext http fetches is an unnecessary SSRF/mixed-content risk.
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "**",
-      },
-      {
-        protocol: "http",
         hostname: "**",
       },
     ],
@@ -235,6 +266,20 @@ const nextConfig = {
   ],
   async headers() {
     return [
+      // Baseline security headers on every route. A full Content-Security-Policy
+      // is intentionally deferred — a wrong CSP silently breaks the app and can't
+      // be verified by a build alone, so it needs its own scoped rollout.
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          {
+            key: "Referrer-Policy",
+            value: "strict-origin-when-cross-origin",
+          },
+        ],
+      },
       // /_next/static/* — intentionally NOT setting a custom Cache-Control
       // here. Next.js content-hashes chunk filenames in production builds, so
       // its default immutable cache headers are already correct; in dev
@@ -270,15 +315,19 @@ const nextConfig = {
       },
       {
         source: "/ingest/static/:path*",
-        destination: "https://us-assets.i.posthog.com/static/:path*",
+        destination: `${posthogAssetsHost}/static/:path*`,
+      },
+      {
+        source: "/ingest/array/:path*",
+        destination: `${posthogAssetsHost}/array/:path*`,
       },
       {
         source: "/ingest/:path*",
-        destination: "https://us.i.posthog.com/:path*",
+        destination: `${posthogHost}/:path*`,
       },
       {
         source: "/ingest/flags",
-        destination: "https://us.i.posthog.com/flags",
+        destination: `${posthogHost}/flags`,
       },
     ];
   },

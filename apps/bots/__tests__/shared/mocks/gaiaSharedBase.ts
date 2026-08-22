@@ -52,6 +52,19 @@ export function makeGaiaSharedMock(
     commands = new Map();
     analytics = undefined;
 
+    /** Mirrors the real base class: identity-bound analytics for shared helpers. */
+    protected async analyticsFor(platformUserId: string) {
+      return {
+        client: this.analytics,
+        distinctId: await this.resolveDistinctId(platformUserId),
+      };
+    }
+
+    /** Unlinked-user path — adapter tests assert routing, not identity. */
+    protected async resolveDistinctId(platformUserId: string): Promise<string> {
+      return `${this.platform}:${platformUserId}`;
+    }
+
     protected async dispatchCommand(
       name: string,
       target: {
@@ -100,8 +113,12 @@ export function makeGaiaSharedMock(
       sendTyping: () => Promise<unknown>,
       _refreshMs: number,
     ): () => void {
-      void sendTyping().catch(() => {});
-      return () => {};
+      void sendTyping().catch(() => {
+        /* typing is fire-and-forget in tests */
+      });
+      return () => {
+        /* no-op stop function */
+      };
     }
 
     // Default: route media to a chat turn with no attachments. Tests that care
@@ -130,16 +147,29 @@ export function makeGaiaSharedMock(
 
   const sanitizeErrorForLog = vi.fn((error: unknown) => {
     if (error instanceof Error) {
-      return { error_name: error.name, error_message: error.message };
+      return { error_type: error.name, error: error.message };
     }
-    return { error_name: "Unknown", error_message: String(error) };
+    return { error_type: "Unknown", error: String(error) };
   });
+
+  const wideLog = {
+    set: vi.fn(),
+    setNs: vi.fn(),
+    warning: vi.fn(),
+    error: vi.fn(),
+    audit: vi.fn(),
+    getTraceId: vi.fn(() => undefined),
+  };
 
   return {
     BaseBotAdapter,
     createBotLogger,
     hashLogIdentifier,
     sanitizeErrorForLog,
+    wideLog,
+    withWideEvent: vi.fn(
+      (_task: string, _fields: unknown, fn: () => Promise<unknown>) => fn(),
+    ),
     formatBotError: vi.fn((err: unknown) =>
       err instanceof Error ? `Error: ${err.message}` : "Something went wrong",
     ),
@@ -170,6 +200,9 @@ export function makeGaiaSharedMock(
     friendlyMediaError: vi.fn(
       (kind: string) => `Couldn't process that ${kind}.`,
     ),
+    // Plain shared constant every adapter's download path imports — the real
+    // value, so a test asserting the deadline asserts production's.
+    MEDIA_READ_TIMEOUT_MS: 30_000,
     unsupportedMediaMessage: vi.fn(
       (kind: string) => `I can't process ${kind} yet.`,
     ),

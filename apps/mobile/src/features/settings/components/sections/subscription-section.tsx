@@ -117,10 +117,8 @@ export function SubscriptionSection() {
     : "Free";
 
   // Gather message usage from features if available
-  const messageFeature = Object.values(summary.features).find(
-    (f) =>
-      f.title.toLowerCase().includes("message") ||
-      f.category.toLowerCase().includes("message"),
+  const messageFeature = Object.values(summary.features).find((f) =>
+    f.title.toLowerCase().includes("message"),
   );
   const dayPeriod = messageFeature?.periods.day;
 

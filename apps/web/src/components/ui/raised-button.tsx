@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { getContrastColor, getLuminance, parseColor } from "@/utils/colorUtils";
 
 const raisedButtonVariants = cva(
-  "inline-flex items-center justify-center dark:bg-zinc-500 dark:text-white whitespace-nowrap  text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 relative bg-primary text-primary-foreground hover:bg-primary/90 border border-primary/50 shadow-md before:absolute before:inset-0 before:border-t before:border-white/40 before:bg-gradient-to-b before:from-white/20 before:to-transparent cursor-pointer transition-transform duration-200 active:scale-[0.96] subpixel-antialiased gap-2",
+  "inline-flex items-center justify-center overflow-hidden dark:bg-zinc-500 dark:text-white whitespace-nowrap  text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 relative bg-primary text-primary-foreground hover:bg-primary/90 border border-primary/50 shadow-md before:absolute before:inset-0 before:border-t before:border-white/40 before:bg-gradient-to-b before:from-white/20 before:to-transparent cursor-pointer transition-transform duration-200 active:scale-[0.96] subpixel-antialiased gap-2",
   {
     variants: {
       variant: {
@@ -16,7 +16,7 @@ const raisedButtonVariants = cva(
       },
       size: {
         default: "h-10 px-4 py-2 rounded-xl before:rounded-xl",
-        sm: "h-9 rounded-lg px-3 before:rounded-xl",
+        sm: "h-9 rounded-lg px-3 before:rounded-lg",
         lg: "h-11 rounded-lg px-8 before:rounded-lg",
         icon: "h-10 w-10",
       },
@@ -60,11 +60,14 @@ const FLAT_BLACK_STYLE: React.CSSProperties = {
   boxShadow: "none",
 };
 
+// Matched to the reference button on startups.gallery (computed styles):
+// subtle top-to-bottom white gradient, no border, hairline ring via shadow.
 const FLAT_WHITE_STYLE: React.CSSProperties = {
-  background: "#ffffff",
-  borderColor: "rgba(0, 0, 0, 0.18)",
+  background: "linear-gradient(rgb(255, 255, 255) 0%, rgb(235, 238, 240) 100%)",
+  borderColor: "transparent",
   color: "#18181b",
-  boxShadow: "0 1px 2px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.08)",
+  boxShadow:
+    "rgba(0, 0, 0, 0.06) 0px 0px 0px 1px, rgba(0, 0, 0, 0.06) 0px 1px 2px -1px, rgba(0, 0, 0, 0.04) 0px 2px 4px 0px",
 };
 
 const RaisedButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
@@ -127,7 +130,7 @@ const RaisedButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
       raisedButtonVariants({ variant, size, className }),
       !mode &&
         color &&
-        "hover:bg-[color:var(--hover-bg)] before:border-[color:var(--border)] before:from-[color:var(--gradient)] hover:opacity-80 overflow-hidden",
+        "hover:bg-[color:var(--hover-bg)] before:border-[color:var(--border)] before:from-[color:var(--gradient)] hover:opacity-80",
     );
 
     return (

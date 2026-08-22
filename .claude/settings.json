@@ -7,6 +7,14 @@
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
     "CLAUDE_CODE_NEW_INIT": "true"
   },
+  "extraKnownMarketplaces": {
+    "nx-claude-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "nrwl/nx-ai-agents-config"
+      }
+    }
+  },
   "hooks": {
     "PostToolUse": [
       {
@@ -14,7 +22,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "code-review-graph update",
+            "command": "sh -c 'if ! command -v code-review-graph >/dev/null 2>&1; then exit 0; fi; code-review-graph update'",
             "timeout": 5000
           },
           {
@@ -24,7 +32,7 @@
         ]
       },
       {
-        "matcher": "Task",
+        "matcher": "Agent",
         "hooks": [
           {
             "type": "command",
@@ -33,7 +41,7 @@
         ]
       },
       {
-        "matcher": "TodoWrite",
+        "matcher": "TaskCreate|TaskUpdate",
         "hooks": [
           {
             "type": "command",
@@ -44,7 +52,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Task",
+        "matcher": "Agent",
         "hooks": [
           {
             "type": "command",
@@ -70,7 +78,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "code-review-graph status --json",
+            "command": "sh -c 'if ! command -v code-review-graph >/dev/null 2>&1; then exit 0; fi; code-review-graph status --json'",
             "timeout": 3000
           },
           {
@@ -102,14 +110,6 @@
         ]
       }
     ]
-  },
-  "extraKnownMarketplaces": {
-    "nx-claude-plugins": {
-      "source": {
-        "source": "github",
-        "repo": "nrwl/nx-ai-agents-config"
-      }
-    }
   },
   "permissions": {
     "deny": [

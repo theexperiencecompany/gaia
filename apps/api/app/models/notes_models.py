@@ -1,4 +1,8 @@
-from pydantic import BaseModel, Field
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.db.repositories.base import UserScopedDocument
 
 
 class NoteModel(BaseModel):
@@ -21,3 +25,36 @@ class NoteResponse(BaseModel):
     user_id: str | None = None
     title: str | None = None
     description: str | None = None
+
+
+class NoteDocument(UserScopedDocument):
+    """A note as stored in MongoDB. Base stamps created_at/updated_at on write."""
+
+    content: str
+    plaintext: str
+    auto_created: bool = False
+    title: str | None = None
+    description: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    # Set when vector indexing failed after the note was already persisted. The
+    # note is safe and the request still succeeds, but it is invisible to search
+    # until reindexed — this flag is what makes that repairable instead of silent.
+    needs_reindex: bool = False
+
+
+class NoteUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    content: str | None = None
+    plaintext: str | None = None
+    # Server-set only, never accepted from a client payload.
+    needs_reindex: bool | None = None
+
+
+class NoteSearchHit(BaseModel):
+    """A note matched by a plaintext search (the id is the stringified ``_id``)."""
+
+    id: str
+    note_id: str | None = None
+    plaintext: str

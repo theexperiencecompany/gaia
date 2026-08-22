@@ -7,7 +7,7 @@ from fastapi import HTTPException, Request
 from app.config.settings import settings
 
 
-async def verify_composio_webhook_signature(request: Request):
+async def verify_composio_webhook_signature(request: Request) -> tuple[bytes, str]:
     """
     Verify the authenticity of a Composio webhook request.
 

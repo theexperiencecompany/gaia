@@ -11,45 +11,23 @@ Index Strategy:
 """
 
 import asyncio
+from typing import Any
 
+from motor.motor_asyncio import AsyncIOMotorCollection
 from pymongo.errors import OperationFailure
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import (
-    ai_models_collection,
-    blog_collection,
-    bot_sessions_collection,
-    calendars_collection,
-    conversations_collection,
-    device_tokens_collection,
-    e2b_sandboxes_collection,
-    e2b_warm_pool_collection,
-    files_collection,
-    goals_collection,
-    integration_instructions_collection,
-    integrations_collection,
-    mail_collection,
-    notes_collection,
-    notifications_collection,
-    payments_collection,
-    plans_collection,
-    processed_webhooks_collection,
-    projects_collection,
-    reminders_collection,
-    skills_collection,
-    subscriptions_collection,
-    todos_collection,
-    usage_snapshots_collection,
-    user_integrations_collection,
-    users_collection,
-    workflow_executions_collection,
-    workflows_collection,
-)
-from app.helpers.integration_helpers import generate_unique_integration_slug
+from app.db.mongodb.collections import get_async_collection
+from app.db.repositories.integrations import integration_repository
 from shared.py.wide_events import log
 
+# Mirrors pymongo's private `_IndexKeyHint` (pymongo.operations) — the shape
+# every `create_index` call in this module actually passes: a single field
+# name, or an ordered list of (field, direction | "text") pairs.
+IndexKeys = str | list[tuple[str, int | str]]
 
-async def create_all_indexes():
+
+async def create_all_indexes() -> None:
     """Create all database indexes. Called during application startup."""
     try:
         log.set(db={"operation": "create_indexes", "collection": "all"})
@@ -61,7 +39,6 @@ async def create_all_indexes():
             create_conversation_indexes(),
             create_todo_indexes(),
             create_project_indexes(),
-            create_goal_indexes(),
             create_note_indexes(),
             create_file_indexes(),
             create_mail_indexes(),
@@ -82,6 +59,8 @@ async def create_all_indexes():
             create_workflow_execution_indexes(),
             create_bot_session_indexes(),
             create_e2b_sandbox_indexes(),
+            create_hil_approvals_indexes(),
+            create_pending_platform_registration_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -92,7 +71,6 @@ async def create_all_indexes():
             "conversations",
             "todos",
             "projects",
-            "goals",
             "notes",
             "files",
             "mail",
@@ -113,13 +91,17 @@ async def create_all_indexes():
             "workflow_executions",
             "bot_sessions",
             "e2b_sandboxes",
+            "hil_approvals",
+            "pending_platform_registrations",
         ]
 
         index_results = {}
         for i, (collection_name, result) in enumerate(zip(collection_names, results)):
             if isinstance(result, Exception):
                 log.error(
-                    f"{LogTag.MONGO} Failed to create indexes for {collection_name}: {result!s}"
+                    f"{LogTag.MONGO} Failed to create indexes for collection",
+                    collection_name=collection_name,
+                    result=result,
                 )
                 index_results[collection_name] = f"FAILED: {result!s}"
             else:
@@ -130,23 +112,31 @@ async def create_all_indexes():
         total = len(index_results)
 
         log.info(
-            f"{LogTag.MONGO} Database index creation completed: {successful}/{total} collections successful"
+            f"{LogTag.MONGO} Database index creation completed",
+            successful=successful,
+            total=total,
         )
 
         # Log any failures
         failed_collections = [name for name, result in index_results.items() if result != "SUCCESS"]
         if failed_collections:
             log.warning(
-                f"{LogTag.MONGO} Failed to create indexes for collections: {failed_collections}"
+                f"{LogTag.MONGO} Failed to create indexes for collections",
+                failed_collections=failed_collections,
             )
 
     except Exception as e:
-        log.error(f"{LogTag.MONGO} Critical error during database index creation: {e!s}")
+        log.error(
+            f"{LogTag.MONGO} Critical error during database index creation",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
-async def create_user_indexes():
+async def create_user_indexes() -> None:
     """Create indexes for users collection."""
+    users_collection = get_async_collection("users")
     try:
         # Create all user indexes concurrently
         await asyncio.gather(
@@ -169,12 +159,15 @@ async def create_user_indexes():
         )
 
     except Exception as e:
-        log.error(f"{LogTag.MONGO} Error creating user indexes: {e!s}")
+        log.error(
+            f"{LogTag.MONGO} Error creating user indexes", error=str(e), error_type=type(e).__name__
+        )
         raise
 
 
-async def create_conversation_indexes():
+async def create_conversation_indexes() -> None:
     """Create indexes for conversations collection."""
+    conversations_collection = get_async_collection("conversations")
     try:
         # Create all conversation indexes concurrently
         await asyncio.gather(
@@ -193,12 +186,17 @@ async def create_conversation_indexes():
         )
 
     except Exception as e:
-        log.error(f"{LogTag.MONGO} Error creating conversation indexes: {e!s}")
+        log.error(
+            f"{LogTag.MONGO} Error creating conversation indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
-async def create_todo_indexes():
+async def create_todo_indexes() -> None:
     """Create indexes for todos collection."""
+    todos_collection = get_async_collection("todos")
     try:
         # Create all todo indexes concurrently
         await asyncio.gather(
@@ -258,12 +256,15 @@ async def create_todo_indexes():
         )
 
     except Exception as e:
-        log.error(f"{LogTag.MONGO} Error creating todo indexes: {e!s}")
+        log.error(
+            f"{LogTag.MONGO} Error creating todo indexes", error=str(e), error_type=type(e).__name__
+        )
         raise
 
 
-async def create_project_indexes():
+async def create_project_indexes() -> None:
     """Create indexes for projects collection."""
+    projects_collection = get_async_collection("projects")
     try:
         # Create all project indexes concurrently
         await asyncio.gather(
@@ -276,31 +277,17 @@ async def create_project_indexes():
         )
 
     except Exception as e:
-        log.error(f"{LogTag.MONGO} Error creating project indexes: {e!s}")
-        raise
-
-
-async def create_goal_indexes():
-    """Create indexes for goals collection."""
-    try:
-        # Create all goal indexes concurrently
-        await asyncio.gather(
-            # Primary index for user goals
-            goals_collection.create_index([("user_id", 1), ("created_at", -1)]),
-            # For progress tracking
-            goals_collection.create_index([("user_id", 1), ("progress", 1)]),
-            # For todo integration queries
-            goals_collection.create_index([("user_id", 1), ("todo_project_id", 1)]),
-            goals_collection.create_index([("user_id", 1), ("todo_id", 1)]),
+        log.error(
+            f"{LogTag.MONGO} Error creating project indexes",
+            error=str(e),
+            error_type=type(e).__name__,
         )
-
-    except Exception as e:
-        log.error(f"{LogTag.MONGO} Error creating goal indexes: {e!s}")
         raise
 
 
-async def create_note_indexes():
+async def create_note_indexes() -> None:
     """Create indexes for notes collection."""
+    notes_collection = get_async_collection("notes")
     try:
         # Create all note indexes concurrently
         await asyncio.gather(
@@ -315,12 +302,15 @@ async def create_note_indexes():
         )
 
     except Exception as e:
-        log.error(f"{LogTag.MONGO} Error creating note indexes: {e!s}")
+        log.error(
+            f"{LogTag.MONGO} Error creating note indexes", error=str(e), error_type=type(e).__name__
+        )
         raise
 
 
-async def create_file_indexes():
+async def create_file_indexes() -> None:
     """Create indexes for files collection."""
+    files_collection = get_async_collection("files")
     try:
         # Create all file indexes concurrently
         await asyncio.gather(
@@ -335,12 +325,15 @@ async def create_file_indexes():
         )
 
     except Exception as e:
-        log.error(f"{LogTag.MONGO} Error creating file indexes: {e!s}")
+        log.error(
+            f"{LogTag.MONGO} Error creating file indexes", error=str(e), error_type=type(e).__name__
+        )
         raise
 
 
-async def create_mail_indexes():
+async def create_mail_indexes() -> None:
     """Create indexes for mail collection."""
+    mail_collection = get_async_collection("mail")
     try:
         # Create all mail indexes concurrently
         await asyncio.gather(
@@ -351,12 +344,15 @@ async def create_mail_indexes():
         )
 
     except Exception as e:
-        log.error(f"{LogTag.MONGO} Error creating mail indexes: {e!s}")
+        log.error(
+            f"{LogTag.MONGO} Error creating mail indexes", error=str(e), error_type=type(e).__name__
+        )
         raise
 
 
-async def create_calendar_indexes():
+async def create_calendar_indexes() -> None:
     """Create indexes for calendar collection."""
+    calendars_collection = get_async_collection("calendar")
     try:
         # Create all calendar indexes concurrently
         await asyncio.gather(
@@ -369,12 +365,17 @@ async def create_calendar_indexes():
         )
 
     except Exception as e:
-        log.error(f"{LogTag.MONGO} Error creating calendar indexes: {e!s}")
+        log.error(
+            f"{LogTag.MONGO} Error creating calendar indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
-async def create_blog_indexes():
+async def create_blog_indexes() -> None:
     """Create indexes for blog collection."""
+    blog_collection = get_async_collection("blog")
     try:
         # Create all blog indexes concurrently
         await asyncio.gather(
@@ -388,24 +389,18 @@ async def create_blog_indexes():
             blog_collection.create_index("authors"),
             # Compound index for published blogs
             blog_collection.create_index([("date", -1), ("category", 1)]),
-            # Text search index
-            blog_collection.create_index(
-                [
-                    ("title", "text"),
-                    ("content", "text"),
-                    ("description", "text"),
-                    ("tags", "text"),
-                ]
-            ),
         )
 
     except Exception as e:
-        log.error(f"{LogTag.MONGO} Error creating blog indexes: {e!s}")
+        log.error(
+            f"{LogTag.MONGO} Error creating blog indexes", error=str(e), error_type=type(e).__name__
+        )
         raise
 
 
-async def create_notification_indexes():
+async def create_notification_indexes() -> None:
     """Create indexes for notifications collection."""
+    notifications_collection = get_async_collection("notifications")
     try:
         # Create all notification indexes concurrently
         await asyncio.gather(
@@ -420,12 +415,17 @@ async def create_notification_indexes():
         )
 
     except Exception as e:
-        log.error(f"{LogTag.MONGO} Error creating notification indexes: {e!s}")
+        log.error(
+            f"{LogTag.MONGO} Error creating notification indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
-async def create_reminder_indexes():
+async def create_reminder_indexes() -> None:
     """Create indexes for the reminders collection."""
+    reminders_collection = get_async_collection("reminders")
     try:
         await asyncio.gather(
             reminders_collection.create_index([("user_id", 1)]),
@@ -437,12 +437,17 @@ async def create_reminder_indexes():
             reminders_collection.create_index([("user_id", 1), ("type", 1)]),
         )
     except Exception as e:
-        log.error(f"{LogTag.MONGO} Error creating reminder indexes: {e}")
+        log.error(
+            f"{LogTag.MONGO} Error creating reminder indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
-async def create_workflow_indexes():
+async def create_workflow_indexes() -> None:
     """Create indexes for workflows collection for optimal query performance."""
+    workflows_collection = get_async_collection("workflows")
     try:
         # Drop the old non-unique slug index if present so the partial-unique
         # replacement below can take over. Mongo error code 27 = IndexNotFound.
@@ -531,17 +536,23 @@ async def create_workflow_indexes():
             )
         except OperationFailure as e:
             log.warning(
-                f"{LogTag.MONGO} Failed to create slug_public_unique_idx: {e}. "
-                "Likely duplicate public slugs in workflows; de-dup and restart."
+                f"{LogTag.MONGO} Failed to create slug_public_unique_idx: . Likely duplicate public slugs in workflows; de-dup and restart.",
+                error=str(e),
+                error_type=type(e).__name__,
             )
 
     except Exception as e:
-        log.error(f"{LogTag.MONGO} Error creating workflow indexes: {e!s}")
+        log.error(
+            f"{LogTag.MONGO} Error creating workflow indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
-async def create_workflow_execution_indexes():
+async def create_workflow_execution_indexes() -> None:
     """Create indexes for workflow_executions collection."""
+    workflow_executions_collection = get_async_collection("workflow_executions")
     try:
         await asyncio.gather(
             workflow_executions_collection.create_index(
@@ -552,12 +563,19 @@ async def create_workflow_execution_indexes():
             workflow_executions_collection.create_index([("workflow_id", 1), ("status", 1)]),
         )
     except Exception as e:
-        log.error(f"{LogTag.MONGO} Error creating workflow execution indexes: {e!s}")
+        log.error(
+            f"{LogTag.MONGO} Error creating workflow execution indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
-async def create_payment_indexes():
+async def create_payment_indexes() -> None:
     """Create indexes for payment-related collections."""
+    payments_collection = get_async_collection("payments")
+    plans_collection = get_async_collection("subscription_plans")
+    subscriptions_collection = get_async_collection("subscriptions")
     try:
         # Create payment collection indexes
         await asyncio.gather(
@@ -584,17 +602,22 @@ async def create_payment_indexes():
         )
 
     except Exception as e:
-        log.error(f"{LogTag.MONGO} Error creating payment indexes: {e!s}")
+        log.error(
+            f"{LogTag.MONGO} Error creating payment indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
-async def create_processed_webhook_indexes():
+async def create_processed_webhook_indexes() -> None:
     """
     Create indexes for processed_webhooks collection for idempotency.
 
     - Unique index for idempotency check
     - TTL index for automatic cleanup
     """
+    processed_webhooks_collection = get_async_collection("processed_webhooks")
     try:
         await asyncio.gather(
             # Unique index on webhook_id - required for idempotency
@@ -606,22 +629,62 @@ async def create_processed_webhook_indexes():
             ),
         )
     except Exception as e:
-        log.error(f"{LogTag.MONGO} Error creating processed webhook indexes: {e!s}")
+        log.error(
+            f"{LogTag.MONGO} Error creating processed webhook indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
-async def create_usage_indexes():
+async def create_pending_platform_registration_indexes() -> None:
     """
-    Create indexes for usage_snapshots collection for optimal query performance.
-    Includes TTL index for automatic cleanup after 90 days.
+    Create indexes for the pending_platform_registrations collection.
+
+    - Unique on (platform, platform_user_id): one account per handle
+    - (user_id, platform): the per-user lookup on connect, link and unlink
+    - created_at: the range scan the abandoned-registration sweep runs
+    """
+    pending_registrations_collection = get_async_collection("pending_platform_registrations")
+    try:
+        await asyncio.gather(
+            pending_registrations_collection.create_index(
+                [("platform", 1), ("platform_user_id", 1)], unique=True
+            ),
+            pending_registrations_collection.create_index([("user_id", 1), ("platform", 1)]),
+            pending_registrations_collection.create_index("created_at"),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating pending platform registration indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_usage_indexes() -> None:
+    """
+    Create indexes for the usage_snapshots and usage_daily collections.
+    Includes TTL index for automatic snapshot cleanup after 90 days.
 
     Query patterns:
     - Find latest usage by user_id (sorted by created_at desc)
     - Find usage history by user_id and date range
+    - Heatmap: per-user trailing-window reads on usage_daily (user_id + date)
+    - Percentile thresholds: cross-user aggregation on usage_daily (date range)
     - Automatic cleanup via TTL index
     """
+    usage_daily_collection = get_async_collection("usage_daily")
+    usage_snapshots_collection = get_async_collection("usage_snapshots")
     try:
         await asyncio.gather(
+            # Heatmap upsert key + per-user range reads (unique per user-day)
+            usage_daily_collection.create_index(
+                [("user_id", 1), ("date", 1)], unique=True, name="user_day_unique"
+            ),
+            # Cross-user percentile threshold aggregation ($match on date range)
+            usage_daily_collection.create_index("date", name="daily_date_range"),
             # Primary query: get latest usage by user
             usage_snapshots_collection.create_index(
                 [("user_id", 1), ("created_at", -1)], name="user_latest_usage"
@@ -645,11 +708,15 @@ async def create_usage_indexes():
         )
 
     except Exception as e:
-        log.error(f"{LogTag.MONGO} Error creating usage indexes: {e!s}")
+        log.error(
+            f"{LogTag.MONGO} Error creating usage indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
-async def create_ai_models_indexes():
+async def create_ai_models_indexes() -> None:
     """
     Create indexes for ai_models collection for optimal query performance.
 
@@ -659,6 +726,7 @@ async def create_ai_models_indexes():
     - Find default models
     - Pricing lookups
     """
+    ai_models_collection = get_async_collection("ai_models")
     try:
         await asyncio.gather(
             # Primary model lookup
@@ -681,11 +749,17 @@ async def create_ai_models_indexes():
         )
 
     except Exception as e:
-        log.error(f"{LogTag.MONGO} Error creating AI models indexes: {e!s}")
+        log.error(
+            f"{LogTag.MONGO} Error creating AI models indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
-async def _create_index_safe(collection, keys, **kwargs):
+async def _create_index_safe(
+    collection: AsyncIOMotorCollection[dict[str, Any]], keys: IndexKeys, **kwargs: Any
+) -> None:
     """
     Create an index safely, handling IndexOptionsConflict gracefully.
 
@@ -703,7 +777,7 @@ async def _create_index_safe(collection, keys, **kwargs):
         raise
 
 
-async def create_integration_indexes():
+async def create_integration_indexes() -> None:
     """
     Create indexes for integrations collection.
 
@@ -714,6 +788,7 @@ async def create_integration_indexes():
     - Featured integrations lookup
     - Public custom integrations for marketplace
     """
+    integrations_collection = get_async_collection("integrations")
     try:
         await asyncio.gather(
             # Primary unique index on integration_id
@@ -771,12 +846,17 @@ async def create_integration_indexes():
         await _backfill_integration_slugs()
 
     except Exception as e:
-        log.error(f"{LogTag.MONGO} Error creating integration indexes: {e!s}")
+        log.error(
+            f"{LogTag.MONGO} Error creating integration indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
 async def _backfill_integration_slugs() -> None:
     """Populate slug field for public integrations missing it."""
+    integrations_collection = get_async_collection("integrations")
     try:
         total_backfilled = 0
         while True:
@@ -788,13 +868,14 @@ async def _backfill_integration_slugs() -> None:
             if not docs:
                 break
 
-            log.info(f"{LogTag.MONGO} Backfilling slugs for {len(docs)} public integrations")
+            log.info(
+                f"{LogTag.MONGO} Backfilling slugs for public integrations", docs_count=len(docs)
+            )
             for doc in docs:
-                slug = await generate_unique_integration_slug(
+                slug = await integration_repository.ensure_unique_slug(
                     name=doc.get("name", ""),
                     category=doc.get("category", "custom"),
                     integration_id=doc["integration_id"],
-                    collection=integrations_collection,
                 )
                 await integrations_collection.update_one(
                     {"integration_id": doc["integration_id"]},
@@ -804,13 +885,18 @@ async def _backfill_integration_slugs() -> None:
 
         if total_backfilled:
             log.info(
-                f"{LogTag.MONGO} Slug backfill complete: {total_backfilled} integrations updated"
+                f"{LogTag.MONGO} Slug backfill complete: integrations updated",
+                total_backfilled=total_backfilled,
             )
     except Exception as e:
-        log.warning(f"{LogTag.MONGO} Slug backfill failed (non-fatal): {e}")
+        log.warning(
+            f"{LogTag.MONGO} Slug backfill failed (non-fatal)",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
-async def create_user_integration_indexes():
+async def create_user_integration_indexes() -> None:
     """
     Create indexes for user_integrations collection.
 
@@ -819,6 +905,7 @@ async def create_user_integration_indexes():
     - Get user's connected integrations only
     - Check if user has added a specific integration
     """
+    user_integrations_collection = get_async_collection("user_integrations")
     try:
         await asyncio.gather(
             # Primary compound index for user's integrations
@@ -849,11 +936,15 @@ async def create_user_integration_indexes():
         )
 
     except Exception as e:
-        log.error(f"{LogTag.MONGO} Error creating user integration indexes: {e!s}")
+        log.error(
+            f"{LogTag.MONGO} Error creating user integration indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
-async def create_integration_instructions_indexes():
+async def create_integration_instructions_indexes() -> None:
     """
     Create indexes for integration_instructions collection.
 
@@ -861,6 +952,7 @@ async def create_integration_instructions_indexes():
     - Read one integration's instructions: user_id + integration_id (unique)
     - List all of a user's instructions for materialization
     """
+    integration_instructions_collection = get_async_collection("integration_instructions")
     try:
         await _create_index_safe(
             integration_instructions_collection,
@@ -870,12 +962,17 @@ async def create_integration_instructions_indexes():
         )
 
     except Exception as e:
-        log.error(f"{LogTag.MONGO} Error creating integration instructions indexes: {e!s}")
+        log.error(
+            f"{LogTag.MONGO} Error creating integration instructions indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
-async def create_device_token_indexes():
+async def create_device_token_indexes() -> None:
     """Create indexes for device_tokens collection for push notifications."""
+    device_tokens_collection = get_async_collection("device_tokens")
     try:
         await asyncio.gather(
             # Primary lookup by user
@@ -887,12 +984,17 @@ async def create_device_token_indexes():
         )
 
     except Exception as e:
-        log.error(f"{LogTag.MONGO} Error creating device token indexes: {e!s}")
+        log.error(
+            f"{LogTag.MONGO} Error creating device token indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
-async def create_bot_session_indexes():
+async def create_bot_session_indexes() -> None:
     """Create indexes for bot_sessions collection for optimal query performance and automatic cleanup."""
+    bot_sessions_collection = get_async_collection("bot_sessions")
     try:
         await asyncio.gather(
             # Unique session key index (critical for session lookup)
@@ -909,7 +1011,11 @@ async def create_bot_session_indexes():
         )
 
     except Exception as e:
-        log.error(f"{LogTag.MONGO} Error creating bot session indexes: {e!s}")
+        log.error(
+            f"{LogTag.MONGO} Error creating bot session indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
@@ -922,6 +1028,7 @@ async def create_installed_skills_indexes() -> None:
     - Agent skills: enabled + target + $or[user_id, "system"] (get_skills_for_agent)
     - User listing: user_id + installed_at (list_skills)
     """
+    skills_collection = get_async_collection("skills")
     try:
         await asyncio.gather(
             # Unique: one skill per name per target per user
@@ -955,7 +1062,42 @@ async def create_installed_skills_indexes() -> None:
         )
 
     except Exception as e:
-        log.error(f"{LogTag.MONGO} Error creating installed_skills indexes: {e!s}")
+        log.error(
+            f"{LogTag.MONGO} Error creating installed_skills indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_hil_approvals_indexes() -> None:
+    """Create indexes for the hil_approvals collection.
+
+    (conversation_id, status) serves the pending-approval lookup that runs on
+    every chat message while an approval is open; (status, expires_at) serves
+    the timeout sweep's expiry pass. (status, resumed_at, decided_at) serves the
+    sweep's crashed-resume pass (list_decided_unresumed): its resumed_at=null
+    equality bound keeps the scan off the successfully-resumed records, which are
+    the overwhelming majority and accumulate forever on this permanent audit
+    trail. Without it that pass — running every minute — would scan the whole
+    decided history. The collection is a permanent audit trail, so these queries
+    must never fall back to a collection scan.
+    """
+    hil_approvals_collection = get_async_collection("hil_approvals")
+    try:
+        await asyncio.gather(
+            hil_approvals_collection.create_index([("conversation_id", 1), ("status", 1)]),
+            hil_approvals_collection.create_index([("status", 1), ("expires_at", 1)]),
+            hil_approvals_collection.create_index(
+                [("status", 1), ("resumed_at", 1), ("decided_at", 1)]
+            ),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating hil_approvals indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
@@ -968,6 +1110,8 @@ async def create_e2b_sandbox_indexes() -> None:
     - Sweeper: scan by last_used_at to find evictable sandboxes
     - Warm pool: claim a ready sandbox by (shard_id, state)
     """
+    e2b_sandboxes_collection = get_async_collection("e2b_sandboxes")
+    e2b_warm_pool_collection = get_async_collection("e2b_warm_pool")
     try:
         await asyncio.gather(
             e2b_sandboxes_collection.create_index("user_id", unique=True),
@@ -982,5 +1126,9 @@ async def create_e2b_sandbox_indexes() -> None:
             ),
         )
     except Exception as e:
-        log.error(f"{LogTag.MONGO} Error creating e2b sandbox indexes: {e!s}")
+        log.error(
+            f"{LogTag.MONGO} Error creating e2b sandbox indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise

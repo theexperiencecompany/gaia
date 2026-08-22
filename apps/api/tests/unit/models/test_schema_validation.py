@@ -32,7 +32,6 @@ from app.models.user_models import (
 )
 
 
-@pytest.mark.unit
 class TestConversationModel:
     def test_valid_minimal(self):
         m = ConversationModel(conversation_id="conv_1")
@@ -79,7 +78,6 @@ class TestConversationModel:
             assert m.source == source
 
 
-@pytest.mark.unit
 class TestMessageModel:
     def test_valid_minimal(self):
         m = MessageModel(type="user", response="Hello")
@@ -113,7 +111,6 @@ class TestMessageModel:
             MessageModel(response="Hello")
 
 
-@pytest.mark.unit
 class TestFileData:
     def test_valid_minimal(self):
         f = FileData(fileId="f1", url="https://files.com/1", filename="doc.pdf")
@@ -130,7 +127,6 @@ class TestFileData:
         assert f.type == "image"
 
 
-@pytest.mark.unit
 class TestSelectedWorkflowData:
     def test_valid(self):
         w = SelectedWorkflowData(
@@ -151,7 +147,6 @@ class TestSelectedWorkflowData:
             )
 
 
-@pytest.mark.unit
 class TestReplyToMessageData:
     def test_valid(self):
         r = ReplyToMessageData(id="msg_1", content="Original", role="user")
@@ -162,7 +157,6 @@ class TestReplyToMessageData:
             ReplyToMessageData(id="msg_1")
 
 
-@pytest.mark.unit
 class TestMessageRequestWithHistory:
     def test_valid(self):
         m = MessageRequestWithHistory(
@@ -178,7 +172,6 @@ class TestMessageRequestWithHistory:
             MessageRequestWithHistory(message="Hello")
 
 
-@pytest.mark.unit
 class TestUpdateMessagesRequest:
     def test_valid(self):
         r = UpdateMessagesRequest(
@@ -191,7 +184,6 @@ class TestUpdateMessagesRequest:
         assert len(r.messages) == 1
 
 
-@pytest.mark.unit
 class TestBatchSyncRequest:
     def test_valid(self):
         r = BatchSyncRequest(
@@ -204,7 +196,6 @@ class TestBatchSyncRequest:
         assert r.conversations[1].last_updated is None
 
 
-@pytest.mark.unit
 class TestOnboardingRequest:
     def test_valid(self):
         r = OnboardingRequest(
@@ -304,7 +295,6 @@ class TestOnboardingRequest:
         assert r.timezone is None
 
 
-@pytest.mark.unit
 class TestOnboardingPreferences:
     def test_valid(self):
         p = OnboardingPreferences(
@@ -329,7 +319,6 @@ class TestOnboardingPreferences:
             OnboardingPreferences(custom_instructions="x" * 501)
 
 
-@pytest.mark.unit
 class TestUserUpdateResponse:
     def test_valid(self):
         r = UserUpdateResponse(
@@ -340,7 +329,6 @@ class TestUserUpdateResponse:
         assert r.picture is None
 
 
-@pytest.mark.unit
 class TestMemoryModels:
     def test_memory_entry_defaults(self):
         e = MemoryEntry(content="Test memory")
@@ -374,7 +362,6 @@ class TestMemoryModels:
             CreateMemoryRequest()
 
 
-@pytest.mark.unit
 class TestConversationSourceCoerce:
     """ConversationSource.coerce parses raw values into the enum (or None)."""
 
@@ -395,7 +382,6 @@ class TestConversationSourceCoerce:
         assert ConversationSource.coerce(raw) is None
 
 
-@pytest.mark.unit
 class TestSourceCategoryFromSource:
     """SourceCategory.from_source maps a specific channel to its category."""
 

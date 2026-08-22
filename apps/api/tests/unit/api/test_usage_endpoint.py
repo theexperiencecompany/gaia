@@ -11,21 +11,45 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.models.payment_models import PlanType
+from app.services.analytics_service import AnalyticsEvents
+
 SUMMARY_URL = "/api/v1/usage/summary"
 HISTORY_URL = "/api/v1/usage/history"
+ANALYTICS_PATCH = "app.api.v1.endpoints.usage.capture_context_event"
+
+
+@pytest.fixture(autouse=True)
+def _noop_analytics():
+    """Neutralize capture_context_event for every test in this module.
+
+    The test app runs a no-op lifespan, so the PostHog provider is never
+    registered; a bare capture_context_event call would raise KeyError on the
+    missing provider. Tests that assert on captures patch the call site again
+    and assert on their own mock.
+    """
+    with patch(ANALYTICS_PATCH):
+        yield
+
 
 # Patch targets
 _PAYMENT_SERVICE = (
     "app.services.payments.payment_service.payment_service.get_user_subscription_status"
 )
 _GET_REALTIME_USAGE = "app.api.v1.endpoints.usage._get_realtime_usage"
+_GET_BUDGET_STATUS = "app.api.v1.endpoints.usage.get_budget_status"
 _USAGE_SERVICE = "app.api.v1.endpoints.usage.usage_service"
+
+_MOCK_BUDGET = {
+    "daily": {"percentage": 12.0, "reset_time": "2025-01-02T00:00:00+00:00"},
+    "monthly": None,
+    "per_request_token_ceiling": 300_000,
+}
 
 
 def _mock_subscription(plan_type: str = "free") -> MagicMock:
     sub = MagicMock()
-    sub.plan_type = MagicMock()
-    sub.plan_type.value = plan_type
+    sub.plan_type = PlanType(plan_type)
     return sub
 
 
@@ -34,7 +58,6 @@ def _mock_subscription(plan_type: str = "free") -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetUsageSummary:
     """Tests for the get usage summary endpoint."""
 
@@ -44,6 +67,8 @@ class TestGetUsageSummary:
             "chat": {
                 "title": "Chat Messages",
                 "description": "AI chat messages",
+                # Pro's limits ride every feature so a free UI can show the delta.
+                "upgrade": {"day": 0, "month": 60000},
                 "periods": {
                     "day": {
                         "used": 5,
@@ -63,6 +88,7 @@ class TestGetUsageSummary:
                 new_callable=AsyncMock,
                 return_value=mock_features,
             ),
+            patch(_GET_BUDGET_STATUS, new_callable=AsyncMock, return_value=_MOCK_BUDGET),
         ):
             response = await client.get(SUMMARY_URL)
 
@@ -70,8 +96,46 @@ class TestGetUsageSummary:
         data = response.json()
         assert data["user_id"] == "507f1f77bcf86cd799439011"
         assert data["plan_type"] == "free"
+        # The usage UI leads with the cost-walled chat feature, sourced from config.
+        assert data["primary_feature"] == "chat_messages"
         assert "features" in data
+        assert data["budget"] == _MOCK_BUDGET
         assert "last_updated" in data
+
+    async def test_summary_captures_usage_queried(self, client: AsyncClient):
+        mock_sub = _mock_subscription()
+        mock_features: dict = {
+            "chat": {
+                "title": "Chat Messages",
+                "description": "AI chat messages",
+                "upgrade": {"day": 0, "month": 60000},
+                "periods": {
+                    "day": {
+                        "used": 5,
+                        "limit": 50,
+                        "percentage": 10.0,
+                        "reset_time": "2025-01-02T00:00:00+00:00",
+                        "remaining": 45,
+                    }
+                },
+            }
+        }
+
+        with (
+            patch(_PAYMENT_SERVICE, new_callable=AsyncMock, return_value=mock_sub),
+            patch(
+                _GET_REALTIME_USAGE,
+                new_callable=AsyncMock,
+                return_value=mock_features,
+            ),
+            patch(_GET_BUDGET_STATUS, new_callable=AsyncMock, return_value=_MOCK_BUDGET),
+            patch(ANALYTICS_PATCH) as mock_capture,
+        ):
+            response = await client.get(SUMMARY_URL)
+
+        assert response.status_code == 200
+        mock_capture.assert_called_once_with(AnalyticsEvents.USAGE_QUERIED, {"plan_type": "free"})
+        assert type(mock_capture.call_args.args[1]["plan_type"]) is str
 
     async def test_get_summary_pro_plan(self, client: AsyncClient):
         mock_sub = _mock_subscription("pro")
@@ -79,6 +143,7 @@ class TestGetUsageSummary:
         with (
             patch(_PAYMENT_SERVICE, new_callable=AsyncMock, return_value=mock_sub),
             patch(_GET_REALTIME_USAGE, new_callable=AsyncMock, return_value={}),
+            patch(_GET_BUDGET_STATUS, new_callable=AsyncMock, return_value=_MOCK_BUDGET),
         ):
             response = await client.get(SUMMARY_URL)
 
@@ -102,7 +167,6 @@ class TestGetUsageSummary:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetUsageHistory:
     """Tests for the get usage history endpoint."""
 

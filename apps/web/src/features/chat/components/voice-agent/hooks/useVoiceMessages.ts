@@ -9,9 +9,10 @@ import {
   VOICE_STREAM_TOPIC,
 } from "@/features/chat/components/voice-agent/constants";
 import { readToolDataLoadingHints } from "@/features/chat/utils/loadingHints";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import type { IMessage } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
-import { useLoadingStore } from "@/stores/loadingStore";
+import { useStreamStore } from "@/stores/streamStore";
 import { useVoiceModeActions } from "@/stores/voiceModeStore";
 
 interface VoiceBotTurn {
@@ -77,9 +78,7 @@ function appendToolDataEntry(
   const hints = readToolDataLoadingHints((entry as { data?: unknown }).data);
   if (hints) {
     const { message, ...toolInfo } = hints;
-    const loading = useLoadingStore.getState();
-    if (!loading.isLoading) loading.setLoading(true);
-    loading.setLoadingText({ text: message, toolInfo });
+    useStreamStore.getState().setAuxLoading(true, message, toolInfo);
   }
   return true;
 }
@@ -209,7 +208,7 @@ export function useVoiceMessages(
     // This turn's first token has arrived — clear the thinking indicator and
     // keep it cleared for the rest of the turn.
     botTokenSeenThisTurnRef.current = true;
-    useLoadingStore.getState().setLoading(false);
+    useStreamStore.getState().setAuxLoading(false);
     return turn;
   }, [room, nextCreatedAt, closeUserGroup]);
 
@@ -265,7 +264,7 @@ export function useVoiceMessages(
         // bubble. The turn closes when the next user utterance starts.
         turn.loading = false;
         // Drop any per-tool loading label so it doesn't linger past the reply.
-        useLoadingStore.getState().resetLoadingText();
+        useStreamStore.getState().setAuxLoading(false);
         changed = true;
       }
 
@@ -353,6 +352,9 @@ export function useVoiceMessages(
     // the active bot turn so the previous reply/tools/followups don't merge
     // into the next turn.
     if (currentUserGroupRef.current === null) {
+      trackEvent(ANALYTICS_EVENTS.VOICE_TRANSCRIPTION_RECEIVED, {
+        conversation_id: cid,
+      });
       activeTurnRef.current = null;
       // New user turn — re-arm the thinking indicator for the upcoming reply.
       botTokenSeenThisTurnRef.current = false;
@@ -442,14 +444,14 @@ export function useVoiceMessages(
   // screen after the reply. `listening` clears it as a safety net.
   useEffect(() => {
     if (agentState === "thinking" && !botTokenSeenThisTurnRef.current) {
-      useLoadingStore.getState().setLoading(true);
+      useStreamStore.getState().setAuxLoading(true);
     } else if (agentState === "listening") {
-      useLoadingStore.getState().setLoading(false);
+      useStreamStore.getState().setAuxLoading(false);
     }
   }, [agentState]);
 
   // Clear the indicator when leaving voice mode.
-  useEffect(() => () => useLoadingStore.getState().setLoading(false), []);
+  useEffect(() => () => useStreamStore.getState().setAuxLoading(false), []);
 
   return { sendUserTurn };
 }

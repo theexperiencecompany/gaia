@@ -16,15 +16,29 @@ exercise the real `proxy_request_sync` path with a real Composio API key
 and a real connected account.
 """
 
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
+_LIVE_TIER = Path(__file__).parent
+
 
 def pytest_collection_modifyitems(config, items):
+    """Mark this tier so the default run skips it — these tests bill real Composio calls.
+
+    Scoped to this directory by path, not by the substring "composio": that
+    matched every hermetic test whose path merely mentions Composio
+    (`tests/unit/services/composio/`, `tests/unit/api/test_webhook_composio_endpoint.py`,
+    `tests/integration/real/test_webhook_composio.py` — 545 tests in 18 files) and
+    silently dropped all of them from every CI run, since the default marker
+    expression is `not composio`. Targeting one of those files directly still
+    collected it, because this conftest never loaded, so the gap was invisible
+    locally.
+    """
     for item in items:
-        if "composio" in str(item.fspath):
+        if _LIVE_TIER in Path(str(item.fspath)).parents:
             item.add_marker(pytest.mark.composio)
 
 
@@ -74,3 +88,15 @@ def mock_composio_client():
     composio.tools.custom_tool.side_effect = custom_tool_decorator
     composio._registered_tools = registered_tools
     return composio
+
+
+# Live-credential tier: declare the real keys these tests may use so the root
+# hermetic fence (tests/conftest.py) does not blank them. Set at import time —
+# before the session fence runs. Only keys needed by genuine live tests belong
+# here; mocked tests do not require them.
+import os
+
+os.environ.setdefault(
+    "HERMETIC_ALLOW_KEYS",
+    "COMPOSIO_KEY,COMPOSIO_WEBHOOK_SECRET",
+)

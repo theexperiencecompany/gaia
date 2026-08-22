@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.services.analytics_service import AnalyticsEvents
 from tests.conftest import FAKE_USER
 
 # ---------------------------------------------------------------------------
@@ -19,6 +20,22 @@ from tests.conftest import FAKE_USER
 
 API = "/api/v1/reminders"
 USER_ID = FAKE_USER["user_id"]
+ANALYTICS_PATCH = "app.api.v1.endpoints.reminders.capture_context_event"
+
+
+@pytest.fixture(autouse=True)
+def _noop_analytics():
+    """Neutralize capture_context_event for every test in this module.
+
+    The test app runs a no-op lifespan, so the PostHog provider is never
+    registered; a bare capture_context_event call would raise KeyError on the
+    missing provider. Tests that assert on captures patch the call site again
+    and assert on their own mock.
+    """
+    with patch(ANALYTICS_PATCH):
+        yield
+
+
 NOW = datetime.now(UTC)
 FUTURE = NOW + timedelta(days=1)
 
@@ -77,7 +94,6 @@ def _create_payload(
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestCreateReminder:
     """POST /api/v1/reminders"""
 
@@ -122,12 +138,76 @@ class TestCreateReminder:
         assert resp.status_code == 401
 
 
+class TestReminderAnalytics:
+    """Analytics captures on reminder mutation endpoints."""
+
+    async def test_create_captures_reminder_created(self, client: AsyncClient) -> None:
+        mock_reminder = _reminder_model("rem_new")
+        with (
+            patch(
+                "app.api.v1.endpoints.reminders.reminder_scheduler.create_reminder",
+                new_callable=AsyncMock,
+                return_value="rem_new",
+            ),
+            patch(
+                "app.api.v1.endpoints.reminders.reminder_scheduler.get_reminder",
+                new_callable=AsyncMock,
+                return_value=mock_reminder,
+            ),
+            patch(ANALYTICS_PATCH) as mock_capture,
+        ):
+            resp = await client.post(API, json=_create_payload())
+
+        assert resp.status_code == 201
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.REMINDER_CREATED, {"is_recurring": False}
+        )
+
+    async def test_create_recurring_reminder_captures_is_recurring(
+        self, client: AsyncClient
+    ) -> None:
+        mock_reminder = _reminder_model("rem_recur")
+        mock_reminder.repeat = "0 9 * * *"
+        with (
+            patch(
+                "app.api.v1.endpoints.reminders.reminder_scheduler.create_reminder",
+                new_callable=AsyncMock,
+                return_value="rem_recur",
+            ),
+            patch(
+                "app.api.v1.endpoints.reminders.reminder_scheduler.get_reminder",
+                new_callable=AsyncMock,
+                return_value=mock_reminder,
+            ),
+            patch(ANALYTICS_PATCH) as mock_capture,
+        ):
+            resp = await client.post(API, json={**_create_payload(), "repeat": "0 9 * * *"})
+
+        assert resp.status_code == 201
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.REMINDER_CREATED, {"is_recurring": True}
+        )
+
+    async def test_cancel_captures_reminder_deleted(self, client: AsyncClient) -> None:
+        with (
+            patch(
+                "app.api.v1.endpoints.reminders.reminder_scheduler.cancel_task",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(ANALYTICS_PATCH) as mock_capture,
+        ):
+            resp = await client.delete(f"{API}/rem_1")
+
+        assert resp.status_code == 204
+        mock_capture.assert_called_once_with(AnalyticsEvents.REMINDER_DELETED)
+
+
 # ===========================================================================
 # GET /api/v1/reminders/{reminder_id}  -- get reminder
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestGetReminder:
     """GET /api/v1/reminders/{reminder_id}"""
 
@@ -173,7 +253,6 @@ class TestGetReminder:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestUpdateReminder:
     """PUT /api/v1/reminders/{reminder_id}"""
 
@@ -234,7 +313,6 @@ class TestUpdateReminder:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestCancelReminder:
     """DELETE /api/v1/reminders/{reminder_id}"""
 
@@ -277,7 +355,6 @@ class TestCancelReminder:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestListReminders:
     """GET /api/v1/reminders"""
 
@@ -335,7 +412,6 @@ class TestListReminders:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestPauseReminder:
     """POST /api/v1/reminders/{reminder_id}/pause"""
 
@@ -385,7 +461,6 @@ class TestPauseReminder:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestResumeReminder:
     """POST /api/v1/reminders/{reminder_id}/resume"""
 
@@ -442,7 +517,6 @@ class TestResumeReminder:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestCronValidate:
     """GET /api/v1/reminders/cron/validate"""
 
@@ -452,7 +526,7 @@ class TestCronValidate:
             return_value=True,
         ):
             with patch(
-                "app.utils.cron_utils.calculate_next_occurrences",
+                "app.api.v1.endpoints.reminders.calculate_next_occurrences",
                 return_value=[FUTURE],
             ):
                 resp = await client.get(
@@ -461,8 +535,10 @@ class TestCronValidate:
                 )
         assert resp.status_code == 200
         data = resp.json()
+        assert data["expression"] == "0 9 * * *"
         assert data["valid"] is True
-        assert "next_runs" in data
+        assert data["next_runs"] == [FUTURE.isoformat()]
+        assert data["error"] is None
 
     async def test_invalid_cron_expression(self, client: AsyncClient) -> None:
         with patch(
@@ -475,7 +551,9 @@ class TestCronValidate:
             )
         assert resp.status_code == 200
         data = resp.json()
+        assert data["expression"] == "not-a-cron"
         assert data["valid"] is False
+        assert data["next_runs"] == []
 
     async def test_cron_validate_missing_expression(self, client: AsyncClient) -> None:
         resp = await client.get(f"{API}/cron/validate")

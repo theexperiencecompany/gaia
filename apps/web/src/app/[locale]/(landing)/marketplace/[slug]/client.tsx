@@ -18,7 +18,6 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
-import { wallpapers } from "@/config/wallpapers";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
@@ -37,6 +36,119 @@ import { ToolCard } from "./ToolCard";
 interface IntegrationDetailClientProps {
   integration: PublicIntegrationResponse;
   comparisonSlug?: string;
+}
+
+function IntegrationMetaBar({
+  integration,
+  isNative,
+}: {
+  integration: PublicIntegrationResponse;
+  isNative: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap items-start gap-4">
+      <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
+        <LayersIcon width={24} height={24} className="text-zinc-400" />
+        <div>
+          <div className="text-xs text-zinc-500">Category</div>
+          <div className="text-sm text-zinc-300">
+            {integration.category.charAt(0).toUpperCase() +
+              integration.category.slice(1)}
+          </div>
+        </div>
+      </div>
+
+      {isNative ? (
+        <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
+          <div className="flex h-8 w-8 items-center justify-center overflow-hidden">
+            <Image
+              src="/brand/gaia_logo.svg"
+              alt="GAIA"
+              width={100}
+              height={100}
+              className="object-contain"
+            />
+          </div>
+          <div>
+            <div className="text-xs text-zinc-500">Created by</div>
+            <div className="flex items-center gap-1 text-sm text-zinc-300">
+              GAIA Team
+              <CheckmarkBadge01Icon
+                width={15}
+                height={15}
+                className="text-primary"
+              />
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
+          {integration.creator?.picture ? (
+            <Avatar
+              src={integration.creator?.picture || undefined}
+              name={integration.creator?.name || undefined}
+              size="sm"
+              className="h-6 w-6"
+            />
+          ) : (
+            <UserCircle02Icon
+              width={24}
+              height={24}
+              className="text-zinc-400"
+            />
+          )}
+          <div>
+            <div className="text-xs text-zinc-500">Created by</div>
+            <div className="text-sm text-zinc-300">
+              {integration.creator?.name || "Unknown"}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!isNative && (
+        <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
+          <GitForkIcon width={24} height={24} className="text-zinc-400" />
+          <div>
+            <div className="text-xs text-zinc-500">Users</div>
+            <div className="text-sm text-zinc-300">
+              {integration.cloneCount}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isNative ? (
+        <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
+          <LayersIcon width={24} height={24} className="text-zinc-400" />
+          <div>
+            <div className="text-xs text-zinc-500">Auth</div>
+            <div className="text-sm text-zinc-300">
+              {integration.authType === "oauth"
+                ? "OAuth"
+                : integration.authType === "bearer"
+                  ? "API Key"
+                  : "No Auth"}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
+          <DateTimeIcon width={24} height={24} className="text-zinc-400" />
+          <div>
+            <div className="text-xs text-zinc-500">Published</div>
+            <div className="text-sm text-zinc-300">
+              {integration.publishedAt
+                ? formatDistanceToNow(new Date(integration.publishedAt), {
+                    addSuffix: true,
+                  })
+                : "N/A"}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function IntegrationDetailClient({
@@ -105,54 +217,32 @@ export function IntegrationDetailClient({
     const loadingToast = toast.loading("Adding integration...");
 
     try {
-      if (isNative) {
-        // Native integrations use the /connect endpoint
-        const result = await integrationsApi.connectIntegration(
-          integration.integrationId,
-        );
+      // Native integrations use /connect; community ones use /public/{id}/add.
+      const result = isNative
+        ? await integrationsApi.connectIntegration(integration.integrationId)
+        : await integrationsApi.addIntegration(integration.integrationId);
 
-        if (result.status === "redirecting") {
-          toast.loading("Redirecting to authorize...", { id: loadingToast });
-          return;
-        }
-
-        toast.dismiss(loadingToast);
-        toast.success(`Successfully added ${result.name}!`);
-        setIsAdded(true);
-
-        setTimeout(() => {
-          router.push(
-            `/integrations?id=${integration.integrationId}&refresh=true`,
-          );
-        }, 1000);
-      } else {
-        // Community integrations use the /public/{id}/add endpoint
-        const result = await integrationsApi.addIntegration(
-          integration.integrationId,
-        );
-
-        if (result.status === "redirecting") {
-          toast.loading("Redirecting to authorize...", { id: loadingToast });
-          return;
-        }
-
-        if (result.status === "bearer_required") {
-          toast.dismiss(loadingToast);
-          bearer.open(integration.integrationId, integration.name);
-          setIsAdding(false);
-          return;
-        }
-
-        toast.dismiss(loadingToast);
-        toast.success(`Successfully added ${result.name}!`);
-        setIsAdded(true);
-
-        setTimeout(() => {
-          router.push(
-            `/integrations?id=${integration.integrationId}&refresh=true`,
-          );
-        }, 1000);
+      if (result.status === "redirecting") {
+        toast.loading("Redirecting to authorize...", { id: loadingToast });
+        return;
       }
+
+      if (result.status === "bearer_required") {
+        toast.dismiss(loadingToast);
+        bearer.open(integration.integrationId, integration.name);
+        setIsAdding(false);
+        return;
+      }
+
+      toast.dismiss(loadingToast);
+      toast.success(`Successfully added ${result.name}!`);
+      setIsAdded(true);
+
+      setTimeout(() => {
+        router.push(
+          `/integrations?id=${integration.integrationId}&refresh=true`,
+        );
+      }, 1000);
     } catch {
       toast.dismiss(loadingToast);
       toast.error("Failed to add integration.");
@@ -173,13 +263,6 @@ export function IntegrationDetailClient({
 
   return (
     <div className="relative">
-      <Image
-        src={wallpapers.integration.webp}
-        alt="GAIA Marketplace Wallpaper"
-        priority
-        fill
-        className="mask-[linear-gradient(to_bottom,transparent_0%,black_20%,black_80%,transparent_100%)] object-cover opacity-15 z-0 w-screen fixed h-screen left-0 top-0 max-h-screen"
-      />
       <div className="flex min-h-screen w-screen justify-center overflow-y-auto pt-34 pb-20 relative z-1">
         <div className="container mx-auto w-full max-w-5xl space-y-5">
           {/* Breadcrumbs */}
@@ -255,112 +338,7 @@ export function IntegrationDetailClient({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-start gap-4">
-            <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
-              <LayersIcon width={24} height={24} className="text-zinc-400" />
-              <div>
-                <div className="text-xs text-zinc-500">Category</div>
-                <div className="text-sm text-zinc-300">
-                  {integration.category.charAt(0).toUpperCase() +
-                    integration.category.slice(1)}
-                </div>
-              </div>
-            </div>
-
-            {isNative ? (
-              <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
-                <div className="flex h-8 w-8 items-center justify-center overflow-hidden">
-                  <Image
-                    src="/brand/gaia_logo.svg"
-                    alt="GAIA"
-                    width={100}
-                    height={100}
-                    className="object-contain"
-                  />
-                </div>
-                <div>
-                  <div className="text-xs text-zinc-500">Created by</div>
-                  <div className="flex items-center gap-1 text-sm text-zinc-300">
-                    GAIA Team
-                    <CheckmarkBadge01Icon
-                      width={15}
-                      height={15}
-                      className="text-primary"
-                    />
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
-                {integration.creator?.picture ? (
-                  <Avatar
-                    src={integration.creator?.picture || undefined}
-                    name={integration.creator?.name || undefined}
-                    size="sm"
-                    className="h-6 w-6"
-                  />
-                ) : (
-                  <UserCircle02Icon
-                    width={24}
-                    height={24}
-                    className="text-zinc-400"
-                  />
-                )}
-                <div>
-                  <div className="text-xs text-zinc-500">Created by</div>
-                  <div className="text-sm text-zinc-300">
-                    {integration.creator?.name || "Unknown"}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {!isNative && (
-              <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
-                <GitForkIcon width={24} height={24} className="text-zinc-400" />
-                <div>
-                  <div className="text-xs text-zinc-500">Users</div>
-                  <div className="text-sm text-zinc-300">
-                    {integration.cloneCount}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {isNative ? (
-              <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
-                <LayersIcon width={24} height={24} className="text-zinc-400" />
-                <div>
-                  <div className="text-xs text-zinc-500">Auth</div>
-                  <div className="text-sm text-zinc-300">
-                    {integration.authType === "oauth"
-                      ? "OAuth"
-                      : integration.authType === "bearer"
-                        ? "API Key"
-                        : "No Auth"}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
-                <DateTimeIcon
-                  width={24}
-                  height={24}
-                  className="text-zinc-400"
-                />
-                <div>
-                  <div className="text-xs text-zinc-500">Published</div>
-                  <div className="text-sm text-zinc-300">
-                    {integration.publishedAt
-                      ? formatDistanceToNow(new Date(integration.publishedAt), {
-                          addSuffix: true,
-                        })
-                      : "N/A"}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+          <IntegrationMetaBar integration={integration} isNative={isNative} />
 
           {/* What you can do: value prop above the technical tool list */}
           <IntegrationUseCases integration={integration} />

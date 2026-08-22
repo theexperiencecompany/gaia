@@ -2,8 +2,6 @@
 
 from typing import Any
 
-import pytest
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -23,7 +21,6 @@ def _make_config(user_id: str = FAKE_USER_ID) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateFlowchart:
     """Tests for the create_flowchart tool."""
 

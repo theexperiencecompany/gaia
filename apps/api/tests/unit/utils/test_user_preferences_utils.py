@@ -17,7 +17,6 @@ from app.utils.user_preferences_utils import (
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestFormatResponseStyleInstruction:
     @pytest.mark.parametrize(
         "style, expected",
@@ -53,7 +52,6 @@ class TestFormatResponseStyleInstruction:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestFormatProfessionForDisplay:
     @pytest.mark.parametrize(
         "profession, expected",
@@ -91,7 +89,6 @@ class TestFormatProfessionForDisplay:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestBuildUserContextParts:
     @patch("app.utils.user_preferences_utils.log")
     def test_all_fields_present(self, mock_log: Any) -> None:
@@ -190,7 +187,6 @@ class TestBuildUserContextParts:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestFormatUserPreferencesForAgent:
     @patch("app.utils.user_preferences_utils.log")
     def test_none_returns_none(self, mock_log: Any) -> None:

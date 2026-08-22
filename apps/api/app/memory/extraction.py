@@ -1,21 +1,21 @@
 """Transcript -> structured memories: the write-path LLM calls.
 
-Two operations, both built on the free LLM chain with per-model structured
-output and graceful degradation — extraction failures must never break the
-conversation flow that spawned them, so total failure returns an empty
-batch / all-NEW decisions instead of raising.
+Two operations, both built on the default model with structured output and
+graceful degradation — extraction failures must never break the conversation
+flow that spawned them, so total failure returns an empty batch / all-NEW
+decisions instead of raising.
 """
 
-import asyncio
 from datetime import datetime
 from typing import TypeVar
 
-from langchain_core.language_models import BaseChatModel
+from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
-from app.agents.llm.client import get_free_llm_chain
+from app.agents.llm.client import ainvoke_structured_gemini, silent_metered_config
+from app.agents.llm.exceptions import LLM_FALLBACK_EXCEPTIONS, LLMNotConfiguredError
 from app.constants.memory import (
     EXTRACTION_TRANSCRIPT_HEAD_CHARS,
     EXTRACTION_TRANSCRIPT_MAX_CHARS,
@@ -43,41 +43,31 @@ _StructuredT = TypeVar("_StructuredT", bound=BaseModel)
 
 _TRANSCRIPT_TRUNCATION_MARKER = "\n[... transcript truncated ...]\n"
 
-# Background ingestion retries transient LLM errors (rate limits, overload)
-# instead of dropping the memory. Latency does not matter off the request path.
-_MAX_STRUCTURED_RETRIES = 4
-_RETRY_BASE_DELAY_SECONDS = 2.0
-_TRANSIENT_ERROR_MARKERS = (
-    "429",
-    "rate limit",
-    "ratelimit",
-    "resource_exhausted",
-    "resourceexhausted",
-    "quota",
-    "503",
-    "overloaded",
-    "unavailable",
-    "timeout",
-    "timed out",
-)
-
-
-def _is_transient_error(error: Exception) -> bool:
-    """Whether an LLM error is a rate-limit/overload worth retrying."""
-    text = str(error).lower()
-    return any(marker in text for marker in _TRANSIENT_ERROR_MARKERS)
-
 
 # These LLM calls run inside the LangGraph run that spawned them (the
 # add_memory tool, or a background ingestion task that inherited the graph's
 # callback context). Without this marker their structured-output tokens are
 # captured by the chat token stream and rendered as assistant text. ``silent``
 # is the same flag the chat stream consumers use to drop internal-LLM chunks.
-_SILENT_CONFIG: RunnableConfig = {
-    "silent": True,  # top-level flag, matching follow_up_actions_node
-    "metadata": {"silent": True},  # canonical location the messages-stream consumers read
-    "tags": ["memory_internal"],
-}  # type: ignore[typeddict-unknown-key]
+# ``configurable.user_id`` is who this background spend is metered against —
+# see ``ainvoke_structured``; without it the pipeline's real COGS would land in
+# nobody's budget.
+def _silent_config(user_id: str) -> RunnableConfig:
+    return {
+        **silent_metered_config(user_id),
+        "tags": ["memory_internal"],
+    }
+
+
+# Provider failures and malformed structured output both degrade to None so the
+# memory helper never breaks the chat that spawned it. ``OutputParserException``
+# is what the structured-output parser raises on malformed/truncated model
+# output (it wraps the underlying ``ValidationError``/JSON error).
+_STRUCTURED_FAILURE_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    *LLM_FALLBACK_EXCEPTIONS,
+    ValidationError,
+    OutputParserException,
+)
 
 
 class SimilarMemory(BaseModel):
@@ -108,101 +98,40 @@ def format_transcript(messages: list[dict[str, str]]) -> str:
     return f"{head}{_TRANSCRIPT_TRUNCATION_MARKER}{tail}"
 
 
-async def _try_one_provider(
-    llm: BaseChatModel,
-    output_model: type[_StructuredT],
-    messages: list[BaseMessage],
-    operation: str,
-    *,
-    is_last: bool,
-) -> _StructuredT | None:
-    """Attempt structured output from a single LLM provider with retry-backoff.
-
-    Retries transient errors (rate limits, overload) up to ``_MAX_STRUCTURED_RETRIES``
-    times with exponential backoff, then returns None so the caller can fall
-    through to the next provider. Returns None immediately on non-transient
-    failures.
-    """
-    provider_name = type(llm).__name__
-    structured_llm = llm.with_structured_output(output_model)
-    for attempt in range(_MAX_STRUCTURED_RETRIES):
-        try:
-            result = await structured_llm.ainvoke(messages, config=_SILENT_CONFIG)
-            if isinstance(result, output_model):
-                return result
-            return output_model.model_validate(result)
-        except Exception as e:
-            # Rate limits / transient errors must NOT silently drop a memory:
-            # ingestion is a background task, so retry the same provider with
-            # backoff before falling through to the next one.
-            if _is_transient_error(e) and attempt < _MAX_STRUCTURED_RETRIES - 1:
-                delay = _RETRY_BASE_DELAY_SECONDS * (2**attempt)
-                log.warning(
-                    "memory_llm_transient_retry",
-                    operation=operation,
-                    provider=provider_name,
-                    attempt=attempt + 1,
-                    max_attempts=_MAX_STRUCTURED_RETRIES,
-                    delay_s=delay,
-                    error_type=type(e).__name__,
-                    error=str(e),
-                )
-                await asyncio.sleep(delay)
-                continue
-            if not is_last:
-                log.warning(
-                    "memory_llm_provider_failed",
-                    operation=operation,
-                    provider=provider_name,
-                    error_type=type(e).__name__,
-                    error=str(e),
-                )
-            else:
-                log.error(
-                    "memory_llm_all_providers_failed",
-                    operation=operation,
-                    provider=provider_name,
-                    error_type=type(e).__name__,
-                    error=str(e),
-                )
-            break
-    return None
-
-
 async def _invoke_structured(
     output_model: type[_StructuredT],
     messages: list[BaseMessage],
     *,
     operation: str,
+    user_id: str,
 ) -> _StructuredT | None:
-    """Invoke the free LLM chain with structured output, falling back per model.
+    """Structured-output call on the memory lane via the canonical
+    ``ainvoke_structured_gemini`` (which owns provider selection, retry +
+    validation, and meters the spend against ``user_id``). Returns None only
+    when NO provider is configured or every one of them failed, so extraction
+    degrades gracefully and never breaks the chat that spawned it. The silent
+    config keeps the structured-output tokens out of the chat stream.
 
-    ``with_structured_output`` binds per model, so the fallback loop re-binds
-    the schema for each LLM in the chain. Returns None if every model fails
-    (including when no provider is configured) — callers degrade gracefully.
-    """
+    Prefers direct Gemini on purpose (see ``ainvoke_structured_gemini``): the
+    extraction is a background task that overlaps the graph's next-turn
+    requests, and concurrent requests on the same provider's cache store wipe
+    each other's cached chains mid-read (measured). When Google is not
+    configured, or Gemini is down, the call runs on the aux lane instead —
+    losing the cache isolation, not the memory."""
     try:
-        llm_chain = get_free_llm_chain()
-    except RuntimeError as e:
+        return await ainvoke_structured_gemini(
+            output_model, messages, label=f"memory:{operation}", config=_silent_config(user_id)
+        )
+    except LLMNotConfiguredError as e:
         log.error(
-            "memory_llm_no_provider",
-            operation=operation,
-            error_type=type(e).__name__,
-            error=str(e),
+            "memory_llm_no_provider", operation=operation, error_type=type(e).__name__, error=str(e)
         )
         return None
-
-    for index, llm in enumerate(llm_chain):
-        result = await _try_one_provider(
-            llm,
-            output_model,
-            messages,
-            operation,
-            is_last=(index == len(llm_chain) - 1),
+    except _STRUCTURED_FAILURE_EXCEPTIONS as e:
+        log.error(
+            "memory_llm_failed", operation=operation, error_type=type(e).__name__, error=str(e)
         )
-        if result is not None:
-            return result
-    return None
+        return None
 
 
 async def extract_memories(
@@ -232,18 +161,33 @@ async def extract_memories(
         "\n".join(f"- {line}" for line in journaled_today) if journaled_today else "(empty)"
     )
     system_prompt = EXTRACTION_SYSTEM_PROMPT.format(
-        current_date=f"{current_date:%A, %d %B %Y}",
         user_name=user_name,
         folder_tree=folder_tree or "(no folders yet)",
-        recent_facts=recent_facts_section,
-        journal_today=journal_section,
-        extraction_hints=hints_section,
+    )
+    # The volatile context (today's date, recently stored facts, today's
+    # journal) rides in a TRAILING message, NOT inside the system prompt.
+    # The memory lane's cache is a byte-prefix cache: with the facts/journal
+    # churning inside the system prompt the prefix broke there and the whole
+    # (append-only) transcript re-sent uncached every turn — measured ~41%
+    # hit on the lane. With them moved to the tail, the cached prefix extends
+    # through the stable template + the transcript and only this small tail
+    # re-sends uncached.
+    volatile_context = (
+        f"Today is {current_date:%A, %d %B %Y}.\n"
+        f"## Recently stored facts (do NOT re-extract these)\n{recent_facts_section}\n"
+        "## Today's journal so far (do NOT repeat these events, even reworded)\n"
+        f"{journal_section}{hints_section}"
     )
 
     result = await _invoke_structured(
         ExtractedMemoryBatch,
-        [SystemMessage(content=system_prompt), HumanMessage(content=transcript)],
+        [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=transcript),
+            HumanMessage(content=volatile_context),
+        ],
         operation="extraction",
+        user_id=user_id,
     )
     if result is None:
         # Memory context (operation/counts) is owned by retain, the orchestrator;
@@ -257,6 +201,7 @@ async def extract_memories(
 async def categorize_fact(
     content: str,
     *,
+    user_id: str,
     folder_tree: str,
     current_date: datetime,
 ) -> FactCategorization | None:
@@ -273,10 +218,11 @@ async def categorize_fact(
         FactCategorization,
         [SystemMessage(content=system_prompt), HumanMessage(content=content)],
         operation="categorize",
+        user_id=user_id,
     )
 
 
-async def summarize_episode_entries(entries: list[str]) -> str | None:
+async def summarize_episode_entries(entries: list[str], *, user_id: str) -> str | None:
     """Summarize one day's journal entries (day-rollover, one LLM call).
 
     Returns None on total LLM failure — the day simply stays unsummarized
@@ -291,11 +237,12 @@ async def summarize_episode_entries(entries: list[str]) -> str | None:
             HumanMessage(content="\n".join(entries)),
         ],
         operation="episode_summary",
+        user_id=user_id,
     )
     return result.summary if result else None
 
 
-async def rewrite_core_document(system_prompt: str, inputs: str) -> str | None:
+async def rewrite_core_document(system_prompt: str, inputs: str, *, user_id: str) -> str | None:
     """Rewrite one core memory document from its inputs (consolidation pass).
 
     Returns None on total LLM failure — the document simply keeps its
@@ -305,6 +252,7 @@ async def rewrite_core_document(system_prompt: str, inputs: str) -> str | None:
         ConsolidatedDocument,
         [SystemMessage(content=system_prompt), HumanMessage(content=inputs)],
         operation="consolidate",
+        user_id=user_id,
     )
     return result.content if result else None
 
@@ -338,6 +286,8 @@ def _all_new_decisions(count: int) -> ReconcileBatchResult:
 
 async def reconcile_facts(
     pairs: list[tuple[ExtractedFact, list[SimilarMemory]]],
+    *,
+    user_id: str,
 ) -> ReconcileBatchResult:
     """Decide how each new fact relates to its similar existing memories.
 
@@ -354,6 +304,7 @@ async def reconcile_facts(
             HumanMessage(content=_format_reconcile_input(pairs)),
         ],
         operation="reconcile",
+        user_id=user_id,
     )
     if result is None:
         log.error(

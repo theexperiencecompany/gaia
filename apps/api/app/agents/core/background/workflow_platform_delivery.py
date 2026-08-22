@@ -23,9 +23,10 @@ from app.models.chat_models import (
     MessageModel,
     UpdateMessagesRequest,
 )
+from app.models.user_models import AuthenticatedUser
 from app.services.bot_service import BotService
 from app.services.conversation_service import update_messages
-from app.services.outbound_delivery import publish_outbound_message
+from app.services.outbound_delivery import OutboundResult, publish_outbound_message
 from app.services.platform_link_service import PlatformLinkService
 from app.utils.notification.channel_preferences import fetch_channel_preferences
 from shared.py.wide_events import log
@@ -33,7 +34,7 @@ from shared.py.wide_events import log
 
 async def deliver_workflow_result_to_platforms(
     *,
-    user: dict,
+    user: AuthenticatedUser,
     user_id: str,
     notification_text: str,
 ) -> None:
@@ -84,7 +85,7 @@ async def _preferred_bot_platforms(user_id: str) -> list[tuple[ConversationSourc
     targets: list[tuple[ConversationSource, str]] = []
     for platform_value, info in linked.items():
         source = ConversationSource.coerce(platform_value)
-        platform_user_id = info.get("platformUserId")
+        platform_user_id = info["platformUserId"]
         if (
             source is not None
             and source in BOT_CONVERSATION_SOURCES
@@ -97,7 +98,7 @@ async def _preferred_bot_platforms(user_id: str) -> list[tuple[ConversationSourc
 
 async def _post_workflow_message(
     *,
-    user: dict,
+    user: AuthenticatedUser,
     user_id: str,
     source: ConversationSource,
     platform_user_id: str,
@@ -124,6 +125,15 @@ async def _post_workflow_message(
             user=user,
         )
         result = await publish_outbound_message(source, user_id, bubbles)
+        if result is OutboundResult.FAILED:
+            log.error(
+                f"{LogTag.AGENT} workflow platform publish failed",
+                platform=source.value,
+                conversation_id=conversation_id,
+                message_id=bot_message.message_id,
+                bubbles=len([b for b in bubbles if b.strip()]),
+            )
+            return
         log.info(
             f"{LogTag.AGENT} workflow result delivered to platform",
             platform=source.value,

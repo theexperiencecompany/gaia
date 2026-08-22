@@ -10,11 +10,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from e2b import NotFoundException
-import pytest
 
 from app.agents.tools.coding.read_tool import MAX_SANDBOX_READ_BYTES, _read_file_sandbox
-
-pytestmark = pytest.mark.unit
 
 
 def _sbx(*, info=None, info_error=None, read_bytes=b"") -> AsyncMock:

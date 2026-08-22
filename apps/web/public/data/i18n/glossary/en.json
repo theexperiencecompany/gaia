@@ -587,7 +587,7 @@
   },
   "ai-email-assistant": {
     "term": "AI Email Assistant",
-    "metaTitle": "What Is an AI Email Assistant? | GAIA",
+    "metaTitle": "What Is an AI Email Assistant?",
     "metaDescription": "An AI email assistant reads, triages, drafts, and manages your inbox autonomously. Learn how GAIA acts as your AI email assistant across Gmail and beyond.",
     "definition": "An AI email assistant is software that uses artificial intelligence to read, categorize, prioritize, and respond to emails on your behalf, reducing the time and effort you spend managing your inbox.",
     "extendedDescription": "The average knowledge worker receives over 120 emails per day. An AI email assistant tackles this by understanding the content and intent of each message, not just scanning for keywords. It can sort emails by urgency and topic, draft replies that match your tone and communication style, extract action items and deadlines, schedule follow-ups, and flag messages that need your personal attention. The best AI email assistants go beyond filtering. They understand relationships between senders, ongoing threads, and project context to make decisions a simple rule-based filter never could.",
@@ -617,7 +617,7 @@
   },
   "ai-calendar-management": {
     "term": "AI Calendar Management",
-    "metaTitle": "What Is AI Calendar Management? | GAIA",
+    "metaTitle": "What Is AI Calendar Management?",
     "metaDescription": "AI calendar management uses intelligent automation to schedule meetings, protect focus time, and prepare briefings. See how GAIA manages your calendar.",
     "definition": "AI calendar management is the use of artificial intelligence to schedule, organize, and optimize your calendar by finding ideal meeting times, protecting focus blocks, preparing meeting briefs, and coordinating events with your tasks and communications.",
     "extendedDescription": "Calendar management is deceptively complex. It involves balancing meeting requests against focus time, preparing for upcoming events, avoiding back-to-back meetings that drain energy, aligning your schedule with task deadlines, and respecting time zone differences for remote teams. AI calendar management handles these trade-offs by learning your preferences, analyzing your energy patterns, and coordinating with your broader workflow. It moves beyond basic scheduling into genuine calendar intelligence: knowing when to protect your time and when a meeting is worth the interruption.",
@@ -643,7 +643,7 @@
   },
   "ai-task-prioritization": {
     "term": "AI Task Prioritization",
-    "metaTitle": "What Is AI Task Prioritization? | GAIA",
+    "metaTitle": "What Is AI Task Prioritization?",
     "metaDescription": "AI task prioritization uses intelligence to rank your tasks by urgency, importance, and context. Learn how GAIA automatically prioritizes your work.",
     "definition": "AI task prioritization is the use of artificial intelligence to automatically rank and order tasks based on deadlines, importance, dependencies, context, and your personal work patterns.",
     "extendedDescription": "Deciding what to work on next is one of the biggest drains on productivity. Traditional prioritization frameworks like Eisenhower Matrix or MoSCoW require manual assessment of every task. AI task prioritization automates this by analyzing multiple signals: hard deadlines, sender importance, project dependencies, your historical work patterns, energy levels throughout the day, and the relative impact of each task. The result is a dynamically ordered task list that reflects reality rather than a static priority you assigned days ago when circumstances were different.",
@@ -669,7 +669,7 @@
   },
   "workflow-orchestration": {
     "term": "Workflow Orchestration",
-    "metaTitle": "What Is Workflow Orchestration? | GAIA",
+    "metaTitle": "What Is Workflow Orchestration?",
     "metaDescription": "Workflow orchestration coordinates multi-step processes across tools and teams. Learn how GAIA orchestrates workflows across 50+ integrations with AI.",
     "definition": "Workflow orchestration is the automated coordination of multiple tasks, tools, and processes into a structured sequence, managing dependencies, error handling, and data flow across each step.",
     "extendedDescription": "While workflow automation handles individual tasks, workflow orchestration manages the coordination between them. An orchestrated workflow understands that step three depends on steps one and two completing successfully, that a failure in step four should trigger a specific recovery path, and that data produced in step two needs to be transformed before step five can use it. Orchestration adds reliability, observability, and error recovery to multi-step processes. In an AI context, orchestration also involves deciding which tools and agents to invoke at each step based on the current state of the workflow.",
@@ -695,7 +695,7 @@
   },
   "ai-meeting-assistant": {
     "term": "AI Meeting Assistant",
-    "metaTitle": "What Is an AI Meeting Assistant? | GAIA",
+    "metaTitle": "What Is an AI Meeting Assistant?",
     "metaDescription": "An AI meeting assistant prepares agendas, gathers context, and handles follow-ups automatically. Learn how GAIA manages your meetings end to end.",
     "definition": "An AI meeting assistant is software that uses artificial intelligence to prepare meeting briefs, gather relevant context, suggest agenda items, and automate post-meeting follow-ups like task creation and summary distribution.",
     "extendedDescription": "Meetings consume a significant portion of the workweek, yet most people walk in unprepared and walk out without clear action items. An AI meeting assistant addresses both problems. Before a meeting, it gathers relevant emails, documents, and task updates related to the topic and attendees. It can suggest agenda items based on recent activity. After the meeting, it creates follow-up tasks, sends summaries to attendees, and schedules any agreed-upon next steps. The goal is to make every meeting productive by eliminating the preparation and follow-up overhead that most people skip due to time pressure.",
@@ -725,7 +725,7 @@
   },
   "smart-notifications": {
     "term": "Smart Notifications",
-    "metaTitle": "What Are Smart Notifications? | GAIA",
+    "metaTitle": "What Are Smart Notifications?",
     "metaDescription": "Smart notifications use AI to filter, prioritize, and batch alerts so only important items interrupt you. Learn how GAIA reduces notification overload.",
     "definition": "Smart notifications are AI-filtered alerts that prioritize and batch notifications based on urgency, relevance, and your current context, replacing the constant stream of interruptions with timely, meaningful updates.",
     "extendedDescription": "The average professional receives dozens of notifications per hour across email, Slack, project tools, and other apps. Most are low-priority, yet each one breaks focus and adds cognitive load. Smart notifications solve this by using AI to evaluate each alert against several factors: Is the sender important? Is the content urgent? Are you in a focus block? Can this wait until your next break? Instead of forwarding every alert, a smart notification system batches low-priority items, surfaces urgent ones immediately, and delivers the rest at optimal times. The result is fewer interruptions without missing anything critical.",
@@ -751,7 +751,7 @@
   },
   "ai-personal-productivity": {
     "term": "AI Personal Productivity",
-    "metaTitle": "What Is AI Personal Productivity? | GAIA",
+    "metaTitle": "What Is AI Personal Productivity?",
     "metaDescription": "AI personal productivity uses artificial intelligence to manage your tasks, email, calendar, and workflows. Learn how GAIA boosts productivity with AI.",
     "definition": "AI personal productivity refers to the use of artificial intelligence tools and systems to manage individual work output, including task management, email handling, calendar optimization, and workflow automation.",
     "extendedDescription": "Personal productivity has traditionally relied on methodologies like Getting Things Done (GTD), time blocking, and the Pomodoro Technique. AI personal productivity takes these concepts further by automating the overhead that makes productivity systems hard to maintain. Instead of manually capturing tasks, organizing your inbox, and planning your day, AI handles the mechanical work. It captures tasks from your communications, organizes your inbox by priority, plans your day around deadlines and energy levels, and executes routine actions autonomously. The human focuses on creative and strategic work while AI manages the system.",
@@ -777,7 +777,7 @@
   },
   "inbox-zero": {
     "term": "Inbox Zero",
-    "metaTitle": "What Is Inbox Zero? Achieve It with AI | GAIA",
+    "metaTitle": "What Is Inbox Zero? Achieve It with AI",
     "metaDescription": "Inbox Zero is the practice of keeping your email inbox empty or near-empty. Learn how GAIA helps you reach and maintain Inbox Zero with AI automation.",
     "definition": "Inbox Zero is an email management approach where the goal is to keep your inbox empty or near-empty at all times by processing every message through a system of actions: reply, delegate, defer, archive, or delete.",
     "extendedDescription": "Coined by productivity expert Merlin Mann, Inbox Zero is not about having zero emails. It is about having zero unprocessed emails. Every message in your inbox should be acted on: replied to, turned into a task, delegated, scheduled for later, or archived. The challenge is that processing 50 to 100 emails daily is exhausting and time-consuming. Most people abandon Inbox Zero within weeks because the manual effort is unsustainable. AI changes this equation by automating the processing step. An AI system can triage, categorize, draft replies, extract tasks, and archive messages, making Inbox Zero achievable without the daily grind.",
@@ -807,7 +807,7 @@
   },
   "deep-work": {
     "term": "Deep Work",
-    "metaTitle": "What Is Deep Work? Protect Focus Time with AI | GAIA",
+    "metaTitle": "What Is Deep Work? Protect Focus Time with AI",
     "metaDescription": "Deep work is focused, distraction-free concentration on cognitively demanding tasks. Learn how GAIA protects your deep work time with AI calendar management.",
     "definition": "Deep work is a state of focused, uninterrupted concentration on cognitively demanding tasks that produces high-quality results, as defined by computer science professor Cal Newport.",
     "extendedDescription": "Cal Newport's concept of deep work argues that the ability to focus without distraction is becoming both increasingly rare and increasingly valuable. Deep work produces your most meaningful output: writing, coding, strategic thinking, creative problem-solving. The enemy of deep work is the constant stream of emails, Slack messages, notifications, and meetings that fragment your attention. Research shows it takes an average of 23 minutes to regain full focus after an interruption. Protecting blocks of uninterrupted time for deep work is essential for producing your best work, yet modern digital tools make this harder than ever.",
@@ -833,7 +833,7 @@
   },
   "time-blocking": {
     "term": "Time Blocking",
-    "metaTitle": "What Is Time Blocking? AI-Powered Scheduling | GAIA",
+    "metaTitle": "What Is Time Blocking? AI-Powered Scheduling",
     "metaDescription": "Time blocking assigns specific tasks to specific time slots on your calendar. Learn how GAIA automates time blocking with AI scheduling.",
     "definition": "Time blocking is a scheduling method where you divide your day into dedicated blocks of time, each assigned to a specific task or type of work, turning your calendar into a concrete plan for the day.",
     "extendedDescription": "Time blocking is used by executives, engineers, and creators to ensure important work gets scheduled rather than squeezed between meetings. Instead of a vague to-do list, each task gets a specific time slot on your calendar. This eliminates the decision of what to work on next and creates accountability for completing focused work. The challenge is that time blocking requires constant maintenance. Meetings shift, new priorities emerge, and tasks take longer than expected. Manually adjusting your time blocks throughout the day is tedious, which is why many people start time blocking but struggle to maintain it.",
@@ -859,7 +859,7 @@
   },
   "no-code-automation": {
     "term": "No-Code Automation",
-    "metaTitle": "What Is No-Code Automation? | GAIA",
+    "metaTitle": "What Is No-Code Automation?",
     "metaDescription": "No-code automation lets you build workflows without programming. Learn how GAIA uses natural language to create automations across 50+ tools.",
     "definition": "No-code automation is the creation of automated workflows and processes using visual tools or natural language interfaces instead of writing code, making automation accessible to non-technical users.",
     "extendedDescription": "Tools like Zapier, Make, and n8n popularized no-code automation with visual drag-and-drop workflow builders. These tools made automation accessible but still require understanding triggers, actions, data mapping, and logical conditions. The next evolution is natural language automation, where you describe what you want in plain words and AI builds the workflow. This removes even the visual builder learning curve, making automation truly accessible to anyone. Natural language automation also handles edge cases and variations that rigid no-code flows cannot, because the AI understands intent rather than following a fixed diagram.",
@@ -1389,7 +1389,7 @@
   },
   "digital-executive-assistant": {
     "term": "Digital Executive Assistant",
-    "metaTitle": "What Is a Digital Executive Assistant? | GAIA",
+    "metaTitle": "What Is a Digital Executive Assistant?",
     "metaDescription": "A digital executive assistant is AI that handles executive-level tasks like inbox management, scheduling, and briefings. See how GAIA works as your AI EA.",
     "definition": "A digital executive assistant is an AI-powered system that performs the functions of a human executive assistant: managing your inbox, scheduling meetings, preparing briefings, coordinating follow-ups, and handling administrative work.",
     "extendedDescription": "Human executive assistants are invaluable because they understand context, anticipate needs, and manage the operational overhead that drains leadership time. They triage the inbox, prepare meeting materials, manage the calendar, coordinate with stakeholders, and ensure nothing falls through the cracks. A digital executive assistant replicates these functions with AI, offering 24/7 availability, instant processing speed, and the ability to work across dozens of digital tools simultaneously. The key requirement is the same as for a human EA: deep understanding of context, priorities, and the principal's working style.",
@@ -4558,7 +4558,7 @@
   },
   "rate-limiting": {
     "term": "Rate Limiting",
-    "metaTitle": "What Is Rate Limiting? API Limits Explained | GAIA",
+    "metaTitle": "What Is Rate Limiting? API Limits Explained",
     "metaDescription": "Rate limiting controls how many API requests a client can make in a given time period, protecting servers from overload. Learn how GAIA handles rate limits across 50+ integrations.",
     "definition": "Rate limiting is a technique used by APIs and servers to control the number of requests a client can make within a specified time window, protecting infrastructure from overload and preventing abuse.",
     "extendedDescription": "Every major API — Gmail, Slack, GitHub, OpenAI, and hundreds of others — enforces rate limits to ensure fair usage and system stability. These limits are expressed in various ways: requests per second, requests per minute, requests per day, or tokens per minute for LLM APIs. When a client exceeds its limit, the server returns an HTTP 429 'Too Many Requests' response, often with a Retry-After header indicating when requests can resume.\n\nFor applications like AI assistants that integrate with many services simultaneously, rate limits present a significant engineering challenge. A single workflow might touch Gmail, Google Calendar, Slack, and Notion in sequence. If any step hits a rate limit, the entire workflow must pause and retry gracefully.\n\nEffective rate limit handling requires exponential backoff (waiting progressively longer between retries), request queuing and throttling, caching responses to avoid redundant calls, and intelligent prioritization when competing requests need the same API. For LLM APIs specifically, token-per-minute limits often matter more than request counts, requiring careful batching of prompts.\n\nRate limits also directly affect system design choices like webhook-vs-polling: webhooks are more rate-limit-efficient because they only consume quota when events occur, whereas polling consumes quota on every request regardless of whether data has changed.",
@@ -4592,7 +4592,7 @@
   },
   "ical": {
     "term": "iCal (iCalendar)",
-    "metaTitle": "What Is iCal? iCalendar Format for Calendar Sharing | GAIA",
+    "metaTitle": "What Is iCal? iCalendar Format for Calendar Sharing",
     "metaDescription": "iCal (iCalendar) is the standard format for sharing calendar data across applications, enabling Google Calendar, Outlook, and Apple Calendar to interoperate. Learn how GAIA uses iCal.",
     "definition": "iCal, short for iCalendar, is an open standard file format (RFC 5545) for sharing and syncing calendar data across different applications and platforms, enabling interoperability between Google Calendar, Microsoft Outlook, Apple Calendar, and other calendar tools.",
     "extendedDescription": "The iCalendar standard was published in 1998 and has become the universal language of calendar data. An .ics file (or iCal feed) contains structured text describing calendar events, including their title, start and end times, recurrence rules, attendees, location, and description. Any calendar application that supports iCalendar can read, import, and subscribe to these files regardless of which platform created them.\n\nThe standard supports two primary use cases. First, static .ics file export/import — you download a file from one calendar and import it into another. Second, live calendar subscriptions — your calendar application subscribes to a URL that returns an up-to-date .ics file, which it refreshes periodically so changes made at the source propagate to subscribers.\n\nFor personal productivity, iCal is the mechanism that makes cross-platform calendar sharing possible. Adding a conference schedule, sports team fixtures, or public holiday calendar to your personal calendar almost always uses an iCal subscription URL. For developers, the iCalendar format is essential for building anything that creates, reads, or syncs calendar events across platforms.\n\nCommon iCalendar fields include DTSTART and DTEND for event times, RRULE for recurrence patterns (e.g., 'every Monday at 9am'), ATTENDEE for participant email addresses, and ORGANIZER for the event creator. VTIMEZONE components handle time zone conversions, which are a frequent source of bugs in calendar integrations.",
@@ -4626,7 +4626,7 @@
   },
   "inbox-management": {
     "term": "Inbox Management",
-    "metaTitle": "What Is Inbox Management? AI Email Organization | GAIA",
+    "metaTitle": "What Is Inbox Management? AI Email Organization",
     "metaDescription": "Inbox management refers to the practices and systems used to keep an email inbox organized and manageable. Learn how GAIA automates inbox management with AI.",
     "definition": "Inbox management refers to the strategies, habits, and tools used to keep an email inbox organized, actionable, and manageable — including triage, labeling, archiving, snoozing, delegation, and maintaining Inbox Zero.",
     "extendedDescription": "The average knowledge worker receives 120+ emails per day and spends 2.5 hours managing them — a significant productivity drain. Without a systematic approach, inboxes become a chaotic mix of urgent requests, newsletters, CC'd threads, receipts, and spam, making it difficult to identify what actually requires attention.\n\nEffective inbox management typically involves several practices. Triage is the first-pass review that categorizes each email: does it require action, waiting, reference, or deletion? Labeling or foldering organizes messages by project, sender, or priority. Archiving removes handled messages from the inbox without deleting them. Snoozing hides an email until a future date when it becomes relevant. Delegation routes emails requiring action by someone else directly to them.\n\nPopular inbox management philosophies include Inbox Zero (process all emails to empty the inbox daily), the GTD email workflow (convert emails to tasks immediately), and the Three-Folder System (Action, Waiting, Archive). Each has different trade-offs between thoroughness and speed.\n\nAI is increasingly central to inbox management. AI can classify emails by urgency and category, draft replies, unsubscribe from unwanted lists, summarize long threads, and take autonomous action on routine messages. The goal is to reduce the time spent on email triage so humans can focus on messages that genuinely require their judgment.",

@@ -5,6 +5,7 @@ Uses model_service to fetch models with caching support.
 
 from typing import NamedTuple
 
+from app.constants.llm import AUX_MODEL_NAME
 from app.constants.log_tags import LogTag
 from app.services.model_service import get_model_by_id
 from shared.py.wide_events import log
@@ -28,6 +29,25 @@ DEFAULT_PRICING = ModelPricing(
     cached_input_cost_per_1k=0.001 * DEFAULT_CACHED_INPUT_FRACTION,
 )
 
+# The aux lane (AUX_MODEL_NAME) is a DIFFERENT model id — "DeepSeek V4 Flash
+# 0423" (Apr 2026), not the "0731" revision (Jul 2026) the graph runs — so its
+# calls get a separate prompt-cache namespace. Two ids, two rate cards: 0423 is
+# roughly 0.46x 0731's input rate, so pricing the aux lane at the default's
+# rate would OVER-count aux COGS by ~2.2x. Values below are OpenRouter's
+# published per-1k rates for `deepseek/deepseek-v4-flash`, read from
+# https://openrouter.ai/api/v1/models.
+#
+# Kept as a constant rather than a seed entry because the id is an internal
+# routing choice, not a model users can select — which also means nothing
+# reconciles it against the live listing. The unit test pins these values, NOT
+# that they still match upstream; re-check them by hand whenever either model
+# id is re-pointed.
+AUX_MODEL_PRICING = ModelPricing(
+    input_cost_per_1k=0.00006426,
+    output_cost_per_1k=0.00012852,
+    cached_input_cost_per_1k=0.000012852,  # 20% of input, matching OpenRouter's listing
+)
+
 
 async def get_model_pricing(model_name: str) -> ModelPricing:
     """
@@ -40,6 +60,14 @@ async def get_model_pricing(model_name: str) -> ModelPricing:
     Returns:
         ModelPricing with cost per 1k tokens
     """
+    # The aux calls run a separate model id under AUX_MODEL_NAME so their
+    # prompt-cache namespace is separate from the conversation's; price them at
+    # that release's own published rate (see
+    # AUX_MODEL_PRICING) instead of the catalog lookup (the alias is an
+    # internal routing id, not seeded in ai_models) or the ~12.5x
+    # DEFAULT_PRICING.
+    if model_name == AUX_MODEL_NAME:
+        return AUX_MODEL_PRICING
     try:
         # Try exact match first using model_service (uses caching)
         model = await get_model_by_id(model_name)
@@ -58,11 +86,21 @@ async def get_model_pricing(model_name: str) -> ModelPricing:
                     cached_input_cost_per_1k=float(cached_input_cost),
                 )
 
-        # Fallback to default pricing
+        # A model id missing from the catalog is priced at DEFAULT_PRICING, which
+        # is not its real rate — so it must never pass quietly.
+        log.error(
+            f"{LogTag.AGENT} model missing from pricing catalog — priced at DEFAULT_PRICING",
+            model_name=model_name,
+        )
         return DEFAULT_PRICING
 
     except Exception as e:
-        log.error(f"{LogTag.STARTUP} Error fetching pricing for model {model_name}: {e}")
+        log.error(
+            f"{LogTag.STARTUP} Error fetching pricing for model",
+            model_name=model_name,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return DEFAULT_PRICING
 
 

@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from composio import Composio
+from composio.types import ExecuteRequestFn
 
 from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
@@ -17,13 +18,14 @@ def register_slack_custom_tools(composio: Composio) -> list[str]:
     @composio.tools.custom_tool(toolkit="SLACK")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Get Slack workspace context: messages, @mentions, and unread count.
 
         Zero required parameters. Returns current workspace state for situational awareness.
         """
+        del request, execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "slack", "action": "gather_context"})
         user_id = auth_credentials.get("user_id", "")
         if not user_id:
@@ -48,7 +50,7 @@ def register_slack_custom_tools(composio: Composio) -> list[str]:
             )
             mentions = mention_data.get("messages", {}).get("matches", [])
         except Exception as e:
-            log.debug(f"{LogTag.TOOL} Slack mentions fetch skipped: {e}")
+            log.debug(f"{LogTag.TOOL} Slack mentions fetch skipped", error_type=type(e).__name__)
 
         mention_ts = {m.get("ts") for m in mentions}
         other_messages = [m for m in messages if m.get("ts") not in mention_ts]
@@ -56,7 +58,12 @@ def register_slack_custom_tools(composio: Composio) -> list[str]:
         return {
             "messages": other_messages,
             "mentions": mentions,
-            "unread_count": len(messages),
+            # Both lists, because they are disjoint and either one alone
+            # under-reports: a day made entirely of @-mentions would otherwise
+            # come back as "nothing waiting". Not len(messages) either — the two
+            # searches page independently (20 vs 10), so a mention can arrive
+            # that the message page never returned.
+            "unread_count": len(other_messages) + len(mentions),
         }
 
     return ["SLACK_CUSTOM_GATHER_CONTEXT"]

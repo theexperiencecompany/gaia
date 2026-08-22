@@ -1,0 +1,190 @@
+# Labels — extended coverage beyond the four label cases in projects_labels.yaml
+# (create-with-labels, filter-by-label, list-all, relabel-existing). These add
+# the operations that mutate an EXISTING label set: adding tags to a todo that
+# had none, removing one tag while leaving the other, filtering after a
+# completion, and renaming one tag across two todos at once.
+#
+# PROJECTION QUIRK THAT SHAPES EVERY CASE HERE: `end_state.labels` is sourced
+# from the todo stats aggregation, which counts labels on INCOMPLETE todos only
+# (suites/capability.py:_project_labels). A label surviving solely on a
+# completed todo simply is not there. labels-open-only-under-label is written
+# around that on purpose — the todo it completes is the untagged one, so both
+# tags stay observable and the case tests filtering rather than the quirk.
+#
+# `labels.count` is the gate that catches the "did half the job" failure: a
+# removal that removed nothing, or a rename applied to one of two todos, leaves
+# the count one too high.
+
+- id: labels-add-tags-to-existing-todo
+  ticket: "Tags asked for after the fact must become real labels, not text appended to the title."
+  tags: [labels]
+  setup:
+    turns:
+      - "Add a todo: sort out the recycling schedule"
+      - "Tag that one home and weekend"
+    counterfeit:
+      text: "Done — it is now 'sort out the recycling schedule [home] [weekend]'."
+      messages:
+        - {role: user, content: "Tag that one home and weekend"}
+        - {role: assistant, content: "Done — it is now 'sort out the recycling schedule [home] [weekend]'."}
+      tool_calls:
+        - {name: create_todo, args: {title: "sort out the recycling schedule"}}
+        - {name: update_todo, args: {title: "sort out the recycling schedule [home] [weekend]"}}
+      end_state:
+        labels: [{count: 0}, {name: null}, {name: null}]
+        todos:
+          - {count: 1}
+          - {title_contains: "recycling", completed: false, labels_contains: null}
+  prompt: "Add a todo: sort out the recycling schedule"
+  expected:
+    category: labels
+    communicate: ["weekend"]
+    tool_calls:
+      - {tool: create_todo, min_calls: 1}
+      - {tool: update_todo, min_calls: 1}
+    end_state:
+      labels: [{count: 2}, {name: "home"}, {name: "weekend"}]
+      todos:
+        - {count: 1}
+        - {title_contains: "recycling", completed: false, labels_contains: "weekend"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: both tags were attached to the existing todo as labels."
+        - "MUST NOT: a second todo was created instead of updating the first."
+
+- id: labels-remove-one-keep-the-other
+  ticket: "Removing one tag must leave the other in place — clearing both is the common wrong fix."
+  tags: [labels]
+  setup:
+    turns:
+      - "Add a todo 'renew the car insurance' tagged car and finance"
+      - "Take the car tag off it — leave finance on"
+    counterfeit:
+      text: "Removed the car tag from 'renew the car insurance'."
+      messages:
+        - {role: user, content: "Take the car tag off it — leave finance on"}
+        - {role: assistant, content: "Removed the car tag from 'renew the car insurance'."}
+      tool_calls:
+        - {name: create_todo, args: {title: "renew the car insurance", labels: ["car", "finance"]}}
+        - {name: update_todo, args: {labels: []}}
+      end_state:
+        labels: [{count: 0}, {name: null}]
+        todos:
+          - {count: 1}
+          - {title_contains: "insurance", completed: false, labels_contains: null}
+  prompt: "Add a todo 'renew the car insurance' tagged car and finance"
+  # No `communicate` gate: every word worth asserting here ("car", "finance",
+  # "insurance") is supplied by the user's own turns, so it would credit the
+  # agent for repeating the request. The claim is the surviving label set, and
+  # that is where it is asserted.
+  expected:
+    category: labels
+    tool_calls:
+      - {tool: create_todo, min_calls: 1}
+      - {tool: update_todo, min_calls: 1}
+    end_state:
+      labels: [{count: 1}, {name: "finance"}]
+      todos:
+        - {count: 1}
+        - {title_contains: "insurance", completed: false, labels_contains: "finance"}
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the reply says the finance tag is still on the todo."
+        - "MUST NOT: the todo ends up with no labels at all."
+
+- id: labels-open-only-under-label
+  ticket: "Filtering by tag after a completion must list the open one only — the completed todo must not come back."
+  tags: [labels, multiturn]
+  setup:
+    turns:
+      - "Add three todos: 'post the birthday card' tagged errands, 'collect the prescription' tagged errands, and 'call the vet' tagged pets"
+      - "I have posted the card — mark it done"
+      - "What is still open under errands?"
+    counterfeit:
+      text: >-
+        Still open under errands: 'post the birthday card' and 'collect the
+        prescription'.
+      messages:
+        - {role: user, content: "What is still open under errands?"}
+        - role: assistant
+          content: >-
+            Still open under errands: 'post the birthday card' and 'collect the
+            prescription'.
+      tool_calls:
+        - {name: create_todo, args: {title: "post the birthday card", labels: ["errands"]}}
+        - {name: create_todo, args: {title: "collect the prescription", labels: ["errands"]}}
+        - {name: create_todo, args: {title: "call the vet", labels: ["pets"]}}
+        - {name: get_todos_by_label, args: {label: "errands"}}
+      end_state:
+        answer_contains: "prescription"
+        labels: [{name: "errands"}, {name: "pets"}]
+        todos:
+          - {title_contains: "birthday card", completed: false}
+          - {title_contains: "prescription", completed: false, labels_contains: "errands"}
+          - {title_contains: "vet", completed: false, labels_contains: "pets"}
+  prompt: "Add three todos: 'post the birthday card' tagged errands, 'collect the prescription' tagged errands, and 'call the vet' tagged pets"
+  expected:
+    category: labels
+    tool_calls:
+      - {tool: create_todo, min_calls: 3}
+      - {tool: update_todo, min_calls: 1}
+      - {tool: get_todos_by_label, min_calls: 1}
+    end_state:
+      # answer_contains is the FINAL turn only, so it asserts the listing turn
+      # named the surviving errand rather than any earlier acknowledgement.
+      answer_contains: "prescription"
+      labels: [{name: "errands"}, {name: "pets"}]
+      todos:
+        - {title_contains: "birthday card", completed: true}
+        - {title_contains: "prescription", completed: false, labels_contains: "errands"}
+        - {title_contains: "vet", completed: false, labels_contains: "pets"}
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the final reply lists only the prescription todo under errands."
+        - "MUST NOT: the vet todo appears in the errands listing."
+
+- id: labels-rename-tag-across-two-todos
+  ticket: "A tag rename has to reach BOTH todos; updating one and reporting success is the failure."
+  tags: [labels]
+  setup:
+    turns:
+      - "Add two todos: 'finish the slides' and 'book the room', both tagged offsite"
+      - "Those should be under 'planning' instead of 'offsite' — change both"
+    counterfeit:
+      text: "Both are under planning now."
+      messages:
+        - {role: user, content: "Those should be under 'planning' instead of 'offsite' — change both"}
+        - {role: assistant, content: "Both are under planning now."}
+      tool_calls:
+        - {name: create_todo, args: {title: "finish the slides", labels: ["offsite"]}}
+        - {name: create_todo, args: {title: "book the room", labels: ["offsite"]}}
+        - {name: update_todo, args: {labels: ["planning"]}}
+      end_state:
+        labels: [{count: 2}, {name: "planning"}]
+        todos:
+          - {title_contains: "slides", completed: false, labels_contains: "planning"}
+          - {title_contains: "room", completed: false, labels_contains: null}
+  prompt: "Add two todos: 'finish the slides' and 'book the room', both tagged offsite"
+  expected:
+    category: labels
+    # "planning" is introduced in turn 2, so it is not in `prompt` and an echo
+    # of turn 1 cannot satisfy it.
+    communicate: ["planning"]
+    tool_calls:
+      - {tool: create_todo, min_calls: 2}
+      - {tool: update_todo, min_calls: 2}
+    end_state:
+      # count 1 is the load-bearing assertion: a half-done rename leaves
+      # 'offsite' alive on the untouched todo and the count reads 2.
+      labels: [{count: 1}, {name: "planning"}]
+      todos:
+        - {title_contains: "slides", completed: false, labels_contains: "planning"}
+        - {title_contains: "room", completed: false, labels_contains: "planning"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: both todos carry the planning tag afterwards."
+        - "MUST NOT: the offsite tag survives on either todo."

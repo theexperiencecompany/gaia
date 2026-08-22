@@ -20,7 +20,7 @@ async def create_flowchart(
         str,
         "Direction of the flowchart (TD, LR, BT, RL)",
     ] = "TD",
-):
+) -> dict[str, str]:
     direction = "TD" if direction not in ["TD", "LR", "BT", "RL"] else direction
 
     return {

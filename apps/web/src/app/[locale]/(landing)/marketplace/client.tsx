@@ -1,7 +1,6 @@
 "use client";
 
 import { Pagination } from "@heroui/pagination";
-import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
@@ -152,20 +151,8 @@ export function IntegrationsPageClient() {
   const displayTotal = filteredNativeIntegrations.length + total;
 
   return (
-    <div className="min-h-screen pt-32 pb-16">
-      <div className="absolute inset-0 top-0 z-0 h-[70vh] w-full">
-        <Image
-          src={"/images/wallpapers/library.webp"}
-          alt="GAIA Use-Cases Wallpaper"
-          sizes="100vw"
-          priority
-          fill
-          className="aspect-video object-cover object-center opacity-80"
-        />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-linear-to-t from-background to-transparent" />
-      </div>
-
-      <div className="mx-auto max-w-7xl px-6 z-1 relative mt-40">
+    <div className="min-h-screen pt-16 pb-16">
+      <div className="mx-auto max-w-7xl px-6 z-1 relative mt-10">
         <div className="mb-12">
           <h1 className="mb-4 font-serif text-5xl md:text-7xl font-normal text-foreground">
             Integration Marketplace
@@ -179,7 +166,8 @@ export function IntegrationsPageClient() {
 
         <IntegrationsFilters
           onFilterChange={handleFilterChange}
-          initialFilters={filters}
+          category={filters.category}
+          initialFilters={{ search: filters.search, sort: filters.sort }}
         />
 
         {displayLoading && (
@@ -206,12 +194,16 @@ export function IntegrationsPageClient() {
         ) : (
           <>
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {filteredNativeIntegrations.map((integration) => (
-                <PublicIntegrationCard
-                  key={integration.integrationId}
-                  integration={integration}
-                />
-              ))}
+              {/* Native integrations are not paginated by the community endpoint,
+                  so show them once on the first page instead of re-pinning them
+                  on top of every page. */}
+              {currentPage === 1 &&
+                filteredNativeIntegrations.map((integration) => (
+                  <PublicIntegrationCard
+                    key={integration.integrationId}
+                    integration={integration}
+                  />
+                ))}
               {integrations.map((integration) => (
                 <PublicIntegrationCard
                   key={integration.integrationId}

@@ -1,198 +1,11 @@
-// SSE event types for structured streaming
-export enum SSEEventType {
-  Content = "content",
-  ToolStart = "tool_start",
-  ToolProgress = "tool_progress",
-  ToolEnd = "tool_end",
-  Error = "error",
-  Done = "done",
-  Image = "image",
-  Memory = "memory",
-  Metadata = "metadata",
-  Thinking = "thinking",
-}
+import {
+  DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
+  type DesktopToolRequest,
+} from "../desktop-tools";
+import { ChatStreamFrameSchema } from "./schema";
+import type { TodoProgressSnapshot } from "./types";
 
-export interface ContentEvent {
-  type: "content";
-  content: string;
-}
-
-export interface ToolStartEvent {
-  type: "tool_start";
-  toolName: string;
-  toolCallId: string;
-  input?: unknown;
-}
-
-export interface ToolProgressEvent {
-  type: "tool_progress";
-  toolCallId: string;
-  message: string;
-  subStep?: string;
-}
-
-export interface ToolEndEvent {
-  type: "tool_end";
-  toolCallId: string;
-  output: unknown;
-  status: "success" | "error";
-}
-
-export interface SSEErrorEvent {
-  type: "error";
-  error: string;
-  code?: string;
-}
-
-export interface DoneEvent {
-  type: "done";
-  messageId?: string;
-}
-
-export interface ImageEvent {
-  type: "image";
-  url: string;
-  prompt?: string;
-  width?: number;
-  height?: number;
-}
-
-export interface MemoryEvent {
-  type: "memory";
-  data: unknown;
-}
-
-export interface MetadataEvent {
-  type: "metadata";
-  data: Record<string, unknown>;
-}
-
-export interface ThinkingEvent {
-  type: "thinking";
-  content: string;
-}
-
-export type SSEEvent =
-  | ContentEvent
-  | ToolStartEvent
-  | ToolProgressEvent
-  | ToolEndEvent
-  | SSEErrorEvent
-  | DoneEvent
-  | ImageEvent
-  | MemoryEvent
-  | MetadataEvent
-  | ThinkingEvent;
-
-export type StreamingEventHandler = (event: SSEEvent) => void;
-
-/**
- * Parse a raw SSE data line (the value after "data: ") into an SSEEvent.
- * Returns null if the line cannot be parsed or does not match a known event shape.
- */
-export function parseSSELine(line: string): SSEEvent | null {
-  if (!line || line === "[DONE]") {
-    return { type: "done" };
-  }
-
-  let payload: unknown;
-  try {
-    payload = JSON.parse(line);
-  } catch {
-    return null;
-  }
-
-  if (typeof payload !== "object" || payload === null) {
-    return null;
-  }
-
-  const p = payload as Record<string, unknown>;
-
-  if (p.type === "content" && typeof p.content === "string") {
-    return { type: "content", content: p.content };
-  }
-
-  if (
-    p.type === "tool_start" &&
-    typeof p.toolName === "string" &&
-    typeof p.toolCallId === "string"
-  ) {
-    return {
-      type: "tool_start",
-      toolName: p.toolName,
-      toolCallId: p.toolCallId,
-      input: p.input,
-    };
-  }
-
-  if (
-    p.type === "tool_progress" &&
-    typeof p.toolCallId === "string" &&
-    typeof p.message === "string"
-  ) {
-    return {
-      type: "tool_progress",
-      toolCallId: p.toolCallId,
-      message: p.message,
-      subStep: typeof p.subStep === "string" ? p.subStep : undefined,
-    };
-  }
-
-  if (p.type === "tool_end" && typeof p.toolCallId === "string") {
-    const status =
-      p.status === "success" || p.status === "error" ? p.status : "success";
-    return {
-      type: "tool_end",
-      toolCallId: p.toolCallId,
-      output: p.output,
-      status,
-    };
-  }
-
-  if (p.type === "error" && typeof p.error === "string") {
-    return {
-      type: "error",
-      error: p.error,
-      code: typeof p.code === "string" ? p.code : undefined,
-    };
-  }
-
-  if (p.type === "done") {
-    return {
-      type: "done",
-      messageId: typeof p.messageId === "string" ? p.messageId : undefined,
-    };
-  }
-
-  if (p.type === "image" && typeof p.url === "string") {
-    return {
-      type: "image",
-      url: p.url,
-      prompt: typeof p.prompt === "string" ? p.prompt : undefined,
-      width: typeof p.width === "number" ? p.width : undefined,
-      height: typeof p.height === "number" ? p.height : undefined,
-    };
-  }
-
-  if (p.type === "memory") {
-    return { type: "memory", data: p.data };
-  }
-
-  if (
-    p.type === "metadata" &&
-    typeof p.data === "object" &&
-    p.data !== null &&
-    !Array.isArray(p.data)
-  ) {
-    return { type: "metadata", data: p.data as Record<string, unknown> };
-  }
-
-  if (p.type === "thinking" && typeof p.content === "string") {
-    return { type: "thinking", content: p.content };
-  }
-
-  return null;
-}
+export type { TodoProgressSnapshot };
 
 export interface StreamToolDataEntry {
   tool_name: string;
@@ -213,13 +26,6 @@ export interface StreamToolOutput {
   output: string;
   subagent_id?: string;
 }
-
-import {
-  DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
-  type DesktopToolRequest,
-} from "../desktop-tools";
-import type { TodoProgressSnapshot } from "./types";
-export type { TodoProgressSnapshot };
 
 type JsonObject = Record<string, unknown>;
 
@@ -244,12 +50,18 @@ export type ChatStreamEvent =
   | { type: "keepalive" }
   | { type: "main_response_complete" }
   | { type: "error"; error: string }
+  | { type: "model_fallback"; model?: string }
   | { type: "response"; chunk: string }
   | {
       type: "conversation_initialized";
       conversation_id?: string;
       conversation_description?: string | null;
+      /** Equals the client's send id (turn_id) when the client provided one —
+       *  the optimistic record already carries the final key. */
       user_message_id?: string;
+      /** The user message text — replay alone can reconstruct the record if
+       *  the client's local write never committed before a reload. */
+      user_message_content?: string;
       bot_message_id?: string;
       stream_id?: string;
     }
@@ -269,6 +81,9 @@ export type ChatStreamEvent =
   | { type: "subagent_end"; payload: SubagentEndPayload }
   | { type: "desktop_tool_request"; request: DesktopToolRequest }
   | { type: "token_usage" }
+  // A frame that was not valid JSON. Never rendered — consumers must log it
+  // loudly and surface a stream error instead of showing garbage text.
+  | { type: "parse_error"; raw: string }
   | { type: "unknown"; payload: JsonObject };
 
 const isObject = (value: unknown): value is JsonObject =>
@@ -295,6 +110,271 @@ const toToolDataEntry = (value: unknown): StreamToolDataEntry | null => {
   };
 };
 
+/**
+ * Advisory validation against the typed frame vocabulary (schema.ts). Never
+ * gates rendering: valid frames pass silently, and an unmodeled or malformed
+ * frame is surfaced in dev then handled by the same duck-typed extraction the
+ * caller runs regardless — so runtime behavior for valid frames is unchanged.
+ */
+const warnIfFrameUnrecognized = (payload: JsonObject): void => {
+  if (
+    process.env.NODE_ENV !== "production" &&
+    !ChatStreamFrameSchema.safeParse(payload).success
+  ) {
+    console.error(
+      "[chat-stream] frame failed schema validation (extend schema.ts if this is a real frame):",
+      payload,
+    );
+  }
+};
+
+const extractError = (payload: JsonObject): ChatStreamEvent[] =>
+  typeof payload.error === "string" && payload.error.length > 0
+    ? [{ type: "error", error: payload.error }]
+    : [];
+
+// The backend emits `{"model_fallback": {"model": "..."}}` at most once per
+// stream when the primary model failed and the backup answered. Modeled as a
+// first-class event so it isn't treated as turn content by the `unknown` path.
+const extractModelFallback = (payload: JsonObject): ChatStreamEvent[] =>
+  isObject(payload.model_fallback)
+    ? [
+        {
+          type: "model_fallback",
+          model:
+            typeof payload.model_fallback.model === "string"
+              ? payload.model_fallback.model
+              : undefined,
+        },
+      ]
+    : [];
+
+const extractResponse = (payload: JsonObject): ChatStreamEvent[] => {
+  const events: ChatStreamEvent[] = [];
+  if (payload.main_response_complete === true) {
+    events.push({ type: "main_response_complete" });
+  }
+  if (typeof payload.response === "string" && payload.response.length > 0) {
+    events.push({ type: "response", chunk: payload.response });
+  }
+  return events;
+};
+
+const extractFollowUpActions = (payload: JsonObject): ChatStreamEvent[] =>
+  isStringArray(payload.follow_up_actions)
+    ? [{ type: "follow_up_actions", actions: payload.follow_up_actions }]
+    : [];
+
+// Backend emits progress as a plain string: {"progress": "message"}
+// Guard against object form too: {"progress": {"message": "...", ...}}
+const extractProgress = (payload: JsonObject): ChatStreamEvent[] => {
+  if (typeof payload.progress === "string" && payload.progress.length > 0) {
+    return [{ type: "progress", message: payload.progress }];
+  }
+  if (
+    isObject(payload.progress) &&
+    typeof payload.progress.message === "string"
+  ) {
+    return [
+      {
+        type: "progress",
+        message: payload.progress.message,
+        tool_name:
+          typeof payload.progress.tool_name === "string"
+            ? payload.progress.tool_name
+            : undefined,
+        tool_category:
+          typeof payload.progress.tool_category === "string"
+            ? payload.progress.tool_category
+            : undefined,
+      },
+    ];
+  }
+  return [];
+};
+
+const extractToolData = (payload: JsonObject): ChatStreamEvent[] => {
+  if (payload.tool_data === undefined) return [];
+  const entries = Array.isArray(payload.tool_data)
+    ? payload.tool_data
+    : [payload.tool_data];
+  const events: ChatStreamEvent[] = [];
+  for (const entry of entries) {
+    const normalized = toToolDataEntry(entry);
+    if (normalized) {
+      events.push({ type: "tool_data", entry: normalized });
+    }
+  }
+  return events;
+};
+
+const extractToolOutput = (payload: JsonObject): ChatStreamEvent[] => {
+  if (!isObject(payload.tool_output)) return [];
+  const toolCallId = payload.tool_output.tool_call_id;
+  const output = payload.tool_output.output;
+  if (typeof toolCallId !== "string" || typeof output !== "string") return [];
+  return [
+    {
+      type: "tool_output",
+      output: {
+        tool_call_id: toolCallId,
+        output,
+        subagent_id:
+          typeof payload.tool_output.subagent_id === "string"
+            ? payload.tool_output.subagent_id
+            : undefined,
+      },
+    },
+  ];
+};
+
+const extractSubagentStart = (payload: JsonObject): ChatStreamEvent[] => {
+  if (!isObject(payload.subagent_start)) return [];
+  const s = payload.subagent_start;
+  if (
+    typeof s.subagent_id !== "string" ||
+    typeof s.subagent_name !== "string"
+  ) {
+    return [];
+  }
+  return [
+    {
+      type: "subagent_start",
+      payload: {
+        subagent_id: s.subagent_id,
+        subagent_name: s.subagent_name,
+        agent_type: (typeof s.agent_type === "string"
+          ? s.agent_type
+          : "handoff") as "handoff" | "spawned",
+        started_at:
+          typeof s.started_at === "string"
+            ? s.started_at
+            : new Date().toISOString(),
+        icon_url: typeof s.icon_url === "string" ? s.icon_url : undefined,
+        tool_category:
+          typeof s.tool_category === "string" ? s.tool_category : undefined,
+        parent_subagent_id:
+          typeof s.parent_subagent_id === "string"
+            ? s.parent_subagent_id
+            : undefined,
+      },
+    },
+  ];
+};
+
+const extractReasoning = (payload: JsonObject): ChatStreamEvent[] => {
+  if (!isObject(payload.reasoning)) return [];
+  const content = payload.reasoning.content;
+  if (typeof content !== "string" || content.length === 0) return [];
+  return [
+    {
+      type: "reasoning",
+      content,
+      subagent_id:
+        typeof payload.reasoning.subagent_id === "string"
+          ? payload.reasoning.subagent_id
+          : undefined,
+    },
+  ];
+};
+
+const extractSubagentEnd = (payload: JsonObject): ChatStreamEvent[] => {
+  if (!isObject(payload.subagent_end)) return [];
+  const e = payload.subagent_end;
+  if (typeof e.subagent_id !== "string") return [];
+  return [
+    {
+      type: "subagent_end",
+      payload: {
+        subagent_id: e.subagent_id,
+        duration_ms:
+          typeof e.duration_ms === "number" ? e.duration_ms : undefined,
+        token_count: typeof e.token_count === "number" ? e.token_count : null,
+      },
+    },
+  ];
+};
+
+const extractDesktopToolRequest = (payload: JsonObject): ChatStreamEvent[] => {
+  if (!isObject(payload.desktop_tool_request)) return [];
+  const r = payload.desktop_tool_request;
+  if (typeof r.request_id !== "string" || typeof r.tool !== "string") return [];
+  return [
+    {
+      type: "desktop_tool_request",
+      request: {
+        request_id: r.request_id,
+        tool: r.tool,
+        params: isObject(r.params) ? r.params : {},
+        timeout_ms:
+          typeof r.timeout_ms === "number"
+            ? r.timeout_ms
+            : DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
+      },
+    },
+  ];
+};
+
+const extractTodoProgress = (payload: JsonObject): ChatStreamEvent[] =>
+  isObject(payload.todo_progress)
+    ? [
+        {
+          type: "todo_progress",
+          snapshot: payload.todo_progress as TodoProgressSnapshot,
+        },
+      ]
+    : [];
+
+const extractConversation = (payload: JsonObject): ChatStreamEvent[] => {
+  const hasConversationInitData =
+    typeof payload.conversation_id === "string" ||
+    typeof payload.user_message_id === "string" ||
+    typeof payload.bot_message_id === "string" ||
+    typeof payload.stream_id === "string";
+
+  if (hasConversationInitData) {
+    return [
+      {
+        type: "conversation_initialized",
+        conversation_id:
+          typeof payload.conversation_id === "string"
+            ? payload.conversation_id
+            : undefined,
+        conversation_description:
+          typeof payload.conversation_description === "string" ||
+          payload.conversation_description === null
+            ? payload.conversation_description
+            : undefined,
+        user_message_id:
+          typeof payload.user_message_id === "string"
+            ? payload.user_message_id
+            : undefined,
+        user_message_content:
+          typeof payload.user_message_content === "string"
+            ? payload.user_message_content
+            : undefined,
+        bot_message_id:
+          typeof payload.bot_message_id === "string"
+            ? payload.bot_message_id
+            : undefined,
+        stream_id:
+          typeof payload.stream_id === "string" ? payload.stream_id : undefined,
+      },
+    ];
+  }
+
+  if (typeof payload.conversation_description === "string") {
+    return [
+      {
+        type: "conversation_description",
+        description: payload.conversation_description,
+      },
+    ];
+  }
+
+  return [];
+};
+
 export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
   if (!data) return [];
   if (data === "[DONE]") return [{ type: "done" }];
@@ -304,212 +384,38 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
   try {
     payload = JSON.parse(data);
   } catch {
-    return [{ type: "response", chunk: data }];
+    // Every legitimate frame is JSON (or the [DONE] sentinel handled above).
+    // Anything else is a malformed frame — fail loud downstream, never render.
+    return [{ type: "parse_error", raw: data }];
   }
 
   if (!isObject(payload)) {
     return [{ type: "unknown", payload: { value: payload } }];
   }
 
+  warnIfFrameUnrecognized(payload);
+
   if (payload.keepalive === true) {
     return [{ type: "keepalive" }];
   }
 
-  const events: ChatStreamEvent[] = [];
-
-  if (typeof payload.error === "string" && payload.error.length > 0) {
-    events.push({ type: "error", error: payload.error });
-  }
-
-  if (payload.main_response_complete === true) {
-    events.push({ type: "main_response_complete" });
-  }
-
-  if (typeof payload.response === "string" && payload.response.length > 0) {
-    events.push({ type: "response", chunk: payload.response });
-  }
-
-  if (isStringArray(payload.follow_up_actions)) {
-    events.push({
-      type: "follow_up_actions",
-      actions: payload.follow_up_actions,
-    });
-  }
-
-  // Backend emits progress as a plain string: {"progress": "message"}
-  // Guard against object form too: {"progress": {"message": "...", ...}}
-  if (typeof payload.progress === "string" && payload.progress.length > 0) {
-    events.push({ type: "progress", message: payload.progress });
-  } else if (
-    isObject(payload.progress) &&
-    typeof payload.progress.message === "string"
-  ) {
-    events.push({
-      type: "progress",
-      message: payload.progress.message,
-      tool_name:
-        typeof payload.progress.tool_name === "string"
-          ? payload.progress.tool_name
-          : undefined,
-      tool_category:
-        typeof payload.progress.tool_category === "string"
-          ? payload.progress.tool_category
-          : undefined,
-    });
-  }
-
-  if (payload.tool_data !== undefined) {
-    const entries = Array.isArray(payload.tool_data)
-      ? payload.tool_data
-      : [payload.tool_data];
-    for (const entry of entries) {
-      const normalized = toToolDataEntry(entry);
-      if (normalized) {
-        events.push({ type: "tool_data", entry: normalized });
-      }
-    }
-  }
-
-  if (isObject(payload.tool_output)) {
-    const toolCallId = payload.tool_output.tool_call_id;
-    const output = payload.tool_output.output;
-    if (typeof toolCallId === "string" && typeof output === "string") {
-      events.push({
-        type: "tool_output",
-        output: {
-          tool_call_id: toolCallId,
-          output,
-          subagent_id:
-            typeof payload.tool_output.subagent_id === "string"
-              ? payload.tool_output.subagent_id
-              : undefined,
-        },
-      });
-    }
-  }
-
-  // Emit subagent_start before reasoning: when one payload carries both, the
-  // reasoning handler routes by subagent_id into the group, which must already
-  // exist or that first delta is dropped.
-  if (isObject(payload.subagent_start)) {
-    const s = payload.subagent_start;
-    if (
-      typeof s.subagent_id === "string" &&
-      typeof s.subagent_name === "string"
-    ) {
-      events.push({
-        type: "subagent_start",
-        payload: {
-          subagent_id: s.subagent_id,
-          subagent_name: s.subagent_name,
-          agent_type: (typeof s.agent_type === "string"
-            ? s.agent_type
-            : "handoff") as "handoff" | "spawned",
-          started_at:
-            typeof s.started_at === "string"
-              ? s.started_at
-              : new Date().toISOString(),
-          icon_url: typeof s.icon_url === "string" ? s.icon_url : undefined,
-          tool_category:
-            typeof s.tool_category === "string" ? s.tool_category : undefined,
-          parent_subagent_id:
-            typeof s.parent_subagent_id === "string"
-              ? s.parent_subagent_id
-              : undefined,
-        },
-      });
-    }
-  }
-
-  if (isObject(payload.reasoning)) {
-    const content = payload.reasoning.content;
-    if (typeof content === "string" && content.length > 0) {
-      events.push({
-        type: "reasoning",
-        content,
-        subagent_id:
-          typeof payload.reasoning.subagent_id === "string"
-            ? payload.reasoning.subagent_id
-            : undefined,
-      });
-    }
-  }
-
-  if (isObject(payload.subagent_end)) {
-    const e = payload.subagent_end;
-    if (typeof e.subagent_id === "string") {
-      events.push({
-        type: "subagent_end",
-        payload: {
-          subagent_id: e.subagent_id,
-          duration_ms:
-            typeof e.duration_ms === "number" ? e.duration_ms : undefined,
-          token_count: typeof e.token_count === "number" ? e.token_count : null,
-        },
-      });
-    }
-  }
-
-  if (isObject(payload.desktop_tool_request)) {
-    const r = payload.desktop_tool_request;
-    if (typeof r.request_id === "string" && typeof r.tool === "string") {
-      events.push({
-        type: "desktop_tool_request",
-        request: {
-          request_id: r.request_id,
-          tool: r.tool,
-          params: isObject(r.params) ? r.params : {},
-          timeout_ms:
-            typeof r.timeout_ms === "number"
-              ? r.timeout_ms
-              : DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
-        },
-      });
-    }
-  }
-
-  if (isObject(payload.todo_progress)) {
-    events.push({
-      type: "todo_progress",
-      snapshot: payload.todo_progress as TodoProgressSnapshot,
-    });
-  }
-
-  const hasConversationInitData =
-    typeof payload.conversation_id === "string" ||
-    typeof payload.user_message_id === "string" ||
-    typeof payload.bot_message_id === "string" ||
-    typeof payload.stream_id === "string";
-
-  if (hasConversationInitData) {
-    events.push({
-      type: "conversation_initialized",
-      conversation_id:
-        typeof payload.conversation_id === "string"
-          ? payload.conversation_id
-          : undefined,
-      conversation_description:
-        typeof payload.conversation_description === "string" ||
-        payload.conversation_description === null
-          ? payload.conversation_description
-          : undefined,
-      user_message_id:
-        typeof payload.user_message_id === "string"
-          ? payload.user_message_id
-          : undefined,
-      bot_message_id:
-        typeof payload.bot_message_id === "string"
-          ? payload.bot_message_id
-          : undefined,
-      stream_id:
-        typeof payload.stream_id === "string" ? payload.stream_id : undefined,
-    });
-  } else if (typeof payload.conversation_description === "string") {
-    events.push({
-      type: "conversation_description",
-      description: payload.conversation_description,
-    });
-  }
+  // Order matters: subagent_start must precede reasoning so a payload carrying
+  // both registers the group before the first reasoning delta routes into it.
+  const events: ChatStreamEvent[] = [
+    ...extractError(payload),
+    ...extractModelFallback(payload),
+    ...extractResponse(payload),
+    ...extractFollowUpActions(payload),
+    ...extractProgress(payload),
+    ...extractToolData(payload),
+    ...extractToolOutput(payload),
+    ...extractSubagentStart(payload),
+    ...extractReasoning(payload),
+    ...extractSubagentEnd(payload),
+    ...extractDesktopToolRequest(payload),
+    ...extractTodoProgress(payload),
+    ...extractConversation(payload),
+  ];
 
   return events.length > 0 ? events : [{ type: "unknown", payload }];
 }

@@ -10,34 +10,38 @@ router = APIRouter(prefix="/ws", tags=["WebSocket"])
 
 
 @router.websocket("/connect")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket) -> None:
     """
     Endpoint to establish WebSocket connection for authenticated users.
     Each user can have multiple connections (e.g., from different devices).
+
+    WebSocketWideEventMiddleware emits the connection's wide event — one
+    ``ws_connection`` line per connection lifetime, covering auth failures
+    too — so this handler just calls ``log.set()`` like an HTTP handler.
     """
     # Authenticate the WebSocket connection using cookies
     user = await get_current_user_ws(websocket)
 
     # Check if we have a valid user with a user_id
     user_id = user.get("user_id")
-    log.set(user={"id": user_id})
-
     if not user_id or not isinstance(user_id, str):
         log.set(disconnect_reason="auth_failure")
         log.warning("WebSocket connection attempted with invalid user_id")
         return
 
+    log.set(user={"id": user_id})
+
     # Accept the connection now that we've verified the user
     # If client used subprotocol auth, echo back "Bearer" to complete handshake
     protocol_header = websocket.headers.get("sec-websocket-protocol", "")
     if protocol_header.startswith("Bearer, "):
-        auth_token_type = "subprotocol"  # nosec B105
+        auth_source = "subprotocol"
         await websocket.accept(subprotocol="Bearer")
     else:
-        auth_token_type = "cookie"  # nosec B105
+        auth_source = "cookie"
         await websocket.accept()
 
-    log.set(auth_token_type=auth_token_type)
+    log.set(auth_source=auth_source)
 
     # Add the connection to our manager
     connection_manager.add_connection(user_id=user_id, websocket=websocket)
@@ -54,11 +58,22 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         # Handle any other exceptions
         log.set(disconnect_reason="server_error")
-        log.error(f"WebSocket error for user {user_id}: {e!s}")
+        log.error(
+            "WebSocket error",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         connection_manager.remove_connection(user_id=user_id, websocket=websocket)
+        # Ignore if WebSocket is already closed
         try:
             await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
-        except Exception:
-            # Ignore if WebSocket is already closed
-            pass  # nosec B110
+        except Exception as close_error:
+            # Socket already dead, so a failed close is expected — record it
+            # rather than swallow it silently.
+            log.warning(
+                "WebSocket close failed",
+                error_type=type(close_error).__name__,
+                error=str(close_error),
+            )
         raise e

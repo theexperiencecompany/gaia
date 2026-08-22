@@ -1,6 +1,6 @@
 """Unit tests for the integrations config API endpoints.
 
-Tests cover GET /config, GET /status, DELETE /{integration_id},
+Tests cover GET /config, DELETE /{integration_id},
 and POST /connect/{integration_id}.  Service layer is mocked;
 only HTTP status codes, response shapes, and error handling are verified.
 """
@@ -8,7 +8,9 @@ only HTTP status codes, response shapes, and error handling are verified.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
-import pytest
+
+from app.models.user_models import UserDocument
+from app.services.analytics_service import AnalyticsEvents
 
 API = "/api/v1/integrations"
 
@@ -76,7 +78,6 @@ def _resolved(
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestGetIntegrationsConfig:
     async def test_config_success(self, client: AsyncClient) -> None:
         from app.schemas.integrations.responses import IntegrationsConfigResponse
@@ -107,49 +108,10 @@ class TestGetIntegrationsConfig:
 
 
 # ===========================================================================
-# GET /integrations/status
-# ===========================================================================
-
-
-@pytest.mark.unit
-class TestGetIntegrationsStatus:
-    async def test_status_success(self, client: AsyncClient) -> None:
-        with patch(
-            "app.api.v1.endpoints.integrations.config.get_all_integrations_status",
-            new_callable=AsyncMock,
-            return_value={"github": True, "slack": False},
-        ):
-            resp = await client.get(f"{API}/status")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert len(data["integrations"]) == 2
-
-    async def test_status_service_error_returns_all_disconnected(self, client: AsyncClient) -> None:
-        """When get_all_integrations_status fails, endpoint returns all
-        integrations as disconnected (not 500)."""
-        with patch(
-            "app.api.v1.endpoints.integrations.config.get_all_integrations_status",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("DB down"),
-        ):
-            resp = await client.get(f"{API}/status")
-        assert resp.status_code == 200
-        data = resp.json()
-        # All returned items should have connected=False
-        for item in data["integrations"]:
-            assert item["connected"] is False
-
-    async def test_status_requires_auth(self, unauthed_client: AsyncClient) -> None:
-        resp = await unauthed_client.get(f"{API}/status")
-        assert resp.status_code == 401
-
-
-# ===========================================================================
 # DELETE /integrations/{integration_id}
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestDisconnectIntegration:
     async def test_disconnect_success(self, client: AsyncClient) -> None:
         from app.schemas.integrations.responses import IntegrationSuccessResponse
@@ -159,13 +121,19 @@ class TestDisconnectIntegration:
             message="Disconnected",
             integration_id="github",  # type: ignore[call-arg]
         )
-        with patch(
-            "app.api.v1.endpoints.integrations.config.disconnect_integration",
-            new_callable=AsyncMock,
-            return_value=mock_result,
+        with (
+            patch(
+                "app.api.v1.endpoints.integrations.config.disconnect_integration",
+                new_callable=AsyncMock,
+                return_value=mock_result,
+            ),
+            patch("app.api.v1.endpoints.integrations.config.capture_context_event") as mock_capture,
         ):
             resp = await client.delete(f"{API}/github")
         assert resp.status_code == 200
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.INTEGRATION_DISCONNECTED, {"integration_id": "github"}
+        )
 
     async def test_disconnect_not_found(self, client: AsyncClient) -> None:
         with patch(
@@ -204,7 +172,6 @@ class TestDisconnectIntegration:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestConnectIntegration:
     async def test_connect_mcp_success(self, client: AsyncClient) -> None:
         from app.schemas.integrations.responses import ConnectIntegrationResponse
@@ -227,6 +194,7 @@ class TestConnectIntegration:
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ),
+            patch("app.api.v1.endpoints.integrations.config.capture_context_event") as mock_capture,
         ):
             resp = await client.post(
                 f"{API}/connect/test-mcp",
@@ -234,6 +202,10 @@ class TestConnectIntegration:
             )
         assert resp.status_code == 200
         assert resp.json()["status"] == "connected"
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.INTEGRATION_CONNECTED,
+            {"integration_id": "test-mcp", "managed_by": "mcp"},
+        )
 
     async def test_connect_composio_success(self, client: AsyncClient) -> None:
         from app.schemas.integrations.responses import ConnectIntegrationResponse
@@ -256,6 +228,7 @@ class TestConnectIntegration:
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ),
+            patch("app.api.v1.endpoints.integrations.config.capture_context_event") as mock_capture,
         ):
             resp = await client.post(
                 f"{API}/connect/github",
@@ -263,6 +236,8 @@ class TestConnectIntegration:
             )
         assert resp.status_code == 200
         assert resp.json()["status"] == "redirect"
+        # OAuth-managed connects complete at their callback, not here.
+        mock_capture.assert_not_called()
 
     async def test_connect_self_success(self, client: AsyncClient) -> None:
         from app.schemas.integrations.responses import ConnectIntegrationResponse
@@ -401,21 +376,22 @@ _MODULE = "app.api.v1.endpoints.integrations.config"
 _VALID_UID = "507f1f77bcf86cd799439011"
 
 
-@pytest.mark.unit
 class TestConnectLinkEndpoint:
     """The login-free connect link: self-authenticating, redirects into OAuth."""
 
     async def test_valid_token_redirects_to_oauth(self, client: AsyncClient) -> None:
         result = MagicMock(status="redirect", redirect_url="https://oauth.example/go", error=None)
-        users = MagicMock()
-        users.find_one = AsyncMock(return_value={"email": "a@b.com"})
         with (
             patch(
                 f"{_MODULE}.resolve_and_consume_connect_code",
                 new_callable=AsyncMock,
                 return_value=(_VALID_UID, "notion"),
             ),
-            patch(f"{_MODULE}.users_collection", users),
+            patch(
+                f"{_MODULE}.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=UserDocument(email="a@b.com"),
+            ),
             patch(
                 f"{_MODULE}.initiate_integration_connection",
                 new_callable=AsyncMock,
@@ -440,15 +416,17 @@ class TestConnectLinkEndpoint:
         """The whole point: a logged-out user reaches it (not 401) and is sent
         into OAuth — identity comes from the single-use code, not a session."""
         result = MagicMock(status="redirect", redirect_url="https://oauth.example/go", error=None)
-        users = MagicMock()
-        users.find_one = AsyncMock(return_value={"email": "a@b.com"})
         with (
             patch(
                 f"{_MODULE}.resolve_and_consume_connect_code",
                 new_callable=AsyncMock,
                 return_value=(_VALID_UID, "notion"),
             ),
-            patch(f"{_MODULE}.users_collection", users),
+            patch(
+                f"{_MODULE}.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=UserDocument(email="a@b.com"),
+            ),
             patch(
                 f"{_MODULE}.initiate_integration_connection",
                 new_callable=AsyncMock,

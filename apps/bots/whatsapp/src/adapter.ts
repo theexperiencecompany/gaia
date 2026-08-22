@@ -17,6 +17,8 @@
 
 import {
   BaseBotAdapter,
+  BODY_READ_TIMEOUT,
+  BODY_TOO_LARGE,
   type BotCommand,
   type BotFileData,
   buildAuthLinkMessage,
@@ -26,17 +28,24 @@ import {
   handleStreamingChat,
   hashLogIdentifier,
   type IncomingMedia,
+  MEDIA_READ_TIMEOUT_MS,
   type OutboundAttachment,
   type PlatformName,
   type RichMessage,
   type RichMessageTarget,
+  readBodyBounded,
+  readResponseBytesCapped,
   renderForPlatform,
   richMessageToMarkdown,
   type SentMessage,
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,
   unsupportedMediaMessage,
+  WEBHOOK_MAX_BODY_BYTES,
+  wideLog,
+  withWideEvent,
 } from "@gaia/shared";
+import { BOT_EVENTS } from "@gaia/shared/analytics";
 import { WhatsAppClient } from "@kapso/whatsapp-cloud-api";
 import {
   NOTIFICATION_TEMPLATE_LANGUAGE,
@@ -44,6 +53,7 @@ import {
   NOTIFICATION_TEMPLATE_PARAM_NAME,
   REPLAY_WINDOW_MS,
   TEMPLATE_BODY_MAX_LENGTH,
+  TYPING_REFRESH_MS,
 } from "./constants";
 import {
   extractMedia,
@@ -140,14 +150,12 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       baseUrl: "https://api.kapso.ai/meta/whatsapp",
       kapsoApiKey: this.waConfig.kapsoApiKey,
     });
-    this.adapterLogger.info("client_initialized", {
-      phone_number_id: this.waConfig.kapsoPhoneNumberId,
-    });
+    wideLog.set({ phone_number_id: this.waConfig.kapsoPhoneNumberId });
   }
 
   /** WhatsApp has no platform-level command registration step. */
   protected async registerCommands(_commands: BotCommand[]): Promise<void> {
-    this.adapterLogger.info("commands_registered");
+    // Nothing to register: WhatsApp matches commands by text prefix.
   }
 
   /**
@@ -158,48 +166,121 @@ export class WhatsAppAdapter extends BaseBotAdapter {
    * - POST /webhook → verifies Kapso HMAC signature, dispatches message
    */
   protected async registerEvents(): Promise<void> {
-    this.botServer.app.post("/webhook", async (c) => {
-      const rawBody = await c.req.text();
-      const signature = c.req.header("x-webhook-signature") ?? null;
+    // One wide event per inbound webhook. Everything this handler does — body
+    // caps, signature verification, batch fan-out — happens before the 200 and
+    // outside any dispatch, so without a boundary here its audit line lands on
+    // no event at all. Per-message processing is enqueued after the response
+    // and opens its own boundary inside dispatchCommand/handleStreamingChat.
+    this.botServer.app.post("/webhook", async (c) =>
+      withWideEvent(
+        "webhook",
+        { platform: "whatsapp", component: "adapter" },
+        async () => {
+          // Reject oversized bodies. Kapso payloads are small; anything above the cap
+          // signals an attempt to exhaust memory. The Content-Length header is only a
+          // cheap fast-path — a request can omit it, send 0, or use chunked transfer
+          // encoding to slip past a header-only check — so the real defense is the
+          // bounded stream read below, which aborts once actual bytes exceed the cap.
+          const contentLength = Number(c.req.header("content-length"));
+          if (
+            Number.isFinite(contentLength) &&
+            contentLength > WEBHOOK_MAX_BODY_BYTES
+          ) {
+            this.adapterLogger.warn("webhook_body_too_large", {
+              content_length: contentLength,
+              max_bytes: WEBHOOK_MAX_BODY_BYTES,
+            });
+            wideLog.set({ http_status: 413 });
+            return c.text("Payload Too Large", 413);
+          }
 
-      if (
-        !verifyKapsoSignature(
-          rawBody,
-          signature,
-          this.whatsAppConfig.kapsoWebhookSecret,
-        )
-      ) {
-        return c.json({ error: "Invalid signature" }, 401);
-      }
+          const rawBody = await readBodyBounded(
+            c.req.raw,
+            WEBHOOK_MAX_BODY_BYTES,
+          );
+          if (rawBody === BODY_TOO_LARGE) {
+            this.adapterLogger.warn("webhook_body_too_large", {
+              max_bytes: WEBHOOK_MAX_BODY_BYTES,
+            });
+            wideLog.set({ http_status: 413 });
+            return c.text("Payload Too Large", 413);
+          }
+          if (rawBody === BODY_READ_TIMEOUT) {
+            this.adapterLogger.warn("webhook_body_read_timeout");
+            wideLog.set({ http_status: 408 });
+            return c.text("Request Timeout", 408);
+          }
+          const signature = c.req.header("x-webhook-signature") ?? null;
 
-      // Event type is in the header for Kapso webhooks, not in the body
-      const eventType = c.req.header("x-webhook-event") ?? null;
-      if (eventType !== "whatsapp.message.received") {
-        this.adapterLogger.debug("webhook_event_ignored", {
-          event_type: eventType,
-        });
-        return c.json({ status: "ignored" });
-      }
+          if (
+            !verifyKapsoSignature(
+              rawBody,
+              signature,
+              this.whatsAppConfig.kapsoWebhookSecret,
+            )
+          ) {
+            // Surface rejected webhooks as an audit-trail entry — a spike here
+            // means a misconfigured secret or a spoofing attempt, not something
+            // to drop silently.
+            wideLog.audit("webhook_signature_rejected", {
+              has_signature: signature !== null,
+            });
+            wideLog.set({ http_status: 401 });
+            return c.json({ error: "Invalid signature" }, 401);
+          }
 
-      let body: unknown;
-      try {
-        body = JSON.parse(rawBody);
-      } catch {
-        return c.json({ error: "Invalid JSON" }, 400);
-      }
+          // Event type is in the header for Kapso webhooks, not in the body
+          const eventType = c.req.header("x-webhook-event") ?? null;
+          wideLog.set({ event_type: eventType });
+          if (eventType !== "whatsapp.message.received") {
+            this.adapterLogger.debug("webhook_event_ignored", {
+              event_type: eventType,
+            });
+            wideLog.set({ http_status: 200 });
+            return c.json({ status: "ignored" });
+          }
 
-      // Batched delivery wraps events in { batch: true, data: [...] }
-      const isBatch = c.req.header("x-webhook-batch") === "true";
-      const events: KapsoMessageEvent[] = isBatch
-        ? (body as KapsoMessageBatch).data
-        : [body as KapsoMessageEvent];
+          const eventCount = this.dispatchWebhookPayload(
+            rawBody,
+            c.req.header("x-webhook-batch") === "true",
+          );
+          if (eventCount === null) {
+            wideLog.set({ http_status: 400 });
+            return c.json({ error: "Invalid JSON" }, 400);
+          }
 
-      for (const event of events) {
-        this.handleWebhookEvent(event);
-      }
+          wideLog.set({ http_status: 200, event_count: eventCount });
+          return c.json({ status: "ok" });
+        },
+      ),
+    );
+  }
 
-      return c.json({ status: "ok" });
-    });
+  /**
+   * Routes every event in a verified webhook body. Batched delivery wraps the
+   * events in `{ batch: true, data: [...] }`. Returns how many events were
+   * routed, or `null` when the body is not valid JSON.
+   */
+  private dispatchWebhookPayload(
+    rawBody: string,
+    isBatch: boolean,
+  ): number | null {
+    let body: unknown;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      return null;
+    }
+
+    const events: KapsoMessageEvent[] = isBatch
+      ? (body as KapsoMessageBatch).data
+      : [body as KapsoMessageEvent];
+
+    for (const event of events) {
+      this.handleWebhookEvent(event);
+    }
+
+    return events.length;
   }
 
   /**
@@ -215,7 +296,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     const timestampSec = Number(event.message.timestamp);
     if (!Number.isFinite(timestampSec)) {
       this.adapterLogger.warn("webhook_invalid_timestamp", {
-        wa_hash: waIdHash,
+        user_hash: waIdHash,
         message_id: event.message.id,
       });
       return;
@@ -223,7 +304,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     const eventAgeMs = Date.now() - timestampSec * 1000;
     if (eventAgeMs < 0) {
       this.adapterLogger.warn("webhook_future_timestamp", {
-        wa_hash: waIdHash,
+        user_hash: waIdHash,
         message_id: event.message.id,
         age_ms: eventAgeMs,
       });
@@ -231,7 +312,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     }
     if (eventAgeMs > REPLAY_WINDOW_MS) {
       this.adapterLogger.warn("webhook_event_replayed", {
-        wa_hash: waIdHash,
+        user_hash: waIdHash,
         message_id: event.message.id,
         age_ms: eventAgeMs,
       });
@@ -239,7 +320,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     }
 
     this.adapterLogger.info("webhook_message_received", {
-      wa_hash: waIdHash,
+      user_hash: waIdHash,
       message_type: event.message.type,
       has_text: Boolean(text),
     });
@@ -251,7 +332,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       this.enqueueForUser(waId, () =>
         this.handleIncomingMessage(waId, text, msgId).catch((err) =>
           this.adapterLogger.error("incoming_message_processing_failed", {
-            wa_hash: waIdHash,
+            user_hash: waIdHash,
             message_id: msgId,
             ...sanitizeErrorForLog(err),
           }),
@@ -274,7 +355,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           );
         } catch (err) {
           this.adapterLogger.error("unsupported_media_handling_failed", {
-            wa_hash: waIdHash,
+            user_hash: waIdHash,
             message_type: event.message.type,
             ...sanitizeErrorForLog(err),
           });
@@ -286,7 +367,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     this.enqueueForUser(waId, () =>
       this.handleMediaMessage(waId, media, msgId).catch((err) =>
         this.adapterLogger.error("media_message_processing_failed", {
-          wa_hash: waIdHash,
+          user_hash: waIdHash,
           message_id: msgId,
           media_kind: media.kind,
           ...sanitizeErrorForLog(err),
@@ -296,15 +377,38 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   }
 
   /**
-   * Starts the WhatsApp "typing…" indicator and keeps it alive on a 20s timer
-   * (Meta dismisses it after ~25s). Call `stop()` once the reply is sent.
+   * Shows the WhatsApp "typing…" indicator and keeps it alive for the whole
+   * generation.
+   *
+   * The WhatsApp Cloud API typing indicator (emitted by marking the inbound
+   * message read) auto-dismisses after ~25s or when the reply is sent. A single
+   * emit therefore leaves the user staring at a dead chat whenever generation
+   * runs long — markdown-heavy answers routinely exceed 25s. So we re-emit every
+   * {@link TYPING_REFRESH_MS} (well under the 25s ceiling) until {@link stop} is
+   * called from the request's `finally`. Re-emitting while the indicator is still
+   * active extends the window instead of flickering it.
+   *
+   * `refresh` forces an immediate re-emit (used to re-show it right after an
+   * interstitial message such as the welcome); `stop` cancels the keep-alive.
    */
   private startWhatsAppTyping(
     waId: string,
     messageId: string,
   ): { refresh: () => void; stop: () => void } {
     const waIdHash = hashLogIdentifier(waId);
-    const refresh = (): void => {
+    const startedAt = Date.now();
+    let emitCount = 0;
+    let stopped = false;
+    const sendTyping = (): void => {
+      if (stopped) return;
+      emitCount += 1;
+      const seq = emitCount;
+      this.adapterLogger.debug("typing_indicator_emitted", {
+        user_hash: waIdHash,
+        message_id: messageId,
+        seq,
+        elapsed_ms: Date.now() - startedAt,
+      });
       this.whatsAppClient.messages
         .markRead({
           phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
@@ -313,15 +417,22 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         })
         .catch((err: unknown) =>
           this.adapterLogger.error("typing_indicator_failed", {
-            wa_hash: waIdHash,
+            user_hash: waIdHash,
             message_id: messageId,
+            seq,
             ...sanitizeErrorForLog(err),
           }),
         );
     };
-    refresh();
-    const interval = setInterval(refresh, 20_000);
-    return { refresh, stop: () => clearInterval(interval) };
+    sendTyping();
+    const keepAlive = setInterval(sendTyping, TYPING_REFRESH_MS);
+    return {
+      refresh: sendTyping,
+      stop: () => {
+        stopped = true;
+        clearInterval(keepAlive);
+      },
+    };
   }
 
   /**
@@ -334,8 +445,8 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     refreshTyping: () => void,
     authCheckTimeoutMs?: number,
   ): Promise<void> {
-    // Base one-shot gate (shared with Discord) — fires at most once per user.
-    if (!this.shouldSendWelcome(waId)) return;
+    // Base gate (shared with Discord): only greets unlinked users, at most once per process.
+    if (!(await this.shouldSendWelcome(waId))) return;
 
     let isLinked = this.linkedUsers.has(waId);
     if (!isLinked) {
@@ -374,7 +485,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       return status.authenticated;
     } catch (err) {
       this.adapterLogger.warn("welcome_auth_check_failed", {
-        wa_hash: hashLogIdentifier(waId),
+        user_hash: hashLogIdentifier(waId),
         ...sanitizeErrorForLog(err),
       });
       return false;
@@ -383,7 +494,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
 
   /** Nothing additional to start — base server is started by BaseBotAdapter.boot(). */
   protected async start(): Promise<void> {
-    this.adapterLogger.info("bot_started");
+    // The base server (which serves /webhook) is started by boot().
   }
 
   /** Nothing additional to stop — base server is stopped by BaseBotAdapter.shutdown(). */
@@ -435,7 +546,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   ): Promise<void> {
     const waIdHash = hashLogIdentifier(waId);
     this.adapterLogger.info("incoming_message_started", {
-      wa_hash: waIdHash,
+      user_hash: waIdHash,
       message_id: messageId,
       text_length: text.length,
       is_command: text.startsWith("/"),
@@ -487,9 +598,9 @@ export class WhatsAppAdapter extends BaseBotAdapter {
    * Sends the user's message to the GAIA streaming endpoint.
    *
    * WhatsApp streaming is disabled (STREAMING_DEFAULTS.whatsapp.streaming = false),
-   * so the full response is accumulated and sent as a single message.
-   * The typing indicator was already fired once before this is called and will
-   * auto-dismiss when the reply is sent (Meta's hard 25s ceiling).
+   * so the full response is accumulated and sent as a single message. The caller's
+   * typing keep-alive (see {@link startWhatsAppTyping}) keeps "typing…" visible for
+   * the whole generation and is cancelled in the caller's `finally`.
    *
    * @param attachments - Files already uploaded to GAIA's storage (via
    *   {@link GaiaClient.uploadFile}) that should accompany this message so
@@ -561,11 +672,11 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           await this.sendWhatsAppText(waId, errMsg);
         },
         STREAMING_DEFAULTS.whatsapp,
-        this.analytics,
+        await this.analyticsFor(waId),
       );
     } catch (err) {
       this.adapterLogger.error("streaming_failed", {
-        wa_hash: hashLogIdentifier(waId),
+        user_hash: hashLogIdentifier(waId),
         ...sanitizeErrorForLog(err),
       });
       try {
@@ -575,7 +686,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         );
       } catch (sendErr) {
         this.adapterLogger.error("streaming_error_message_send_failed", {
-          wa_hash: hashLogIdentifier(waId),
+          user_hash: hashLogIdentifier(waId),
           ...sanitizeErrorForLog(sendErr),
         });
       }
@@ -600,18 +711,22 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   private async sendWelcome(waId: string): Promise<void> {
     const text =
       `*Hey, I'm GAIA* 👋\n\n` +
-      `Your personal AI — built to think ahead, remember everything, and get things done with you.\n\n` +
-      `Here's what I can do right on WhatsApp:\n\n` +
-      `*💬 Chat*\nJust type anything. Ask questions, brainstorm, think out loud.\n\n` +
-      `*✅ Todos*\nUse /todo add to capture tasks.\n\n` +
-      `*⚡ Workflows*\nRun automations with /workflow. Delegate entire projects.\n\n` +
-      `*🔗 Link your account*\nUse /auth to connect your GAIA account for memory and personalization.\n\n` +
+      `Your personal AI — I think ahead, remember what matters, and help you actually get things done.\n\n` +
+      `Here's what I can do right here on WhatsApp:\n\n` +
+      `*Chat*\nJust type anything — ask questions, brainstorm, think out loud.\n\n` +
+      `*Todos*\nCapture tasks with /todo add.\n\n` +
+      `*Workflows*\nRun automations with /workflow and delegate whole projects.\n\n` +
+      `*Link your account*\nRun /auth to connect GAIA so I remember you and your context.\n\n` +
       `_Visit heygaia.io or read the docs at docs.heygaia.io_`;
 
     try {
       await this.sendWhatsAppText(waId, text);
-    } catch {
-      // If we can't send the welcome, continue silently (match Discord behavior)
+    } catch (error) {
+      this.adapterLogger.error(
+        "welcome_send_failed",
+        { user_hash: hashLogIdentifier(waId) },
+        error,
+      );
     }
   }
 
@@ -636,7 +751,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   ): Promise<void> {
     const waIdHash = hashLogIdentifier(waId);
     this.adapterLogger.info("media_message_started", {
-      wa_hash: waIdHash,
+      user_hash: waIdHash,
       message_id: messageId,
       media_kind: media.kind,
       is_voice_note: media.isVoiceNote,
@@ -656,10 +771,11 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         mimeType: media.mimeType,
         filename: media.filename,
         caption: media.caption,
+        sizeBytes: media.sizeBytes,
       };
       const outcome = await this.resolveIncomingMedia(
         incoming,
-        () => this.downloadMediaBytes(media),
+        (maxBytes) => this.downloadMediaBytes(media, maxBytes),
         waId,
         waId,
       );
@@ -675,7 +791,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       }
     } catch (err) {
       this.adapterLogger.error("media_message_failed", {
-        wa_hash: waIdHash,
+        user_hash: waIdHash,
         message_id: messageId,
         media_kind: media.kind,
         ...sanitizeErrorForLog(err),
@@ -687,7 +803,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         );
       } catch (sendErr) {
         this.adapterLogger.error("media_error_message_send_failed", {
-          wa_hash: waIdHash,
+          user_hash: waIdHash,
           ...sanitizeErrorForLog(sendErr),
         });
       }
@@ -696,13 +812,28 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     }
   }
 
-  /** Downloads the raw bytes for a media message via the Kapso SDK. */
-  private async downloadMediaBytes(media: ExtractedMedia): Promise<Uint8Array> {
-    const arrayBuf = (await this.whatsAppClient.media.download({
+  /**
+   * Downloads the raw bytes for a media message via the Kapso SDK, reading at
+   * most `maxBytes`. The SDK's `as: "response"` mode hands back the unconsumed
+   * Response, so an oversize attachment is truncated and its stream cancelled
+   * instead of being buffered whole — and a non-2xx CDN reply raises instead of
+   * being mistaken for the file's bytes.
+   */
+  private async downloadMediaBytes(
+    media: ExtractedMedia,
+    maxBytes: number,
+  ): Promise<Uint8Array> {
+    const response = (await this.whatsAppClient.media.download({
       mediaId: media.mediaId,
       phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
-    })) as ArrayBuffer;
-    return new Uint8Array(arrayBuf);
+      as: "response",
+    })) as Response;
+    return readResponseBytesCapped(
+      response,
+      maxBytes,
+      "WhatsApp media",
+      MEDIA_READ_TIMEOUT_MS,
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -733,11 +864,13 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       },
 
       sendRich: async (richMsg: RichMessage): Promise<SentMessage> => {
-        // richMessageToMarkdown is already platform-aware — for "whatsapp" it
-        // emits WhatsApp-native ``*bold*`` and ``label (url)`` links, so the
-        // previous extra convertToWhatsAppMarkdown pass was redundant. Render
-        // once here.
-        const markdown = richMessageToMarkdown(richMsg, "whatsapp");
+        // richMessageToMarkdown emits platform-agnostic CommonMark; convert it
+        // to WhatsApp formatting through the single shared chokepoint so field
+        // values that contain markdown render correctly.
+        const markdown = renderForPlatform(
+          richMessageToMarkdown(richMsg),
+          "whatsapp",
+        );
         return this.sendWhatsAppText(waId, markdown);
       },
 
@@ -799,7 +932,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       // rethrows so the consumer dead-letters it. The original error is logged
       // so a non-window failure stays visible.
       this.adapterLogger.info("outbound_template_fallback", {
-        wa_hash: hashLogIdentifier(destinationId),
+        user_hash: hashLogIdentifier(destinationId),
         ...sanitizeErrorForLog(err),
       });
       await this.sendNotificationTemplate(destinationId, text);
@@ -882,5 +1015,20 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         document: { id: uploaded.id, filename: attachment.filename, caption },
       });
     }
+    // The one platform that can actually deliver an artifact — captured after
+    // the send resolves, so a Kapso failure throws before it and is never
+    // recorded as a success. The base class captures the failure paths.
+    this.analytics.capture(
+      await this.resolveDistinctId(destinationId),
+      BOT_EVENTS.FILE_DELIVERED,
+      {
+        success: true,
+        delivery_kind:
+          mime.startsWith("image/") && data.length <= WHATSAPP_IMAGE_MAX_BYTES
+            ? "image"
+            : "document",
+        bytes: data.length,
+      },
+    );
   }
 }

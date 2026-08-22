@@ -48,7 +48,7 @@ PROBE_VISIBLE = f"{SESSIONS_WATCH_ROOT}/{PROBE_CONV}/artifacts"
 WRITE_EVENT_TYPES = {"CREATE", "WRITE", "RENAME", "CHMOD"}
 
 
-def _event_type_name(ev: Any) -> str:
+def _event_type_name(ev: object) -> str:
     t = getattr(ev, "type", None)
     return getattr(t, "name", str(t))
 
@@ -73,7 +73,7 @@ async def _run_matrix(user_a: str, user_b: str | None) -> dict[str, Any]:
     evidence: dict[str, Any] = {}
     queue: asyncio.Queue[Any] = asyncio.Queue()
 
-    async def on_event(ev: Any) -> None:
+    async def on_event(ev: object) -> None:
         await queue.put(ev)
 
     async with acquire_sandbox(user_a) as sbx:
@@ -135,7 +135,7 @@ async def _run_matrix(user_a: str, user_b: str | None) -> dict[str, Any]:
             if with_stop is not None:
                 try:
                     await handle.stop()
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
                     evidence["watcher_stop_error"] = str(e)
 
     return evidence
@@ -172,7 +172,7 @@ def _verdict(evidence: dict[str, Any]) -> dict[str, Any]:
 async def main_async(args: argparse.Namespace) -> int:
     try:
         evidence = await _run_matrix(args.user, args.user_b)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         print(json.dumps({"primary": "unknown", "error": str(e)}, indent=2))
         return 1
     print(json.dumps(_verdict(evidence), indent=2))

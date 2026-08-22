@@ -77,10 +77,17 @@ async def send_workflow_completion_notification(
                 metadata={"workflow_id": workflow_id, "conversation_id": conversation_id},
             )
         )
-        log.info(f"{LogTag.WORKFLOW} Workflow completion notification sent for {workflow_id}")
+        log.info(
+            f"{LogTag.WORKFLOW} Workflow completion notification sent for", workflow_id=workflow_id
+        )
     except Exception as e:
         log.error(
-            f"{LogTag.WORKFLOW} Failed to send workflow completion notification for {workflow_id}: {e}"
+            f"{LogTag.WORKFLOW} Failed to send workflow completion notification for",
+            workflow_id=workflow_id,
+            error=str(e),
+            error_type=type(e).__name__,
+            conversation_id=conversation_id,
+            user_id=user_id,
         )
 
 
@@ -107,8 +114,14 @@ async def send_workflow_failure_notification(
                 metadata={"workflow_id": workflow_id},
             )
         )
-        log.info(f"{LogTag.WORKFLOW} Workflow failure notification sent for {workflow_id}")
+        log.info(
+            f"{LogTag.WORKFLOW} Workflow failure notification sent for", workflow_id=workflow_id
+        )
     except Exception as e:
         log.error(
-            f"{LogTag.WORKFLOW} Failed to send workflow failure notification for {workflow_id}: {e}"
+            f"{LogTag.WORKFLOW} Failed to send workflow failure notification for",
+            workflow_id=workflow_id,
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
         )

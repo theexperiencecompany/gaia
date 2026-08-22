@@ -173,43 +173,43 @@ class TestGetTokenExpiration:
         self.repo = TokenRepository()
 
     def test_uses_expires_at_timestamp(self) -> None:
-        future_ts = (datetime.now() + timedelta(hours=2)).timestamp()
+        future_ts = (datetime.now(UTC) + timedelta(hours=2)).timestamp()
         result = self.repo._get_token_expiration({"expires_at": future_ts})
-        expected = datetime.fromtimestamp(future_ts)
+        expected = datetime.fromtimestamp(future_ts, UTC)
         assert abs((result - expected).total_seconds()) < 1
 
     def test_uses_expires_at_as_string(self) -> None:
-        future_ts = str((datetime.now() + timedelta(hours=2)).timestamp())
+        future_ts = str((datetime.now(UTC) + timedelta(hours=2)).timestamp())
         result = self.repo._get_token_expiration({"expires_at": future_ts})
-        expected = datetime.fromtimestamp(float(future_ts))
+        expected = datetime.fromtimestamp(float(future_ts), UTC)
         assert abs((result - expected).total_seconds()) < 1
 
     def test_falls_back_to_expires_in(self) -> None:
-        before = datetime.now()
+        before = datetime.now(UTC)
         result = self.repo._get_token_expiration({"expires_in": 7200})
-        after = datetime.now()
+        after = datetime.now(UTC)
         expected_min = before + timedelta(seconds=7200)
         expected_max = after + timedelta(seconds=7200)
         assert expected_min <= result <= expected_max
 
     def test_default_expires_in_when_missing(self) -> None:
-        before = datetime.now()
+        before = datetime.now(UTC)
         result = self.repo._get_token_expiration({})
-        after = datetime.now()
+        after = datetime.now(UTC)
         # Default is 3500 seconds
         expected_min = before + timedelta(seconds=3500)
         expected_max = after + timedelta(seconds=3500)
         assert expected_min <= result <= expected_max
 
     def test_invalid_expires_at_falls_back_to_expires_in(self) -> None:
-        before = datetime.now()
+        before = datetime.now(UTC)
         result = self.repo._get_token_expiration(
             {
                 "expires_at": "not-a-number",
                 "expires_in": 1800,
             }
         )
-        after = datetime.now()
+        after = datetime.now(UTC)
         expected_min = before + timedelta(seconds=1800)
         expected_max = after + timedelta(seconds=1800)
         assert expected_min <= result <= expected_max
@@ -781,106 +781,3 @@ class TestRevokeToken:
 
         assert result is False
         session.rollback.assert_awaited_once()
-
-
-# ---------------------------------------------------------------------------
-# Tests: get_token_by_auth_token
-# ---------------------------------------------------------------------------
-
-
-class TestGetTokenByAuthToken:
-    """Tests for access-token-based lookup."""
-
-    @patch("app.config.token_repository.settings")
-    @patch("app.config.token_repository.OAuth")
-    def setup_method(
-        self,
-        method: Any,
-        mock_oauth_cls: MagicMock = MagicMock(),
-        mock_settings: MagicMock = MagicMock(),
-    ) -> None:
-        from app.config.token_repository import TokenRepository
-
-        mock_settings.GOOGLE_CLIENT_ID = None
-        mock_settings.GOOGLE_CLIENT_SECRET = None
-        self.repo = TokenRepository()
-
-    async def test_found_returns_token(self) -> None:
-        record = _make_token_record()
-        session = _mock_db_session(scalar_one_or_none_return=record)
-
-        with patch("app.config.token_repository.get_db_session") as mock_get_db:
-            mock_get_db.return_value.__aenter__ = AsyncMock(return_value=session)
-            mock_get_db.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            result = await self.repo.get_token_by_auth_token("access_123")
-
-        assert result is not None
-        assert result["access_token"] == "access_123"
-
-    async def test_not_found_returns_none(self) -> None:
-        session = _mock_db_session(scalar_one_or_none_return=None)
-
-        with patch("app.config.token_repository.get_db_session") as mock_get_db:
-            mock_get_db.return_value.__aenter__ = AsyncMock(return_value=session)
-            mock_get_db.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            result = await self.repo.get_token_by_auth_token("nonexistent")
-
-        assert result is None
-
-    async def test_expired_with_renew_calls_refresh(self) -> None:
-        record = _make_expired_record()
-        session = _mock_db_session(scalar_one_or_none_return=record)
-
-        refreshed = OAuth2Token(
-            params={
-                "access_token": "refreshed",
-                "refresh_token": "ref",
-                "expires_at": (datetime.now(UTC) + timedelta(hours=1)).timestamp(),
-            }
-        )
-
-        with patch("app.config.token_repository.get_db_session") as mock_get_db:
-            mock_get_db.return_value.__aenter__ = AsyncMock(return_value=session)
-            mock_get_db.return_value.__aexit__ = AsyncMock(return_value=False)
-            with patch.object(
-                self.repo,
-                "refresh_token",
-                new_callable=AsyncMock,
-                return_value=refreshed,
-            ):
-                result = await self.repo.get_token_by_auth_token(
-                    "access_123", renew_if_expired=True
-                )
-
-        assert result["access_token"] == "refreshed"  # type: ignore[index]
-
-    async def test_expired_refresh_fails_raises_401(self) -> None:
-        record = _make_expired_record()
-        session = _mock_db_session(scalar_one_or_none_return=record)
-
-        with patch("app.config.token_repository.get_db_session") as mock_get_db:
-            mock_get_db.return_value.__aenter__ = AsyncMock(return_value=session)
-            mock_get_db.return_value.__aexit__ = AsyncMock(return_value=False)
-            with patch.object(
-                self.repo, "refresh_token", new_callable=AsyncMock, return_value=None
-            ):
-                with pytest.raises(HTTPException) as exc_info:
-                    await self.repo.get_token_by_auth_token("access_123", renew_if_expired=True)
-
-        assert exc_info.value.status_code == 401
-
-    async def test_no_expires_at_on_record(self) -> None:
-        record = _make_token_record()
-        record.expires_at = None
-        session = _mock_db_session(scalar_one_or_none_return=record)
-
-        with patch("app.config.token_repository.get_db_session") as mock_get_db:
-            mock_get_db.return_value.__aenter__ = AsyncMock(return_value=session)
-            mock_get_db.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            result = await self.repo.get_token_by_auth_token("access_123")
-
-        assert result is not None
-        assert result["expires_at"] is None

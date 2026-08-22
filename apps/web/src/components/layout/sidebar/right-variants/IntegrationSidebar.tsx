@@ -1,13 +1,18 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
+import { useDisclosure } from "@heroui/react";
 import { Skeleton } from "@heroui/skeleton";
+import { Settings01Icon } from "@icons";
 
 import { SidebarContent, SidebarHeader } from "@/components/ui/sidebar";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { IntegrationInstructionsEditor } from "@/features/integrations/components/IntegrationInstructionsEditor";
+import { IntegrationPermissionsModal } from "@/features/integrations/components/IntegrationPermissionsModal";
 import { IntegrationRelatedWorkflows } from "@/features/integrations/components/IntegrationRelatedWorkflows";
 import { useIntegrationOwnership } from "@/features/integrations/hooks/useIntegrationOwnership";
+import { useIntegrationPermissions } from "@/features/integrations/hooks/useIntegrationPermissions";
 import { useIntegrationTools } from "@/features/integrations/hooks/useIntegrationTools";
 import type { Integration } from "@/features/integrations/types";
 
@@ -50,6 +55,10 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   } = useIntegrationTools(integration, category);
   const { isOwnIntegration, isForkedIntegration } =
     useIntegrationOwnership(integration);
+  // The sidebar only reads its approval state — configuring it lives in the
+  // modal behind the Permissions button.
+  const permissions = useIntegrationPermissions(integrationTools);
+  const permissionsModal = useDisclosure();
 
   // Show the tool skeleton both on the initial on-demand fetch and while a
   // just-connected integration is still discovering tools in the background —
@@ -108,9 +117,39 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           </div>
         )}
         {integrationTools.length > 0 && (
-          <h2 className="mt-3 text-sm font-medium text-zinc-300 relative right-1">
-            Available tools ({integrationTools.length})
-          </h2>
+          <div className="relative right-1 mt-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-medium text-zinc-300">
+                  Available tools
+                </h2>
+                {/* Sized off its own height so a one-digit count is a circle
+                    rather than the default pill, and longer counts grow. */}
+                <Chip
+                  size="sm"
+                  variant="flat"
+                  radius="full"
+                  classNames={{
+                    base: "h-5 min-w-5 px-0",
+                    content: "px-1.5 text-xs",
+                  }}
+                >
+                  {integrationTools.length}
+                </Chip>
+              </div>
+              {isConnected && (
+                <Button
+                  size="sm"
+                  variant="light"
+                  className="h-7 shrink-0 px-2 text-xs text-zinc-400"
+                  startContent={<Settings01Icon className="size-3.5" />}
+                  onPress={permissionsModal.onOpen}
+                >
+                  Permissions
+                </Button>
+              )}
+            </div>
+          </div>
         )}
         {showToolsSkeleton && (
           <h2 className="mt-3 text-sm font-medium text-zinc-300 relative right-1">
@@ -151,6 +190,16 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           <IntegrationRelatedWorkflows integrationId={integration.id} />
         </div>
       </SidebarContent>
+
+      {isConnected && (
+        <IntegrationPermissionsModal
+          name={integration.name}
+          tools={integrationTools}
+          permissions={permissions}
+          isOpen={permissionsModal.isOpen}
+          onOpenChange={permissionsModal.onOpenChange}
+        />
+      )}
     </div>
   );
 };

@@ -11,12 +11,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
-import { useIsMainResponseStreaming } from "@/stores/loadingStore";
+import { useIsInitialResponseStreaming } from "@/stores/streamStore";
 import type { SearchMode } from "@/types/shared/searchTypes";
 
 interface SearchbarLeftDropdownProps {
   selectedMode: Set<SearchMode>;
-  openFileUploadModal: () => void;
+  openFilePicker: () => void;
   handleSelectionChange: (mode: SearchMode) => void;
   onOpenSlashCommandDropdown?: () => void;
   isSlashCommandDropdownOpen?: boolean;
@@ -34,14 +34,14 @@ interface DropdownItemConfig {
 
 export default function ComposerLeft({
   selectedMode,
-  openFileUploadModal,
+  openFilePicker,
   handleSelectionChange,
   onOpenSlashCommandDropdown,
   isSlashCommandDropdownOpen,
 }: SearchbarLeftDropdownProps) {
   // Locked only during the initial response (send → main_response_complete),
   // matching the send button — unlocks once the agent acknowledges the task.
-  const isMainResponseStreaming = useIsMainResponseStreaming();
+  const isMainResponseStreaming = useIsInitialResponseStreaming();
   const currentMode = React.useMemo(
     () => Array.from(selectedMode)[0],
     [selectedMode],
@@ -89,7 +89,7 @@ export default function ComposerLeft({
       icon: (
         <AttachmentIcon className="min-h-[20px] min-w-[20px] text-primary" />
       ),
-      action: openFileUploadModal,
+      action: openFilePicker,
       isMode: false,
       description: "Upload and analyze documents, images or other files",
     },

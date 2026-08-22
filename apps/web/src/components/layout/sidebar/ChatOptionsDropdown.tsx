@@ -33,7 +33,6 @@ import {
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { useChatActions } from "@/features/chat/hooks/useChatActions";
 import { useConfirmation } from "@/hooks/useConfirmation";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 export default function ChatOptionsDropdown({
   buttonHovered,
@@ -61,11 +60,8 @@ export default function ChatOptionsDropdown({
 
   const handleStarToggle = async () => {
     try {
+      // chat:conversation_starred is captured by the API.
       await chatActions.toggleStar(chatId, Boolean(starred));
-      trackEvent(ANALYTICS_EVENTS.CHAT_CONVERSATION_STARRED, {
-        conversation_id: chatId,
-        starred: !starred,
-      });
     } catch {
       // toggleStar already surfaces the error toast
     }
@@ -81,10 +77,8 @@ export default function ChatOptionsDropdown({
   const handleEdit = async () => {
     if (!newName) return;
     try {
+      // chat:conversation_renamed is captured by the API.
       await chatActions.rename(chatId, newName);
-      trackEvent(ANALYTICS_EVENTS.CHAT_CONVERSATION_RENAMED, {
-        conversation_id: chatId,
-      });
       closeEditModal();
     } catch {
       // rename already surfaces the error toast
@@ -105,10 +99,8 @@ export default function ChatOptionsDropdown({
 
     try {
       router.push("/c");
+      // chat:conversation_deleted is captured by the API.
       await chatActions.remove(chatId);
-      trackEvent(ANALYTICS_EVENTS.CHAT_CONVERSATION_DELETED, {
-        conversation_id: chatId,
-      });
     } catch (error) {
       console.error("Failed to delete chat", error);
     }

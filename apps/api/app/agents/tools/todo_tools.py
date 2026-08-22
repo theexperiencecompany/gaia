@@ -31,6 +31,7 @@ from langgraph.store.base import BaseStore
 from langgraph.types import Command
 from typing_extensions import TypedDict
 
+from app.agents.context.slots import TODO_CONTEXT_MARKER, mark
 from app.agents.prompts.todo_prompts import (
     PLAN_TASKS_DESCRIPTION,
     TODO_SYSTEM_PROMPT,
@@ -88,7 +89,10 @@ def _emit_todo_progress(todos: list[Todo], source: str, source_label: str | None
         writer = get_stream_writer()
         writer(payload)
     except Exception as e:
-        log.warning(f"{LogTag.TOOL} Stream writer not available for todo_progress: {e}")
+        log.warning(
+            f"{LogTag.TOOL} Stream writer not available for todo_progress",
+            error_type=type(e).__name__,
+        )
 
 
 def _format_todos(todos: list[Todo]) -> str:
@@ -133,7 +137,6 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
     async def plan_tasks(
         tasks: list[TaskInput],
         tool_call_id: Annotated[str, InjectedToolCallId],
-        todos: Annotated[list, InjectedState("todos")],
     ) -> Command[Any]:
         """Create a task plan for multi-step work."""
         now = datetime.now(UTC).isoformat()
@@ -170,15 +173,56 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
     async def update_tasks(
         updates: list[TaskUpdate],
         tool_call_id: Annotated[str, InjectedToolCallId],
-        todos: Annotated[list, InjectedState("todos")],
+        todos: Annotated[list[Todo], InjectedState("todos")],
     ) -> Command[Any]:
         """Update task statuses and/or add new tasks in a single call."""
         now = datetime.now(UTC).isoformat()
-        updated_todos: list[Todo] = [dict(t) for t in todos]  # type: ignore[misc]
+        updated_todos: list[Todo] = [t.copy() for t in todos]
         todo_map = {t["id"]: t for t in updated_todos}
 
         summary_parts: list[str] = []
         added: list[str] = []
+
+        # Validate the whole batch before applying any of it. Two reasons this is
+        # all-or-nothing rather than best-effort: a silently skipped entry told
+        # the model "no changes" while reporting success, so it moved on with a
+        # checklist that never advanced; and partial application makes the
+        # model's retry non-idempotent — the valid additions would land twice
+        # once it corrects the bad entry and resends the batch.
+        problems: list[str] = []
+        if not updates:
+            problems.append("the updates list was empty")
+        for entry in updates:
+            task_id = entry.get("task_id")
+            content = entry.get("content")
+            status = entry.get("status")
+            if task_id:
+                if task_id not in todo_map:
+                    problems.append(f"no task with id '{task_id}' exists")
+                elif not status:
+                    problems.append(f"task '{task_id}' was given no status to apply")
+            elif not content:
+                problems.append("an entry had neither a task_id to update nor content to add")
+
+        if problems:
+            return Command(
+                update={
+                    "messages": [
+                        ToolMessage(
+                            content=(
+                                "Updated nothing — " + "; ".join(problems) + ". "
+                                "Nothing in this batch was applied; fix the entry and resend "
+                                "the whole batch. Current task ids: "
+                                + (", ".join(todo_map) if todo_map else "none")
+                            ),
+                            tool_call_id=tool_call_id,
+                            name="update_tasks",
+                            status="error",
+                            additional_kwargs={"todo_tool": True, "todo_source": source},
+                        )
+                    ]
+                }
+            )
 
         for entry in updates:
             task_id = entry.get("task_id")
@@ -230,14 +274,10 @@ def create_todo_pre_model_hook(
 ) -> Callable[[State, RunnableConfig, BaseStore], State]:
     """Pre-model hook that emits a fresh ``todo_context`` SystemMessage each step.
 
-    Kept in its own slot so the ``static + dynamic`` prefix stays byte-identical
-    across steps, preserving Gemini's implicit prompt cache.
-
-    Args:
-        source: Identifier for logging (not used in hook logic).
-
-    Returns:
-        Hook function with signature (State, RunnableConfig, BaseStore) -> State
+    Appends and marks; where the message lands, and which older copy it replaces,
+    is ``manage_system_prompts_node``'s job — this hook runs before it. Placing
+    the message itself is what used to make its position depend on which other
+    slots happened to be occupied that turn.
     """
     del source  # intentionally unused — kept for signature stability
 
@@ -246,42 +286,15 @@ def create_todo_pre_model_hook(
         if not messages:
             return state
 
-        def _is_todo_context(msg: Any) -> bool:
-            if not isinstance(msg, SystemMessage):
-                return False
-            if msg.additional_kwargs.get("todo_context", False):
-                return True
-            extra = msg.model_extra or {}
-            return bool(extra.get("todo_context", False)) if isinstance(extra, dict) else False
-
-        # Strip any prior todo_context SystemMessage. Without this, the next
-        # manage_system_prompts pass would drop the stale one anyway, but
-        # handling it here keeps the hook self-contained and idempotent.
-        filtered: list[Any] = [m for m in messages if not _is_todo_context(m)]
-
         todos = state.get("todos", [])
         parts = [TODO_SYSTEM_PROMPT]
         if todos:
             parts.append(_format_todos(todos))
-        content = "\n\n".join(parts)
 
-        todo_msg = SystemMessage(
-            content=content,
-            additional_kwargs={"todo_context": True},
+        todo_msg = mark(
+            SystemMessage(content="\n\n".join(parts)),
+            TODO_CONTEXT_MARKER,
         )
-
-        # Insert immediately after the leading contiguous run of
-        # SystemMessages so ``_parse_chat_history`` still promotes them all
-        # to Gemini's ``system_instruction`` (it silently drops any
-        # SystemMessage that appears after a non-system message).
-        insert_idx = 0
-        for m in filtered:
-            if isinstance(m, SystemMessage):
-                insert_idx += 1
-            else:
-                break
-        filtered.insert(insert_idx, todo_msg)
-
-        return cast(State, {**state, "messages": filtered})
+        return cast(State, {**state, "messages": [*messages, todo_msg]})
 
     return todo_pre_model_hook

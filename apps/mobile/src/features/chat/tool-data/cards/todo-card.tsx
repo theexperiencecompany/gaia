@@ -119,18 +119,154 @@ function StatCell({
 
 // -- Todo row ----------------------------------------------------------------
 
+type PriorityMeta = { color: string; bg: string };
+type DueInfo = ReturnType<typeof formatDueDate>;
+
+function DueDateBadge({ dueInfo }: { dueInfo: DueInfo }) {
+  const color = dueInfo.isOverdue
+    ? "#ef4444"
+    : dueInfo.isToday
+      ? "#f59e0b"
+      : "#a1a1aa";
+  const backgroundColor = dueInfo.isOverdue
+    ? "rgba(239, 68, 68, 0.1)"
+    : dueInfo.isToday
+      ? "rgba(245, 158, 11, 0.1)"
+      : "rgba(161, 161, 170, 0.1)";
+
+  return (
+    <View
+      className="flex-row items-center gap-1 px-2 py-0.5 rounded-full"
+      style={{ backgroundColor }}
+    >
+      <AppIcon icon={Calendar03Icon} size={10} color={color} />
+      <Text className="text-xs" style={{ color }}>
+        {dueInfo.label}
+      </Text>
+    </View>
+  );
+}
+
+function TodoMetaRow({
+  todo,
+  priorityMeta,
+  dueInfo,
+}: {
+  todo: TodoItem;
+  priorityMeta: PriorityMeta | null;
+  dueInfo: DueInfo | null;
+}) {
+  const hasLabels = todo.labels.length > 0;
+  const hasSubtasks = todo.subtasks.length > 0;
+  const completedSubtasks = todo.subtasks.filter((s) => s.completed).length;
+
+  if (!(priorityMeta || dueInfo || todo.project || hasLabels || hasSubtasks)) {
+    return null;
+  }
+
+  return (
+    <View className="flex-row flex-wrap items-center gap-2 mt-2 pl-7">
+      {priorityMeta && (
+        <View
+          className="flex-row items-center gap-1 px-2 py-0.5 rounded-full"
+          style={{ backgroundColor: priorityMeta.bg }}
+        >
+          <AppIcon icon={Flag02Icon} size={10} color={priorityMeta.color} />
+          <Text className="text-xs" style={{ color: priorityMeta.color }}>
+            {todo.priority}
+          </Text>
+        </View>
+      )}
+
+      {dueInfo && <DueDateBadge dueInfo={dueInfo} />}
+
+      {todo.project && (
+        <View className="flex-row items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800">
+          {todo.project.color ? (
+            <View
+              className="h-2 w-2 rounded-full"
+              style={{ backgroundColor: todo.project.color }}
+            />
+          ) : (
+            <AppIcon icon={Folder02Icon} size={10} color="#71717a" />
+          )}
+          <Text className="text-xs text-zinc-400" numberOfLines={1}>
+            {todo.project.name}
+          </Text>
+        </View>
+      )}
+
+      {todo.labels.map((label) => (
+        <View
+          key={label}
+          className="flex-row items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800"
+        >
+          <AppIcon icon={Tag01Icon} size={10} color="#71717a" />
+          <Text className="text-xs text-zinc-400">{label}</Text>
+        </View>
+      ))}
+
+      {hasSubtasks && (
+        <View className="px-2 py-0.5 rounded-full bg-zinc-800">
+          <Text className="text-xs text-zinc-400">
+            {completedSubtasks}/{todo.subtasks.length} subtasks
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+function TodoExpandedContent({ todo }: { todo: TodoItem }) {
+  const hasDescription = Boolean(todo.description);
+  const hasSubtasks = todo.subtasks.length > 0;
+
+  return (
+    <View className="mt-3 gap-3 pl-7">
+      {hasDescription && (
+        <Text className="text-sm text-zinc-400">{todo.description}</Text>
+      )}
+
+      {hasSubtasks && (
+        <View className="gap-1">
+          <Text className="text-xs font-medium text-zinc-500">Subtasks</Text>
+          {todo.subtasks.map((subtask) => (
+            <View key={subtask.id} className="flex-row items-center gap-2 pl-2">
+              <View
+                className={`w-4 h-4 rounded-full border-2 items-center justify-center ${
+                  subtask.completed
+                    ? "border-green-500 bg-green-500"
+                    : "border-zinc-600"
+                }`}
+              >
+                {subtask.completed && (
+                  <AppIcon icon={Tick02Icon} size={10} color="#ffffff" />
+                )}
+              </View>
+              <Text
+                className={`text-xs ${
+                  subtask.completed
+                    ? "text-zinc-500 line-through"
+                    : "text-zinc-200"
+                }`}
+              >
+                {subtask.title}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
 function TodoItemRow({ todo }: { todo: TodoItem }) {
   const [expanded, setExpanded] = useState(false);
 
   const dueInfo = todo.due_date ? formatDueDate(todo.due_date) : null;
   const priorityMeta =
     todo.priority !== "none" ? PRIORITY_META[todo.priority] : null;
-  const hasDescription = Boolean(todo.description);
-  const hasLabels = todo.labels.length > 0;
-  const hasSubtasks = todo.subtasks.length > 0;
-  const hasExpandable = hasDescription || hasSubtasks;
-
-  const completedSubtasks = todo.subtasks.filter((s) => s.completed).length;
+  const hasExpandable = Boolean(todo.description) || todo.subtasks.length > 0;
 
   return (
     <ToolCardInner
@@ -171,141 +307,9 @@ function TodoItemRow({ todo }: { todo: TodoItem }) {
         </View>
       </View>
 
-      {/* Metadata row */}
-      {(priorityMeta ||
-        dueInfo ||
-        todo.project ||
-        hasLabels ||
-        hasSubtasks) && (
-        <View className="flex-row flex-wrap items-center gap-2 mt-2 pl-7">
-          {priorityMeta && (
-            <View
-              className="flex-row items-center gap-1 px-2 py-0.5 rounded-full"
-              style={{ backgroundColor: priorityMeta.bg }}
-            >
-              <AppIcon icon={Flag02Icon} size={10} color={priorityMeta.color} />
-              <Text className="text-xs" style={{ color: priorityMeta.color }}>
-                {todo.priority}
-              </Text>
-            </View>
-          )}
+      <TodoMetaRow todo={todo} priorityMeta={priorityMeta} dueInfo={dueInfo} />
 
-          {dueInfo && (
-            <View
-              className="flex-row items-center gap-1 px-2 py-0.5 rounded-full"
-              style={
-                dueInfo.isOverdue
-                  ? { backgroundColor: "rgba(239, 68, 68, 0.1)" }
-                  : dueInfo.isToday
-                    ? { backgroundColor: "rgba(245, 158, 11, 0.1)" }
-                    : { backgroundColor: "rgba(161, 161, 170, 0.1)" }
-              }
-            >
-              <AppIcon
-                icon={Calendar03Icon}
-                size={10}
-                color={
-                  dueInfo.isOverdue
-                    ? "#ef4444"
-                    : dueInfo.isToday
-                      ? "#f59e0b"
-                      : "#a1a1aa"
-                }
-              />
-              <Text
-                className="text-xs"
-                style={{
-                  color: dueInfo.isOverdue
-                    ? "#ef4444"
-                    : dueInfo.isToday
-                      ? "#f59e0b"
-                      : "#a1a1aa",
-                }}
-              >
-                {dueInfo.label}
-              </Text>
-            </View>
-          )}
-
-          {todo.project && (
-            <View className="flex-row items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800">
-              {todo.project.color ? (
-                <View
-                  className="h-2 w-2 rounded-full"
-                  style={{ backgroundColor: todo.project.color }}
-                />
-              ) : (
-                <AppIcon icon={Folder02Icon} size={10} color="#71717a" />
-              )}
-              <Text className="text-xs text-zinc-400" numberOfLines={1}>
-                {todo.project.name}
-              </Text>
-            </View>
-          )}
-
-          {todo.labels.map((label) => (
-            <View
-              key={label}
-              className="flex-row items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800"
-            >
-              <AppIcon icon={Tag01Icon} size={10} color="#71717a" />
-              <Text className="text-xs text-zinc-400">{label}</Text>
-            </View>
-          ))}
-
-          {hasSubtasks && (
-            <View className="px-2 py-0.5 rounded-full bg-zinc-800">
-              <Text className="text-xs text-zinc-400">
-                {completedSubtasks}/{todo.subtasks.length} subtasks
-              </Text>
-            </View>
-          )}
-        </View>
-      )}
-
-      {/* Expanded content */}
-      {expanded && hasExpandable && (
-        <View className="mt-3 gap-3 pl-7">
-          {hasDescription && (
-            <Text className="text-sm text-zinc-400">{todo.description}</Text>
-          )}
-
-          {hasSubtasks && (
-            <View className="gap-1">
-              <Text className="text-xs font-medium text-zinc-500">
-                Subtasks
-              </Text>
-              {todo.subtasks.map((subtask) => (
-                <View
-                  key={subtask.id}
-                  className="flex-row items-center gap-2 pl-2"
-                >
-                  <View
-                    className={`w-4 h-4 rounded-full border-2 items-center justify-center ${
-                      subtask.completed
-                        ? "border-green-500 bg-green-500"
-                        : "border-zinc-600"
-                    }`}
-                  >
-                    {subtask.completed && (
-                      <AppIcon icon={Tick02Icon} size={10} color="#ffffff" />
-                    )}
-                  </View>
-                  <Text
-                    className={`text-xs ${
-                      subtask.completed
-                        ? "text-zinc-500 line-through"
-                        : "text-zinc-200"
-                    }`}
-                  >
-                    {subtask.title}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
-      )}
+      {expanded && hasExpandable && <TodoExpandedContent todo={todo} />}
     </ToolCardInner>
   );
 }

@@ -3,9 +3,11 @@ ARQ worker settings configuration.
 """
 
 from collections.abc import Callable, Coroutine
-from typing import Any
+from typing import Any, ClassVar
 
 from arq.connections import RedisSettings
+from arq.cron import CronJob
+from arq.typing import StartupShutdown
 
 from app.config.settings import settings
 
@@ -19,17 +21,27 @@ class WorkerSettings:
 
     redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)
 
-    # Task functions will be populated from the main worker file
-    functions: list[Callable[..., Coroutine[Any, Any, str]]] = []
+    # Task functions will be populated from the main worker file. ``...`` because
+    # the registry is heterogeneous by design — each task takes the ARQ context
+    # plus its own enqueue arguments. Not ARQ's ``WorkerCoroutine`` protocol: these
+    # arrive already wrapped by ``instrument_task``, and a ``Callable`` value never
+    # structurally matches that protocol's ``(ctx, *args, **kwargs)``. The return
+    # type is the real contract every task shares and stays checked.
+    functions: ClassVar[list[Callable[..., Coroutine[Any, Any, str]]]] = []
 
     # Cron jobs will be populated from the main worker file
-    cron_jobs: list[Any] = []
+    cron_jobs: ClassVar[list[CronJob]] = []
 
     # Lifecycle functions will be set from the main worker file
-    on_startup: Callable[[dict], Coroutine[Any, Any, None]] | None = None
-    on_shutdown: Callable[[dict], Coroutine[Any, Any, None]] | None = None
+    on_startup: StartupShutdown | None = None
+    on_shutdown: StartupShutdown | None = None
 
     # Performance settings
+    # Sized from measured load, not guessed: mean task duration 10.9s at
+    # 0.72 tasks/s needs ~8 concurrent (Little's Law), peaking near 16. Below
+    # ~8 the queue grows without bound. Bursts above 10 are meant to queue.
+    # Concurrency here is bounded by worker memory — each job holds agent
+    # graphs and LLM contexts — so raise the container limit before raising it.
     max_jobs = 10
     job_timeout = 1800  # 30 minutes
     keep_result = 0  # Don't keep results in Redis

@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -6,43 +7,68 @@ from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.settings import settings
 from app.constants.cache import PLATFORM_LINK_TOKEN_PREFIX
 from app.db.redis import redis_cache
+from app.decorators import enforce_rate_limit
 from app.models.platform_models import (
     DisconnectPlatformResponse,
     GetPlatformLinksResponse,
+    InitiatePlatformConnectRequest,
     InitiatePlatformConnectResponse,
     LinkPlatformRequest,
     LinkPlatformResponse,
 )
+from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.oauth.oauth_state_service import create_oauth_state
-from app.services.platform_link_service import Platform, PlatformLinkService
+from app.services.outbound_delivery import notify_account_linked
+from app.services.photon.photon_client import redirect_deep_link, register_shared_user
+from app.services.platform_link_service import (
+    IMESSAGE_REGISTRATION_FEATURE_KEY,
+    Platform,
+    PlatformLinkService,
+    register_pending_imessage_number,
+    require_platform_plan,
+)
+from app.utils.errors import create_error
 from shared.py.wide_events import log
 
 router = APIRouter()
 
 
+def _require_user_id(current_user: Mapping[str, object]) -> str:
+    user_id = current_user.get("user_id")
+    if not isinstance(user_id, str):
+        raise create_error(
+            message="user_id must be a string",
+            why="authenticated session resolved without a string user_id",
+            fix="re-authenticate and retry; report if it persists",
+            status_code=500,
+        )
+    return user_id
+
+
 @router.get("", response_model=GetPlatformLinksResponse)
 async def get_platform_links(
-    current_user: dict | None = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> GetPlatformLinksResponse:
     """Get user's connected platform accounts."""
     if not current_user:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    user_id = current_user.get("user_id")
-    if not isinstance(user_id, str):
-        raise ValueError("user_id must be a string")
+    user_id = _require_user_id(current_user)
     log.set(user={"id": user_id}, operation="get_platform_links")
     platform_links = await PlatformLinkService.get_linked_platforms(user_id)
     log.set(outcome="success", result_count=len(platform_links))
 
+    # Constructing the response is the validation boundary — see PlatformLinkEntry
+    # on why the service hands these over unvalidated.
     return GetPlatformLinksResponse(platform_links=platform_links)
 
 
-@router.post("/{platform}", response_model=LinkPlatformResponse)
+@router.post("/{platform}")
 async def link_platform(
     platform: str,
     body: LinkPlatformRequest,
-    current_user: dict | None = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> LinkPlatformResponse:
     """Link a platform account to the authenticated GAIA user.
 
@@ -55,12 +81,27 @@ async def link_platform(
     if not Platform.is_valid(platform):
         raise HTTPException(status_code=400, detail="Invalid platform")
 
+    # Resolved before the token is redeemed so a rejected redemption — the event
+    # worth seeing — still names the session that presented it.
+    user_id = _require_user_id(current_user)
+    log.set(user={"id": user_id}, operation="link_platform", platform=platform)
+
+    await require_platform_plan(user_id, platform)
+
     # Look up and consume the token from Redis
     redis_client = redis_cache.client
     token_key = f"{PLATFORM_LINK_TOKEN_PREFIX}:{body.token}"
 
     token_data = await redis_client.hgetall(token_key)
     if not token_data:
+        # Never log body.token — it is the credential. The actor, platform and
+        # outcome are what make a replayed or brute-forced link attempt findable.
+        log.audit(
+            "platform account link rejected",
+            actor=user_id,
+            provider=platform,
+            reason="unknown_or_expired_token",
+        )
         raise HTTPException(
             status_code=400,
             detail="Invalid or expired link token. Please request a new link from the bot.",
@@ -73,40 +114,71 @@ async def link_platform(
     platform_user_id = token_data.get("platform_user_id", "")
 
     if not platform_user_id:
+        log.audit(
+            "platform account link rejected",
+            actor=user_id,
+            provider=platform,
+            reason="malformed_token_data",
+        )
         raise HTTPException(status_code=400, detail="Invalid token data")
 
     # Verify the platform in URL matches the platform in the token
     if token_platform != platform:
+        log.audit(
+            "platform account link rejected",
+            actor=user_id,
+            resource=platform_user_id,
+            provider=platform,
+            reason="platform_mismatch",
+        )
         raise HTTPException(
             status_code=400,
             detail="Platform mismatch. This token was not generated for this platform.",
         )
 
-    user_id = current_user.get("user_id")
-    if not isinstance(user_id, str):
-        raise ValueError("user_id must be a string")
-    log.set(user={"id": user_id}, operation="link_platform", platform=platform)
-
-    profile: dict = {}
+    profile: dict[str, str] = {}
     if token_data.get("username"):
         profile["username"] = token_data["username"]
     if token_data.get("display_name"):
         profile["display_name"] = token_data["display_name"]
 
+    # Only the state change is guarded: a ValueError out of the notification
+    # below is not a link conflict and must not be reported (or audited) as one.
     try:
         result = await PlatformLinkService.link_account(
             user_id, platform, platform_user_id, profile=profile or None
         )
+        if result.is_new_link:
+            await notify_account_linked(platform, user_id)
         log.set(outcome="success")
-        return LinkPlatformResponse(**result)
+        capture_context_event(
+            AnalyticsEvents.INTEGRATION_CONNECTED,
+            {"integration_id": platform, "is_new_link": bool(result.is_new_link)},
+        )
+        # is_new_link is an internal signal for the greeting above, not part of
+        # the payload the client reads — build the response field by field.
+        return LinkPlatformResponse(
+            status=result.status,
+            platform=result.platform,
+            platform_user_id=result.platform_user_id,
+            connected_at=result.connected_at,
+        )
     except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        log.audit(
+            "platform account link rejected",
+            actor=user_id,
+            resource=platform_user_id,
+            provider=platform,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise HTTPException(status_code=409, detail=str(e)) from e
 
 
-@router.delete("/{platform}", response_model=DisconnectPlatformResponse)
+@router.delete("/{platform}")
 async def disconnect_platform(
     platform: str,
-    current_user: dict | None = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> DisconnectPlatformResponse:
     """Disconnect a platform from user account."""
     if not current_user:
@@ -115,9 +187,7 @@ async def disconnect_platform(
     if not Platform.is_valid(platform):
         raise HTTPException(status_code=400, detail="Invalid platform")
 
-    user_id = current_user.get("user_id")
-    if not isinstance(user_id, str):
-        raise ValueError("user_id must be a string")
+    user_id = _require_user_id(current_user)
     log.set(user={"id": user_id}, operation="disconnect_platform", platform=platform)
 
     # Read platform_user_id before unlinking so we can clear the bot auth cache
@@ -128,20 +198,42 @@ async def disconnect_platform(
     try:
         result = await PlatformLinkService.unlink_account(user_id, platform)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        log.audit(
+            "platform account unlink rejected",
+            actor=user_id,
+            resource=platform_user_id,
+            provider=platform,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    log.audit(
+        "platform account unlinked",
+        actor=user_id,
+        resource=platform_user_id,
+        provider=platform,
+    )
     log.set(outcome="success")
+    capture_context_event(
+        AnalyticsEvents.INTEGRATION_DISCONNECTED,
+        {"integration_id": platform},
+    )
 
     if platform_user_id:
         cache_key = f"bot_user:{platform}:{platform_user_id}"
         await redis_cache.client.delete(cache_key)
 
-    return DisconnectPlatformResponse(**result)
+    return result
 
 
-@router.get("/{platform}/connect", response_model=InitiatePlatformConnectResponse)
+@router.post(
+    "/{platform}/connect",
+    responses={422: {"description": "iMessage requires an E.164 phone number in the body."}},
+)
 async def initiate_platform_connect(
     platform: str,
-    current_user: dict | None = Depends(get_current_user),
+    body: InitiatePlatformConnectRequest,
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> InitiatePlatformConnectResponse:
     """Initiate platform connection via OAuth or manual instructions.
 
@@ -155,10 +247,10 @@ async def initiate_platform_connect(
     if not Platform.is_valid(platform):
         raise HTTPException(status_code=400, detail="Invalid platform")
 
-    user_id = current_user.get("user_id")
-    if not isinstance(user_id, str):
-        raise ValueError("user_id must be a string")
+    user_id = _require_user_id(current_user)
     log.set(user={"id": user_id}, operation="initiate_platform_connect", platform=platform)
+
+    await require_platform_plan(user_id, platform)
 
     # Discord OAuth flow
     if platform == "discord" and settings.DISCORD_OAUTH_CLIENT_ID:
@@ -221,6 +313,33 @@ async def initiate_platform_connect(
             auth_type="manual",
             instructions="Open WhatsApp and send /auth to the GAIA WhatsApp number to link your account.",
             action_link=f"https://wa.me/{phone_number}" if phone_number else None,
+        )
+
+    # iMessage manual flow: Photon's shared pool only delivers to registered
+    # numbers, so the user's phone must be allowlisted before they can text.
+    if platform == "imessage":
+        if not body.phone:
+            raise HTTPException(
+                status_code=422,
+                detail="A phone number in E.164 format (e.g. +15551234567) is required for iMessage.",
+            )
+        await enforce_rate_limit(user_id, IMESSAGE_REGISTRATION_FEATURE_KEY)
+        photon_user = await register_shared_user(body.phone)
+        # Recorded before the user is sent off to text /auth: an unrecorded
+        # registration that is never linked holds its pool seat with nothing
+        # left pointing at it.
+        await register_pending_imessage_number(user_id, body.phone)
+        log.audit(
+            "imessage number registered for linking",
+            actor=user_id,
+            provider=platform,
+        )
+        log.set(outcome="success", auth_type="manual")  # pragma: no mutate
+        return InitiatePlatformConnectResponse(
+            auth_type="manual",
+            instructions="Text /auth to your GAIA iMessage number from the phone you just registered.",
+            action_link=redirect_deep_link(photon_user.id),
+            contact_number=photon_user.assignedPhoneNumber,
         )
 
     raise HTTPException(status_code=501, detail=f"{platform} OAuth not configured")
