@@ -1498,7 +1498,20 @@ class TestFullKwargsCapture:
             captured_msg["msg"] = msg
             return msg
 
-        mw = WorkspaceCompactionMiddleware(max_output_chars=1000)
+        class _Digest(BaseChatModel):
+            @property
+            def _llm_type(self):
+                return "digest"
+
+            def _generate(self, *a, **k):
+                raise NotImplementedError
+
+            async def _agenerate(self, messages, stop=None, run_manager=None, **k):
+                return ChatResult(
+                    generations=[ChatGeneration(message=AIMessage(content="the digest"))]
+                )
+
+        mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=_Digest())
         content = _json.dumps([{"i": i} for i in range(300)])
 
         async def handler(_req):
@@ -1514,7 +1527,6 @@ class TestFullKwargsCapture:
 
         with (
             patch.object(cm, "_write_raw_output", side_effect=fake_write),
-            patch.object(cm, "_llm_summarize_output", side_effect=fake_digest),
             patch.object(cm, "_summarized_compact_message", side_effect=fake_summarized),
         ):
             await mw.awrap_tool_call(request, handler)
@@ -1587,7 +1599,7 @@ class TestFullKwargsCapture:
         calls = {}
 
         async def fake_write(**kw):
-            return ("/host", "/workspace/sessions/c/x.json")
+            return ("json", "/workspace/sessions/c/x.json")
 
         def fake_stub(**kw):
             calls.update(kw)
@@ -1598,18 +1610,7 @@ class TestFullKwargsCapture:
                 status=kw["status"],
             )
 
-        class _NoLLM(BaseChatModel):
-            @property
-            def _llm_type(self):
-                return "none"
-
-            def _generate(self, *a, **k):
-                raise NotImplementedError
-
-            async def _agenerate(self, messages, stop=None, run_manager=None, **k):
-                return ChatResult(generations=[ChatGeneration(message=AIMessage(content=""))])
-
-        mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=_NoLLM())
+        mw = WorkspaceCompactionMiddleware(max_output_chars=1000)
         content = _json.dumps([{"i": i} for i in range(300)])
 
         async def handler(_req):
@@ -1624,7 +1625,7 @@ class TestFullKwargsCapture:
         )
 
         with (
-            patch.object(cm, "_llm_summarize_output", side_effect=lambda llm, c, t: None),
+            patch.object(cm, "_write_raw_output", side_effect=fake_write),
             patch.object(cm, "_stub_spill_message", side_effect=fake_stub),
         ):
             await mw.awrap_tool_call(request, handler)
