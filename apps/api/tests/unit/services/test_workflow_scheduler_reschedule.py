@@ -125,9 +125,9 @@ class TestScheduledFireStamping:
             time.tzset()
 
 
-@pytest.mark.regression
 @pytest.mark.unit
 class TestStaleScheduledFireRejected:
+    @pytest.mark.regression
     async def test_stale_fire_is_not_claimed(self) -> None:
         """A job armed for 16:00 that fires after the workflow was rescheduled to
         21:00 must be rejected by the claim gate — trigger_config.next_run no
@@ -157,6 +157,7 @@ class TestStaleScheduledFireRejected:
             "trigger_config.next_run": new_fire,
         }
 
+    @pytest.mark.regression
     async def test_fresh_fire_is_claimed(self) -> None:
         """A job whose stamp matches the current next_run still claims fine."""
         from app.db.repositories.workflows import workflow_repository
@@ -216,9 +217,9 @@ def _gate_claim(workflow: MagicMock, calls: list[tuple[str, datetime | None]]):
     return _claim
 
 
-@pytest.mark.regression
 @pytest.mark.unit
 class TestWorkerRejectsStaleFire:
+    @pytest.mark.regression
     async def test_execute_workflow_by_id_skips_stale_scheduled_fire(self) -> None:
         """A scheduled fire armed for 16:00 that fires after the workflow was
         rescheduled to 21:00 is rejected by the gate and skipped without
@@ -267,6 +268,7 @@ class TestWorkerRejectsStaleFire:
         mock_create.assert_not_awaited()
         scheduler.handle_recurring_task.assert_not_awaited()
 
+    @pytest.mark.regression
     async def test_execute_workflow_by_id_runs_fresh_scheduled_fire(self) -> None:
         """A scheduled fire whose stamp matches next_run passes the gate and
         executes normally."""

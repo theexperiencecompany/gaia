@@ -65,7 +65,6 @@ def _assert_json_safe(payload: Any) -> None:
     json.dumps(payload)
 
 
-@pytest.mark.regression
 @pytest.mark.unit
 class TestWorkflowToolPayloadsAreJsonSafe:
     async def test_get_workflow_tool_result_is_json_safe(self) -> None:
