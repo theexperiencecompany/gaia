@@ -179,3 +179,35 @@ class TestDeliverWorkflowResultToPlatforms:
         # Telegram failed, Slack still delivered.
         assert publish.await_count == 1
         assert publish.await_args.args[0] == ConversationSource.SLACK
+
+
+class TestVariantBreakTokens:
+    async def test_new_line_break_variant_splits_bubbles_and_never_ships_literally(self) -> None:
+        """The model sometimes emits <NEW_LINE_BREAK> instead of the canonical
+        <NEW_MESSAGE_BREAK>. The variant must split bubbles exactly like the
+        canonical token and must never reach a platform as literal text."""
+        variant = "<NEW_LINE_BREAK>"
+        text = f"Report is ready.{variant}It has 3 pages."
+
+        with (
+            patch(
+                f"{MODULE}.PlatformLinkService.get_linked_platforms",
+                AsyncMock(return_value={"telegram": {"platformUserId": "tg-123"}}),
+            ),
+            patch(f"{MODULE}.fetch_channel_preferences", AsyncMock(return_value={})),
+            patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="tg-conv")),
+            patch(f"{MODULE}.update_messages", AsyncMock()),
+            patch(
+                f"{MODULE}.publish_outbound_message",
+                AsyncMock(return_value=OutboundResult.PUBLISHED),
+            ) as publish,
+        ):
+            await deliver_workflow_result_to_platforms(
+                user=USER, user_id=USER_ID, notification_text=text
+            )
+
+        bubbles = publish.await_args.args[2]
+        assert bubbles == ["Report is ready.", "It has 3 pages."]
+        for bubble in bubbles:
+            assert "NEW_LINE" not in bubble
+            assert "<NEW" not in bubble

@@ -36,6 +36,12 @@ jobs:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
 
+      # Trusted publishing exchanges this job's OIDC token for a short-lived
+      # npm credential, so no NPM_TOKEN is stored or rotated anywhere. It
+      # requires npm >= 11.5.1, newer than the npm bundled with Node 22.
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@latest
+
       # Normalize manual inputs into reusable step outputs.
       - name: Resolve release inputs
         id: release
@@ -70,12 +76,13 @@ jobs:
         run: pnpm run build
         working-directory: packages/cli
 
+      # Authenticated by OIDC via npm trusted publishing (configured on the
+      # package as theexperiencecompany/gaia + publish-cli.yml). Provenance is
+      # attested automatically, so neither a token nor --provenance is needed.
       - name: Publish to npm
         if: steps.verify.outputs.should_publish == 'true'
-        run: npm publish --provenance --access public
+        run: npm publish --access public
         working-directory: packages/cli
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       # Idempotent rerun path: emit clear skip message.
       - name: Skip publish for existing npm version
@@ -83,3 +90,22 @@ jobs:
         env:
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
         run: echo "Skipping publish because @heygaia/cli@$RELEASE_VERSION already exists on npm."
+
+      # A publish that fails silently is a publish nobody fixes — five releases
+      # went missing that way. continue-on-error on the send step only: the
+      # message is fully logged by the script either way, and a dropped webhook
+      # must not repaint an already-failed run.
+      - name: Notify Discord — CLI publish failed
+        if: failure()
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          COLOR: "#ff6b6b"
+          MESSAGE: |
+            🚨 **CLI Publish Failed**
+            **Package:** `@heygaia/cli@${{ steps.release.outputs.version }}`
+            **Tag:** `${{ steps.release.outputs.tag }}`
+            **Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            The release tag exists but npm was never updated, so `npm install -g @heygaia/cli` still serves the previous version.
+            **To retry:** fix the cause, then re-run this workflow with the same tag/version — it is idempotent and skips versions already on npm.
+        run: bash scripts/ci/notify-discord.sh

@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@inkjs/ui": "^2.0.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "commander": "^14.0.3",
     "execa": "^9.6.1",
     "ink": "^6.8.0",
@@ -29,13 +30,16 @@
     "ink-text-input": "^6.0.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "simple-git": "^3.36.0"
+    "simple-git": "^3.36.0",
+    "ws": "^8.21.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.7",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "@types/ws": "^8.18.1",
     "esbuild": "^0.25.12",
     "tsx": "^4.23.11",
     "typescript": "^7.0.2",
@@ -60,7 +64,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/heygaia/gaia.git",
+    "url": "git+https://github.com/theexperiencecompany/gaia.git",
     "directory": "packages/cli"
   }
 }
