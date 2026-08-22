@@ -13,7 +13,7 @@ entirely by the queue's serializer. That table is what made model selection
 unreadable and its bugs invisible.
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Any
@@ -43,6 +43,28 @@ from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable
 from app.models.models_models import DevModelOption
+
+#: Injected by provider_registration after the LLM providers register. Reads
+#: the client's runtime snapshot (credential store → env) per provider name.
+_RUNTIME_CONFIG_LOOKUP: Callable[[str], dict[str, Any] | None] | None = None
+_DEFAULT_LANE_PRIORITY = (
+    LLMProviderName.OPENROUTER,
+    LLMProviderName.GEMINI,
+    LLMProviderName.OLLAMA,
+    LLMProviderName.CUSTOM,
+)
+
+
+def set_runtime_config_lookup(
+    fn: Callable[[str], dict[str, Any] | None],
+) -> None:
+    """Wire the snapshot lookup used by :func:`_default_lane` (DI seam — lane
+    and client are mutually importing, so registration happens in
+    provider_registration which already imports both)."""
+    global _RUNTIME_CONFIG_LOOKUP
+    _RUNTIME_CONFIG_LOOKUP = fn
+
+
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
@@ -191,6 +213,35 @@ def _reasoning_for(role: AgentRole, paid: bool) -> dict[str, Any]:
 
 
 def _default_lane() -> ModelLane:
+    """The lane for a default (free / unresolved-plan) turn.
+
+    Hosted instances run OpenRouter's default model exactly as always. An
+    instance whose configured lanes don't include it (a bare self-host with
+    only a custom/Nous key, or Ollama-only) resolves its default to the
+    highest-priority AVAILABLE lane via the runtime snapshot — otherwise
+    LangChain would be asked for an alternative that doesn't exist.
+    """
+    lookup = _RUNTIME_CONFIG_LOOKUP
+    if lookup is not None:
+        for name in _DEFAULT_LANE_PRIORITY:
+            cfg = lookup(name.value)
+            if not cfg:
+                continue
+            if name is LLMProviderName.OPENROUTER:
+                return ModelLane(
+                    provider=name,
+                    model=cfg.get("model") or DEFAULT_MODEL_NAME,
+                    reasoning=OPENROUTER_REASONING,
+                    provider_pin=None,
+                    max_input_tokens=DEFAULT_MAX_TOKENS,
+                )
+            return ModelLane(
+                provider=name,
+                model=cfg.get("model"),
+                reasoning=None,
+                provider_pin=None,
+                max_input_tokens=DEFAULT_MAX_TOKENS,
+            )
     return ModelLane(
         provider=LLMProviderName(DEFAULT_LLM_PROVIDER),
         model=DEFAULT_MODEL_NAME,
