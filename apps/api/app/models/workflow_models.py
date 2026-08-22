@@ -138,7 +138,13 @@ class TriggerConfig(BaseModel):
 
         try:
             schedule_tz = Timezone.parse(user_timezone or self.timezone)
-            return get_next_run_time(self.cron_expression, base_time, schedule_tz)
+            next_run = get_next_run_time(self.cron_expression, base_time, schedule_tz)
+            # Whole seconds only. The scheduler stamps each ARQ job with
+            # ``int(armed_time.timestamp())`` and the stale-fire claim gate pins
+            # ``next_run`` by equality against the reconstructed stamp, so a
+            # sub-second component anywhere would make fresh fires read as
+            # stale. Cron granularity is minutes; drop any stray sub-second.
+            return next_run.replace(microsecond=0) if next_run else None
         except Exception as e:
             log.error("Error calculating next run time", error=str(e), error_type=type(e).__name__)
             return None

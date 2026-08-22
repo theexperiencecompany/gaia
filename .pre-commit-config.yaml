@@ -24,6 +24,18 @@ repos:
       - id: detect-private-key
         priority: 0
 
+  # Ruff is version-sensitive: rule promotions between releases flip previously
+  # clean files. Pin ALL surfaces to the same version and bump them together —
+  # this rev, CI's pin (.github/workflows/code-quality.yml), and the ruff entry
+  # in the root uv.lock. See #1063 for the drift this caused.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.13
+    hooks:
+      - id: ruff-check
+        priority: 0
+      - id: ruff-format
+        priority: 0
+
   - repo: local
     hooks:
       - id: openui-gen-prompt

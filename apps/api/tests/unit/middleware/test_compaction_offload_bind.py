@@ -155,12 +155,18 @@ async def test_persist_writes_raw_jsonl_and_query_json_can_mine_it(
         return p, f"/workspace/sessions/{conversation_id}/{relative_path}"
 
     monkeypatch.setattr(compaction_mod, "write_session_file", fake_write)
-    out = await compaction_mod._spill_to_workspace(
+    fmt, sandbox_path = await compaction_mod._write_raw_output(
         content_str=content,
         tool_name="search",
-        tool_call_id="1",
         user_id="u1",
         conversation_id="c1",
+    )
+    out = compaction_mod._stub_spill_message(
+        content_str=content,
+        fmt=fmt,
+        sandbox_path=sandbox_path,
+        tool_name="search",
+        tool_call_id="1",
         reason="large_output",
         status="success",
         existing_additional_kwargs={},
@@ -197,12 +203,18 @@ async def test_persist_text_output_marks_grep_only(
         return tmp_path / "x", f"/workspace/x/{relative_path}"
 
     monkeypatch.setattr(compaction_mod, "write_session_file", fake_write)
-    out = await compaction_mod._spill_to_workspace(
+    fmt, sandbox_path = await compaction_mod._write_raw_output(
         content_str=content,
         tool_name="run",
-        tool_call_id="1",
         user_id="u1",
         conversation_id="c1",
+    )
+    out = compaction_mod._stub_spill_message(
+        content_str=content,
+        fmt=fmt,
+        sandbox_path=sandbox_path,
+        tool_name="run",
+        tool_call_id="1",
         reason="large_output",
         status="success",
         existing_additional_kwargs={},
