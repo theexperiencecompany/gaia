@@ -174,7 +174,7 @@ jobs:
         if: github.event_name == 'pull_request'
         working-directory: apps/api
         run: |
-          uv tool run diff-cover coverage.xml --compare-branch=origin/master --fail-under=90
+          uv tool run 'diff-cover==10.5.1' coverage.xml --compare-branch=origin/master --fail-under=90
           echo "diff-cover: OK"
       - name: Run gaia-shared tests
         working-directory: apps/api

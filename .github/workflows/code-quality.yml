@@ -493,11 +493,11 @@ jobs:
           echo "::group::interrogate"
           FILES=$(scripts/ci/changed-py-source.sh)
           if [ "$FILES" = "__FULL__" ]; then
-            uvx interrogate -c pyproject.toml apps/api apps/voice-agent libs/shared/py
+            uvx interrogate==1.7.0 -c pyproject.toml apps/api apps/voice-agent libs/shared/py
           elif [ -z "$FILES" ]; then
             echo "No matching changed files — skipping."
           else
-            uvx interrogate -c pyproject.toml $FILES
+            uvx interrogate==1.7.0 -c pyproject.toml $FILES
           fi
           echo "::endgroup::"
           echo "Docstrings: OK (coverage ≥ 80%)"
@@ -523,7 +523,7 @@ jobs:
           echo "::group::xenon"
           FILES=$(scripts/ci/changed-py-source.sh)
           if [ "$FILES" = "__FULL__" ]; then
-            uvx xenon \
+            uvx xenon==0.9.3 \
               --max-absolute F \
               --max-modules E \
               --max-average B \
@@ -534,7 +534,7 @@ jobs:
           elif [ -z "$FILES" ]; then
             echo "No matching changed files — skipping."
           else
-            uvx xenon \
+            uvx xenon==0.9.3 \
               --max-absolute F \
               --max-modules E \
               --max-average B \
@@ -846,6 +846,12 @@ jobs:
           python3 tools/lints/check_suppressions.py
           echo "::endgroup::"
           echo "Suppression hygiene: OK (all inline suppressions carry a why)"
+      - name: Tool-version pin skew (hooks and CI must agree)
+        run: |
+          echo "::group::tool pins"
+          python3 tools/lints/check_tool_pins.py
+          echo "::endgroup::"
+          echo "Tool pins: OK (hooks and CI run identical versions)"
 
   # --- Secret scanning (gitleaks, diff-scoped) -----------------------------
   # gitleaks-action is free for personal-account repos but requires a (free,
