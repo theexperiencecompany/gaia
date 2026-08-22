@@ -79,7 +79,7 @@ function buildCategories(matches: SlashCommandMatch[]): string[] {
   const uniqueCategories = Array.from(
     new Set(matches.map((match) => match.tool.category)),
   );
-  return ["all", ...uniqueCategories.toSorted()];
+  return ["all", ...uniqueCategories.toSorted((a, b) => a.localeCompare(b))];
 }
 
 interface UseSlashCommandDropdownStateParams {

@@ -1,4 +1,10 @@
-"use client";
+/** Uniform [0,1) from Web Crypto. The card randomizer is cosmetic, but
+ * crypto-grade randomness keeps security scanners quiet and costs nothing. */
+function random(): number {
+  return crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32;
+}
+
+("use client");
 
 import { Button, ButtonGroup } from "@heroui/button";
 import {
@@ -45,9 +51,9 @@ interface HoloCardEditorProps {
 
 // Generates a vibrant, distinct color in RGBA format.
 const generateVibrantColor = (): string => {
-  const hue = Math.floor(Math.random() * 360);
-  const saturation = 70 + Math.floor(Math.random() * 30);
-  const lightness = 40 + Math.floor(Math.random() * 30);
+  const hue = Math.floor(random() * 360);
+  const saturation = 70 + Math.floor(random() * 30);
+  const lightness = 40 + Math.floor(random() * 30);
 
   const h = hue / 360;
   const s = saturation / 100;
@@ -79,14 +85,14 @@ const generateVibrantColor = (): string => {
 // solid color — plus a varied opacity.
 const generateRandomOverlay = (): { color: string; opacity: number } => {
   // Randomly decide gradient type with more variety
-  const gradientType = Math.random();
+  const gradientType = random();
   let color: string;
 
   if (gradientType < 0.35) {
     // Linear gradient (35% chance)
     const color1 = generateVibrantColor();
     const color2 = generateVibrantColor();
-    const angle = Math.floor(Math.random() * 360);
+    const angle = Math.floor(random() * 360);
     color = `linear-gradient(${angle}deg, ${color1} 0%, ${color2} 100%)`;
   } else if (gradientType < 0.6) {
     // Radial gradient (25% chance)
@@ -100,22 +106,22 @@ const generateRandomOverlay = (): { color: string; opacity: number } => {
       "circle at bottom right",
       "ellipse at center",
     ];
-    const position = positions[Math.floor(Math.random() * positions.length)];
+    const position = positions[Math.floor(random() * positions.length)];
     color = `radial-gradient(${position}, ${color1} 0%, ${color2} 100%)`;
   } else if (gradientType < 0.75) {
     // Multi-color gradient (15% chance)
     const color1 = generateVibrantColor();
     const color2 = generateVibrantColor();
     const color3 = generateVibrantColor();
-    const angle = Math.floor(Math.random() * 360);
-    const stop1 = Math.floor(Math.random() * 30);
-    const stop2 = 50 + Math.floor(Math.random() * 20);
+    const angle = Math.floor(random() * 360);
+    const stop1 = Math.floor(random() * 30);
+    const stop2 = 50 + Math.floor(random() * 20);
     color = `linear-gradient(${angle}deg, ${color1} ${stop1}%, ${color2} ${stop2}%, ${color3} 100%)`;
   } else if (gradientType < 0.85) {
     // Conic gradient (10% chance)
     const color1 = generateVibrantColor();
     const color2 = generateVibrantColor();
-    const angle = Math.floor(Math.random() * 360);
+    const angle = Math.floor(random() * 360);
     color = `conic-gradient(from ${angle}deg, ${color1}, ${color2}, ${color1})`;
   } else {
     // Solid color (15% chance)
@@ -123,24 +129,24 @@ const generateRandomOverlay = (): { color: string; opacity: number } => {
   }
 
   // More varied opacity range with occasional extremes
-  const opacityRoll = Math.random();
+  const opacityRoll = random();
   let opacity: number;
 
   if (opacityRoll < 0.1) {
     // Very subtle (10% chance)
-    opacity = 10 + Math.floor(Math.random() * 20);
+    opacity = 10 + Math.floor(random() * 20);
   } else if (opacityRoll < 0.3) {
     // Light (20% chance)
-    opacity = 30 + Math.floor(Math.random() * 20);
+    opacity = 30 + Math.floor(random() * 20);
   } else if (opacityRoll < 0.7) {
     // Medium (40% chance)
-    opacity = 50 + Math.floor(Math.random() * 30);
+    opacity = 50 + Math.floor(random() * 30);
   } else if (opacityRoll < 0.9) {
     // Strong (20% chance)
-    opacity = 80 + Math.floor(Math.random() * 15);
+    opacity = 80 + Math.floor(random() * 15);
   } else {
     // Very intense (10% chance)
-    opacity = 95 + Math.floor(Math.random() * 5);
+    opacity = 95 + Math.floor(random() * 5);
   }
 
   return { color, opacity };
