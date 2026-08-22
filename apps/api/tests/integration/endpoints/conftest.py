@@ -43,6 +43,10 @@ class FakeProviderService:
     async def resolve(self, provider: str) -> ProviderConfig | None:
         return self.configs.get(provider)
 
+    async def stored_exists(self, provider: str) -> bool:
+        """Mirrors the repo's existence probe for the status endpoint."""
+        return provider in self.configs
+
     async def upsert(
         self,
         provider: str,
@@ -142,6 +146,7 @@ def _bind_fake_seams(monkeypatch: pytest.MonkeyPatch) -> None:
     override with their own ``monkeypatch.setattr`` as needed.
     """
     monkeypatch.setattr(setup_module, "resolve_provider_config", provider_service.resolve)
+    monkeypatch.setattr(setup_module, "stored_credential_exists", provider_service.stored_exists)
     monkeypatch.setattr(setup_module, "upsert_provider_config", provider_service.upsert)
     monkeypatch.setattr(setup_module, "delete_provider_config", provider_service.delete)
     monkeypatch.setattr(setup_module, "invalidate_provider_cache", provider_service.invalidate)

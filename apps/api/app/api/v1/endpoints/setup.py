@@ -9,6 +9,7 @@ Every route except ``GET /status`` requires the instance administrator (see
 ``provider_credentials_service``; this module never stores or logs raw keys.
 """
 
+import os
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -21,6 +22,7 @@ from app.constants.llm import OPENROUTER_MODELS_URL
 from app.constants.providers import CREDENTIAL_PROVIDERS, PRESETS
 from app.db.repositories.instance_settings import instance_settings_repository
 from app.db.repositories.local_credentials import local_credentials_repository
+from app.db.repositories.provider_credentials import provider_credentials_repository
 from app.models.user_models import AuthenticatedUser
 from app.services.providers.provider_credentials_service import (
     ProviderConfig,
@@ -68,7 +70,7 @@ class SetupCompleteBody(BaseModel):
 async def get_setup_status() -> dict[str, Any]:
     """PUBLIC first-run status for the web setup wizard and desktop CLI."""
     has_admin_account = await local_credentials_repository.any_exists()
-    configured = {p: await resolve_provider_config(p) is not None for p in CREDENTIAL_PROVIDERS}
+    configured = {p: await _is_usably_configured(p) for p in CREDENTIAL_PROVIDERS}
     return {
         "auth_mode": settings.AUTH_MODE,
         "has_admin_account": has_admin_account,
@@ -78,6 +80,35 @@ async def get_setup_status() -> dict[str, Any]:
         "models_seeded": await are_models_seeded(),
         "plans_seeded": await is_payment_setup(),
     }
+
+
+async def stored_credential_exists(provider: str) -> bool:
+    """Module-level seam (tests rebind it): is a credential stored for this?"""
+    return await provider_credentials_repository.exists(provider)
+
+
+async def _is_usably_configured(provider: str) -> bool:
+    """Whether ``provider`` can actually serve a request.
+
+    A stored credential always counts. Env fallbacks count only when the env
+    var was EXPLICITLY set — Ollama's ``OLLAMA_BASE_URL`` has a code default,
+    and counting that default as 'configured' made brand-new instances report
+    needs_setup=false and bounce off the wizard with no working LLM.
+    """
+    if await stored_credential_exists(provider):
+        return True
+    match provider:
+        case "ollama":
+            return bool(os.getenv("OLLAMA_BASE_URL"))
+        case "openrouter":
+            return bool(settings.OPENROUTER_API_KEY)
+        case "gemini":
+            return bool(settings.GOOGLE_API_KEY)
+        case "tavily":
+            return bool(settings.TAVILY_API_KEY)
+        case "custom":
+            return bool(settings.ENV == "development" and settings.DEV_LLM_API_KEY)
+    return False
 
 
 def _needs_setup(has_admin_account: bool, configured: dict[str, bool]) -> bool:
