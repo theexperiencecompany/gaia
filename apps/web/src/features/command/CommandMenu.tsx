@@ -12,7 +12,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight } from "@/components/shared/icons";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { PaletteRow } from "./components/PaletteRow";
-import { useChatSearch, useMemorySearch } from "./data/useChatSearch";
+import {
+  MIN_CHARS,
+  useChatSearch,
+  useMemorySearch,
+} from "./data/useChatSearch";
 import { useCommandData } from "./data/useCommandData";
 import { frecencyScore, useFrecencyStore } from "./frecency";
 import {
@@ -146,26 +150,41 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
     [frecencyEntries],
   );
 
-  const { results: serverResults, isFetching: chatsFetching } =
+  const { results: serverResults, debounced: chatsDebounced } =
     useChatSearch(query);
-  const { memories: searchedMemories, isFetching: memoriesFetching } =
+  const { memories: searchedMemories, debounced: memoriesDebounced } =
     useMemorySearch(query);
+  // Server rows only render while the results answer the query on screen —
+  // during the debounce window the hooks still hold the previous query's
+  // hits, and the floor score would keep stale rows visible and clickable.
+  const trimmed = query.trim();
+  const chatsFresh = chatsDebounced === trimmed;
+  const memoriesFresh = memoriesDebounced === trimmed;
   const searchChats = useMemo(
-    () => (serverResults?.conversations ?? []).map(buildSearchChat),
-    [serverResults, buildSearchChat],
+    () =>
+      (chatsFresh ? (serverResults?.conversations ?? []) : []).map(
+        buildSearchChat,
+      ),
+    [chatsFresh, serverResults, buildSearchChat],
   );
   const searchMessages = useMemo(
-    () => (serverResults?.messages ?? []).map(buildSearchMessage),
-    [serverResults, buildSearchMessage],
+    () =>
+      (chatsFresh ? (serverResults?.messages ?? []) : []).map(
+        buildSearchMessage,
+      ),
+    [chatsFresh, serverResults, buildSearchMessage],
   );
   const searchMemories = useMemo(
     () =>
-      searchedMemories
+      (memoriesFresh ? searchedMemories : [])
         .map(buildSearchMemory)
         .filter((item): item is CommandItem => item !== null),
-    [searchedMemories, buildSearchMemory],
+    [memoriesFresh, searchedMemories, buildSearchMemory],
   );
-  const searchLoading = chatsFetching || memoriesFetching;
+  // Waiting covers both in-flight fetches and the debounce gap itself, but
+  // never for queries too short to ever hit the server.
+  const searchLoading =
+    trimmed.length >= MIN_CHARS && (!chatsFresh || !memoriesFresh);
 
   const sections = useMemo(
     () =>
