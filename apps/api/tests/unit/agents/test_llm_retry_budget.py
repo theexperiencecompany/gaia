@@ -47,7 +47,7 @@ def _openrouter_configured(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.unit
 class TestLLMRetryBudget:
     def test_default_model_client_delegates_retry_to_the_app(self) -> None:
-        assert _retries(_build_default_llm(0.0)) is False
+        assert _retries(_build_default_llm(0.0, api_key="test-key")) is False
 
     def test_sim_stub_client_delegates_retry_to_the_app(self) -> None:
         assert _retries(_sim_llm()) is False
