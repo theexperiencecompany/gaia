@@ -129,6 +129,9 @@ services:
       - /dev/fuse:/dev/fuse
     security_opt:
       - apparmor:unconfined
+    # Lets the container reach host services (e.g. Ollama on :11434).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       # Persist JuiceFS's local chunk cache so reads don't re-fetch from the
       # object store on every restart.
@@ -161,14 +164,18 @@ services:
     build:
       context: ../..
       dockerfile: apps/web/Dockerfile
-      args:
-        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1/}
     environment:
       # Server-side (SSR/ISR) fetches reach the API over the private network.
       # The public NEXT_PUBLIC_API_BASE_URL is browser-only and is unreachable
       # (or has an untrusted TLS cert) from inside this container, which would
       # otherwise turn every server-rendered page into a "not found".
       API_BASE_URL_INTERNAL: ${API_BASE_URL_INTERNAL:-http://gaia-backend:8000/api/v1/}
+      # Public URL browsers use to reach this container. At container start,
+      # apps/web/docker-entrypoint.sh rewrites it over the placeholder API URL
+      # baked into the JS bundle (the Dockerfile's default), so one published
+      # image works on any host/port — never pass a real API URL as a build
+      # arg; that would freeze it at build time and defeat the rewrite.
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:${WEB_HOST_PORT:-3000}}
     ports:
       - "${WEB_HOST_PORT:-3000}:3000"
     restart: on-failure
@@ -212,6 +219,9 @@ services:
       - /dev/fuse:/dev/fuse
     security_opt:
       - apparmor:unconfined
+    # Lets the container reach host services (e.g. Ollama on :11434).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - juicefs_cache:/var/cache/juicefs
     depends_on:

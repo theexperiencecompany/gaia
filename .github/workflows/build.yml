@@ -315,8 +315,6 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/gaia-web:${{ steps.tag.outputs.tag }}
             ghcr.io/${{ github.repository_owner }}/gaia-web:${{ github.sha }}
-          build-args: |
-            NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1/
 
       - name: Skip notification
         if: steps.web-affected.outputs.web != 'true'

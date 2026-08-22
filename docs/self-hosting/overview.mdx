@@ -1,57 +1,103 @@
 ---
 title: "Overview"
 sidebarTitle: "Self-Hosting GAIA"
-description: "Learn how to self-host GAIA on your own infrastructure"
+description: "Run GAIA on your own infrastructure with one command"
 icon: "circle-info"
 ---
 
-Run GAIA on your own machine with the GAIA CLI. It scaffolds your environment, starts every service with Docker, and gets you to a working instance in a few commands.
+Run GAIA entirely on your own machine. Install the CLI, run `gaia up`, and finish setup in your browser: create an admin account, paste an API key for any supported AI provider (or point GAIA at a local Ollama), and start chatting. No cloud accounts, no secret managers, no hand-edited environment files.
 
 ## What runs
 
-- **Web**: Next.js
-- **Backend**: FastAPI
-- **Databases/Infra**: PostgreSQL, MongoDB, Redis, ChromaDB, RabbitMQ (via Docker)
-- **Workspace storage**: JuiceFS (per-user file uploads, agent artifacts, skills)
+Everything runs as Docker containers managed by Compose:
+
+| Component          | What it is                                                        |
+| ------------------ | ----------------------------------------------------------------- |
+| Web                | Next.js app — http://localhost:3000                                |
+| Backend            | FastAPI plus a background worker — http://localhost:8000           |
+| Databases/Infra    | PostgreSQL, MongoDB, Redis, ChromaDB, RabbitMQ                     |
+| Workspace storage  | JuiceFS — per-user file uploads, agent artifacts, installed skills |
+
+All state lives in Docker volumes, so stopping containers or upgrading later keeps your chats, accounts, and settings intact.
 
 ## Prerequisites
 
-- Node.js 20+ and one package manager (npm, pnpm, or bun)
-- Docker Engine 20.10+ and Compose v2+
+- **Docker**. If it's not installed, `gaia up` detects that and offers to install it for you.
 - 2+ CPU cores, 4GB+ RAM, 10GB+ disk (8GB+ RAM recommended)
-- An API key for at least one supported LLM provider (OpenAI or Google Gemini), see [Environment variables](/configuration/environment-variables)
+- One AI provider to power chat: an API key from OpenRouter, Google Gemini, OpenCode, or Nous Research — or [Ollama](https://ollama.com) running locally, which needs no key at all
 
 ## Quick start
 
 <Steps>
   <Step title="Install the GAIA CLI">
-    <Snippet file="cli-install.mdx" />
-  </Step>
+    <CodeGroup>
 
-  <Step title="Initialize self-host mode">
-    ```bash
-    gaia init
+    ```bash curl
+    curl -fsSL https://heygaia.io/install.sh | sh
     ```
 
-    In the setup wizard, choose **Self-Host (Docker)**.
-  </Step>
-
-  <Step title="Start services">
-    ```bash
-    gaia start
-    ```
-  </Step>
-
-  <Step title="Monitor and open GAIA">
-    ```bash
-    gaia status
-    gaia logs
+    ```bash npm
+    npm install -g @heygaia/cli
     ```
 
-    - Web: http://localhost:3000
-    - Backend API: http://localhost:8000
+    </CodeGroup>
+  </Step>
+
+  <Step title="Start GAIA">
+    ```bash
+    gaia up
+    ```
+
+    One command, zero prompts on a normal machine. It checks prerequisites (offering to install Docker if it's missing), clones GAIA if you don't have it yet, picks free ports, generates the required machine secrets automatically, pulls the published images, and starts every service. When it finishes it prints the URL — open it in your browser.
+  </Step>
+
+  <Step title="Create your admin account">
+    Open http://localhost:3000/setup and sign up with your email and a password. The first account created becomes the instance admin, and registration closes once it exists — nobody else can sign up on your instance.
+  </Step>
+
+  <Step title="Pick an AI provider">
+    Choose one provider and paste its API key — that's the whole configuration. Base URLs and default models are prefilled where they apply, and a live connection test verifies the key before saving.
+
+    | Provider       | What you provide                                                                                       |
+    | -------------- | ------------------------------------------------------------------------------------------------------ |
+    | OpenRouter     | API key                                                                                                |
+    | Google Gemini  | API key                                                                                                |
+    | Ollama         | Nothing to paste — the base URL is prefilled to `http://host.docker.internal:11434` and the model list is fetched live from your local Ollama |
+    | OpenCode       | API key — endpoint and default model (`deepseek-v4-flash`) prefilled                                    |
+    | Nous Research  | API key — endpoint prefilled                                                                            |
+
+    You can also skip this step and add a provider later — chat just stays quiet until one is configured.
+  </Step>
+
+  <Step title="(Optional) search and connections">
+    Add a Tavily API key to give GAIA web search, and connect accounts like Gmail or GitHub through the existing integration flows. Both are optional and can be skipped.
   </Step>
 </Steps>
+
+That's it — you land in chat.
+
+## Changing things later
+
+Everything the setup wizard asks can be changed afterwards in **Settings → AI Providers**: add, replace, or remove providers any time. Changes apply immediately — no restart needed. Keys are stored encrypted and validated with a live test before saving.
+
+## How self-hosting differs
+
+Self-hosted instances run the same code as GAIA Cloud, with a configuration profile designed to need almost nothing from you:
+
+- **Minimal required configuration.** The instance runs with `ENV=selfhost`. The only required values are database URLs (which Compose provides) and three machine secrets — `AGENT_SECRET`, `BOT_SESSION_TOKEN_SECRET`, and `EMAIL_UNSUBSCRIBE_SECRET` — which `gaia up` generates for you.
+- **Local accounts, not WorkOS.** Self-host sets `AUTH_MODE=local`, which enables email-and-password sign-in. Hosted and development deployments use `AUTH_MODE=workos`; see [Environment variables](/configuration/environment-variables).
+- **One generated instance secret.** Your instance creates a random `INSTANCE_SECRET` on first boot and stores it in the database, where it signs sessions and encrypts stored provider keys. For stricter setups you can set `INSTANCE_SECRET` yourself as an environment variable — it then takes precedence.
+- **No Infisical.** Self-host resolves all configuration locally and never contacts Infisical, even if leftover credentials exist in the environment.
+- **Unlimited usage.** Usage is tracked locally for insights, but plan limits are never enforced.
+- **No payments.** There is no billing integration in self-host mode; every user gets the Free plan automatically and billing UI is hidden.
+
+## Using Ollama
+
+The backend runs inside a container, so `localhost` inside the container is not your machine. The Compose stack maps `host.docker.internal` to the host gateway (`extra_hosts: host.docker.internal:host-gateway`), and the setup wizard prefills the Ollama base URL accordingly. If Ollama is running, just accept the prefill and pick a model from the live list.
+
+<Tip>
+  On Linux hosts, Ollama listens on `127.0.0.1` by default, which the container cannot reach. Start it with `OLLAMA_HOST=0.0.0.0 ollama serve` so it accepts connections through the gateway.
+</Tip>
 
 ## Advanced: workspace storage on macOS and Windows
 
@@ -61,8 +107,36 @@ You only need this if you plan to run the backend outside the default Docker set
 Run the backend in a container on every platform. Its workspace storage (file uploads, artifacts, skills) uses JuiceFS, which mounts through Linux FUSE, a native backend on macOS or Windows can't provide it. Docker Desktop covers this on all platforms. See [Docker setup](/self-hosting/docker-setup#persistent-workspace-storage-juicefs-and-fuse) for the FUSE requirements and configuration.
 </Note>
 
+## Keeping GAIA up to date
+
+There is no auto-update command. To move to a newer version, pull the latest code and restart:
+
+```bash
+cd ~/gaia                 # your GAIA checkout
+git pull
+gaia start --pull --build
+```
+
+Data lives in Docker volumes and the database, so updating never touches your chats or settings.
+
+## When something breaks
+
+```bash
+gaia doctor
+```
+
+It walks the whole stack — Docker daemon, containers, API health, web reachability, seeded models and plans, configured providers — and prints what's broken with a specific fix for each problem. See [CLI setup](/self-hosting/cli-setup) for everything the CLI can do.
+
 ## Next steps
 
-- [CLI setup](/self-hosting/cli-setup), full CLI installation and service management
-- [Docker setup](/self-hosting/docker-setup), advanced Docker operations and storage configuration
-- [Environment variables](/configuration/environment-variables), configure LLM providers, integrations, and optional features
+<CardGroup cols={2}>
+  <Card title="CLI Setup" icon="terminal" href="/self-hosting/cli-setup">
+    Full command reference and service management
+  </Card>
+  <Card title="Docker Setup" icon="docker" href="/self-hosting/docker-setup">
+    Advanced Docker operations and workspace storage
+  </Card>
+  <Card title="Environment Variables" icon="key" href="/configuration/environment-variables">
+    Optional integrations and what they enable
+  </Card>
+</CardGroup>
