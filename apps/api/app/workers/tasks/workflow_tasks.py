@@ -536,6 +536,12 @@ async def execute_workflow_by_id(
             # fromtimestamp with a TypeError/OverflowError mid-run.
             scheduled_for = context.get("scheduled_for") if context else None
             if isinstance(scheduled_for, bool) or not isinstance(scheduled_for, (int, float)):
+                log.warning(
+                    f"{LogTag.WORKER} Unparseable scheduled_for on scheduled fire; "
+                    "treating as unstamped",
+                    workflow_id=workflow_id,
+                    scheduled_for=str(scheduled_for)[:32],
+                )
                 expected_next_run = None
             else:
                 try:
