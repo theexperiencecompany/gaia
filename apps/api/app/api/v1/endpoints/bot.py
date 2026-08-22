@@ -114,7 +114,7 @@ async def _bot_upgrade_url(user_id: str) -> str:
     the same link rather than a trail of abandoned ones.
     """
     try:
-        checkout = await payment_service.create_pro_checkout(user_id)
+        pro = await payment_service.create_pro_checkout(user_id)
     except Exception as e:
         # A marketing link must never cost the user their reply — degrade to the
         # pricing page, loudly.
@@ -125,7 +125,7 @@ async def _bot_upgrade_url(user_id: str) -> str:
             error=str(e),
         )
         return f"{settings.FRONTEND_URL}/pricing"
-    return checkout.payment_link or f"{settings.FRONTEND_URL}/pricing"
+    return pro.checkout.payment_link or f"{settings.FRONTEND_URL}/pricing"
 
 
 async def _bot_rate_limit_notice(chunk: dict[str, Any], user_id: str) -> str | None:

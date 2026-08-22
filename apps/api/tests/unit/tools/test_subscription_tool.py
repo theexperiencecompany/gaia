@@ -18,6 +18,7 @@ from app.models.payment_models import (
     PlanDuration,
     PlanResponse,
     PlanType,
+    ProCheckout,
     SubscriptionDetails,
     SubscriptionStatus,
     UserSubscriptionStatus,
@@ -46,6 +47,20 @@ def _pro_plan(duration: PlanDuration = PlanDuration.MONTHLY, amount: int = 3000)
         is_active=True,
         created_at=NOW,
         updated_at=NOW,
+    )
+
+
+def _pro_checkout(
+    duration: PlanDuration = PlanDuration.MONTHLY, amount: int = 3000
+) -> ProCheckout:
+    """One catalogue resolution backing both the quoted price and the session."""
+    return ProCheckout(
+        plan=_pro_plan(duration, amount),
+        checkout=CreateSubscriptionResponse(
+            subscription_id="cs_1",
+            payment_link="https://checkout.dodopayments.com/s/cs_1",
+            status="payment_link_created",
+        ),
     )
 
 
@@ -131,16 +146,9 @@ class TestCreateUpgradeLink:
                     return_value=UserSubscriptionStatus(user_id=FAKE_USER_ID, is_subscribed=False)
                 ),
             ),
-            patch(f"{MODULE}.payment_service.get_pro_plan", AsyncMock(return_value=_pro_plan())),
             patch(
                 f"{MODULE}.payment_service.create_pro_checkout",
-                AsyncMock(
-                    return_value=CreateSubscriptionResponse(
-                        subscription_id="cs_1",
-                        payment_link="https://checkout.dodopayments.com/s/cs_1",
-                        status="payment_link_created",
-                    )
-                ),
+                AsyncMock(return_value=_pro_checkout()),
             ),
         ):
             result = await create_upgrade_link.coroutine(config=_cfg())
@@ -150,23 +158,13 @@ class TestCreateUpgradeLink:
         assert "Chat on iMessage" in result
 
     async def test_yearly_cycle_is_passed_through_to_the_service(self) -> None:
-        checkout = AsyncMock(
-            return_value=CreateSubscriptionResponse(
-                subscription_id="cs_2",
-                payment_link="https://checkout.dodopayments.com/s/cs_2",
-                status="payment_link_created",
-            )
-        )
+        checkout = AsyncMock(return_value=_pro_checkout(PlanDuration.YEARLY, amount=30000))
         with (
             patch(
                 f"{MODULE}.payment_service.get_user_subscription_status",
                 AsyncMock(
                     return_value=UserSubscriptionStatus(user_id=FAKE_USER_ID, is_subscribed=False)
                 ),
-            ),
-            patch(
-                f"{MODULE}.payment_service.get_pro_plan",
-                AsyncMock(return_value=_pro_plan(PlanDuration.YEARLY, amount=30000)),
             ),
             patch(f"{MODULE}.payment_service.create_pro_checkout", checkout),
         ):
@@ -196,6 +194,8 @@ class TestCreateUpgradeLink:
         checkout.assert_not_awaited()
 
     async def test_a_session_without_a_link_fails_loudly(self) -> None:
+        broken = _pro_checkout()
+        broken.checkout.payment_link = None
         with (
             patch(
                 f"{MODULE}.payment_service.get_user_subscription_status",
@@ -203,15 +203,7 @@ class TestCreateUpgradeLink:
                     return_value=UserSubscriptionStatus(user_id=FAKE_USER_ID, is_subscribed=False)
                 ),
             ),
-            patch(f"{MODULE}.payment_service.get_pro_plan", AsyncMock(return_value=_pro_plan())),
-            patch(
-                f"{MODULE}.payment_service.create_pro_checkout",
-                AsyncMock(
-                    return_value=CreateSubscriptionResponse(
-                        subscription_id="cs_3", payment_link=None, status="payment_link_created"
-                    )
-                ),
-            ),
+            patch(f"{MODULE}.payment_service.create_pro_checkout", AsyncMock(return_value=broken)),
             pytest.raises(RuntimeError, match="without a payment link"),
         ):
             await create_upgrade_link.coroutine(config=_cfg())

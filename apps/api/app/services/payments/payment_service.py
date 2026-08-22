@@ -31,6 +31,7 @@ from app.models.payment_models import (
     PlanDuration,
     PlanResponse,
     PlanType,
+    ProCheckout,
     SubscriptionDetails,
     SubscriptionDocument,
     SubscriptionStatus,
@@ -380,22 +381,30 @@ class DodoPaymentService:
 
     async def create_pro_checkout(
         self, user_id: str, billing_cycle: PlanDuration = PlanDuration.MONTHLY
-    ) -> CreateSubscriptionResponse:
+    ) -> ProCheckout:
         """Mint (or reuse) a hosted checkout session that upgrades this user to Pro.
 
         Cached for an hour per user and cycle so asking twice — or hitting a usage
         wall repeatedly — reuses one session instead of stranding a new one in Dodo
-        each time.
+        each time. The plan is cached alongside the session so a cached hit quotes
+        the price the session was minted under, never a newer catalogue read.
         """
         cache_key = f"{UPGRADE_LINK_CACHE_PREFIX}{user_id}:{billing_cycle}"
         cached = await redis_cache.get(cache_key)
-        if isinstance(cached, dict):
-            return CreateSubscriptionResponse.model_validate(cached)
+        if isinstance(cached, dict) and "plan" in cached and "checkout" in cached:
+            return ProCheckout(
+                plan=PlanResponse.model_validate(cached["plan"]),
+                checkout=CreateSubscriptionResponse.model_validate(cached["checkout"]),
+            )
 
         plan = await self.get_pro_plan(billing_cycle)
         checkout = await self.create_subscription(user_id, plan.dodo_product_id)
-        await redis_cache.set(cache_key, checkout.model_dump(), ttl=UPGRADE_LINK_CACHE_TTL)
-        return checkout
+        await redis_cache.set(
+            cache_key,
+            {"plan": plan.model_dump(), "checkout": checkout.model_dump()},
+            ttl=UPGRADE_LINK_CACHE_TTL,
+        )
+        return ProCheckout(plan=plan, checkout=checkout)
 
     async def get_payment_history(
         self, user_id: str, limit: int = PAYMENT_HISTORY_LIMIT
@@ -440,8 +449,13 @@ class DodoPaymentService:
         """Plan, billing state, and recent charges — the flattened view GAIA reads."""
         subscription = await subscription_repository.get_active_for_user(user_id)
         if not subscription:
-            # Free: no Dodo subscription, so no plan row and no ledger to read.
-            return SubscriptionDetails(plan_type=PlanType.FREE, is_subscribed=False)
+            # No ACTIVE subscription — but a former subscriber's charges still
+            # live in Dodo under their cancelled/expired subscription ids, so the
+            # ledger is read before declaring this user plain free.
+            payments = await self.get_payment_history(user_id, history_limit)
+            return SubscriptionDetails(
+                plan_type=PlanType.FREE, is_subscribed=False, payments=payments
+            )
 
         plan = await self._plan_for_subscription(subscription)
         payments = await self.get_payment_history(user_id, history_limit)

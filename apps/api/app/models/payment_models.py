@@ -81,6 +81,18 @@ class CreateSubscriptionResponse(BaseModel):
     status: str = Field(..., description="Checkout creation status")
 
 
+class ProCheckout(BaseModel):
+    """A resolved Pro plan paired with its hosted checkout session.
+
+    One catalogue resolution backs both, so the price quoted to the user and the
+    price behind the link can never disagree — including when the session comes
+    from cache and was minted under an earlier catalogue read.
+    """
+
+    plan: PlanResponse
+    checkout: CreateSubscriptionResponse
+
+
 class UserSubscriptionStatus(BaseModel):
     """Response model for user subscription status."""
 

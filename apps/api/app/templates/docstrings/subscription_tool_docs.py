@@ -46,8 +46,8 @@ mention yearly is cheaper if they prefer it.
 DO NOT:
 • Call this for a user who is already on Pro — the tool will tell you so; relay
   that instead of sending them a second checkout
-• Invent a price. Read it from `get_subscription_details` or from the link's
-  summary; never quote a number you did not see
+• Invent a price. Read it from this tool's own output, which carries the live
+  price and feature list; never quote a number you did not see
 • Push the upgrade repeatedly. Offer it once, in context, and move on
 
 Args:

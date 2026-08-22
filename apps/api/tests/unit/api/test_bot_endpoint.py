@@ -6,16 +6,23 @@ routing, status codes, response bodies, and auth checks.
 
 import asyncio
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException
 from httpx import AsyncClient
 import pytest
 
-from app.api.v1.endpoints.bot import bot_chat_stream
+from app.api.v1.endpoints.bot import _bot_rate_limit_notice, bot_chat_stream
 from app.core.stream_manager import with_heartbeat
 from app.models.bot_models import BotChatRequest
-from app.models.payment_models import PlanType
+from app.models.payment_models import (
+    CreateSubscriptionResponse,
+    PlanDuration,
+    PlanResponse,
+    PlanType,
+    ProCheckout,
+)
 from app.services.analytics_service import AnalyticsEvents
 from shared.py.wide_events import log, log_context
 
@@ -1148,14 +1155,24 @@ class TestBotRateLimitNotice:
         }
 
     async def test_free_user_gets_a_real_checkout_link(self) -> None:
-        from app.api.v1.endpoints.bot import _bot_rate_limit_notice
-        from app.models.payment_models import CreateSubscriptionResponse
-
         checkout = AsyncMock(
-            return_value=CreateSubscriptionResponse(
-                subscription_id="cs_1",
-                payment_link="https://checkout.dodopayments.com/s/cs_1",
-                status="payment_link_created",
+            return_value=ProCheckout(
+                plan=PlanResponse(
+                    id="plan_pro",
+                    dodo_product_id="prod_pro",
+                    name="Pro",
+                    amount=3000,
+                    currency="USD",
+                    duration=PlanDuration.MONTHLY,
+                    is_active=True,
+                    created_at=datetime(2026, 1, 1, tzinfo=UTC),
+                    updated_at=datetime(2026, 1, 1, tzinfo=UTC),
+                ),
+                checkout=CreateSubscriptionResponse(
+                    subscription_id="cs_1",
+                    payment_link="https://checkout.dodopayments.com/s/cs_1",
+                    status="payment_link_created",
+                ),
             )
         )
         with patch("app.api.v1.endpoints.bot.payment_service.create_pro_checkout", checkout):
@@ -1168,8 +1185,6 @@ class TestBotRateLimitNotice:
 
     async def test_dodo_failure_degrades_to_the_pricing_page(self) -> None:
         """A marketing link must never cost the user their reply."""
-        from app.api.v1.endpoints.bot import _bot_rate_limit_notice
-
         with patch(
             "app.api.v1.endpoints.bot.payment_service.create_pro_checkout",
             AsyncMock(side_effect=RuntimeError("dodo down")),
@@ -1180,8 +1195,6 @@ class TestBotRateLimitNotice:
         assert "/pricing)" in notice
 
     async def test_pro_user_gets_no_pitch_and_no_session(self) -> None:
-        from app.api.v1.endpoints.bot import _bot_rate_limit_notice
-
         checkout = AsyncMock()
         with patch("app.api.v1.endpoints.bot.payment_service.create_pro_checkout", checkout):
             notice = await _bot_rate_limit_notice(self._card(PlanType.PRO.value), "user_1")
@@ -1191,7 +1204,5 @@ class TestBotRateLimitNotice:
         checkout.assert_not_awaited()
 
     async def test_other_tool_cards_are_left_alone(self) -> None:
-        from app.api.v1.endpoints.bot import _bot_rate_limit_notice
-
         chunk = {"tool_data": {"tool_name": "memory_data", "data": {}}}
         assert await _bot_rate_limit_notice(chunk, "user_1") is None
