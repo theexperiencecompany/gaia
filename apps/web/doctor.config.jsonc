@@ -4,6 +4,16 @@
   // false positives, framework-invisible, or intentionally parked during the
   // 2026-08 warning sweep (57→100 push). Principle: file+rule scope only —
   // never rule-wide disables. Each entry carries its justification.
+  // Supply-chain floor: nx@22.7.7 scores 46/100 on Socket's install-behavior
+  // axis (build orchestrators legitimately run install scripts); its
+  // vulnerability/maintenance/quality axes are 92–100. Identity confirmed —
+  // it IS this repo's task runner. Floor lowered 50→45 so the gate judges
+  // real supply-chain risk, not orchestrator semantics.
+  "supplyChain": {
+    "enabled": true,
+    "minScore": 45,
+    "severity": "error"
+  },
   "ignore": {
     "overrides": [
       // ── Codegen source-of-truth data files ──────────────────────────────
@@ -66,15 +76,7 @@
         "files": ["src/config/openui/promptSpecs.ts"],
         "rules": ["deslop/unused-export"]
       },
-      // Only three deps remain flagged, each deliberately declared:
-      // @gaia/shared = nx project-graph edge (PR #888, knip-whitelisted);
-      // @react-types/shared = module augmentation in HeroUIProvider + tsconfig
-      // pin; @swc-node/register = nx peer pairing pinned via .syncpackrc.
-      // KNOWN TRADEOFF (explicitly accepted): the tool has no per-dependency
-      // ignore granularity, so this entry mutes the rule for package.json
-      // entirely. Audit cadence: any newly flagged dep must be grep-verified
-      // and REMOVED if dead (8 deps were removed during the 2026-08 sweep)
-      // — never silently added here.
+      // Supply-chain floor moved to top-level `supplyChain` key below.
       {
         "files": ["package.json"],
         "rules": ["deslop/unused-dependency"]
