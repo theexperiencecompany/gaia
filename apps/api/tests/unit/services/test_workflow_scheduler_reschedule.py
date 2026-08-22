@@ -394,7 +394,8 @@ class TestWorkerRejectsStaleFire:
             side_effect=_gate_claim(workflow, claim_calls)
         )
 
-        context = {"trigger_type": "schedule", "scheduled_for": "garbage"}
+        garbage = "not-a-timestamp-" + "x" * 40  # >33 chars: pins the log truncation
+        context = {"trigger_type": "schedule", "scheduled_for": garbage}
 
         with (
             patch("app.workers.tasks.workflow_tasks.workflow_scheduler", scheduler),
@@ -421,5 +422,56 @@ class TestWorkerRejectsStaleFire:
             f"{LogTag.WORKER} Unparseable scheduled_for on scheduled fire; "
             "treating as unstamped",
             workflow_id=workflow.id,
-            scheduled_for="garbage",
+            scheduled_for=garbage[:32],
+        )
+
+    async def test_overflowing_numeric_scheduled_for_is_ignored_not_crashed(self) -> None:
+        """A numeric stamp fromtimestamp cannot represent (year out of range)
+        takes the same discard path: ungated, logged with the truncated value."""
+        from app.workers.tasks.workflow_tasks import execute_workflow_by_id
+
+        workflow = MagicMock()
+        workflow.id = f"wf_{uuid4().hex[:12]}"
+        workflow.user_id = "user_abc"
+        workflow.repeat = "0 16 * * *"
+        workflow.activated = True
+        workflow.trigger_config.next_run = datetime.now(UTC)
+
+        execution = MagicMock()
+        execution.execution_id = "exec_1"
+
+        scheduler = AsyncMock()
+        scheduler.get_task = AsyncMock(return_value=workflow)
+        claim_calls: list[tuple[str, datetime | None]] = []
+        scheduler.claim_scheduled_for_execution = AsyncMock(
+            side_effect=_gate_claim(workflow, claim_calls)
+        )
+
+        stamp = 10**40
+        context = {"trigger_type": "schedule", "scheduled_for": stamp}
+
+        with (
+            patch("app.workers.tasks.workflow_tasks.workflow_scheduler", scheduler),
+            patch(
+                "app.workers.tasks.workflow_tasks.create_execution",
+                AsyncMock(return_value=execution),
+            ),
+            patch("app.workers.tasks.workflow_tasks.complete_execution", AsyncMock()),
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch("app.workers.tasks.workflow_tasks.log") as mock_log,
+            patch(
+                "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
+                AsyncMock(return_value="conv_1"),
+            ),
+        ):
+            mock_wf_svc.increment_execution_count = AsyncMock()
+            result = await execute_workflow_by_id({}, workflow.id, context)
+
+        assert claim_calls == [(workflow.id, None)]
+        assert "executed successfully" in result
+        mock_log.warning.assert_called_once_with(
+            f"{LogTag.WORKER} Unparseable scheduled_for on scheduled fire; "
+            "treating as unstamped",
+            workflow_id=workflow.id,
+            scheduled_for=str(stamp)[:32],
         )
