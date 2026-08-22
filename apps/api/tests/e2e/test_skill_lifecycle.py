@@ -64,7 +64,7 @@ from app.agents.skills.utils import GITHUB_API_BASE
 from app.config.settings import settings
 from app.constants.cache import SKILLS_TEXT_CACHE_KEY, USER_SKILLS_CACHE_KEY
 from app.db.repositories.skills import SYSTEM_USER_ID
-from app.services.storage import JuiceFSUnavailableError
+from app.services.storage import JuiceFSUnavailable
 
 pytestmark = pytest.mark.e2e
 
@@ -196,7 +196,7 @@ def mount(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A real directory that reports itself as the JuiceFS mount.
 
     ``Path.is_mount()`` is False for any tmpdir, so without the lie every storage
-    helper raises ``JuiceFSUnavailableError`` and the install assertions would pass or
+    helper raises ``JuiceFSUnavailable`` and the install assertions would pass or
     fail for reasons that have nothing to do with skills.
     """
     root = tmp_path / "jfs"
@@ -671,7 +671,7 @@ class TestUninstall:
 
     async def test_an_unavailable_mount_still_removes_the_registry_record(self, stack):
         """Storage cleanup is best-effort on purpose: a native API run has no
-        JuiceFS mount, and letting ``JuiceFSUnavailableError`` escape would leave the
+        JuiceFS mount, and letting ``JuiceFSUnavailable`` escape would leave the
         skill permanently un-uninstallable — still listed, still firing, with the
         delete button reporting an error every time."""
         _, mongo, _ = stack
@@ -679,7 +679,7 @@ class TestUninstall:
 
         with patch(
             "app.agents.skills.installer.delete_user_skill",
-            AsyncMock(side_effect=JuiceFSUnavailableError("mount not available")),
+            AsyncMock(side_effect=JuiceFSUnavailable("mount not available")),
         ):
             result = await uninstall_skill_full(USER, skill.id)
 

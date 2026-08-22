@@ -39,7 +39,7 @@ from app.constants.summarization import (
     COMPACTION_SUMMARY_MAX_CHARS,
     MIN_COMPACTION_SIZE,
 )
-from app.services.storage import JuiceFSUnavailableError
+from app.services.storage import JuiceFSUnavailable
 
 
 class _StubLog:
@@ -225,7 +225,7 @@ class TestAwrapToolCall:
         with patch(
             "app.agents.middleware.compaction.write_session_file",
             new_callable=AsyncMock,
-            side_effect=JuiceFSUnavailableError("no mount"),
+            side_effect=JuiceFSUnavailable("no mount"),
         ):
             result = await mw.awrap_tool_call(_request(), handler)
 
@@ -251,7 +251,7 @@ class TestAwrapToolCall:
         with patch(
             "app.agents.middleware.compaction.write_session_file",
             new_callable=AsyncMock,
-            side_effect=JuiceFSUnavailableError("no mount"),
+            side_effect=JuiceFSUnavailable("no mount"),
         ):
             result = await mw.awrap_tool_call(_request(), handler)
 
@@ -273,7 +273,7 @@ class TestAwrapToolCall:
         with patch(
             "app.agents.middleware.compaction.write_session_file",
             new_callable=AsyncMock,
-            side_effect=JuiceFSUnavailableError("no mount"),
+            side_effect=JuiceFSUnavailable("no mount"),
         ):
             result = await mw.awrap_tool_call(_request(), handler)
 
@@ -293,7 +293,7 @@ class TestAwrapToolCall:
         with patch(
             "app.agents.middleware.compaction.write_session_file",
             new_callable=AsyncMock,
-            side_effect=JuiceFSUnavailableError("no mount"),
+            side_effect=JuiceFSUnavailable("no mount"),
         ):
             result = await mw.awrap_tool_call(_request(), handler)
 
@@ -335,7 +335,7 @@ class TestAwrapToolCall:
         with patch(
             "app.agents.middleware.compaction.write_session_file",
             new_callable=AsyncMock,
-            side_effect=JuiceFSUnavailableError("no mount"),
+            side_effect=JuiceFSUnavailable("no mount"),
         ):
             result = await mw.awrap_tool_call(_request(), handler)
 

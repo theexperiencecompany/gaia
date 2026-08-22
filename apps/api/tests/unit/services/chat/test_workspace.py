@@ -3,7 +3,7 @@
 ``schedule_last_active_touch`` spawns ``_touch()`` via ``spawn_background_task``.
 Its inner try/except must swallow a plain failure from
 ``touch_session_last_active`` (log and move on) so an idle-prune bookkeeping
-error never surfaces to the chat turn that scheduled it. The ``JuiceFSUnavailableError``
+error never surfaces to the chat turn that scheduled it. The ``JuiceFSUnavailable``
 branch (dev-mode no-op) is a separate, already-expected path and isn't the
 target here.
 
@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, patch
 
 from app.services.chat import workspace
 from app.services.chat.workspace import schedule_last_active_touch
-from app.services.storage import JuiceFSUnavailableError
+from app.services.storage import JuiceFSUnavailable
 
 
 class TestScheduleLastActiveTouch:
@@ -46,7 +46,7 @@ class TestScheduleLastActiveTouch:
             patch.object(
                 workspace,
                 "touch_session_last_active",
-                new=AsyncMock(side_effect=JuiceFSUnavailableError("no mount")),
+                new=AsyncMock(side_effect=JuiceFSUnavailable("no mount")),
             ),
             patch.object(workspace.log, "warning") as mock_warning,
         ):

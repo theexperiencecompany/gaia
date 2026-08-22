@@ -21,7 +21,7 @@ import pytest
 
 from app.config.settings import settings
 from app.services.storage.juicefs import (
-    JuiceFSUnavailableError,
+    JuiceFSUnavailable,
     _contained,
     _host_base_and_rel,
     _is_mounted,
@@ -67,7 +67,7 @@ def mount(mount_root: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A real tmpdir that also passes the mountpoint check.
 
     ``Path.is_mount()`` is False for any tmpdir, so without this every helper
-    would raise ``JuiceFSUnavailableError`` and every "rejects a bad path" assertion
+    would raise ``JuiceFSUnavailable`` and every "rejects a bad path" assertion
     would pass for the wrong reason.
     """
     monkeypatch.setattr("app.services.storage.juicefs._is_mounted", lambda: True)
@@ -254,28 +254,28 @@ async def test_an_existing_but_unmounted_directory_still_fails_loud(mount_root: 
     # and is invisible to the sandbox — data loss with no error anywhere.
     assert mount_root.is_dir()
     assert _is_mounted() is False
-    with pytest.raises(JuiceFSUnavailableError):
+    with pytest.raises(JuiceFSUnavailable):
         await ensure_user_workspace(USER)
 
 
 async def test_a_write_without_a_mount_raises_instead_of_writing_locally(
     mount_root: Path,
 ) -> None:
-    with pytest.raises(JuiceFSUnavailableError):
+    with pytest.raises(JuiceFSUnavailable):
         await write_session_file(USER, CONV, "a.txt", "hello")
 
 
 async def test_a_read_without_a_mount_raises_instead_of_reporting_a_missing_file(
     mount_root: Path,
 ) -> None:
-    # JuiceFSUnavailableError and FileNotFoundError mean opposite things to callers:
+    # JuiceFSUnavailable and FileNotFoundError mean opposite things to callers:
     # one is "switch to the dockered API", the other is "the file is gone".
-    with pytest.raises(JuiceFSUnavailableError):
+    with pytest.raises(JuiceFSUnavailable):
         await read_user_file(USER, "notes.md")
 
 
 def test_the_unavailable_error_names_the_configured_mount_path(mount_root: Path) -> None:
-    with pytest.raises(JuiceFSUnavailableError, match=str(mount_root)):
+    with pytest.raises(JuiceFSUnavailable, match=str(mount_root)):
         write_session_file_sync(USER, CONV, "a.txt", "hello")
 
 
@@ -698,7 +698,7 @@ async def test_without_a_mount_the_override_check_reports_false_instead_of_raisi
     mount_root: Path,
 ) -> None:
     # Native dev has no mount; this must degrade to "use the in-memory copy"
-    # rather than propagating JuiceFSUnavailableError out of the read tool.
+    # rather than propagating JuiceFSUnavailable out of the read tool.
     (mount_root / "users" / USER).mkdir(parents=True)
     (mount_root / "users" / USER / "INDEX.md").write_text("mine")
     assert await user_owns_regular_file(USER, "INDEX.md") is False

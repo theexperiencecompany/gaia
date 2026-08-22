@@ -22,7 +22,7 @@ import pytest
 
 from app.agents.middleware import summarization as summarization_module
 from app.agents.middleware.summarization import WorkspaceArchivingSummarizationMiddleware
-from app.services.storage import JuiceFSUnavailableError
+from app.services.storage import JuiceFSUnavailable
 from shared.py.wide_events import log
 
 MAX_INPUT_TOKENS = 1000
@@ -484,7 +484,7 @@ async def test_an_unavailable_workspace_downgrades_to_a_warning_and_still_summar
     log.reset()
 
     async def unavailable(**_kwargs: Any) -> tuple[str, str]:
-        raise JuiceFSUnavailableError("mount missing")
+        raise JuiceFSUnavailable("mount missing")
 
     monkeypatch.setattr(summarization_module, "write_session_file", unavailable)
     mw = _middleware(trigger=("messages", 4), keep=("messages", 2))

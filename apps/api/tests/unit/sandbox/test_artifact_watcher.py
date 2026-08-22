@@ -22,7 +22,7 @@ import pytest
 from app.agents.workspace.paths import session_artifacts
 from app.services.sandbox import artifact_watcher as aw
 from app.services.sandbox.artifact_watcher import ArtifactWatcher, _strip_artifacts_prefix
-from app.services.storage import JuiceFSUnavailableError
+from app.services.storage import JuiceFSUnavailable
 from app.services.storage.sessions.artifacts import ArtifactInfo
 
 USER = "user-1"
@@ -72,7 +72,7 @@ def watcher() -> ArtifactWatcher:
 def stat_ok(monkeypatch: pytest.MonkeyPatch) -> None:
     """Make the JuiceFS stat succeed.
 
-    Without this the real ``stat_artifact`` raises ``JuiceFSUnavailableError`` (no
+    Without this the real ``stat_artifact`` raises ``JuiceFSUnavailable`` (no
     mount under unit tests) and every "publishes nothing" assertion passes for
     that reason instead of the guard under test — a mutation of the guard stays
     green. With it, a publish is what happens unless a guard stops it.
@@ -159,7 +159,7 @@ async def test_an_unreadable_workspace_is_swallowed_rather_than_killing_the_stre
     # The watcher is a latency optimization; a JuiceFS blip must not propagate
     # out of the e2b callback and tear down the whole watch stream.
     async def unavailable(*_a: Any, **_k: Any) -> ArtifactInfo | None:
-        raise JuiceFSUnavailableError("mount gone")
+        raise JuiceFSUnavailable("mount gone")
 
     monkeypatch.setattr(aw, "stat_artifact", unavailable)
     w = ArtifactWatcher(USER, fake_sandbox())
@@ -436,7 +436,7 @@ async def test_a_vanished_mount_aborts_the_scan_without_raising(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def unavailable(*_a: Any, **_k: Any) -> list[ArtifactInfo]:
-        raise JuiceFSUnavailableError("mount gone")
+        raise JuiceFSUnavailable("mount gone")
 
     monkeypatch.setattr(aw, "list_artifacts", unavailable)
     await watcher._rescan_each([CONV])

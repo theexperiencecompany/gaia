@@ -38,7 +38,7 @@ import time
 from typing import Any
 
 from app.services.sandbox import acquire_sandbox
-from app.services.storage import JuiceFSUnavailableError, write_session_file
+from app.services.storage import JuiceFSUnavailable, write_session_file
 
 SESSIONS_WATCH_ROOT = "/workspace/sessions"
 PROBE_CONV = "probe"
@@ -125,7 +125,7 @@ async def _run_matrix(user_a: str, user_b: str | None) -> dict[str, Any]:
                     content="hi",
                 )
                 evidence["case4_cross_mount"] = await _wait_for(queue, "d.md", 5.0)
-            except JuiceFSUnavailableError as e:
+            except JuiceFSUnavailable as e:
                 evidence["case4_cross_mount"] = {
                     "passed": False,
                     "skipped": f"host JuiceFS mount unavailable: {e}",
