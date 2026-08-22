@@ -191,3 +191,6 @@ apps/api/scripts/sidecar_benchmark/results/
 # behind only on a crash or MUTMUT_KEEP_WORKDIR=1, and swept into a commit once.
 .mutation-*/
 mutants/
+
+# Local agent-session tooling (untracked workspace scripts)
+.agents/gateway-adapter/
