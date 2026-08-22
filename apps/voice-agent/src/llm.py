@@ -305,7 +305,7 @@ class _VoiceTurn:
         # Build full message history from the LiveKit context so the backend
         # LLM has the complete conversation rather than just the latest turn.
         history = build_messages_from_ctx(chat_ctx)
-        self.messages = history if history else [{"role": "user", "content": self.user_message}]
+        self.messages = history or [{"role": "user", "content": self.user_message}]
 
         self.tts_enabled = True
         self.first_token_received = False
