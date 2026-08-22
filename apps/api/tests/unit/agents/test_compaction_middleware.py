@@ -35,6 +35,30 @@ from app.constants.summarization import (
     MIN_COMPACTION_SIZE,
 )
 from app.services.storage import JuiceFSUnavailable
+
+
+class _StubLog:
+    """Records warning/error payloads; other levels are swallowed."""
+
+    def __init__(self) -> None:
+        self.records: list[tuple[str, dict]] = []
+
+    def warning(self, msg: str, **kw):
+        self.records.append((msg, kw))
+
+    def error(self, msg: str, **kw):
+        self.records.append((msg, kw))
+
+    def info(self, *a, **k):
+        pass
+
+    def debug(self, *a, **k):
+        pass
+
+    def set(self, *a, **k):
+        pass
+
+
 from tests.helpers import create_fake_llm
 
 WROTE = (
@@ -880,56 +904,36 @@ class TestDigestWarningPayloads:
     async def test_llm_failure_warning_names_tool_and_error(self) -> None:
         from app.agents.middleware import compaction as cm
 
-        recorded: list[tuple] = []
-
-        class _StubLog:
-            def warning(self, msg: str, **kw):
-                recorded.append((msg, kw))
-
-            def info(self, *a, **k):
-                pass
-
-            def set(self, *a, **k):
-                pass
+        log = _StubLog()
 
         monkeypatch = pytest.MonkeyPatch()
-        monkeypatch.setattr(cm, "log", _StubLog())
+        monkeypatch.setattr(cm, "log", log)
         try:
             out = await cm._llm_summarize_output(_BrokenModel(), "content", "my_tool")
         finally:
             monkeypatch.undo()
 
         assert out is None
-        msgs = [m for m, _ in recorded if "LLM compaction summary failed" in m]
+        msgs = [m for m, _ in log.records if "LLM compaction summary failed" in m]
         assert msgs
-        _, kwargs = next((m, k) for m, k in recorded if "LLM compaction summary failed" in m)
+        _, kwargs = next((m, k) for m, k in log.records if "LLM compaction summary failed" in m)
         assert kwargs["tool_name"] == "my_tool"
         assert kwargs["error_type"] == "RuntimeError"
 
     async def test_empty_digest_warning_names_tool(self) -> None:
         from app.agents.middleware import compaction as cm
 
-        recorded: list[tuple] = []
-
-        class _StubLog:
-            def warning(self, msg: str, **kw):
-                recorded.append((msg, kw))
-
-            def info(self, *a, **k):
-                pass
-
-            def set(self, *a, **k):
-                pass
+        log = _StubLog()
 
         monkeypatch = pytest.MonkeyPatch()
-        monkeypatch.setattr(cm, "log", _StubLog())
+        monkeypatch.setattr(cm, "log", log)
         try:
             out = await cm._llm_summarize_output(create_fake_llm(["   "]), "content", "my_tool")
         finally:
             monkeypatch.undo()
 
         assert out is None
-        matches = [(m, k) for m, k in recorded if "LLM compaction summary was empty" in m]
+        matches = [(m, k) for m, k in log.records if "LLM compaction summary was empty" in m]
         assert matches
         assert matches[0][1]["tool_name"] == "my_tool"
 
@@ -978,20 +982,10 @@ class TestKwargPlumbing:
     async def test_digest_failure_warning_carries_tool_kwarg(self) -> None:
         from app.agents.middleware import compaction as cm
 
-        recorded: list[tuple] = []
-
-        class _StubLog:
-            def warning(self, msg: str, **kw):
-                recorded.append((msg, kw))
-
-            def error(self, *a, **k):
-                pass
-
-            def set(self, *a, **k):
-                pass
+        log = _StubLog()
 
         monkeypatch = pytest.MonkeyPatch()
-        monkeypatch.setattr(cm, "log", _StubLog())
+        monkeypatch.setattr(cm, "log", log)
         try:
             mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=_BrokenModel())
 
@@ -1002,30 +996,17 @@ class TestKwargPlumbing:
         finally:
             monkeypatch.undo()
 
-        fails = [(m, k) for m, k in recorded if "LLM compaction summary failed" in m]
-        assert fails, recorded
+        fails = [(m, k) for m, k in log.records if "LLM compaction summary failed" in m]
+        assert fails, log.records
         assert fails[0][1]["tool_name"] == "search"
 
     async def test_no_spill_warning_carries_tool_kwarg(self) -> None:
         from app.agents.middleware import compaction as cm
 
-        recorded: list[tuple] = []
-
-        class _StubLog:
-            def warning(self, msg: str, **kw):
-                recorded.append((msg, kw))
-
-            def error(self, *a, **k):
-                pass
-
-            def info(self, *a, **k):
-                pass
-
-            def set(self, *a, **k):
-                pass
+        log = _StubLog()
 
         monkeypatch = pytest.MonkeyPatch()
-        monkeypatch.setattr(cm, "log", _StubLog())
+        monkeypatch.setattr(cm, "log", log)
         try:
             mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=_BrokenModel())
 
@@ -1036,8 +1017,8 @@ class TestKwargPlumbing:
         finally:
             monkeypatch.undo()
 
-        stops = [m for m, _ in recorded if "No spill and no LLM digest" in m]
-        assert stops, recorded
+        stops = [m for m, _ in log.records if "No spill and no LLM digest" in m]
+        assert stops, log.records
 
 
 class TestCompactToolOutputBoundary:
@@ -1115,23 +1096,10 @@ class TestCompactToolOutputBoundary:
     async def test_juicefs_warning_payload_is_exact(self) -> None:
         from app.agents.middleware import compaction as cm
 
-        recorded: list[tuple] = []
-
-        class _StubLog:
-            def warning(self, msg: str, **kw):
-                recorded.append((msg, kw))
-
-            def error(self, *a, **k):
-                pass
-
-            def info(self, *a, **k):
-                pass
-
-            def set(self, *a, **k):
-                pass
+        log = _StubLog()
 
         monkeypatch = pytest.MonkeyPatch()
-        monkeypatch.setattr(cm, "log", _StubLog())
+        monkeypatch.setattr(cm, "log", log)
         try:
             mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=_BrokenModel())
 
@@ -1142,7 +1110,7 @@ class TestCompactToolOutputBoundary:
         finally:
             monkeypatch.undo()
 
-        juice = [(m, k) for m, k in recorded if "Workspace unavailable" in m]
+        juice = [(m, k) for m, k in log.records if "Workspace unavailable" in m]
         assert len(juice) == 1
         msg, kwargs = juice[0]
         assert kwargs == {"tool_name": "search", "error_type": "JuiceFSUnavailable"}
@@ -1150,23 +1118,10 @@ class TestCompactToolOutputBoundary:
     async def test_spill_error_warning_payload_is_exact(self) -> None:
         from app.agents.middleware import compaction as cm
 
-        recorded: list[tuple] = []
-
-        class _StubLog:
-            def warning(self, msg: str, **kw):
-                recorded.append((msg, kw))
-
-            def error(self, msg: str, **kw):
-                recorded.append((msg, kw))
-
-            def info(self, *a, **k):
-                pass
-
-            def set(self, *a, **k):
-                pass
+        log = _StubLog()
 
         monkeypatch = pytest.MonkeyPatch()
-        monkeypatch.setattr(cm, "log", _StubLog())
+        monkeypatch.setattr(cm, "log", log)
         try:
             mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=_BrokenModel())
 
@@ -1182,7 +1137,7 @@ class TestCompactToolOutputBoundary:
         finally:
             monkeypatch.undo()
 
-        errs = [(m, k) for m, k in recorded if "Workspace spill failed" in m]
+        errs = [(m, k) for m, k in log.records if "Workspace spill failed" in m]
         assert len(errs) == 1
         _, kwargs = errs[0]
         assert kwargs["tool_name"] == "search"
@@ -1191,23 +1146,10 @@ class TestCompactToolOutputBoundary:
     async def test_truncation_path_pins_message_fields_and_kwargs(self) -> None:
         from app.agents.middleware import compaction as cm
 
-        recorded: list[tuple] = []
-
-        class _StubLog:
-            def warning(self, msg: str, **kw):
-                recorded.append((msg, kw))
-
-            def error(self, *a, **k):
-                pass
-
-            def info(self, *a, **k):
-                pass
-
-            def set(self, *a, **k):
-                pass
+        log = _StubLog()
 
         monkeypatch = pytest.MonkeyPatch()
-        monkeypatch.setattr(cm, "log", _StubLog())
+        monkeypatch.setattr(cm, "log", log)
         try:
             mw = WorkspaceCompactionMiddleware(max_output_chars=1000, summary_llm=None)
 
@@ -1223,7 +1165,7 @@ class TestCompactToolOutputBoundary:
         finally:
             monkeypatch.undo()
 
-        stops = [(m, k) for m, k in recorded if "No spill and no LLM digest" in m]
+        stops = [(m, k) for m, k in log.records if "No spill and no LLM digest" in m]
         assert len(stops) == 1
         _, kwargs = stops[0]
         # exact payload: tool_name present (not None), nothing extra

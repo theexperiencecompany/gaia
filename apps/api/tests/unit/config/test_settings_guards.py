@@ -261,12 +261,16 @@ def test_init_custom_llm_wires_every_kwarg_and_profile(monkeypatch):
     """The DEV_LLM_* endpoint must receive every construction kwarg intact,
     including its context-window profile and configurable model field."""
     from app.agents.llm import client
+    from app.agents.llm.types import LLMProviderName
     from app.constants.llm import DEFAULT_MAX_TOKENS, DEV_LLM_MAX_OUTPUT_TOKENS
 
     captured: dict[str, object] = {}
     monkeypatch.setattr(client, "ChatOpenRouter", _fake_chat_openrouter(captured))
     monkeypatch.setattr(client.settings, "ENV", "development")
     monkeypatch.setattr(client.settings, "GAIA_SIM_MODE", False)
+    # PROVIDER_MODELS freezes at import from the ambient env; CI has no
+    # DEV_LLM_MODEL, so pin the entry the production code reads.
+    monkeypatch.setitem(client.PROVIDER_MODELS, LLMProviderName.CUSTOM, "deepseek-v4-flash")
     monkeypatch.setattr(client.settings, "DEV_LLM_BASE_URL", "http://localhost:9999/v1")
     monkeypatch.setattr(client.settings, "DEV_LLM_API_KEY", "sk-dev")
     monkeypatch.setattr(client.settings, "DEV_LLM_MODEL", "deepseek-v4-flash")
