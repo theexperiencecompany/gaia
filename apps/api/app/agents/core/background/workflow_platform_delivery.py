@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from app.agents.core.background.comms_narrator import record_platform_delivery
-from app.constants.general import NEW_MESSAGE_BREAKER
+from app.constants.general import MESSAGE_BREAK_SENTINEL_RE
 from app.constants.log_tags import LogTag
 from app.models.chat_models import (
     BOT_CONVERSATION_SOURCES,
@@ -63,7 +63,7 @@ async def deliver_workflow_result_to_platforms(
 
     # Comms splits its reply into bubbles with the break sentinel;
     # publish_outbound_message strips blanks and sends them as one ordered message.
-    bubbles = notification_text.split(NEW_MESSAGE_BREAKER)
+    bubbles = MESSAGE_BREAK_SENTINEL_RE.split(notification_text)
     for source, platform_user_id in targets:
         await _post_workflow_message(
             user=user,

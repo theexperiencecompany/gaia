@@ -210,7 +210,7 @@ async def create_workflow_directly(
             timezone=user_timezone,
         )
 
-        workflow_description = draft.prompt if draft.prompt else draft.description
+        workflow_description = draft.prompt or draft.description
 
         request = CreateWorkflowRequest(
             title=draft.title,
@@ -423,6 +423,8 @@ async def apply_workflow_edit(
                 user_id=user_id,
             )
 
+    # mode="json" — the frame is json.dumps'd by the stream writer; a native
+    # datetime would raise inside the edit tool and loop the agent on retries.
     writer({"workflow_data": {"action": "updated", "workflow": updated.model_dump(mode="json")}})
 
     message = f"Workflow '{updated.title}' updated."
