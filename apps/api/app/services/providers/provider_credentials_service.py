@@ -17,6 +17,7 @@ against the new configuration:
 
 import importlib
 import json
+import os
 from time import monotonic
 from typing import TypedDict
 
@@ -207,10 +208,14 @@ def _env_fallback(provider: str) -> ProviderConfig | None:
             api_key=settings.GOOGLE_API_KEY, base_url=None, model=None, preset=None
         )
     if provider == "ollama":
-        # Keyless local lane — always resolvable from its endpoint alone.
-        return ProviderConfig(
-            api_key=None, base_url=settings.OLLAMA_BASE_URL, model=None, preset=None
-        )
+        # Keyless local lane. Only resolvable when the endpoint was EXPLICITLY
+        # provided — settings.OLLAMA_BASE_URL carries a code default (the
+        # docker-internal DNS name), and treating that default as a working
+        # Ollama made bare instances route chat at an unreachable endpoint.
+        explicit = os.environ.get("OLLAMA_BASE_URL")
+        if not explicit:
+            return None
+        return ProviderConfig(api_key=None, base_url=explicit, model=None, preset=None)
     if provider == "tavily":
         if not settings.TAVILY_API_KEY:
             return None

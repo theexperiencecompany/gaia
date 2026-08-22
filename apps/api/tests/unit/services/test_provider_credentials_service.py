@@ -264,15 +264,22 @@ class TestResolvePrecedenceAndFallbacks:
 
         assert config is not None and config["api_key"] == "g-emini-key"
 
-    async def test_ollama_env_fallback_returns_base_url(self, repo) -> None:
+    async def test_ollama_env_fallback_returns_base_url(self, repo, monkeypatch) -> None:
+        monkeypatch.setenv("OLLAMA_BASE_URL", "http://localhost:11434")
         config = await resolve("ollama")
 
         assert config == {
             "api_key": None,
-            "base_url": settings.OLLAMA_BASE_URL,
+            "base_url": "http://localhost:11434",
             "model": None,
             "preset": None,
         }
+
+    async def test_ollama_code_default_is_not_configured(self, repo, monkeypatch) -> None:
+        """The settings default (docker DNS name) must not count as a working
+        endpoint — bare instances route chat at it and die on connect."""
+        monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+        assert await resolve("ollama") is None
 
     async def test_tavily_env_fallback(self, repo) -> None:
         settings.TAVILY_API_KEY = "tvly-env-key"
@@ -399,7 +406,7 @@ class TestInvalidate:
         assert registry_reset_calls == ["openrouter_llm"]
 
     async def test_delete_invalidates_too(
-        self, repo, fixed_secret, redis_fake, registry_reset_calls, aux_cache_calls
+        self, repo, fixed_secret, redis_fake, registry_reset_calls, aux_cache_calls, monkeypatch
     ) -> None:
         await upsert("ollama", base_url="http://o/v1")
         registry_reset_calls.clear()
@@ -408,12 +415,10 @@ class TestInvalidate:
         await delete("ollama")
 
         assert repo.delete_calls == ["ollama"]
-        assert await resolve("ollama") == {  # back to env fallback
-            "api_key": None,
-            "base_url": settings.OLLAMA_BASE_URL,
-            "model": None,
-            "preset": None,
-        }
+        # After deletion: no store row AND no explicit OLLAMA_BASE_URL env →
+        # the code default must NOT masquerade as a working endpoint.
+        monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+        assert await resolve("ollama") is None
         assert registry_reset_calls == ["ollama_llm"]
 
 
