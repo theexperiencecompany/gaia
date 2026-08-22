@@ -43,7 +43,10 @@ _COLLECTIONS_MODULE = "app.db.mongodb.collections"
 
 # Directories where each restricted import is legitimately allowed.
 _COLLECTIONS_ALLOWED_DIRS = ("db/repositories/", "db/mongodb/")
-_BSON_ALLOWED_DIRS = ("db/",)
+# scripts/: operational one-shot tooling (run manually against the DB, never on
+# a request path) deliberately works on raw documents across every store, so the
+# repository boundary does not apply there.
+_BSON_ALLOWED_DIRS = ("db/", "scripts/")
 
 # Ratchet allowlist: files importing app.db.mongodb.collections from outside the
 # repository layer. Every domain is migrated and the per-collection module
