@@ -27,7 +27,7 @@ from app.constants.summarization import (
     COMPACTION_FALLBACK_TAIL_CHARS,
     MIN_COMPACTION_SIZE,
 )
-from app.services.storage import JuiceFSUnavailable
+from app.services.storage import JuiceFSUnavailableError
 
 WROTE = (
     "/mnt/jfs/users/u1/sessions/conv1/tool_outputs/x.json",
@@ -188,7 +188,7 @@ class TestAwrapToolCall:
         with patch(
             "app.agents.middleware.compaction.write_session_file",
             new_callable=AsyncMock,
-            side_effect=JuiceFSUnavailable("no mount"),
+            side_effect=JuiceFSUnavailableError("no mount"),
         ):
             result = await mw.awrap_tool_call(_request(), handler)
 
@@ -214,7 +214,7 @@ class TestAwrapToolCall:
         with patch(
             "app.agents.middleware.compaction.write_session_file",
             new_callable=AsyncMock,
-            side_effect=JuiceFSUnavailable("no mount"),
+            side_effect=JuiceFSUnavailableError("no mount"),
         ):
             result = await mw.awrap_tool_call(_request(), handler)
 
@@ -236,7 +236,7 @@ class TestAwrapToolCall:
         with patch(
             "app.agents.middleware.compaction.write_session_file",
             new_callable=AsyncMock,
-            side_effect=JuiceFSUnavailable("no mount"),
+            side_effect=JuiceFSUnavailableError("no mount"),
         ):
             result = await mw.awrap_tool_call(_request(), handler)
 
@@ -256,7 +256,7 @@ class TestAwrapToolCall:
         with patch(
             "app.agents.middleware.compaction.write_session_file",
             new_callable=AsyncMock,
-            side_effect=JuiceFSUnavailable("no mount"),
+            side_effect=JuiceFSUnavailableError("no mount"),
         ):
             result = await mw.awrap_tool_call(_request(), handler)
 
@@ -298,7 +298,7 @@ class TestAwrapToolCall:
         with patch(
             "app.agents.middleware.compaction.write_session_file",
             new_callable=AsyncMock,
-            side_effect=JuiceFSUnavailable("no mount"),
+            side_effect=JuiceFSUnavailableError("no mount"),
         ):
             result = await mw.awrap_tool_call(_request(), handler)
 

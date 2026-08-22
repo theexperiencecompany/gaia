@@ -65,7 +65,11 @@ _DRIFT_WARN_SECONDS = 300
 
 
 async def process_workflow_generation_task(
-    ctx: dict[str, Any], todo_id: str, user_id: str, title: str, description: str = ""
+    ctx: dict[str, Any],  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
+    todo_id: str,
+    user_id: str,
+    title: str,
+    description: str = "",
 ) -> str:
     """
     Process workflow generation task for todos.
@@ -169,7 +173,10 @@ async def process_workflow_generation_task(
                     )
 
                 # Clear the generating flag
-                from app.services.workflow.queue_service import WorkflowQueueService
+                # Deferred import: function-local re-bind in this success path; the workflow stack is already loaded by module-top service imports
+                from app.services.workflow.queue_service import (  # noqa: PLC0415 -- deferred
+                    WorkflowQueueService,
+                )
 
                 try:
                     await WorkflowQueueService.clear_workflow_generating_flag(todo_id)
@@ -208,7 +215,9 @@ async def process_workflow_generation_task(
     except Exception as e:
         # Clear the generating flag on failure too
         try:
-            from app.services.workflow.queue_service import WorkflowQueueService
+            from app.services.workflow.queue_service import (  # noqa: PLC0415 -- function
+                WorkflowQueueService,
+            )
 
             await WorkflowQueueService.clear_workflow_generating_flag(todo_id)
         except Exception as cleanup_error:
@@ -471,7 +480,9 @@ def _origin_for(trigger_type: str) -> LimitHitOrigin:
 
 
 async def execute_workflow_by_id(
-    ctx: dict[str, Any], workflow_id: str, context: dict[str, Any] | None = None
+    ctx: dict[str, Any],  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
+    workflow_id: str,
+    context: dict[str, Any] | None = None,
 ) -> str:
     """
     Execute a workflow by ID with proper execution count tracking.
@@ -670,7 +681,7 @@ async def execute_workflow_by_id(
         # error) must not permanently kill a recurring workflow.
         await _rearm_quietly(scheduler, workflow, context, workflow_id)
 
-        return "Error executing workflow %s: %s" % (workflow_id, str(e))
+        return f"Error executing workflow {workflow_id}: {e}"
 
 
 # No static origin: this decorator is evaluated at import, long before the
@@ -692,7 +703,7 @@ async def execute_workflow_as_chat(
     """
 
     # Avoid circular import
-    from app.agents.core.agent import call_agent_silent
+    from app.agents.core.agent import call_agent_silent  # noqa: PLC0415 -- breaks c
 
     user_id = user["user_id"]
 
@@ -822,7 +833,7 @@ async def execute_workflow_as_chat(
 
 
 async def regenerate_workflow_steps(
-    ctx: dict[str, Any],
+    ctx: dict[str, Any],  # noqa: ARG001 -- framework contract
     workflow_id: str,
     user_id: str,
     regeneration_reason: str,
@@ -850,7 +861,7 @@ async def regenerate_workflow_steps(
     )
 
     # Import here to avoid circular imports
-    from app.services.workflow.service import WorkflowService
+    from app.services.workflow.service import WorkflowService  # noqa: PLC0415 -- cycle
 
     # Regenerate steps using the service method (without background queue)
     await WorkflowService.regenerate_workflow_steps(
@@ -864,7 +875,7 @@ async def regenerate_workflow_steps(
     return f"Successfully regenerated steps for workflow {workflow_id}"
 
 
-async def generate_workflow_steps(ctx: dict[str, Any], workflow_id: str, user_id: str) -> str:
+async def generate_workflow_steps(ctx: dict[str, Any], workflow_id: str, user_id: str) -> str:  # noqa: ARG001 -- contract
     """
     Generate workflow steps for a workflow.
     Broadcasts WebSocket event when complete if it's a todo workflow.
@@ -879,7 +890,7 @@ async def generate_workflow_steps(ctx: dict[str, Any], workflow_id: str, user_id
     """
     log.set(workflow_id=workflow_id, user_id=user_id)
     # Import here to avoid circular imports
-    from app.services.workflow.service import WorkflowService
+    from app.services.workflow.service import WorkflowService  # noqa: PLC0415 -- cycle
 
     # Generate steps using the service method
     await WorkflowService._generate_workflow_steps(workflow_id, user_id)

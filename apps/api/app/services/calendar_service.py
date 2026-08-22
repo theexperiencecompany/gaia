@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
 
@@ -405,10 +405,10 @@ def _all_day_bounds(
         end_date = _date_part(event.end)
     elif event.start:
         start_date = _date_part(event.start)
-        start_dt = datetime.strptime(start_date, _DATE_FORMAT)
+        start_dt = datetime.strptime(start_date, _DATE_FORMAT).replace(tzinfo=UTC)
         end_date = (start_dt + timedelta(days=1)).strftime(_DATE_FORMAT)
     else:
-        today = datetime.now()
+        today = datetime.now(UTC)
         start_date = today.strftime(_DATE_FORMAT)
         end_date = (today + timedelta(days=1)).strftime(_DATE_FORMAT)
 
@@ -478,7 +478,7 @@ async def create_calendar_event(
     if event.create_meeting_room:
         conference_data = GoogleConferenceData(
             createRequest=GoogleConferenceCreateRequest(
-                requestId=f"meet_{int(datetime.now().timestamp())}",
+                requestId=f"meet_{int(datetime.now(UTC).timestamp())}",
                 conferenceSolutionKey=GoogleConferenceSolutionKey(type="hangoutsMeet"),
             )
         )

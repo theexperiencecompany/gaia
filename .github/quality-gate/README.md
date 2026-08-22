@@ -34,4 +34,4 @@ to reintroduce, not a default.
 `duplicates`, `package-hygiene`, `type-check`, `python-ruff`,
 `python-mypy`, `python-interrogate`, `python-xenon`, `python-security`,
 `observability`, `wide-event-conformance`, `dead-code`, `alert-rules`,
-`suppression-ratchet`, `gitleaks`, `semgrep`, `test-mutation`.
+`suppression-hygiene`, `gitleaks`, `semgrep`, `test-mutation`.

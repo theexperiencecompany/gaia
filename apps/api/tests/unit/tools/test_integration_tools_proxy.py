@@ -150,7 +150,7 @@ def test_google_docs_share_doc_routes_through_proxy() -> None:
         result = tools["CUSTOM_SHARE_DOC"](
             ShareDocInput(
                 document_id="doc-1",
-                recipients=[ShareRecipient(email="x@y.z", role="writer")],  # type: ignore[call-arg]
+                recipients=[ShareRecipient(email="x@y.z", role="writer")],  # type: ignore[call-arg]  # docs model declares send_notification with a positional Field default invisible to dataclass_transform
             ),
             EXECUTE_REQUEST,
             AUTH_CREDS,
@@ -199,7 +199,7 @@ def test_google_sheets_share_routes_through_proxy() -> None:
         result = tools["CUSTOM_SHARE_SPREADSHEET"](
             ShareSpreadsheetInput(
                 spreadsheet_id="ss-1",
-                recipients=[SheetsRecipient(email="x@y.z")],  # type: ignore[call-arg]
+                recipients=[SheetsRecipient(email="x@y.z")],
             ),
             EXECUTE_REQUEST,
             AUTH_CREDS,

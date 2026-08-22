@@ -20,7 +20,7 @@ from app.agents.tools.coding import _filter
 from app.agents.tools.coding._filter import _cap, _resolve_binary, _run, run_file_filter
 from app.agents.tools.coding.grep_tool import grep
 from app.constants.offload import FILTER_MAX_MEMORY_BYTES, MAX_FILTER_OUTPUT_CHARS
-from app.services.storage import JuiceFSUnavailable
+from app.services.storage import JuiceFSUnavailableError
 
 PY = sys.executable
 GREP = shutil.which("grep") or "grep"
@@ -265,7 +265,7 @@ async def test_run_file_filter_file_not_found_is_error() -> None:
 
 async def test_run_file_filter_surfaces_juicefs_unavailable() -> None:
     with patch.object(
-        _filter, "resolve_user_file", AsyncMock(side_effect=JuiceFSUnavailable("no mount"))
+        _filter, "resolve_user_file", AsyncMock(side_effect=JuiceFSUnavailableError("no mount"))
     ):
         out = await run_file_filter(
             config=CONFIG,

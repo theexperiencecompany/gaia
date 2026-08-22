@@ -42,7 +42,8 @@ _DEGRADED_RESPONSE_SCHEMA: dict[int | str, dict[str, Any]] = {
 async def health_check(response: Response) -> HealthResponse | DegradedHealthResponse:
     """Report API liveness, build identity, and current event-loop responsiveness."""
     # Lazy import to avoid loading settings during module import
-    from app.config.settings import settings
+    # Deferred import: lazy import keeps settings/config load off this module's import path
+    from app.config.settings import settings  # noqa: PLC0415 -- lazy import keeps
 
     lag_ms = await measure_event_loop_lag()
     if lag_ms > EVENT_LOOP_LAG_THRESHOLD_MS:

@@ -1,19 +1,17 @@
 """Behaviour tests for tools/lints/check_suppressions.py.
 
-The checker replaces a git-archaeology ratchet with a checked-in baseline, so
-the cases that matter are the ones proving each of the old bugs is actually
-fixed: a pure rename must not false-fail, a genuine new suppression must fail
-with an exact file:line, and a baseline that has grown stale (more than the
-tree now has) must fail too — the monotonic-shrink half of the contract.
+The checker is stateless: there is no baseline, no count, no memory. Its whole
+contract is "every inline suppression carries a written reason on its own line"
+— so the cases that matter are the ones proving each suppression shape is
+judged correctly, and that prose which merely MENTIONS a directive (in strings,
+docstrings, template literals) is never mistaken for one.
 
 Runs the real script via subprocess against a throwaway git repo (``git
-ls-files`` is how it discovers what to scan), mirroring the sibling
-``check_ignore_ratchet.py``'s dependence on a real ``pyproject.toml``.
+ls-files`` is how it discovers what to scan), mirroring how CI invokes it.
 """
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -25,24 +23,19 @@ SCRIPT = _HERE / "check_suppressions.py"
 COMMON = _HERE / "_common.py"
 
 
-def _git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
-
-
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
     """A throwaway git repo with the script installed at the same relative
     path it lives at in this repo, so ``REPO_ROOT`` (two parents up from
-    ``__file__``) resolves to ``tmp_path``.
-    """
+    ``__file__``) resolves to ``tmp_path``."""
     lints_dir = tmp_path / "tools" / "lints"
     lints_dir.mkdir(parents=True)
     shutil.copy(SCRIPT, lints_dir / "check_suppressions.py")
     shutil.copy(COMMON, lints_dir / "_common.py")
     # The tool's own docstrings mention the suppression syntax as prose, which
-    # the naive line scanner cannot distinguish from a real suppression (same
-    # limitation the old script had). Untracked here so it never enters the
-    # scan — tests exercise the scanner against their own fixture files.
+    # the naive line scanner cannot distinguish from a real suppression.
+    # Untracked here so it never enters the scan — tests exercise the scanner
+    # against their own fixture files.
     (tmp_path / ".gitignore").write_text("/tools/\n")
     _git(tmp_path, "init", "-q", ".")
     _git(tmp_path, "config", "user.email", "t@t.t")
@@ -50,9 +43,8 @@ def repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def _commit(repo: Path, message: str = "change") -> None:
-    _git(repo, "add", "-A")
-    _git(repo, "commit", "-qm", message)
+def _git(repo: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
 
 
 def run(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -66,179 +58,158 @@ def run(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+# --- the core contract -------------------------------------------------------
+
+
 def test_clean_tree_passes(repo: Path) -> None:
-    (repo / "a.py").write_text("x = 1\n")
-    _commit(repo)
-    r = run(repo, "--update")
-    assert r.returncode == 0
-    r = run(repo)
-    assert r.returncode == 0
-    assert "OK" in r.stdout
+    result = run(repo)
+    assert result.returncode == 0, result.stderr
+    assert "OK" in result.stdout
 
 
-def test_new_suppression_fails_with_correct_line(repo: Path) -> None:
-    (repo / "a.py").write_text("x = 1\ny = 2\n")
-    _commit(repo)
-    assert run(repo, "--update").returncode == 0
-
-    (repo / "a.py").write_text("x = 1\ny = 2  # noqa: E501\n")
-    _commit(repo)
-    r = run(repo)
-    assert r.returncode == 1
-    assert "a.py:2" in r.stderr
-    assert "::error file=a.py,line=2::" in r.stdout
+def test_bare_noqa_fails_with_exact_line(repo: Path) -> None:
+    f = repo / "app.py"
+    f.write_text("x = call()  # noqa\n")
+    _git(repo, "add", "-A")
+    result = run(repo)
+    assert result.returncode == 1
+    assert "app.py:1" in result.stderr
+    assert "[noqa]" in result.stderr
 
 
-def test_stale_entry_fails(repo: Path) -> None:
-    (repo / "a.py").write_text("x = 1  # noqa: E501\n")
-    _commit(repo)
-    assert run(repo, "--update").returncode == 0
-
-    baseline_path = repo / "config" / "suppressions-baseline.json"
-    data = json.loads(baseline_path.read_text())
-    data["entries"][0]["count"] += 1
-    baseline_path.write_text(json.dumps(data, indent=2) + "\n")
-    _commit(repo, "inflate baseline")
-
-    r = run(repo)
-    assert r.returncode == 1
-    assert "stale baseline entry" in r.stderr
-    assert "a.py" in r.stderr
+def test_coded_noqa_without_reason_fails(repo: Path) -> None:
+    f = repo / "app.py"
+    f.write_text("x = call()  # noqa: B006\n")
+    _git(repo, "add", "-A")
+    assert run(repo).returncode == 1
 
 
-def test_update_roundtrip(repo: Path) -> None:
-    (repo / "a.py").write_text("x = 1  # noqa: E501\n")
-    (repo / "b.ts").write_text("// biome-ignore lint: x\nconst x = 1\n")
-    _commit(repo)
+def test_noqa_with_reason_passes(repo: Path) -> None:
+    f = repo / "app.py"
+    f.write_text("x = call(default=[])  # noqa: B006 -- mutable default is never mutated\n")
+    _git(repo, "add", "-A")
+    result = run(repo)
+    assert result.returncode == 0, result.stderr
 
-    r = run(repo, "--update")
-    assert r.returncode == 0
-    baseline_path = repo / "config" / "suppressions-baseline.json"
-    data = json.loads(baseline_path.read_text())
-    kinds = {(e["path"], e["kind"]): e["count"] for e in data["entries"]}
-    assert kinds == {("a.py", "noqa"): 1, ("b.ts", "biome-ignore"): 1}
 
-    # Roundtrip: checking immediately after --update is clean.
+def test_type_ignore_with_codes_but_no_reason_fails(repo: Path) -> None:
+    f = repo / "app.py"
+    f.write_text("builder = make(**kw)  # type: ignore[arg-type]\n")
+    _git(repo, "add", "-A")
+    result = run(repo)
+    assert result.returncode == 1
+    assert "type-ignore" in result.stderr
+
+
+def test_type_ignore_with_reason_passes(repo: Path) -> None:
+    f = repo / "app.py"
+    f.write_text("builder = make(**kw)  # type: ignore[arg-type]  # upstream ships no stubs\n")
+    _git(repo, "add", "-A")
     assert run(repo).returncode == 0
 
 
-def test_renamed_file_passes_without_baseline_change(repo: Path) -> None:
-    (repo / "a.py").write_text("x = 1  # noqa: E501\ny = 2  # type: ignore\n")
-    _commit(repo)
-    assert run(repo, "--update").returncode == 0
-
-    _git(repo, "mv", "a.py", "renamed.py")
-    _commit(repo, "rename")
-
-    r = run(repo)
-    assert r.returncode == 0
-    assert "OK" in r.stdout
+def test_nosonar_alone_is_not_a_reason(repo: Path) -> None:
+    """NOSONAR names another tool's directive; it explains nothing."""
+    f = repo / "app.py"
+    f.write_text("run(cmd)  # type: ignore[attr-defined]  # NOSONAR python:S7483\n")
+    _git(repo, "add", "-A")
+    result = run(repo)
+    assert result.returncode == 1
 
 
-def test_renamed_and_edited_file_is_not_treated_as_a_free_rename(repo: Path) -> None:
-    """A rename alone is free; a rename that also adds a suppression is not —
-    content-hash matching only fires on byte-identical content."""
-    (repo / "a.py").write_text("x = 1  # noqa: E501\n")
-    _commit(repo)
-    assert run(repo, "--update").returncode == 0
-
-    _git(repo, "mv", "a.py", "renamed.py")
-    (repo / "renamed.py").write_text("x = 1  # noqa: E501\ny = 2  # noqa: F401\n")
-    _commit(repo, "rename and add a suppression")
-
-    r = run(repo)
-    assert r.returncode == 1
-    assert "renamed.py" in r.stderr
+def test_nosonar_after_a_real_reason_passes(repo: Path) -> None:
+    f = repo / "app.py"
+    f.write_text(
+        "run(cmd)  # type: ignore[attr-defined]  # SDK stubs absent upstream  # NOSONAR python:S7483\n"
+    )
+    _git(repo, "add", "-A")
+    assert run(repo).returncode == 0
 
 
-def test_two_identical_files_do_not_collide_on_rename(repo: Path) -> None:
-    """Two files with byte-identical content share a hash. If one baseline
-    path vanishes, remapping it onto "the" current file with that hash would
-    be a guess whenever more than one current file shares it — this must not
-    happen; both are reported as new/stale instead of silently merged.
-    """
-    (repo / "a.py").write_text("x = 1  # noqa: E501\n")
-    (repo / "b.py").write_text("x = 1  # noqa: E501\n")
-    _commit(repo)
-    assert run(repo, "--update").returncode == 0
+def test_short_prose_below_the_bar_fails(repo: Path) -> None:
+    f = repo / "app.py"
+    f.write_text("x = call()  # noqa: E501 -- ok\n")  # "ok" < 8 chars
+    _git(repo, "add", "-A")
+    assert run(repo).returncode == 1
 
-    _git(repo, "mv", "a.py", "renamed.py")
-    _commit(repo, "rename one of the two identical files")
 
-    r = run(repo)
-    assert r.returncode == 1
-    assert "renamed.py" in r.stderr
+def test_biome_ignore_without_reason_fails(repo: Path) -> None:
+    f = repo / "app.ts"
+    f.write_text("const x: any = load(); // biome-ignore lint/suspicious/noExplicitAny\n")
+    _git(repo, "add", "-A")
+    result = run(repo)
+    assert result.returncode == 1
+    assert "biome-ignore" in result.stderr
+
+
+def test_biome_ignore_with_reason_passes(repo: Path) -> None:
+    f = repo / "app.ts"
+    f.write_text(
+        "const x: any = load(); // biome-ignore lint/suspicious/noExplicitAny: gallery-only\n"
+    )
+    _git(repo, "add", "-A")
+    assert run(repo).returncode == 0
+
+
+def test_scoped_paths_only_report_scoped_files(repo: Path) -> None:
+    (repo / "a.py").write_text("x = 1  # noqa\n")
+    (repo / "b.py").write_text("y = 2\n")
+    _git(repo, "add", "-A")
+    result = run(repo, "b.py")
+    assert result.returncode == 0, result.stderr
+
+
+# --- comment-vs-string immunity (the old bugs, kept pinned) ------------------
 
 
 def test_noqa_inside_a_docstring_is_not_counted(repo: Path) -> None:
-    """The scanner's own module docstring documents `# noqa` as prose — a
-    naive line scanner would count that as a real suppression. It must not.
-    """
-    (repo / "a.py").write_text('"""Docs mention # noqa here."""\nx = 1\n')
-    _commit(repo)
-    r = run(repo, "--update")
-    assert r.returncode == 0
-    assert "0 suppression" in r.stdout
+    f = repo / "app.py"
+    f.write_text('"""Usage: append  # noqa here."""\n')
+    _git(repo, "add", "-A")
+    assert run(repo).returncode == 0
 
 
 def test_noqa_in_a_real_comment_is_counted(repo: Path) -> None:
-    (repo / "a.py").write_text('"""Docs mention noqa in prose."""\nx = 1  # noqa: E501\n')
-    _commit(repo)
-    r = run(repo, "--update")
-    assert r.returncode == 0
-    assert "1 suppression" in r.stdout
+    f = repo / "app.py"
+    f.write_text("# noqa without code below\nx = 1  # noqa\n")
+    _git(repo, "add", "-A")
+    assert run(repo).returncode == 1
 
 
 def test_biome_ignore_inside_a_string_is_not_counted(repo: Path) -> None:
-    (repo / "a.ts").write_text('const msg = "see // biome-ignore lint: x for docs";\n')
-    _commit(repo)
-    r = run(repo, "--update")
-    assert r.returncode == 0
-    assert "0 suppression" in r.stdout
+    f = repo / "app.ts"
+    f.write_text('const s = "// biome-ignore lint/x: not a comment";\n')
+    _git(repo, "add", "-A")
+    assert run(repo).returncode == 0
 
 
 def test_biome_ignore_in_a_real_comment_is_counted(repo: Path) -> None:
-    (repo / "a.ts").write_text("// biome-ignore lint: x\nconst n = 1;\n")
-    _commit(repo)
-    r = run(repo, "--update")
-    assert r.returncode == 0
-    assert "1 suppression" in r.stdout
+    f = repo / "app.ts"
+    f.write_text("// biome-ignore lint/suspicious/noExplicitAny: reason here\nconst a = 1;\n")
+    _git(repo, "add", "-A")
+    assert run(repo).returncode == 0  # has a reason → passes hygiene
 
 
 def test_biome_ignore_inside_a_multiline_template_is_not_counted(repo: Path) -> None:
-    """The backtick-parity tracker must see the template body as string text."""
-    (repo / "a.ts").write_text("const t = `\n// biome-ignore lint: x\n`;\nconst n = 1;\n")
-    _commit(repo)
-    r = run(repo, "--update")
-    assert r.returncode == 0
-    assert "0 suppression" in r.stdout
+    f = repo / "app.ts"
+    f.write_text("const t = `\n// biome-ignore lint/suspicious/noExplicitAny: template text\n`;\n")
+    _git(repo, "add", "-A")
+    assert run(repo).returncode == 0
 
 
 def test_biome_ignore_after_a_template_closes_is_counted(repo: Path) -> None:
-    """Code after the closing backtick on the same line is code again."""
-    (repo / "a.ts").write_text("const t = `\nbody\n`; // biome-ignore lint: x\n")
-    _commit(repo)
-    r = run(repo, "--update")
-    assert r.returncode == 0
-    assert "1 suppression" in r.stdout
+    f = repo / "app.ts"
+    f.write_text(
+        "const t = `text`;\n// biome-ignore lint/suspicious/noExplicitAny: template closed above this line\nconst b = 2;\n"
+    )
+    _git(repo, "add", "-A")
+    assert run(repo).returncode == 0
 
 
 def test_backtick_inside_a_comment_does_not_mask_later_directives(repo: Path) -> None:
-    """A `` ` `` in an ordinary // comment must not toggle template state —
-    otherwise every later directive in the file silently bypasses the check."""
-    (repo / "a.ts").write_text(
-        "// wrap it in `code` spans\nconst a = 1;\n// biome-ignore lint: x\n"
+    f = repo / "app.ts"
+    f.write_text(
+        "// note ` isn't special in a comment\nconst c = 3; // biome-ignore lint/x: why this needs silencing here\n"
     )
-    _commit(repo)
-    r = run(repo, "--update")
-    assert r.returncode == 0
-    assert "1 suppression" in r.stdout
-
-
-def test_directive_in_comment_on_template_close_line_is_counted(repo: Path) -> None:
-    """The comment after a closing backtick on the same line is real code-side text."""
-    (repo / "a.ts").write_text("const t = `\nbody\n`; // biome-ignore lint: x\n")
-    _commit(repo)
-    r = run(repo, "--update")
-    assert r.returncode == 0
-    assert "1 suppression" in r.stdout
+    _git(repo, "add", "-A")
+    assert run(repo).returncode == 0

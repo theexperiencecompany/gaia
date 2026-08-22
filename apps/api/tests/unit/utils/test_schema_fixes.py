@@ -438,7 +438,7 @@ class TestPatchToolSchema:
 
         # The constructor of the tool's type should return a new tool
         new_tool = MagicMock()
-        type(tool).__call__ = MagicMock(return_value=new_tool)  # type: ignore[method-assign]
+        type(tool).__call__ = MagicMock(return_value=new_tool)  # type: ignore[method-assign]  # instance method stubbed with unittest.mock
         # Patch: type(tool)(**tool_dict) creates a new tool instance
         type(tool).return_value = new_tool
 
@@ -473,7 +473,7 @@ class TestPatchToolSchema:
             captured_kwargs.update(kwargs)
             return MagicMock()
 
-        type(tool).__call__ = fake_constructor  # type: ignore[assignment]
+        type(tool).__call__ = fake_constructor  # type: ignore[assignment]  # swaps class __call__ to fake tool construction
         tool.model_dump.return_value = {
             "name": "test_tool",
             "inputSchema": schema.copy(),
@@ -482,7 +482,7 @@ class TestPatchToolSchema:
         # type(tool)(**tool_dict) calls the class constructor
         # We need to make type(tool) callable and capture args
         original_type = type(tool)
-        original_type.side_effect = None  # type: ignore[attr-defined]
+        original_type.side_effect = None
 
         patch_tool_schema(tool)
 

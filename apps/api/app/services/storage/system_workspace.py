@@ -38,7 +38,7 @@ from pathlib import Path
 from app.agents.workspace.system_files import SystemFile, system_files
 from app.constants.log_tags import LogTag
 from app.services.storage.juicefs import (
-    JuiceFSUnavailable,
+    JuiceFSUnavailableError,
     _host_base_and_rel,
     _mount_root,
     _require_mount,
@@ -99,7 +99,7 @@ async def ensure_system_subtree() -> bool:
     def _write() -> bool:
         try:
             root = _require_mount() / SYSTEM_SUBDIR
-        except JuiceFSUnavailable:
+        except JuiceFSUnavailableError:
             return False
         files = system_files()
         signature = _library_signature(files)

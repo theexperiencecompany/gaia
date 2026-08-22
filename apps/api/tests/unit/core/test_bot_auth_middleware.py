@@ -110,7 +110,7 @@ class TestAlreadyAuthenticated:
         from starlette.middleware.base import BaseHTTPMiddleware
 
         class PreAuthMiddleware(BaseHTTPMiddleware):
-            async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+            async def dispatch(self, request: Request, call_next):
                 request.state.authenticated = True
                 request.state.user = {"user_id": "pre_auth_user"}
                 return await call_next(request)

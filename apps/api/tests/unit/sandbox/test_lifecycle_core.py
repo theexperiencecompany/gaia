@@ -37,7 +37,7 @@ from app.services.sandbox import lifecycle
 from app.services.sandbox.artifact_watcher import ArtifactWatcher
 from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
 from app.services.sandbox.shard_router import shard_for
-from app.services.storage import JuiceFSUnavailable
+from app.services.storage import JuiceFSUnavailableError
 
 
 def _uid() -> str:
@@ -614,13 +614,15 @@ async def test_both_the_workspace_and_the_skills_subtree_are_seeded_host_side() 
 async def test_a_missing_host_juicefs_mount_does_not_block_sandbox_creation() -> None:
     # Native dev has no /mnt/jfs; mount.sh then takes its ephemeral branch.
     with patch.object(
-        lifecycle, "ensure_user_workspace", AsyncMock(side_effect=JuiceFSUnavailable("no mount"))
+        lifecycle,
+        "ensure_user_workspace",
+        AsyncMock(side_effect=JuiceFSUnavailableError("no mount")),
     ):
         await lifecycle._seed_user_subtrees("u1")
 
 
 async def test_a_real_seeding_failure_is_not_swallowed_as_dev_mode() -> None:
-    # Only JuiceFSUnavailable means "dev mode". A permission or I/O error would
+    # Only JuiceFSUnavailableError means "dev mode". A permission or I/O error would
     # otherwise be masked, and the user would get a sandbox mounted on nothing.
     with patch.object(
         lifecycle, "ensure_user_workspace", AsyncMock(side_effect=PermissionError("EACCES"))

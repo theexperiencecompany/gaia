@@ -198,7 +198,7 @@ def get_models_configuration() -> list[dict[str, Any]]:
 
 async def create_backup() -> str:
     """Create a backup of the current models collection."""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     backup_file = f"models_backup_{timestamp}.json"
 
     try:

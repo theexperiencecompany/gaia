@@ -95,7 +95,7 @@ def _make_integration(
             system_prompt=f"You are the {integration_id} agent.",
         )
     else:
-        subagent_cfg = None  # type: ignore[assignment]
+        subagent_cfg = None
 
     integration = MagicMock()
     integration.id = integration_id
@@ -111,7 +111,7 @@ def _make_integration(
 def _make_integration_no_subagent(integration_id: str = "stripe") -> MagicMock:
     return _make_integration(
         integration_id=integration_id,
-        short_name=None,  # type: ignore[arg-type]
+        short_name=None,
         has_subagent=False,
     )
 

@@ -171,7 +171,7 @@ class TestCreateNotification:
         orch = NotificationOrchestrator(storage=storage)
 
         # Stub delivery to be a no-op
-        orch._deliver_notification = AsyncMock()  # type: ignore[method-assign]
+        orch._deliver_notification = AsyncMock()  # type: ignore[method-assign]  # instance method stubbed with unittest.mock
 
         request = _make_request()
         result = await orch.create_notification(request)
@@ -187,7 +187,7 @@ class TestCreateNotification:
         """The record preserves the original request and timestamps."""
         storage = AsyncMock()
         orch = NotificationOrchestrator(storage=storage)
-        orch._deliver_notification = AsyncMock()  # type: ignore[method-assign]
+        orch._deliver_notification = AsyncMock()  # type: ignore[method-assign]  # instance method stubbed with unittest.mock
 
         request = _make_request(user_id="user-42", notification_id="n-42")
         record = await orch.create_notification(request)
@@ -920,7 +920,7 @@ class TestBulkActions:
         results = await orch.bulk_actions(
             ["n-1"],
             "user-1",
-            MagicMock(),  # type: ignore[arg-type]
+            MagicMock(),
         )
 
         assert results["n-1"] is False

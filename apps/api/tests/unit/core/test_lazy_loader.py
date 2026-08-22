@@ -88,7 +88,7 @@ def _run_two_threaded_lock_race(
         strategy=MissingKeyStrategy.SILENT,
     )
     b_about_to_acquire = threading.Event()
-    loader._lock = _AcquireSignalingLock(b_about_to_acquire)  # type: ignore[assignment]
+    loader._lock = _AcquireSignalingLock(b_about_to_acquire)  # type: ignore[assignment]  # test swaps the private lock for a signaling double
 
     first_result: list[bool | None] = []
     second_result: list[bool | None] = []

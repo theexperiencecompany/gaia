@@ -152,7 +152,7 @@ class SlackTriggerHandler(TriggerHandler):
         has_failure = False
         failure_message = ""
 
-        for i, result in enumerate(results):
+        for result in results:
             if isinstance(result, Exception):
                 has_failure = True
                 failure_message = str(result)
@@ -298,7 +298,7 @@ class SlackTriggerHandler(TriggerHandler):
         field_name: str,
         user_id: str,
         integration_id: str,
-        parent_ids: list[str] | None = None,
+        parent_ids: list[str] | None = None,  # noqa: ARG002 -- framework contract
         **_kwargs: str,
     ) -> list[TriggerOption]:
         """Get dynamic options for Slack trigger config fields."""

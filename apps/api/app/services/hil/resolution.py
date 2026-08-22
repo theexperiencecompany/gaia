@@ -65,7 +65,7 @@ _TERMINAL_STATUS: dict[str, HILApprovalStatus] = {
 _resume_tasks: set[asyncio.Task[None]] = set()
 
 
-class ApprovalRequestNotFound(AppError):
+class ApprovalRequestNotFoundError(AppError):
     """Raised (410) when an approval request has expired or was already resolved."""
 
     def __init__(self) -> None:
@@ -75,7 +75,7 @@ class ApprovalRequestNotFound(AppError):
         )
 
 
-class ApprovalRequestForbidden(AppError):
+class ApprovalRequestForbiddenError(AppError):
     """Raised (403) when an approval request belongs to a different user."""
 
     def __init__(self) -> None:
@@ -85,7 +85,7 @@ class ApprovalRequestForbidden(AppError):
         )
 
 
-class ApprovalNotResumable(AppError):
+class ApprovalNotResumableError(AppError):
     """Raised (503) when the paused run's re-dispatch context is missing.
 
     The record stays ``pending`` — committing the decision without a resumable
@@ -111,7 +111,7 @@ async def resolve_approval(
     """Record the decision, then resume the run waiting on it."""
     record = await get_approval(approval_id)
     if record is None:
-        raise ApprovalRequestNotFound()
+        raise ApprovalRequestNotFoundError()
     return await _resolve_record(record, user_id=user_id, kind=kind, feedback=feedback, scope=scope)
 
 
@@ -132,15 +132,15 @@ async def resolve_approvals_batch(
                 approval_id=approval_id, user_id=user_id, kind=kind, feedback=feedback
             )
             outcomes.append(BatchDecisionOutcome(approval_id=approval_id, resolved=True))
-        except ApprovalRequestNotFound:
+        except ApprovalRequestNotFoundError:
             outcomes.append(
                 BatchDecisionOutcome(approval_id=approval_id, resolved=False, reason="not_found")
             )
-        except ApprovalRequestForbidden:
+        except ApprovalRequestForbiddenError:
             outcomes.append(
                 BatchDecisionOutcome(approval_id=approval_id, resolved=False, reason="forbidden")
             )
-        except ApprovalNotResumable:
+        except ApprovalNotResumableError:
             outcomes.append(
                 BatchDecisionOutcome(
                     approval_id=approval_id, resolved=False, reason="not_resumable"
@@ -176,7 +176,7 @@ async def abandon_conversation_approvals(
         try:
             await _resolve_or_close(record, user_id=user_id, kind="abandon", feedback=feedback)
             abandoned.append(record.approval_id)
-        except (ApprovalRequestNotFound, ApprovalRequestForbidden):
+        except (ApprovalRequestNotFoundError, ApprovalRequestForbiddenError):
             # Already decided, or not this user's to decide. Keep going: one record must
             # never strand the conversation's other paused runs, which is the whole point.
             continue
@@ -263,7 +263,7 @@ async def _resolve_record(
 ) -> HILApprovalRecord:
     """Authorize, transition exactly once, and resume — from an already-loaded record."""
     if record.user_id != user_id:
-        raise ApprovalRequestForbidden()
+        raise ApprovalRequestForbiddenError()
     # Checked BEFORE the decided-transition: a decision we cannot act on must
     # fail the request (record stays pending; the sweep expires it), never
     # report success for an action that will silently not run.
@@ -288,7 +288,7 @@ async def _resolve_record(
         # a record used to do: it raised and orphaned the record pending.
         if not collector_alive and kind == "approve":
             log.error(f"{LogTag.HIL} No resume context on record", approval_id=record.approval_id)
-            raise ApprovalNotResumable()
+            raise ApprovalNotResumableError()
 
     decided_by = None if kind == "timeout" else user_id
     transitioned = await mark_decided(
@@ -300,7 +300,7 @@ async def _resolve_record(
     )
     if not transitioned:
         # Someone (or the sweep) already decided this one. Do not resume twice.
-        raise ApprovalRequestNotFound()
+        raise ApprovalRequestNotFoundError()
 
     log.set(hil={"approval_id": record.approval_id, "decision": kind, "tool": record.tool_name})
     resume_status = "denied" if kind == "abandon" else _TERMINAL_STATUS[kind]
@@ -395,7 +395,7 @@ async def sweep_approvals() -> dict[str, int]:
         try:
             await _resolve_or_close(record, user_id=record.user_id, kind="timeout", feedback=None)
             expired += 1
-        except ApprovalRequestNotFound:
+        except ApprovalRequestNotFoundError:
             continue
         except Exception as e:  # one bad record must not strand the rest of the pass
             log.error(

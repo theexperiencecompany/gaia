@@ -19,7 +19,7 @@ async def generate_image(
         str,
         "An enhanced, detailed description for image generation. Expand from the user's request to include style, composition, lighting, mood, and other visual details for optimal results.",
     ],
-    config: RunnableConfig,
+    config: RunnableConfig,  # noqa: ARG001 -- framework contract
 ) -> dict[str, str]:
     try:
         log.set(tool={"name": "generate_image", "action": "generate"})

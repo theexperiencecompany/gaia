@@ -49,7 +49,7 @@ from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
 from app.services.sandbox.shard_router import shard_for, shard_meta_url
 from app.services.storage import (
     FsOps,
-    JuiceFSUnavailable,
+    JuiceFSUnavailableError,
     ensure_user_skills_dir,
     ensure_user_workspace,
     fs_timer,
@@ -446,7 +446,7 @@ async def _seed_user_subtrees(user_id: str) -> None:
     try:
         await ensure_user_workspace(user_id)
         await ensure_user_skills_dir(user_id)
-    except JuiceFSUnavailable:
+    except JuiceFSUnavailableError:
         # Dev mode without juicefs — mount.sh will fall back to ephemeral
         # /workspace, which is fine for tool calls but won't persist.
         return

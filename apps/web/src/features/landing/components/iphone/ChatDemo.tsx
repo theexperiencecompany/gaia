@@ -851,7 +851,7 @@ function WhatsAppDemo({
                 className="overflow-hidden rounded-full"
                 style={{ width: 32, height: 32 }}
               >
-                {/* biome-ignore lint/performance/noImgElement: avatar */}
+                {/* biome-ignore lint/performance/noImgElement: tiny remote avatar */}
                 <img
                   src={headerAvatar}
                   alt=""
@@ -1246,7 +1246,7 @@ function TelegramDemo({
                 className="overflow-hidden rounded-full"
                 style={{ width: 32, height: 32 }}
               >
-                {/* biome-ignore lint/performance/noImgElement: avatar */}
+                {/* biome-ignore lint/performance/noImgElement: tiny remote avatar */}
                 <img
                   src={headerAvatar}
                   alt=""
@@ -1549,7 +1549,7 @@ function SlackDemo({
                 marginTop: 4,
               }}
             >
-              {/* biome-ignore lint/performance/noImgElement: avatar */}
+              {/* biome-ignore lint/performance/noImgElement: tiny remote avatar */}
               <img
                 src={g.author?.avatar ?? DEFAULT_AVATAR}
                 alt=""
@@ -2077,7 +2077,7 @@ function DiscordDemo({
                 height: 40,
               }}
             >
-              {/* biome-ignore lint/performance/noImgElement: avatar */}
+              {/* biome-ignore lint/performance/noImgElement: tiny remote avatar */}
               <img
                 src={g.author?.avatar ?? DEFAULT_AVATAR}
                 alt=""

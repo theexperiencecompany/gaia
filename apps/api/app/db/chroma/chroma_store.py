@@ -133,9 +133,9 @@ class ChromaStore(BaseStore):
         """Convert ChromaDB ID back to namespace tuple and key."""
         parts = id_str.split("::")
         if len(parts) < 2:
-            return (tuple(), parts[0])
+            return ((), parts[0])
         key = parts[-1]
-        ns = tuple(parts[:-1]) if parts[:-1] != ["default"] else tuple()
+        ns = tuple(parts[:-1]) if parts[:-1] != ["default"] else ()
         return ns, key
 
     def batch(self, ops: Iterable[Op]) -> list[Result]:
@@ -249,7 +249,9 @@ class ChromaStore(BaseStore):
             metadata = result["metadatas"][0] if result["metadatas"] else {}
             document = result["documents"][0] if result["documents"] else None
 
-            # Deserialize value from document (stored as pickle base64)
+            # Deserialize value from document (stored as pickle base64).
+            # Trust boundary: this document was written by this store (_put below); ChromaDB
+            # data is service-private — never untrusted input — so pickle.loads is safe here.
             value = pickle.loads(document.encode("latin1")) if document else {}  # nosec B301 - Internal trusted data only
 
             created_at_str = metadata.get("created_at")
@@ -304,6 +306,8 @@ class ChromaStore(BaseStore):
                 if not document:
                     continue
                 try:
+                    # Trust boundary: documents come from our own _put writes (service-private
+                    # ChromaDB collection), never untrusted input.
                     value = pickle.loads(document.encode("latin1"))  # nosec B301 - Internal trusted data only
                 except Exception as e:
                     log.debug(
@@ -416,7 +420,7 @@ class ChromaStore(BaseStore):
 
                     # Use ChromaDB's native query with where filter
                     search_result = await collection.query(
-                        query_embeddings=[query_embedding],  # type: ignore[arg-type]
+                        query_embeddings=[query_embedding],  # type: ignore[arg-type]  # chromadb stubs demand ndarrays; a single float vector is valid at runtime
                         n_results=op.limit + op.offset,
                         include=["metadatas", "distances", "documents"],
                         where=where_filter,
@@ -444,6 +448,8 @@ class ChromaStore(BaseStore):
                             documents = search_result.get("documents")
                             document = documents[0][idx] if documents and documents[0] else None
                             value = (
+                                # Trust boundary: documents come from our own _put writes
+                                # (service-private ChromaDB collection), never untrusted input.
                                 pickle.loads(document.encode("latin1"))  # nosec B301 - Internal trusted data only
                                 if document
                                 else {}
@@ -629,7 +635,7 @@ class ChromaStore(BaseStore):
         try:
             await collection.upsert(
                 ids=[doc_id],
-                embeddings=[embedding] if embedding else None,  # type: ignore[arg-type]
+                embeddings=[embedding] if embedding else None,  # type: ignore[arg-type]  # same stub looseness: optional single vector vs Sequence[ndarray]
                 metadatas=[metadata],
                 documents=[document],
             )

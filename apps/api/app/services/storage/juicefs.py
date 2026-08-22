@@ -15,7 +15,7 @@ from app.services.storage.metrics import FsOps, add_fs_bytes, fs_timer, record_f
 from shared.py.wide_events import log
 
 
-class JuiceFSUnavailable(Exception):
+class JuiceFSUnavailableError(Exception):
     """Raised when the host-side JuiceFS mount is not available."""
 
 
@@ -53,7 +53,7 @@ def _is_mounted() -> bool:
 def _require_mount() -> Path:
     root = _mount_root()
     if not _is_mounted():
-        raise JuiceFSUnavailable(
+        raise JuiceFSUnavailableError(
             f"JuiceFS mount not available at {root}. "
             "Set JUICEFS_HOST_MOUNT_PATH and mount the sidecar."
         )
@@ -242,7 +242,7 @@ async def read_user_file(
     Returns ``(lines, total_line_count)`` where ``lines`` is the 1-indexed slice
     ``[start, start + limit)`` with trailing newlines stripped. Raises
     ``FileNotFoundError`` if the target is missing or not a regular file, and
-    ``JuiceFSUnavailable`` if the host mount is absent (e.g. native dev).
+    ``JuiceFSUnavailableError`` if the host mount is absent (e.g. native dev).
     """
     start, end = page_bounds(offset, limit)
 
@@ -272,7 +272,7 @@ async def resolve_user_file(user_id: str, workspace_rel_path: str) -> Path:
     """Resolve a ``/workspace``-relative path to its contained host ``Path``.
 
     Same containment as ``read_user_file`` (``..``/symlink-escape proof). Raises
-    ``FileNotFoundError`` if missing/not a regular file and ``JuiceFSUnavailable``
+    ``FileNotFoundError`` if missing/not a regular file and ``JuiceFSUnavailableError``
     if the host mount is absent. Use this when a caller needs the file path itself
     (e.g. to run ``grep`` over it) rather than paged lines.
     """

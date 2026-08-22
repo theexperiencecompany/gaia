@@ -35,7 +35,7 @@ def arq_task(
     task_name = func.__name__
 
     @functools.wraps(func)
-    async def wrapper(ctx: dict[str, Any], *args: Any, **kwargs: Any) -> T:
+    async def wrapper(ctx: dict[str, Any], *args: Any, **kwargs: Any) -> T:  # noqa: ANN401 -- ARQ's job API is dynamically typed upstream
         # Absent only when a caller (a test) invokes the task with a bare ctx;
         # omitting the keys beats emitting nulls the dashboards would have to skip.
         job_context = {key: ctx[key] for key in ("job_id", "job_try") if key in ctx}

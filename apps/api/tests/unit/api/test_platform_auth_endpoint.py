@@ -65,7 +65,7 @@ class TestPlatformOAuthCallback:
                 "app.services.oauth.oauth_state_service.validate_and_consume_oauth_state",
                 new_callable=AsyncMock,
                 return_value={"user_id": "uid1", "redirect_path": "/settings"},
-            ),
+            ) as mock_validate,
             patch(f"{_MODULE}.httpx.AsyncClient", new=_FakeAsyncClient),
             patch(
                 f"{_MODULE}.PlatformLinkService.link_account",
@@ -81,6 +81,10 @@ class TestPlatformOAuthCallback:
                 follow_redirects=False,
             )
 
+        # The signed state param must reach validation verbatim — a mutated
+        # call that drops or replaces the argument would silently accept
+        # forged callbacks.
+        mock_validate.assert_called_once_with("s1")
         assert resp.status_code in (302, 307)
         assert "oauth_success=true" in resp.headers["location"]
         # Explicit user id, not the request context: the platform OAuth
@@ -91,3 +95,24 @@ class TestPlatformOAuthCallback:
             AnalyticsEvents.INTEGRATION_CONNECTED,
             {"integration_id": "discord", "is_new_link": True},
         )
+
+    async def test_callback_invalid_state_redirects_with_error(self, client: AsyncClient) -> None:
+        """A consumed/invalid state token must bounce to the UI error path."""
+        with patch(
+            "app.services.oauth.oauth_state_service.validate_and_consume_oauth_state",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            resp = await client.get(
+                f"{BASE}/discord/callback",
+                params={"code": "c1", "state": "bad"},
+                follow_redirects=False,
+            )
+        assert resp.status_code in (302, 307)
+        assert "oauth_error=invalid_state" in resp.headers["location"]
+
+    async def test_callback_missing_params_redirects_with_error(self, client: AsyncClient) -> None:
+        """Missing code/state must bounce before any provider call is made."""
+        resp = await client.get(f"{BASE}/discord/callback", follow_redirects=False)
+        assert resp.status_code in (302, 307)
+        assert "oauth_error=missing_params" in resp.headers["location"]

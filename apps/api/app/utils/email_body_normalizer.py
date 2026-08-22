@@ -200,10 +200,7 @@ def _clean_url(match: re.Match[str]) -> str:
     pairs = [pair for pair in query.split("&") if pair]
     kept = []
     for pair in pairs:
-        if "=" in pair:
-            key = pair.split("=", 1)[0]
-        else:
-            key = pair
+        key = pair.split("=", 1)[0] if "=" in pair else pair
         if key.lower() in _TRACKING_PARAMS:
             continue
         kept.append(pair)

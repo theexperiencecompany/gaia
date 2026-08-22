@@ -119,7 +119,7 @@ class TestBlockedToolStreamsItsCard:
     async def test_the_card_describes_the_blocked_feature_and_the_users_plan(self) -> None:
         writer = MagicMock()
 
-        with pytest.raises(rl.LangChainRateLimitException):
+        with pytest.raises(rl.LangChainRateLimitError):
             await _call_blocked_tool(
                 RateLimitExceededException(
                     feature="generate_image",
@@ -144,7 +144,7 @@ class TestBlockedToolStreamsItsCard:
         upgrade."""
         writer = MagicMock()
 
-        with pytest.raises(rl.LangChainRateLimitException):
+        with pytest.raises(rl.LangChainRateLimitError):
             await _call_blocked_tool(
                 RateLimitExceededException(feature="generate_image", reset_time=RESET_AT),
                 writer=writer,
@@ -155,7 +155,7 @@ class TestBlockedToolStreamsItsCard:
         assert card["tool_data"]["data"]["current_plan"] == "free"
 
     async def test_the_raised_exception_carries_the_limit_details(self) -> None:
-        with pytest.raises(rl.LangChainRateLimitException) as raised:
+        with pytest.raises(rl.LangChainRateLimitError) as raised:
             await _call_blocked_tool(
                 RateLimitExceededException(
                     feature="generate_image",
@@ -171,7 +171,7 @@ class TestBlockedToolStreamsItsCard:
     async def test_no_streaming_context_still_blocks_the_call(self) -> None:
         """The card is decoration; outside a LangGraph run there is no writer
         and the refusal must still reach the agent."""
-        with pytest.raises(rl.LangChainRateLimitException):
+        with pytest.raises(rl.LangChainRateLimitError):
             await _call_blocked_tool(
                 RateLimitExceededException(feature="generate_image", reset_time=RESET_AT),
                 stream_writer_error=RuntimeError("not in a streaming context"),
@@ -229,7 +229,7 @@ class TestBlockedCallLabelsANonEnumPlan:
     async def test_the_card_carries_the_stringified_plan(self) -> None:
         writer = MagicMock()
 
-        with pytest.raises(rl.LangChainRateLimitException):
+        with pytest.raises(rl.LangChainRateLimitError):
             await _call_blocked_tool(
                 RateLimitExceededException(
                     feature="generate_image",
@@ -400,7 +400,7 @@ class TestToolPlanLabelling:
     async def test_the_refusal_card_carries_the_blocked_users_plan(self) -> None:
         writer = MagicMock()
 
-        with pytest.raises(rl.LangChainRateLimitException):
+        with pytest.raises(rl.LangChainRateLimitError):
             await self._run(PlanType.PRO, writer=writer)
 
         assert writer.call_args.args[0]["tool_data"]["data"]["current_plan"] == PlanType.PRO.value
@@ -408,7 +408,7 @@ class TestToolPlanLabelling:
     async def test_the_refusal_card_stringifies_a_non_enum_plan(self) -> None:
         writer = MagicMock()
 
-        with pytest.raises(rl.LangChainRateLimitException):
+        with pytest.raises(rl.LangChainRateLimitError):
             await self._run("legacy_plan", writer=writer)
 
         assert writer.call_args.args[0]["tool_data"]["data"]["current_plan"] == "legacy_plan"

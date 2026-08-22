@@ -1,11 +1,11 @@
 import ast
 import json
-import os
+from pathlib import Path
 import sys
 
 
 def extract_settings_validator(file_path):
-    with open(file_path) as f:
+    with Path(file_path).open() as f:
         tree = ast.parse(f.read())
 
     groups = []
@@ -64,7 +64,7 @@ def extract_settings_validator(file_path):
 
 
 def extract_settings(file_path):
-    with open(file_path) as f:
+    with Path(file_path).open() as f:
         tree = ast.parse(f.read())
 
     required_in_dev = set()
@@ -113,8 +113,7 @@ def extract_settings(file_path):
                             if node.name == "DevelopmentSettings":
                                 if is_optional or has_default:
                                     # Not strictly required input
-                                    if var_name in required_in_dev:
-                                        required_in_dev.remove(var_name)
+                                    required_in_dev.discard(var_name)
 
                                     # Store default if string
                                     if isinstance(default_val, str):
@@ -138,9 +137,9 @@ def extract_settings(file_path):
 def main():
     if len(sys.argv) < 3:
         # Default paths relative to script location in apps/api/scripts
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        validator_path = os.path.join(base_dir, "app/config/settings_validator.py")
-        settings_path = os.path.join(base_dir, "app/config/settings.py")
+        base_dir = Path(__file__).resolve().parent.parent
+        validator_path = base_dir / "app/config/settings_validator.py"
+        settings_path = base_dir / "app/config/settings.py"
     else:
         validator_path = sys.argv[1]
         settings_path = sys.argv[2]

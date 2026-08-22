@@ -36,7 +36,7 @@ def _marked(fmt: str = "jsonl") -> ToolMessage:
         content="digest",
         tool_call_id="1",
         name="GMAIL_FETCH_MESSAGES",
-        additional_kwargs=mark_offload({}, {**INFO, "fmt": fmt}),  # type: ignore[arg-type]
+        additional_kwargs=mark_offload({}, {**INFO, "fmt": fmt}),  # type: ignore[typeddict-item]  # loose dict expanded into a TypedDict parameter
     )
 
 

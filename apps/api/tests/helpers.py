@@ -105,7 +105,7 @@ class BindableToolsFakeModel(FakeMessagesListChatModel):
     preserved while production code that calls bind_tools() works correctly.
     """
 
-    def bind_tools(self, tools: Any, **kwargs: Any) -> "BindableToolsFakeModel":  # type: ignore[override]
+    def bind_tools(self, tools: Any, **kwargs: Any) -> "BindableToolsFakeModel":
         return self
 
 
@@ -164,7 +164,7 @@ def extract_tool_calls(messages: list[BaseMessage]) -> list[dict[str, Any]]:
     tool_calls: list[dict[str, Any]] = []
     for msg in messages:
         if isinstance(msg, AIMessage) and msg.tool_calls:
-            tool_calls.extend(msg.tool_calls)  # type: ignore[arg-type]
+            tool_calls.extend(msg.tool_calls)  # type: ignore[arg-type]  # fixture passes typed ToolCall objects where raw dicts are expected
     return tool_calls
 
 
