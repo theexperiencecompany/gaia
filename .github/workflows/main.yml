@@ -43,7 +43,7 @@ jobs:
           persist-credentials: false
 
       - name: Restore Nx cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .nx/cache
           key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','nx.json','**/project.json') }}-${{ hashFiles('apps/**','libs/**') }}
@@ -104,9 +104,11 @@ jobs:
       # (~4 min, the job's critical path).
       - uses: ./.github/actions/restore-nextjs-cache
       # Warm .nx/outputs from the last green master run so only the affected
-      # projects rebuild — measured 120-200s saved vs a cold build.
+      # projects rebuild. restore@ (not the combined action) so the restore
+      # doesn't re-upload the cache in its post step (~160s of pure waste);
+      # the explicit Save Nx cache step below owns the upload.
       - name: Restore Nx cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .nx/cache
           key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','nx.json','**/project.json') }}-${{ hashFiles('apps/**','libs/**') }}
@@ -345,7 +347,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Restore Nx cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .nx/cache
           key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','nx.json','**/project.json') }}-${{ hashFiles('apps/**','libs/**') }}
