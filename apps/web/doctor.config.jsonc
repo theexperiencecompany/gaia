@@ -70,7 +70,11 @@
       // @gaia/shared = nx project-graph edge (PR #888, knip-whitelisted);
       // @react-types/shared = module augmentation in HeroUIProvider + tsconfig
       // pin; @swc-node/register = nx peer pairing pinned via .syncpackrc.
-      // All genuinely dead deps were REMOVED from package.json instead.
+      // KNOWN TRADEOFF (explicitly accepted): the tool has no per-dependency
+      // ignore granularity, so this entry mutes the rule for package.json
+      // entirely. Audit cadence: any newly flagged dep must be grep-verified
+      // and REMOVED if dead (8 deps were removed during the 2026-08 sweep)
+      // — never silently added here.
       {
         "files": ["package.json"],
         "rules": ["deslop/unused-dependency"]
@@ -139,6 +143,14 @@
       // behavior; staying sequential re-trips the rule.
       {
         "files": ["src/features/skills/components/SkillImportForm.tsx"],
+        "rules": ["react-doctor/async-await-in-loop"]
+      },
+      // setToolOverride responses each return the WHOLE preferences doc —
+      // parallel writes let the last-to-land response overwrite the cache with
+      // a pre-sibling snapshot. Sequential awaits are load-bearing
+      // correctness here (documented at the site).
+      {
+        "files": ["src/features/settings/hooks/useHilPreferences.ts"],
         "rules": ["react-doctor/async-await-in-loop"]
       },
       // Several icons here are verbatim user-provided/Lottie-derived assets

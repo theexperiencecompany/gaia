@@ -399,6 +399,7 @@ export default function UseCaseSection({
           workflows.length > 0 && (
             <UserWorkflowsGrid
               workflows={workflows}
+              columns={columns}
               disableCentering={disableCentering}
               noMaxWidth={noMaxWidth}
               setShowUseCases={setShowUseCases}
@@ -499,6 +500,7 @@ function UseCasesGrid({
 
 interface UserWorkflowsGridProps {
   workflows: Workflow[];
+  columns: number;
   disableCentering?: boolean;
   noMaxWidth?: boolean;
   setShowUseCases?: React.Dispatch<React.SetStateAction<boolean>>;
@@ -508,6 +510,7 @@ interface UserWorkflowsGridProps {
 
 function UserWorkflowsGrid({
   workflows,
+  columns,
   disableCentering = false,
   noMaxWidth = false,
   setShowUseCases,
@@ -516,7 +519,7 @@ function UserWorkflowsGrid({
 }: UserWorkflowsGridProps) {
   return (
     <m.div
-      className={`${gridClassName({ disableCentering, noMaxWidth, setShowUseCases })} ${COLUMN_CLASSES[4]}`}
+      className={`${gridClassName({ disableCentering, noMaxWidth, setShowUseCases })} ${COLUMN_CLASSES[columns] ?? COLUMN_CLASSES[4]}`}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}

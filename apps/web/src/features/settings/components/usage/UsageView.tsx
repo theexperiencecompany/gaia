@@ -14,8 +14,9 @@ import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
 import { cn } from "@/lib/utils";
 import type { UsageHistoryEntry } from "../../api/usageApi";
 import { DayByDay } from "./DayByDay";
+import { severityColor } from "./severityColor";
 import { ActivityBadge, UsageHeatmap } from "./UsageHeatmap";
-import { CARD, HEALTHY, InfoTip, NEAR, severityColor } from "./usageChrome";
+import { CARD, HEALTHY, InfoTip, NEAR } from "./usageChrome";
 
 // recharts is heavy, so it loads on demand instead of shipping eagerly with
 // the settings page. The shared promise means every chart here triggers a

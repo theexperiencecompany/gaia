@@ -46,7 +46,7 @@ const IntegrationRow: React.FC<{
   };
 
   return (
-    <div className="flex min-h-16 items-center gap-4 overflow-hidden rounded-2xl bg-zinc-800/0 px-4 py-3 hover:bg-zinc-800 transition-all duration-200">
+    <div className="flex min-h-16 items-center gap-4 overflow-hidden rounded-2xl bg-zinc-800/0 px-4 py-3 hover:bg-zinc-800 transition-colors duration-200">
       <button
         type="button"
         className="flex min-w-0 flex-1 cursor-pointer items-center gap-4 text-left"

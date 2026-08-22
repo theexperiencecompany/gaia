@@ -451,7 +451,10 @@ export function VoiceControlBarContainer({
       }
       room.disconnect();
     };
-  }, [room, sessionStarted]);
+    // `voiceConversationId` is frozen at mount (lazy useState above) so the
+    // session always connects with the id the token was minted for; listing
+    // it keeps deps truthful without ever re-running this effect.
+  }, [room, sessionStarted, voiceConversationId]);
 
   return (
     <RoomContext.Provider value={room}>

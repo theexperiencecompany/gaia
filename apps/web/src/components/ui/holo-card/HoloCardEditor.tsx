@@ -383,11 +383,22 @@ function useHoloCardColors(
 
   // Reset the editable copy during render when a new card object arrives —
   // the React-recommended alternative to a post-render sync effect, so the
-  // stale overlay never paints.
+  // stale overlay never paints. Only DEFINED overlay fields patch through:
+  // parents rebuild `initialData` per render and may omit overlay fields when
+  // the API has none — a whole-object replace would wipe the user's in-progress
+  // pick on every unrelated parent re-render.
   const [prevInitialData, setPrevInitialData] = useState(initialData);
   if (prevInitialData !== initialData) {
     setPrevInitialData(initialData);
-    setData(initialData);
+    setData((prev) => ({
+      ...prev,
+      ...(initialData.overlay_color !== undefined
+        ? { overlay_color: initialData.overlay_color }
+        : {}),
+      ...(initialData.overlay_opacity !== undefined
+        ? { overlay_opacity: initialData.overlay_opacity }
+        : {}),
+    }));
   }
 
   // Overlay color/opacity are pure derivations of `data` — no mirrored state.

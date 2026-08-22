@@ -20,7 +20,7 @@ vi.mock("idb-keyval", () => ({
   set: (...args: unknown[]) => set(...args),
 }));
 
-import { createIDBPersister } from "@/layouts/QueryProvider";
+import { createIDBPersister } from "@/layouts/queryPersister";
 
 const CLIENT = {
   buster: "",

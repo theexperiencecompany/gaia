@@ -90,10 +90,13 @@ function SkillEditorForm({
     instructions.trim().length > 0;
 
   const handleSave = async () => {
-    if (!isValid || !skill) return;
+    if (!isValid) return;
     setSaving(true);
     try {
       if (isEdit) {
+        // Edit mode requires an existing skill; create mode legitimately has
+        // none (openCreate() sets it to null).
+        if (!skill) return;
         await skillsApi.updateSkill(skill.id, {
           description: description.trim(),
           instructions,

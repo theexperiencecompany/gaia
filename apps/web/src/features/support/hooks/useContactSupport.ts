@@ -31,6 +31,16 @@ export function useContactSupport(initialValues?: ContactSupportInitialValues) {
   const [attachments, setAttachments] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // A new preset (fresh initialValues object) wipes edits + attachments —
+  // master reset the whole form on preset change; ESC/backdrop closes fire
+  // onOpenChange only, so the reset lives here, not in an effect.
+  const [lastInitialValues, setLastInitialValues] = useState(initialValues);
+  if (initialValues !== lastInitialValues) {
+    setLastInitialValues(initialValues);
+    setTextEdits({});
+    setAttachments([]);
+  }
+
   const formData: ContactFormData = {
     type: textEdits.type ?? initialValues?.type ?? "",
     title: textEdits.title ?? initialValues?.title ?? "",

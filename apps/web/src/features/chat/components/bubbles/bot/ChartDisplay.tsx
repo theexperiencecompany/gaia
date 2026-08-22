@@ -1,3 +1,4 @@
+import { Button } from "@heroui/button";
 import { Spinner } from "@heroui/spinner";
 import { Tab, Tabs } from "@heroui/tabs";
 import {
@@ -67,31 +68,55 @@ type RechartsModule = typeof import("recharts");
 
 let rechartsPromise: Promise<RechartsModule> | null = null;
 const loadRecharts = (): Promise<RechartsModule> => {
-  rechartsPromise ??= import("recharts");
+  // A rejected dynamic import must not stay cached — clear it so the next
+  // mount/retry actually re-imports instead of replaying the rejection forever.
+  rechartsPromise ??= import("recharts").catch((error: unknown) => {
+    rechartsPromise = null;
+    throw error;
+  });
   return rechartsPromise;
 };
 
 // Interactive chart renderer
 const InteractiveChart: React.FC<{ chart: ChartData }> = ({ chart }) => {
   const [Recharts, setRecharts] = useState<RechartsModule | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setLoadFailed(false);
     loadRecharts()
       .then((loaded) => {
         if (!cancelled) setRecharts(loaded);
       })
       .catch((error: unknown) => {
         console.error("Failed to load chart library:", error);
+        if (!cancelled) setLoadFailed(true);
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadAttempt]);
 
   if (!chart.chart_data) return null;
 
   if (!Recharts) {
+    if (loadFailed) {
+      // Same box as the spinner state so the card doesn't jump when swapping.
+      return (
+        <div className="flex h-64 w-full flex-col items-center justify-center gap-2 rounded-lg bg-zinc-900">
+          <p className="text-xs text-zinc-500">Chart failed to load.</p>
+          <Button
+            size="sm"
+            variant="flat"
+            onPress={() => setLoadAttempt((attempt) => attempt + 1)}
+          >
+            Retry
+          </Button>
+        </div>
+      );
+    }
     return (
       <div className="flex h-64 w-full items-center justify-center rounded-lg bg-zinc-900">
         <Spinner size="sm" />

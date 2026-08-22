@@ -158,6 +158,7 @@
     "he": "^1.2.0",
     "html-to-image": "^1.11.13",
     "idb-keyval": "^6.3.0",
+    "input-otp": "^1.4.2",
     "livekit-client": "^2.20.1",
     "lodash": "^4.18.1",
     "maplibre-gl": "^5.24.0",

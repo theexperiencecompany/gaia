@@ -310,6 +310,13 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
   // early return below stops rendering while `hidden`, which takes an open
   // modal with it — otherwise the body scroll would stay locked with nothing
   // on screen to explain why.
+  // Voice mode hiding the letter must CLOSE it for good (master's documented
+  // intent): once `hidden`, clear the open flag via render-time adjustment so
+  // exiting voice mode doesn't resurrect the modal. Render-phase setState is
+  // React's sanctioned pattern here — no adjustment effect needed.
+  if (hidden && isLetterOpen) {
+    setIsLetterOpen(false);
+  }
   const isOpen = isLetterOpen && !hidden;
 
   const copyCode = useCallback(async () => {

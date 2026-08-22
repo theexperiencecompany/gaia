@@ -190,25 +190,21 @@ export default function CalendarEventSection({
   }
 
   const handleAdd = async (event: CalendarEvent, index: number) => {
+    // Index-assign (not slice-splice): slice() drops leading gaps, so an
+    // out-of-order first click would append at the wrong position and
+    // permanently misalign statuses with events. Pure-expression updater —
+    // no statements inside the state setter.
+    const setStatusAt = (status: EventStatus) =>
+      setEventStatuses((prev) =>
+        Object.assign([...prev], { [index]: status as EventStatus }),
+      );
     try {
-      setEventStatuses((prev) => [
-        ...prev.slice(0, index),
-        "loading" as EventStatus,
-        ...prev.slice(index + 1),
-      ]);
+      setStatusAt("loading");
       await calendarApi.createEventDefault(buildAddEventPayload(event));
-      setEventStatuses((prev) => [
-        ...prev.slice(0, index),
-        "completed" as EventStatus,
-        ...prev.slice(index + 1),
-      ]);
+      setStatusAt("completed");
     } catch (error) {
       console.error("Error adding event:", error);
-      setEventStatuses((prev) => [
-        ...prev.slice(0, index),
-        "idle" as EventStatus,
-        ...prev.slice(index + 1),
-      ]);
+      setStatusAt("idle");
       toast.error("Failed to add event");
     }
   };

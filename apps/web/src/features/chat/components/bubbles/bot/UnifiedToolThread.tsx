@@ -12,6 +12,7 @@ import type {
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
 import { StepRow, SubagentRow } from "./SubagentRow";
+import { deriveTimelineItemKeys } from "./TextBubble/useSubagentSynthesis";
 
 /**
  * Unified timeline item — either a regular tool call or a subagent invocation.
@@ -96,31 +97,11 @@ function StackedIcons({
 
 // ── Stable keys for streamed entries ────────────────────────────────────────
 
-// FNV-1a: tiny deterministic string hash used only to derive stable React
-// keys for entries that carry no id of their own.
-function hashString(value: string): string {
-  let hash = 2166136261;
-  for (let i = 0; i < value.length; i++) {
-    hash ^= value.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(36);
-}
-
-// Prefer the entry's tool_call_id; fall back to a content digest so keys are
-// stable across stream updates without ever depending on array position.
-function timelineToolKey(call: ToolCallEntry): string {
-  if (call.tool_call_id) return call.tool_call_id;
-  return hashString(
-    JSON.stringify([
-      call.tool_name,
-      call.message,
-      call.reasoning,
-      call.inputs,
-      call.output,
-    ]),
-  );
-}
+// Root timeline items get one stable React key each, derived from stream-
+// stable structure (tool_call_id / subagent_id / anchored slot — never payload
+// content) by deriveTimelineItemKeys in ./TextBubble/useSubagentSynthesis. A
+// growing reasoning delta therefore keeps its key across every stream frame
+// instead of remounting its Thinking row (which would snap `expanded` shut).
 
 // ── Component ───────────────────────────────────────────────────────────────
 
@@ -201,6 +182,12 @@ export default function UnifiedToolThread({
     return icons;
   }, [timeline, getIconUrl]);
 
+  // One stable React key per timeline item — derived from stream-stable
+  // structure (tool_call_id / subagent_id / anchored slot), never payload
+  // content, so a growing reasoning delta keeps its row's identity and its
+  // `expanded` state across every stream frame.
+  const itemKeys = deriveTimelineItemKeys(timeline);
+
   if (timeline.length === 0) return null;
 
   return (
@@ -244,7 +231,7 @@ export default function UnifiedToolThread({
               if (item.kind === "tool") {
                 return (
                   <StepRow
-                    key={`tc-${timelineToolKey(item.data)}`}
+                    key={itemKeys[idx]}
                     call={item.data}
                     isLast={isLast}
                     getIconUrl={getIconUrl}
@@ -257,7 +244,7 @@ export default function UnifiedToolThread({
 
               return (
                 <SubagentRow
-                  key={`sa-${item.data.subagent_id}`}
+                  key={itemKeys[idx]}
                   group={item.data}
                   isLast={isLast}
                   isStreaming={isStreaming}

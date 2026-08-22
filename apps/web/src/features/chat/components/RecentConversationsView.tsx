@@ -154,6 +154,8 @@ const RecentConversationsView = memo(() => {
                 >
                   {new Date(conversation.updated_at).toLocaleDateString(
                     "en-US",
+                    // Explicit locale+timeZone: deterministic server/browser
+                    // text per no-locale-format-in-render.
                     { timeZone: getBrowserTimezone() },
                   )}
                 </Chip>

@@ -10,7 +10,7 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import CopyButton from "@/components/ui/CopyButton";
 
 const E164_PHONE_PATTERN = /^\+[1-9]\d{6,14}$/;
@@ -42,6 +42,58 @@ function CopyableValue({ label, value }: { label: string; value: string }) {
   );
 }
 
+/**
+ * The phone-entry branch of the modal. Rendered inside `<ModalContent>`, so it
+ * unmounts when the modal closes and `phone` starts empty on every open — no
+ * reset effect needed.
+ */
+function PhoneNumberForm({
+  platformName,
+  isSubmitting,
+  onSubmit,
+  onClose,
+}: Pick<
+  PhoneLinkModalProps,
+  "platformName" | "isSubmitting" | "onSubmit" | "onClose"
+>) {
+  const [phone, setPhone] = useState("");
+
+  return (
+    <>
+      <ModalHeader>Your phone number</ModalHeader>
+      <ModalBody>
+        <p className="text-sm text-zinc-400">
+          {platformName} delivers to registered numbers only, so GAIA needs the
+          number you text from.
+        </p>
+        <Input
+          autoFocus
+          type="tel"
+          placeholder="+15551234567"
+          value={phone}
+          onValueChange={setPhone}
+          isInvalid={phone.length > 0 && !E164_PHONE_PATTERN.test(phone)}
+          errorMessage="Use E.164 format, e.g. +15551234567"
+        />
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="flat" size="sm" onPress={onClose}>
+          Cancel
+        </Button>
+        <Button
+          color="primary"
+          size="sm"
+          isLoading={isSubmitting}
+          isDisabled={!E164_PHONE_PATTERN.test(phone)}
+          onPress={() => onSubmit(phone)}
+        >
+          Continue
+        </Button>
+      </ModalFooter>
+    </>
+  );
+}
+
 export function PhoneLinkModal({
   isOpen,
   platformName,
@@ -50,12 +102,6 @@ export function PhoneLinkModal({
   onSubmit,
   onClose,
 }: PhoneLinkModalProps) {
-  const [phone, setPhone] = useState("");
-
-  useEffect(() => {
-    if (isOpen) setPhone("");
-  }, [isOpen]);
-
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="sm">
       <ModalContent>
@@ -93,38 +139,12 @@ export function PhoneLinkModal({
             </ModalFooter>
           </>
         ) : (
-          <>
-            <ModalHeader>Your phone number</ModalHeader>
-            <ModalBody>
-              <p className="text-sm text-zinc-400">
-                {platformName} delivers to registered numbers only, so GAIA
-                needs the number you text from.
-              </p>
-              <Input
-                autoFocus
-                type="tel"
-                placeholder="+15551234567"
-                value={phone}
-                onValueChange={setPhone}
-                isInvalid={phone.length > 0 && !E164_PHONE_PATTERN.test(phone)}
-                errorMessage="Use E.164 format, e.g. +15551234567"
-              />
-            </ModalBody>
-            <ModalFooter>
-              <Button variant="flat" size="sm" onPress={onClose}>
-                Cancel
-              </Button>
-              <Button
-                color="primary"
-                size="sm"
-                isLoading={isSubmitting}
-                isDisabled={!E164_PHONE_PATTERN.test(phone)}
-                onPress={() => onSubmit(phone)}
-              >
-                Continue
-              </Button>
-            </ModalFooter>
-          </>
+          <PhoneNumberForm
+            platformName={platformName}
+            isSubmitting={isSubmitting}
+            onSubmit={onSubmit}
+            onClose={onClose}
+          />
         )}
       </ModalContent>
     </Modal>

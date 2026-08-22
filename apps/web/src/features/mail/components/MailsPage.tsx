@@ -193,7 +193,7 @@ function EmailRowActions({
   const isStarred = !!email?.labelIds?.includes("STARRED");
 
   return (
-    <div className="absolute right-0 flex h-fit w-fit items-center gap-1 rounded-lg bg-zinc-900 p-2 text-sm text-zinc-300 opacity-0 group-hover:opacity-100">
+    <div className="absolute right-0 z-20 flex h-fit w-fit items-center gap-1 rounded-lg bg-zinc-900 p-2 text-sm text-zinc-300 opacity-0 group-hover:opacity-100">
       {[
         {
           icon: StarIcon,

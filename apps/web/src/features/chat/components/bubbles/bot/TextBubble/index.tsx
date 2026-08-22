@@ -9,7 +9,6 @@ import { parseOpenUISegments, splitMessageByBreaks } from "@shared/utils";
 import * as m from "motion/react-m";
 import dynamic from "next/dynamic";
 import React, { useId } from "react";
-import type { ToolDataEntry } from "@/config/registries/toolRegistry";
 import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import {
@@ -29,7 +28,10 @@ import {
 import TodoProgressSection from "../TodoProgressSection";
 import UnifiedToolThread from "../UnifiedToolThread";
 import { getTypedData, renderTool, type ToolDataUnion } from "./ToolRenderers";
-import { useSubagentSynthesis } from "./useSubagentSynthesis";
+import {
+  deriveProcessedToolKeys,
+  useSubagentSynthesis,
+} from "./useSubagentSynthesis";
 import { useToolRenderAudit } from "./useToolRenderAudit";
 
 // OpenUI components use bg-zinc-800 (same as the bubble) and must render
@@ -40,32 +42,6 @@ const OpenUIRenderer = dynamic(
 );
 
 const REPLY_QUOTE_MAX_LENGTH = 40;
-
-// FNV-1a: tiny deterministic string hash used only to derive stable React
-// keys for tool_data entries that carry no id of their own.
-function hashString(value: string): string {
-  let hash = 2166136261;
-  for (let i = 0; i < value.length; i++) {
-    hash ^= value.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(36);
-}
-
-// Stable, position-independent key for a tool_data entry: prefer a
-// tool_call_id from its payload, then its stream timestamp, then a content
-// digest. Tool lists are append-only, so this keeps card identity across
-// re-renders without relying on the array index.
-function toolEntryKey(entry: ToolDataEntry): string {
-  const data: unknown = entry.data;
-  const callId =
-    data !== null && typeof data === "object" && "tool_call_id" in data
-      ? String((data as { tool_call_id?: unknown }).tool_call_id ?? "")
-      : "";
-  if (callId) return `${entry.tool_name}-${callId}`;
-  if (entry.timestamp) return `${entry.tool_name}-${entry.timestamp}`;
-  return `${entry.tool_name}-${hashString(JSON.stringify(data ?? null))}`;
-}
 
 /** Inline reply quote shown at the top of a bot bubble, scrolls to the original message on click. */
 function ReplyQuote({
@@ -416,6 +392,12 @@ export default function TextBubble({
   // and the remaining tool_data entries that render via TOOL_RENDERERS.
   const { timeline, processedTools } = useSubagentSynthesis(tool_data);
 
+  // One stable React key per processedTools entry. Derived from stream-stable
+  // structure (ids / tool name / creation timestamp), never payload content,
+  // so grouped cards like search results or approvals keep their identity —
+  // and their internal state — while their merged data grows each frame.
+  const processedToolKeys = deriveProcessedToolKeys(processedTools);
+
   // Dev-only: record what this bubble did with each tool_data entry.
   useToolRenderAudit(message_id, tool_data);
 
@@ -466,7 +448,7 @@ export default function TextBubble({
 
       {processedTools.map((entry, index) => {
         const toolName = entry.tool_name;
-        const entryKey = toolEntryKey(entry);
+        const entryKey = processedToolKeys[index];
 
         if (toolName === "todo_progress") {
           const data = getTypedData(entry as ToolDataUnion, "todo_progress");

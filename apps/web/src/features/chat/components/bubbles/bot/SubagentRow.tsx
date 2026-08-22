@@ -16,6 +16,7 @@ import { CompactMarkdown } from "@/components/ui/CompactMarkdown";
 import type { ToolCallEntry } from "@/config/registries/toolRegistry";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { deriveStepKeys } from "./TextBubble/useSubagentSynthesis";
 import type { EnrichedSubagentGroup } from "./UnifiedToolThread";
 
 // ── Animation config (matches LoadingIndicator) ─────────────────────────────
@@ -407,6 +408,11 @@ export function SubagentRow({
   const visibleSteps = group.tool_calls.filter(
     (tc) => tc.tool_name !== "spawn_subagent",
   );
+  // One stable React key per step — derived from stream-stable structure
+  // (tool_call_id, else a slot anchored to the nearest preceding identified
+  // sibling), never payload content, so a growing reasoning delta keeps its
+  // row's `expanded` state across stream frames.
+  const stepKeys = deriveStepKeys(group.subagent_id, visibleSteps);
   // One of this subagent's steps is blocked on approval — the header shows the
   // amber marker instead of the neutral spinner so the pause reads as
   // intentional, not a hang.
@@ -474,7 +480,7 @@ export function SubagentRow({
                 <div className="space-y-0">
                   {visibleSteps.map((tc, tIdx) => (
                     <StepRow
-                      key={`${group.subagent_id}-live-${tc.tool_call_id || tIdx}`}
+                      key={stepKeys[tIdx]}
                       call={tc}
                       isLast={tIdx === visibleSteps.length - 1}
                       getIconUrl={getIconUrl}
@@ -556,7 +562,7 @@ export function SubagentRow({
                   <div className="space-y-0">
                     {visibleSteps.map((tc, tIdx) => (
                       <StepRow
-                        key={`${group.subagent_id}-tc-${tc.tool_call_id || tIdx}`}
+                        key={stepKeys[tIdx]}
                         call={tc}
                         isLast={
                           tIdx === visibleSteps.length - 1 &&

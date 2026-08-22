@@ -19,12 +19,15 @@ import {
   trackEvent,
 } from "@/lib/analytics";
 
+// Exactly-once guard for the OAuth login analytics event — module scope so it
+// can be flipped during the render-phase redirect without writing a ref.
+let hasTrackedOAuthLogin = false;
+
 const useFetchUser = () => {
   const { setUser, clearUser } = useUserActions();
   const searchParams = useSearchParams();
   const currentPath = usePathname();
   const hasIdentified = useRef(false);
-  const hasTrackedLogin = useRef(false);
 
   const { data, error } = useQuery({
     queryKey: ["current-user"],
@@ -83,16 +86,20 @@ const useFetchUser = () => {
   const accessToken = searchParams.get("access_token");
   const refreshToken = searchParams.get("refresh_token");
 
-  if (data && accessToken && refreshToken && !readPendingCheckout()) {
-    // Token-bearing URL params mean an OAuth login just completed. Guard with
-    // a ref so effect re-runs (route/searchParams churn before redirect) can't
-    // double-capture.
-    if (!hasTrackedLogin.current) {
-      trackEvent(ANALYTICS_EVENTS.USER_LOGGED_IN, {
-        method: "workos_oauth",
-      });
-      hasTrackedLogin.current = true;
-    }
+  // Analytics for the OAuth login — fired pre-redirect (redirect() aborts the
+  // render, so an effect here would never run). A module flag, not a ref:
+  // refs must not be written during render. Exactly-once per page load.
+  if (
+    data &&
+    accessToken &&
+    refreshToken &&
+    !readPendingCheckout() &&
+    !hasTrackedOAuthLogin
+  ) {
+    hasTrackedOAuthLogin = true;
+    trackEvent(ANALYTICS_EVENTS.USER_LOGGED_IN, {
+      method: "workos_oauth",
+    });
 
     // A pending checkout takes priority; useCheckoutResume redirects to Dodo.
     const needsOnboarding = !data.onboarding?.completed;
