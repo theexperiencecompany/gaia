@@ -830,7 +830,7 @@ class TestLLMSummarizeInternals:
         log = _StubLog()
 
         async def swapping_wait_for(coro, timeout):
-            message = await coro
+            _ = await coro
             from types import SimpleNamespace
 
             return SimpleNamespace(content=12345, junk="x")
@@ -848,6 +848,37 @@ class TestLLMSummarizeInternals:
         assert out is None
         matches = [(m, k) for m, k in log.records if "returned an unusable payload" in m]
         assert len(matches) == 1, log.records
+
+    async def test_missing_content_attr_uses_empty_default(self) -> None:
+        """getattr's '' default must survive: a message without .content yields
+        an empty digest -> 'was empty' warning, not a crash or a phantom value."""
+        from app.agents.middleware import compaction as cm
+
+        log = _StubLog()
+
+        async def swapping_wait_for(coro, timeout):
+            message = await coro
+            from types import SimpleNamespace
+
+            print("[SPY2] content:", repr(getattr(message, "content", "NO_ATTR"))[:50])
+            return SimpleNamespace(no_content_attr=True)
+
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(cm.asyncio, "wait_for", swapping_wait_for)
+        monkeypatch.setattr(cm, "log", log)
+        try:
+            from tests.helpers import create_fake_llm
+
+            out = await cm._llm_summarize_output(create_fake_llm(["fine"]), "content", "my_tool")
+        finally:
+            monkeypatch.undo()
+
+        assert out is None
+        matches = [(m, k) for m, k in log.records if "was empty" in m]
+        assert len(matches) == 1
+        # getattr defaults ('' vs None vs "XXXX") change which branch runs;
+        # only the '' default reaches the was-empty warning
+        assert matches[0][1] == {"tool_name": "my_tool"}
 
     async def test_over_cap_response_gets_truncation_suffix(self) -> None:
         out = await cm._llm_summarize_output(_OverCapDigestModel(), "content", "tool")
