@@ -15,6 +15,13 @@ inputs:
       the sharded selection); skipping Node saves ~56-75s per job.
     required: false
     default: "true"
+  restore-models:
+    description: >
+      Whether to restore/prefetch the ~1.3GB embedding models. Only jobs that
+      run memory/embedding tests need them; the coverage merge job downloads
+      and pre-uploads 1.3GB it never uses (wasted restore time on every run).
+    required: false
+    default: "true"
 
 runs:
   using: composite
@@ -73,6 +80,7 @@ runs:
     # where a failure is loud and names itself, and cache them so the download
     # happens once per key rather than on every run.
     - name: Restore embedding models
+      if: inputs.restore-models == 'true'
       id: model-cache
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
@@ -80,7 +88,7 @@ runs:
         key: fastembed-${{ runner.os }}-${{ hashFiles('apps/api/app/constants/memory.py', 'uv.lock') }}
 
     - name: Prefetch embedding models
-      if: steps.model-cache.outputs.cache-hit != 'true'
+      if: inputs.restore-models == 'true' && steps.model-cache.outputs.cache-hit != 'true'
       shell: bash
       working-directory: apps/api
       # Goes through the app's own loaders, so the models, cache dir and ONNX
@@ -111,7 +119,7 @@ runs:
     # Only reached when the prefetch above succeeded, so a poisoned partial
     # download is never what gets cached for every later run.
     - name: Save embedding models
-      if: steps.model-cache.outputs.cache-hit != 'true'
+      if: inputs.restore-models == 'true' && steps.model-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: /tmp/fastembed_cache
