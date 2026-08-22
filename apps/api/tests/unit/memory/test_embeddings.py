@@ -164,6 +164,28 @@ class TestEmbedBatchSplitsRequests:
         assert observed == [("rerank", "sidecar", 30), ("rerank", "sidecar", 15)]
         assert scores == [0.5 * 1] * 30 + [0.5 * 2] * 15
 
+    @patch.object(embeddings, "_sidecar_url", return_value="http://sidecar:8200")
+    async def test_rerank_query_consumes_char_budget(
+        self,
+        _mock_url: MagicMock,
+        recorder: tuple[list[dict], list[tuple[str, str, int]]],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The query rides with every chunk, so it must shrink the document
+        allowance — a 10-char query against a 50-char budget caps chunks at
+        40 chars."""
+        calls, observed = recorder
+        monkeypatch.setattr(embeddings, "EMBEDDING_SIDECAR_MAX_BATCH_TEXTS", 99)
+        monkeypatch.setattr(embeddings, "EMBEDDING_SIDECAR_MAX_BATCH_CHARS", 50)
+        documents = ["d" * 30, "d" * 30, "d" * 5]
+
+        await embeddings.rerank("q" * 10, documents)
+
+        # Budget 40 after the query: one 30-char doc per chunk until a 5-char
+        # tag-along fits beside it.
+        assert [c["n"] for c in calls] == [1, 2]
+        assert observed == [("rerank", "sidecar", 1), ("rerank", "sidecar", 2)]
+
 
 class TestSharedHttpClient:
     async def test_same_loop_reuses_one_client(self) -> None:
