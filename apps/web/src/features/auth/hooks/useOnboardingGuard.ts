@@ -14,35 +14,41 @@ export const useOnboardingGuard = () => {
   // Only fetched when the guard is actually about to act — a self-host
   // instance replaces hosted onboarding with the /setup wizard. Plain state,
   // not react-query: this hook mounts ABOVE the app's QueryClientProvider.
+  // ``null`` means unknown: never redirect on an unknown instance type, or a
+  // self-host admin gets flashed into the hosted flow before status arrives.
   const potentiallyRedirecting =
     Boolean(user.email) &&
     user.onboarding !== undefined &&
-    pathname !== "/onboarding";
-  const [isSelfHosted, setIsSelfHosted] = useState(false);
+    pathname !== "/onboarding" &&
+    pathname !== "/setup";
+  const [authMode, setAuthMode] = useState<"workos" | "local" | null>(null);
 
   useEffect(() => {
-    if (!potentiallyRedirecting || isSelfHosted) return;
+    if (!potentiallyRedirecting || authMode !== null) return;
     let cancelled = false;
     providersApi
       .fetchSetupStatus()
       .then((s) => {
-        if (!cancelled && s?.auth_mode === "local") setIsSelfHosted(true);
+        if (!cancelled)
+          setAuthMode(s?.auth_mode === "local" ? "local" : "workos");
       })
       .catch(() => {
-        // Unreachable / offline status must never break the guard — the
-        // default (isSelfHosted=false) keeps hosted behavior intact.
+        // Status unreachable → assume hosted so existing behavior holds; the
+        // request is retried by the re-render loop only if deps change.
+        if (!cancelled) setAuthMode("workos");
       });
     return () => {
       cancelled = true;
     };
-  }, [potentiallyRedirecting, isSelfHosted]);
+  }, [potentiallyRedirecting, authMode]);
 
   useEffect(() => {
     // A pending checkout must resume before onboarding routing kicks in.
     if (readPendingCheckout()) return;
 
-    // Only proceed if user data is loaded with email and onboarding data is available
-    if (user.email && user.onboarding !== undefined) {
+    // Only proceed if user data is loaded with email and onboarding data is
+    // available, and we KNOW which kind of instance this is.
+    if (user.email && user.onboarding !== undefined && authMode !== null) {
       const isOnboardingCompleted = user.onboarding?.completed;
       const phase = user.onboarding?.phase;
       const isStillProcessing =
@@ -53,15 +59,16 @@ export const useOnboardingGuard = () => {
         if (isOnboardingCompleted && !isStillProcessing) {
           router.push("/c");
         }
-      } else if (isSelfHosted || pathname === "/setup") {
-        // Self-host replaces hosted onboarding with the /setup wizard — a
-        // fresh local admin legitimately has no onboarding state, so never
-        // push those users into the Gmail-scanning flow. Hosted behavior is
-        // unchanged (isSelfHosted stays false there and /setup isn't used).
+      } else if (pathname === "/setup") {
+        // The self-host wizard replaces hosted onboarding entirely.
+      } else if (authMode === "local") {
+        // Local instances have no hosted onboarding pipeline: a fresh local
+        // admin legitimately has no onboarding state and must land straight
+        // in chat instead of the Gmail-scanning flow.
       } else if (!isOnboardingCompleted) {
-        // Not on onboarding page, onboarding not completed → redirect there
+        // Hosted instance, onboarding not completed → redirect there.
         router.push("/onboarding");
       }
     }
-  }, [user.email, user.onboarding, router, pathname, isSelfHosted]);
+  }, [user.email, user.onboarding, router, pathname, authMode]);
 };
