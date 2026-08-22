@@ -166,7 +166,7 @@ jobs:
           bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest -n auto -m 'not composio and not model_onboarding and not schemathesis' \
             --splits 3 --group ${{ matrix.shard }} \
             --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
-            --cov=app \
+            --cov=app --cov-report=xml:coverage.${{ matrix.shard }}.xml \
             --cov-fail-under=0 \
             --junitxml=test-results/pytest-${{ matrix.shard }}.xml --durations=50 2>&1 | tee /tmp/python-tests.out; _rc=${PIPESTATUS[0]}; cat /tmp/python-tests.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
           echo "Python tests shard ${{ matrix.shard }}/3: OK"
@@ -184,6 +184,7 @@ jobs:
           name: pytest-results-${{ matrix.shard }}
           path: |
             apps/api/.coverage.${{ matrix.shard }}
+            apps/api/coverage.${{ matrix.shard }}.xml
             apps/api/test-results/pytest-${{ matrix.shard }}.xml
           retention-days: 7
           if-no-files-found: error
