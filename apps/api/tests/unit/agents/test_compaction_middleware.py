@@ -1638,3 +1638,65 @@ class TestFullKwargsCapture:
         assert calls["reason"].startswith("large_output")
         assert calls["status"] == "success"
         assert calls["existing_additional_kwargs"] == {}
+
+
+class TestUnusablePayloadKwargs:
+    """The narrowing branch must reject non-str/list content."""
+
+    async def test_unusable_payload_kwargs_are_exact(self) -> None:
+        from types import SimpleNamespace
+
+        from app.agents.middleware import compaction as cm
+
+        class _IntContent:
+            async def ainvoke(self, messages, **kwargs):
+                return SimpleNamespace(content=12345)
+
+        log = _StubLog()
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(cm, "log", log)
+        try:
+            out = await cm._llm_summarize_output(_IntContent(), "content", "my_tool")
+        finally:
+            monkeypatch.undo()
+
+        assert out is None
+        matches = [(m, k) for m, k in log.records if "unusable payload" in m]
+        assert len(matches) == 1
+        # every kwarg present, nothing None'd or dropped
+        assert matches[0][1] == {"tool_name": "my_tool", "payload_type": "int"}
+
+    async def test_no_workspace_warning_missing_strings_exact(self) -> None:
+        """The 'set'/'missing' strings in the identity-warning kwargs are
+        load-bearing — operators grep for them."""
+        from app.agents.middleware import compaction as cm
+
+        log = _StubLog()
+
+        async def fake_digest(llm, content_str, tool_name):
+            return "d"
+
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(cm, "log", log)
+        try:
+            await cm.compact_tool_output(
+                content="x" * 5000,
+                tool_name="search",
+                tool_call_id="c1",
+                user_id=None,
+                conversation_id=None,
+                context_usage=0.5,
+                max_output_chars=100_000,
+                compaction_threshold=0.4,
+                summary_llm=None,
+            )
+        finally:
+            monkeypatch.undo()
+
+        matches = [(m, k) for m, k in log.records if "no workspace identity" in m]
+        assert len(matches) == 1
+        _, kwargs = matches[0]
+        assert "XXmissingXX" not in kwargs.values()
+        assert "MISSING" not in kwargs.values()
+        assert kwargs["user_id"] == "missing"
+        assert kwargs["conversation_id"] == "missing"
