@@ -341,7 +341,9 @@ def test_rule_crash_reports_rule_and_file_and_remaining_rules_still_run(
     parse_failure.filename = str(tmp_path / f"{_ENDPOINT_DIR}/x.py")
     parse_failure.lineno = 2
 
-    with patch.object(lint_runner.no_service_classes, "check", side_effect=parse_failure):
+    import no_service_classes  # noqa: PLC0415 -- test-local import for patch target
+
+    with patch.object(no_service_classes, "check", side_effect=parse_failure):
         code = lint_runner.main([str(tmp_path)])
 
     err = capsys.readouterr().err
