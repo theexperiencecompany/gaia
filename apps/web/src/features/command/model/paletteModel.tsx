@@ -20,7 +20,8 @@ export type Row =
   | { kind: "action"; id: string; action: CommandAction }
   | { kind: "nav"; id: string; label: string; icon: ReactNode; path: string }
   | { kind: "ask"; id: string; query: string }
-  | { kind: "back"; id: string };
+  | { kind: "back"; id: string }
+  | { kind: "loading"; id: string };
 
 interface Section {
   id: string;
@@ -30,7 +31,10 @@ interface Section {
 
 /** Rows that never get a number badge (navigation / special affordances). */
 export const isNumbered = (row: Row) =>
-  row.kind !== "nav" && row.kind !== "back" && row.kind !== "ask";
+  row.kind !== "nav" &&
+  row.kind !== "back" &&
+  row.kind !== "ask" &&
+  row.kind !== "loading";
 
 import { scoreFields } from "./scorer";
 
@@ -79,6 +83,9 @@ interface SectionParams {
   context: { heading: string; item: CommandItem } | null;
   searchChats: CommandItem[];
   searchMessages: CommandItem[];
+  searchMemories: CommandItem[];
+  /** True while a server search/recall request is in flight. */
+  searchLoading: boolean;
   /** Extra relevance for items the user has picked before (frecency). */
   boost?: (item: CommandItem) => number;
 }
@@ -143,7 +150,8 @@ function scoredSection(
 }
 
 function searchSections(params: SectionParams): Section[] {
-  const { groups, query, searchChats, searchMessages, boost } = params;
+  const { groups, query, searchChats, searchMessages, searchMemories, boost } =
+    params;
   const sections: Section[] = [];
 
   // "Jump to" — categories whose name matches (e.g. "workflows" → Workflows).
@@ -185,8 +193,28 @@ function searchSections(params: SectionParams): Section[] {
   );
   if (msgSection) results.push(msgSection);
 
+  // Semantic memory recall — merged with the local memories list, server
+  // hits deduped against it and floored like the other server facets.
+  const memoryGroup = groups.find((g) => g.id === "memories");
+  const localMemories = memoryGroup?.items ?? [];
+  const localMemoryIds = new Set(localMemories.map((i) => i.id));
+  const allMemories = dedupeById([
+    ...localMemories.filter((i) => itemScore(query, i) > 0),
+    ...searchMemories.filter((i) => !localMemoryIds.has(i.id)),
+  ]);
+  const memSection = scoredSection(
+    "memories",
+    "Memories",
+    allMemories,
+    query,
+    30,
+    boost,
+  );
+  if (memSection) results.push(memSection);
+
   for (const group of groups) {
-    if (group.id === "chats") continue;
+    // chats + memories have dedicated merged sections above.
+    if (group.id === "chats" || group.id === "memories") continue;
     const scored = scoredSection(
       group.id,
       group.heading,
@@ -200,6 +228,16 @@ function searchSections(params: SectionParams): Section[] {
 
   results.sort((a, b) => b.score - a.score);
   sections.push(...results.map((r) => r.section));
+
+  // First fetch of a query: no server rows to show yet — say so instead of
+  // leaving the user wondering whether chats/messages/memories were searched.
+  if (params.searchLoading && results.length === 0) {
+    sections.push({
+      id: "loading",
+      heading: "Searching…",
+      rows: [{ kind: "loading", id: "search-loading" }],
+    });
+  }
 
   // Always offer the AI escape hatch.
   sections.push({ id: "ask", rows: [{ kind: "ask", id: "ask", query }] });

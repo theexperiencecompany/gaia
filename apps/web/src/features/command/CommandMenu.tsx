@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight } from "@/components/shared/icons";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { PaletteRow } from "./components/PaletteRow";
-import { useChatSearch } from "./data/useChatSearch";
+import { useChatSearch, useMemorySearch } from "./data/useChatSearch";
 import { useCommandData } from "./data/useCommandData";
 import { frecencyScore, useFrecencyStore } from "./frecency";
 import {
@@ -84,6 +84,8 @@ function enterLabel(row?: Row): string {
   switch (row?.kind) {
     case "back":
       return "Go back";
+    case "loading":
+      return "Searching…";
     case "category":
       return row.group.items.length === 0 ? "Open" : "Browse";
     case "item":
@@ -108,6 +110,7 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
     context,
     buildSearchChat,
     buildSearchMessage,
+    buildSearchMemory,
     askGaia,
   } = useCommandData(host);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -123,11 +126,6 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
   // Inline form (e.g. rename) — replaces the input while active.
   const [formAction, setFormAction] = useState<CommandAction | null>(null);
   const [formValue, setFormValue] = useState("");
-  const frecencyEntries = useFrecencyStore((s) => s.entries);
-  const boost = useCallback(
-    (item: CommandItem) => frecencyScore(frecencyEntries, item.id) * 3,
-    [frecencyEntries],
-  );
 
   const depth = levels.length - 1;
   const view = levels[depth].view;
@@ -142,7 +140,16 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
     });
   }, []);
 
-  const serverResults = useChatSearch(query);
+  const frecencyEntries = useFrecencyStore((s) => s.entries);
+  const boost = useCallback(
+    (item: CommandItem) => frecencyScore(frecencyEntries, item.id) * 3,
+    [frecencyEntries],
+  );
+
+  const { results: serverResults, isFetching: chatsFetching } =
+    useChatSearch(query);
+  const { memories: searchedMemories, isFetching: memoriesFetching } =
+    useMemorySearch(query);
   const searchChats = useMemo(
     () => (serverResults?.conversations ?? []).map(buildSearchChat),
     [serverResults, buildSearchChat],
@@ -151,6 +158,14 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
     () => (serverResults?.messages ?? []).map(buildSearchMessage),
     [serverResults, buildSearchMessage],
   );
+  const searchMemories = useMemo(
+    () =>
+      searchedMemories
+        .map(buildSearchMemory)
+        .filter((item): item is CommandItem => item !== null),
+    [searchedMemories, buildSearchMemory],
+  );
+  const searchLoading = chatsFetching || memoriesFetching;
 
   const sections = useMemo(
     () =>
@@ -162,9 +177,22 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
         context,
         searchChats,
         searchMessages,
+        searchMemories,
+        searchLoading,
         boost,
       }),
-    [view, query, groups, recent, context, searchChats, searchMessages, boost],
+    [
+      view,
+      query,
+      groups,
+      recent,
+      context,
+      searchChats,
+      searchMessages,
+      searchMemories,
+      searchLoading,
+      boost,
+    ],
   );
 
   const flatRows = useMemo(() => sections.flatMap((s) => s.rows), [sections]);

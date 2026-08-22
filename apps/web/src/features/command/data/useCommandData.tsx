@@ -21,6 +21,7 @@ import { useConversationList } from "@/features/chat/hooks/useConversationList";
 import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { memoryApi } from "@/features/memory/api/memoryApi";
+import type { MemoryEntry } from "@/features/memory/api/types";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import type { SearchConversationResult } from "@/features/search/api/searchApi";
@@ -44,7 +45,7 @@ import {
 } from "../providers/chats";
 import { buildCommandGroups } from "../providers/commands";
 import { buildIntegrationItems } from "../providers/integrations";
-import { buildMemoryItems } from "../providers/memories";
+import { buildMemoryItems, makeMemoryItem } from "../providers/memories";
 import { buildNotificationItems } from "../providers/notifications";
 import { buildSettingsItems } from "../providers/settings";
 import { buildTodoItems } from "../providers/todos";
@@ -67,6 +68,8 @@ export interface CommandData {
     message: { message_id: string };
     snippet: string;
   }) => CommandItem;
+  /** Returns null for hits without an id — nothing to navigate to. */
+  buildSearchMemory: (mem: MemoryEntry) => CommandItem | null;
   askGaia: (query: string) => void;
 }
 
@@ -103,6 +106,12 @@ export function useCommandData(host: CommandHost): CommandData {
   useEffect(() => {
     if (isAuthenticated) loadTodos();
   }, [isAuthenticated, loadTodos]);
+
+  const refetchMemories = useCallback(
+    () =>
+      queryClient.invalidateQueries({ queryKey: memoriesQueryKey(userEmail) }),
+    [queryClient, userEmail],
+  );
 
   const ctx = useMemo<BuildCtx>(
     () => ({
@@ -158,12 +167,9 @@ export function useCommandData(host: CommandHost): CommandData {
   const memoryItems = useMemo(
     () =>
       buildMemoryItems(memoryList?.memories ?? [], ctx, {
-        refetch: () =>
-          queryClient.invalidateQueries({
-            queryKey: memoriesQueryKey(userEmail),
-          }),
+        refetch: refetchMemories,
       }),
-    [memoryList, ctx, queryClient, userEmail],
+    [memoryList, ctx, refetchMemories],
   );
   const settingsItems = useMemo(() => buildSettingsItems(ctx), [ctx]);
 
@@ -394,6 +400,17 @@ export function useCommandData(host: CommandHost): CommandData {
       ctx,
     );
 
+  /** Semantic memory hit — open-only row (no list position to refresh). */
+  const buildSearchMemory = (mem: MemoryEntry): CommandItem | null => {
+    if (!mem.id) return null;
+    return makeMemoryItem(
+      { ...mem, id: mem.id },
+      ctx,
+      { refetch: refetchMemories },
+      false,
+    );
+  };
+
   const askGaia = useCallback(
     (query: string) => {
       prepareNewChat();
@@ -410,6 +427,7 @@ export function useCommandData(host: CommandHost): CommandData {
     context,
     buildSearchChat,
     buildSearchMessage,
+    buildSearchMemory,
     askGaia,
   };
 }
