@@ -207,7 +207,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
                   behavior: "smooth",
                   block: "center",
                 });
-                messageElement.style.transition = "all 0.3s ease";
+                messageElement.style.transition = "scale 0.3s ease";
                 messageElement.style.scale = "1.02";
                 setTimeout(() => {
                   messageElement.style.scale = "1";

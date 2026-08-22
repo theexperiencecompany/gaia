@@ -2,40 +2,12 @@
 
 import * as React from "react";
 import type * as RechartsPrimitive from "recharts";
-
+import { useRecharts } from "@/components/ui/chart-loader";
 import { cn } from "@/lib/utils";
 
 // recharts is heavy, so it is loaded on demand instead of shipping in the
-// initial bundle. The single shared promise means every chart on the page
-// triggers one chunk load.
-type RechartsModule = typeof import("recharts");
-
-let rechartsPromise: Promise<RechartsModule> | null = null;
-const loadRecharts = (): Promise<RechartsModule> => {
-  rechartsPromise ??= import("recharts");
-  return rechartsPromise;
-};
-
-// Resolves the lazily loaded recharts module; null until the chunk arrives.
-function useRecharts(): RechartsModule | null {
-  const [recharts, setRecharts] = React.useState<RechartsModule | null>(null);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    loadRecharts()
-      .then((loaded) => {
-        if (!cancelled) setRecharts(loaded);
-      })
-      .catch((error: unknown) => {
-        console.error("Failed to load chart library:", error);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return recharts;
-}
+// initial bundle. Loading lives in ./chart-loader (shared with UsageView,
+// DayByDay and ChartDisplay so the whole app resolves one promise).
 
 // Format: { THEME_NAME: CSS_SELECTOR }
 const THEMES = { light: "", dark: ".dark" } as const;

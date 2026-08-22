@@ -8,9 +8,10 @@ import { Fire02Icon, SparklesIcon } from "@icons";
 import { USAGE_WARN_THRESHOLD } from "@shared/constants/usage";
 import type { FeatureUsage, UsageActivity, UsageSummary } from "@shared/types";
 import { formatCompactNumber, formatDate, formatDateUTC } from "@shared/utils";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import BlurStack from "@/components/ui/blur-stack";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
+import { useRecharts } from "@/components/ui/chart-loader";
 import { cn } from "@/lib/utils";
 import type { UsageHistoryEntry } from "../../api/usageApi";
 import { DayByDay } from "./DayByDay";
@@ -21,32 +22,6 @@ import { CARD, HEALTHY, InfoTip, NEAR } from "./usageChrome";
 // recharts is heavy, so it loads on demand instead of shipping eagerly with
 // the settings page. The shared promise means every chart here triggers a
 // single chunk load.
-type RechartsModule = typeof import("recharts");
-
-let rechartsPromise: Promise<RechartsModule> | null = null;
-const loadRecharts = (): Promise<RechartsModule> => {
-  rechartsPromise ??= import("recharts");
-  return rechartsPromise;
-};
-
-// Resolves the lazily loaded recharts module; null until the chunk arrives.
-function useRecharts(): RechartsModule | null {
-  const [recharts, setRecharts] = useState<RechartsModule | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    loadRecharts()
-      .then((loaded) => {
-        if (!cancelled) setRecharts(loaded);
-      })
-      .catch((error: unknown) => {
-        console.error("Failed to load chart library:", error);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  return recharts;
-}
 
 /** Fraction (0-1) of the current window already elapsed — the "you should be
  * here by now" mark. Simple: elapsed / total, from the window's reset time. */

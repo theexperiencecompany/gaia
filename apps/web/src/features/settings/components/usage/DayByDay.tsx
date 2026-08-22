@@ -7,6 +7,7 @@ import type { UsageActivity } from "@shared/types";
 import { formatCompactNumber, formatDateUTC } from "@shared/utils";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
+import { useRecharts } from "@/components/ui/chart-loader";
 import { cn } from "@/lib/utils";
 import { tokenComparisons } from "./tokenScale";
 import { ACCENT, CARD, HEALTHY, InfoTip } from "./usageChrome";
@@ -15,32 +16,6 @@ import { TAB_CLASSNAMES } from "./usageTabs";
 // recharts is heavy, so it loads on demand instead of shipping eagerly with
 // the settings page. The shared promise means every chart here triggers a
 // single chunk load.
-type RechartsModule = typeof import("recharts");
-
-let rechartsPromise: Promise<RechartsModule> | null = null;
-const loadRecharts = (): Promise<RechartsModule> => {
-  rechartsPromise ??= import("recharts");
-  return rechartsPromise;
-};
-
-// Resolves the lazily loaded recharts module; null until the chunk arrives.
-function useRecharts(): RechartsModule | null {
-  const [recharts, setRecharts] = useState<RechartsModule | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    loadRecharts()
-      .then((loaded) => {
-        if (!cancelled) setRecharts(loaded);
-      })
-      .catch((error: unknown) => {
-        console.error("Failed to load chart library:", error);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  return recharts;
-}
 
 type Metric = "actions" | "tokens";
 

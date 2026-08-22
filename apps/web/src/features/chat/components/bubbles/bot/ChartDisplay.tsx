@@ -17,6 +17,10 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
+import {
+  loadRecharts,
+  type RechartsModule,
+} from "@/components/ui/chart-loader";
 
 interface ChartData {
   id: string;
@@ -64,19 +68,6 @@ const transformChartData = (
 
 // recharts is heavy and only needed when a chart carries interactive data, so
 // it is loaded on demand instead of shipping in the initial bundle.
-type RechartsModule = typeof import("recharts");
-
-let rechartsPromise: Promise<RechartsModule> | null = null;
-const loadRecharts = (): Promise<RechartsModule> => {
-  // A rejected dynamic import must not stay cached — clear it so the next
-  // mount/retry actually re-imports instead of replaying the rejection forever.
-  rechartsPromise ??= import("recharts").catch((error: unknown) => {
-    rechartsPromise = null;
-    throw error;
-  });
-  return rechartsPromise;
-};
-
 // Interactive chart renderer
 const InteractiveChart: React.FC<{ chart: ChartData }> = ({ chart }) => {
   const [Recharts, setRecharts] = useState<RechartsModule | null>(null);
