@@ -23,7 +23,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: code-quality-${{ github.head_ref || github.ref }}
+  group: code-quality-${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 permissions:
