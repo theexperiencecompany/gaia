@@ -50,9 +50,7 @@ def _pro_plan(duration: PlanDuration = PlanDuration.MONTHLY, amount: int = 3000)
     )
 
 
-def _pro_checkout(
-    duration: PlanDuration = PlanDuration.MONTHLY, amount: int = 3000
-) -> ProCheckout:
+def _pro_checkout(duration: PlanDuration = PlanDuration.MONTHLY, amount: int = 3000) -> ProCheckout:
     """One catalogue resolution backing both the quoted price and the session."""
     return ProCheckout(
         plan=_pro_plan(duration, amount),

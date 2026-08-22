@@ -120,9 +120,7 @@ async def create_upgrade_link(
     log.info(f"{LogTag.TOOL} Upgrade link created", billing_cycle=billing_cycle)
 
     period = billing_cycle.value.removesuffix("ly")
-    lines = [
-        f"GAIA Pro — {_format_money(pro.plan.amount, pro.plan.currency)} per {period}."
-    ]
+    lines = [f"GAIA Pro — {_format_money(pro.plan.amount, pro.plan.currency)} per {period}."]
     if pro.plan.features:
         # Straight from the plan catalogue, so the pitch can never promise
         # something the plan stopped including.

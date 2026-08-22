@@ -1189,7 +1189,9 @@ class TestCreateProCheckout:
         upgrade_key = f"upgrade_link:{FAKE_USER_ID}:monthly"
         assert upgrade_key in cached_keys
         cached_payload = next(
-            call.args[1] for call in mock_redis_cache.set.await_args_list if call.args[0] == upgrade_key
+            call.args[1]
+            for call in mock_redis_cache.set.await_args_list
+            if call.args[0] == upgrade_key
         )
         assert set(cached_payload) == {"plan", "checkout"}
 
