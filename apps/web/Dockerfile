@@ -40,7 +40,8 @@ COPY libs/shared/ts/package.json   ./libs/shared/ts/
 # GitHub-hosted runner (BuildKit cache mounts start EMPTY every job):
 #   old: COPY . . then install -> every commit re-ran the full install;
 #   new: manifests then install -> the install RUN layer is served from the
-#        gha layer cache (build-push-action cache-from type=gha) and only
+#        registry layer cache (build-push-action cache-from type=registry,
+#        ghcr gaia-web:buildcache) and only
 #        re-runs when a manifest/lockfile changes.
 RUN --mount=type=cache,id=gaia-pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --store-dir /pnpm/store

@@ -130,9 +130,9 @@ jobs:
   # Same service topology as `dagger call test-python` (the local harness),
   # run directly on the runner — rebuilding the Dagger env cold cost ~5 min
   # per run for a ~2.5 min suite.
-  # Sharded 6-way via pytest-split. 8 shards measured no wall gain under the
-  # shared-pool cap (jobs just queued longer) and added 2 more runners per PR. — each shard boots
-  # the same live services via setup-python-test-env (no service: duplication),
+  # Sharded 6-way via pytest-split (8 shards measured no wall gain under the
+  # shared-pool cap — jobs just queued longer — and cost 2 more runners per
+  # PR). Each shard boots the same live services via setup-python-test-env,
   # measures its subset's coverage to a per-shard data file, and uploads
   # that file; test-python-coverage (below) combines them and enforces the
   # 80% floor + diff-cover so neither shard gates a partial view.
@@ -159,7 +159,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: apps/api/.venv
-          key: uvvenv-${{ runner.os }}-${{ hashFiles('uv.lock','apps/api/pyproject.toml') }}
+          key: uvvenv-${{ runner.os }}-${{ hashFiles('uv.lock','apps/api/pyproject.toml','.python-version') }}
       # install-node: false — the sharded selection doesn't drive the
       # device-bridge CLI; skipping pnpm saves ~56-75s per shard (measured
       # green in the 6-shard era, 8.6m total vs 13.4m with Node).
@@ -173,7 +173,6 @@ jobs:
           key: pytest-split-${{ runner.os }}-${{ hashFiles('apps/api/tests/**/*.py','apps/api/pyproject.toml','uv.lock') }}-${{ matrix.shard }}
           restore-keys: |
             pytest-split-${{ runner.os }}-${{ hashFiles('apps/api/tests/**/*.py','apps/api/pyproject.toml','uv.lock') }}-
-            pytest-split-${{ runner.os }}-
       - name: Run Python tests (shard ${{ matrix.shard }}/6)
         working-directory: apps/api
         env:
@@ -200,7 +199,7 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: apps/api/.venv
-          key: uvvenv-${{ runner.os }}-${{ hashFiles('uv.lock','apps/api/pyproject.toml') }}
+          key: uvvenv-${{ runner.os }}-${{ hashFiles('uv.lock','apps/api/pyproject.toml','.python-version') }}
       - name: Upload shard coverage + junit
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -240,7 +239,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: apps/api/.venv
-          key: uvvenv-${{ runner.os }}-${{ hashFiles('uv.lock','apps/api/pyproject.toml') }}
+          key: uvvenv-${{ runner.os }}-${{ hashFiles('uv.lock','apps/api/pyproject.toml','.python-version') }}
       - uses: ./.github/actions/setup-python-test-env
         with:
           install-node: "false"
@@ -310,16 +309,7 @@ jobs:
           echo "gaia-shared tests: OK"
           echo "### gaia-shared tests — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
 
-# --- Test: Python fast lane (hermetic, no containers) -------------------
-  # The fast-suite invariant, enforced: the hermetic default selection (what
-  # `nx test api` runs locally) must finish inside the budget with NO service
-  # containers — real-infra tiers skip at collection when USE_REAL_SERVICES
-  # is unset. A regression that slows the default run fails this lane instead
-  # of silently degrading every contributor's feedback loop.
-  # Runs parallel to test-python (needs: [detect] only) as a budget probe;
-  # making it depend on test-python would serialize the critical path (5.5m +
-  # 5m) and hide the probe's signal behind a slow suite. Keep parallel.
-  # --- Test: TypeScript (runner-native) -----------------------------------
+# --- Test: TypeScript (runner-native) -----------------------------------
   test-typescript:
     needs: [detect]
     if: needs.detect.outputs.has_typescript == 'true'
@@ -595,5 +585,6 @@ jobs:
       apps_image_tag: ${{ needs.build-images.outputs.apps_tag }}
       bots_image_tag: ${{ needs.build-images.outputs.bots_tag }}
       grafana_image_tag: ${{ needs.build-images.outputs.grafana_tag }}
+      web_image_tag: ${{ needs.build-images.outputs.web_tag }}
       docker_release_result: ${{ needs.build-images.outputs.docker_release_result }}
     secrets: inherit # pragma: allowlist secret

@@ -93,9 +93,12 @@ else
   fi
 fi
 
-# Orphan detection: images landed in GHCR tagged :latest but the deploy that
+# Orphan detection: immutable images landed in GHCR but the deploy that
 # would roll them out did not run this time, for ANY reason (lane failure,
-# cancellation, or the plan deciding not to deploy). Scoped to master:
+# cancellation, a failed quality gate, or the plan deciding not to deploy).
+# :latest does not move in that case (it is re-pointed only after a
+# successful deploy), so production is unaffected — the drift is master
+# being ahead of what runs. Scoped to master:
 # off-master manual builds intentionally never deploy and must not be
 # reported as drift. A deploy the operator explicitly excluded via a manual
 # mode is not drift either.

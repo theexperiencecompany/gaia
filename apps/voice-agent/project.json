@@ -20,7 +20,7 @@
     "docker:build": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "docker buildx build --cache-from type=gha,scope=voice-agent --cache-to type=gha,scope=voice-agent,mode=max --build-arg GIT_COMMIT_SHA=$(git rev-parse HEAD) -f apps/voice-agent/Dockerfile -t apps-voice-agent -t ghcr.io/theexperiencecompany/gaia-voice-agent:latest --load . && docker push ghcr.io/theexperiencecompany/gaia-voice-agent:latest",
+        "command": "docker buildx build --cache-from type=registry,ref=ghcr.io/theexperiencecompany/gaia-voice-agent:buildcache --cache-to type=registry,ref=ghcr.io/theexperiencecompany/gaia-voice-agent:buildcache,mode=max,image-manifest=true,oci-mediatypes=true,compression=zstd --build-arg GIT_COMMIT_SHA=$(git rev-parse HEAD) -f apps/voice-agent/Dockerfile -t apps-voice-agent -t ghcr.io/theexperiencecompany/gaia-voice-agent:latest --load .",
         "cwd": "."
       },
       "cache": false,

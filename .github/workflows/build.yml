@@ -69,6 +69,10 @@ on:
         required: false
         type: string
         default: ""
+      web_image_tag:
+        required: false
+        type: string
+        default: ""
       docker_release_result:
         required: false
         type: string
@@ -86,6 +90,8 @@ on:
         value: ${{ jobs.docker-release.outputs.bots_tag }}
       grafana_tag:
         value: ${{ jobs.docker-grafana.result == 'success' && github.sha || '' }}
+      web_tag:
+        value: ${{ jobs.docker-web.result == 'success' && jobs.docker-web.outputs.web_sha || '' }}
       docker_release_result:
         value: ${{ jobs.docker-release.result }}
 
@@ -242,22 +248,6 @@ jobs:
         if: steps.affected.outputs.bots == 'true'
         run: pnpm exec nx release --group=bots --dockerVersionScheme=${{ steps.version.outputs.scheme }} --yes --verbose
 
-      # Fallback: nx release may skip publishing on first run (no prior version
-      # history). Ensure locally-built bot images are pushed to GHCR regardless.
-      - name: Ensure bot images are pushed to GHCR
-        id: ensure-bot-images
-        if: steps.affected.outputs.bots == 'true'
-        run: |
-          for bot in discord slack telegram whatsapp imessage; do
-            img="ghcr.io/theexperiencecompany/gaia-bot-${bot}:latest"
-            if docker image inspect "$img" &>/dev/null; then
-              echo "Pushing $img..."
-              docker push "$img"
-            else
-              echo "⚠️  $img not found locally, skipping"
-            fi
-          done
-
       # Captured right after the push steps, before Discord command sync —
       # that step can fail on an unrelated Discord API error and must never
       # cause a real publish to be reported as "nothing published".
@@ -269,13 +259,12 @@ jobs:
           BOTS_AFFECTED: ${{ steps.affected.outputs.bots }}
           API_RELEASE_OUTCOME: ${{ steps.release-apps.outcome }}
           BOTS_RELEASE_OUTCOME: ${{ steps.release-bots.outcome }}
-          BOTS_PUSH_OUTCOME: ${{ steps.ensure-bot-images.outcome }}
         run: |
           published=false
           if [ "$API_AFFECTED" = "true" ] && [ "$API_RELEASE_OUTCOME" = "success" ]; then
             published=true
           fi
-          if [ "$BOTS_AFFECTED" = "true" ] && [ "$BOTS_RELEASE_OUTCOME" = "success" ] && [ "$BOTS_PUSH_OUTCOME" = "success" ]; then
+          if [ "$BOTS_AFFECTED" = "true" ] && [ "$BOTS_RELEASE_OUTCOME" = "success" ]; then
             published=true
           fi
           echo "published=$published" >> "$GITHUB_OUTPUT"
@@ -320,6 +309,10 @@ jobs:
       contents: read
       packages: write
       actions: read
+    outputs:
+      # Immutable tag of the image this run pushed (empty when web wasn't
+      # affected); phase=deploy promotes it to :latest after the gate passes.
+      web_sha: ${{ steps.web-affected.outputs.web == 'true' && github.sha || '' }}
     steps:
       # Prepare repository + tooling for affected check and optional image build.
       # Full history: nx-set-shas resolves NX_BASE to the pre-push master SHA,
@@ -346,13 +339,6 @@ jobs:
 
       - name: Setup Node.js + pnpm
         uses: ./.github/actions/setup-node-pnpm
-
-      # Restore the Next.js compiler cache into the build context: the
-      # .dockerignore negation (**/.next/* + !**/.next/cache) lets `COPY . .`
-      # carry it into the builder, so `next build` inside Docker starts from
-      # the same warm compiler cache cf:build uses. apps/web/.next/cache has a
-      # committed .gitkeep so local/self-host builds always have the dir.
-      - uses: ./.github/actions/restore-nextjs-cache
 
       # Convert Nx affected output into a simple boolean consumed by downstream jobs.
       - name: Check if web is affected
@@ -383,21 +369,34 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
+      # phase=build runs BEFORE the quality gate, so it publishes only the
+      # immutable :<sha> tag (the duplicate tag lines below collapse to one);
+      # promote-latest re-points :latest after the gate passes. The legacy
+      # single-phase flow keeps pushing :latest/dev-<sha> directly.
       - name: Determine image tag
         if: steps.web-affected.outputs.web == 'true'
         id: tag
+        env:
+          PHASE: ${{ inputs.phase }}
+          GIT_REF: ${{ github.ref }}
+          GIT_SHA: ${{ github.sha }}
         run: |
-          if [ "${{ github.ref }}" = "refs/heads/master" ]; then
-            echo "tag=latest" >> $GITHUB_OUTPUT
+          if [ "$PHASE" = "build" ]; then
+            echo "tag=$GIT_SHA" >> "$GITHUB_OUTPUT"
+          elif [ "$GIT_REF" = "refs/heads/master" ]; then
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
           else
-            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-            echo "tag=dev-${SHORT_SHA}" >> $GITHUB_OUTPUT
+            echo "tag=dev-$(printf '%s' "$GIT_SHA" | cut -c1-7)" >> "$GITHUB_OUTPUT"
           fi
 
       # Build and push web image tags for deploy workflow to consume.
+      # Layer cache lives in GHCR (:buildcache), not the GHA cache service:
+      # the type=gha export of this image measured 449s of the 951s job (the
+      # GHA cache API writes large layers at ~10MB/s) while the actual GHCR
+      # image push is ~40s on the same runner.
       - name: Build and push web Docker image
         if: steps.web-affected.outputs.web == 'true'
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.0.1
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: apps/web/Dockerfile
@@ -407,8 +406,8 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/gaia-web:${{ github.sha }}
           build-args: |
             NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1/
-          cache-from: type=gha,scope=gaia-web
-          cache-to: type=gha,mode=max,scope=gaia-web
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/gaia-web:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/gaia-web:buildcache,mode=max,image-manifest=true,oci-mediatypes=true,compression=zstd
 
       - name: Skip notification
         if: steps.web-affected.outputs.web != 'true'
@@ -440,22 +439,28 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
+      # Same phase rule as docker-web: no :latest before the gate — the
+      # deploy's retag-latest-alias.sh (post-convergence) and promote-latest
+      # (gate success, no backend deploy needed) own the :latest alias.
       - name: Determine image tag
         id: tag
         env:
+          PHASE: ${{ inputs.phase }}
           GIT_REF: ${{ github.ref }}
           GIT_SHA: ${{ github.sha }}
         run: |
-          if [ "$GIT_REF" = "refs/heads/master" ]; then
+          if [ "$PHASE" = "build" ]; then
+            echo "tag=$GIT_SHA" >> "$GITHUB_OUTPUT"
+          elif [ "$GIT_REF" = "refs/heads/master" ]; then
             echo "tag=latest" >> "$GITHUB_OUTPUT"
           else
             echo "tag=dev-$(printf '%s' "$GIT_SHA" | cut -c1-7)" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build and push Grafana image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.0.1
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: infra/docker/observability/grafana
           file: infra/docker/observability/grafana/Dockerfile
@@ -463,8 +468,8 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/gaia-grafana:${{ steps.tag.outputs.tag }}
             ghcr.io/${{ github.repository_owner }}/gaia-grafana:${{ github.sha }}
-          cache-from: type=gha,scope=gaia-grafana
-          cache-to: type=gha,mode=max,scope=gaia-grafana
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/gaia-grafana:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/gaia-grafana:buildcache,mode=max,image-manifest=true,oci-mediatypes=true,compression=zstd
 
   deployment-plan:
     timeout-minutes: 10
@@ -476,8 +481,11 @@ jobs:
     # 'success' skipped this whole job, and with it trigger-deploy, even
     # when the deploy was ready to ship). Backend only: the frontend deploys
     # itself via Cloudflare Workers Builds on every master push.
+    # Never in phase=build: that invocation runs BEFORE the quality gate, and
+    # its GATE_RESULT would fall through to the legacy 'success' default —
+    # planning there would deploy ungated code in parallel with the gate.
     needs: [docker-release, docker-grafana]
-    if: always()
+    if: always() && inputs.phase != 'build'
     runs-on: ubuntu-latest
     outputs:
       backend_deploy: ${{ steps.plan.outputs.backend_deploy }}
@@ -524,7 +532,7 @@ jobs:
   # undeployed build with no warning.
   notify-publish-without-deploy:
     needs: [deployment-plan]
-    if: always() && needs.deployment-plan.outputs.backend_orphaned == 'true'
+    if: always() && inputs.phase != 'build' && needs.deployment-plan.outputs.backend_orphaned == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -544,15 +552,15 @@ jobs:
             **Commit:** `${{ github.sha }}`
             **Branch:** ${{ github.ref_name }}
             **Actor:** ${{ github.actor }}
-            **Backend images (api/voice-agent/bots) were published to GHCR as `:latest` but the backend deploy did NOT run.** docker-release result: `${{ needs.deployment-plan.outputs.docker_release_result }}`.
-            Production may now be running a stale image while a newer one sits in GHCR tagged `:latest`. Any container restart on the Swarm host will silently pick up the undeployed build.
-            **To deploy now:** fix the red lane, then run `gh workflow run build.yml --ref master -f deployment_mode=deploy` — this redeploys whatever is currently tagged `:latest` in GHCR regardless of this run's affected-detection or lane results.
+            **Backend images (api/voice-agent/bots) were published to GHCR (immutable tags) but the backend deploy did NOT run.** docker-release result: `${{ needs.deployment-plan.outputs.docker_release_result }}`.
+            `:latest` did not move — it is re-pointed only after a successful deploy — so restarts on the Swarm host keep the deployed build. But master is now ahead of production: the published images are sitting undeployed.
+            **To ship them:** fix the red lane and re-run the master workflow (or push a fix). `gh workflow run build.yml --ref master -f deployment_mode=deploy` redeploys only what `:latest` currently points at — the last successfully deployed build, not this run's images.
         run: bash scripts/ci/notify-discord.sh
 
   # Trigger backend production deploy only when deploy plan allows it.
   trigger-deploy:
     needs: [deployment-plan]
-    if: needs.deployment-plan.outputs.backend_deploy == 'true'
+    if: inputs.phase != 'build' && needs.deployment-plan.outputs.backend_deploy == 'true'
     uses: ./.github/workflows/deploy-swarm-prod.yml
     with:
       action: deploy
@@ -560,3 +568,31 @@ jobs:
       bots_image_tag: ${{ needs.deployment-plan.outputs.bots_image_tag }}
       grafana_image_tag: ${{ needs.deployment-plan.outputs.grafana_image_tag }}
     secrets: inherit
+
+  # :latest promotion for the two images the Swarm deploy does not own:
+  # gaia-web (self-host package; never deployed by us) and gaia-grafana when
+  # no backend deploy runs to retag it (grafana-only changes). Backend repos'
+  # :latest is re-pointed exclusively by retag-latest-alias.sh after a
+  # successful deploy/rollback convergence — ":latest == gated" for these two,
+  # ":latest == deployed" for the backend. phase=build never touches :latest.
+  promote-latest:
+    if: github.ref == 'refs/heads/master' && inputs.phase == 'deploy' && inputs.gate_result == 'success' && (inputs.web_image_tag != '' || inputs.grafana_image_tag != '')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Promote gated images to :latest
+        env:
+          WEB_IMAGE_TAG: ${{ inputs.web_image_tag }}
+          GRAFANA_IMAGE_TAG: ${{ inputs.grafana_image_tag }}
+        run: bash scripts/ci/promote-latest.sh

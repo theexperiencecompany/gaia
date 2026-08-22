@@ -57,7 +57,7 @@
     "docker:build": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "docker buildx build --platform linux/amd64 --cache-from type=gha,scope=bot-whatsapp --cache-to type=gha,scope=bot-whatsapp,mode=max --build-arg BOT_NAME=whatsapp -f apps/bots/Dockerfile -t apps-bots-whatsapp:latest -t bot-whatsapp:latest -t ghcr.io/theexperiencecompany/gaia-bot-whatsapp:latest --load .",
+        "command": "docker buildx build --platform linux/amd64 --cache-from type=registry,ref=ghcr.io/theexperiencecompany/gaia-bot-whatsapp:buildcache --cache-to type=registry,ref=ghcr.io/theexperiencecompany/gaia-bot-whatsapp:buildcache,mode=max,image-manifest=true,oci-mediatypes=true,compression=zstd --build-arg BOT_NAME=whatsapp -f apps/bots/Dockerfile -t apps-bots-whatsapp:latest -t bot-whatsapp:latest -t ghcr.io/theexperiencecompany/gaia-bot-whatsapp:latest --load .",
         "cwd": "."
       },
       "cache": true,
