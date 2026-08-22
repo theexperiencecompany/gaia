@@ -63,7 +63,6 @@ export const COMMAND_MENU_STYLES = {
   input:
     "flex-1 bg-transparent text-zinc-100 placeholder-zinc-500 outline-none",
   list: "max-h-[400px] overflow-x-hidden overflow-y-auto pb-3 outline-none!",
-  empty: "flex h-16 items-center justify-center text-sm text-zinc-500",
   separator: "mx-3 h-px bg-zinc-800/50",
   flexOne: "flex-1",
   contentWrapper: "min-w-0 flex-1",

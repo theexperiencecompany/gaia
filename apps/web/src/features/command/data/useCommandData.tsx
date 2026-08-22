@@ -29,6 +29,7 @@ import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
 import { useComposerStore } from "@/stores/composerStore";
 import { usePricingModalStore } from "@/stores/pricingModalStore";
 import { useTodoStore } from "@/stores/todoStore";
+import { frecencyScore, useFrecencyStore } from "../frecency";
 import { ICON } from "../model/constants";
 import type {
   BuildCtx,
@@ -166,6 +167,21 @@ export function useCommandData(host: CommandHost): CommandData {
   );
   const settingsItems = useMemo(() => buildSettingsItems(ctx), [ctx]);
 
+  // id → item maps so Recent can find items without assuming builders return
+  // them in source order (filtering builders would break positional zipping).
+  const workflowById = useMemo(
+    () => new Map(workflowItems.map((item) => [item.id, item] as const)),
+    [workflowItems],
+  );
+  const todoById = useMemo(
+    () => new Map(todoItems.map((item) => [item.id, item] as const)),
+    [todoItems],
+  );
+  const notificationById = useMemo(
+    () => new Map(notificationItems.map((item) => [item.id, item] as const)),
+    [notificationItems],
+  );
+
   const groups = useMemo<CommandGroup[]>(() => {
     const entity = (
       id: string,
@@ -290,29 +306,36 @@ export function useCommandData(host: CommandHost): CommandData {
     logout,
   ]);
 
-  // Recent across all types, newest first.
+  // Recent across all types. What the user picks in the palette is the
+  // strongest recency signal — frecency first, source timestamps as
+  // tiebreaker/fallback for a cold start.
+  const frecencyEntries = useFrecencyStore((s) => s.entries);
   const recent = useMemo<CommandItem[]>(() => {
     const candidates: { item: CommandItem; ts: number }[] = [];
     (conversations as ChatLike[]).forEach((c) => {
       const item = chats.byConv.get(c.conversation_id);
       if (item) candidates.push({ item, ts: c.updatedAt?.getTime() ?? 0 });
     });
-    workflows.forEach((w, i) => {
-      const item = workflowItems[i];
+    workflows.forEach((w) => {
+      const item = workflowById.get(`workflow:${w.id}`);
       if (item)
         candidates.push({ item, ts: ms(w.last_executed_at || w.updated_at) });
     });
-    todos.forEach((t, i) => {
-      const item = todoItems[i];
+    todos.forEach((t) => {
+      const item = todoById.get(`todo:${t.id}`);
       if (item) candidates.push({ item, ts: ms(t.updated_at) });
     });
-    notifications.forEach((n, i) => {
-      const item = notificationItems[i];
+    notifications.forEach((n) => {
+      const item = notificationById.get(`notification:${n.id}`);
       if (item) candidates.push({ item, ts: ms(n.created_at) });
     });
     return candidates
       .filter((c) => c.ts > 0)
-      .sort((a, b) => b.ts - a.ts)
+      .sort(
+        (a, b) =>
+          frecencyScore(frecencyEntries, b.item.id) -
+            frecencyScore(frecencyEntries, a.item.id) || b.ts - a.ts,
+      )
       .slice(0, RECENT_COUNT)
       .map((c) => c.item);
   }, [
@@ -321,9 +344,10 @@ export function useCommandData(host: CommandHost): CommandData {
     todos,
     notifications,
     chats.byConv,
-    workflowItems,
-    todoItems,
-    notificationItems,
+    workflowById,
+    todoById,
+    notificationById,
+    frecencyEntries,
   ]);
 
   const context = useMemo(() => {
