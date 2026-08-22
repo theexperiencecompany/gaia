@@ -246,7 +246,12 @@ async def _execute_batch_operations(
 @lazy_provider(
     name="chroma_triggers_store",
     required_keys=[],
-    strategy=MissingKeyStrategy.ERROR,
+    strategy=MissingKeyStrategy.WARN,
+    warning_message=(
+        "Workflow trigger search disabled — it needs an embeddings provider "
+        "(GOOGLE_API_KEY). Everything else works; agents get a clear "
+        "'unavailable' answer from the search_triggers tool."
+    ),
     auto_initialize=True,
 )
 async def initialize_chroma_triggers_store() -> ChromaStore:
@@ -259,6 +264,11 @@ async def initialize_chroma_triggers_store() -> ChromaStore:
 
     Returns:
         ChromaStore instance for triggers
+
+    WARN semantics on purpose: without an embeddings provider (a self-host
+    instance that never configured Google) this degrades to a boot warning
+    and an unavailable search_triggers tool instead of aborting the whole
+    server — trigger indexing is an enhancement, not core chat.
     """
     chroma_client = await ChromaClient.get_client()
     embeddings = await providers.aget("google_embeddings")
