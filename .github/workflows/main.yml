@@ -213,6 +213,147 @@ jobs:
           retention-days: 7
           if-no-files-found: error
           include-hidden-files: true
+
+  # --- Coverage combine + gates (runs after both shards) ------------------
+  # Merges the per-shard .coverage.* files and enforces the repo-wide gates
+  # that cannot be checked per-shard: 70% line coverage (temporary — TOTAL is 78%;
+  # target is 80% — see TODO bump to 80% when coverage improves) and 90% diff-cover.
+  # Also runs the non-sharded checks that belong to the Python lane:
+  # junit failure summary, gaia-shared tests, and schemathesis contract fuzz
+  # (the latter boots a live server and must run serially/isolated, so it
+  # lives here rather than inside a shard).
+  test-python-coverage:
+    needs: [test-python]
+    # Run even if a shard failed so the junit summary still posts; but skip
+    # entirely when the Python lane was skipped (no affected Python projects).
+    if: always() && needs.test-python.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      # This job merges .coverage files and runs schemathesis/gaia-shared;
+      # none of them drive the device-bridge CLI, so skip Node (~56-75s).
+      - name: Restore uv venv
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: apps/api/.venv
+          key: uvvenv-${{ runner.os }}-${{ hashFiles('uv.lock','apps/api/pyproject.toml') }}
+      - uses: ./.github/actions/setup-python-test-env
+        with:
+          install-node: "false"
+          restore-models: "false"
+      - name: Download shard artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: /tmp/shard-artifacts
+          pattern: pytest-results-*
+          merge-multiple: true
+      - name: Combine coverage and enforce gates
+        working-directory: apps/api
+        run: |
+          set -euo pipefail
+          ls -la /tmp/shard-artifacts/
+          cp /tmp/shard-artifacts/.coverage.* . 2>/dev/null || { echo "::error::Missing per-shard .coverage files"; ls -R /tmp/shard-artifacts; exit 1; }
+          echo "Combining coverage from shards..."
+          uv run --frozen coverage combine
+          uv run --frozen coverage report --fail-under=70 --show-missing
+          uv run --frozen coverage xml -o coverage.xml
+          echo "Coverage combine: OK (merged $(ls .coverage* 2>/dev/null | wc -l) shards)"
+          mkdir -p test-results
+          cp /tmp/shard-artifacts/pytest-*.xml test-results/ 2>/dev/null || true
+          echo "## Python coverage (merged shards)" >> "$GITHUB_STEP_SUMMARY"
+          echo "fail-under 70% enforced on merged coverage" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f coverage.xml ]; then echo "coverage.xml exists (merged)" >> "$GITHUB_STEP_SUMMARY"; fi
+      - name: Diff coverage gate (changed lines must be covered)
+        if: github.event_name == 'pull_request'
+        working-directory: apps/api
+        run: |
+          trap 'echo "::error::repro: uv tool run diff-cover coverage.xml"' ERR
+          uv tool run diff-cover coverage.xml --compare-branch=origin/master --fail-under=90
+          echo "diff-cover: OK"
+          echo "### Diff coverage — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+      - name: Summary of failed tests (merged)
+        if: always()
+        working-directory: apps/api
+        run: |
+          for f in test-results/pytest-*.xml; do [ -e "$f" ] || continue; echo "=== $f ==="; uv run --no-project ../../scripts/ci/junit_failures.py "$f" || true; done
+      - name: Upload merged pytest artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pytest-results
+          path: |
+            apps/api/test-results/
+            apps/api/coverage.xml
+            apps/api/.coverage
+          retention-days: 7
+          if-no-files-found: error
+          include-hidden-files: true
+      - name: Schemathesis contract fuzz (isolated live-server run)
+        if: always()
+        working-directory: apps/api
+        run: |
+          USE_REAL_SERVICES=1 bash ../../scripts/ci/run-tests-flake-gate.sh \
+            uv run pytest tests/integration/real/test_schemathesis.py -q --tb=short -m schemathesis \
+            --override-ini=addopts=--strict-markers --timeout=600
+          echo "Schemathesis: OK"
+          echo "### Schemathesis — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+      - name: Run gaia-shared tests
+        working-directory: apps/api
+        run: |
+          trap 'echo "::error::repro: uv run --frozen pytest ../../libs/shared/py/tests"' ERR
+          uv run --frozen pytest ../../libs/shared/py/tests \
+            --tb=short -q --override-ini=addopts=--strict-markers
+          echo "gaia-shared tests: OK"
+          echo "### gaia-shared tests — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+
+# --- Test: Python fast lane (hermetic, no containers) -------------------
+  # The fast-suite invariant, enforced: the hermetic default selection (what
+  # `nx test api` runs locally) must finish inside the budget with NO service
+  # containers — real-infra tiers skip at collection when USE_REAL_SERVICES
+  # is unset. A regression that slows the default run fails this lane instead
+  # of silently degrading every contributor's feedback loop.
+  # Runs parallel to test-python (needs: [detect] only) as a budget probe;
+  # making it depend on test-python would serialize the critical path (5.5m +
+  # 5m) and hide the probe's signal behind a slow suite. Keep parallel.
+  test-fast:
+    needs: [detect]
+    if: needs.detect.outputs.has_python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.8.17"
+          enable-cache: true
+          prune-cache: true
+      - name: Restore uv venv
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: apps/api/.venv
+          key: uvvenv-${{ runner.os }}-${{ hashFiles('uv.lock','apps/api/pyproject.toml') }}
+      - name: Sync Python dependencies
+        shell: bash
+        run: uv sync --frozen --package gaia --group backend --group dev
+      - name: Run hermetic fast suite (budget-capped)
+        working-directory: apps/api
+        # No containers, no service env: USE_REAL_SERVICES is unset, so every
+        # real-infra tier skips at collection. The `timeout` cap IS the
+        # fast-suite budget — a slower suite is a failed build.
+        run: |
+          trap 'echo "::error::repro: timeout ${FAST_SUITE_BUDGET_SECONDS:-300} bash"' ERR
+          timeout ${FAST_SUITE_BUDGET_SECONDS:-300} bash ../../scripts/ci/run-tests-flake-gate.sh \
+            uv run --frozen pytest -n auto -m 'not composio and not model_onboarding and not schemathesis' \
+            --tb=short -q --override-ini=addopts=--strict-markers --timeout=300
+          echo "Hermetic fast suite: OK (under budget)"
+          echo "### Hermetic fast suite — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+
   # --- Test: TypeScript (runner-native) -----------------------------------
   test-typescript:
     needs: [detect]
@@ -406,10 +547,10 @@ jobs:
       - trivy-scan
       - regression-proof
       - test-device-bridge
-      # test-fast removed (96decaf era): it re-ran the same suite selection
-      # the shards cover (hermetic, no services) as a non-gating canary while
-      # adding one more runner to the shared pool per PR — the pool is now
-      # the dominant latency variable.
+      # test-fast deliberately absent: it's the same suite selection the
+      # shards already run (hermetic, no services), and as a gating lane it
+      # only added a runner to the queue and a redundant red signal. It still
+      # runs as a non-blocking budget probe (its documented role).
       # static checks + dead-code live in code-quality.yml (its own gate)
       # changelog-sync deliberately excluded (non-blocking, auto-opens fix PRs)
       # coverage is measured inside test-python itself (--cov-fail-under=70 temporary, target 80),
