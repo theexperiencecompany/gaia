@@ -34,6 +34,18 @@ def _quiet_log():
         yield
 
 
+@pytest.fixture(autouse=True)
+def _registry_without_stamps():
+    """Default registry for tests that don't care about forced-ask stamps:
+    every tool looks up as unregistered (meta None → never always-gated).
+    Tests exercising the stamp patch ``get_tool_registry`` themselves."""
+    with patch(
+        f"{MODULE}.get_tool_registry",
+        new=AsyncMock(return_value=SimpleNamespace(get_tool_meta=lambda name: None)),
+    ):
+        yield
+
+
 class TestResolvePolicy:
     @pytest.mark.parametrize(
         ("mode", "destructive", "expected"),
@@ -225,7 +237,7 @@ class TestHasPausingSibling:
         request = make_request(call_id="call-1", messages=state_messages)
         registry = SimpleNamespace(
             get_tool_meta=lambda name: (
-                SimpleNamespace(tool=sibling) if name == "mcp_wipe" else None
+                SimpleNamespace(tool=sibling, always_gate=False) if name == "mcp_wipe" else None
             ),
             is_tool_destructive=lambda _name: None,
             mark_tool_destructive=lambda *_: None,
@@ -261,3 +273,84 @@ class TestHasPausingSibling:
             patch(f"{MODULE}.is_tool_destructive", side_effect=classify),
         ):
             assert await has_pausing_sibling(request, USER_ID, "call-1") is False
+
+
+class TestAlwaysGate:
+    """The registry's forced-ask stamp: product invariants outrank preferences."""
+
+    def meta(self, always_gate: bool):
+        return SimpleNamespace(always_gate=always_gate)
+
+    async def test_forced_ask_wins_over_every_mode_without_reading_preferences(self) -> None:
+        # The check runs BEFORE the preference lookup, so a dead preference
+        # store cannot wave an account mutation through.
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=SimpleNamespace(
+                get_tool_meta=lambda name: self.meta(True)
+            ))),
+            patch(f"{MODULE}._preferences", new=AsyncMock(side_effect=AssertionError("must not read prefs"))) as prefs_read,
+            patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs("always_allow"))),
+        ):
+            assert await resolve_policy(make_request(), USER_ID, "update_preferences") == "ask"
+        prefs_read.assert_not_awaited()
+
+    async def test_per_tool_allow_override_does_not_bypass_the_stamp(self) -> None:
+        tool = make_tool(name="update_preferences")
+        with patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=SimpleNamespace(
+            get_tool_meta=lambda name: self.meta(True)
+        ))):
+            assert await is_gated(prefs("always_ask", update_preferences=False), "update_preferences", tool) is True
+
+    async def test_ungated_tools_are_unaffected_by_the_stamp_path(self) -> None:
+        tool = make_tool(name="web_search")
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=SimpleNamespace(
+                get_tool_meta=lambda name: self.meta(False)
+            ))),
+            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=False)),
+        ):
+            assert await is_gated(prefs(), "web_search", tool) is False
+
+
+class TestArgumentGate:
+    """manage_linked_account: disconnect confirms; generate_link does not."""
+
+    def registry_with_stamp(self, always_gate: bool = False):
+        return AsyncMock(
+            return_value=SimpleNamespace(get_tool_meta=lambda name: SimpleNamespace(always_gate=always_gate))
+        )
+
+    async def test_disconnect_always_asks_regardless_of_mode(self) -> None:
+        request = make_request(name="manage_linked_account", args={"platform": "slack", "action": "disconnect"})
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=self.registry_with_stamp()),
+            patch(f"{MODULE}._preferences", new=AsyncMock(side_effect=AssertionError("must not read prefs"))),
+        ):
+            assert await resolve_policy(request, USER_ID, "manage_linked_account") == "ask"
+
+    async def test_generate_link_falls_through_to_normal_resolution(self) -> None:
+        request = make_request(name="manage_linked_account", args={"platform": "slack", "action": "generate_link"})
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=self.registry_with_stamp()),
+            patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs("always_allow"))),
+        ):
+            assert await resolve_policy(request, USER_ID, "manage_linked_account") == "allow"
+
+    async def test_a_disconnect_sibling_counts_as_pausing(self) -> None:
+        state_messages = [
+            ai_message_with_calls(
+                {"id": "call-1", "name": "web_search", "args": {}},
+                {"id": "call-2", "name": "manage_linked_account", "args": {"action": "disconnect"}},
+            )
+        ]
+        request = make_request(call_id="call-1", messages=state_messages)
+        with (
+            patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs())),
+            patch(
+                f"{MODULE}.get_tool_registry",
+                new=AsyncMock(
+                    return_value=SimpleNamespace(get_tool_meta=lambda name: None)
+                ),
+            ),
+        ):
+            assert await has_pausing_sibling(request, USER_ID, "call-1") is True

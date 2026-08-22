@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import posixpath
 from typing import Annotated
 
 from langchain_core.runnables.config import RunnableConfig
@@ -15,7 +16,8 @@ from app.agents.tools.coding._context import (
     get_user_id,
     safe_emit,
 )
-from app.agents.workspace.paths import MountRole
+from app.agents.workspace.paths import WORKSPACE_ROOT, MountRole
+from app.constants.account import account_mutation_refusal
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc, with_rate_limiting
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
@@ -50,6 +52,13 @@ async def write(
             "Error: user-uploaded/ is read-only. Copy the file to scratch "
             "first: cp user-uploaded/<name> scratch/"
         )
+
+    # account/** holds projections of real settings — refuse with the tool
+    # that performs the mutation instead of touching the filesystem.
+    rel = posixpath.relpath(abs_path, WORKSPACE_ROOT)
+    refusal = account_mutation_refusal(rel)
+    if refusal is not None:
+        return refusal
 
     encoded = content.encode("utf-8")
     if len(encoded) > MAX_CONTENT_BYTES:

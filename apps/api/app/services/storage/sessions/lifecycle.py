@@ -113,10 +113,11 @@ async def provision_user_workspace(user_id: str, connected_ids: set[str] | None 
     await link_system_files_into_workspace(user_id)
     await materialize_user_integrations(user_id, connected_ids or set())
 
-    # Late-bound for the same reason (account_fs imports storage modules).
-    from app.services.account_fs import schedule_account_sync
+    # Late-bound for the same reason (workspace_areas -> account_fs -> storage).
+    from app.services.workspace_areas import all_areas
 
-    schedule_account_sync(user_id)
+    for area in all_areas():
+        area.schedule_sync(user_id)
 
 
 async def delete_session_dir(user_id: str, conv_id: str) -> None:

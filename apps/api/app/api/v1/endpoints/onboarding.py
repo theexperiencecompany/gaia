@@ -42,6 +42,7 @@ from app.models.user_models import (
     OnboardingStatusResponse,
     UserDocument,
 )
+from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.composio.composio_service import get_composio_service
 from app.services.onboarding.clarify_service import generate_clarify_questions
@@ -333,6 +334,7 @@ async def update_user_preferences(
 
     try:
         updated_user = await update_onboarding_preferences(user["user_id"], preferences)
+        schedule_account_sync(user["user_id"])
         # PATCH semantics: only the fields the caller actually sent were written,
         # so `fields` is what changed — not the whole preferences object.
         capture_context_event(

@@ -245,8 +245,8 @@ class TestDisconnectPlatform:
                 new_callable=AsyncMock,
                 return_value={"status": "disconnected", "platform": "discord"},
             ),
-            patch("app.api.v1.endpoints.platform_links.redis_cache") as mock_cache,
-            patch("app.api.v1.endpoints.platform_links.capture_context_event") as mock_capture,
+            patch("app.services.platform_link_service.redis_cache") as mock_cache,
+            patch("app.services.platform_link_service.capture_context_event") as mock_capture,
         ):
             mock_cache.client = mock_redis
             resp = await client.delete(f"{BASE}/discord")
@@ -272,7 +272,7 @@ class TestDisconnectPlatform:
                 new_callable=AsyncMock,
                 return_value={"status": "disconnected", "platform": "discord"},
             ),
-            patch("app.api.v1.endpoints.platform_links.redis_cache") as mock_cache,
+            patch("app.services.platform_link_service.redis_cache") as mock_cache,
         ):
             mock_cache.client = AsyncMock()
             resp = await client.delete(f"{BASE}/discord")
@@ -319,9 +319,9 @@ class TestInitiatePlatformConnect:
     @pytest.mark.asyncio
     async def test_discord_oauth(self, client: AsyncClient) -> None:
         with (
-            patch("app.api.v1.endpoints.platform_links.settings") as mock_settings,
+            patch("app.services.platform_link_service.settings") as mock_settings,
             patch(
-                "app.api.v1.endpoints.platform_links.create_oauth_state",
+                "app.services.platform_link_service.create_oauth_state",
                 new_callable=AsyncMock,
                 return_value="state123",
             ),
@@ -339,9 +339,9 @@ class TestInitiatePlatformConnect:
     @pytest.mark.asyncio
     async def test_slack_oauth(self, client: AsyncClient) -> None:
         with (
-            patch("app.api.v1.endpoints.platform_links.settings") as mock_settings,
+            patch("app.services.platform_link_service.settings") as mock_settings,
             patch(
-                "app.api.v1.endpoints.platform_links.create_oauth_state",
+                "app.services.platform_link_service.create_oauth_state",
                 new_callable=AsyncMock,
                 return_value="slack_state",
             ),
@@ -358,7 +358,7 @@ class TestInitiatePlatformConnect:
 
     @pytest.mark.asyncio
     async def test_telegram_manual(self, client: AsyncClient) -> None:
-        with patch("app.api.v1.endpoints.platform_links.settings") as mock_settings:
+        with patch("app.services.platform_link_service.settings") as mock_settings:
             mock_settings.DISCORD_OAUTH_CLIENT_ID = None
             mock_settings.SLACK_OAUTH_CLIENT_ID = None
             mock_settings.TELEGRAM_BOT_USERNAME = "my_gaia_bot"
@@ -372,7 +372,7 @@ class TestInitiatePlatformConnect:
 
     @pytest.mark.asyncio
     async def test_telegram_default_bot_username(self, client: AsyncClient) -> None:
-        with patch("app.api.v1.endpoints.platform_links.settings") as mock_settings:
+        with patch("app.services.platform_link_service.settings") as mock_settings:
             mock_settings.DISCORD_OAUTH_CLIENT_ID = None
             mock_settings.SLACK_OAUTH_CLIENT_ID = None
             mock_settings.TELEGRAM_BOT_USERNAME = None
@@ -384,7 +384,7 @@ class TestInitiatePlatformConnect:
     @pytest.mark.asyncio
     async def test_whatsapp_manual(self, client: AsyncClient) -> None:
         """WhatsApp uses manual flow (no OAuth) -> 200 with instructions."""
-        with patch("app.api.v1.endpoints.platform_links.settings") as mock_settings:
+        with patch("app.services.platform_link_service.settings") as mock_settings:
             mock_settings.DISCORD_OAUTH_CLIENT_ID = None
             mock_settings.SLACK_OAUTH_CLIENT_ID = None
             mock_settings.WHATSAPP_PHONE_NUMBER = "15551234567"
@@ -467,7 +467,7 @@ class TestImessagePremiumGate:
                 new_callable=AsyncMock,
                 return_value=DisconnectPlatformResponse(status="disconnected", platform="imessage"),
             ),
-            patch("app.api.v1.endpoints.platform_links.redis_cache") as mock_cache,
+            patch("app.services.platform_link_service.redis_cache") as mock_cache,
         ):
             mock_cache.client = AsyncMock()
             resp = await client.delete(f"{BASE}/imessage")
@@ -490,7 +490,7 @@ class TestImessagePremiumGate:
         with (
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
             patch(
-                "app.api.v1.endpoints.platform_links.register_shared_user",
+                "app.services.platform_link_service.register_shared_user",
                 new_callable=AsyncMock,
             ) as mock_register,
         ):
@@ -514,15 +514,15 @@ class TestImessagePremiumGate:
         with (
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
             patch(
-                "app.api.v1.endpoints.platform_links.register_shared_user",
+                "app.services.platform_link_service.register_shared_user",
                 new_callable=AsyncMock,
                 return_value=photon_user,
             ) as mock_register,
             patch(
-                "app.api.v1.endpoints.platform_links.register_pending_imessage_number",
+                "app.services.platform_link_service.register_pending_imessage_number",
                 new_callable=AsyncMock,
             ),
-            patch("app.api.v1.endpoints.platform_links.log") as mock_log,
+            patch("app.services.platform_link_service.log") as mock_log,
         ):
             resp = await client.post(f"{BASE}/imessage/connect", json={"phone": "+15551234567"})
 
@@ -550,12 +550,12 @@ class TestImessagePremiumGate:
         with (
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
             patch(
-                "app.api.v1.endpoints.platform_links.register_shared_user",
+                "app.services.platform_link_service.register_shared_user",
                 new_callable=AsyncMock,
                 return_value=photon_user,
             ),
             patch(
-                "app.api.v1.endpoints.platform_links.register_pending_imessage_number",
+                "app.services.platform_link_service.register_pending_imessage_number",
                 new_callable=AsyncMock,
             ),
         ):
@@ -572,15 +572,15 @@ class TestImessagePremiumGate:
         with (
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
             patch(
-                "app.api.v1.endpoints.platform_links.enforce_rate_limit", new_callable=AsyncMock
+                "app.services.platform_link_service.enforce_rate_limit", new_callable=AsyncMock
             ) as mock_limit,
             patch(
-                "app.api.v1.endpoints.platform_links.register_shared_user",
+                "app.services.platform_link_service.register_shared_user",
                 new_callable=AsyncMock,
                 return_value=photon_user,
             ),
             patch(
-                "app.api.v1.endpoints.platform_links.register_pending_imessage_number",
+                "app.services.platform_link_service.register_pending_imessage_number",
                 new_callable=AsyncMock,
             ),
         ):
@@ -594,14 +594,14 @@ class TestImessagePremiumGate:
         with (
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
             patch(
-                "app.api.v1.endpoints.platform_links.enforce_rate_limit",
+                "app.services.platform_link_service.enforce_rate_limit",
                 new_callable=AsyncMock,
                 side_effect=RateLimitExceededException(
                     feature=IMESSAGE_REGISTRATION_FEATURE_KEY, current_plan="pro"
                 ),
             ),
             patch(
-                "app.api.v1.endpoints.platform_links.register_shared_user", new_callable=AsyncMock
+                "app.services.platform_link_service.register_shared_user", new_callable=AsyncMock
             ) as mock_register,
         ):
             resp = await client.post(f"{BASE}/imessage/connect", json={"phone": "+15551234567"})
@@ -620,14 +620,14 @@ class TestImessagePremiumGate:
         )
         with (
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
-            patch("app.api.v1.endpoints.platform_links.enforce_rate_limit", new_callable=AsyncMock),
+            patch("app.services.platform_link_service.enforce_rate_limit", new_callable=AsyncMock),
             patch(
-                "app.api.v1.endpoints.platform_links.register_shared_user",
+                "app.services.platform_link_service.register_shared_user",
                 new_callable=AsyncMock,
                 return_value=photon_user,
             ),
             patch(
-                "app.api.v1.endpoints.platform_links.register_pending_imessage_number",
+                "app.services.platform_link_service.register_pending_imessage_number",
                 new_callable=AsyncMock,
             ) as mock_pending,
         ):
@@ -643,9 +643,9 @@ class TestImessagePremiumGate:
         with (
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
             patch(
-                "app.api.v1.endpoints.platform_links.enforce_rate_limit", new_callable=AsyncMock
+                "app.services.platform_link_service.enforce_rate_limit", new_callable=AsyncMock
             ) as mock_limit,
-            patch("app.api.v1.endpoints.platform_links.settings") as mock_settings,
+            patch("app.services.platform_link_service.settings") as mock_settings,
         ):
             mock_settings.DISCORD_OAUTH_CLIENT_ID = None
             mock_settings.SLACK_OAUTH_CLIENT_ID = None
@@ -659,7 +659,7 @@ class TestImessagePremiumGate:
     async def test_free_user_other_platforms_unaffected(self, client: AsyncClient) -> None:
         with (
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE),
-            patch("app.api.v1.endpoints.platform_links.settings") as mock_settings,
+            patch("app.services.platform_link_service.settings") as mock_settings,
         ):
             mock_settings.DISCORD_OAUTH_CLIENT_ID = None
             mock_settings.SLACK_OAUTH_CLIENT_ID = None
