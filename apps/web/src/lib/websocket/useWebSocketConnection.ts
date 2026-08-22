@@ -16,7 +16,9 @@ export function useWebSocketConnection() {
   // value without needing to re-subscribe the event listener
   // (advanced-event-handler-refs pattern).
   const userEmailRef = useRef(user?.email);
-  userEmailRef.current = user?.email;
+  useEffect(() => {
+    userEmailRef.current = user?.email;
+  });
 
   // Initialize WebSocket connection
   useEffect(() => {

@@ -51,19 +51,21 @@ export const IntegrationInstructionsModal = ({
 }: IntegrationInstructionsModalProps) => {
   const [value, setValue] = useState(savedContent);
   const [tab, setTab] = useState("write");
-  const wasOpenRef = useRef(false);
+  const [wasOpen, setWasOpen] = useState(isOpen);
   const { isMac, modifierKeyName } = usePlatform();
 
   // Reset the draft to the persisted content only on the closed->open
   // transition — not on every savedContent change, which would clobber
   // in-progress edits if the query refetches while the modal is open.
-  useEffect(() => {
-    if (isOpen && !wasOpenRef.current) {
+  // Render-phase state adjustment (React: "adjusting state when a prop
+  // changes") instead of an effect, so no stale frame is committed.
+  if (isOpen !== wasOpen) {
+    setWasOpen(isOpen);
+    if (isOpen) {
       setValue(savedContent);
       setTab("write");
     }
-    wasOpenRef.current = isOpen;
-  }, [isOpen, savedContent]);
+  }
 
   // Raw compare: leading/trailing whitespace can be meaningful in Markdown,
   // and the backend already normalizes whitespace-only content to empty.
@@ -115,7 +117,9 @@ export const IntegrationInstructionsModal = ({
   // stable while always reading the latest state. (Escape is handled by the
   // Modal's built-in dismiss.)
   const saveShortcutRef = useRef({ isMac, canSave, handleSave });
-  saveShortcutRef.current = { isMac, canSave, handleSave };
+  useEffect(() => {
+    saveShortcutRef.current = { isMac, canSave, handleSave };
+  });
 
   useEffect(() => {
     if (!isOpen) return;

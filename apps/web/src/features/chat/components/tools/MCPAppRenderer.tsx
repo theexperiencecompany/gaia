@@ -50,10 +50,12 @@ export function MCPAppRenderer({ data }: Props) {
   const bridgeRef = useRef<AppBridge | null>(null);
 
   const dataRef = useRef(data);
-  dataRef.current = data;
   const sendMessage = useSendMessage();
   const sendMessageRef = useRef(sendMessage);
-  sendMessageRef.current = sendMessage;
+  useEffect(() => {
+    dataRef.current = data;
+    sendMessageRef.current = sendMessage;
+  });
 
   const sandboxUrl = useMemo(
     () => new URL("/mcp-sandbox-proxy.html", window.location.origin),

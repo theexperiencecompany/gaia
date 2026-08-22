@@ -52,7 +52,13 @@ function BotCard({
     <div className="flex flex-col items-start gap-5 rounded-3xl bg-zinc-900/50 p-4 text-left group hover:bg-zinc-900 transition">
       <div className="flex w-full items-start gap-2 flex-col">
         <div className="relative h-15 w-15 shrink-0 group-hover:scale-110 group-hover:-rotate-10 transition duration-100">
-          <Image src={icon} alt={name} fill className="object-contain" />
+          <Image
+            src={icon}
+            alt={name}
+            fill
+            sizes="60px"
+            className="object-contain"
+          />
         </div>
         <div className="flex items-center gap-2 justifybet">
           <h2 className="font-medium text-white text-xl">{name}</h2>
@@ -104,6 +110,7 @@ export default function BotsPage() {
                 src={icon.src}
                 alt={icon.alt}
                 fill
+                sizes="80px"
                 className="object-contain hover:scale-110 hover:-translate-y-4 transition"
               />
             </div>

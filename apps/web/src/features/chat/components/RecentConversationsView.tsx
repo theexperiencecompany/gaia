@@ -17,6 +17,7 @@ import type { CardAction } from "@/features/chat/components/interface/BaseCardVi
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
 import { useConversationList } from "@/features/chat/hooks/useConversationList";
 import { useSyncStatus } from "@/hooks/useBackgroundSync";
+import { getBrowserTimezone } from "@/lib/timezone";
 import { useAppendToInput } from "@/stores/composerStore";
 
 const RecentConversationsView = memo(() => {
@@ -100,12 +101,13 @@ const RecentConversationsView = memo(() => {
     >
       <div className="space-y-0">
         {displayConversations.map((conversation) => (
-          <div
+          <button
+            type="button"
             key={conversation.conversation_id}
             onClick={() =>
               handleConversationClick(conversation.conversation_id)
             }
-            className="flex cursor-pointer items-start gap-3 p-4 transition-colors hover:bg-zinc-700/30"
+            className="flex w-full cursor-pointer items-start gap-3 p-4 text-left transition-colors hover:bg-zinc-700/30"
           >
             <div className="min-w-0 flex-1 flex justify-between">
               <div>
@@ -150,7 +152,12 @@ const RecentConversationsView = memo(() => {
                     <Calendar03Icon width={15} height={15} className="mx-1" />
                   }
                 >
-                  {new Date(conversation.updated_at).toLocaleDateString()}
+                  {new Date(conversation.updated_at).toLocaleDateString(
+                    "en-US",
+                    // Explicit locale+timeZone: deterministic server/browser
+                    // text per no-locale-format-in-render.
+                    { timeZone: getBrowserTimezone() },
+                  )}
                 </Chip>
 
                 {conversation.is_system_generated && (
@@ -173,7 +180,7 @@ const RecentConversationsView = memo(() => {
                 )}
               </div>
             </div>
-          </div>
+          </button>
         ))}
       </div>
     </BaseCardView>

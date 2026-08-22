@@ -276,64 +276,64 @@ export async function generateMetadata({
   };
 }
 
+const INTEGRATION_DOMAINS: Record<string, string> = {
+  github: "github.com",
+  linear: "linear.app",
+  slack: "slack.com",
+  "google-calendar": "calendar.google.com",
+  gmail: "gmail.com",
+  notion: "notion.so",
+  todoist: "todoist.com",
+  perplexity: "perplexity.ai",
+  deepwiki: "deepwiki.com",
+  context7: "context7.com",
+  figma: "figma.com",
+  jira: "jira.atlassian.com",
+  asana: "asana.com",
+  trello: "trello.com",
+  hubspot: "hubspot.com",
+  salesforce: "salesforce.com",
+  intercom: "intercom.com",
+  zendesk: "zendesk.com",
+  stripe: "stripe.com",
+  quickbooks: "quickbooks.intuit.com",
+  "google-docs": "docs.google.com",
+  "google-sheets": "sheets.google.com",
+  "google-drive": "drive.google.com",
+  dropbox: "dropbox.com",
+  airtable: "airtable.com",
+  monday: "monday.com",
+  clickup: "clickup.com",
+  discord: "discord.com",
+  zoom: "zoom.us",
+  teams: "teams.microsoft.com",
+  outlook: "outlook.com",
+  twitter: "x.com",
+  linkedin: "linkedin.com",
+  mailchimp: "mailchimp.com",
+  "google-analytics": "analytics.google.com",
+  semrush: "semrush.com",
+  canva: "canva.com",
+  wordpress: "wordpress.com",
+  shopify: "shopify.com",
+  amplitude: "amplitude.com",
+  mixpanel: "mixpanel.com",
+  datadog: "datadoghq.com",
+  sentry: "sentry.io",
+  vercel: "vercel.com",
+  netlify: "netlify.com",
+  aws: "aws.amazon.com",
+  "google-cloud": "cloud.google.com",
+  confluence: "confluence.atlassian.com",
+};
+
 function IntegrationBadge({ name }: { name: string }) {
   const displayName = name
     .split("-")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
 
-  const domainMap: Record<string, string> = {
-    github: "github.com",
-    linear: "linear.app",
-    slack: "slack.com",
-    "google-calendar": "calendar.google.com",
-    gmail: "gmail.com",
-    notion: "notion.so",
-    todoist: "todoist.com",
-    perplexity: "perplexity.ai",
-    deepwiki: "deepwiki.com",
-    context7: "context7.com",
-    figma: "figma.com",
-    jira: "jira.atlassian.com",
-    asana: "asana.com",
-    trello: "trello.com",
-    hubspot: "hubspot.com",
-    salesforce: "salesforce.com",
-    intercom: "intercom.com",
-    zendesk: "zendesk.com",
-    stripe: "stripe.com",
-    quickbooks: "quickbooks.intuit.com",
-    "google-docs": "docs.google.com",
-    "google-sheets": "sheets.google.com",
-    "google-drive": "drive.google.com",
-    dropbox: "dropbox.com",
-    airtable: "airtable.com",
-    monday: "monday.com",
-    clickup: "clickup.com",
-    discord: "discord.com",
-    zoom: "zoom.us",
-    teams: "teams.microsoft.com",
-    outlook: "outlook.com",
-    twitter: "x.com",
-    linkedin: "linkedin.com",
-    mailchimp: "mailchimp.com",
-    "google-analytics": "analytics.google.com",
-    semrush: "semrush.com",
-    canva: "canva.com",
-    wordpress: "wordpress.com",
-    shopify: "shopify.com",
-    amplitude: "amplitude.com",
-    mixpanel: "mixpanel.com",
-    datadog: "datadoghq.com",
-    sentry: "sentry.io",
-    vercel: "vercel.com",
-    netlify: "netlify.com",
-    aws: "aws.amazon.com",
-    "google-cloud": "cloud.google.com",
-    confluence: "confluence.atlassian.com",
-  };
-
-  const domain = domainMap[name];
+  const domain = INTEGRATION_DOMAINS[name];
 
   return (
     <Link href={`/marketplace/${name}`}>
@@ -538,7 +538,7 @@ export default async function PersonaPage({ params }: PageProps) {
                 <Link
                   key={slug}
                   href={`/compare/${slug}`}
-                  className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+                  className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
                 >
                   <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
                     GAIA vs{" "}
@@ -566,7 +566,7 @@ export default async function PersonaPage({ params }: PageProps) {
           <div className="grid gap-4 sm:grid-cols-2">
             <Link
               href="/compare"
-              className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+              className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
                 {t("personas.see_how_compares")}
@@ -577,7 +577,7 @@ export default async function PersonaPage({ params }: PageProps) {
             </Link>
             <Link
               href="/learn"
-              className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+              className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
                 {t("personas.learn_ai_concepts")}

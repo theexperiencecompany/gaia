@@ -119,6 +119,79 @@ function coalesceTimelineReasoning(timeline: TimelineItem[]): TimelineItem[] {
   return out;
 }
 
+// ── Stable React keys for streamed entries ──────────────────────────────────
+
+// Streamed payloads mutate in place as a turn progresses — adjacent reasoning
+// fragments coalesce into one growing entry (coalesceReasoning /
+// coalesceTimelineReasoning) and grouped tools accumulate merged arrays — and
+// every pass REPLACES the entry object, so a key derived from payload content
+// changes on each frame and remounts the rendered card mid-stream (losing tab
+// selection, approval progress, expanded state). Keys therefore come from
+// STRUCTURE, never content: an entry's own stream-stable id when it has one
+// (tool_call_id / subagent_id / creation timestamp / tool name for synthesized
+// groups), else its slot after the nearest preceding identified sibling
+// ("anchor"). Streams are append-only, so that slot is fixed the moment the
+// item exists and never shifts while its payload grows.
+function deriveStableKeys<T>(
+  items: T[],
+  stableKey: (item: T) => string | null,
+): string[] {
+  const keys: string[] = [];
+  let anchor = "head";
+  let unanchored = 0;
+  for (const item of items) {
+    const key = stableKey(item);
+    if (key !== null) {
+      anchor = key;
+      unanchored = 0;
+      keys.push(key);
+    } else {
+      keys.push(`${anchor}#${unanchored++}`);
+    }
+  }
+  return keys;
+}
+
+// Root UnifiedToolThread items: identified by tool_call_id or subagent_id when
+// present; reasoning steps carry neither, so they anchor to the nearest
+// preceding identified item instead.
+export function deriveTimelineItemKeys(timeline: TimelineItem[]): string[] {
+  return deriveStableKeys(timeline, (item) =>
+    item.kind === "subagent"
+      ? `sa-${item.data.subagent_id}`
+      : item.data.tool_call_id
+        ? `tc-${item.data.tool_call_id}`
+        : null,
+  );
+}
+
+// Tool-call steps inside one subagent group (scoped by its unique id).
+export function deriveStepKeys(
+  scopeId: string,
+  calls: ToolCallEntry[],
+): string[] {
+  return deriveStableKeys(calls, (tc) =>
+    tc.tool_call_id ? `${scopeId}-tc-${tc.tool_call_id}` : null,
+  );
+}
+
+// processedTools entries as TextBubble renders them. Synthesized grouped
+// entries exist exactly once per tool name with merged-array data, so the tool
+// name is their identity; individual entries use their payload's tool_call_id,
+// else their creation timestamp (stamped once, never rewritten).
+export function deriveProcessedToolKeys(entries: ToolDataEntry[]): string[] {
+  return deriveStableKeys(entries, (entry) => {
+    if (GROUPED_TOOLS.has(entry.tool_name)) return `grouped-${entry.tool_name}`;
+    const data: unknown = entry.data;
+    const callId =
+      data !== null && typeof data === "object" && "tool_call_id" in data
+        ? String((data as { tool_call_id?: unknown }).tool_call_id ?? "")
+        : "";
+    if (callId) return `${entry.tool_name}-${callId}`;
+    return entry.timestamp ? `${entry.tool_name}-${entry.timestamp}` : null;
+  });
+}
+
 function extractTaskFromInputs(
   inputs: ToolCallEntry["inputs"],
 ): string | undefined {
@@ -214,11 +287,13 @@ function inferNestingForRootSpawned(
     g.nested_subagents.push(rootSpawned[spawnIdx++]);
   }
 
-  const nestedIds = new Set(
-    finalGroups
-      .filter((g) => g.agent_type === "handoff")
-      .flatMap((g) => g.nested_subagents.map((n) => n.subagent_id)),
-  );
+  const nestedIds = new Set<string>();
+  for (const g of finalGroups) {
+    if (g.agent_type !== "handoff") continue;
+    for (const n of g.nested_subagents) {
+      nestedIds.add(n.subagent_id);
+    }
+  }
   return finalGroups.filter((g) => !nestedIds.has(g.subagent_id));
 }
 

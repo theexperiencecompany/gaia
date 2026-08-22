@@ -35,6 +35,10 @@ const ENTERPRISE_CONTACT_HREF =
   "&description=" +
   encodeURIComponent(ENTERPRISE_CONTACT_TEMPLATE);
 
+// Enterprise is shown as a full-width bar below the grid, never as a priced card.
+const isEnterprise = (plan: Plan) =>
+  plan.name.toLowerCase().includes("enterprise");
+
 interface PricingCardsProps {
   durationIsMonth?: boolean;
   initialPlans?: Plan[];
@@ -95,9 +99,6 @@ export function PricingCards({
       </div>
     );
   }
-
-  const isEnterprise = (plan: Plan) =>
-    plan.name.toLowerCase().includes("enterprise");
 
   // Enterprise is shown as a full-width bar below the grid, not as a card.
   const enterprisePlan = hideEnterprise ? undefined : plans.find(isEnterprise);

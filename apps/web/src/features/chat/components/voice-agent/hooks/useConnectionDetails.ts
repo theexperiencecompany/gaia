@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 
 import { apiService } from "@/lib/api/service";
 
@@ -85,7 +85,10 @@ export default function useConnectionDetails(
   conversationId?: string | undefined,
 ) {
   const queryClient = useQueryClient();
-  const queryKey = ["connectionDetails", conversationId ?? "default"];
+  const queryKey = useMemo(
+    () => ["connectionDetails", conversationId ?? "default"] as const,
+    [conversationId],
+  );
 
   const { data: connectionDetails = null } = useQuery({
     queryKey,

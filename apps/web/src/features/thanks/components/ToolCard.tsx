@@ -85,6 +85,7 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
                 src={websiteImage}
                 alt={`${tool.name} preview`}
                 fill
+                sizes="320px"
                 className="object-cover"
                 onError={() => setImageError(true)}
               />
@@ -135,7 +136,7 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
         href={tool.url}
         target="_blank"
         rel="noopener noreferrer"
-        className="group flex items-center gap-3 rounded-2xl bg-zinc-900 px-4 py-3 transition-all duration-200 hover:border-primary/50 hover:bg-zinc-800/50"
+        className="group flex items-center gap-3 rounded-2xl bg-zinc-900 px-4 py-3 transition-colors duration-200 hover:border-primary/50 hover:bg-zinc-800/50"
       >
         <div
           className={`relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg ${favicon ? "" : "bg-zinc-800"}`}

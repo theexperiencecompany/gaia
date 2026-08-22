@@ -60,6 +60,7 @@ export default function StatusBanner() {
       </div>
       <button
         type="button"
+        aria-label="Dismiss status banner"
         onClick={() => setDismissed(true)}
         className="shrink-0 rounded p-0.5 hover:bg-amber-500/20"
       >

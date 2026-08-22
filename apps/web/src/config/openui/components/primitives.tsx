@@ -6,9 +6,14 @@ import { avatarSchema, progressSchema } from "../promptSpecs";
 
 // ---------------------------------------------------------------------------
 // Views
+//
+// Views stay file-private on purpose: this module's public surface is the
+// `*Def` component registrations at the bottom (consumed by
+// ../genericLibrary). Exporting components alongside those defs breaks Fast
+// Refresh (react-refresh/only-export-components).
 // ---------------------------------------------------------------------------
 
-export function ProgressView(props: z.infer<typeof progressSchema>) {
+function ProgressView(props: z.infer<typeof progressSchema>) {
   const max = props.max && props.max > 0 ? props.max : 100;
   const ratio = (props.value ?? 0) / max;
   const pct = Number.isFinite(ratio)
@@ -36,7 +41,7 @@ export function ProgressView(props: z.infer<typeof progressSchema>) {
   );
 }
 
-export function AvatarView(props: z.infer<typeof avatarSchema>) {
+function AvatarView(props: z.infer<typeof avatarSchema>) {
   return (
     <div className="flex items-center gap-2">
       <Avatar

@@ -116,7 +116,9 @@ export function useNotificationWebSocket() {
   const pathname = usePathname();
   // Ref keeps handleMessage stable so the ws listener isn't re-registered.
   const pathnameRef = useRef(pathname);
-  pathnameRef.current = pathname;
+  useEffect(() => {
+    pathnameRef.current = pathname;
+  });
 
   const handleMessage = useCallback(
     (msg: unknown) => {
@@ -149,7 +151,7 @@ export function useNotificationWebSocket() {
           console.warn("Unknown notification message type:", message.type);
       }
     },
-    [addNotification, updateNotification],
+    [addNotification, updateNotification, router],
   );
 
   const handleError = useCallback((error: Error) => {

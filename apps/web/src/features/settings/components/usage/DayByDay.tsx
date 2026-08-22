@@ -6,11 +6,16 @@ import { ShuffleIcon } from "@icons";
 import type { UsageActivity } from "@shared/types";
 import { formatCompactNumber, formatDateUTC } from "@shared/utils";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Area, AreaChart, Bar, BarChart, XAxis, YAxis } from "recharts";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
+import { useRecharts } from "@/components/ui/chart-loader";
 import { cn } from "@/lib/utils";
 import { tokenComparisons } from "./tokenScale";
-import { ACCENT, CARD, HEALTHY, InfoTip, TAB_CLASSNAMES } from "./usageChrome";
+import { ACCENT, CARD, HEALTHY, InfoTip } from "./usageChrome";
+import { TAB_CLASSNAMES } from "./usageTabs";
+
+// recharts is heavy, so it loads on demand instead of shipping eagerly with
+// the settings page. The shared promise means every chart here triggers a
+// single chunk load.
 
 type Metric = "actions" | "tokens";
 
@@ -24,6 +29,18 @@ type RangeKey = (typeof RANGES)[number]["key"];
 
 /** Seconds between automatic rotations of the token-scale line. */
 const ROTATE_MS = 6000;
+
+// Shared x-axis styling for both chart shapes. Static at module scope so
+// memoized recharts children see a stable prop instead of a fresh object per
+// render.
+const X_AXIS = {
+  dataKey: "label",
+  tickLine: false,
+  axisLine: false,
+  tickMargin: 8,
+  minTickGap: 36,
+  tick: { fill: "#71717a", fontSize: 11 },
+} as const;
 
 interface Row {
   key: string;
@@ -194,6 +211,7 @@ function TokenScaleLine({ tokens }: { tokens: number }) {
  * directly.
  */
 export function DayByDay({ activity }: { activity: UsageActivity }) {
+  const R = useRecharts();
   const [metric, setMetric] = useState<Metric>("actions");
   const [range, setRange] = useState<RangeKey>("month");
   const days = RANGES.find((r) => r.key === range)?.days ?? 30;
@@ -218,15 +236,6 @@ export function DayByDay({ activity }: { activity: UsageActivity }) {
   const fillId = `dayByDay-${seriesKey}`;
   // Fewer days, fatter bars — a week of hairlines looks broken.
   const barWidth = range === "week" ? 28 : 10;
-
-  const xAxis = {
-    dataKey: "label",
-    tickLine: false,
-    axisLine: false,
-    tickMargin: 8,
-    minTickGap: 36,
-    tick: { fill: "#71717a", fontSize: 11 },
-  } as const;
 
   const yAxis = {
     width: 34,
@@ -291,7 +300,7 @@ export function DayByDay({ activity }: { activity: UsageActivity }) {
         <div className="flex h-28 w-full items-center justify-center text-sm text-zinc-600">
           Nothing in the last {rangeLabel}.
         </div>
-      ) : (
+      ) : R ? (
         <ChartContainer
           config={{ value: { label: isTokens ? "Tokens" : "Messages" } }}
           className="mt-3 aspect-auto h-28 w-full"
@@ -299,7 +308,7 @@ export function DayByDay({ activity }: { activity: UsageActivity }) {
           {/* A year is 365 categories in ~440px — bars land under a pixel wide
               and read as noise, so the long range switches to a filled line. */}
           {isYear ? (
-            <AreaChart
+            <R.AreaChart
               data={rows}
               margin={{ left: 0, right: 0, top: 4, bottom: 0 }}
             >
@@ -309,10 +318,10 @@ export function DayByDay({ activity }: { activity: UsageActivity }) {
                   <stop offset="100%" stopColor={seriesColor} stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <XAxis {...xAxis} />
-              <YAxis {...yAxis} />
+              <R.XAxis {...X_AXIS} />
+              <R.YAxis {...yAxis} />
               <ChartTooltip content={<DayTooltip metric={metric} />} />
-              <Area
+              <R.Area
                 dataKey={seriesKey}
                 type="monotone"
                 stroke={seriesColor}
@@ -320,14 +329,14 @@ export function DayByDay({ activity }: { activity: UsageActivity }) {
                 fill={`url(#${fillId})`}
                 dot={false}
               />
-            </AreaChart>
+            </R.AreaChart>
           ) : (
-            <BarChart
+            <R.BarChart
               data={rows}
               margin={{ left: 0, right: 0, top: 4, bottom: 0 }}
             >
-              <XAxis {...xAxis} />
-              <YAxis {...yAxis} />
+              <R.XAxis {...X_AXIS} />
+              <R.YAxis {...yAxis} />
               <ChartTooltip
                 cursor={{ fill: "#ffffff08" }}
                 content={<DayTooltip metric={metric} />}
@@ -336,15 +345,18 @@ export function DayByDay({ activity }: { activity: UsageActivity }) {
                   hundreds to one, so a stacked cap is invisible and its rounded
                   corner never shows. The split lives in the tooltip, where it
                   is readable, and the bar keeps its rounded top. */}
-              <Bar
+              <R.Bar
                 dataKey={seriesKey}
                 radius={4}
                 maxBarSize={barWidth}
                 fill={seriesColor}
               />
-            </BarChart>
+            </R.BarChart>
           )}
         </ChartContainer>
+      ) : (
+        // Same-box placeholder for the moment before the chart chunk arrives.
+        <div className="mt-3 h-28 w-full rounded-lg bg-zinc-800/60" />
       )}
 
       {isTokens && totalTokens > 0 && <TokenScaleLine tokens={totalTokens} />}

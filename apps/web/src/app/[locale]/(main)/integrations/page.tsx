@@ -25,6 +25,8 @@ import { useIntegrationDeepLink } from "@/features/integrations/hooks/useIntegra
 import { useIntegrationSearch } from "@/features/integrations/hooks/useIntegrationSearch";
 import { useIntegrationStatusWebSocket } from "@/features/integrations/hooks/useIntegrationStatusWebSocket";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import { usePendingDeepLink } from "@/features/integrations/hooks/usePendingDeepLink";
+import type { Integration } from "@/features/integrations/types";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
 import { useHeader } from "@/hooks/layout/useHeader";
 import { usePlatform } from "@/hooks/ui/usePlatform";
@@ -72,18 +74,6 @@ export default function IntegrationsPage() {
   const [selectedIntegrationId, setSelectedIntegrationId] = useState<
     string | null
   >(null);
-  const [pendingIntegrationId, setPendingIntegrationId] = useState<
-    string | null
-  >(null);
-  // Integration whose tools are still being discovered after a successful
-  // connect — drives bounded polling and the sidebar's "Setting up tools" state.
-  const [settlingIntegrationId, setSettlingIntegrationId] = useState<
-    string | null
-  >(null);
-  // Incremented on each poll so the effect re-runs every interval even when the
-  // refetched data is byte-identical (react-query structural sharing keeps the
-  // same `integrations` reference until tools actually land).
-  const [settleTick, setSettleTick] = useState(0);
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
 
   // Bearer-token connect modal (MCP `status=bearer_required` flow).
@@ -124,6 +114,24 @@ export default function IntegrationsPage() {
   const handleUnpublish = useCallback(
     (id: string) => unpublishIntegration(id),
     [unpublishIntegration],
+  );
+
+  const handleIntegrationClick = useCallback(
+    (integrationId: string) => {
+      setSelectedIntegrationId(integrationId);
+      openRightSidebar("sidebar");
+    },
+    [openRightSidebar],
+  );
+
+  const { markPending } = usePendingDeepLink(
+    integrations,
+    handleIntegrationClick,
+  );
+  // Poll until a freshly-connected integration's tools finish discovering.
+  const { beginSettling, settlingIntegrationId } = usePostConnectSettlePolling(
+    integrations,
+    refetch,
   );
 
   const isSelectedSettling = selectedIntegration
@@ -178,14 +186,6 @@ export default function IntegrationsPage() {
     },
   );
 
-  const handleIntegrationClick = useCallback(
-    (integrationId: string) => {
-      setSelectedIntegrationId(integrationId);
-      openRightSidebar("sidebar");
-    },
-    [openRightSidebar],
-  );
-
   // All backend connect-callback query params flow through one reactive hook.
   useIntegrationDeepLink({
     onConnected: (integrationId, name) => {
@@ -194,9 +194,8 @@ export default function IntegrationsPage() {
       queryClient.invalidateQueries({ queryKey: toolKeys.all });
       // Open the sidebar for the freshly-connected integration and poll until
       // its tools finish discovering in the background (see the poller below).
-      setPendingIntegrationId(integrationId);
-      setSettleTick(0);
-      setSettlingIntegrationId(integrationId);
+      markPending(integrationId);
+      beginSettling(integrationId);
     },
     onBearerRequired: (integrationId, name) => bearer.open(integrationId, name),
     onFailed: (error) =>
@@ -204,7 +203,7 @@ export default function IntegrationsPage() {
     onOpen: (integrationId, { refresh }) => {
       if (refresh) {
         // Marketplace add / custom create — may not be in the cached list yet.
-        setPendingIntegrationId(integrationId);
+        markPending(integrationId);
         queryClient.invalidateQueries({ queryKey: integrationKeys.all });
         queryClient.invalidateQueries({ queryKey: toolKeys.all });
       } else {
@@ -212,48 +211,6 @@ export default function IntegrationsPage() {
       }
     },
   });
-
-  // Open sidebar once pending integration data is available after refresh
-  useEffect(() => {
-    if (!pendingIntegrationId) return;
-
-    const integration = integrations.find((i) => i.id === pendingIntegrationId);
-    if (integration) {
-      handleIntegrationClick(pendingIntegrationId);
-      setPendingIntegrationId(null);
-    }
-  }, [pendingIntegrationId, integrations, handleIntegrationClick]);
-
-  // The OAuth callback redirects as soon as tokens are stored; the MCP handshake
-  // and tools/list run in the background, so a connected integration's tools land
-  // a few seconds later. Poll the personalized /integrations/me catalog until the
-  // integration reports connected with discovered tools (or give up) instead of
-  // forcing a page reload. Re-runs whenever a refetch updates `integrations`.
-  useEffect(() => {
-    if (!settlingIntegrationId) return;
-
-    const integration = integrations.find(
-      (i) => i.id === settlingIntegrationId,
-    );
-    const hasSettled =
-      integration?.status === "connected" && (integration?.toolCount ?? 0) > 0;
-
-    // Stop once the integration connects with tools, or after the attempt
-    // ceiling (covers a failed background connect). Keep polling while the
-    // integration isn't in the list yet — the post-connect refetch may still
-    // be in flight.
-    if (hasSettled || settleTick >= POST_CONNECT_POLL_MAX_ATTEMPTS) {
-      setSettlingIntegrationId(null);
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      refetch();
-      queryClient.invalidateQueries({ queryKey: toolKeys.all });
-      setSettleTick((tick) => tick + 1);
-    }, POST_CONNECT_POLL_INTERVAL_MS);
-    return () => clearTimeout(timer);
-  }, [settlingIntegrationId, settleTick, integrations, refetch, queryClient]);
 
   // Handler for pressing Enter in search input
   const handleEnterSearch = useCallback(() => {
@@ -359,4 +316,60 @@ export default function IntegrationsPage() {
       />
     </div>
   );
+}
+
+/**
+ * The OAuth callback redirects as soon as tokens are stored; the MCP handshake
+ * and tools/list run in the background, so a connected integration's tools land
+ * a few seconds later. Poll the personalized /integrations/me catalog until the
+ * integration reports connected with discovered tools (or give up) instead of
+ * forcing a page reload. Re-runs whenever a refetch updates `integrations`.
+ */
+function usePostConnectSettlePolling(
+  integrations: Integration[],
+  refetch: () => Promise<void>,
+) {
+  const queryClient = useQueryClient();
+  // Integration whose tools are still being discovered after a successful
+  // connect — drives bounded polling and the sidebar's "Setting up tools" state.
+  const [settlingIntegrationId, setSettlingIntegrationId] = useState<
+    string | null
+  >(null);
+  // Incremented on each poll so the effect re-runs every interval even when the
+  // refetched data is byte-identical (react-query structural sharing keeps the
+  // same `integrations` reference until tools actually land).
+  const [settleTick, setSettleTick] = useState(0);
+
+  useEffect(() => {
+    if (!settlingIntegrationId) return;
+
+    const integration = integrations.find(
+      (i) => i.id === settlingIntegrationId,
+    );
+    const hasSettled =
+      integration?.status === "connected" && (integration?.toolCount ?? 0) > 0;
+
+    // Stop once the integration connects with tools, or after the attempt
+    // ceiling (covers a failed background connect). Keep polling while the
+    // integration isn't in the list yet — the post-connect refetch may still
+    // be in flight.
+    if (hasSettled || settleTick >= POST_CONNECT_POLL_MAX_ATTEMPTS) {
+      setSettlingIntegrationId(null);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      refetch();
+      queryClient.invalidateQueries({ queryKey: toolKeys.all });
+      setSettleTick((tick) => tick + 1);
+    }, POST_CONNECT_POLL_INTERVAL_MS);
+    return () => clearTimeout(timer);
+  }, [settlingIntegrationId, settleTick, integrations, refetch, queryClient]);
+
+  const beginSettling = useCallback((integrationId: string) => {
+    setSettlingIntegrationId(integrationId);
+    setSettleTick(0);
+  }, []);
+
+  return { beginSettling, settlingIntegrationId };
 }

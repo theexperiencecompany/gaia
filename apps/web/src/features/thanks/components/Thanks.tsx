@@ -40,6 +40,7 @@ export default function Thanks({ toolsMetadata }: ThanksProps) {
           src="/images/logos/logo.webp"
           alt="GAIA Logo"
           className="scale-110 object-contain grayscale"
+          sizes="100vw"
           fill
         />
       </div>

@@ -30,6 +30,109 @@ import EditWorkflowModal from "./EditWorkflowModal";
 import UnifiedWorkflowCard from "./shared/UnifiedWorkflowCard";
 import { WorkflowListSkeleton } from "./WorkflowSkeletons";
 
+// Convert CommunityWorkflow to UseCase format
+const convertToUseCase = (workflow: CommunityWorkflow): UseCase => {
+  // Unique step categories in first-seen order, single pass.
+  const integrations: string[] = [];
+  const seenCategories = new Set<string>();
+  for (const step of workflow.steps ?? []) {
+    if (!seenCategories.has(step.category)) {
+      seenCategories.add(step.category);
+      integrations.push(step.category);
+    }
+  }
+
+  return {
+    title: workflow.title,
+    description: workflow.description,
+    action_type: "workflow",
+    icon: workflow.icon,
+    icon_color: workflow.icon_color,
+    system_workflow_key: workflow.system_workflow_key,
+    source_integration: workflow.source_integration,
+    trigger_config: workflow.trigger_config,
+    integrations,
+    categories: workflow.categories || ["featured"],
+    published_id: workflow.id,
+    slug: workflow.slug,
+    steps: workflow.steps,
+    creator: workflow.creator,
+  };
+};
+
+function renderGrid<T extends { id: string }>(
+  items: T[],
+  isLoading: boolean,
+  error: string | null,
+  emptyTitle: string,
+  emptyDescription: string,
+  onRefetch: () => void,
+  renderItem: (item: T) => ReactNode,
+  emptyAction?: ReactNode,
+) {
+  if (isLoading) return <WorkflowListSkeleton />;
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center space-y-4 py-1">
+        <p className="text-foreground-400">{error}</p>
+        <Button
+          size="sm"
+          variant="flat"
+          onPress={onRefetch}
+          startContent={<RedoIcon className="h-4 w-4" />}
+        >
+          Try Again
+        </Button>
+      </div>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center space-y-4 rounded-3xl bg-zinc-800/30 border-dashed border-2 border-zinc-800 py-16">
+        <div className="text-center">
+          <h3 className="text-lg font-medium text-zinc-300">{emptyTitle}</h3>
+          <p className="mt-2 text-sm text-zinc-500">{emptyDescription}</p>
+        </div>
+        {emptyAction}
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-6 @md:grid-cols-2 @3xl:grid-cols-3 @5xl:grid-cols-4">
+      {items.map((item) => renderItem(item))}
+    </div>
+  );
+}
+
+function renderSection(
+  title: string,
+  description: string,
+  children: ReactNode,
+  icon?: ReactElement<IconProps>,
+  count?: number,
+) {
+  return (
+    <div className="mt-12 flex flex-col gap-3">
+      <div className="flex flex-col space-y-1">
+        <div className="flex items-center gap-2">
+          {icon && <span> {React.cloneElement(icon)}</span>}
+          <h2 className="text-2xl font-medium text-zinc-100">{title}</h2>
+          {count !== undefined && count > 0 && (
+            <span className="rounded-full bg-zinc-800 px-2.5 py-0.5 text-sm font-medium text-zinc-400">
+              {count}
+            </span>
+          )}
+        </div>
+        <p className="font-light text-zinc-500">{description}</p>
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export default function WorkflowPage() {
   const pageRef = useRef(null);
   const clearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -65,36 +168,15 @@ export default function WorkflowPage() {
   const [isLoadingCommunity, setIsLoadingCommunity] = useState(false);
   const [communityError, setCommunityError] = useState<string | null>(null);
 
-  // Convert CommunityWorkflow to UseCase format
-  const convertToUseCase = (workflow: CommunityWorkflow): UseCase => ({
-    title: workflow.title,
-    description: workflow.description,
-    action_type: "workflow",
-    icon: workflow.icon,
-    icon_color: workflow.icon_color,
-    system_workflow_key: workflow.system_workflow_key,
-    source_integration: workflow.source_integration,
-    trigger_config: workflow.trigger_config,
-    integrations:
-      workflow.steps
-        ?.map((s) => s.category)
-        .filter((v, i, a) => a.indexOf(v) === i) || [],
-    categories: workflow.categories || ["featured"],
-    published_id: workflow.id,
-    slug: workflow.slug,
-    steps: workflow.steps,
-    creator: workflow.creator,
-  });
-
   // Memoize the header component to prevent recreating on every render
   const headerComponent = useMemo(() => <WorkflowsHeader />, []);
 
-  // Use useLayoutEffect to set header synchronously before paint (faster)
-  // Don't include setHeader in deps - it's stable from Zustand
+  // Set the header synchronously before paint. headerComponent is memoized
+  // and setHeader is a stable Zustand action, so this runs once per mount.
   useLayoutEffect(() => {
     setHeader(headerComponent);
     return () => setHeader(null);
-  }, [headerComponent]);
+  }, [headerComponent, setHeader]);
 
   // Fetch explore and community workflows once on mount
   useEffect(() => {
@@ -132,7 +214,6 @@ export default function WorkflowPage() {
 
     loadExploreWorkflows();
     loadCommunityWorkflows();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Open the modal from a deep link (`?id=`). This must react ONLY to a genuine
@@ -189,77 +270,6 @@ export default function WorkflowPage() {
     router.push(`/use-cases/${slug}`);
   };
 
-  const renderGrid = <T extends { id: string }>(
-    items: T[],
-    isLoading: boolean,
-    error: string | null,
-    emptyTitle: string,
-    emptyDescription: string,
-    onRefetch: () => void,
-    renderItem: (item: T) => ReactNode,
-    emptyAction?: ReactNode,
-  ) => {
-    if (isLoading) return <WorkflowListSkeleton />;
-
-    if (error) {
-      return (
-        <div className="flex flex-col items-center justify-center space-y-4 py-1">
-          <p className="text-foreground-400">{error}</p>
-          <Button
-            size="sm"
-            variant="flat"
-            onPress={onRefetch}
-            startContent={<RedoIcon className="h-4 w-4" />}
-          >
-            Try Again
-          </Button>
-        </div>
-      );
-    }
-
-    if (items.length === 0) {
-      return (
-        <div className="flex flex-col items-center justify-center space-y-4 rounded-3xl bg-zinc-800/30 border-dashed border-2 border-zinc-800 py-16">
-          <div className="text-center">
-            <h3 className="text-lg font-medium text-zinc-300">{emptyTitle}</h3>
-            <p className="mt-2 text-sm text-zinc-500">{emptyDescription}</p>
-          </div>
-          {emptyAction}
-        </div>
-      );
-    }
-
-    return (
-      <div className="grid grid-cols-1 gap-6 @md:grid-cols-2 @3xl:grid-cols-3 @5xl:grid-cols-4">
-        {items.map((item) => renderItem(item))}
-      </div>
-    );
-  };
-
-  const renderSection = (
-    title: string,
-    description: string,
-    children: ReactNode,
-    icon?: ReactElement<IconProps>,
-    count?: number,
-  ) => (
-    <div className="mt-12 flex flex-col gap-3">
-      <div className="flex flex-col space-y-1">
-        <div className="flex items-center gap-2">
-          {icon && <span> {React.cloneElement(icon)}</span>}
-          <h2 className="text-2xl font-medium text-zinc-100">{title}</h2>
-          {count !== undefined && count > 0 && (
-            <span className="rounded-full bg-zinc-800 px-2.5 py-0.5 text-sm font-medium text-zinc-400">
-              {count}
-            </span>
-          )}
-        </div>
-        <p className="font-light text-zinc-500">{description}</p>
-      </div>
-      {children}
-    </div>
-  );
-
   return (
     <div
       className="@container space-y-8 overflow-y-auto p-4 sm:p-6 md:p-8"
@@ -297,12 +307,14 @@ export default function WorkflowPage() {
           <WorkflowListSkeleton />
         ) : exploreWorkflows.length > 0 ? (
           <UseCaseSection
-            centered={false}
+            options={{
+              centered: false,
+              hideUserWorkflows: true,
+              disableCentering: true,
+              noMaxWidth: true,
+            }}
             dummySectionRef={pageRef}
-            hideUserWorkflows={true}
             exploreWorkflows={exploreWorkflows}
-            disableCentering={true}
-            noMaxWidth={true}
           />
         ) : null,
         undefined,

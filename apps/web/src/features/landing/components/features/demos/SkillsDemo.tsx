@@ -105,34 +105,28 @@ function SkillRow({
         <p className="text-sm font-medium text-zinc-200">{skill.name}</p>
         <p className="text-xs text-zinc-500">{skill.description}</p>
       </div>
-      {skill.status === "installed" ? (
-        <InstalledBadge />
-      ) : (
-        <AnimatePresence mode="wait">
-          {showDone ? (
-            <m.span
-              key="done"
-              className="shrink-0 text-xs font-medium text-emerald-400"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.3 }}
-            >
-              ✓ Installed
-            </m.span>
-          ) : (
-            <m.div
-              key="bar"
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-            >
-              <AnimatingBadge
-                started={animationStarted}
-                onComplete={onBarComplete}
-              />
-            </m.div>
-          )}
-        </AnimatePresence>
-      )}
+      <AnimatePresence mode="wait">
+        {skill.status === "installed" ? (
+          <InstalledBadge key="badge" />
+        ) : showDone ? (
+          <m.span
+            key="done"
+            className="shrink-0 text-xs font-medium text-emerald-400"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.3 }}
+          >
+            ✓ Installed
+          </m.span>
+        ) : (
+          <m.div key="bar" exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
+            <AnimatingBadge
+              started={animationStarted}
+              onComplete={onBarComplete}
+            />
+          </m.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

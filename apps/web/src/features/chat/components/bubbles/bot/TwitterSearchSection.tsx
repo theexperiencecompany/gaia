@@ -12,6 +12,22 @@ import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
 import { format, parseISO } from "date-fns";
 import type { TwitterTweetData } from "@/types/features/twitterTypes";
 
+const formatNumber = (num: number | undefined) => {
+  if (!num) return "0";
+  if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
+  if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
+  return num.toString();
+};
+
+const formatDate = (dateStr?: string) => {
+  if (!dateStr) return "";
+  try {
+    return format(parseISO(dateStr), "MMM d, yyyy");
+  } catch {
+    return dateStr;
+  }
+};
+
 /**
  * Twitter Card Component - Displays a tweet with author info and engagement metrics.
  * Styled to closely match the real Twitter/X interface.
@@ -19,22 +35,6 @@ import type { TwitterTweetData } from "@/types/features/twitterTypes";
 function TwitterCard({ tweet }: { tweet: TwitterTweetData }) {
   const author = tweet.author || { username: "unknown", name: "Unknown" };
   const metrics = tweet.public_metrics || {};
-
-  const formatNumber = (num: number | undefined) => {
-    if (!num) return "0";
-    if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
-    if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
-    return num.toString();
-  };
-
-  const formatDate = (dateStr?: string) => {
-    if (!dateStr) return "";
-    try {
-      return format(parseISO(dateStr), "MMM d, yyyy");
-    } catch {
-      return dateStr;
-    }
-  };
 
   const handleOpenTweet = () => {
     window.open(
@@ -44,8 +44,9 @@ function TwitterCard({ tweet }: { tweet: TwitterTweetData }) {
   };
 
   return (
-    <div
-      className="group relative flex w-full flex-col gap-2 rounded-xl border border-default-200 bg-content1/50 p-4 backdrop-blur-sm transition-all hover:border-default-300 hover:bg-content1/70"
+    <button
+      type="button"
+      className="group relative flex w-full cursor-pointer flex-col gap-2 rounded-xl border border-default-200 bg-content1/50 p-4 text-left backdrop-blur-sm transition-colors hover:border-default-300 hover:bg-content1/70"
       onClick={handleOpenTweet}
     >
       {/* Author Row */}
@@ -106,7 +107,7 @@ function TwitterCard({ tweet }: { tweet: TwitterTweetData }) {
           <ShareIcon className="h-4 w-4" />
         </div>
       </div>
-    </div>
+    </button>
   );
 }
 

@@ -14,14 +14,22 @@ import { SettingsSection } from "@/features/settings/components/ui/SettingsSecti
 import { usePricingModalStore } from "@/stores/pricingModalStore";
 import { CancelSubscriptionAction } from "./CancelSubscriptionAction";
 
+// Module-scope formatter: hoisting keeps locale resolution out of the render
+// path (js-hoist-intl); explicit locale+timeZone gives deterministic
+// server/browser text per no-locale-format-in-render. Billing days are
+// rendered as UTC calendar dates.
+const BILLING_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+  timeZone: "UTC",
+});
+
 const formatDate = (dateString?: string): string => {
   if (!dateString) return "N/A";
   try {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
+    // Deterministic UTC billing dates — see formatter comment above.
+    return BILLING_DATE_FORMATTER.format(new Date(dateString));
   } catch {
     return "N/A";
   }

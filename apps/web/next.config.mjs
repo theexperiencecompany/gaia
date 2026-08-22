@@ -235,6 +235,13 @@ const nextConfig = {
     // remote SVGs with a restrictive CSP for images, so this is scoped to the
     // image pipeline only.
     dangerouslyAllowSVG: true,
+    // Hardening required alongside dangerouslyAllowSVG: optimizer responses
+    // are marked as downloads so a directly-navigated SVG can't execute as a
+    // live document, and their CSP blocks scripts and sandboxes the document.
+    // Neither affects normal rendering — <img> subresource loads ignore
+    // Content-Disposition and response CSP — only top-level navigation.
+    contentDispositionType: "attachment",
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
     minimumCacheTTL: 2_592_000, // 30 days — overrides short upstream Cache-Control (e.g. GitHub's 5 min)
     // Image sources are open-ended (user avatars from arbitrary OAuth
     // providers, LLM/backend-driven integration icon URLs, Unsplash, map tiles,

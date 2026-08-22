@@ -99,6 +99,7 @@ function PlatformIcons({ platforms }: PlatformIconsProps) {
             src={BOT_PLATFORM_ICONS[platform]}
             alt=""
             fill
+            sizes="16px"
             aria-hidden
             className="object-contain drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)] transition hover:-translate-y-0.5 hover:scale-110"
           />

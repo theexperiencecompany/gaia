@@ -6,6 +6,7 @@ import { format, isToday, isTomorrow, isYesterday } from "date-fns";
 
 import { getBrowserTimezone } from "@/lib/timezone";
 import BaseFieldChip from "./BaseFieldChip";
+import FieldChipOption from "./FieldChipOption";
 
 interface DateFieldChipProps {
   value?: string; // ISO date string
@@ -13,6 +14,16 @@ interface DateFieldChipProps {
   className?: string;
   timezone?: string; // User's preferred timezone
 }
+
+const formatDisplayDate = (dateString: string) => {
+  const date = new Date(dateString);
+
+  if (isToday(date)) return "Today";
+  if (isTomorrow(date)) return "Tomorrow";
+  if (isYesterday(date)) return "Yesterday";
+
+  return format(date, "MMM d");
+};
 
 export default function DateFieldChip({
   value,
@@ -24,16 +35,6 @@ export default function DateFieldChip({
   // Handle empty string as "auto-detect"
   const userTimezone =
     timezone && timezone.trim() !== "" ? timezone : getBrowserTimezone();
-  const formatDisplayDate = (dateString: string) => {
-    const date = new Date(dateString);
-
-    if (isToday(date)) return "Today";
-    if (isTomorrow(date)) return "Tomorrow";
-    if (isYesterday(date)) return "Yesterday";
-
-    return format(date, "MMM d");
-  };
-
   const displayValue = value ? formatDisplayDate(value) : undefined;
 
   const handleDateInputChange = (
@@ -82,62 +83,49 @@ export default function DateFieldChip({
           </div>
 
           {/* Quick date options */}
-          <div
-            onClick={(e) => {
-              e.stopPropagation();
-              handleQuickDate(0, onClose);
-            }}
-            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-zinc-500 transition-colors hover:bg-zinc-800"
+          <FieldChipOption
+            onSelect={() => handleQuickDate(0, onClose)}
+            className="gap-2 rounded-lg text-zinc-500"
           >
             <CalendarIcon width={18} height={18} />
             Today
-          </div>
-          <div
-            onClick={(e) => {
-              e.stopPropagation();
-              handleQuickDate(1, onClose);
-            }}
-            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-zinc-500 transition-colors hover:bg-zinc-800"
+          </FieldChipOption>
+          <FieldChipOption
+            onSelect={() => handleQuickDate(1, onClose)}
+            className="gap-2 rounded-lg text-zinc-500"
           >
             <CalendarIcon width={18} height={18} />
             Tomorrow
-          </div>
-          <div
-            onClick={(e) => {
-              e.stopPropagation();
-              handleQuickDate(3, onClose);
-            }}
-            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-zinc-500 transition-colors hover:bg-zinc-800"
+          </FieldChipOption>
+          <FieldChipOption
+            onSelect={() => handleQuickDate(3, onClose)}
+            className="gap-2 rounded-lg text-zinc-500"
           >
             <CalendarIcon width={18} height={18} />
             In 3 days
-          </div>
-          <div
-            onClick={(e) => {
-              e.stopPropagation();
-              handleQuickDate(7, onClose);
-            }}
-            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-zinc-500 transition-colors hover:bg-zinc-800"
+          </FieldChipOption>
+          <FieldChipOption
+            onSelect={() => handleQuickDate(7, onClose)}
+            className="gap-2 rounded-lg text-zinc-500"
           >
             <CalendarIcon width={18} height={18} />
             Next week
-          </div>
+          </FieldChipOption>
 
           {/* Clear date option */}
           {value && (
             <>
               <div className="my-1 h-px bg-zinc-700" />
-              <div
-                onClick={(e) => {
-                  e.stopPropagation();
+              <FieldChipOption
+                onSelect={() => {
                   onChange(undefined, undefined);
                   onClose();
                 }}
-                className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-red-400 transition-colors hover:bg-zinc-800"
+                className="gap-2 rounded-lg text-red-400"
               >
                 <Cancel01Icon width={18} height={18} />
                 Clear date
-              </div>
+              </FieldChipOption>
             </>
           )}
 

@@ -30,7 +30,9 @@ export function useOAuthSuccessToast() {
   const sendMessage = useSendMessage();
   // Use ref to hold stable reference to sendMessage
   const sendMessageRef = useRef(sendMessage);
-  sendMessageRef.current = sendMessage;
+  useEffect(() => {
+    sendMessageRef.current = sendMessage;
+  });
 
   useEffect(() => {
     const oauthSuccess = searchParams.get("oauth_success");
@@ -61,7 +63,7 @@ export function useOAuthSuccessToast() {
     processedOAuthCallbacks.add(dedupeKey);
 
     // Clean up after a delay to allow for future OAuth flows
-    setTimeout(() => {
+    const dedupeTimer = setTimeout(() => {
       processedOAuthCallbacks.delete(dedupeKey);
     }, 5000);
 
@@ -112,5 +114,6 @@ export function useOAuthSuccessToast() {
           `Authentication failed: ${oauthError}. Please try again.`,
       );
     }
+    return () => clearTimeout(dedupeTimer);
   }, [searchParams, router, pathname, conversationId, queryClient]);
 }

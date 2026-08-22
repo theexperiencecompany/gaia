@@ -1,0 +1,155 @@
+/**
+ * Linear Trigger Settings
+ *
+ * UI configuration for Linear triggers: team selection with manual-ID fallback.
+ */
+
+"use client";
+
+import { Input } from "@heroui/input";
+import { Select, SelectItem } from "@heroui/select";
+import { useState } from "react";
+
+import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import { TriggerConnectionPrompt } from "../components/TriggerConnectionPrompt";
+import {
+  TriggerSettingRow,
+  TriggerSettingsCard,
+} from "../components/TriggerSettingsCard";
+import { useTriggerOptions } from "../hooks/useTriggerOptions";
+import type { TriggerSettingsProps } from "../registry";
+import type { TriggerConfig } from "../types";
+
+interface LinearTriggerData {
+  trigger_name: string;
+  team_id?: string;
+}
+
+export interface LinearConfig extends TriggerConfig {
+  trigger_name?: string;
+  trigger_data?: LinearTriggerData;
+}
+
+interface OptionItem {
+  value: string;
+  label: string;
+}
+
+export function LinearSettings({
+  triggerConfig,
+  onConfigChange,
+}: TriggerSettingsProps) {
+  const { integrations, connectIntegration } = useIntegrations();
+  const config = triggerConfig as LinearConfig;
+  const triggerData = config.trigger_data;
+  const integrationId = "linear";
+
+  const isConnected =
+    integrations.find((i) => i.id === integrationId)?.status === "connected";
+
+  const [useManualInput, setUseManualInput] = useState(false);
+  const triggerSlug = config.trigger_name || "";
+
+  // Fetch teams
+  const { data: teamsData, isLoading } = useTriggerOptions(
+    integrationId,
+    triggerSlug,
+    "team_id",
+    isConnected && !!triggerSlug,
+  );
+
+  const teamOptions = (teamsData || []) as OptionItem[];
+
+  const updateTriggerData = (updates: Partial<LinearTriggerData>) => {
+    const currentTriggerData = triggerData || {
+      trigger_name: config.trigger_name || "",
+    };
+    onConfigChange({
+      ...config,
+      trigger_data: {
+        ...currentTriggerData,
+        ...updates,
+      },
+    });
+  };
+
+  if (!isConnected) {
+    return (
+      <TriggerConnectionPrompt
+        integrationName="Linear"
+        integrationId={integrationId}
+        iconUrl={integrations.find((i) => i.id === integrationId)?.iconUrl}
+        onConnect={() => connectIntegration(integrationId)}
+      />
+    );
+  }
+
+  return (
+    <TriggerSettingsCard>
+      <TriggerSettingRow label="Team" wide>
+        {isLoading ? (
+          <Select
+            aria-label="Team"
+            placeholder="Loading teams..."
+            className="w-full"
+            isDisabled
+            isLoading
+            selectedKeys={[]}
+          >
+            <SelectItem key="loading" textValue="Loading...">
+              Loading...
+            </SelectItem>
+          </Select>
+        ) : teamOptions.length > 0 && !useManualInput ? (
+          <Select
+            aria-label="Team"
+            placeholder="Select a team"
+            selectedKeys={triggerData?.team_id ? [triggerData.team_id] : []}
+            onSelectionChange={(keys) => {
+              const key = Array.from(keys)[0];
+              if (key) {
+                updateTriggerData({ team_id: String(key) });
+              }
+            }}
+            isLoading={isLoading}
+            description={
+              <button
+                type="button"
+                onClick={() => setUseManualInput(true)}
+                className="text-xs text-primary hover:underline"
+              >
+                Or enter manually
+              </button>
+            }
+            className="w-full"
+          >
+            {teamOptions.map((option) => (
+              <SelectItem key={option.value} textValue={option.label}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </Select>
+        ) : (
+          <Input
+            aria-label="Team ID"
+            placeholder="Available in Linear URL"
+            value={triggerData?.team_id || ""}
+            onValueChange={(val) => updateTriggerData({ team_id: val })}
+            className="w-full"
+            description={
+              teamOptions.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setUseManualInput(false)}
+                  className="text-xs text-primary hover:underline"
+                >
+                  Or select from list
+                </button>
+              ) : undefined
+            }
+          />
+        )}
+      </TriggerSettingRow>
+    </TriggerSettingsCard>
+  );
+}

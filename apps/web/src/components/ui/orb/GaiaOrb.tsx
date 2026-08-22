@@ -325,7 +325,9 @@ export default function GaiaOrb({
 }: Readonly<GaiaOrbProps>) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef<GaiaOrbState>(state);
-  stateRef.current = state;
+  useEffect(() => {
+    stateRef.current = state;
+  });
 
   useEffect(() => {
     const canvas = canvasRef.current;

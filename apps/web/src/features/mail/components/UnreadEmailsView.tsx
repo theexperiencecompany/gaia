@@ -19,27 +19,34 @@ import EmailListCard from "@/features/mail/components/EmailListCard";
 import { useAppendToInput } from "@/stores/composerStore";
 import type { EmailData, EmailFetchData } from "@/types/features/mailTypes";
 
-interface UnreadEmailsViewProps {
-  emails?: EmailData[];
+/** Connection + fetch status of the Gmail inbox backing the card. */
+interface UnreadEmailsStatus {
   isConnected?: boolean;
   /** Connect/Reconnect/Retry — the verb that matches Gmail's current status. */
   connectLabel?: string;
-  onConnect?: (integrationId: string) => void;
   isFetching?: boolean;
-  onLoadMore?: () => void;
   hasNextPage?: boolean;
   isFetchingNextPage?: boolean;
 }
 
+interface UnreadEmailsViewProps {
+  emails?: EmailData[];
+  status?: UnreadEmailsStatus;
+  onConnect?: (integrationId: string) => void;
+  onLoadMore?: () => void;
+}
+
 const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
   emails = [],
-  isConnected = true,
-  connectLabel = "Connect",
+  status: {
+    isConnected = true,
+    connectLabel = "Connect",
+    isFetching = false,
+    hasNextPage,
+    isFetchingNextPage,
+  } = {},
   onConnect,
-  isFetching = false,
   onLoadMore,
-  hasNextPage,
-  isFetchingNextPage,
 }) => {
   const appendToInput = useAppendToInput();
 

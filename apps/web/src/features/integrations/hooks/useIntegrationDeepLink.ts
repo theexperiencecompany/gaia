@@ -44,7 +44,9 @@ export function useIntegrationDeepLink(
   const router = useRouter();
   // Read handlers via a ref so the effect doesn't re-run when they're recreated.
   const handlersRef = useRef(handlers);
-  handlersRef.current = handlers;
+  useEffect(() => {
+    handlersRef.current = handlers;
+  });
 
   useEffect(() => {
     const status = searchParams.get("status");

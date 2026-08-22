@@ -18,7 +18,7 @@ import {
   VisionIcon,
 } from "@icons";
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CloudFogIcon } from "@/components/shared/icons";
 import {
   DropdownMenu,
@@ -285,9 +285,14 @@ const getWeatherTheme = (weatherData: WeatherData): WeatherTheme | null => {
 export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
   const [useFahrenheit, setUseFahrenheit] = useState(false);
 
+  // One analytics ping per mounted card, describing the payload the card was
+  // created with. The snapshot ref keeps it fire-once — depending on
+  // `weatherData` directly would re-report whenever the parent hands down a
+  // re-parsed object.
+  const initialWeatherDataRef = useRef(weatherData);
   useEffect(() => {
     trackEvent(ANALYTICS_EVENTS.WEATHER_QUERIED, {
-      has_forecast: (weatherData.forecast?.length ?? 0) > 0,
+      has_forecast: (initialWeatherDataRef.current.forecast?.length ?? 0) > 0,
     });
   }, []);
 
@@ -318,89 +323,20 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
     <div
       className={`w-full rounded-3xl sm:w-screen sm:max-w-md ${weatherTheme.gradient} relative overflow-hidden p-6 shadow-lg backdrop-blur-xs`}
     >
-      {/* Location Info */}
-      <div className="mb-3 flex items-start justify-between gap-10">
-        <div className="flex items-start">
-          <Location01Icon
-            className="relative top-1 mr-2 h-5 w-5"
-            color={"white"}
-          />
-          <div>
-            <h2 className="flex items-center text-xl font-bold text-white">
-              {weatherData.location.city}
-              {weatherData.location.region
-                ? `,${weatherData.location.region}`
-                : ""}
-            </h2>
-            <p className="text-xs" style={{ color: weatherTheme.colorCode }}>
-              {weatherData.location.country}
-            </p>
-          </div>
-        </div>
+      <WeatherLocationHeader
+        weatherData={weatherData}
+        weatherTheme={weatherTheme}
+        useFahrenheit={useFahrenheit}
+        onUseFahrenheitChange={setUseFahrenheit}
+      />
 
-        <div className="flex items-center">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 p-1 text-white hover:bg-white/20"
-                aria-label="Temperature settings"
-              >
-                <ThermometerWarmIcon className="h-5 w-5" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="w-40 border-zinc-700 bg-zinc-800 text-white"
-            >
-              <DropdownMenuLabel>Temperature Unit</DropdownMenuLabel>
-              <DropdownMenuSeparator className="bg-zinc-700" />
-              <div className="px-2 py-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">°F</span>
-                  <Switch
-                    checked={useFahrenheit}
-                    onValueChange={setUseFahrenheit}
-                    color="default"
-                  />
-                  <span className="text-sm">°C</span>
-                </div>
-              </div>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-
-      {/* Main weather Display */}
-      <div className="mb-2 flex items-center justify-between gap-5">
-        <div className="flex items-center justify-center">
-          {weatherTheme.icon}
-        </div>
-
-        <div>
-          <div className="flex items-baseline">
-            <span className="text-4xl font-bold text-white">
-              {displayTemp}°
-            </span>
-            <span className="ml-1 text-sm font-medium text-white/80">
-              {useFahrenheit ? "F" : "C"}
-            </span>
-          </div>
-          <p
-            className="text-xs"
-            style={{
-              color: weatherTheme.colorCode,
-              filter: "brightness(1.3)",
-            }}
-          >
-            Feels like: {displayFeelsLike}°
-          </p>
-        </div>
-
-        <p className="font-medium text-white capitalize">
-          {weatherData.weather[0].description}
-        </p>
-      </div>
+      <MainWeatherDisplay
+        weatherTheme={weatherTheme}
+        displayTemp={displayTemp}
+        displayFeelsLike={displayFeelsLike}
+        useFahrenheit={useFahrenheit}
+        description={weatherData.weather[0].description}
+      />
 
       {/* weather Details Accordion */}
       <Accordion
@@ -423,61 +359,14 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
             }
           >
             <div className="space-y-2 pb-2">
-              {weatherData.forecast.map((day) => {
-                const dayTemp = useFahrenheit
-                  ? Math.round(celsiusToFahrenheit(day.temp_max))
-                  : Math.round(day.temp_max);
-                const nightTemp = useFahrenheit
-                  ? Math.round(celsiusToFahrenheit(day.temp_min))
-                  : Math.round(day.temp_min);
-
-                return (
-                  <div
-                    key={dayTemp + nightTemp}
-                    className="flex items-center justify-start rounded-xl bg-black/15 px-2 py-1 text-white"
-                  >
-                    <div className="flex w-full flex-1 items-center justify-start gap-2">
-                      <div className="flex items-center justify-center">
-                        {getWeatherIcon(
-                          day.weather.main,
-                          "h-7 w-7",
-                          weatherTheme.colorCode,
-                        )}
-                      </div>
-                      <div className="w-24">
-                        <span className="font-semibold text-white">
-                          {getDayOfWeek(day.date)}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex w-24 justify-end">
-                      <div className="flex flex-row items-end gap-2">
-                        <div className="flex items-center">
-                          <Sun03Icon
-                            className="mr-1.5 h-7 w-7"
-                            color="#FCD34D"
-                            fill="#FCD34D"
-                          />
-                          <span className="w-8 font-medium text-white">
-                            {dayTemp}°
-                          </span>
-                        </div>
-                        <div className="mt-1 flex items-center">
-                          <Moon02Icon
-                            className="mr-1.5 h-7 w-7"
-                            color="#93C5FD"
-                            fill="#93C5FD"
-                          />
-                          <span className="w-8 text-white/80">
-                            {nightTemp}°
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+              {weatherData.forecast.map((day) => (
+                <WeeklyForecastRow
+                  key={`${day.temp_max}-${day.temp_min}`}
+                  day={day}
+                  useFahrenheit={useFahrenheit}
+                  weatherTheme={weatherTheme}
+                />
+              ))}
             </div>
           </AccordionItem>
         ) : null}
@@ -493,89 +382,12 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
             </div>
           }
         >
-          <div className="mt-2 grid grid-cols-3 gap-2">
-            {[
-              {
-                icon: (
-                  <FastWindIcon
-                    className="h-6 w-6"
-                    color={weatherTheme.colorCode}
-                  />
-                ),
-                label: "Wind",
-                value: `${weatherData.wind.speed} m/s`,
-                tooltipText: "Wind speed in meters per second",
-              },
-              {
-                icon: (
-                  <DropletIcon
-                    className="h-6 w-6"
-                    color={weatherTheme.colorCode}
-                  />
-                ),
-                label: "Humidity",
-                value: `${weatherData.main?.humidity ?? 0}%`,
-                tooltipText: "Amount of water vapor in the air",
-              },
-              ...(weatherData.visibility
-                ? [
-                    {
-                      icon: (
-                        <VisionIcon
-                          className="h-6 w-6"
-                          color={weatherTheme.colorCode}
-                        />
-                      ),
-                      label: "Visibility",
-                      value: `${(weatherData.visibility / 1000).toFixed(1)} km`,
-                      tooltipText: "Maximum visibility distance",
-                    },
-                  ]
-                : []),
-              {
-                icon: (
-                  <CloudIcon
-                    className="h-6 w-6"
-                    color={weatherTheme.colorCode}
-                  />
-                ),
-                label: "Pressure",
-                value: `${weatherData.main?.pressure ?? 0} hPa`,
-                tooltipText: "Atmospheric pressure in hectopascals",
-              },
-              {
-                icon: (
-                  <SunriseIcon
-                    className="h-6 w-6"
-                    color={weatherTheme.colorCode}
-                  />
-                ),
-                label: "Sunrise",
-                value: sunriseTime,
-                tooltipText: "Time when the sun rises above the horizon",
-              },
-              {
-                icon: (
-                  <SunsetIcon
-                    className="h-6 w-6"
-                    color={weatherTheme.colorCode}
-                  />
-                ),
-                label: "Sunset",
-                value: sunsetTime,
-                tooltipText: "Time when the sun disappears below the horizon",
-              },
-            ].map((detail) => (
-              <WeatherDetailItem
-                key={detail.value}
-                icon={detail.icon}
-                label={detail.label}
-                value={detail.value}
-                tooltipText={detail.tooltipText}
-                highlight={weatherTheme.colorCode}
-              />
-            ))}
-          </div>
+          <WeatherDetailsGrid
+            weatherData={weatherData}
+            weatherTheme={weatherTheme}
+            sunriseTime={sunriseTime}
+            sunsetTime={sunsetTime}
+          />
         </AccordionItem>
       </Accordion>
       {/*
@@ -625,3 +437,268 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
     </div>
   );
 };
+
+interface WeatherLocationHeaderProps {
+  weatherData: WeatherData;
+  weatherTheme: WeatherTheme;
+  useFahrenheit: boolean;
+  onUseFahrenheitChange: (value: boolean) => void;
+}
+
+function WeatherLocationHeader({
+  weatherData,
+  weatherTheme,
+  useFahrenheit,
+  onUseFahrenheitChange,
+}: WeatherLocationHeaderProps) {
+  return (
+    <div className="mb-3 flex items-start justify-between gap-10">
+      <div className="flex items-start">
+        <Location01Icon
+          className="relative top-1 mr-2 h-5 w-5"
+          color={"white"}
+        />
+        <div>
+          <h2 className="flex items-center text-xl font-bold text-white">
+            {weatherData.location.city}
+            {weatherData.location.region
+              ? `,${weatherData.location.region}`
+              : ""}
+          </h2>
+          <p className="text-xs" style={{ color: weatherTheme.colorCode }}>
+            {weatherData.location.country}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-center">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 p-1 text-white hover:bg-white/20"
+              aria-label="Temperature settings"
+            >
+              <ThermometerWarmIcon className="h-5 w-5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            className="w-40 border-zinc-700 bg-zinc-800 text-white"
+          >
+            <DropdownMenuLabel>Temperature Unit</DropdownMenuLabel>
+            <DropdownMenuSeparator className="bg-zinc-700" />
+            <div className="px-2 py-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm">°F</span>
+                <Switch
+                  checked={useFahrenheit}
+                  onValueChange={onUseFahrenheitChange}
+                  color="default"
+                />
+                <span className="text-sm">°C</span>
+              </div>
+            </div>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
+  );
+}
+
+interface MainWeatherDisplayProps {
+  weatherTheme: WeatherTheme;
+  displayTemp: number;
+  displayFeelsLike: number;
+  useFahrenheit: boolean;
+  description: string;
+}
+
+function MainWeatherDisplay({
+  weatherTheme,
+  displayTemp,
+  displayFeelsLike,
+  useFahrenheit,
+  description,
+}: MainWeatherDisplayProps) {
+  return (
+    <div className="mb-2 flex items-center justify-between gap-5">
+      <div className="flex items-center justify-center">
+        {weatherTheme.icon}
+      </div>
+
+      <div>
+        <div className="flex items-baseline">
+          <span className="text-4xl font-bold text-white">{displayTemp}°</span>
+          <span className="ml-1 text-sm font-medium text-white/80">
+            {useFahrenheit ? "F" : "C"}
+          </span>
+        </div>
+        <p
+          className="text-xs"
+          style={{
+            color: weatherTheme.colorCode,
+            filter: "brightness(1.3)",
+          }}
+        >
+          Feels like: {displayFeelsLike}°
+        </p>
+      </div>
+
+      <p className="font-medium text-white capitalize">{description}</p>
+    </div>
+  );
+}
+
+interface ForecastDay {
+  date: string;
+  timestamp: number;
+  temp_min: number;
+  temp_max: number;
+  humidity: number;
+  weather: {
+    main: string;
+    description: string;
+    icon: string;
+  };
+}
+
+interface WeeklyForecastRowProps {
+  day: ForecastDay;
+  useFahrenheit: boolean;
+  weatherTheme: WeatherTheme;
+}
+
+function WeeklyForecastRow({
+  day,
+  useFahrenheit,
+  weatherTheme,
+}: WeeklyForecastRowProps) {
+  const dayTemp = useFahrenheit
+    ? Math.round(celsiusToFahrenheit(day.temp_max))
+    : Math.round(day.temp_max);
+  const nightTemp = useFahrenheit
+    ? Math.round(celsiusToFahrenheit(day.temp_min))
+    : Math.round(day.temp_min);
+
+  return (
+    <div className="flex items-center justify-start rounded-xl bg-black/15 px-2 py-1 text-white">
+      <div className="flex w-full flex-1 items-center justify-start gap-2">
+        <div className="flex items-center justify-center">
+          {getWeatherIcon(day.weather.main, "h-7 w-7", weatherTheme.colorCode)}
+        </div>
+        <div className="w-24">
+          <span className="font-semibold text-white">
+            {getDayOfWeek(day.date)}
+          </span>
+        </div>
+      </div>
+
+      <div className="flex w-24 justify-end">
+        <div className="flex flex-row items-end gap-2">
+          <div className="flex items-center">
+            <Sun03Icon
+              className="mr-1.5 h-7 w-7"
+              color="#FCD34D"
+              fill="#FCD34D"
+            />
+            <span className="w-8 font-medium text-white">{dayTemp}°</span>
+          </div>
+          <div className="mt-1 flex items-center">
+            <Moon02Icon
+              className="mr-1.5 h-7 w-7"
+              color="#93C5FD"
+              fill="#93C5FD"
+            />
+            <span className="w-8 text-white/80">{nightTemp}°</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface WeatherDetailsGridProps {
+  weatherData: WeatherData;
+  weatherTheme: WeatherTheme;
+  sunriseTime: string;
+  sunsetTime: string;
+}
+
+function WeatherDetailsGrid({
+  weatherData,
+  weatherTheme,
+  sunriseTime,
+  sunsetTime,
+}: WeatherDetailsGridProps) {
+  return (
+    <div className="mt-2 grid grid-cols-3 gap-2">
+      {[
+        {
+          icon: (
+            <FastWindIcon className="h-6 w-6" color={weatherTheme.colorCode} />
+          ),
+          label: "Wind",
+          value: `${weatherData.wind.speed} m/s`,
+          tooltipText: "Wind speed in meters per second",
+        },
+        {
+          icon: (
+            <DropletIcon className="h-6 w-6" color={weatherTheme.colorCode} />
+          ),
+          label: "Humidity",
+          value: `${weatherData.main?.humidity ?? 0}%`,
+          tooltipText: "Amount of water vapor in the air",
+        },
+        ...(weatherData.visibility
+          ? [
+              {
+                icon: (
+                  <VisionIcon
+                    className="h-6 w-6"
+                    color={weatherTheme.colorCode}
+                  />
+                ),
+                label: "Visibility",
+                value: `${(weatherData.visibility / 1000).toFixed(1)} km`,
+                tooltipText: "Maximum visibility distance",
+              },
+            ]
+          : []),
+        {
+          icon: (
+            <CloudIcon className="h-6 w-6" color={weatherTheme.colorCode} />
+          ),
+          label: "Pressure",
+          value: `${weatherData.main?.pressure ?? 0} hPa`,
+          tooltipText: "Atmospheric pressure in hectopascals",
+        },
+        {
+          icon: (
+            <SunriseIcon className="h-6 w-6" color={weatherTheme.colorCode} />
+          ),
+          label: "Sunrise",
+          value: sunriseTime,
+          tooltipText: "Time when the sun rises above the horizon",
+        },
+        {
+          icon: (
+            <SunsetIcon className="h-6 w-6" color={weatherTheme.colorCode} />
+          ),
+          label: "Sunset",
+          value: sunsetTime,
+          tooltipText: "Time when the sun disappears below the horizon",
+        },
+      ].map((detail) => (
+        <WeatherDetailItem
+          key={detail.value}
+          icon={detail.icon}
+          label={detail.label}
+          value={detail.value}
+          tooltipText={detail.tooltipText}
+          highlight={weatherTheme.colorCode}
+        />
+      ))}
+    </div>
+  );
+}

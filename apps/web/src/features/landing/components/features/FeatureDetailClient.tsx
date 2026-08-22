@@ -56,6 +56,7 @@ export function FeatureDetailClient({ feature }: Props) {
           src="/images/wallpapers/bands_gradient_1.webp"
           alt=""
           fill
+          sizes="100vw"
           className="object-cover pointer-events-none select-none"
           priority
         />

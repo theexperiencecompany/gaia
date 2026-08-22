@@ -123,6 +123,7 @@ export function SkillImportForm({
         errorMessage={repoError}
         startContent={<Github01Icon className="size-4 text-white" />}
         onKeyDown={(e) => {
+          if (e.nativeEvent.isComposing) return;
           if (e.key === "Enter" && repoValid) handleDiscover();
         }}
         endContent={

@@ -17,6 +17,17 @@ import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
 import type { CommunityIntegration } from "../types";
 
+function formatCloneCount(count: number): string {
+  if (count >= 1000) {
+    return `${(count / 1000).toFixed(1)}k`;
+  }
+  return count.toString();
+}
+
+function getCategoryLabel(category: string): string {
+  return category.charAt(0).toUpperCase() + category.slice(1).toLowerCase();
+}
+
 // Component to handle integration icon with fallback on error
 const IntegrationIcon: React.FC<{
   integrationId: string;
@@ -39,16 +50,17 @@ const IntegrationIcon: React.FC<{
 
   // Otherwise, try to use the iconUrl with error handling
   if (iconUrl && !hasError) {
-    // Use regular img tag for SVG URLs to avoid Next.js Image optimization issues
+    // SVGs can't go through the Next.js image optimizer — load them
+    // unoptimized straight from the source host.
     const isSvg = iconUrl.toLowerCase().endsWith(".svg");
     if (isSvg) {
       return (
-        // biome-ignore lint/performance/noImgElement: Using img for SVG to avoid Next.js Image optimization issues with SVG
-        <img
+        <Image
           src={iconUrl}
           alt="Integration icon"
           width={28}
           height={28}
+          unoptimized
           className="aspect-square object-contain rounded-lg max-w-7 max-h-7 min-w-7 min-h-7"
           onError={() => setHasError(true)}
         />
@@ -81,20 +93,9 @@ interface PublicIntegrationCardProps {
 export const PublicIntegrationCard: React.FC<PublicIntegrationCardProps> = ({
   integration,
 }) => {
-  const formatCloneCount = (count: number): string => {
-    if (count >= 1000) {
-      return `${(count / 1000).toFixed(1)}k`;
-    }
-    return count.toString();
-  };
-
-  const getCategoryLabel = (category: string): string => {
-    return category.charAt(0).toUpperCase() + category.slice(1).toLowerCase();
-  };
-
   return (
     <Link href={`/marketplace/${integration.slug}`}>
-      <div className="group relative flex h-full min-h-fit w-full flex-col gap-3 rounded-3xl bg-zinc-800 p-4 outline-1 outline-zinc-800/70 transition-all select-none cursor-pointer hover:bg-zinc-700/50">
+      <div className="group relative flex h-full min-h-fit w-full flex-col gap-3 rounded-3xl bg-zinc-800 p-4 outline-1 outline-zinc-800/70 transition-colors select-none cursor-pointer hover:bg-zinc-700/50">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 aspect-square shrink-0 items-center justify-center rounded-xl p-0">
             <IntegrationIcon

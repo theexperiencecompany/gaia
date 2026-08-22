@@ -518,6 +518,7 @@ export const useEventSidebar = ({
     customRecurrenceDays,
     onEventUpdate,
     close,
+    addEventToStore,
   ]);
 
   const handleDelete = useCallback(async () => {

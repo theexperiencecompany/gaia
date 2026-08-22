@@ -222,16 +222,19 @@ export const useChatStore = create<ChatState>((set) => ({
   // field. Stamp it back on as session_id so every map entry is a complete
   // ArtifactData (fetch URLs are built from session_id).
   setConversationArtifacts: (conversationId, artifacts) =>
-    set((state) => ({
-      artifactsByConversation: {
-        ...state.artifactsByConversation,
-        [conversationId]: Object.fromEntries(
-          artifacts
-            .filter((a) => a?.path)
-            .map((a) => [a.path, { ...a, session_id: conversationId }]),
-        ),
-      },
-    })),
+    set((state) => {
+      const registry: Record<string, ArtifactData> = {};
+      for (const artifact of artifacts) {
+        if (!artifact?.path) continue;
+        registry[artifact.path] = { ...artifact, session_id: conversationId };
+      }
+      return {
+        artifactsByConversation: {
+          ...state.artifactsByConversation,
+          [conversationId]: registry,
+        },
+      };
+    }),
 
   setActiveConversationId: (id) => set({ activeConversationId: id }),
 

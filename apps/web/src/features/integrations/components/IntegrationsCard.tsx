@@ -44,10 +44,13 @@ const IntegrationItem: React.FC<{
 
   return (
     <div
-      className={`flex min-h-12 cursor-pointer flex-col justify-center ${gapClass} overflow-hidden ${size === "small" ? "rounded-xl" : "rounded-2xl"} bg-zinc-800/40 ${paddingClass} transition hover:bg-zinc-700`}
-      onClick={handleClick}
+      className={`flex min-h-12 flex-col justify-center ${gapClass} overflow-hidden ${size === "small" ? "rounded-xl" : "rounded-2xl"} bg-zinc-800/40 ${paddingClass} transition hover:bg-zinc-700`}
     >
-      <div className="flex items-center gap-3">
+      <button
+        type="button"
+        className="flex min-w-0 cursor-pointer items-center gap-3 text-left"
+        onClick={handleClick}
+      >
         <div className="shrink-0">
           {getToolCategoryIcon(
             integration.id,
@@ -69,38 +72,40 @@ const IntegrationItem: React.FC<{
             </div>
           </div>
         ) : (
-          <div className="flex-1 text-sm font-medium">{integration.name}</div>
+          <div className="min-w-0 flex-1 truncate text-left text-sm font-medium">
+            {integration.name}
+          </div>
+        )}
+      </button>
+
+      <div className="shrink-0 flex items-center gap-2">
+        {/* Status Dots - always show */}
+        {isConnected && (
+          <span className="h-2 w-2 rounded-full bg-success mr-2" />
         )}
 
-        <div className="shrink-0 flex items-center gap-2">
-          {/* Status Dots - always show */}
-          {isConnected && (
-            <span className="h-2 w-2 rounded-full bg-success mr-2" />
-          )}
+        {state === "pending" && (
+          <span className="h-2 w-2 rounded-full bg-warning mr-2" />
+        )}
 
-          {state === "pending" && (
-            <span className="h-2 w-2 rounded-full bg-warning mr-2" />
-          )}
+        {state === "expired" && (
+          <span className="h-2 w-2 rounded-full bg-danger mr-2" />
+        )}
 
-          {state === "expired" && (
-            <span className="h-2 w-2 rounded-full bg-danger mr-2" />
+        {/* Connect button — a dead connection reads as Reconnect, never Connect */}
+        {(isAvailable || state === "expired") &&
+          !isConnected &&
+          state !== "pending" && (
+            <Button
+              size="sm"
+              variant="flat"
+              color={state === "expired" ? "warning" : "primary"}
+              className="text-xs"
+              onPress={handleConnectClick}
+            >
+              {CONNECT_ACTION_LABEL[state]}
+            </Button>
           )}
-
-          {/* Connect button — a dead connection reads as Reconnect, never Connect */}
-          {(isAvailable || state === "expired") &&
-            !isConnected &&
-            state !== "pending" && (
-              <Button
-                size="sm"
-                variant="flat"
-                color={state === "expired" ? "warning" : "primary"}
-                className="text-xs"
-                onPress={handleConnectClick}
-              >
-                {CONNECT_ACTION_LABEL[state]}
-              </Button>
-            )}
-        </div>
       </div>
     </div>
   );

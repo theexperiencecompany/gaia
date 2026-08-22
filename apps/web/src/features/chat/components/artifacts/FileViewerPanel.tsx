@@ -212,13 +212,17 @@ function FileViewerBody({
   }
   if (isPdf) {
     // Render via the browser's native PDF viewer. Never fetch a PDF as text
-    // (the old fallback did, streaming the whole binary as a string — slow on a
-    // cold R2 read, and the bytes rendered as a garbage code block).
+    // (the old fallback did, streaming the whole binary as a string — slow on
+    // a cold R2 read, and the bytes rendered as a garbage code block). Fully
+    // sandboxed like the HTML preview below: a passive viewer frame needs no
+    // scripts/forms/popups/top-navigation, and downloads stay available via
+    // the panel's own Download button.
     return (
       <iframe
         title={filename}
         src={sessionFilesApi.artifactUrl(conversationId, path)}
         className="h-full w-full bg-white"
+        sandbox=""
       />
     );
   }
@@ -291,20 +295,22 @@ export default function FileViewerPanel({
 
   const handleDownload = useCallback(() => {
     const link = document.createElement("a");
+    let objectUrl: string | null = null;
     if (isImage || content === null) {
       // For binary artifacts (images etc.) anchor to the auth-gated URL —
       // we never fetched the body and don't want to.
       link.href = sessionFilesApi.artifactUrl(conversationId, path);
     } else {
       const blob = new Blob([content], { type: contentType });
-      link.href = URL.createObjectURL(blob);
+      objectUrl = URL.createObjectURL(blob);
+      link.href = objectUrl;
     }
     link.download = filename;
     link.rel = "noopener";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    if (!isImage && content !== null) URL.revokeObjectURL(link.href);
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
   }, [content, contentType, conversationId, filename, isImage, path]);
 
   const ext = getExtension(filename).toUpperCase();

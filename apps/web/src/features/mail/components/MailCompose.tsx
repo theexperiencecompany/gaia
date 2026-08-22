@@ -33,6 +33,65 @@ interface MailComposeProps {
   onOpenChange: (open: boolean) => void;
 }
 
+interface AiOption {
+  id: string;
+  label: string;
+}
+
+interface AiOptionDropdownProps {
+  label: string;
+  options: AiOption[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+}
+
+/** One AI-option picker (writing style / content length / clarity). */
+function AiOptionDropdown({
+  label,
+  options,
+  selectedId,
+  onSelect,
+}: AiOptionDropdownProps) {
+  const selectedLabel =
+    options.find((option) => option.id === selectedId)?.label || "None";
+
+  return (
+    <div className="relative">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <ShadcnButton
+            className="border-none bg-[#00bbff40] text-sm font-normal text-[#00bbff] ring-0 outline-hidden hover:bg-[#00bbff20]"
+            size="sm"
+          >
+            <div className="flex flex-row gap-1">
+              <BrushIcon width={20} height={20} />
+              <span className="font-medium">{label}:</span>{" "}
+              <span>{selectedLabel}</span>
+              <ArrowDown01Icon width={20} />
+            </div>
+          </ShadcnButton>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="border-none bg-zinc-900 text-white dark">
+          {options.map((option) => (
+            <DropdownMenuItem
+              key={option.id}
+              onClick={() => onSelect(option.id)}
+              className="cursor-pointer focus:bg-zinc-600 focus:text-white"
+            >
+              <div className="flex w-full items-center justify-between">
+                {option.label}
+                {option.id === selectedId && (
+                  <Tick02Icon width={20} height={20} />
+                )}
+              </div>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
 export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
   const user = useUser();
 
@@ -143,133 +202,33 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
 
           <div className="relative flex h-full w-full flex-col">
             <div className="z-2 flex w-full justify-end gap-3 pb-2">
-              {/* Writing Style Dropdown */}
-              <div className="relative">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <ShadcnButton
-                      className="border-none bg-[#00bbff40] text-sm font-normal text-[#00bbff] ring-0 outline-hidden hover:bg-[#00bbff20]"
-                      size="sm"
-                    >
-                      <div className="flex flex-row gap-1">
-                        <BrushIcon width={20} height={20} />
-                        <span className="font-medium">Writing Style:</span>{" "}
-                        <span>
-                          {
-                            writingStyles.find((s) => s.id === writingStyle)
-                              ?.label
-                          }
-                        </span>
-                        <ArrowDown01Icon width={20} />
-                      </div>
-                    </ShadcnButton>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="border-none bg-zinc-900 text-white dark">
-                    {writingStyles.map((style) => (
-                      <DropdownMenuItem
-                        key={style.id}
-                        onClick={() => {
-                          setWritingStyle(style.id);
-                          handleAskGaia(style.id);
-                        }}
-                        className="cursor-pointer focus:bg-zinc-600 focus:text-white"
-                      >
-                        <div className="flex w-full items-center justify-between">
-                          {style.label}
-                          {writingStyles.find((s) => s.id === writingStyle)
-                            ?.label === style.label && (
-                            <Tick02Icon width={20} height={20} />
-                          )}
-                        </div>
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-
-              {/* Content Length Dropdown */}
-              <div className="relative">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <ShadcnButton
-                      className="border-none bg-[#00bbff40] text-sm font-normal text-[#00bbff] ring-0 outline-hidden hover:bg-[#00bbff20]"
-                      size="sm"
-                    >
-                      <div className="flex flex-row gap-1">
-                        <BrushIcon width={20} height={20} />
-                        <span className="font-medium">Content Length:</span>{" "}
-                        <span>
-                          {contentLengthOptions.find(
-                            (opt) => opt.id === contentLength,
-                          )?.label || "None"}
-                        </span>
-                        <ArrowDown01Icon width={20} />
-                      </div>
-                    </ShadcnButton>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="border-none bg-zinc-900 text-white dark">
-                    {contentLengthOptions.map((option) => (
-                      <DropdownMenuItem
-                        key={option.id}
-                        onClick={() => {
-                          setContentLength(option.id);
-                          handleAskGaia();
-                        }}
-                        className="cursor-pointer focus:bg-zinc-600 focus:text-white"
-                      >
-                        <div className="flex w-full items-center justify-between">
-                          {option.label}
-                          {contentLength === option.id && (
-                            <Tick02Icon width={20} />
-                          )}
-                        </div>
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-
-              {/* Clarity Dropdown */}
-              <div className="relative">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <ShadcnButton
-                      className="border-none bg-[#00bbff40] text-sm font-normal text-[#00bbff] ring-0 outline-hidden hover:bg-[#00bbff20]"
-                      size="sm"
-                    >
-                      <div className="flex flex-row gap-1">
-                        <BrushIcon width={20} height={20} />
-                        <span className="font-medium">Clarity:</span>{" "}
-                        <span>
-                          {clarityOptions.find(
-                            (opt) => opt.id === clarityOption,
-                          )?.label || "None"}
-                        </span>
-                        <ArrowDown01Icon width={20} />
-                      </div>
-                    </ShadcnButton>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="border-none bg-zinc-900 text-white dark">
-                    {clarityOptions.map((option) => (
-                      <DropdownMenuItem
-                        key={option.id}
-                        onClick={() => {
-                          setClarityOption(option.id);
-                          handleAskGaia();
-                        }}
-                        className="cursor-pointer focus:bg-zinc-600 focus:text-white"
-                      >
-                        <div className="flex w-full items-center justify-between">
-                          {option.label}
-                          {clarityOption === option.id && (
-                            <Tick02Icon width={20} />
-                          )}
-                        </div>
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
+              <AiOptionDropdown
+                label="Writing Style"
+                options={writingStyles}
+                selectedId={writingStyle}
+                onSelect={(id) => {
+                  setWritingStyle(id);
+                  handleAskGaia(id);
+                }}
+              />
+              <AiOptionDropdown
+                label="Content Length"
+                options={contentLengthOptions}
+                selectedId={contentLength}
+                onSelect={(id) => {
+                  setContentLength(id);
+                  handleAskGaia();
+                }}
+              />
+              <AiOptionDropdown
+                label="Clarity"
+                options={clarityOptions}
+                selectedId={clarityOption}
+                onSelect={(id) => {
+                  setClarityOption(id);
+                  handleAskGaia();
+                }}
+              />
             </div>
 
             {editor && (

@@ -13,6 +13,7 @@ export default function PublishWorkflowCTA() {
         fill
         src={"/images/wallpapers/blueprint.png"}
         alt="Blueprint image"
+        sizes="(min-width: 1280px) 1232px, calc(100vw - 3rem)"
         className="object-cover  z-0 opacity-50 blur-[3px]"
       />
       <div className="mx-auto space-y-1">

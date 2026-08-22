@@ -1,0 +1,14 @@
+{
+  "$schema": "https://react.doctor/schema/config.json",
+  // Supply-chain floor: nx@22.7.7 scores 46/100 on Socket's install-behavior
+  // axis (build orchestrators legitimately run install scripts); its
+  // vulnerability/maintenance/quality axes are 92–100. Identity confirmed —
+  // it IS this repo's task runner. Floor lowered 50→45 so the gate judges
+  // real supply-chain risk, not orchestrator semantics. Lives at the repo
+  // root because the workspace-level supply-chain scan reads only the root
+  // config when invoked with --project '*'.
+  "supplyChain": {
+    "enabled": true,
+    "minScore": 45
+  }
+}

@@ -42,6 +42,7 @@ export function DevSkipOnboarding() {
     } catch (error) {
       console.error("[DevSkipOnboarding] skip failed:", error);
       toast.error("Dev skip failed — check the console.");
+    } finally {
       setLoading(false);
     }
   };

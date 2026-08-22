@@ -6,6 +6,8 @@ import type { CommunityWorkflow } from "@/features/workflows/api/workflowApi";
 import { workflowApi } from "@/features/workflows/api/workflowApi";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 
+const EMPTY_CATEGORIES: string[] = [];
+
 interface YouMightAlsoLikeProps {
   currentId: string;
   categories?: string[];
@@ -13,11 +15,17 @@ interface YouMightAlsoLikeProps {
 
 export default function YouMightAlsoLike({
   currentId,
-  categories = [],
+  categories = EMPTY_CATEGORIES,
 }: YouMightAlsoLikeProps) {
   const [items, setItems] = useState<CommunityWorkflow[]>([]);
 
   useEffect(() => {
+    // Per-run cancellation flag (NOT a shared mountedRef): the cleanup runs
+    // before every re-execution, so each run — including re-runs after
+    // currentId/categories change on client-side navigation — may update
+    // state. A one-shot ref would freeze recommendations permanently here.
+    let cancelled = false;
+
     const fetchItems = async () => {
       try {
         const resp = await workflowApi.getExploreWorkflows(50, 0);
@@ -68,14 +76,22 @@ export default function YouMightAlsoLike({
             .slice(0, 6);
         }
 
-        setItems(workflows);
+        if (!cancelled) {
+          setItems(workflows);
+        }
       } catch (error) {
         console.error("Error fetching similar items:", error);
-        setItems([]);
+        if (!cancelled) {
+          setItems([]);
+        }
       }
     };
 
     fetchItems();
+
+    return () => {
+      cancelled = true;
+    };
   }, [currentId, categories]);
 
   if (items.length === 0) return null;

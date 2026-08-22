@@ -11,7 +11,7 @@ import {
 } from "@heroui/modal";
 import { Tab, Tabs } from "@heroui/tabs";
 import { Github01Icon } from "@icons";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { toast } from "@/lib/toast";
 import { skillsApi } from "../api/skillsApi";
@@ -35,34 +35,35 @@ interface SkillEditorModalProps {
   skill: Skill | null;
 }
 
-export function SkillEditorModal({
-  isOpen,
+/**
+ * The modal's inner content. Rendered inside <ModalContent>, which HeroUI
+ * unmounts when the modal closes — so this state initializes fresh from
+ * `skill` on every open, with no reset-on-prop-change effect.
+ */
+function SkillEditorForm({
   onClose,
   onSaved,
   targets,
   skill,
-}: Readonly<SkillEditorModalProps>) {
+}: Readonly<{
+  onClose: () => void;
+  onSaved: () => void;
+  targets: SkillTarget[];
+  skill: Skill | null;
+}>) {
   const isEdit = skill !== null;
 
   const [mode, setMode] = useState<"write" | "import">("write");
   const [instructionsTab, setInstructionsTab] = useState<"write" | "preview">(
     "write",
   );
-  const [name, setName] = useState("");
-  const [target, setTarget] = useState(EXECUTOR_TARGET);
-  const [description, setDescription] = useState("");
-  const [instructions, setInstructions] = useState("");
+  const [name, setName] = useState(skill?.name ?? "");
+  const [target, setTarget] = useState<Skill["target"]>(
+    skill?.target ?? EXECUTOR_TARGET,
+  );
+  const [description, setDescription] = useState(skill?.description ?? "");
+  const [instructions, setInstructions] = useState(skill?.body_content ?? "");
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    setMode("write");
-    setInstructionsTab("write");
-    setName(skill?.name ?? "");
-    setTarget(skill?.target ?? EXECUTOR_TARGET);
-    setDescription(skill?.description ?? "");
-    setInstructions(skill?.body_content ?? "");
-  }, [isOpen, skill]);
 
   const nameError = useMemo(() => {
     if (!name) return undefined;
@@ -93,6 +94,9 @@ export function SkillEditorModal({
     setSaving(true);
     try {
       if (isEdit) {
+        // Edit mode requires an existing skill; create mode legitimately has
+        // none (openCreate() sets it to null).
+        if (!skill) return;
         await skillsApi.updateSkill(skill.id, {
           description: description.trim(),
           instructions,
@@ -190,61 +194,85 @@ export function SkillEditorModal({
   );
 
   return (
+    <>
+      <ModalHeader className="flex-col items-start gap-1">
+        <span>{isEdit ? "Edit skill" : "New skill"}</span>
+        <span className="text-xs font-normal text-zinc-500">
+          {isEdit
+            ? "Update what this skill does and where it runs."
+            : "Teach your assistant a reusable workflow it can follow."}
+        </span>
+      </ModalHeader>
+      <ModalBody>
+        {isEdit ? (
+          writeForm
+        ) : (
+          <Tabs
+            radius="full"
+            variant="solid"
+            color="primary"
+            selectedKey={mode}
+            onSelectionChange={(key) => setMode(key as "write" | "import")}
+            classNames={{ base: "mb-1" }}
+          >
+            <Tab key="write" title="Write your own">
+              {writeForm}
+            </Tab>
+            <Tab
+              key="import"
+              title={
+                <div className="flex items-center gap-1.5">
+                  <Github01Icon className="size-4" />
+                  <span>Import from GitHub</span>
+                </div>
+              }
+            >
+              <SkillImportForm targets={targets} onInstalled={onSaved} />
+            </Tab>
+          </Tabs>
+        )}
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="light" className="rounded-xl" onPress={onClose}>
+          {isEdit || mode === "write" ? "Cancel" : "Done"}
+        </Button>
+        {(isEdit || mode === "write") && (
+          <Button
+            color="primary"
+            className="rounded-xl"
+            onPress={handleSave}
+            isLoading={saving}
+            isDisabled={!isValid}
+          >
+            {isEdit ? "Save changes" : "Create skill"}
+          </Button>
+        )}
+      </ModalFooter>
+    </>
+  );
+}
+
+export function SkillEditorModal({
+  isOpen,
+  onClose,
+  onSaved,
+  targets,
+  skill,
+}: Readonly<SkillEditorModalProps>) {
+  // Keyed on the skill being edited so swapping targets mid-open remounts the
+  // form with the new skill's values.
+  const formKey = `${isOpen ? "open" : "closed"}-${skill?.id ?? "new"}`;
+
+  return (
     <Modal isOpen={isOpen} onClose={onClose} size="2xl" scrollBehavior="inside">
       <ModalContent>
-        <ModalHeader className="flex-col items-start gap-1">
-          <span>{isEdit ? "Edit skill" : "New skill"}</span>
-          <span className="text-xs font-normal text-zinc-500">
-            {isEdit
-              ? "Update what this skill does and where it runs."
-              : "Teach your assistant a reusable workflow it can follow."}
-          </span>
-        </ModalHeader>
-        <ModalBody>
-          {isEdit ? (
-            writeForm
-          ) : (
-            <Tabs
-              radius="full"
-              variant="solid"
-              color="primary"
-              selectedKey={mode}
-              onSelectionChange={(key) => setMode(key as "write" | "import")}
-              classNames={{ base: "mb-1" }}
-            >
-              <Tab key="write" title="Write your own">
-                {writeForm}
-              </Tab>
-              <Tab
-                key="import"
-                title={
-                  <div className="flex items-center gap-1.5">
-                    <Github01Icon className="size-4" />
-                    <span>Import from GitHub</span>
-                  </div>
-                }
-              >
-                <SkillImportForm targets={targets} onInstalled={onSaved} />
-              </Tab>
-            </Tabs>
-          )}
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="light" className="rounded-xl" onPress={onClose}>
-            {isEdit || mode === "write" ? "Cancel" : "Done"}
-          </Button>
-          {(isEdit || mode === "write") && (
-            <Button
-              color="primary"
-              className="rounded-xl"
-              onPress={handleSave}
-              isLoading={saving}
-              isDisabled={!isValid}
-            >
-              {isEdit ? "Save changes" : "Create skill"}
-            </Button>
-          )}
-        </ModalFooter>
+        <SkillEditorForm
+          key={formKey}
+          onClose={onClose}
+          onSaved={onSaved}
+          targets={targets}
+          skill={skill}
+        />
       </ModalContent>
     </Modal>
   );

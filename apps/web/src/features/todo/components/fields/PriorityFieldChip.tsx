@@ -4,6 +4,7 @@ import { Flag02Icon } from "@icons";
 import { Priority } from "@/types/features/todoTypes";
 
 import BaseFieldChip from "./BaseFieldChip";
+import FieldChipOption from "./FieldChipOption";
 
 interface PriorityFieldChipProps {
   value?: Priority;
@@ -52,15 +53,13 @@ export default function PriorityFieldChip({
                     : null;
 
             return (
-              <div
+              <FieldChipOption
                 key={option.value}
-                onClick={() => {
+                onSelect={() => {
                   onChange(option.value);
                   onClose();
                 }}
-                className={
-                  "flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800 "
-                }
+                className="justify-between rounded-md text-zinc-300"
               >
                 <div className="flex items-center gap-2">
                   <Flag02Icon
@@ -75,7 +74,7 @@ export default function PriorityFieldChip({
                     {shortcut}
                   </span>
                 )}
-              </div>
+              </FieldChipOption>
             );
           })}
 

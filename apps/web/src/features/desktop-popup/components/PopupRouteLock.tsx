@@ -1,7 +1,7 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { redirect, usePathname } from "next/navigation";
+import { useState } from "react";
 
 /**
  * Pins a popup window to the route it loaded with.
@@ -10,23 +10,20 @@ import { useEffect, useRef } from "react";
  * legitimately navigate on the web (follow-up actions seed the
  * composer and push to /c, links route around the app). In a 420px
  * assistant window any client-side navigation away is wrong — it would
- * render the whole GAIA app inside the popup. Root-cause guard: snap
- * straight back whenever the pathname changes.
+ * render the whole GAIA app inside the popup. Root-cause guard: redirect
+ * straight back during render whenever the pathname changes (render-time
+ * `redirect()` is supported in Client Components, so no effect flash).
  */
 export default function PopupRouteLock() {
   const pathname = usePathname();
-  const router = useRouter();
-  const homeRef = useRef<string | null>(null);
+  // Home is pinned via the state initializer, which React evaluates only on
+  // the first render — every later render reuses the captured value without
+  // any render-phase mutation.
+  const [home] = useState(pathname);
 
-  useEffect(() => {
-    if (homeRef.current === null) {
-      homeRef.current = pathname;
-      return;
-    }
-    if (pathname !== homeRef.current) {
-      router.replace(homeRef.current);
-    }
-  }, [pathname, router]);
+  if (pathname !== home) {
+    redirect(home);
+  }
 
   return null;
 }

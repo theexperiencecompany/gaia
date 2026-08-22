@@ -24,8 +24,13 @@ const useSyncStatusStore = create<SyncStatusState>((set) => ({
 
 export const useBackgroundSync = () => {
   const lastSyncTimeRef = useRef(0);
-  const { initialSyncCompleted, setInitialSyncCompleted, setSyncError } =
-    useSyncStatusStore();
+  const initialSyncCompleted = useSyncStatusStore(
+    (state) => state.initialSyncCompleted,
+  );
+  const setInitialSyncCompleted = useSyncStatusStore(
+    (state) => state.setInitialSyncCompleted,
+  );
+  const setSyncError = useSyncStatusStore((state) => state.setSyncError);
   const [isSyncing, setIsSyncing] = useState(!initialSyncCompleted);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,6 +38,12 @@ export const useBackgroundSync = () => {
     if (typeof window === "undefined" || typeof document === "undefined") {
       return;
     }
+
+    // Guards the post-await writes below: an in-flight sync that resolves
+    // after this effect cleaned up must not touch component state. Store
+    // flags stay unconditional — they record global sync facts that outlive
+    // this component.
+    let cancelled = false;
 
     const runSync = async () => {
       const now = Date.now();
@@ -49,9 +60,9 @@ export const useBackgroundSync = () => {
           err instanceof Error ? err.message : "Failed to sync conversations";
         console.error("[BackgroundSync] Sync failed:", err);
         setSyncError(errorMessage);
-        setError(errorMessage);
+        if (!cancelled) setError(errorMessage);
       } finally {
-        setIsSyncing(false);
+        if (!cancelled) setIsSyncing(false);
         setInitialSyncCompleted(true);
       }
     };
@@ -76,6 +87,7 @@ export const useBackgroundSync = () => {
     window.addEventListener("online", handleOnline);
 
     return () => {
+      cancelled = true;
       clearInterval(intervalId);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("online", handleOnline);

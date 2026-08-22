@@ -1,3 +1,5 @@
+import { Button } from "@heroui/button";
+import { Spinner } from "@heroui/spinner";
 import { Tab, Tabs } from "@heroui/tabs";
 import {
   Cancel01Icon,
@@ -8,24 +10,17 @@ import {
 } from "@icons";
 import Image from "next/image";
 import type React from "react";
-import { useState } from "react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Line,
-  LineChart,
-  Pie,
-  PieChart,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { useEffect, useState } from "react";
 import {
   type ChartConfig,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
+import {
+  loadRecharts,
+  type RechartsModule,
+} from "@/components/ui/chart-loader";
 
 interface ChartData {
   id: string;
@@ -71,9 +66,66 @@ const transformChartData = (
     group: element.group,
   }));
 
+// recharts is heavy and only needed when a chart carries interactive data, so
+// it is loaded on demand instead of shipping in the initial bundle.
 // Interactive chart renderer
 const InteractiveChart: React.FC<{ chart: ChartData }> = ({ chart }) => {
+  const [Recharts, setRecharts] = useState<RechartsModule | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadFailed(false);
+    loadRecharts()
+      .then((loaded) => {
+        if (!cancelled) setRecharts(loaded);
+      })
+      .catch((error: unknown) => {
+        console.error("Failed to load chart library:", error);
+        if (!cancelled) setLoadFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadAttempt]);
+
   if (!chart.chart_data) return null;
+
+  if (!Recharts) {
+    if (loadFailed) {
+      // Same box as the spinner state so the card doesn't jump when swapping.
+      return (
+        <div className="flex h-64 w-full flex-col items-center justify-center gap-2 rounded-lg bg-zinc-900">
+          <p className="text-xs text-zinc-500">Chart failed to load.</p>
+          <Button
+            size="sm"
+            variant="flat"
+            onPress={() => setLoadAttempt((attempt) => attempt + 1)}
+          >
+            Retry
+          </Button>
+        </div>
+      );
+    }
+    return (
+      <div className="flex h-64 w-full items-center justify-center rounded-lg bg-zinc-900">
+        <Spinner size="sm" />
+      </div>
+    );
+  }
+
+  const {
+    Bar,
+    BarChart,
+    CartesianGrid,
+    Line,
+    LineChart,
+    Pie,
+    PieChart,
+    XAxis,
+    YAxis,
+  } = Recharts;
 
   const { chart_data } = chart;
   const chartConfig = createChartConfig(chart_data.y_label);
@@ -216,6 +268,28 @@ const DynamicChartItem: React.FC<{
   </div>
 );
 
+// Downloads a chart image as a file. Module scope so its identity is stable
+// across renders of ChartDisplay.
+const handleDownload = async (chart: ChartData) => {
+  try {
+    const response = await fetch(chart.url);
+    if (!response.ok) {
+      throw new Error(`Chart download failed with HTTP ${response.status}`);
+    }
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${chart.title || chart.text || "chart"}.png`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  } catch (error) {
+    console.error("Failed to download chart:", error);
+  }
+};
+
 // Modal component
 const ChartModal: React.FC<{
   chart: ChartData;
@@ -281,23 +355,6 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({ charts }) => {
   ); // Only charts with valid URLs
   const dynamicCharts = charts.filter((chart) => chart.chart_data); // Only charts with interactive data
   const hasAnyInteractiveData = dynamicCharts.length > 0;
-
-  const handleDownload = async (chart: ChartData) => {
-    try {
-      const response = await fetch(chart.url);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${chart.title || chart.text || "chart"}.png`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (error) {
-      console.error("Failed to download chart:", error);
-    }
-  };
 
   return (
     <>

@@ -86,10 +86,10 @@ export default function Onboarding() {
     skipAutoRedirect: true,
   });
   const userId = useUserStore((s) => s.userId);
-  // `null` until userId hydrates from persisted storage, so the intro doesn't replay on every reload.
-  const [introDone, setIntroDone] = useState<boolean | null>(() =>
-    userId ? hasSeenIntro(userId) : null,
-  );
+  // `null` until userId hydrates from persisted storage AND we confirm on the
+  // client, so the intro doesn't replay on every reload and server/client
+  // render identically (no hydration mismatch).
+  const [introDone, setIntroDone] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (!userId) return;

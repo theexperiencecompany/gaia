@@ -69,7 +69,7 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
   return (
     <>
       <div
-        className="group relative z-1 flex w-full max-w-md cursor-pointer flex-col gap-3 rounded-3xl border border-dashed border-warning/40 bg-zinc-800/40 p-4 backdrop-blur-lg transition-all hover:bg-zinc-700/50"
+        className="group relative z-1 flex w-full max-w-md cursor-pointer flex-col gap-3 rounded-3xl border border-dashed border-warning/40 bg-zinc-800/40 p-4 backdrop-blur-lg transition-colors hover:bg-zinc-700/50"
         onClick={() => setIsModalOpen(true)}
       >
         <Chip

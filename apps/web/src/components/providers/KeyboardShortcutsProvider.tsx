@@ -8,6 +8,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -29,6 +30,17 @@ interface KeyboardShortcutsContextValue {
 
 const KeyboardShortcutsContext =
   createContext<KeyboardShortcutsContextValue | null>(null);
+
+// Route-based create actions config
+const ROUTE_ACTIONS = [
+  { prefix: "/todos", selector: "create-todo" },
+  { prefix: "/calendar", navigate: "/calendar?create=true" },
+  { prefix: "/workflows", selector: "create-workflow" },
+  { prefix: "/integrations", selector: "create-integration" },
+] as const;
+
+// Common options for all shortcuts
+const HOTKEY_OPTIONS = { enableOnFormTags: false, preventDefault: true };
 
 export function useKeyboardShortcuts() {
   const context = useContext(KeyboardShortcutsContext);
@@ -56,18 +68,12 @@ export default function KeyboardShortcutsProvider({
 
   const createActionRef = useRef<(() => void) | null>(null);
   const routerRef = useRef(router);
-  routerRef.current = router;
+  useEffect(() => {
+    routerRef.current = router;
+  });
 
   const openShortcutsModal = useCallback(() => setIsModalOpen(true), []);
   const closeShortcutsModal = useCallback(() => setIsModalOpen(false), []);
-
-  // Route-based create actions config
-  const ROUTE_ACTIONS = [
-    { prefix: "/todos", selector: "create-todo" },
-    { prefix: "/calendar", navigate: "/calendar?create=true" },
-    { prefix: "/workflows", selector: "create-workflow" },
-    { prefix: "/integrations", selector: "create-integration" },
-  ] as const;
 
   const triggerCreateAction = useCallback(() => {
     const action = ROUTE_ACTIONS.find((a) => pathname.startsWith(a.prefix));
@@ -88,49 +94,49 @@ export default function KeyboardShortcutsProvider({
     createActionRef.current = triggerCreateAction;
   }, [triggerCreateAction]);
 
-  // Common options for all shortcuts
-  const hotkeyOptions = { enableOnFormTags: false, preventDefault: true };
-
   // ===========================================
   // SHORTCUTS MODAL: ? key
   // ===========================================
-  useHotkeys("?", () => openShortcutsModal(), hotkeyOptions);
+  useHotkeys("?", () => openShortcutsModal(), HOTKEY_OPTIONS);
 
   // ===========================================
   // CREATE: C key (context-aware)
   // ===========================================
-  useHotkeys("c", () => createActionRef.current?.(), hotkeyOptions);
+  useHotkeys("c", () => createActionRef.current?.(), HOTKEY_OPTIONS);
 
   // ===========================================
   // NAVIGATION SHORTCUTS: G > X sequences
   // ===========================================
-  useHotkeys("g>d", () => routerRef.current.push("/dashboard"), hotkeyOptions);
-  useHotkeys("g>c", () => routerRef.current.push("/calendar"), hotkeyOptions);
-  useHotkeys("g>t", () => routerRef.current.push("/todos"), hotkeyOptions);
-  useHotkeys("g>w", () => routerRef.current.push("/workflows"), hotkeyOptions);
+  useHotkeys("g>d", () => routerRef.current.push("/dashboard"), HOTKEY_OPTIONS);
+  useHotkeys("g>c", () => routerRef.current.push("/calendar"), HOTKEY_OPTIONS);
+  useHotkeys("g>t", () => routerRef.current.push("/todos"), HOTKEY_OPTIONS);
+  useHotkeys("g>w", () => routerRef.current.push("/workflows"), HOTKEY_OPTIONS);
   useHotkeys(
     "g>h",
     () => {
       prepareNewChat();
       routerRef.current.push("/c");
     },
-    hotkeyOptions,
+    HOTKEY_OPTIONS,
   );
   useHotkeys(
     "g>i",
     () => routerRef.current.push("/integrations"),
-    hotkeyOptions,
+    HOTKEY_OPTIONS,
+  );
+
+  const contextValue = useMemo(
+    () => ({
+      openShortcutsModal,
+      closeShortcutsModal,
+      isModalOpen,
+      triggerCreateAction,
+    }),
+    [openShortcutsModal, closeShortcutsModal, isModalOpen, triggerCreateAction],
   );
 
   return (
-    <KeyboardShortcutsContext.Provider
-      value={{
-        openShortcutsModal,
-        closeShortcutsModal,
-        isModalOpen,
-        triggerCreateAction,
-      }}
-    >
+    <KeyboardShortcutsContext.Provider value={contextValue}>
       {children}
       <KeyboardShortcutsModal
         isOpen={isModalOpen}

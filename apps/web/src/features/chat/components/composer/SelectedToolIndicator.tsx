@@ -42,9 +42,11 @@ const SelectedToolIndicator: React.FC<SelectedToolIndicatorProps> = ({
     iconUrl ?? integrations.find((i) => i.id === toolCategory)?.iconUrl ?? null;
 
   const onRemoveRef = useRef(onRemove);
-  onRemoveRef.current = onRemove;
   const isSlashCommandOpenRef = useRef(isSlashCommandDropdownOpen);
-  isSlashCommandOpenRef.current = isSlashCommandDropdownOpen;
+  useEffect(() => {
+    onRemoveRef.current = onRemove;
+    isSlashCommandOpenRef.current = isSlashCommandDropdownOpen;
+  });
 
   // Handle Escape key to close the indicator
   useEffect(() => {
@@ -73,7 +75,6 @@ const SelectedToolIndicator: React.FC<SelectedToolIndicatorProps> = ({
             type: "spring",
             damping: 20,
             stiffness: 300,
-            duration: 0.2,
           }}
           className="mx-3 mt-2 mb-1 flex w-fit items-center gap-2 rounded-xl bg-zinc-700 px-2 py-1 pl-1"
         >

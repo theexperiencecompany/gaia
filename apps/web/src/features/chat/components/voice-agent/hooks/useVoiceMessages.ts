@@ -83,6 +83,19 @@ function appendToolDataEntry(
   return true;
 }
 
+/**
+ * Join transcription texts into bubble content in one pass: trim each
+ * utterance, drop the empty ones, paragraph break between utterances.
+ */
+function joinTranscriptionTexts(texts: Iterable<string>): string {
+  return Array.from(texts)
+    .flatMap((text) => {
+      const trimmed = text.trim();
+      return trimmed ? [trimmed] : [];
+    })
+    .join("\n\n");
+}
+
 function userGroupToIMessage(
   group: VoiceUserGroup,
   conversationId: string,
@@ -92,10 +105,7 @@ function userGroupToIMessage(
 ): IMessage {
   // Consecutive utterances within one turn (e.g. a pause then more speech) are
   // shown as paragraph breaks in the same bubble.
-  const content = Array.from(group.transcriptionTexts.values())
-    .map((t) => t.trim())
-    .filter(Boolean)
-    .join("\n\n");
+  const content = joinTranscriptionTexts(group.transcriptionTexts.values());
   return {
     id: group.localId,
     conversationId,
@@ -151,7 +161,9 @@ export function useVoiceMessages(
   // Stash the latest conversationId in a ref so the bot-stream handler closure
   // (registered once) always reads the current value.
   const conversationIdRef = useRef(conversationId);
-  conversationIdRef.current = conversationId;
+  useEffect(() => {
+    conversationIdRef.current = conversationId;
+  });
 
   // Reset internal state on remount (new voice session).
   useEffect(() => {
@@ -384,10 +396,7 @@ export function useVoiceMessages(
         id: group.localId,
         conversationId: null,
         role: "user",
-        content: Array.from(group.transcriptionTexts.values())
-          .map((t) => t.trim())
-          .filter(Boolean)
-          .join("\n\n"),
+        content: joinTranscriptionTexts(group.transcriptionTexts.values()),
         createdAt: group.createdAt,
       });
     }

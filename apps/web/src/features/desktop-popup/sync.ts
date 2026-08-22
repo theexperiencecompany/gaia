@@ -68,13 +68,15 @@ function snapshot(): PopupChatState {
 export function usePopupChatPublisher(): void {
   useEffect(() => {
     const channel = new BroadcastChannel(CHANNEL_NAME);
-    let timer: ReturnType<typeof setTimeout> | null = null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let disposed = false;
 
     const publish = () => {
-      timer = null;
+      timer = undefined;
       channel.postMessage(snapshot());
     };
     const schedule = () => {
+      if (disposed) return;
       if (!timer) timer = setTimeout(publish, PUBLISH_THROTTLE_MS);
     };
 
@@ -86,7 +88,8 @@ export function usePopupChatPublisher(): void {
     publish();
 
     return () => {
-      if (timer) clearTimeout(timer);
+      disposed = true;
+      clearTimeout(timer);
       unsubChat();
       unsubStream();
       channel.close();

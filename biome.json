@@ -256,6 +256,18 @@
           }
         }
       }
+    },
+    {
+      "includes": [
+        "apps/web/src/features/chat/components/code-block/FlowchartPreview.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "noNoninteractiveTabindex": "off"
+          }
+        }
+      }
     }
   ]
 }

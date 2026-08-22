@@ -25,7 +25,12 @@ const TextDocumentEditor = dynamic(
   },
 );
 
-export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
+// TextDocumentView stays file-private on purpose: this module's public
+// surface is the `textDocumentDef` registration below (consumed by
+// ../genericLibrary). Exporting the component alongside that def breaks Fast
+// Refresh (react-refresh/only-export-components).
+
+function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
   return <TextDocumentEditor {...props} />;
 }
 

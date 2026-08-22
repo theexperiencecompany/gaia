@@ -16,9 +16,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import Spinner from "@/components/ui/spinner";
 import AddProjectModal from "@/features/todo/components/AddProjectModal";
-import { priorityTextColors } from "@/features/todo/components/TodoItem";
 import TodoModal from "@/features/todo/components/TodoModal";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
+import { priorityTextColors } from "@/features/todo/utils/priorityColors";
 import { usePathname } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
@@ -173,12 +173,16 @@ export default function TodoSidebar() {
 
   // Load initial data on mount
   useEffect(() => {
+    let cancelled = false;
     const loadData = async () => {
       await Promise.all([loadProjects(), loadCounts(), loadLabels()]);
-      setIsInitialLoad(false);
+      if (!cancelled) setIsInitialLoad(false);
     };
 
     loadData();
+    return () => {
+      cancelled = true;
+    };
   }, [loadProjects, loadCounts, loadLabels]);
 
   const handleNavigation = (href: string) => {
@@ -240,28 +244,27 @@ export default function TodoSidebar() {
     [labels],
   );
 
-  // Project items - convert projects to menu items or empty state
-  const projectMenuItems: MenuItem[] = useMemo(
-    () =>
-      projects
-        .filter((p) => !p.is_default)
-        .map((project) => {
-          const color = project.color;
-          const ProjectColorIcon = ({
-            className: _className,
-          }: {
-            className?: string;
-          }) => <ProjectIcon color={color} />;
-          ProjectColorIcon.displayName = `ProjectIcon_${project.id}`;
-          return {
-            label: project.name,
-            icon: ProjectColorIcon,
-            href: `/todos/project/${project.id}`,
-            count: project.todo_count,
-          };
-        }),
-    [projects],
-  );
+  // Project items - convert projects to menu items or empty state (one pass)
+  const projectMenuItems: MenuItem[] = useMemo(() => {
+    const items: MenuItem[] = [];
+    for (const project of projects) {
+      if (project.is_default) continue;
+      const color = project.color;
+      const ProjectColorIcon = ({
+        className: _className,
+      }: {
+        className?: string;
+      }) => <ProjectIcon color={color} />;
+      ProjectColorIcon.displayName = `ProjectIcon_${project.id}`;
+      items.push({
+        label: project.name,
+        icon: ProjectColorIcon,
+        href: `/todos/project/${project.id}`,
+        count: project.todo_count,
+      });
+    }
+    return items;
+  }, [projects]);
 
   return (
     <>

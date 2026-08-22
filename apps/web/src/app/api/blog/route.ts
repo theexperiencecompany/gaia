@@ -57,7 +57,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // Build the target via the URL parser (keeps scheme/host/port/query intact),
   // appending `/blogs` regardless of whether the base has a trailing slash.
-  const backendUrl = new URL(API_BASE_URL);
+  // Guarded: a malformed API_BASE_URL would otherwise throw and crash the
+  // handler instead of returning a structured error.
+  let backendUrl: URL;
+  try {
+    backendUrl = new URL(API_BASE_URL);
+  } catch {
+    return NextResponse.json(
+      { error: "API base URL is not configured correctly." },
+      { status: 500 },
+    );
+  }
   backendUrl.pathname = `${backendUrl.pathname.replace(/\/+$/, "")}/blogs`;
 
   const backendResponse = await fetch(backendUrl, {
@@ -69,10 +79,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     body: formData,
   });
 
-  const contentType = backendResponse.headers.get("content-type") ?? "";
-  const payload = contentType.includes("application/json")
-    ? await backendResponse.json()
-    : await backendResponse.text();
+  // This handler is a proxy, not an interpreter: whatever the backend answers
+  // is relayed verbatim (same status code, same payload), so the client reacts
+  // to the exact API contract. The ok-check makes that deliberate for HTTP
+  // errors too — their bodies are forwarded as-is below.
+  if (!backendResponse.ok) {
+    const errorPayload = await readBackendPayload(backendResponse);
+    return NextResponse.json(errorPayload, {
+      status: backendResponse.status,
+    });
+  }
 
+  const payload = await readBackendPayload(backendResponse);
   return NextResponse.json(payload, { status: backendResponse.status });
+}
+
+async function readBackendPayload(response: Response): Promise<unknown> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    return await response.json();
+  }
+  return await response.text();
 }

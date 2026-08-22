@@ -297,7 +297,9 @@ function VoiceSessionInner({
   // the countdown on every transition, so it would never measure "ready within
   // N seconds of joining".
   const agentStateRef = useRef(agentState);
-  agentStateRef.current = agentState;
+  useEffect(() => {
+    agentStateRef.current = agentState;
+  });
   useEffect(() => {
     const timer = setTimeout(() => {
       const state = agentStateRef.current;
@@ -449,7 +451,10 @@ export function VoiceControlBarContainer({
       }
       room.disconnect();
     };
-  }, [room, sessionStarted]);
+    // `voiceConversationId` is frozen at mount (lazy useState above) so the
+    // session always connects with the id the token was minted for; listing
+    // it keeps deps truthful without ever re-running this effect.
+  }, [room, sessionStarted, voiceConversationId]);
 
   return (
     <RoomContext.Provider value={room}>

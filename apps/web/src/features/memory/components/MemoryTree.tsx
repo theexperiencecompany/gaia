@@ -91,6 +91,15 @@ function TreeFolder({ node, depth, actions }: TreeFolderProps) {
   const [memories, setMemories] = useState<MemoryEntry[] | null>(node.memories);
   const [loadingMemories, setLoadingMemories] = useState(false);
 
+  // A tree refetch yields a new `node` — resync the lazily-loaded list so a
+  // stale copy of the old node's memories isn't kept around. Render-phase
+  // adjustment (React: "adjusting state when a prop changes").
+  const [prevNode, setPrevNode] = useState(node);
+  if (node !== prevNode) {
+    setPrevNode(node);
+    setMemories(node.memories);
+  }
+
   const handleForget = useCallback(
     async (target: MemoryEntry) => {
       if (await actions.forgetMemory(target)) {

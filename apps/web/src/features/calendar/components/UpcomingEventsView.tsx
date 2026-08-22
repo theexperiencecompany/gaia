@@ -30,10 +30,67 @@ interface UpcomingEventsViewProps {
   onConnect?: (integrationId: string) => void;
 }
 
+const EMPTY_EVENTS: GoogleCalendarEvent[] = [];
+const EMPTY_CALENDARS: CalendarItem[] = [];
+
+// Format time for display
+const formatTime = (startTime: string, endTime: string) => {
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+
+  const formatTimeString = (date: Date) => {
+    const hours = date.getHours();
+    const minutes = date.getMinutes();
+    const ampm = hours >= 12 ? "PM" : "AM";
+    const hour12 = hours % 12 || 12;
+    const minuteStr = minutes.toString().padStart(2, "0");
+
+    if (minutes === 0) {
+      return `${hour12} ${ampm}`;
+    }
+    return `${hour12}:${minuteStr} ${ampm}`;
+  };
+
+  const startStr = formatTimeString(start);
+  const endStr = formatTimeString(end);
+
+  // Smart formatting - show AM/PM only when needed
+  if (start.getHours() < 12 && end.getHours() >= 12)
+    // Crossing from AM to PM
+    return `${startStr} – ${endStr}`;
+  else if (start.getHours() >= 12 && end.getHours() >= 12)
+    // Both PM
+    return `${startStr.replace(" PM", "")} – ${endStr}`;
+  else if (start.getHours() < 12 && end.getHours() < 12)
+    return `${startStr.replace(" AM", "")} – ${endStr}`;
+
+  return `${startStr} – ${endStr}`;
+};
+
+// Check if an event has passed
+const isEventPassed = (event: GoogleCalendarEvent) => {
+  const now = new Date();
+
+  // For all-day events, check if the date has passed
+  if (event.start.date && !event.start.dateTime) {
+    const eventDate = new Date(event.start.date);
+    eventDate.setHours(23, 59, 59, 999); // End of day
+    return now > eventDate;
+  }
+
+  // For timed events, check if the end time has passed
+  if (event.end.dateTime) {
+    const eventEndTime = new Date(event.end.dateTime);
+    return now > eventEndTime;
+  }
+
+  return false;
+};
+
 const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
   onEventClick,
-  events = [],
-  calendars = [],
+  events = EMPTY_EVENTS,
+  calendars = EMPTY_CALENDARS,
   isConnected = true,
   connectLabel = "Connect",
   onConnect,
@@ -66,60 +123,6 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
     );
     return eventsByDay;
   }, [events]);
-
-  // Format time for display
-  const formatTime = (startTime: string, endTime: string) => {
-    const start = new Date(startTime);
-    const end = new Date(endTime);
-
-    const formatTimeString = (date: Date) => {
-      const hours = date.getHours();
-      const minutes = date.getMinutes();
-      const ampm = hours >= 12 ? "PM" : "AM";
-      const hour12 = hours % 12 || 12;
-      const minuteStr = minutes.toString().padStart(2, "0");
-
-      if (minutes === 0) {
-        return `${hour12} ${ampm}`;
-      }
-      return `${hour12}:${minuteStr} ${ampm}`;
-    };
-
-    const startStr = formatTimeString(start);
-    const endStr = formatTimeString(end);
-
-    // Smart formatting - show AM/PM only when needed
-    if (start.getHours() < 12 && end.getHours() >= 12)
-      // Crossing from AM to PM
-      return `${startStr} – ${endStr}`;
-    else if (start.getHours() >= 12 && end.getHours() >= 12)
-      // Both PM
-      return `${startStr.replace(" PM", "")} – ${endStr}`;
-    else if (start.getHours() < 12 && end.getHours() < 12)
-      return `${startStr.replace(" AM", "")} – ${endStr}`;
-
-    return `${startStr} – ${endStr}`;
-  };
-
-  // Check if an event has passed
-  const isEventPassed = (event: GoogleCalendarEvent) => {
-    const now = new Date();
-
-    // For all-day events, check if the date has passed
-    if (event.start.date && !event.start.dateTime) {
-      const eventDate = new Date(event.start.date);
-      eventDate.setHours(23, 59, 59, 999); // End of day
-      return now > eventDate;
-    }
-
-    // For timed events, check if the end time has passed
-    if (event.end.dateTime) {
-      const eventEndTime = new Date(event.end.dateTime);
-      return now > eventEndTime;
-    }
-
-    return false;
-  };
 
   const hasEvents = Object.keys(upcomingEventsByDay).length > 0;
 
@@ -229,9 +232,11 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
                   const isPassed = isEventPassed(event);
 
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={event.id}
-                      className="relative flex cursor-pointer items-start gap-2 rounded-lg p-2 pl-5 transition-colors hover:bg-zinc-700/30"
+                      className="relative flex w-full cursor-pointer items-start gap-2 rounded-lg p-2 pl-5 text-left transition-colors hover:bg-zinc-700/30"
+                      aria-label={`Event ${event.summary}`}
                       onClick={() => onEventClick?.(event)}
                       style={{
                         backgroundColor: `${getEventColor(event, calendars)}10`,
@@ -269,7 +274,7 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
                             : "All day"}
                         </div>
                       </div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>

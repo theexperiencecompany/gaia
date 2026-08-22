@@ -10,7 +10,7 @@
 
 import * as m from "motion/react-m";
 import dynamic from "next/dynamic";
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import { workflowApi } from "@/features/workflows/api/workflowApi";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 import type { Workflow } from "@/types/features/workflowTypes";
@@ -45,16 +45,18 @@ function OnboardingWorkflowCardsImpl({
 }: OnboardingWorkflowCardsProps) {
   const [activeWorkflow, setActiveWorkflow] = useState<Workflow | null>(null);
   const [isOpen, setIsOpen] = useState(false);
-  const [loadingId, setLoadingId] = useState<string | null>(null);
+  // Only read inside the handler to guard concurrent loads — never rendered —
+  // so a ref avoids re-rendering the grid on every load start/finish.
+  const loadingIdRef = useRef<string | null>(null);
 
   const handleCardClick = useCallback(
     async (workflowId: string | undefined) => {
-      if (loadingId) return;
+      if (loadingIdRef.current) return;
       if (!workflowId) {
         console.error("[onboarding] Workflow card clicked with no id");
         return;
       }
-      setLoadingId(workflowId);
+      loadingIdRef.current = workflowId;
       try {
         const response = await workflowApi.getWorkflow(workflowId);
         setActiveWorkflow(response.workflow);
@@ -62,10 +64,10 @@ function OnboardingWorkflowCardsImpl({
       } catch (err) {
         console.error("Failed to load workflow", err);
       } finally {
-        setLoadingId(null);
+        loadingIdRef.current = null;
       }
     },
-    [loadingId],
+    [],
   );
 
   const handleOpenChange = useCallback((open: boolean) => {
@@ -96,7 +98,7 @@ function OnboardingWorkflowCardsImpl({
 
           return (
             <m.div
-              key={workflow.id ?? `workflow-${index}`}
+              key={workflow.id ?? workflow.title}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{

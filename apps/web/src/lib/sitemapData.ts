@@ -389,13 +389,16 @@ async function getGlossaryPages(
   baseUrl: string,
 ): Promise<MetadataRoute.Sitemap> {
   const terms = await getAllGlossaryTerms();
-  return terms
-    .filter((term) => !term.canonicalSlug)
-    .map((term) => ({
+  const pages: MetadataRoute.Sitemap = [];
+  for (const term of terms) {
+    if (term.canonicalSlug) continue;
+    pages.push({
       url: `${baseUrl}/learn/${term.slug}`,
-      changeFrequency: "monthly" as const,
+      changeFrequency: "monthly",
       priority: 0.7,
-    }));
+    });
+  }
+  return pages;
 }
 
 /**
@@ -419,13 +422,16 @@ async function getIntegrationComboPages(
   baseUrl: string,
 ): Promise<MetadataRoute.Sitemap> {
   const allCombos = await getAllCombos();
-  return allCombos
-    .filter((c) => !c.canonicalSlug)
-    .map((combo) => ({
+  const pages: MetadataRoute.Sitemap = [];
+  for (const combo of allCombos) {
+    if (combo.canonicalSlug) continue;
+    pages.push({
       url: `${baseUrl}/automate/${combo.slug}`,
-      changeFrequency: "monthly" as const,
+      changeFrequency: "monthly",
       priority: 0.7,
-    }));
+    });
+  }
+  return pages;
 }
 
 /**
@@ -460,13 +466,21 @@ async function getNativeIntegrationPages(
     const data = (await response.json()) as {
       integrations?: ConfigIntegration[];
     };
-    return (data.integrations ?? [])
-      .filter((i) => i.source === "platform" && i.available !== false)
-      .map((i) => ({
-        url: `${baseUrl}/marketplace/${i.slug}`,
-        changeFrequency: "weekly" as const,
+    const entries: MetadataRoute.Sitemap = [];
+    for (const integration of data.integrations ?? []) {
+      if (
+        integration.source !== "platform" ||
+        integration.available === false
+      ) {
+        continue;
+      }
+      entries.push({
+        url: `${baseUrl}/marketplace/${integration.slug}`,
+        changeFrequency: "weekly",
         priority: 0.8,
-      }));
+      });
+    }
+    return entries;
   } catch (error) {
     console.error("Error fetching native integrations for sitemap:", error);
     return [];

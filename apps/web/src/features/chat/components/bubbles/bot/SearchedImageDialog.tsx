@@ -21,6 +21,7 @@ export default function SearchedImageDialog() {
               src={selectedImage}
               alt="Search result image"
               fill
+              sizes="(max-width: 1024px) 100vw, 944px"
               className="h-full w-full rounded-lg object-contain p-10"
               priority
             />
