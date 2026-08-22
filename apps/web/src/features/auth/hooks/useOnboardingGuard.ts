@@ -1,8 +1,8 @@
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { ONBOARDING_PROCESSING_PHASES } from "@/features/auth/constants";
 import { readPendingCheckout } from "@/features/pricing/lib/pendingCheckout";
-import { useSetupStatus } from "@/features/setup-wizard/hooks/useSetupStatus";
+import { providersApi } from "@/features/settings/api/providersApi";
 import { usePathname } from "@/i18n/navigation";
 
 import { useUser } from "./useUser";
@@ -12,14 +12,30 @@ export const useOnboardingGuard = () => {
   const router = useRouter();
   const pathname = usePathname();
   // Only fetched when the guard is actually about to act — a self-host
-  // instance replaces hosted onboarding with the /setup wizard.
+  // instance replaces hosted onboarding with the /setup wizard. Plain state,
+  // not react-query: this hook mounts ABOVE the app's QueryClientProvider.
   const potentiallyRedirecting =
     Boolean(user.email) &&
     user.onboarding !== undefined &&
     pathname !== "/onboarding";
-  const { data: setupStatus } = useSetupStatus({
-    enabled: potentiallyRedirecting,
-  });
+  const [isSelfHosted, setIsSelfHosted] = useState(false);
+
+  useEffect(() => {
+    if (!potentiallyRedirecting || isSelfHosted) return;
+    let cancelled = false;
+    providersApi
+      .fetchSetupStatus()
+      .then((s) => {
+        if (!cancelled && s?.auth_mode === "local") setIsSelfHosted(true);
+      })
+      .catch(() => {
+        // Unreachable / offline status must never break the guard — the
+        // default (isSelfHosted=false) keeps hosted behavior intact.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [potentiallyRedirecting, isSelfHosted]);
 
   useEffect(() => {
     // A pending checkout must resume before onboarding routing kicks in.
@@ -37,15 +53,15 @@ export const useOnboardingGuard = () => {
         if (isOnboardingCompleted && !isStillProcessing) {
           router.push("/c");
         }
-      } else if (pathname === "/setup" || setupStatus?.auth_mode === "local") {
+      } else if (isSelfHosted || pathname === "/setup") {
         // Self-host replaces hosted onboarding with the /setup wizard — a
         // fresh local admin legitimately has no onboarding state, so never
         // push those users into the Gmail-scanning flow. Hosted behavior is
-        // unchanged (setupStatus is undefined there and /setup isn't used).
+        // unchanged (isSelfHosted stays false there and /setup isn't used).
       } else if (!isOnboardingCompleted) {
         // Not on onboarding page, onboarding not completed → redirect there
         router.push("/onboarding");
       }
     }
-  }, [user.email, user.onboarding, router, pathname, setupStatus?.auth_mode]);
+  }, [user.email, user.onboarding, router, pathname, isSelfHosted]);
 };
