@@ -267,15 +267,6 @@ jobs:
             --override-ini=addopts=--strict-markers --timeout=600
           echo "Schemathesis: OK"
           echo "### Schemathesis — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
-      - name: Run gaia-shared tests
-        working-directory: apps/api
-        run: |
-          trap 'echo "::error::repro: uv run --frozen pytest ../../libs/shared/py/tests"' ERR
-          uv run --frozen pytest ../../libs/shared/py/tests \
-            --tb=short -q --override-ini=addopts=--strict-markers
-          echo "gaia-shared tests: OK"
-          echo "### gaia-shared tests — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
-
 # --- Test: Python fast lane (hermetic, no containers) -------------------
   # The fast-suite invariant, enforced: the hermetic default selection (what
   # `nx test api` runs locally) must finish inside the budget with NO service
@@ -481,6 +472,7 @@ jobs:
       - build
       - test-python
       - test-python-coverage
+      - test-gaia-shared
       - test-typescript
       - test-fast
       - test-harness-tools
@@ -499,6 +491,8 @@ jobs:
           echo "  detect:             ${{ needs.detect.result }}"
           echo "  build:              ${{ needs.build.result }}"
           echo "  test-python:        ${{ needs.test-python.result }}"
+          echo "  test-python-coverage: ${{ needs.test-python-coverage.result }}"
+          echo "  test-gaia-shared:   ${{ needs.test-gaia-shared.result }}"
           echo "  test-typescript:    ${{ needs.test-typescript.result }}"
           echo "  test-fast:          ${{ needs.test-fast.result }}"
           echo "  test-harness-tools: ${{ needs.test-harness-tools.result }}"
@@ -513,6 +507,7 @@ jobs:
             echo "| build | ${{ needs.build.result }} |"
             echo "| test-python | ${{ needs.test-python.result }} |"
             echo "| test-python-coverage | ${{ needs.test-python-coverage.result }} |"
+            echo "| test-gaia-shared | ${{ needs.test-gaia-shared.result }} |"
             echo "| test-fast | ${{ needs.test-fast.result }} |"
             echo "| test-typescript | ${{ needs.test-typescript.result }} |"
             echo "| test-harness-tools | ${{ needs.test-harness-tools.result }} |"
@@ -524,6 +519,7 @@ jobs:
             "${{ needs.build.result }}" \
             "${{ needs.test-python.result }}" \
             "${{ needs.test-python-coverage.result }}" \
+            "${{ needs.test-gaia-shared.result }}" \
             "${{ needs.test-typescript.result }}" \
             "${{ needs.test-fast.result }}" \
             "${{ needs.test-harness-tools.result }}" \
