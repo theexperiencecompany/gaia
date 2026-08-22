@@ -124,13 +124,13 @@
       "path": "apps/api/app/services/composio/composio_service.py",
       "kind": "noqa",
       "count": 1,
-      "hash": "2da071f58ab06182900fb966c37de4925dff5b35836fa0602853fcc689d90f1d"
+      "hash": "8d64b17bd21aed4d15188d1fa9ee4355e50da6106093c05d990165d04d013201"
     },
     {
       "path": "apps/api/app/services/composio/langchain_composio_service.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "6fe587ff8fa5f7f517ca6af632f86abb2897608933f0498af6d501d8f8b7eb85"
+      "hash": "077358f37f59bb51d7d2ea0aa39c8342c8310c937c5e164ff2c9b091cd0b0dac"
     },
     {
       "path": "apps/api/app/services/notes_service.py",
@@ -238,7 +238,7 @@
       "path": "apps/api/tests/unit/agents/test_handoff_tools.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "536e7bcec2c103842673bd4544dece621f575ab951de4a799db03f8af30de11a"
+      "hash": "25ffe2901ee06b9dd2b577e601ed55459cd12564f444476149393a83dddf5226"
     },
     {
       "path": "apps/api/tests/unit/agents/test_llm_client.py",
@@ -364,7 +364,7 @@
       "path": "apps/api/tests/unit/services/test_integration_service.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "e9ea61047eff2146e5ec4b0b91351c46c2a007e0a618194d74f11ad0bbcd38f7"
+      "hash": "dd2d85f5180bb5935a2d20d29e63e038135bf038cc897b5e77f222dd447fc8bd"
     },
     {
       "path": "apps/api/tests/unit/services/test_marketplace_service.py",
@@ -394,7 +394,7 @@
       "path": "apps/api/tests/unit/tools/test_integration_tool_standalone.py",
       "kind": "type-ignore",
       "count": 19,
-      "hash": "d6ea3e65a0dc9aa8f0de073eece2a612ac8b7af2279bf507e292df5cdd4650b4"
+      "hash": "c70a8c50d765543126d0bcdd99c6c7218dcd9e6b0d95c591e7949d7eff521e42"
     },
     {
       "path": "apps/api/tests/unit/tools/test_integration_tools_proxy.py",
@@ -430,7 +430,7 @@
       "path": "apps/api/tests/unit/utils/test_agent_utils.py",
       "kind": "type-ignore",
       "count": 13,
-      "hash": "128979a3d184fa7ba06376cc93c505c77970c2676ee91471f5955e590bf3f867"
+      "hash": "f992b147a6d82ef1aa718fdb401516a09bc5b544a3d14f0a5831a1924c239ca7"
     },
     {
       "path": "apps/api/tests/unit/utils/test_auth_utils.py",
@@ -619,12 +619,6 @@
       "hash": "43956c72503c877080f3de58325e5756a4faf3ff0fe3d9869056069797e00edc"
     },
     {
-      "path": "apps/web/src/app/[locale]/(main)/onboarding/demo/page.tsx",
-      "kind": "biome-ignore",
-      "count": 1,
-      "hash": "de56dbddfb381fa710c02b4a723f3f02892c7cabf626fd7b778f0bb702ca4f97"
-    },
-    {
       "path": "apps/web/src/app/[locale]/dev/tool-gallery/[tool]/page.dev.tsx",
       "kind": "biome-ignore",
       "count": 31,
@@ -634,43 +628,25 @@
       "path": "apps/web/src/app/api/og/integration/route.tsx",
       "kind": "biome-ignore",
       "count": 1,
-      "hash": "56e336186dc9e68131dba0a784d07949d70b3fec735bcad0f24a25dae505aa33"
+      "hash": "f3bc55b8ae43aea68f5d4501b3b34839771f03221ddc767ecd673e1d7aa46785"
     },
     {
       "path": "apps/web/src/app/api/og/use-case/route.tsx",
       "kind": "biome-ignore",
       "count": 2,
-      "hash": "5c51e13da7cc46ed8beb74f6136b77f2a73c6764aa276bda346644d52647d151"
-    },
-    {
-      "path": "apps/web/src/components/seo/FAQAccordion.tsx",
-      "kind": "biome-ignore",
-      "count": 1,
-      "hash": "8f3e664d2676a9b07bd5e75201e6935a0f7a0b55a07e325899132b7707a339af"
-    },
-    {
-      "path": "apps/web/src/components/seo/JsonLd.tsx",
-      "kind": "biome-ignore",
-      "count": 1,
-      "hash": "2010518d77615562c4e40ebbada95520378bd84fa8f724871e9c4702cfd7c4e0"
+      "hash": "e6f9c2d64a9ca97c88ea0037fcd4b9f849e92ee84a7cdd6bea3c61805e6d743f"
     },
     {
       "path": "apps/web/src/components/shared/WaveSpinnerSquare.tsx",
       "kind": "biome-ignore",
       "count": 1,
-      "hash": "bb24b3ed5b9803d635d19626869d1253b2d05f2ed07f70881066d9863687f03b"
+      "hash": "58ea380c79a4286e514908c2299e95e42d27c3156769a948eb8ff81de36f7fa0"
     },
     {
       "path": "apps/web/src/components/ui/blur-stack.tsx",
       "kind": "biome-ignore",
       "count": 1,
-      "hash": "db9b69b9df082cfeb461a6b6f29f520c5a5bbf984df0d55ad07a10515febfcfa"
-    },
-    {
-      "path": "apps/web/src/components/ui/marquee.tsx",
-      "kind": "biome-ignore",
-      "count": 1,
-      "hash": "e6a0cdb8a14c7d2170ea3347a944a1e4c91b7683c121e0686bd0c02026fa3d5e"
+      "hash": "5f8b78050bfa0559274939223eb9aabd0482aff9644ed4d63c4983c608f73d68"
     },
     {
       "path": "apps/web/src/components/ui/sidebar.tsx",
@@ -679,22 +655,10 @@
       "hash": "c69ece02f11d9e1c967571c11e750d97b0c8556115f05a24708617537e832279"
     },
     {
-      "path": "apps/web/src/config/openui/components/DocumentEditor.tsx",
-      "kind": "biome-ignore",
-      "count": 1,
-      "hash": "c198af7adad6698f59bcf52b3f637a588c731db58086351b187869c78d3e7b37"
-    },
-    {
-      "path": "apps/web/src/config/openui/components/content.tsx",
-      "kind": "biome-ignore",
-      "count": 2,
-      "hash": "d7a0026123b38b0160ce66a538a223f1c8e23ccaf4a816f14f654d99a1b8bef1"
-    },
-    {
       "path": "apps/web/src/config/openui/hooks/useSafeTriggerAction.ts",
       "kind": "biome-ignore",
       "count": 1,
-      "hash": "1369f0fbb79304d8f881d728daf246755353b8a2671059410dfe25b33fac9173"
+      "hash": "c2c49f51cbef4a0fe63b990b35ff7f3731eb961c49544ec73e81da255b1e516d"
     },
     {
       "path": "apps/web/src/features/chat/components/bubbles/bot/CodeExecutionOutput.tsx",
@@ -706,19 +670,13 @@
       "path": "apps/web/src/features/chat/components/voice-agent/VoiceGradient.tsx",
       "kind": "biome-ignore",
       "count": 3,
-      "hash": "4d0c29a97aac93039a90acc6d1025d9f75101973400baf67d4a92d6ce246f4f8"
-    },
-    {
-      "path": "apps/web/src/features/chat/utils/toolIcons.tsx",
-      "kind": "biome-ignore",
-      "count": 1,
-      "hash": "fb375f46d897863a5b89ea6f403be2d7308d414b169619bedaf1b2fee65cdcce"
+      "hash": "847874d43ac207e624cb71b037ccf38c56e5dfe560a0cf4494973c04f447d51a"
     },
     {
       "path": "apps/web/src/features/integrations/components/PublicIntegrationCard.tsx",
       "kind": "biome-ignore",
-      "count": 2,
-      "hash": "2361fd2ee0763d44766522d970c5a883989d34c5f78dfdfab5248dc8b1882858"
+      "count": 1,
+      "hash": "0b6ea908c269f4420d2f485189214907534b69857efc40fc322435c590686dbe"
     },
     {
       "path": "apps/web/src/features/landing/components/demo/MiniWaveSpinner.tsx",
@@ -727,16 +685,10 @@
       "hash": "4cdede6648195b122a91f555bd850e5783d69d1b8680b8f18ee483984f2d5f89"
     },
     {
-      "path": "apps/web/src/features/landing/components/demo/SimpleChatBubbles.tsx",
-      "kind": "biome-ignore",
-      "count": 1,
-      "hash": "7af33b778b4dea376e237480cc553987efe06d03182f4090631deb487f5cbc7d"
-    },
-    {
       "path": "apps/web/src/features/landing/components/iphone/ChatDemo.tsx",
       "kind": "biome-ignore",
       "count": 4,
-      "hash": "05ccc52e5dec0e208656fb875b657e7b9b4c9ac4302f61c3e192a0eb3c6885a0"
+      "hash": "c1cb09a77327cc04df29cc61cdf2538156c9928fbae24aa9aeb8d5944224dc2d"
     },
     {
       "path": "apps/web/src/features/landing/components/iphone/IPhoneMockup.tsx",
@@ -748,13 +700,7 @@
       "path": "apps/web/src/features/onboarding/components/OnboardingIntro.tsx",
       "kind": "biome-ignore",
       "count": 2,
-      "hash": "6a021f56d2ed5039a7852225bf580963ba9af3ba4e8a46cef7e013ca24fc10ee"
-    },
-    {
-      "path": "apps/web/src/features/onboarding/components/reveal/WritingStyleRevealCard.tsx",
-      "kind": "biome-ignore",
-      "count": 1,
-      "hash": "295eb19ca0f061eca6dfa6e29f35bac57b953900ef8ecc997d8cc2d7d9857746"
+      "hash": "573ed372e3cbdfd781ca9bd2f9d4a632d1890a9aa220811ac2e22878f8a33f0c"
     },
     {
       "path": "apps/web/src/features/whats-new/components/WhatsNewCard.tsx",
