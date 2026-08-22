@@ -614,10 +614,7 @@ async def execute_workflow_by_id(
             events = await drain_trigger_batch(str(batch_key))
             log.set_ns("workflow", trigger_batch_size=len(events))
             if not events:
-                log.info(
-                    f"{LogTag.WORKER} Trigger batch already drained; skipping empty run",
-                    workflow_id=workflow_id,
-                )
+                log.set_ns("workflow", outcome="trigger_batch_empty")
                 return f"Workflow {workflow_id} skipped — trigger batch empty"
             context = {**(context or {}), "trigger_data": {"events": events, "count": len(events)}}
 
