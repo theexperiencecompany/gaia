@@ -388,10 +388,9 @@ function MessageBreakStaggerDemo() {
         in with a 0.35s stagger. Single-segment messages skip the animation.
       </p>
       <div className="flex flex-wrap items-center gap-2">
-        {MESSAGE_BREAK_SAMPLES.map((_, i) => (
+        {MESSAGE_BREAK_SAMPLES.map((sampleText, i) => (
           <Chip
-            // biome-ignore lint/suspicious/noArrayIndexKey: stable list
-            key={i}
+            key={sampleText}
             variant={activeIdx === i ? "solid" : "flat"}
             color={activeIdx === i ? "primary" : "default"}
             size="sm"
@@ -401,8 +400,7 @@ function MessageBreakStaggerDemo() {
             }}
             className="cursor-pointer select-none"
           >
-            {MESSAGE_BREAK_SAMPLES[i].split("<NEW_MESSAGE_BREAK>").length}{" "}
-            bubbles
+            {sampleText.split("<NEW_MESSAGE_BREAK>").length} bubbles
           </Chip>
         ))}
         <button

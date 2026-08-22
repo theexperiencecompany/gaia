@@ -1,7 +1,6 @@
 import DOMPurify from "dompurify";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef } from "react";
 
-import Spinner from "@/components/ui/spinner";
 import type { EmailData, EmailPart } from "@/types/features/mailTypes";
 
 const decodeBase64 = (str: string): string => {
@@ -15,7 +14,6 @@ const decodeBase64 = (str: string): string => {
 };
 
 export default function GmailBody({ email }: { email: EmailData | null }) {
-  const [loading, setLoading] = useState(true);
   const shadowHostRef = useRef<HTMLDivElement | null>(null);
 
   const decodedHtml = useMemo(() => {
@@ -39,33 +37,24 @@ export default function GmailBody({ email }: { email: EmailData | null }) {
       : null;
   }, [decodedHtml]);
 
-  useEffect(() => {
-    if (!sanitizedHtml) {
-      setLoading(false);
-      return;
-    }
+  // Injected in a layout effect so the shadow root is populated before the
+  // browser paints — no loading state needed and stale content is never shown.
+  useLayoutEffect(() => {
+    if (!sanitizedHtml || !shadowHostRef.current) return;
 
-    if (shadowHostRef.current) {
-      const shadowRoot =
-        shadowHostRef.current.shadowRoot ||
-        shadowHostRef.current.attachShadow({ mode: "open" });
-      shadowRoot.innerHTML = "";
-      const contentWrapper = document.createElement("div");
-      contentWrapper.innerHTML = sanitizedHtml;
-      shadowRoot.appendChild(contentWrapper);
-      setLoading(false);
-    }
+    const shadowRoot =
+      shadowHostRef.current.shadowRoot ||
+      shadowHostRef.current.attachShadow({ mode: "open" });
+    shadowRoot.innerHTML = "";
+    const contentWrapper = document.createElement("div");
+    contentWrapper.innerHTML = sanitizedHtml;
+    shadowRoot.appendChild(contentWrapper);
   }, [sanitizedHtml]);
 
   if (!email) return null;
 
   return (
     <div className="relative w-full overflow-auto shadow-md">
-      {loading && (
-        <div className="absolute inset-0 z-10 flex h-full w-full items-start justify-center bg-black/90 p-10 backdrop-blur-3xl">
-          <Spinner />
-        </div>
-      )}
       <div ref={shadowHostRef} className="w-full bg-white p-4 text-black" />
     </div>
   );

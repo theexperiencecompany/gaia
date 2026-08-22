@@ -6,6 +6,7 @@ import { Cancel01Icon, PlusSignIcon, Tag01Icon } from "@icons";
 import { useState } from "react";
 
 import BaseFieldChip from "./BaseFieldChip";
+import FieldChipOption from "./FieldChipOption";
 
 interface LabelsFieldChipProps {
   value: string[];
@@ -58,6 +59,7 @@ export default function LabelsFieldChip({
                     value={newLabel}
                     onChange={(e) => setNewLabel(e.target.value)}
                     onKeyDown={(e) => {
+                      if (e.nativeEvent.isComposing) return;
                       if (e.key === "Enter") {
                         e.preventDefault();
                         handleAddLabel();
@@ -118,16 +120,16 @@ export default function LabelsFieldChip({
           {value.length > 0 && (
             <>
               <div className="my-1 h-px bg-zinc-700" />
-              <div
-                onClick={() => {
+              <FieldChipOption
+                onSelect={() => {
                   onChange([]);
                   onClose();
                 }}
-                className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-red-400 transition-colors hover:bg-zinc-800"
+                className="gap-2 rounded-md text-red-400"
               >
                 <Cancel01Icon size={14} />
                 Clear all labels
-              </div>
+              </FieldChipOption>
             </>
           )}
 

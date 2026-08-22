@@ -17,6 +17,14 @@ interface IntegrationsCardProps {
   size?: "default" | "small";
 }
 
+/** Connected integrations sort before created ones in the card grid. */
+const STATUS_ORDER: Record<Integration["status"], number> = {
+  created: 0,
+  connected: 1,
+  not_connected: 2,
+  error: 3,
+};
+
 const IntegrationItem: React.FC<{
   integration: Integration;
   onConnect: (id: string) => void;
@@ -40,10 +48,13 @@ const IntegrationItem: React.FC<{
 
   return (
     <div
-      className={`flex min-h-12 cursor-pointer flex-col justify-center ${gapClass} overflow-hidden ${size === "small" ? "rounded-xl" : "rounded-2xl"} bg-zinc-800/40 ${paddingClass} transition hover:bg-zinc-700`}
-      onClick={handleClick}
+      className={`flex min-h-12 flex-col justify-center ${gapClass} overflow-hidden ${size === "small" ? "rounded-xl" : "rounded-2xl"} bg-zinc-800/40 ${paddingClass} transition hover:bg-zinc-700`}
     >
-      <div className="flex items-center gap-3">
+      <button
+        type="button"
+        className="flex min-w-0 cursor-pointer items-center gap-3 text-left"
+        onClick={handleClick}
+      >
         <div className="shrink-0">
           {getToolCategoryIcon(
             integration.id,
@@ -65,32 +76,34 @@ const IntegrationItem: React.FC<{
             </div>
           </div>
         ) : (
-          <div className="flex-1 text-sm font-medium">{integration.name}</div>
+          <div className="min-w-0 flex-1 truncate text-left text-sm font-medium">
+            {integration.name}
+          </div>
+        )}
+      </button>
+
+      <div className="shrink-0 flex items-center gap-2">
+        {/* Status Dots - always show */}
+        {isConnected && (
+          <span className="h-2 w-2 rounded-full bg-success mr-2" />
         )}
 
-        <div className="shrink-0 flex items-center gap-2">
-          {/* Status Dots - always show */}
-          {isConnected && (
-            <span className="h-2 w-2 rounded-full bg-success mr-2" />
-          )}
+        {integration.status === "created" && (
+          <span className="h-2 w-2 rounded-full bg-warning mr-2" />
+        )}
 
-          {integration.status === "created" && (
-            <span className="h-2 w-2 rounded-full bg-warning mr-2" />
-          )}
-
-          {/* Connect button */}
-          {isAvailable && !isConnected && integration.status !== "created" && (
-            <Button
-              size="sm"
-              variant="flat"
-              color="primary"
-              className="text-xs text-primary"
-              onPress={handleConnectClick}
-            >
-              Connect
-            </Button>
-          )}
-        </div>
+        {/* Connect button */}
+        {isAvailable && !isConnected && integration.status !== "created" && (
+          <Button
+            size="sm"
+            variant="flat"
+            color="primary"
+            className="text-xs text-primary"
+            onPress={handleConnectClick}
+          >
+            Connect
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -135,12 +148,6 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
     (i) => i.status === "connected",
   ).length;
 
-  const statusOrder = {
-    created: 0,
-    connected: 1,
-    not_connected: 2,
-    error: 3,
-  };
   return (
     <div className="mx-2 mb-3 border-b-1 border-zinc-800">
       <Accordion
@@ -178,8 +185,8 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
               {myIntegrations
                 .toSorted((a, b) => {
                   // Connected first, then alphabetically
-                  const aOrder = statusOrder[a.status] ?? 99;
-                  const bOrder = statusOrder[b.status] ?? 99;
+                  const aOrder = STATUS_ORDER[a.status];
+                  const bOrder = STATUS_ORDER[b.status];
                   if (aOrder !== bOrder) return aOrder - bOrder;
                   return a.name.localeCompare(b.name);
                 })

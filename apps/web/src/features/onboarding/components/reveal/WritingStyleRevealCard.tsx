@@ -45,28 +45,31 @@ export function WritingStyleRevealCard({
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [touched, setTouched] = useState(false);
 
+  // Auto-regenerate the example for legacy snapshots that lack one. Reads the
+  // incoming props (the state values' initial equals) with honest deps, so it
+  // re-checks whenever the parent supplies a new snapshot.
   useEffect(() => {
-    if (!hasExampleContent(currentExample) && !isRegenerating && summaryValue) {
-      setIsRegenerating(true);
-      apiService
-        .post<{ example: WritingStyleExampleBlocks | null }>(
-          "/onboarding/writing-style/regenerate-example",
-          { edited_summary: summaryValue, profession },
-        )
-        .then((res) => {
-          if (res.example) setCurrentExample(res.example);
-        })
-        .catch((error) => {
-          console.error(
-            "[WritingStyleRevealCard] Failed to regenerate example:",
-            error,
-          );
-        })
-        .finally(() => {
-          setIsRegenerating(false);
-        });
-    }
-  }, []);
+    const snapshotExample = example ?? null;
+    if (hasExampleContent(snapshotExample) || !style_summary) return;
+    setIsRegenerating(true);
+    apiService
+      .post<{ example: WritingStyleExampleBlocks | null }>(
+        "/onboarding/writing-style/regenerate-example",
+        { edited_summary: style_summary, profession },
+      )
+      .then((res) => {
+        if (res.example) setCurrentExample(res.example);
+      })
+      .catch((error) => {
+        console.error(
+          "[WritingStyleRevealCard] Failed to regenerate example:",
+          error,
+        );
+      })
+      .finally(() => {
+        setIsRegenerating(false);
+      });
+  }, [example, style_summary, profession]);
 
   const isTooShort = summaryValue.trim().length < MIN_LENGTH;
   const showError = touched && isTooShort;
@@ -214,12 +217,9 @@ export function WritingStyleRevealCard({
               {currentExample?.greeting.trim() && (
                 <p>{currentExample.greeting}</p>
               )}
-              {currentExample?.body
-                .filter((p) => p.trim())
-                .map((paragraph, idx) => (
-                  // biome-ignore lint/suspicious/noArrayIndexKey: paragraphs are rendered immutably from a single LLM response
-                  <p key={idx}>{paragraph}</p>
-                ))}
+              {currentExample?.body.flatMap((paragraph) =>
+                paragraph.trim() ? [<p key={paragraph}>{paragraph}</p>] : [],
+              )}
               {(currentExample?.signoff.trim() ||
                 currentExample?.name.trim()) && (
                 <div>

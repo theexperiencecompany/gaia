@@ -76,6 +76,12 @@ function skillToolLabel(call: ToolCallEntry): string | null {
     : null;
 }
 
+// Strips separators so two labels can be compared for redundancy ("retrieve_tools"
+// vs "Retrieve tools"). Module scope keeps its identity stable across renders.
+function normalizeLabel(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 function ToolCallRow({
   call,
   isLast,
@@ -121,9 +127,8 @@ function ToolCallRow({
   // Hide the secondary when it adds nothing — e.g. "retrieve_tools" under
   // "Retrieve tools". Compares with separators stripped so a tool name only
   // shows when it genuinely differs from the primary label.
-  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const normPrimary = normalize(primaryLabel);
-  const normSecondary = normalize(secondaryLabel);
+  const normPrimary = normalizeLabel(primaryLabel);
+  const normSecondary = normalizeLabel(secondaryLabel);
   const hasCategoryText =
     secondaryLabel.length > 0 &&
     normSecondary.length > 0 &&

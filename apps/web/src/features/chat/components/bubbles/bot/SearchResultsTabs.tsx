@@ -28,7 +28,12 @@ export default function SearchResultsTabs({
         )}
 
         {search_results.images && search_results.images?.length > 0 && (
-          <ImageResults images={search_results.images} />
+          <ImageResults
+            // Keyed by payload so a new result set remounts the component,
+            // resetting validation and paging state without effect-based resets.
+            key={search_results.images.join("|")}
+            images={search_results.images}
+          />
         )}
 
         {search_results.news && search_results.news?.length > 0 && (
@@ -49,51 +54,46 @@ function ImageResults({ images }: ImageResultsProps) {
   const [startIndex, setStartIndex] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
+
     const validateImages = async () => {
-      // Filter out obviously invalid images first
-      const potentiallyValidImages = images.filter(
-        (imageUrl) => imageUrl && typeof imageUrl === "string",
-      );
-
       // Test each image by trying to load it
-      const validationPromises = potentiallyValidImages.map(
-        (imageUrl) =>
-          new Promise<string | null>((resolve) => {
-            const img = new window.Image();
+      const results = await Promise.all(
+        images.map(
+          (imageUrl) =>
+            new Promise<string | null>((resolve) => {
+              const img = new window.Image();
 
-            const timeoutId = setTimeout(() => {
-              resolve(null); // Timeout after 5 seconds
-            }, 5000);
+              const timeoutId = setTimeout(() => {
+                resolve(null); // Timeout after 5 seconds
+              }, 5000);
 
-            img.onload = () => {
-              clearTimeout(timeoutId);
-              resolve(imageUrl);
-            };
+              img.onload = () => {
+                clearTimeout(timeoutId);
+                resolve(imageUrl);
+              };
 
-            img.onerror = () => {
-              clearTimeout(timeoutId);
-              resolve(null);
-            };
+              img.onerror = () => {
+                clearTimeout(timeoutId);
+                resolve(null);
+              };
 
-            img.src = imageUrl;
-          }),
+              img.src = imageUrl;
+            }),
+        ),
       );
-
-      try {
-        const results = await Promise.all(validationPromises);
-        const validImageUrls = results.filter(
-          (url): url is string => url !== null,
-        );
-        setValidImages(validImageUrls);
-      } catch (error) {
-        console.error("Error validating images:", error);
-        setValidImages([]);
-      }
+      if (cancelled) return;
+      setValidImages(results.filter((url): url is string => url !== null));
     };
 
-    if (images && images.length > 0) validateImages();
-    else setValidImages([]);
-    setStartIndex(0);
+    validateImages().catch((error: unknown) => {
+      console.error("Error validating images:", error);
+      if (!cancelled) setValidImages([]);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [images]);
 
   if (validImages.length === 0) {
@@ -171,7 +171,7 @@ function ImageItem({
   return (
     <m.div
       onClick={onImageClick}
-      className="relative h-32 w-32 shrink-0 cursor-pointer overflow-hidden rounded-2xl shadow-zinc-950 transition-all duration-200 hover:scale-105 hover:z-10"
+      className="relative h-32 w-32 shrink-0 cursor-pointer overflow-hidden rounded-2xl shadow-zinc-950 transition-transform duration-200 hover:scale-105 hover:z-10"
       style={{ rotate: rotation, zIndex: index }}
       initial={{ scale: 0.6, filter: "blur(10px)" }}
       animate={{ scale: 1, filter: "blur(0px)" }}
@@ -250,9 +250,9 @@ function NewsResults({ news }: NewsResultsProps) {
       {news.map((article) => (
         <div
           key={article.url + article.title}
-          className="max-w-(--breakpoint-sm) overflow-hidden rounded-lg bg-zinc-800 p-4 shadow-md transition-all hover:shadow-lg"
+          className="max-w-(--breakpoint-sm) overflow-hidden rounded-lg bg-zinc-800 p-4 shadow-md transition-shadow hover:shadow-lg"
         >
-          <div className="flex flex-row items-center gap-2 text-primary transition-all hover:text-white">
+          <div className="flex flex-row items-center gap-2 text-primary transition-colors hover:text-white">
             <NewsIcon
               height={20}
               width={20}
@@ -285,7 +285,7 @@ function WebResults({ web }: WebResultsProps) {
     <div className="max-h-80 w-full max-w-lg overflow-y-auto rounded-2xl bg-zinc-800/70 backdrop-blur-2xl">
       {web.map((result) => (
         <div
-          className="w-full border-b-1 border-b-zinc-700 p-4 pb-3 transition-all hover:bg-white/5"
+          className="w-full border-b-1 border-b-zinc-700 p-4 pb-3 transition-colors hover:bg-white/5"
           key={result.url + result.title}
         >
           <a
@@ -311,14 +311,9 @@ function WebResults({ web }: WebResultsProps) {
                     target.style.display = "none";
                   }}
                 />
-                <a
-                  href={result.url}
-                  className="max-w-xs truncate text-xs text-primary hover:underline"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
+                <span className="max-w-xs truncate text-xs text-primary hover:underline">
                   {new URL(result.url).hostname}
-                </a>
+                </span>
               </span>
               {/* <span className="flex items-center">{timeAgo(result.date)}</span> */}
             </div>

@@ -37,22 +37,18 @@ export default function PaymentSuccessPage() {
   const [status, setStatus] = useState<PaymentStatus>("verifying");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const hasVerified = useRef(false);
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
 
   useEffect(() => {
     if (hasVerified.current) return;
     hasVerified.current = true;
 
+    // `cancelled` is scoped to this effect run, so an overlapping re-run can
+    // never resolve out of order and write stale state.
+    let cancelled = false;
     const run = async () => {
       try {
         const result = await verifyPayment();
-        if (!mountedRef.current) return;
+        if (cancelled) return;
         if (result.payment_completed) {
           trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_COMPLETED);
           setStatus("success");
@@ -64,7 +60,7 @@ export default function PaymentSuccessPage() {
         }
       } catch (error) {
         console.error("Payment verification failed:", error);
-        if (!mountedRef.current) return;
+        if (cancelled) return;
         setStatus("error");
         setErrorMessage(
           "We couldn't verify your payment. Please try checking out again.",
@@ -72,6 +68,9 @@ export default function PaymentSuccessPage() {
       }
     };
     run();
+    return () => {
+      cancelled = true;
+    };
   }, [verifyPayment]);
 
   // Celebrate an active subscription.

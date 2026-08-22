@@ -67,8 +67,8 @@ export function useNotifications(
         setError(errorMessage);
         console.error("Error fetching notifications:", err);
       } finally {
-        useNotificationStore.getState().setFetching(false);
         setLoading(false);
+        useNotificationStore.getState().setFetching(false);
       }
     },
     [limit, offset, channel_type, setNotifications],

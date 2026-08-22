@@ -25,6 +25,16 @@ import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
 import CalendarEventAIActions from "./CalendarEventAIActions";
 
+const WEEKDAYS = [
+  { label: "S", value: "SU" },
+  { label: "M", value: "MO" },
+  { label: "T", value: "TU" },
+  { label: "W", value: "WE" },
+  { label: "T", value: "TH" },
+  { label: "F", value: "FR" },
+  { label: "S", value: "SA" },
+];
+
 interface EventSidebarProps {
   isCreating: boolean;
   selectedEvent: GoogleCalendarEvent | null;
@@ -49,6 +59,323 @@ interface EventSidebarProps {
   onCreate: () => void;
   onDelete: () => void;
 }
+
+interface EventTitleFieldsProps {
+  summary: string;
+  description: string;
+  isCreating: boolean;
+  onSummaryChange: (value: string) => void;
+  onDescriptionChange: (value: string) => void;
+}
+
+const EventTitleFields: React.FC<EventTitleFieldsProps> = ({
+  summary,
+  description,
+  isCreating,
+  onSummaryChange,
+  onDescriptionChange,
+}) => (
+  <div className="space-y-2">
+    <Input
+      type="text"
+      value={summary}
+      onChange={(e) => onSummaryChange(e.target.value)}
+      placeholder="Event title"
+      classNames={{
+        input:
+          "text-2xl  bg-transparent text-zinc-100 placeholder:text-zinc-700",
+        inputWrapper:
+          "bg-transparent shadow-none hover:bg-transparent focus:bg-transparent data-[focus=true]:bg-transparent data-[hover=true]:bg-transparent border-red-500!",
+      }}
+      variant="underlined"
+      autoFocus={isCreating}
+    />
+
+    <Textarea
+      value={description}
+      onChange={(e) => onDescriptionChange(e.target.value)}
+      placeholder="Add description"
+      minRows={6}
+      maxRows={6}
+      classNames={{
+        input: "bg-transparent text-zinc-200 placeholder:text-zinc-700",
+        inputWrapper:
+          "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
+      }}
+      variant="flat"
+    />
+  </div>
+);
+
+interface EventDateTimeSectionProps {
+  isAllDay: boolean;
+  startDate: string;
+  endDate: string;
+  onStartDateChange: (value: string) => void;
+  onEndDateChange: (value: string) => void;
+  onAllDayChange: (value: boolean) => void;
+}
+
+const EventDateTimeSection: React.FC<EventDateTimeSectionProps> = ({
+  isAllDay,
+  startDate,
+  endDate,
+  onStartDateChange,
+  onEndDateChange,
+  onAllDayChange,
+}) => (
+  <>
+    {/* All-day Toggle */}
+    <Switch
+      isSelected={isAllDay}
+      onValueChange={onAllDayChange}
+      size="sm"
+      color="primary"
+    >
+      <span className="text-sm text-zinc-500">All-day event</span>
+    </Switch>
+
+    {/* Date & Time Section */}
+    <div className="mt-4 mb-10 space-y-3">
+      {isAllDay ? (
+        <NaturalLanguageDateRangeInput
+          label="Date Range"
+          startValue={startDate}
+          endValue={endDate}
+          onStartChange={onStartDateChange}
+          onEndChange={onEndDateChange}
+          placeholder="Tomorrow, next week, Dec 25 to Dec 31..."
+        />
+      ) : (
+        <>
+          <NaturalLanguageDateInput
+            label="Start"
+            value={startDate}
+            onChange={onStartDateChange}
+            placeholder="Tomorrow at 3pm..."
+            isAllDay={false}
+          />
+
+          <NaturalLanguageDateInput
+            label="End"
+            value={endDate}
+            onChange={onEndDateChange}
+            placeholder="In 2 hours, 5pm, tomorrow..."
+            isAllDay={false}
+          />
+        </>
+      )}
+    </div>
+  </>
+);
+
+interface RecurrenceSelectorProps {
+  recurrenceType: string;
+  customRecurrenceDays: string[];
+  onRecurrenceTypeChange: (type: string) => void;
+  onCustomRecurrenceDaysChange: (days: string[]) => void;
+}
+
+const RecurrenceSelector: React.FC<RecurrenceSelectorProps> = ({
+  recurrenceType,
+  customRecurrenceDays,
+  onRecurrenceTypeChange,
+  onCustomRecurrenceDaysChange,
+}) => (
+  <div className="space-y-3">
+    <Select
+      label="Repeat"
+      selectedKeys={recurrenceType ? [recurrenceType] : []}
+      selectionMode="single"
+      onSelectionChange={(keys) => {
+        const selected = Array.from(keys)[0] as string;
+        if (selected) onRecurrenceTypeChange(selected);
+      }}
+      classNames={{
+        trigger:
+          "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
+        value: "text-zinc-200",
+        popoverContent: "bg-zinc-900 border border-zinc-800",
+        label: "text-zinc-400",
+      }}
+      startContent={<RepeatIcon className="size-4 text-zinc-500" />}
+    >
+      <SelectItem key="none" textValue="Does not repeat">
+        Does not repeat
+      </SelectItem>
+      <SelectItem key="daily" textValue="Daily">
+        Daily
+      </SelectItem>
+      <SelectItem key="weekdays" textValue="Every weekday (Mon-Fri)">
+        Every weekday (Mon-Fri)
+      </SelectItem>
+      <SelectItem key="weekly" textValue="Weekly">
+        Weekly
+      </SelectItem>
+      <SelectItem key="monthly" textValue="Monthly">
+        Monthly
+      </SelectItem>
+      <SelectItem key="yearly" textValue="Yearly">
+        Yearly
+      </SelectItem>
+      <SelectItem key="custom" textValue="Custom (select days)">
+        Custom (select days)
+      </SelectItem>
+    </Select>
+
+    {recurrenceType === "custom" && (
+      <div className="space-y-2">
+        <div className="text-sm font-medium text-zinc-400">Repeat on</div>
+        <div className="flex flex-wrap gap-2">
+          {WEEKDAYS.map((day) => (
+            <button
+              type="button"
+              key={day.value}
+              onClick={() => {
+                const newDays = customRecurrenceDays.includes(day.value)
+                  ? customRecurrenceDays.filter((d) => d !== day.value)
+                  : [...customRecurrenceDays, day.value];
+                onCustomRecurrenceDaysChange(newDays);
+              }}
+              className={`flex size-9 items-center justify-center rounded-full text-sm font-medium transition-colors ${customRecurrenceDays.includes(day.value) ? "bg-blue-600 text-white" : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-700"}`}
+            >
+              {day.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    )}
+  </div>
+);
+
+interface CalendarSelectorProps {
+  calendars: CalendarItem[];
+  selectedCalendarId: string;
+  onCalendarChange: (calendarId: string) => void;
+}
+
+const CalendarSelector: React.FC<CalendarSelectorProps> = ({
+  calendars,
+  selectedCalendarId,
+  onCalendarChange,
+}) => (
+  <div className="space-y-3">
+    <Select
+      label="Calendar"
+      selectedKeys={selectedCalendarId ? [selectedCalendarId] : []}
+      selectionMode="single"
+      onSelectionChange={(keys) => {
+        const selected = Array.from(keys)[0] as string;
+        if (selected) onCalendarChange(selected);
+      }}
+      isRequired
+      classNames={{
+        trigger:
+          "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
+        value: "text-zinc-200",
+        popoverContent: "bg-zinc-900 border border-zinc-800",
+        label: "text-zinc-400",
+      }}
+      startContent={
+        selectedCalendarId && (
+          <div
+            className="size-3 rounded-full"
+            style={{
+              backgroundColor:
+                calendars.find((cal) => cal.id === selectedCalendarId)
+                  ?.backgroundColor || "#3b82f6",
+            }}
+          />
+        )
+      }
+    >
+      {calendars.map((cal) => (
+        <SelectItem
+          key={cal.id}
+          textValue={`${cal.name || cal.summary}${cal.primary ? " (Primary)" : ""}`}
+          startContent={
+            <div
+              className="size-3 rounded-full"
+              style={{
+                backgroundColor: cal.backgroundColor || "#3b82f6",
+              }}
+            />
+          }
+        >
+          {cal.name || cal.summary}
+          {cal.primary ? " (Primary)" : ""}
+        </SelectItem>
+      ))}
+    </Select>
+  </div>
+);
+
+interface EventDetailsAccordionProps {
+  event: GoogleCalendarEvent;
+}
+
+const EventDetailsAccordion: React.FC<EventDetailsAccordionProps> = ({
+  event,
+}) => (
+  <Accordion type="single" collapsible className="w-full">
+    <AccordionItem value="details" className="border-zinc-800/50">
+      <AccordionTrigger className="text-sm font-medium text-zinc-400 hover:text-zinc-300">
+        Additional Details
+      </AccordionTrigger>
+      <AccordionContent>
+        <div className="space-y-3 rounded-lg bg-zinc-800/20 p-4">
+          {event.created && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-zinc-500">Created</span>
+              <span className="text-zinc-400" suppressHydrationWarning>
+                {new Date(event.created).toLocaleDateString()}
+              </span>
+            </div>
+          )}
+          {event.updated && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-zinc-500">Updated</span>
+              <span className="text-zinc-400" suppressHydrationWarning>
+                {new Date(event.updated).toLocaleDateString()}
+              </span>
+            </div>
+          )}
+          {event.organizer?.email && (
+            <div className="flex items-start justify-between gap-3 text-sm">
+              <div className="flex items-center gap-2 text-zinc-500">
+                <UserCircleIcon className="size-4" />
+                <span>Organizer</span>
+              </div>
+              <span className="truncate text-right text-zinc-400">
+                {event.organizer.email}
+              </span>
+            </div>
+          )}
+        </div>
+      </AccordionContent>
+    </AccordionItem>
+  </Accordion>
+);
+
+interface DeleteEventButtonProps {
+  disabled: boolean;
+  onConfirmDelete: () => Promise<void>;
+}
+
+const DeleteEventButton: React.FC<DeleteEventButtonProps> = ({
+  disabled,
+  onConfirmDelete,
+}) => (
+  <button
+    type="button"
+    onClick={onConfirmDelete}
+    disabled={disabled}
+    className="cursor-pointer rounded-lg bg-zinc-800/50 p-2.5 text-red-400 transition-[background-color,transform] hover:bg-red-500/10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+    aria-label="Delete event"
+  >
+    <Delete02Icon className="size-4" />
+  </button>
+);
 
 export const EventSidebar: React.FC<EventSidebarProps> = ({
   isCreating,
@@ -131,220 +458,58 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
     }
   }, [selectedEvent, selectedCalendarId, onCalendarChange]);
 
+  const confirmAndDelete = async (): Promise<void> => {
+    const confirmed = await confirm({
+      title: "Delete Event",
+      message: `Are you sure you want to delete "${summary}"? This action cannot be undone.`,
+      confirmText: "Delete",
+      cancelText: "Cancel",
+      variant: "destructive",
+    });
+
+    if (confirmed) {
+      onDelete();
+    }
+  };
+
   return (
     <div className="flex h-full flex-col">
       <SidebarContent className="flex-1 overflow-y-auto px-6">
         <div className="space-y-4 pt-4">
-          <div className="space-y-2">
-            <Input
-              type="text"
-              value={summary}
-              onChange={(e) => onSummaryChange(e.target.value)}
-              placeholder="Event title"
-              classNames={{
-                input:
-                  "text-2xl  bg-transparent text-zinc-100 placeholder:text-zinc-700",
-                inputWrapper:
-                  "bg-transparent shadow-none hover:bg-transparent focus:bg-transparent data-[focus=true]:bg-transparent data-[hover=true]:bg-transparent border-red-500!",
-              }}
-              variant="underlined"
-              autoFocus={isCreating}
-            />
+          <EventTitleFields
+            summary={summary}
+            description={description}
+            isCreating={isCreating}
+            onSummaryChange={onSummaryChange}
+            onDescriptionChange={onDescriptionChange}
+          />
 
-            <Textarea
-              value={description}
-              onChange={(e) => onDescriptionChange(e.target.value)}
-              placeholder="Add description"
-              minRows={6}
-              maxRows={6}
-              classNames={{
-                input: "bg-transparent text-zinc-200 placeholder:text-zinc-700",
-                inputWrapper:
-                  "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
-              }}
-              variant="flat"
-            />
-          </div>
-
-          {/* All-day Toggle */}
-          <Switch
-            isSelected={isAllDay}
-            onValueChange={onAllDayChange}
-            size="sm"
-            color="primary"
-          >
-            <span className="text-sm text-zinc-500">All-day event</span>
-          </Switch>
-
-          {/* Date & Time Section */}
-          <div className="mt-4 mb-10 space-y-3">
-            {isAllDay ? (
-              <NaturalLanguageDateRangeInput
-                label="Date Range"
-                startValue={startDate}
-                endValue={endDate}
-                onStartChange={onStartDateChange}
-                onEndChange={onEndDateChange}
-                placeholder="Tomorrow, next week, Dec 25 to Dec 31..."
-              />
-            ) : (
-              <>
-                <NaturalLanguageDateInput
-                  label="Start"
-                  value={startDate}
-                  onChange={onStartDateChange}
-                  placeholder="Tomorrow at 3pm..."
-                  isAllDay={false}
-                />
-
-                {/* <div className="-mb-2 flex w-full justify-center text-zinc-500">
-                  <ArrowDown width={19} height={19} />
-                </div> */}
-
-                <NaturalLanguageDateInput
-                  label="End"
-                  value={endDate}
-                  onChange={onEndDateChange}
-                  placeholder="In 2 hours, 5pm, tomorrow..."
-                  isAllDay={false}
-                />
-              </>
-            )}
-          </div>
+          <EventDateTimeSection
+            isAllDay={isAllDay}
+            startDate={startDate}
+            endDate={endDate}
+            onStartDateChange={onStartDateChange}
+            onEndDateChange={onEndDateChange}
+            onAllDayChange={onAllDayChange}
+          />
 
           {/* Recurrence Selection (only when creating) */}
           {isCreating && (
-            <div className="space-y-3">
-              <Select
-                label="Repeat"
-                selectedKeys={recurrenceType ? [recurrenceType] : []}
-                selectionMode="single"
-                onSelectionChange={(keys) => {
-                  const selected = Array.from(keys)[0] as string;
-                  if (selected) onRecurrenceTypeChange(selected);
-                }}
-                classNames={{
-                  trigger:
-                    "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
-                  value: "text-zinc-200",
-                  popoverContent: "bg-zinc-900 border border-zinc-800",
-                  label: "text-zinc-400",
-                }}
-                startContent={<RepeatIcon className="size-4 text-zinc-500" />}
-              >
-                <SelectItem key="none" textValue="Does not repeat">
-                  Does not repeat
-                </SelectItem>
-                <SelectItem key="daily" textValue="Daily">
-                  Daily
-                </SelectItem>
-                <SelectItem key="weekdays" textValue="Every weekday (Mon-Fri)">
-                  Every weekday (Mon-Fri)
-                </SelectItem>
-                <SelectItem key="weekly" textValue="Weekly">
-                  Weekly
-                </SelectItem>
-                <SelectItem key="monthly" textValue="Monthly">
-                  Monthly
-                </SelectItem>
-                <SelectItem key="yearly" textValue="Yearly">
-                  Yearly
-                </SelectItem>
-                <SelectItem key="custom" textValue="Custom (select days)">
-                  Custom (select days)
-                </SelectItem>
-              </Select>
-
-              {recurrenceType === "custom" && (
-                <div className="space-y-2">
-                  <div className="text-sm font-medium text-zinc-400">
-                    Repeat on
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { label: "S", value: "SU" },
-                      { label: "M", value: "MO" },
-                      { label: "T", value: "TU" },
-                      { label: "W", value: "WE" },
-                      { label: "T", value: "TH" },
-                      { label: "F", value: "FR" },
-                      { label: "S", value: "SA" },
-                    ].map((day) => (
-                      <button
-                        type="button"
-                        key={day.value}
-                        onClick={() => {
-                          const newDays = customRecurrenceDays.includes(
-                            day.value,
-                          )
-                            ? customRecurrenceDays.filter(
-                                (d) => d !== day.value,
-                              )
-                            : [...customRecurrenceDays, day.value];
-                          onCustomRecurrenceDaysChange(newDays);
-                        }}
-                        className={`flex size-9 items-center justify-center rounded-full text-sm font-medium transition-colors ${customRecurrenceDays.includes(day.value) ? "bg-blue-600 text-white" : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-700"}`}
-                      >
-                        {day.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+            <RecurrenceSelector
+              recurrenceType={recurrenceType}
+              customRecurrenceDays={customRecurrenceDays}
+              onRecurrenceTypeChange={onRecurrenceTypeChange}
+              onCustomRecurrenceDaysChange={onCustomRecurrenceDaysChange}
+            />
           )}
 
           {/* Calendar Selection */}
           {calendars.length > 0 && (
-            <div className="space-y-3">
-              <Select
-                label="Calendar"
-                selectedKeys={selectedCalendarId ? [selectedCalendarId] : []}
-                selectionMode="single"
-                onSelectionChange={(keys) => {
-                  const selected = Array.from(keys)[0] as string;
-                  if (selected) onCalendarChange(selected);
-                }}
-                isRequired
-                classNames={{
-                  trigger:
-                    "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
-                  value: "text-zinc-200",
-                  popoverContent: "bg-zinc-900 border border-zinc-800",
-                  label: "text-zinc-400",
-                }}
-                startContent={
-                  selectedCalendarId && (
-                    <div
-                      className="size-3 rounded-full"
-                      style={{
-                        backgroundColor:
-                          calendars.find((cal) => cal.id === selectedCalendarId)
-                            ?.backgroundColor || "#3b82f6",
-                      }}
-                    />
-                  )
-                }
-              >
-                {calendars.map((cal) => (
-                  <SelectItem
-                    key={cal.id}
-                    textValue={`${cal.name || cal.summary}${cal.primary ? " (Primary)" : ""}`}
-                    startContent={
-                      <div
-                        className="size-3 rounded-full"
-                        style={{
-                          backgroundColor: cal.backgroundColor || "#3b82f6",
-                        }}
-                      />
-                    }
-                  >
-                    {cal.name || cal.summary}
-                    {cal.primary ? " (Primary)" : ""}
-                  </SelectItem>
-                ))}
-              </Select>
-            </div>
+            <CalendarSelector
+              calendars={calendars}
+              selectedCalendarId={selectedCalendarId}
+              onCalendarChange={onCalendarChange}
+            />
           )}
 
           {/* Recurrence Info (only for existing recurring events) */}
@@ -361,50 +526,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
 
           {/* Additional Details Accordion (only for existing events) */}
           {!isCreating && selectedEvent && (
-            <Accordion type="single" collapsible className="w-full">
-              <AccordionItem value="details" className="border-zinc-800/50">
-                <AccordionTrigger className="text-sm font-medium text-zinc-400 hover:text-zinc-300">
-                  Additional Details
-                </AccordionTrigger>
-                <AccordionContent>
-                  <div className="space-y-3 rounded-lg bg-zinc-800/20 p-4">
-                    {selectedEvent.created && (
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-zinc-500">Created</span>
-                        <span
-                          className="text-zinc-400"
-                          suppressHydrationWarning
-                        >
-                          {new Date(selectedEvent.created).toLocaleDateString()}
-                        </span>
-                      </div>
-                    )}
-                    {selectedEvent.updated && (
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-zinc-500">Updated</span>
-                        <span
-                          className="text-zinc-400"
-                          suppressHydrationWarning
-                        >
-                          {new Date(selectedEvent.updated).toLocaleDateString()}
-                        </span>
-                      </div>
-                    )}
-                    {selectedEvent.organizer?.email && (
-                      <div className="flex items-start justify-between gap-3 text-sm">
-                        <div className="flex items-center gap-2 text-zinc-500">
-                          <UserCircleIcon className="size-4" />
-                          <span>Organizer</span>
-                        </div>
-                        <span className="truncate text-right text-zinc-400">
-                          {selectedEvent.organizer.email}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
+            <EventDetailsAccordion event={selectedEvent} />
           )}
         </div>
       </SidebarContent>
@@ -435,27 +557,10 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
               <div className="flex-1 text-center text-sm text-zinc-500">
                 {isSaving ? "Saving changes..." : "Changes saved"}
               </div>
-              <button
-                type="button"
-                onClick={async () => {
-                  const confirmed = await confirm({
-                    title: "Delete Event",
-                    message: `Are you sure you want to delete "${summary}"? This action cannot be undone.`,
-                    confirmText: "Delete",
-                    cancelText: "Cancel",
-                    variant: "destructive",
-                  });
-
-                  if (confirmed) {
-                    onDelete();
-                  }
-                }}
+              <DeleteEventButton
                 disabled={isSaving}
-                className="cursor-pointer rounded-lg bg-zinc-800/50 p-2.5 text-red-400 transition-all hover:bg-red-500/10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-                aria-label="Delete event"
-              >
-                <Delete02Icon className="size-4" />
-              </button>
+                onConfirmDelete={confirmAndDelete}
+              />
             </>
           )}
         </div>

@@ -22,15 +22,24 @@ interface RouteErrorProps {
  */
 export default function RouteError({ error, reset }: RouteErrorProps) {
   const isChunk = isChunkLoadError(error);
-  const [recovering, setRecovering] = useState(isChunk);
+
+  // Errors whose recovery attempt already concluded without a reload. Keyed by
+  // the error itself — a brand-new error derives its own pending state during
+  // render instead of syncing stale state over from a prop change.
+  const [failedRecoveryErrors, setFailedRecoveryErrors] = useState<
+    Set<unknown>
+  >(() => new Set());
 
   useEffect(() => {
     // A stale-asset chunk failure reached the boundary. Reload once to fetch
     // fresh chunks; if recovery is exhausted, fall through to the retryable UI.
     // `recoverFromChunkError` emits its own analytics for both paths.
-    if (isChunk && recoverFromChunkError(error) === "reloading") return;
-    setRecovering(false);
-    if (isChunk) return;
+    if (isChunk) {
+      if (recoverFromChunkError(error) !== "reloading") {
+        setFailedRecoveryErrors((prev) => new Set(prev).add(error));
+      }
+      return;
+    }
 
     // Full diagnostics stay in the console (and Sentry). Only the stable,
     // non-sensitive digest is sent to analytics — error.message/stack can carry
@@ -42,9 +51,10 @@ export default function RouteError({ error, reset }: RouteErrorProps) {
     });
   }, [error, isChunk]);
 
-  // While the guarded reload decision is pending, show a neutral loader rather
-  // than flashing the error UI for what is about to become a fresh page.
-  if (recovering) {
+  // While the guarded reload decision is pending for a chunk error, show a
+  // neutral loader rather than flashing the error UI for what is about to
+  // become a fresh page.
+  if (isChunk && !failedRecoveryErrors.has(error)) {
     return (
       <div className="flex min-h-[60vh] w-full items-center justify-center p-6">
         <Spinner color="primary" />

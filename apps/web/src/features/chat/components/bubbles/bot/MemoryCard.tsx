@@ -55,6 +55,12 @@ function relativeDate(iso: string | null | undefined): string | null {
   }
 }
 
+function memoryRowKey(memory: MemoryEntry): string {
+  // Stable React key: prefer the DB id, fall back to a natural composite of
+  // the fields that identify a displayed row.
+  return `${memory.id ?? memory.category_path}:${memory.version}:${memory.content}`;
+}
+
 // ─── sub-components ─────────────────────────────────────────────────────────
 
 function MemoryRow({ memory }: Readonly<{ memory: MemoryEntry }>) {
@@ -116,8 +122,8 @@ function AddSection({
         </Chip>
       </div>
       <div className="flex flex-col gap-1.5">
-        {item.memories.map((m, i) => (
-          <MemoryRow key={m.id ?? i} memory={m} />
+        {item.memories.map((m) => (
+          <MemoryRow key={memoryRowKey(m)} memory={m} />
         ))}
       </div>
     </div>
@@ -155,8 +161,8 @@ function SearchSection({
       </div>
       {item.memories.length > 0 ? (
         <div className="flex flex-col gap-1.5">
-          {item.memories.map((m, i) => (
-            <MemoryRow key={m.id ?? i} memory={m} />
+          {item.memories.map((m) => (
+            <MemoryRow key={memoryRowKey(m)} memory={m} />
           ))}
         </div>
       ) : (
@@ -182,8 +188,8 @@ function UpdateSection({
         </span>
       </div>
       <div className="flex flex-col gap-1.5">
-        {item.memories.map((m, i) => (
-          <MemoryRow key={m.id ?? i} memory={m} />
+        {item.memories.map((m) => (
+          <MemoryRow key={memoryRowKey(m)} memory={m} />
         ))}
       </div>
     </div>
@@ -224,11 +230,8 @@ function JournalSection({
               {ep.date}
             </p>
             <div className="flex flex-col gap-1">
-              {ep.entries.map((entry, i) => (
-                <div
-                  key={`${entry.time ?? i}-${entry.text.slice(0, 20)}`}
-                  className="flex gap-2"
-                >
+              {ep.entries.map((entry) => (
+                <div key={`${entry.time}:${entry.text}`} className="flex gap-2">
                   {entry.time && (
                     <span className="shrink-0 text-xs text-zinc-600">
                       {entry.time}
@@ -310,14 +313,15 @@ function DocumentSection({
 export default function MemoryCard({ items: rawItems }: MemoryCardProps) {
   // The agent may call the same memory tool repeatedly in one turn (e.g.
   // re-reading a document); identical payloads collapse to one section.
-  const items = rawItems
-    .filter(
-      (item, index, all) =>
-        all.findIndex(
-          (other) => JSON.stringify(other) === JSON.stringify(item),
-        ) === index,
-    )
-    .map((item, index) => ({ item, index }));
+  const seen = new Set<string>();
+  const items: { item: MemoryData; index: number }[] = [];
+  for (const item of rawItems) {
+    const serialized = JSON.stringify(item);
+    if (!seen.has(serialized)) {
+      seen.add(serialized);
+      items.push({ item, index: items.length });
+    }
+  }
   if (items.length === 0) return null;
 
   return (

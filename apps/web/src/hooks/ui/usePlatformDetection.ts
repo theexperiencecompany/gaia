@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { desktopApi } from "@/features/download/api/desktopApi";
 import type { DesktopRelease } from "@/features/download/types";
 import type {
@@ -251,16 +251,33 @@ function detectPlatform(): Platform {
   return "unknown";
 }
 
+// Platform detection is a client-only external value: expose it through
+// useSyncExternalStore so SSR/hydration render "unknown" and the real value
+// resolves before paint instead of flashing in after it.
+const noopUnsubscribe = (): void => {
+  // Intentional no-op: the detected platform never changes during a session.
+};
+const subscribeToPlatform = (): (() => void) => noopUnsubscribe;
+
+let cachedPlatform: Platform | null = null;
+
+function getPlatformSnapshot(): Platform {
+  if (cachedPlatform === null) {
+    cachedPlatform = detectPlatform();
+  }
+  return cachedPlatform;
+}
+
+const getServerPlatformSnapshot = (): Platform => "unknown";
+
 export function usePlatformDetection() {
-  const [platform, setPlatform] = useState<Platform>("unknown");
-  const [isLoading, setIsLoading] = useState(true);
+  const platform = useSyncExternalStore(
+    subscribeToPlatform,
+    getPlatformSnapshot,
+    getServerPlatformSnapshot,
+  );
   const { release, isLoading: isDesktopReleaseLoading } =
     useLatestDesktopRelease();
-
-  useEffect(() => {
-    setPlatform(detectPlatform());
-    setIsLoading(false);
-  }, []);
 
   const desktopDownloads = useMemo(
     () => buildDesktopDownloads(release),
@@ -276,10 +293,13 @@ export function usePlatformDetection() {
     ...platformConfigs[platform],
   };
 
-  const desktopPlatforms: PlatformInfo[] = Object.entries(platformConfigs)
-    .filter(([key]) => key !== "unknown")
-    .map(([key, config]) => ({ platform: key as Platform, ...config }))
-    .filter((p) => p.isDesktop);
+  const desktopPlatforms: PlatformInfo[] = [];
+  for (const [key, config] of Object.entries(platformConfigs)) {
+    const entryPlatform = key as Platform;
+    if (entryPlatform !== "unknown" && config.isDesktop) {
+      desktopPlatforms.push({ platform: entryPlatform, ...config });
+    }
+  }
 
   return {
     platform,
@@ -287,7 +307,6 @@ export function usePlatformDetection() {
     desktopPlatforms,
     desktopDownloads,
     detectedDesktop: detectedDesktopOf(platform),
-    isLoading,
     isDesktopReleaseLoading,
   };
 }

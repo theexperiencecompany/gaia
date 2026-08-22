@@ -69,6 +69,14 @@ const DEMO_TYPING_ID = "demo-typing";
 const DEMO_TYPING_DELAY_MS = 250;
 const DEMO_REPLY_DELAY_MS = 1000;
 
+// Hoisted so the typing bubble keeps one object identity — and thus one
+// stable React key — across every render it survives.
+const REVEAL_TYPING_MESSAGE: ChatMessageItem = {
+  id: "reveal-typing",
+  from: "them",
+  typing: true,
+};
+
 const DEMO_CTA: Record<
   ChatPlatform,
   { label: string; href: string; accent: string; darkText?: boolean }
@@ -201,9 +209,7 @@ function useSequencedThread(
 
   if (!enabled) return base;
   const visible = base.slice(0, count);
-  return showTyping
-    ? [...visible, { id: "reveal-typing", from: "them", typing: true }]
-    : visible;
+  return showTyping ? [...visible, REVEAL_TYPING_MESSAGE] : visible;
 }
 
 function useDemoChat(base: ChatMessageItem[]) {
@@ -255,22 +261,28 @@ function useDemoChat(base: ChatMessageItem[]) {
     );
     timers.current.push(
       window.setTimeout(() => {
-        setExtra((prev) => [
-          ...prev
-            .filter((m) => m.id !== DEMO_TYPING_ID)
-            .map((m) =>
+        setExtra((prev) => {
+          // One pass: drop the typing bubble and mark our message read.
+          const settled: ChatMessageItem[] = [];
+          for (const m of prev) {
+            if (m.id === DEMO_TYPING_ID) continue;
+            settled.push(
               m.id === `demo-me-${seq}` ? { ...m, status: "read" as const } : m,
-            ),
-          {
-            id: `demo-reply-${seq}`,
-            from: "them",
-            text: seq === 1 ? DEMO_REPLY_FIRST : DEMO_REPLY_AGAIN,
-            cta: seq === 1,
-            author: lastThem?.author ?? "GAIA",
-            authorColor: lastThem?.authorColor,
-            avatar: lastThem?.avatar ?? DEFAULT_AVATAR,
-          },
-        ]);
+            );
+          }
+          return [
+            ...settled,
+            {
+              id: `demo-reply-${seq}`,
+              from: "them",
+              text: seq === 1 ? DEMO_REPLY_FIRST : DEMO_REPLY_AGAIN,
+              cta: seq === 1,
+              author: lastThem?.author ?? "GAIA",
+              authorColor: lastThem?.authorColor,
+              avatar: lastThem?.avatar ?? DEFAULT_AVATAR,
+            },
+          ];
+        });
       }, DEMO_REPLY_DELAY_MS),
     );
   };
@@ -582,10 +594,12 @@ function IMessageDemo({
             className="overflow-hidden rounded-full"
             style={{ width: 54, height: 54, marginBottom: 5 }}
           >
-            {/* biome-ignore lint/performance/noImgElement: tiny remote avatar */}
-            <img
-              src={headerAvatar}
+            <Image
+              src={headerAvatar ?? DEFAULT_AVATAR}
               alt=""
+              width={54}
+              height={54}
+              sizes="54px"
               style={{ width: 54, height: 54, objectFit: "cover" }}
             />
           </div>
@@ -674,7 +688,7 @@ function IMessageDemo({
                   const isLast = i === group.items.length - 1;
                   const isMe = group.from === "me";
                   return (
-                    <Fragment key={m.id ?? `${gi}-${i}`}>
+                    <Fragment key={messageKey(m)}>
                       <CurvedBubble
                         className="chat-bubble-pop"
                         from={group.from}
@@ -739,6 +753,7 @@ function IMessageDemo({
           >
             <input
               type="text"
+              aria-label="Message"
               placeholder="iMessage"
               value={composerValue}
               onChange={(e) => onComposerChange(e.target.value)}
@@ -851,10 +866,12 @@ function WhatsAppDemo({
                 className="overflow-hidden rounded-full"
                 style={{ width: 32, height: 32 }}
               >
-                {/* biome-ignore lint/performance/noImgElement: avatar */}
-                <img
-                  src={headerAvatar}
+                <Image
+                  src={headerAvatar ?? DEFAULT_AVATAR}
                   alt=""
+                  width={32}
+                  height={32}
+                  sizes="32px"
                   style={{ width: 32, height: 32, objectFit: "cover" }}
                 />
               </div>
@@ -945,7 +962,7 @@ function WhatsAppDemo({
                 const isLast = i === group.items.length - 1;
                 const showMeta = !m.typing && (m.time || (isMe && m.status));
                 return (
-                  <Fragment key={m.id ?? `${gi}-${i}`}>
+                  <Fragment key={messageKey(m)}>
                     <CurvedBubble
                       className="chat-bubble-pop"
                       from={group.from}
@@ -1008,6 +1025,7 @@ function WhatsAppDemo({
           >
             <input
               type="text"
+              aria-label="Message"
               placeholder={composerPlaceholder}
               value={composerValue}
               onChange={(e) => onComposerChange(e.target.value)}
@@ -1246,10 +1264,12 @@ function TelegramDemo({
                 className="overflow-hidden rounded-full"
                 style={{ width: 32, height: 32 }}
               >
-                {/* biome-ignore lint/performance/noImgElement: avatar */}
-                <img
-                  src={headerAvatar}
+                <Image
+                  src={headerAvatar ?? DEFAULT_AVATAR}
                   alt=""
+                  width={32}
+                  height={32}
+                  sizes="32px"
                   style={{ width: 32, height: 32, objectFit: "cover" }}
                 />
               </div>
@@ -1296,7 +1316,7 @@ function TelegramDemo({
               style={{ gap: 2 }}
             >
               {group.items.map((m, i) => (
-                <Fragment key={m.id ?? `${gi}-${i}`}>
+                <Fragment key={messageKey(m)}>
                   <TelegramBubble
                     m={m}
                     from={group.from}
@@ -1342,6 +1362,7 @@ function TelegramDemo({
           >
             <input
               type="text"
+              aria-label="Message"
               placeholder={composerPlaceholder}
               value={composerValue}
               onChange={(e) => onComposerChange(e.target.value)}
@@ -1482,12 +1503,7 @@ function SlackDemo({
         style={{ scrollbarWidth: "none", gap: 12 }}
       >
         {groups.map((g, gi) => (
-          <SlackMessageGroup
-            key={gi}
-            group={g}
-            groupIndex={gi}
-            colors={colors}
-          />
+          <SlackMessageGroup key={gi} group={g} colors={colors} />
         ))}
       </div>
       {showComposer && (
@@ -1591,11 +1607,9 @@ function SlackHeader({
 
 function SlackMessageGroup({
   group,
-  groupIndex,
   colors,
 }: {
   group: AuthorGroup;
-  groupIndex: number;
   colors: SlackThemeColors;
 }) {
   const { fg, muted, isDark } = colors;
@@ -1613,10 +1627,16 @@ function SlackMessageGroup({
           marginTop: 4,
         }}
       >
-        {/* biome-ignore lint/performance/noImgElement: avatar */}
-        <img
+        {/* Author avatars come from live user profiles at runtime (onboarding
+            preview injects them), so they can't be preconfigured as remote
+            hosts for the optimizer — ship them unoptimized. */}
+        <Image
           src={group.author?.avatar ?? DEFAULT_AVATAR}
           alt=""
+          width={36}
+          height={36}
+          sizes="36px"
+          unoptimized
           style={{ width: 36, height: 36, objectFit: "cover" }}
         />
       </div>
@@ -1637,8 +1657,8 @@ function SlackMessageGroup({
           </span>
         </div>
         <div className="flex flex-col" style={{ gap: 2 }}>
-          {group.items.map((m, i) => (
-            <Fragment key={m.id ?? `${groupIndex}-${i}`}>
+          {group.items.map((m) => (
+            <Fragment key={messageKey(m)}>
               <div
                 style={{
                   fontSize: 15,
@@ -1804,6 +1824,7 @@ function SlackComposer({
         {/* Text input area */}
         <textarea
           rows={1}
+          aria-label={`Message #${title ?? "general"}`}
           placeholder={`Message #${title ?? "general"}`}
           value={composerValue}
           onChange={(e) => onComposerChange(e.target.value)}
@@ -1957,11 +1978,13 @@ function SlackToolbarSeparator({ dark }: { dark: boolean }) {
 
 function renderSlackText(text: string, dark: boolean) {
   const parts = text.split(/(@\w+|#\w+|`[^`]+`)/g);
-  return parts.map((p, i) => {
+  const tokenKey = createTokenKeys();
+  return parts.map((p) => {
+    const key = tokenKey(p);
     if (/^@\w+/.test(p)) {
       return (
         <span
-          key={i}
+          key={key}
           style={{
             background: dark ? "rgba(29,155,209,0.18)" : "#E8F5FA",
             color: dark ? "#1D9BD1" : "#1264A3",
@@ -1977,7 +2000,7 @@ function renderSlackText(text: string, dark: boolean) {
     if (/^#\w+/.test(p)) {
       return (
         <span
-          key={i}
+          key={key}
           style={{ color: dark ? "#1D9BD1" : "#1264A3", fontWeight: 600 }}
         >
           {p}
@@ -1987,7 +2010,7 @@ function renderSlackText(text: string, dark: boolean) {
     if (/^`[^`]+`$/.test(p)) {
       return (
         <code
-          key={i}
+          key={key}
           style={{
             background: dark ? "#222529" : "#F8F8F8",
             border: `1px solid ${dark ? "#3a3d42" : "#E8E8E8"}`,
@@ -2002,7 +2025,7 @@ function renderSlackText(text: string, dark: boolean) {
         </code>
       );
     }
-    return <span key={i}>{p}</span>;
+    return <span key={key}>{p}</span>;
   });
 }
 
@@ -2151,10 +2174,16 @@ function DiscordDemo({
                 height: 40,
               }}
             >
-              {/* biome-ignore lint/performance/noImgElement: avatar */}
-              <img
+              {/* Author avatars come from live user profiles at runtime
+                  (onboarding preview injects them), so they can't be
+                  preconfigured as remote hosts — ship them unoptimized. */}
+              <Image
                 src={g.author?.avatar ?? DEFAULT_AVATAR}
                 alt=""
+                width={40}
+                height={40}
+                sizes="40px"
+                unoptimized
                 style={{
                   width: 40,
                   height: 40,
@@ -2179,8 +2208,8 @@ function DiscordDemo({
                 </span>
               </div>
               <div className="flex flex-col" style={{ gap: 4 }}>
-                {g.items.map((m, i) => (
-                  <Fragment key={m.id ?? `${gi}-${i}`}>
+                {g.items.map((m) => (
+                  <Fragment key={messageKey(m)}>
                     <div
                       style={{
                         fontSize: 15,
@@ -2266,6 +2295,7 @@ function DiscordDemo({
           >
             <input
               type="text"
+              aria-label="Message"
               placeholder="Message"
               value={composerValue}
               onChange={(e) => onComposerChange(e.target.value)}
@@ -2312,11 +2342,13 @@ function DiscordCircleButton({
 
 function renderDiscordText(text: string) {
   const parts = text.split(/(@\w+|#\w+|`[^`]+`|:\w+:)/g);
-  return parts.map((p, i) => {
+  const tokenKey = createTokenKeys();
+  return parts.map((p) => {
+    const key = tokenKey(p);
     if (/^@\w+/.test(p)) {
       return (
         <span
-          key={i}
+          key={key}
           style={{
             background: "rgba(88,101,242,0.3)",
             color: "#C9CDFB",
@@ -2331,7 +2363,7 @@ function renderDiscordText(text: string) {
     }
     if (/^#\w+/.test(p)) {
       return (
-        <span key={i} style={{ color: "#00A8FC", fontWeight: 500 }}>
+        <span key={key} style={{ color: "#00A8FC", fontWeight: 500 }}>
           {p}
         </span>
       );
@@ -2339,7 +2371,7 @@ function renderDiscordText(text: string) {
     if (/^`[^`]+`$/.test(p)) {
       return (
         <code
-          key={i}
+          key={key}
           style={{
             background: "#2B2D31",
             borderRadius: 3,
@@ -2352,7 +2384,7 @@ function renderDiscordText(text: string) {
         </code>
       );
     }
-    return <span key={i}>{p}</span>;
+    return <span key={key}>{p}</span>;
   });
 }
 
@@ -2404,7 +2436,7 @@ function MicIcon({ size = 22 }: { size?: number }) {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <path d="M19 10V12C19 15.866 15.866 19 12 19M5 10V12C5 15.866 8.13401 19 12 19M12 19V22M8 22H16M12 15C10.3431 15 9 13.6569 9 12V5C9 3.34315 10.3431 2 12 2C13.6569 2 15 3.34315 15 5V12C15 13.6569 13.6569 15 12 15Z" />
+      <path d="M19 10V12C19 15.87 15.87 19 12 19M5 10V12C5 15.87 8.13 19 12 19M12 19V22M8 22H16M12 15C10.34 15 9 13.66 9 12V5C9 3.34 10.34 2 12 2C13.66 2 15 3.34 15 5V12C15 13.66 13.66 15 12 15Z" />
     </svg>
   );
 }
@@ -2422,7 +2454,7 @@ function AttachmentIcon({ size = 22 }: { size?: number }) {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <path d="M21.1525 10.8995L12.1369 19.9151C10.0866 21.9653 6.7625 21.9653 4.71225 19.9151C2.662 17.8648 2.662 14.5407 4.71225 12.4904L13.7279 3.47483C15.0947 2.108 17.3108 2.108 18.6776 3.47483C20.0444 4.84167 20.0444 7.05775 18.6776 8.42458L10.0156 17.0866C9.33213 17.7701 8.22409 17.7701 7.54068 17.0866C6.85726 16.4032 6.85726 15.2952 7.54068 14.6118L15.1421 7.01037" />
+      <path d="M21.15 10.9L12.14 19.92C10.09 21.97 6.76 21.97 4.71 19.92C2.66 17.86 2.66 14.54 4.71 12.49L13.73 3.47C15.09 2.11 17.31 2.11 18.68 3.47C20.04 4.84 20.04 7.06 18.68 8.42L10.02 17.09C9.33 17.77 8.22 17.77 7.54 17.09C6.86 16.4 6.86 15.3 7.54 14.61L15.14 7.01" />
     </svg>
   );
 }
@@ -2581,4 +2613,40 @@ function groupByAuthor(messages: ChatMessageItem[]): AuthorGroup[] {
     }
   }
   return out;
+}
+
+/* ----- Stable React keys for dynamic demo content ----- */
+
+const messageKeys = new WeakMap<ChatMessageItem, string>();
+let nextMintedMessageKey = 0;
+
+/**
+ * Stable key for a chat message. Demo threads are static data whose items
+ * usually carry no `id`, so mint one lazily keyed on object identity — keys
+ * survive re-renders, appended demo replies and the sequenced reveal without
+ * falling back to array indices.
+ */
+function messageKey(m: ChatMessageItem): string | number {
+  if (m.id !== undefined) return m.id;
+  let key = messageKeys.get(m);
+  if (key === undefined) {
+    key = `msg-${nextMintedMessageKey}`;
+    nextMintedMessageKey += 1;
+    messageKeys.set(m, key);
+  }
+  return key;
+}
+
+/**
+ * Duplicate-safe keys for text tokens: one string can yield the same token
+ * twice ("", "@gaia", …), so disambiguate by occurrence count — deterministic
+ * for a given input, with no array indices involved.
+ */
+function createTokenKeys(): (token: string) => string {
+  const seen = new Map<string, number>();
+  return (token) => {
+    const n = seen.get(token) ?? 0;
+    seen.set(token, n + 1);
+    return `${token}#${n}`;
+  };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { TriggerAutocomplete } from "@/features/workflows/components/TriggerAutocomplete";
@@ -64,23 +64,6 @@ export function TriggerConfigForm({
       });
     }
   };
-
-  useEffect(() => {
-    if (!normalizedSlug || schemasLoading) return;
-
-    const handler = getTriggerHandler(normalizedSlug);
-    if (!handler) return;
-
-    const isValidTriggerConfig =
-      triggerConfig.type !== "schedule" && triggerConfig.type !== "manual";
-
-    if (!isValidTriggerConfig) {
-      const defaultConfig = createDefaultTriggerConfig(normalizedSlug);
-      if (defaultConfig) {
-        onConfigChange(defaultConfig);
-      }
-    }
-  }, [normalizedSlug, triggerConfig.type, schemasLoading, onConfigChange]);
 
   const handler = getTriggerHandler(normalizedSlug);
   const SettingsComponent = handler?.SettingsComponent;

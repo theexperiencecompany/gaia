@@ -12,7 +12,6 @@ import {
 } from "@heroui/modal";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Comment01Icon, HelpCircleIcon, PencilEdit01Icon } from "@icons";
-import type React from "react";
 import { useState } from "react";
 import { z } from "zod";
 import { Separator } from "@/components/ui/separator";
@@ -45,14 +44,14 @@ function EditTicketModal({
   onClose,
   onSave,
   editData,
-  setEditData,
+  onChange,
   errors,
 }: {
   isOpen: boolean;
   onClose: () => void;
   onSave: () => void;
   editData: SupportTicketData;
-  setEditData: React.Dispatch<React.SetStateAction<SupportTicketData>>;
+  onChange: (patch: Partial<SupportTicketData>) => void;
   errors: Record<string, string>;
 }) {
   return (
@@ -71,7 +70,7 @@ function EditTicketModal({
                 variant={editData.type === "support" ? "solid" : "bordered"}
                 color={editData.type === "support" ? "primary" : "default"}
                 className="cursor-pointer"
-                onClick={() => setEditData({ ...editData, type: "support" })}
+                onClick={() => onChange({ type: "support" })}
               >
                 Support
               </Chip>
@@ -80,7 +79,7 @@ function EditTicketModal({
                 variant={editData.type === "feature" ? "solid" : "bordered"}
                 color={editData.type === "feature" ? "primary" : "default"}
                 className="cursor-pointer"
-                onClick={() => setEditData({ ...editData, type: "feature" })}
+                onClick={() => onChange({ type: "feature" })}
               >
                 Feature Request
               </Chip>
@@ -96,9 +95,7 @@ function EditTicketModal({
               label="Title"
               placeholder="Brief description of your issue or request"
               value={editData.title}
-              onChange={(e) =>
-                setEditData({ ...editData, title: e.target.value })
-              }
+              onChange={(e) => onChange({ title: e.target.value })}
               isInvalid={!!errors.title}
               errorMessage={errors.title}
             />
@@ -110,9 +107,7 @@ function EditTicketModal({
               label="Description"
               placeholder="Please provide detailed information about your issue or feature request"
               value={editData.description}
-              onChange={(e) =>
-                setEditData({ ...editData, description: e.target.value })
-              }
+              onChange={(e) => onChange({ description: e.target.value })}
               minRows={5}
               maxRows={8}
               isInvalid={!!errors.description}
@@ -139,8 +134,13 @@ export default function SupportTicketCard({
 }: SupportTicketCardProps) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [editData, setEditData] = useState<SupportTicketData>(ticketData);
+  // Only the user's edits are stored; the ticket prop stays the source of
+  // truth and the edited view is derived during render, so new ticket data
+  // can never leave a stale copy on screen.
+  const [edits, setEdits] = useState<Partial<SupportTicketData>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const editData: SupportTicketData = { ...ticketData, ...edits };
 
   const validateForm = () => {
     try {
@@ -302,7 +302,7 @@ export default function SupportTicketCard({
         onClose={() => setIsEditModalOpen(false)}
         onSave={handleSave}
         editData={editData}
-        setEditData={setEditData}
+        onChange={(patch) => setEdits((prev) => ({ ...prev, ...patch }))}
         errors={errors}
       />
     </>

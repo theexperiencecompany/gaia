@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useRouter, useSearchParams } from "next/navigation";
+import { RedirectType, redirect, useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { authApi } from "@/features/auth/api/authApi";
 import {
@@ -21,7 +21,6 @@ import {
 
 const useFetchUser = () => {
   const { setUser, clearUser } = useUserActions();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const currentPath = usePathname();
   const hasIdentified = useRef(false);
@@ -77,25 +76,21 @@ const useFetchUser = () => {
   }, [data, currentPath]);
 
   // OAuth redirect routing — isolated from store syncing so route changes
-  // don't overwrite user state with stale query data.
-  useEffect(() => {
-    if (!data) return;
+  // don't overwrite user state with stale query data. Resolved during render
+  // (not in an effect) so the callback page never paints before redirecting;
+  // `redirect` performs the same client-side navigation router.push did.
+  const accessToken = searchParams.get("access_token");
+  const refreshToken = searchParams.get("refresh_token");
 
-    const accessToken = searchParams.get("access_token");
-    const refreshToken = searchParams.get("refresh_token");
-    if (!accessToken || !refreshToken) return;
-
+  if (data && accessToken && refreshToken && !readPendingCheckout()) {
     // A pending checkout takes priority; useCheckoutResume redirects to Dodo.
-    if (readPendingCheckout()) return;
-
     const needsOnboarding = !data.onboarding?.completed;
     const phase = data.onboarding?.phase;
     const isStillProcessing =
       !!phase && ONBOARDING_PROCESSING_PHASES.has(phase);
 
     if (needsOnboarding && currentPath !== "/onboarding") {
-      router.push("/onboarding");
-      return;
+      redirect("/onboarding", RedirectType.push);
     }
 
     if (
@@ -103,9 +98,9 @@ const useFetchUser = () => {
       !isStillProcessing &&
       (currentPath === "/onboarding" || PUBLIC_PAGES.includes(currentPath))
     ) {
-      router.push("/c");
+      redirect("/c", RedirectType.push);
     }
-  }, [data, searchParams, router, currentPath]);
+  }
 
   // Clear user state on auth failure
   useEffect(() => {

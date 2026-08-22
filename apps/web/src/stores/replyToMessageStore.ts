@@ -57,12 +57,18 @@ export const useReplyToMessageStore = create<ReplyToMessageStore>()(
 
 // Convenient hook for accessing reply-to-message state and actions
 export const useReplyToMessage = () => {
-  const {
-    replyToMessage,
-    setReplyToMessage,
-    clearReplyToMessage,
-    setInputFocusCallback,
-  } = useReplyToMessageStore();
+  const replyToMessage = useReplyToMessageStore(
+    (state) => state.replyToMessage,
+  );
+  const setReplyToMessage = useReplyToMessageStore(
+    (state) => state.setReplyToMessage,
+  );
+  const clearReplyToMessage = useReplyToMessageStore(
+    (state) => state.clearReplyToMessage,
+  );
+  const setInputFocusCallback = useReplyToMessageStore(
+    (state) => state.setInputFocusCallback,
+  );
 
   return {
     replyToMessage,

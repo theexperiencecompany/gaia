@@ -12,6 +12,7 @@ import {
 import * as m from "motion/react-m";
 import dynamic from "next/dynamic";
 import React, { useId } from "react";
+import type { ToolDataEntry } from "@/config/registries/toolRegistry";
 import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import {
@@ -42,6 +43,32 @@ const OpenUIRenderer = dynamic(
 );
 
 const REPLY_QUOTE_MAX_LENGTH = 40;
+
+// FNV-1a: tiny deterministic string hash used only to derive stable React
+// keys for tool_data entries that carry no id of their own.
+function hashString(value: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+// Stable, position-independent key for a tool_data entry: prefer a
+// tool_call_id from its payload, then its stream timestamp, then a content
+// digest. Tool lists are append-only, so this keeps card identity across
+// re-renders without relying on the array index.
+function toolEntryKey(entry: ToolDataEntry): string {
+  const data: unknown = entry.data;
+  const callId =
+    data !== null && typeof data === "object" && "tool_call_id" in data
+      ? String((data as { tool_call_id?: unknown }).tool_call_id ?? "")
+      : "";
+  if (callId) return `${entry.tool_name}-${callId}`;
+  if (entry.timestamp) return `${entry.tool_name}-${entry.timestamp}`;
+  return `${entry.tool_name}-${hashString(JSON.stringify(data ?? null))}`;
+}
 
 /** Inline reply quote shown at the top of a bot bubble, scrolls to the original message on click. */
 function ReplyQuote({
@@ -424,12 +451,12 @@ export default function TextBubble({
 
       {processedTools.map((entry, index) => {
         const toolName = entry.tool_name;
-        const keyId = entry.timestamp || index;
+        const entryKey = toolEntryKey(entry);
 
         if (toolName === "todo_progress") {
           const data = getTypedData(entry as ToolDataUnion, "todo_progress");
           return data ? (
-            <React.Fragment key={`${baseId}-tool-${toolName}-${keyId}`}>
+            <React.Fragment key={`${baseId}-tool-${entryKey}`}>
               <TodoProgressSection todo_progress={data} isStreaming={loading} />
             </React.Fragment>
           ) : null;
@@ -438,21 +465,8 @@ export default function TextBubble({
         const typedData = getTypedData(entry as ToolDataUnion, toolName);
         if (!typedData) return null;
 
-        const toolCallId =
-          typeof typedData === "object" &&
-          typedData !== null &&
-          "tool_call_id" in typedData
-            ? String(
-                (typedData as unknown as { tool_call_id?: string })
-                  .tool_call_id ?? "",
-              )
-            : "";
-        const toolKey = toolCallId
-          ? `${baseId}-tool-${toolName}-${toolCallId}`
-          : `${baseId}-tool-${toolName}-${index}`;
-
         return (
-          <React.Fragment key={toolKey}>
+          <React.Fragment key={`${baseId}-tool-${entryKey}`}>
             {renderTool(toolName, typedData, index)}
           </React.Fragment>
         );
@@ -472,16 +486,19 @@ export default function TextBubble({
             ? splitByBreaksPreservingFences(displayText)
             : splitMessageByBreaks(displayText);
 
-          // Filter empty/whitespace-only parts up front so first/last/single
+          // Collect the non-empty parts in a single pass so first/last/single
           // reflect the *visible* list, not the array index. Without this, a
           // single visible part sandwiched between blanks (e.g. trailing break,
           // post-thinking residue) would lose its tail because `isLast` would
           // point at a non-rendered entry. Animation delays use the visible
           // index so blanks don't shift the stagger; the original index is kept
           // for keys to preserve React identity across re-renders.
-          const visibleParts = textParts
-            .map((part, originalIndex) => ({ part, originalIndex }))
-            .filter(({ part }) => part.trim());
+          const visibleParts: Array<{ part: string; originalIndex: number }> =
+            [];
+          for (const [originalIndex, part] of textParts.entries()) {
+            if (!part.trim()) continue;
+            visibleParts.push({ part, originalIndex });
+          }
 
           if (visibleParts.length === 0) return null;
 

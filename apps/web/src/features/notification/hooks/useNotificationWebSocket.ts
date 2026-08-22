@@ -151,7 +151,7 @@ export function useNotificationWebSocket() {
           console.warn("Unknown notification message type:", message.type);
       }
     },
-    [addNotification, updateNotification],
+    [addNotification, updateNotification, router],
   );
 
   const handleError = useCallback((error: Error) => {

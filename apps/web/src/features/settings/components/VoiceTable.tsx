@@ -24,17 +24,17 @@ import {
 } from "@icons";
 import { useCallback, useDeferredValue, useMemo } from "react";
 import type { VoiceOption } from "@/features/settings/api/voiceApi";
-import {
-  ALL_FILTER,
-  flagUrl,
-  GenderIcon,
-} from "@/features/settings/components/VoiceFilters";
+import { GenderIcon } from "@/features/settings/components/VoiceFilters";
 import { useVoicePreview } from "@/features/settings/hooks/useVoicePreview";
 import {
   useSelectVoice,
   useStarVoice,
   useVoices,
 } from "@/features/settings/hooks/useVoiceSettings";
+import {
+  ALL_FILTER,
+  flagUrl,
+} from "@/features/settings/utils/voiceFiltersData";
 import { cn } from "@/lib/utils";
 
 interface VoiceTableProps {
@@ -126,33 +126,30 @@ export function VoiceTable({
   // — reading them from closure state would lag until the next refetch.
   const rows = useMemo<VoiceRow[]>(() => {
     const query = deferredSearch.trim().toLowerCase();
-    return (
-      (data?.voices ?? [])
-        .filter((voice) => {
-          if (genderFilter !== ALL_FILTER && voice.gender !== genderFilter) {
-            return false;
-          }
-          if (countryFilter !== ALL_FILTER && voice.accent !== countryFilter) {
-            return false;
-          }
-          if (
-            query &&
-            !voice.name.toLowerCase().includes(query) &&
-            !voice.description.toLowerCase().includes(query)
-          ) {
-            return false;
-          }
-          return true;
-        })
-        .map((voice) => ({
-          ...voice,
-          isSelected: voice.voice_id === data?.selected_voice_id,
-          isPlaying: voice.voice_id === playingVoiceId,
-        }))
-        // Starred first (the backend already orders this way; re-sorting here
-        // makes optimistic star toggles float instantly).
-        .sort((a, b) => Number(b.starred) - Number(a.starred))
-    );
+    const rows: VoiceRow[] = [];
+    for (const voice of data?.voices ?? []) {
+      if (genderFilter !== ALL_FILTER && voice.gender !== genderFilter) {
+        continue;
+      }
+      if (countryFilter !== ALL_FILTER && voice.accent !== countryFilter) {
+        continue;
+      }
+      if (
+        query &&
+        !voice.name.toLowerCase().includes(query) &&
+        !voice.description.toLowerCase().includes(query)
+      ) {
+        continue;
+      }
+      rows.push({
+        ...voice,
+        isSelected: voice.voice_id === data?.selected_voice_id,
+        isPlaying: voice.voice_id === playingVoiceId,
+      });
+    }
+    // Starred first (the backend already orders this way; re-sorting here
+    // makes optimistic star toggles float instantly).
+    return rows.sort((a, b) => Number(b.starred) - Number(a.starred));
   }, [
     data?.voices,
     data?.selected_voice_id,

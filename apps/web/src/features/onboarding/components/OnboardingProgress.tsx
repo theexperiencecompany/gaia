@@ -23,6 +23,8 @@ interface OnboardingProgressProps {
   isRestarting?: boolean;
 }
 
+const stepKey = (i: number) => `onboarding-progress-step-${i}`;
+
 function OnboardingProgressImpl({
   currentStep,
   totalSteps,
@@ -30,7 +32,6 @@ function OnboardingProgressImpl({
   isRestarting = false,
 }: OnboardingProgressProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const stepKey = (i: number) => `onboarding-progress-step-${i}`;
   return (
     <nav
       aria-label="Onboarding progress"

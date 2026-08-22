@@ -16,12 +16,23 @@ import {
   PROCESSING_MSG_GMAIL,
   PROCESSING_MSG_NO_GMAIL,
 } from "../constants/messages";
-import type { Message } from "../types";
-import type { OnboardingState } from "./types";
+import type { ClarifyAnswer, ClarifyQuestion, Message } from "../types";
+
+/**
+ * The exact slice of onboarding state the transcript derives from, so callers
+ * can memoise on just these fields instead of the whole state object.
+ */
+export interface TranscriptInputs {
+  responses: Record<string, string>;
+  questionIndex: number;
+  clarifyQuestions: ClarifyQuestion[] | null;
+  clarifyAnswers: Record<string, ClarifyAnswer>;
+  clarifySubmitted: boolean;
+}
 
 function appendClarifyTranscript(
   messages: Message[],
-  state: OnboardingState,
+  state: TranscriptInputs,
 ): void {
   if (!state.clarifyQuestions) return;
   messages.push({
@@ -50,7 +61,7 @@ function appendClarifyTranscript(
 // The bot question + user answer pairs for every question asked so far.
 function appendQuestionTranscript(
   messages: Message[],
-  state: OnboardingState,
+  state: TranscriptInputs,
 ): void {
   const { responses, questionIndex } = state;
 
@@ -83,7 +94,7 @@ function appendQuestionTranscript(
 
 // The focus question, its answer, optional clarify transcript, and the closing
 // processing message — the transcript shown once all questions are answered.
-function appendFinalStage(messages: Message[], state: OnboardingState): void {
+function appendFinalStage(messages: Message[], state: TranscriptInputs): void {
   const { responses } = state;
   const gmail = responses[FIELD_NAMES.GMAIL];
   const focus = responses[FIELD_NAMES.FOCUS];
@@ -140,7 +151,7 @@ function appendFinalStage(messages: Message[], state: OnboardingState): void {
   }
 }
 
-export function getMessages(state: OnboardingState): Message[] {
+export function getMessages(state: TranscriptInputs): Message[] {
   const messages: Message[] = [];
 
   appendQuestionTranscript(messages, state);

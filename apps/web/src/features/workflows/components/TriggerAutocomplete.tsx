@@ -6,7 +6,7 @@ import {
 import { Skeleton } from "@heroui/skeleton";
 import Fuse from "fuse.js";
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import type { TriggerSchema } from "@/features/workflows/triggers/types/base";
@@ -42,17 +42,30 @@ export function TriggerAutocomplete({
   );
   const normalizedSelectedKey = selectedSchema?.slug ?? selectedTrigger;
 
-  useEffect(() => {
+  // Keep the input text in sync with the selected trigger. Done as a
+  // render-time adjustment (React's recommended alternative to an effect):
+  // the snapshot captures every observable input of that sync — the selection
+  // and whether/what the schemas resolve it to — so the text is correct on the
+  // first paint instead of flashing a stale value.
+  const displaySyncKey = `${selectedTrigger ?? ""}|${triggerSchemas !== undefined}|${selectedSchema?.name ?? ""}`;
+  const [syncedDisplayKey, setSyncedDisplayKey] = useState(displaySyncKey);
+  if (displaySyncKey !== syncedDisplayKey) {
+    setSyncedDisplayKey(displaySyncKey);
+    let nextFilterValue: string;
     if (selectedSchema && selectedTrigger) {
-      setFilterValue(selectedSchema.name);
-    } else if (!selectedTrigger) {
-      setFilterValue("");
-    } else if (selectedTrigger && triggerSchemas !== undefined) {
-      // Schemas loaded but this trigger slug wasn't found — clear the display
-      // so it doesn't appear as a ghost selection
-      setFilterValue("");
+      nextFilterValue = selectedSchema.name;
+    } else if (!selectedTrigger || triggerSchemas !== undefined) {
+      // No selection, or schemas loaded but this trigger slug wasn't found —
+      // clear the display so it doesn't appear as a ghost selection
+      nextFilterValue = "";
+    } else {
+      // Schemas still loading — keep whatever the user sees for now
+      nextFilterValue = filterValue;
     }
-  }, [selectedTrigger, selectedSchema?.slug, triggerSchemas]);
+    if (nextFilterValue !== filterValue) {
+      setFilterValue(nextFilterValue);
+    }
+  }
 
   const fuse = useMemo(() => {
     if (!triggerSchemas) return null;

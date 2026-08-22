@@ -86,6 +86,22 @@ function filterUseCases(
   );
 }
 
+// Unique step categories, in order — one pass (dedupe via Set) instead of a
+// map→filter chain.
+function uniqueStepCategories(
+  steps: Array<{ category: string }> | undefined | null,
+): string[] {
+  const seen = new Set<string>();
+  const categories: string[] = [];
+  for (const step of steps ?? []) {
+    if (!seen.has(step.category)) {
+      seen.add(step.category);
+      categories.push(step.category);
+    }
+  }
+  return categories;
+}
+
 // Static class strings per column count — Tailwind only emits classes it can
 // find literally in the source, so these can't be built by interpolation.
 const COLUMN_CLASSES: Record<number, string> = {
@@ -154,38 +170,53 @@ function CategoryChip({
   );
 }
 
+interface UseCaseSectionOptions {
+  /** Hide the "Your Workflows" category and skip fetching the user's workflows. */
+  hideUserWorkflows?: boolean;
+  /** Center the category chip row horizontally. */
+  centered?: boolean;
+  /** Render card descriptions as tooltips instead of inline text. */
+  showDescriptionAsTooltip?: boolean;
+  /** Enable the blur backdrop effect on cards. */
+  useBlurEffect?: boolean;
+  /** Disable horizontal auto-centering of the workflow grids. */
+  disableCentering?: boolean;
+  /** Remove the max-width cap from the workflow grids. */
+  noMaxWidth?: boolean;
+  /** Hide the "All" category chip. */
+  hideAllCategory?: boolean;
+}
+
 export default function UseCaseSection({
   dummySectionRef,
-  hideUserWorkflows = false,
-  centered = true,
   exploreWorkflows: propExploreWorkflows,
   setShowUseCases,
-  showDescriptionAsTooltip,
-  useBlurEffect,
-  disableCentering = false,
-  noMaxWidth = false,
   slicePerTab,
-  hideAllCategory = false,
   rows,
   columns = 4,
   scroller,
+  options = {},
 }: {
   dummySectionRef: React.RefObject<HTMLDivElement | null>;
-  hideUserWorkflows?: boolean;
-  centered?: boolean;
   exploreWorkflows?: UseCase[];
   setShowUseCases?: React.Dispatch<React.SetStateAction<boolean>>;
-  showDescriptionAsTooltip?: boolean;
-  useBlurEffect?: boolean;
-  disableCentering?: boolean;
-  noMaxWidth?: boolean;
   slicePerTab?: number;
-  hideAllCategory?: boolean;
   rows?: number;
   columns?: number;
   /** Pass null to skip scroll container detection (e.g. on landing page where window is the scroller). */
   scroller?: HTMLElement | null;
+  /** Display/layout toggles — all optional; see {@link UseCaseSectionOptions}. */
+  options?: UseCaseSectionOptions;
 }) {
+  const {
+    hideUserWorkflows = false,
+    centered = true,
+    showDescriptionAsTooltip,
+    useBlurEffect,
+    disableCentering = false,
+    noMaxWidth = false,
+    hideAllCategory = false,
+  } = options;
   const [selectedCategory, setSelectedCategory] = useState<string | null>(
     "featured",
   );
@@ -211,10 +242,7 @@ export default function UseCaseSection({
       system_workflow_key: w.system_workflow_key,
       source_integration: w.source_integration,
       trigger_config: w.trigger_config,
-      integrations:
-        w.steps
-          ?.map((s) => s.category)
-          .filter((v, i, a) => a.indexOf(v) === i) || [],
+      integrations: uniqueStepCategories(w.steps),
       categories: w.categories || ["featured"],
       published_id: w.id,
       slug: w.slug ?? undefined,
@@ -432,7 +460,7 @@ function UseCasesGrid({
     >
       {sliced.map((useCase: UseCase, index: number) => (
         <m.div
-          key={useCase.published_id || index}
+          key={useCase.published_id}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{

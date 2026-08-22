@@ -239,8 +239,9 @@ export function pickStarterPrompts(
 
   // Guarantee one zero-setup anchor so there's always an instant-value tap.
   if (!picked.some((p) => p.zeroSetup)) {
+    const alreadyPicked = new Set(picked);
     const anchor = shuffleArray(
-      eligible.filter((p) => p.zeroSetup && !picked.includes(p)),
+      eligible.filter((p) => p.zeroSetup && !alreadyPicked.has(p)),
     )[0];
     if (anchor) picked[picked.length - 1] = anchor;
   }

@@ -7,11 +7,9 @@ import { SoftBlurInBlock, TextSoftBlurIn } from "../shared/TextSoftBlurIn";
 
 export default function HeroSection({
   isDark = false,
-  onTextClick,
   latestRelease,
 }: {
   isDark?: boolean;
-  onTextClick?: () => void;
   latestRelease?: LatestRelease | null;
 }) {
   return (
@@ -53,38 +51,36 @@ export default function HeroSection({
           </SoftBlurInBlock>
         )}
 
-        <div onClick={onTextClick} className="cursor-default select-none">
-          <h1
-            aria-label="Get a workday back every week"
-            className="max-w-(--breakpoint-2xl) text-center text-[3.2rem] leading-none sm:text-[5.75rem] font-semibold overflow-visible font-serif"
-          >
-            <TextSoftBlurIn
-              text="Get a workday back"
-              as="span"
-              immediate
-              charStagger={0.04}
-              className="block"
-              gradient={
-                isDark
-                  ? "linear-gradient(to bottom, #ffffff, #dbdbdb)"
-                  : "linear-gradient(to bottom, #837e88, #000000)"
-              }
-            />
-            <TextSoftBlurIn
-              text="every week"
-              as="span"
-              immediate
-              startDelay={0.4}
-              charStagger={0.04}
-              className="block"
-              gradient={
-                isDark
-                  ? "linear-gradient(to bottom, #ffffff, #dbdbdb)"
-                  : "linear-gradient(to bottom, #837e88, #000000)"
-              }
-            />
-          </h1>
-        </div>
+        <h1
+          aria-label="Get a workday back every week"
+          className="max-w-(--breakpoint-2xl) text-center text-[3.2rem] leading-none sm:text-[5.75rem] font-semibold overflow-visible font-serif cursor-default select-none"
+        >
+          <TextSoftBlurIn
+            text="Get a workday back"
+            as="span"
+            immediate
+            charStagger={0.04}
+            className="block"
+            gradient={
+              isDark
+                ? "linear-gradient(to bottom, #ffffff, #dbdbdb)"
+                : "linear-gradient(to bottom, #837e88, #000000)"
+            }
+          />
+          <TextSoftBlurIn
+            text="every week"
+            as="span"
+            immediate
+            startDelay={0.4}
+            charStagger={0.04}
+            className="block"
+            gradient={
+              isDark
+                ? "linear-gradient(to bottom, #ffffff, #dbdbdb)"
+                : "linear-gradient(to bottom, #837e88, #000000)"
+            }
+          />
+        </h1>
       </div>
 
       {/* Subtitle + CTA rendered outside MotionContainer to avoid stagger delay (LCP fix) */}

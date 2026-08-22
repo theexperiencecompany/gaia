@@ -75,7 +75,6 @@ const SelectedToolIndicator: React.FC<SelectedToolIndicatorProps> = ({
             type: "spring",
             damping: 20,
             stiffness: 300,
-            duration: 0.2,
           }}
           className="mx-3 mt-2 mb-1 flex w-fit items-center gap-2 rounded-xl bg-zinc-700 px-2 py-1 pl-1"
         >

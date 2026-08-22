@@ -34,22 +34,15 @@ export const isOnlyEmojis = (text: string | null | undefined): boolean => {
  * Counts the number of visually distinct emojis in the text.
  * Uses Intl.Segmenter for grapheme clustering to handle compound emojis correctly.
  */
+const graphemeSegmenter =
+  typeof Intl !== "undefined" && "Segmenter" in Intl
+    ? new Intl.Segmenter("en", { granularity: "grapheme" })
+    : null;
+
 export const getEmojiCount = (text: string | null | undefined): number => {
   if (!text) return 0;
 
-  try {
-    const segmenter = new Intl.Segmenter("en", { granularity: "grapheme" });
-    const emojiRegex =
-      /^(?:\p{Extended_Pictographic}|\p{Emoji_Presentation}|\p{Emoji_Modifier_Base}|\p{Emoji_Modifier}|\u200d|\ufe0f|\u20e3)+$/u;
-    let count = 0;
-    for (const { segment } of segmenter.segment(text)) {
-      // Only count if the segment matches emoji patterns
-      if (emojiRegex.test(segment)) {
-        count++;
-      }
-    }
-    return count;
-  } catch {
+  if (!graphemeSegmenter) {
     // Fallback if Intl.Segmenter is not available
     // Use regex to match emoji sequences
     const emojiRegex =
@@ -57,4 +50,15 @@ export const getEmojiCount = (text: string | null | undefined): number => {
     const matches = text.match(emojiRegex);
     return matches ? matches.length : 0;
   }
+
+  const emojiRegex =
+    /^(?:\p{Extended_Pictographic}|\p{Emoji_Presentation}|\p{Emoji_Modifier_Base}|\p{Emoji_Modifier}|\u200d|\ufe0f|\u20e3)+$/u;
+  let count = 0;
+  for (const { segment } of graphemeSegmenter.segment(text)) {
+    // Only count if the segment matches emoji patterns
+    if (emojiRegex.test(segment)) {
+      count++;
+    }
+  }
+  return count;
 };

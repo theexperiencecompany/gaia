@@ -161,7 +161,7 @@ export function OnboardingIntro({ onComplete }: OnboardingIntroProps) {
                   // biome-ignore lint/suspicious/noArrayIndexKey: char positions are stable
                   key={i}
                   className="inline-block whitespace-pre"
-                  initial={{ opacity: 0, y: 16, filter: "blur(12px)" }}
+                  initial={{ opacity: 0, y: 16, filter: "blur(9px)" }}
                   animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
                   transition={{
                     duration: CHAR_DURATION,

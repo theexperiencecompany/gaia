@@ -363,13 +363,12 @@ class ChatDexie extends Dexie {
           this.conversations,
           this.messages,
           async () => {
-            // Delete all messages for these conversations
-            for (const conversationId of conversationIds) {
-              await this.messages
-                .where("conversationId")
-                .equals(conversationId)
-                .delete();
-            }
+            // Delete all messages for these conversations in one indexed
+            // query — same rw transaction, no sequential await loop.
+            await this.messages
+              .where("conversationId")
+              .anyOf(conversationIds)
+              .delete();
             // Delete the conversations themselves
             await this.conversations.bulkDelete(conversationIds);
           },
@@ -529,11 +528,10 @@ class ChatDexie extends Dexie {
         const orphaned = allMessages.filter(
           (m) => m.optimistic && m.createdAt.getTime() < cutoffTime,
         );
+        const orphanedIds = orphaned.map((m) => m.id);
 
-        for (const msg of orphaned) {
-          await this.messages.delete(msg.id);
-          deletedCount++;
-        }
+        await this.messages.bulkDelete(orphanedIds);
+        deletedCount = orphaned.length;
       }),
     );
 

@@ -18,13 +18,10 @@ import {
 import { type ReactNode, useMemo } from "react";
 
 import type { VoiceOption } from "@/features/settings/api/voiceApi";
-
-const FLAG_CDN_BASE = "https://flagcdn.com/w80";
-
-export const flagUrl = (countryCode: string) =>
-  `${FLAG_CDN_BASE}/${countryCode.toLowerCase()}.png`;
-
-export const ALL_FILTER = "all";
+import {
+  ALL_FILTER,
+  flagUrl,
+} from "@/features/settings/utils/voiceFiltersData";
 
 export function GenderIcon({ gender }: Readonly<{ gender: string }>) {
   if (gender === "Female") {

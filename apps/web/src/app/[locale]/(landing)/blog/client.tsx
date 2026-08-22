@@ -31,13 +31,12 @@ export default function BlogPostClient({
   breadcrumbSchema,
 }: BlogPostClientProps) {
   useEffect(() => {
-    if (blog?.slug) {
-      trackEvent(ANALYTICS_EVENTS.BLOG_ARTICLE_VIEWED, {
-        slug: blog.slug,
-        title: blog.title,
-      });
-    }
-  }, [blog?.slug]);
+    if (!blog) return;
+    trackEvent(ANALYTICS_EVENTS.BLOG_ARTICLE_VIEWED, {
+      slug: blog.slug,
+      title: blog.title,
+    });
+  }, [blog]);
 
   if (!blog) {
     return (

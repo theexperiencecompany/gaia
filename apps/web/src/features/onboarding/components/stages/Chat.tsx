@@ -68,7 +68,6 @@ export function Chat({ state }: Omit<ChatProps, "dispatch" | "chat">) {
           text={firstMessage}
           message_id="onboarding-first-message"
           loading={false}
-          date={new Date().toISOString()}
         />
       )}
       <div className="my-4">

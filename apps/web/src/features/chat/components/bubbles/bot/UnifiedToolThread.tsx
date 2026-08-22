@@ -41,6 +41,84 @@ interface UnifiedToolThreadProps {
 
 const SHOW_ICONS = 10;
 
+// ── Stacked category icons ──────────────────────────────────────────────────
+
+// Rendered as a child after UnifiedToolThread's early return, so renders that
+// bail out never build this subtree.
+function StackedIcons({
+  icons,
+}: {
+  icons: { category: string; iconUrl?: string }[];
+}) {
+  const display = icons.slice(0, SHOW_ICONS);
+  if (display.length === 0) return null;
+
+  return (
+    <div className="flex min-h-8 items-center -space-x-2">
+      {display.map((d, i) => {
+        const icon = getToolCategoryIcon(
+          d.category,
+          { width: 21, height: 21 },
+          d.iconUrl,
+        ) || (
+          <div className="p-1 bg-zinc-800 rounded-lg text-zinc-400 backdrop-blur">
+            <ToolsIcon width={21} height={21} />
+          </div>
+        );
+        let rotate = "0deg";
+        if (display.length > 1) {
+          rotate = i % 2 === 0 ? "8deg" : "-8deg";
+        }
+        return (
+          <div
+            key={d.category}
+            className="relative flex min-w-8 items-center justify-center"
+            style={{
+              rotate,
+              zIndex: i,
+            }}
+          >
+            {icon}
+          </div>
+        );
+      })}
+      {icons.length > SHOW_ICONS && (
+        <div className="z-0 flex size-7 min-h-7 min-w-7 items-center justify-center rounded-lg bg-zinc-700/60 text-xs text-foreground-500 font-normal">
+          +{icons.length - SHOW_ICONS}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Stable keys for streamed entries ────────────────────────────────────────
+
+// FNV-1a: tiny deterministic string hash used only to derive stable React
+// keys for entries that carry no id of their own.
+function hashString(value: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+// Prefer the entry's tool_call_id; fall back to a content digest so keys are
+// stable across stream updates without ever depending on array position.
+function timelineToolKey(call: ToolCallEntry): string {
+  if (call.tool_call_id) return call.tool_call_id;
+  return hashString(
+    JSON.stringify([
+      call.tool_name,
+      call.message,
+      call.reasoning,
+      call.inputs,
+      call.output,
+    ]),
+  );
+}
+
 // ── Component ───────────────────────────────────────────────────────────────
 
 export default function UnifiedToolThread({
@@ -92,10 +170,11 @@ export default function UnifiedToolThread({
     return count;
   }, [timeline]);
 
-  // Stacked icons — deduplicated by category across all items
-  const stackedIcons = useMemo(() => {
+  // Stacked icons — deduplicated by category across all items. Data only; the
+  // JSX subtree lives in <StackedIcons>, rendered after the early return.
+  const uniqueIcons = useMemo(() => {
     const seenCategories = new Set<string>();
-    const uniqueIcons: { category: string; iconUrl?: string }[] = [];
+    const icons: { category: string; iconUrl?: string }[] = [];
 
     for (const item of timeline) {
       // Thinking steps have no tool icon — keep them out of the stacked icons.
@@ -106,7 +185,7 @@ export default function UnifiedToolThread({
           : item.data.tool_category || "subagent";
       if (seenCategories.has(cat)) continue;
       seenCategories.add(cat);
-      uniqueIcons.push({
+      icons.push({
         category: cat,
         iconUrl:
           item.kind === "tool"
@@ -115,45 +194,7 @@ export default function UnifiedToolThread({
       });
     }
 
-    const display = uniqueIcons.slice(0, SHOW_ICONS);
-    if (display.length === 0) return null;
-
-    return (
-      <div className="flex min-h-8 items-center -space-x-2">
-        {display.map((d, i) => {
-          const icon = getToolCategoryIcon(
-            d.category,
-            { width: 21, height: 21 },
-            d.iconUrl,
-          ) || (
-            <div className="p-1 bg-zinc-800 rounded-lg text-zinc-400 backdrop-blur">
-              <ToolsIcon width={21} height={21} />
-            </div>
-          );
-          let rotate = "0deg";
-          if (display.length > 1) {
-            rotate = i % 2 === 0 ? "8deg" : "-8deg";
-          }
-          return (
-            <div
-              key={d.category}
-              className="relative flex min-w-8 items-center justify-center"
-              style={{
-                rotate,
-                zIndex: i,
-              }}
-            >
-              {icon}
-            </div>
-          );
-        })}
-        {uniqueIcons.length > SHOW_ICONS && (
-          <div className="z-0 flex size-7 min-h-7 min-w-7 items-center justify-center rounded-lg bg-zinc-700/60 text-xs text-foreground-500 font-normal">
-            +{uniqueIcons.length - SHOW_ICONS}
-          </div>
-        )}
-      </div>
-    );
+    return icons;
   }, [timeline, getIconUrl]);
 
   if (timeline.length === 0) return null;
@@ -177,7 +218,7 @@ export default function UnifiedToolThread({
           key="tools"
           title={
             <div className="flex items-center hover:text-white text-zinc-500">
-              {totalToolCount > 1 && stackedIcons}
+              {totalToolCount > 1 && <StackedIcons icons={uniqueIcons} />}
               <span
                 className={`text-xs font-medium transition-colors duration-200 ${totalToolCount > 1 ? "ml-2" : ""}`}
               >
@@ -199,7 +240,7 @@ export default function UnifiedToolThread({
               if (item.kind === "tool") {
                 return (
                   <StepRow
-                    key={`tc-${item.data.tool_call_id || idx}`}
+                    key={`tc-${timelineToolKey(item.data)}`}
                     call={item.data}
                     isLast={isLast}
                     getIconUrl={getIconUrl}

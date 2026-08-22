@@ -17,10 +17,12 @@ import { CancelSubscriptionAction } from "./CancelSubscriptionAction";
 const formatDate = (dateString?: string): string => {
   if (!dateString) return "N/A";
   try {
+    // Explicit timeZone keeps the output identical on server and browser.
     return new Date(dateString).toLocaleDateString("en-US", {
       year: "numeric",
       month: "long",
       day: "numeric",
+      timeZone: "UTC",
     });
   } catch {
     return "N/A";

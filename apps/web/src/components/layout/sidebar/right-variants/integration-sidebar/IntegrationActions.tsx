@@ -225,30 +225,40 @@ export function IntegrationActions({
     <>
       {!isConnected ? (
         <NotConnectedActions
-          showRetry={showRetry}
-          showDeleteButton={showDeleteButton}
-          hasDisconnect={!!onDisconnect}
-          isConnecting={isConnecting}
-          isDeleting={isDeleting}
-          isDisconnecting={isDisconnecting}
-          deleteButtonText={deleteButtonText}
-          disconnectLabel={disconnectLabel}
-          onConnect={handleConnect}
-          onDelete={handleDelete}
-          onDisconnect={handleDisconnect}
+          connect={{
+            showRetry,
+            isPending: isConnecting,
+            onConnect: handleConnect,
+          }}
+          remove={
+            showDeleteButton || onDisconnect
+              ? {
+                  kind: showDeleteButton ? "delete" : "disconnect",
+                  deleteText: deleteButtonText,
+                  labelText: disconnectLabel,
+                  isDeletePending: isDeleting,
+                  isDisconnectPending: isDisconnecting,
+                  onDelete: handleDelete,
+                  onDisconnect: handleDisconnect,
+                }
+              : null
+          }
         />
       ) : (
         <ConnectedActions
           integration={integration}
           useIconOnly={useIconOnly}
-          isOwnIntegration={isOwnIntegration}
-          hasDisconnect={!!onDisconnect}
-          disconnectLabel={disconnectLabel}
-          disconnectIcon={disconnectIcon}
-          isDisconnecting={isDisconnecting}
-          isPublishing={isPublishing}
-          onDisconnect={handleDisconnect}
-          onPublish={handlePublish}
+          disconnect={
+            onDisconnect
+              ? {
+                  label: disconnectLabel,
+                  icon: disconnectIcon,
+                  isPending: isDisconnecting,
+                  onDisconnect: handleDisconnect,
+                }
+              : null
+          }
+          publish={{ isPending: isPublishing, onPublish: handlePublish }}
           onShare={handleShare}
         />
       )}

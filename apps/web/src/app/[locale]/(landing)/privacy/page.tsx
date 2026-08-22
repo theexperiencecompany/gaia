@@ -1,6 +1,8 @@
 import { Link } from "@heroui/link";
 import type { Metadata } from "next";
+
 import JsonLd from "@/components/seo/JsonLd";
+import { Link as I18nLink } from "@/i18n/navigation";
 import {
   generateBreadcrumbSchema,
   generatePageMetadata,
@@ -617,9 +619,9 @@ function YourRightsAndRetention() {
           </a>{" "}
           from the email address associated with your account, or submit a
           request through our{" "}
-          <a className="text-blue-500 underline" href="/contact">
+          <I18nLink className="text-blue-500 underline" href="/contact">
             contact page
-          </a>
+          </I18nLink>
           , and tell us which right you wish to exercise.
         </p>
         <ul className="mb-4 ml-6 list-disc">

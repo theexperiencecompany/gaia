@@ -17,6 +17,7 @@ import type { CardAction } from "@/features/chat/components/interface/BaseCardVi
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
 import { useConversationList } from "@/features/chat/hooks/useConversationList";
 import { useSyncStatus } from "@/hooks/useBackgroundSync";
+import { getBrowserTimezone } from "@/lib/timezone";
 import { useAppendToInput } from "@/stores/composerStore";
 
 const RecentConversationsView = memo(() => {
@@ -151,7 +152,10 @@ const RecentConversationsView = memo(() => {
                     <Calendar03Icon width={15} height={15} className="mx-1" />
                   }
                 >
-                  {new Date(conversation.updated_at).toLocaleDateString()}
+                  {new Date(conversation.updated_at).toLocaleDateString(
+                    "en-US",
+                    { timeZone: getBrowserTimezone() },
+                  )}
                 </Chip>
 
                 {conversation.is_system_generated && (

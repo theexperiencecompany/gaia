@@ -151,7 +151,9 @@ export {
   type ToolCallEntry,
 } from "@shared/chat";
 
-export const TOOL_REGISTRY = {
+// Not exported: nothing outside this module reads the runtime value — the
+// public surface is the types derived from it below.
+const TOOL_REGISTRY = {
   search_results: null as unknown as SearchResults,
   deep_research_results: null as unknown as DeepResearchResults,
   weather_data: null as unknown as WeatherData,
@@ -211,11 +213,7 @@ type ToolsMessageSchema = {
 export const TOOLS_MESSAGE_SCHEMA: ToolsMessageSchema = {
   tool_data: undefined,
 };
-export type ToolsMessageKey = keyof ToolsMessageSchema;
 export type ToolsMessageData = ToolsMessageSchema;
-export const TOOLS_MESSAGE_KEYS = Object.keys(
-  TOOLS_MESSAGE_SCHEMA,
-) as ToolsMessageKey[];
 
 // Tools that should merge multiple calls into one component
 // Add any tool name here - its data will be accumulated into an array

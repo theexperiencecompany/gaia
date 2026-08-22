@@ -16,6 +16,7 @@ import { FIELD_NAMES } from "../constants";
 import { useConnectPlatform } from "../hooks/useConnectPlatform";
 import type { UseOnboardingChatReturn } from "../hooks/useOnboardingChat";
 import type { Action, OnboardingState } from "../state/types";
+import type { PersonalizationData } from "../types/websocket";
 import { CompletedStageAccordion } from "./CompletedStageAccordion";
 import { OnboardingPlatformConnect } from "./OnboardingPlatformConnect";
 import { OnboardingTodoCards } from "./OnboardingTodoCards";
@@ -29,6 +30,9 @@ interface CompletedStagesTimelineProps {
   chat: UseOnboardingChatReturn;
 }
 
+/** Stable empty fallback so the `todos` memo dependency keeps its identity across renders. */
+const NO_TODOS: NonNullable<PersonalizationData["onboarding_todos"]> = [];
+
 export function CompletedStagesTimeline({
   state,
   dispatch,
@@ -36,7 +40,7 @@ export function CompletedStagesTimeline({
 }: CompletedStagesTimelineProps) {
   const { connect, skip } = useConnectPlatform(dispatch);
   const writingStyle = state.server?.writing_style;
-  const todos = state.server?.onboarding_todos ?? [];
+  const todos = state.server?.onboarding_todos ?? NO_TODOS;
   const workflows = state.server?.suggested_workflows ?? [];
 
   const showWriting = state.ackedWritingStyle && !!writingStyle?.style_summary;

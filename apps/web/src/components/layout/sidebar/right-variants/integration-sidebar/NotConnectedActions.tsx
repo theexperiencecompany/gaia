@@ -6,18 +6,32 @@ import { ConnectIcon, RedoIcon, RemoveCircleIcon } from "@icons";
 
 import { RaisedButton } from "@/components/ui/raised-button";
 
-interface NotConnectedActionsProps {
+/** The primary connect/retry action. */
+interface ConnectAction {
+  /** Status "created" integrations retry instead of connecting fresh. */
   showRetry: boolean;
-  showDeleteButton: boolean;
-  hasDisconnect: boolean;
-  isConnecting: boolean;
-  isDeleting: boolean;
-  isDisconnecting: boolean;
-  deleteButtonText: string;
-  disconnectLabel: string;
+  isPending: boolean;
   onConnect: () => void;
+}
+
+/**
+ * The remove action; presence decides whether the actions collapse into a
+ * single connect/retry button or a button group with a remove action.
+ */
+interface RemoveAction {
+  /** "delete" removes a custom integration; "disconnect" revokes access. */
+  kind: "delete" | "disconnect";
+  deleteText: string;
+  labelText: string;
+  isDeletePending: boolean;
+  isDisconnectPending: boolean;
   onDelete: () => void;
   onDisconnect: () => void;
+}
+
+interface NotConnectedActionsProps {
+  connect: ConnectAction;
+  remove?: RemoveAction | null;
 }
 
 /**
@@ -25,49 +39,33 @@ interface NotConnectedActionsProps {
  * action when available, otherwise a single Connect/Retry button.
  */
 export function NotConnectedActions({
-  showRetry,
-  showDeleteButton,
-  hasDisconnect,
-  isConnecting,
-  isDeleting,
-  isDisconnecting,
-  deleteButtonText,
-  disconnectLabel,
-  onConnect,
-  onDelete,
-  onDisconnect,
+  connect,
+  remove = null,
 }: NotConnectedActionsProps) {
-  let connectButtonContent: React.ReactNode;
-  if (isConnecting) {
-    connectButtonContent = (
-      <>
-        <Spinner size="sm" color="default" />
-        Connecting...
-      </>
-    );
-  } else if (showRetry) {
-    connectButtonContent = (
-      <>
-        <RedoIcon width={18} height={18} />
-        Retry
-      </>
-    );
-  } else {
-    connectButtonContent = (
-      <>
-        <ConnectIcon width={18} height={18} />
-        Connect
-      </>
-    );
-  }
+  const connectButtonContent = connect.isPending ? (
+    <>
+      <Spinner size="sm" color="default" />
+      Connecting...
+    </>
+  ) : connect.showRetry ? (
+    <>
+      <RedoIcon width={18} height={18} />
+      Retry
+    </>
+  ) : (
+    <>
+      <ConnectIcon width={18} height={18} />
+      Connect
+    </>
+  );
 
-  if (!showRetry || !(showDeleteButton || hasDisconnect)) {
+  if (!connect.showRetry || !remove) {
     return (
       <RaisedButton
-        color={showRetry ? "#f5a524" : "#00bbff"}
+        color={connect.showRetry ? "#f5a524" : "#00bbff"}
         className="font-medium text-black!"
-        onClick={onConnect}
-        disabled={isConnecting}
+        onClick={connect.onConnect}
+        disabled={connect.isPending}
       >
         {connectButtonContent}
       </RaisedButton>
@@ -79,40 +77,40 @@ export function NotConnectedActions({
       <Button
         className="w-full"
         color="warning"
-        onPress={onConnect}
-        isLoading={isConnecting}
-        isDisabled={isConnecting}
+        onPress={connect.onConnect}
+        isLoading={connect.isPending}
+        isDisabled={connect.isPending}
         startContent={
-          isConnecting ? undefined : <RedoIcon width={18} height={18} />
+          connect.isPending ? undefined : <RedoIcon width={18} height={18} />
         }
       >
         Retry
       </Button>
-      {showDeleteButton ? (
+      {remove.kind === "delete" ? (
         <Button
           className="w-full"
           color="danger"
-          onPress={onDelete}
-          isLoading={isDeleting}
-          isDisabled={isDeleting}
+          onPress={remove.onDelete}
+          isLoading={remove.isDeletePending}
+          isDisabled={remove.isDeletePending}
           startContent={
             <RemoveCircleIcon width={18} height={18} className="outline-0!" />
           }
         >
-          {deleteButtonText}
+          {remove.deleteText}
         </Button>
       ) : (
         <Button
           className="w-full"
           color="danger"
-          onPress={onDisconnect}
-          isLoading={isDisconnecting}
-          isDisabled={isDisconnecting}
+          onPress={remove.onDisconnect}
+          isLoading={remove.isDisconnectPending}
+          isDisabled={remove.isDisconnectPending}
           startContent={
             <RemoveCircleIcon width={18} height={18} className="outline-0!" />
           }
         >
-          {disconnectLabel}
+          {remove.labelText}
         </Button>
       )}
     </ButtonGroup>
