@@ -31,6 +31,7 @@ import { toast } from "@/lib/toast";
 import { syncSingleConversation } from "@/services/syncService";
 import { useChatStore } from "@/stores/chatStore";
 import {
+  useComposerStore,
   useComposerTextActions,
   usePendingPrompt,
 } from "@/stores/composerStore";
@@ -50,6 +51,12 @@ const MainChat = React.memo(function MainChat() {
   const openPricingModal = usePricingModalStore((s) => s.openModal);
   const pendingPrompt = usePendingPrompt();
   const { clearPendingPrompt } = useComposerTextActions();
+  // Once-only guard for the palette's auto-send ask (the chat layout can
+  // remount while the send is in flight — same hazard as workflow auto-send).
+  const autoAskFiredRef = useRef(false);
+  useEffect(() => {
+    if (!pendingPrompt) autoAskFiredRef.current = false;
+  }, [pendingPrompt]);
   const setActiveConversationId = useChatStore(
     (state) => state.setActiveConversationId,
   );
@@ -169,11 +176,25 @@ const MainChat = React.memo(function MainChat() {
   });
 
   useEffect(() => {
-    if (pendingPrompt && appendToInputRef.current) {
+    if (!pendingPrompt) return;
+    // Palette "Ask GAIA" hands over with auto-send: skip the composer and
+    // fire the message directly (once — the layout can remount mid-send).
+    if (useComposerStore.getState().pendingAutoSend) {
+      if (autoAskFiredRef.current) return;
+      autoAskFiredRef.current = true;
+      const prompt = pendingPrompt;
+      clearPendingPrompt();
+      useComposerStore.getState().setPendingAutoSend(false);
+      setTimeout(() => {
+        sendMessage(prompt, { conversationId: null });
+      }, 0);
+      return;
+    }
+    if (appendToInputRef.current) {
       appendToInputRef.current(pendingPrompt);
       clearPendingPrompt();
     }
-  }, [pendingPrompt, clearPendingPrompt, appendToInputRef]);
+  }, [pendingPrompt, clearPendingPrompt, appendToInputRef, sendMessage]);
 
   useEffect(() => {
     const queryParam = new URLSearchParams(window.location.search).get("q");

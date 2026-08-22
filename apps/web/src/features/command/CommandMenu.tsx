@@ -95,7 +95,7 @@ function enterLabel(row?: Row): string {
     case "nav":
       return row.label;
     case "ask":
-      return "Ask GAIA";
+      return row.query.trim() ? "Ask & send" : "Open chat";
     default:
       return "Open";
   }
@@ -304,7 +304,9 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
           close();
           break;
         case "ask":
-          askGaia(row.query);
+          // An empty query just opens a chat; a typed query is the intent —
+          // send it. Shift+Enter prefills instead (handled in keydown).
+          askGaia(row.query, row.query.trim() !== "");
           break;
       }
     },
@@ -330,13 +332,55 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
     [drillItem, activateCategory],
   );
 
-  const handleKeyDown = useCallback(
-    (event: React.KeyboardEvent) => {
-      if (formAction) return; // the inline form input handles its own keys
+  // Escape / Tab / arrows / Shift+Enter — the drill- and level-level keys.
+  const handleNavigationKey = useCallback(
+    (event: React.KeyboardEvent, highlighted: Row | undefined): boolean => {
       const el = inputRef.current;
       const caretAtEnd = !el || el.selectionStart === el.value.length;
       const caretAtStart =
         !el || (el.selectionStart === 0 && el.selectionEnd === 0);
+
+      // Shift+Enter on the ask row prefills the composer instead of sending.
+      if (
+        event.key === "Enter" &&
+        event.shiftKey &&
+        highlighted?.kind === "ask"
+      ) {
+        event.preventDefault();
+        askGaia(highlighted.query, false);
+        return true;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        depth ? back() : close();
+        return true;
+      }
+      if (event.key === "Tab" && canDrill(highlighted)) {
+        event.preventDefault();
+        openSecondary(highlighted);
+        return true;
+      }
+      if (event.key === "ArrowRight" && caretAtEnd && canDrill(highlighted)) {
+        event.preventDefault();
+        openSecondary(highlighted);
+        return true;
+      }
+      const wantsBack =
+        (event.key === "ArrowLeft" && caretAtStart) ||
+        (event.key === "Backspace" && query === "");
+      if (wantsBack && depth) {
+        event.preventDefault();
+        back();
+        return true;
+      }
+      return false;
+    },
+    [askGaia, depth, back, close, openSecondary, query],
+  );
+
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent) => {
+      if (formAction) return; // the inline form input handles its own keys
       const highlighted = flatRows.find((r) => r.id === highlightedId);
 
       const digitRow = resolveDigitRow(event, query, numberedRows);
@@ -345,28 +389,7 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
         activate(digitRow);
         return;
       }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        depth ? back() : close();
-        return;
-      }
-      if (event.key === "Tab" && canDrill(highlighted)) {
-        event.preventDefault();
-        openSecondary(highlighted);
-        return;
-      }
-      if (event.key === "ArrowRight" && caretAtEnd && canDrill(highlighted)) {
-        event.preventDefault();
-        openSecondary(highlighted);
-        return;
-      }
-      const wantsBack =
-        (event.key === "ArrowLeft" && caretAtStart) ||
-        (event.key === "Backspace" && query === "");
-      if (wantsBack && depth) {
-        event.preventDefault();
-        back();
-      }
+      handleNavigationKey(event, highlighted);
     },
     [
       formAction,
@@ -374,11 +397,8 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
       highlightedId,
       query,
       numberedRows,
-      depth,
       activate,
-      openSecondary,
-      back,
-      close,
+      handleNavigationKey,
     ],
   );
 

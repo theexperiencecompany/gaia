@@ -72,7 +72,8 @@ export interface CommandData {
   }) => CommandItem;
   /** Returns null for hits without an id — nothing to navigate to. */
   buildSearchMemory: (mem: MemoryEntry) => CommandItem | null;
-  askGaia: (query: string) => void;
+  /** autoSend: send the query immediately instead of prefilling the composer. */
+  askGaia: (query: string, autoSend?: boolean) => void;
 }
 
 /** Orchestrates live app data into normalized command groups via per-entity builders. */
@@ -447,8 +448,11 @@ export function useCommandData(host: CommandHost): CommandData {
   };
 
   const askGaia = useCallback(
-    (query: string) => {
+    (query: string, autoSend = false) => {
       prepareNewChat();
+      // Auto-send hands the query to ChatPage's send pipeline; prefill mode
+      // drops it in the composer for the user to edit first.
+      useComposerStore.getState().setPendingAutoSend(autoSend);
       useComposerStore.getState().appendToInput(query);
       router.push("/c");
       host.close();
