@@ -46,11 +46,14 @@ jobs:
         id: detect
         run: |
           set -euo pipefail
-          # Deliberate superset (toml/lock/json/yaml include dep manifests):
-          # lanes still self-skip when nothing relevant changed.
+          # Deliberate superset (toml/lock/json/yaml/yml include dep manifests
+          # and workflow files): lanes still self-skip when nothing relevant
+          # changed. yml covers CI/workflow files (.github/workflows/*.yml,
+          # docker compose) — without it a workflow-only PR matches no list
+          # and skips every lane, so changes to CI itself ship unvalidated.
           # No `| head` — closing the pipe early SIGPIPEs the script (exit 141).
-          py_files=$(scripts/ci/changed-files.sh py toml lock)
-          ts_files=$(scripts/ci/changed-files.sh ts tsx js jsx mjs cjs json jsonc css yaml)
+          py_files=$(scripts/ci/changed-files.sh py toml lock yml)
+          ts_files=$(scripts/ci/changed-files.sh ts tsx js jsx mjs cjs json jsonc css yaml yml)
           py=${py_files%%$'\n'*}
           ts=${ts_files%%$'\n'*}
           # The alert-rules lane is path-scoped, not language-scoped: the rules,
@@ -136,21 +139,38 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/setup-node-pnpm
       - name: All workspace packages agree on dep versions (syncpack)
         run: |
+          FILES=$(scripts/ci/changed-files.sh ts tsx js jsx mjs cjs json jsonc css yaml)
+          if [ -z "$FILES" ]; then
+            echo "No changed TypeScript files — skipping."
+            exit 0
+          fi
           echo "::group::syncpack lint"
           pnpm exec syncpack lint --config config/.syncpackrc.json
           echo "::endgroup::"
           echo "syncpack: OK (dep versions and semver ranges consistent)"
       - name: Workspace topology is valid (manypkg)
         run: |
+          FILES=$(scripts/ci/changed-files.sh ts tsx js jsx mjs cjs json jsonc css yaml)
+          if [ -z "$FILES" ]; then
+            echo "No changed TypeScript files — skipping."
+            exit 0
+          fi
           echo "::group::manypkg check"
           pnpm exec manypkg check
           echo "::endgroup::"
           echo "manypkg: OK (workspace structure valid)"
       - name: package.json shape conforms (npm-package-json-lint)
         run: |
+          FILES=$(scripts/ci/changed-files.sh ts tsx js jsx mjs cjs json jsonc css yaml)
+          if [ -z "$FILES" ]; then
+            echo "No changed TypeScript files — skipping."
+            exit 0
+          fi
           echo "::group::package.json lint"
           pnpm run quality:pkg-json
           echo "::endgroup::"
@@ -165,9 +185,16 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/setup-node-pnpm
       - name: Circular dependency scan (Biome)
         run: |
+          FILES=$(scripts/ci/changed-files.sh ts tsx js jsx mjs cjs json jsonc css yaml)
+          if [ -z "$FILES" ]; then
+            echo "No changed TypeScript files — skipping."
+            exit 0
+          fi
           echo "::group::biome lint --only=suspicious/noImportCycles"
           pnpm run quality:circular
           echo "::endgroup::"
@@ -268,6 +295,11 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
       - name: Copy-paste detection (jscpd, fails over 3% on changed lines)
         run: |
+          FILES=$(scripts/ci/changed-files.sh ts tsx js jsx mjs cjs json jsonc css yaml)
+          if [ -z "$FILES" ]; then
+            echo "No changed TypeScript files — skipping."
+            exit 0
+          fi
           trap 'echo "::error::repro: pnpm run quality:dupe"' ERR
           echo "::group::jscpd"
           # Timeout + low-speed guard: a stalled HTTPS fetch dies in <=60s rather
@@ -289,15 +321,27 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/setup-node-pnpm
       - name: publint — validate packages/cli npm metadata
         run: |
+          FILES=$(scripts/ci/changed-files.sh ts tsx js jsx mjs cjs json jsonc css yaml)
+          if [ -z "$FILES" ]; then
+            echo "No changed TypeScript files — skipping."
+            exit 0
+          fi
           echo "::group::publint packages/cli"
           pnpm run quality:publint
           echo "::endgroup::"
           echo "publint: OK (packages/cli npm metadata is valid)"
       - name: are-the-types-wrong — validate type exports
         run: |
+          FILES=$(scripts/ci/changed-files.sh ts tsx js jsx mjs cjs json jsonc css yaml)
+          if [ -z "$FILES" ]; then
+            echo "No changed TypeScript files — skipping."
+            exit 0
+          fi
           echo "::group::attw packages/cli"
           OUTPUT=$(pnpm run quality:attw 2>&1)
           echo "$OUTPUT"
@@ -385,6 +429,11 @@ jobs:
           echo "ruff: OK (strict rule set passes; every file is already formatted)"
       - name: Custom Python AST lints (route contract, no service classes, wide events, repository boundaries)
         run: |
+          FILES=$(scripts/ci/changed-files.sh py toml lock)
+          if [ -z "$FILES" ]; then
+            echo "No changed Python files — skipping."
+            exit 0
+          fi
           echo "::group::custom lints"
           python3 tools/lints/run.py apps/api/app
           echo "::endgroup::"
@@ -394,6 +443,11 @@ jobs:
         # must carry a why-comment beside it — an exemption without a stated
         # reason is a hole, not a decision.
         run: |
+          FILES=$(scripts/ci/changed-files.sh py toml lock)
+          if [ -z "$FILES" ]; then
+            echo "No changed Python files — skipping."
+            exit 0
+          fi
           echo "::group::ignore whys"
           python3 tools/lints/check_ignore_whys.py
           echo "::endgroup::"
@@ -417,6 +471,11 @@ jobs:
           prune-cache: true
       - name: Install api dev + backend dependencies (uv sync)
         run: |
+          FILES=$(scripts/ci/changed-files.sh py toml lock)
+          if [ -z "$FILES" ]; then
+            echo "No changed Python files — skipping."
+            exit 0
+          fi
           echo "::group::uv sync"
           uv sync --project apps/api --group backend --group dev
           echo "::endgroup::"
@@ -581,6 +640,11 @@ jobs:
         # continue-on-error the same way the other lanes' markers were added.
         continue-on-error: true
         run: |
+          FILES=$(scripts/ci/changed-files.sh py toml lock)
+          if [ -z "$FILES" ]; then
+            echo "pip-audit: skipped (no changed Python files)"
+            exit 0
+          fi
           echo "::group::pip-audit dependency scan"
           # pip-audit has no native uv.lock reader, so export the uv workspace's
           # fully resolved + hashed dependency set (apps/api, apps/voice-agent,
@@ -632,6 +696,11 @@ jobs:
       - name: Scanner self-tests
         run: |
           set -euo pipefail
+          FILES=$(scripts/ci/changed-files.sh py toml lock ts tsx js jsx mjs cjs json jsonc css yaml)
+          if [ -z "$FILES" ]; then
+            echo "scanner self-tests: skipped (no changed Python or TypeScript files)"
+            exit 0
+          fi
           uvx --no-build pytest@9.1.1 tools/evlog_map tools/logcheck -q
           echo "scanner self-tests: OK (evlog map rules + log-contract invariants)"
       # --min-score 100 gates BOTH quality and discovery: an empty map scores
@@ -641,6 +710,11 @@ jobs:
       - name: Full observability score — API + voice-agent + bots (details in job summary)
         run: |
           set -euo pipefail
+          FILES=$(scripts/ci/changed-files.sh py toml lock ts tsx js jsx mjs cjs json jsonc css yaml)
+          if [ -z "$FILES" ]; then
+            echo "observability: skipped (no changed Python or TypeScript files)"
+            exit 0
+          fi
           trap 'echo "::error::repro: python3 tools/evlog_map --min-score 100  /  node scripts/ci/evlog-map-bots.mjs --min-score 100"' ERR
           echo "evlog map — python surface (apps/api + apps/voice-agent)"
           python3 tools/evlog_map --github-summary --no-write --min-score 100
@@ -700,6 +774,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/setup-node-pnpm
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
@@ -708,6 +784,11 @@ jobs:
           prune-cache: true
       - name: Emit real events from both runtimes and diff their shapes
         run: |
+          FILES=$(scripts/ci/changed-files.sh py toml lock ts tsx js jsx mjs cjs json jsonc css yaml)
+          if [ -z "$FILES" ]; then
+            echo "No changed Python or TypeScript files — skipping."
+            exit 0
+          fi
           echo "::group::wide-event conformance"
           python3 scripts/ci/wide-event-conformance/run.py --show-capture
           echo "::endgroup::"
@@ -726,6 +807,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/setup-node-pnpm
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
@@ -734,11 +817,21 @@ jobs:
           prune-cache: true
       - name: Install vulture (Python dead-code detector)
         run: |
+          FILES=$(scripts/ci/changed-files.sh py toml lock ts tsx js jsx mjs cjs json jsonc css yaml)
+          if [ -z "$FILES" ]; then
+            echo "No changed Python or TypeScript files — skipping."
+            exit 0
+          fi
           echo "::group::uv tool install vulture@2.16"
           uv tool install vulture@2.16
           echo "::endgroup::"
       - name: knip (TypeScript) + vulture (Python) dead-code scan (strict)
         run: |
+          FILES=$(scripts/ci/changed-files.sh py toml lock ts tsx js jsx mjs cjs json jsonc css yaml)
+          if [ -z "$FILES" ]; then
+            echo "No changed Python or TypeScript files — skipping."
+            exit 0
+          fi
           echo "::group::dead-code scan"
           bash scripts/dead-code-check.sh --strict --verbose
           echo "::endgroup::"
@@ -826,7 +919,9 @@ jobs:
   # inline, at the offending line, WITH a written why — reviewed in the diff,
   # dying with the code. Staleness is hunted by the compilers themselves:
   # mypy's warn_unused_ignores, ruff's RUF100, and biome's suppressions/unused
-  # all fail the build when a suppression no longer masks anything.
+  # all fail the build when a suppression no longer masks anything. Config-file
+  # exemptions have no such compiler — the escape-hatch staleness step below is
+  # their watchdog.
   suppression-hygiene:
     name: "Suppression hygiene (every # noqa / # type: ignore / biome-ignore has a why)"
     needs: [changes]
@@ -835,6 +930,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           version: "0.8.17"
@@ -842,12 +939,37 @@ jobs:
           prune-cache: true
       - name: Fail on any inline suppression without a same-line reason
         run: |
+          FILES=$(scripts/ci/changed-files.sh py toml lock ts tsx js jsx mjs cjs json jsonc css yaml)
+          if [ -z "$FILES" ]; then
+            echo "Suppression hygiene: skipped (no changed Python or TypeScript files)"
+            exit 0
+          fi
           echo "::group::suppression hygiene"
           python3 tools/lints/check_suppressions.py
           echo "::endgroup::"
           echo "Suppression hygiene: OK (all inline suppressions carry a why)"
-      - name: Tool-version pin skew (hooks and CI must agree)
+      - name: Escape-hatch staleness (per-file-ignores entries must still mask a finding)
         run: |
+          FILES=$(scripts/ci/changed-files.sh py toml lock)
+          if [ -z "$FILES" ]; then
+            echo "Escape-hatch staleness: skipped (no changed Python files)"
+            exit 0
+          fi
+          echo "::group::Escape-hatch staleness"
+          python3 tools/lints/check_ignore_staleness.py
+          echo "::endgroup::"
+          echo "Escape-hatch staleness: OK (every per-file-ignores entry still masks a finding)"
+      - name: Tool-version pin skew (hooks and CI must agree)
+        # check_tool_pins reads the WORKFLOW FILES themselves (code-quality.yml,
+        # main.yml) plus .pre-commit-config.yaml / pyproject.toml — so this is
+        # the one step that must NOT drop yml from its scoping: a workflow-only
+        # PR is exactly the change it validates.
+        run: |
+          FILES=$(scripts/ci/changed-files.sh py toml lock ts tsx js jsx mjs cjs json jsonc css yaml yml)
+          if [ -z "$FILES" ]; then
+            echo "Tool pins: skipped (no changed workflow or language files)"
+            exit 0
+          fi
           echo "::group::tool pins"
           python3 tools/lints/check_tool_pins.py
           echo "::endgroup::"
@@ -905,7 +1027,21 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Skip semgrep unless Python files changed
+        id: semgrep-gate
+        run: |
+          FILES=$(scripts/ci/changed-files.sh py toml lock)
+          if [ "$FILES" = "__FULL__" ] || [ -n "$FILES" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: semgrep scan (p/python over apps/api/app)
+        # A workflow-only PR (yml) must not run the whole-directory scan; the
+        # gate preserves the lane's semantics on push (__FULL__ → true).
+        if: steps.semgrep-gate.outputs.run == 'true'
         # docker form: returntocorp/semgrep-action is deprecated upstream; the
         # image has no ENTRYPOINT, so the command must spell `semgrep`.
         #

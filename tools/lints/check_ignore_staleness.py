@@ -41,7 +41,7 @@ WHY = (
     "a per-file-ignores entry that masks nothing is silent rot \u2014 inline noqas "
     "are policed by RUF100; config exemptions are policed here"
 )
-DOC = "tools/lints/README.md#ignore-whys"
+DOC = "tools/lints/README.md#suppression-hygiene"
 
 _HERE = Path(__file__).resolve().parent
 REPO_ROOT = _HERE.parents[1]

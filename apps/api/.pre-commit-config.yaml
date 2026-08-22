@@ -32,7 +32,10 @@ repos:
       - id: outbound-topology-parity
         name: Outbound topology parity (Python <-> TypeScript)
         language: system
-        entry: python3 apps/api/scripts/check_outbound_topology_parity.py
+        # Same pattern as gaia-ignore-whys below: this sub-config's hooks run
+        # with cwd=apps/api, where the repo-relative path does not resolve and
+        # the system python3 (older than 3.10 on macOS) cannot run the tooling.
+        entry: ../../.venv/bin/python ../../apps/api/scripts/check_outbound_topology_parity.py
         files: ^(apps/api/(app/models/chat_models\.py|scripts/check_outbound_topology_parity\.py)|libs/shared/ts/src/bots/consumer/topology\.ts)$
         pass_filenames: false
         priority: 0
@@ -40,7 +43,10 @@ repos:
       - id: gaia-python-lints
         name: GAIA custom Python lints (route contract, service classes, wide events)
         language: system
-        entry: python3 tools/lints/run.py apps/api/app
+        # Same pattern as gaia-ignore-whys below: hooks in this sub-config run
+        # with cwd=apps/api, and the system python3 (3.9 on macOS) crashes
+        # ast.parse on the app's 3.10+ syntax — run on the repo venv instead.
+        entry: ../../.venv/bin/python ../../tools/lints/run.py ../../apps/api/app
         files: ^(apps/api/app/.*\.py|tools/lints/.*\.py)$
         pass_filenames: false
         priority: 0

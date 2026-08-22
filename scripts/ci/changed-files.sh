@@ -7,6 +7,11 @@
 #   e.g. scripts/ci/changed-files.sh ts tsx js jsx json css
 #        scripts/ci/changed-files.sh py
 #
+# Workflow files (.yml) belong ONLY in the code-quality.yml `changes` job's
+# superset detect lists, never in a lane's scoping list: a workflow-only PR
+# must light the lanes up (so CI changes get validated) while every lane
+# self-skips when its own ext list matches nothing.
+#
 # Modes (signalled to callers via a sentinel on the first line of stdout):
 #
 #   PUSH / FULL-SCAN MODE  ($GITHUB_BASE_REF is empty — i.e. not a PR)

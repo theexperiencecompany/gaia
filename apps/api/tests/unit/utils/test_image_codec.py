@@ -110,11 +110,11 @@ class TestDecodeFailuresAreTyped:
         full = _encode("JPEG", size=(3000, 3000), quality=95)  # oversized -> transcodes
         truncated = full[: len(full) // 2]
 
-        with pytest.raises(InvalidImageError):
+        with pytest.raises(InvalidImageError, match="could not be re-encoded"):
             await ImageCodec.from_bytes(truncated)
 
     async def test_non_image_bytes_raise_invalid_image(self) -> None:
-        with pytest.raises(InvalidImageError):
+        with pytest.raises(InvalidImageError, match="not a decodable image"):
             await ImageCodec.from_bytes(b"this is not an image, it is prose")
 
     async def test_empty_bytes_raise_invalid_image(self) -> None:
@@ -122,7 +122,7 @@ class TestDecodeFailuresAreTyped:
             await ImageCodec.from_bytes(b"")
 
     async def test_malformed_base64_raises_invalid_image(self) -> None:
-        with pytest.raises(InvalidImageError):
+        with pytest.raises(InvalidImageError, match="not valid base64"):
             await ImageCodec.from_base64("!!! not base64 !!!")
 
     def test_invalid_image_is_catchable_as_value_error(self) -> None:

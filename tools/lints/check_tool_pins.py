@@ -54,23 +54,46 @@ EXPECTED = {
     "xenon": "0.9.3",
 }
 
-# Where each expectation must literally appear.
+# Where each expectation must literally appear. Values are the module
+# constants naming the surface files, resolved at call time (not import time)
+# so the guard always reads the constants it reports against — and so the
+# tests can monkeypatch them onto fixture files.
 SURFACES = {
-    "ruff": [PRE_COMMIT, CODE_QUALITY],
-    "mypy": [PRE_COMMIT],
-    "bandit": [PRE_COMMIT],
-    "pip-audit": [PRE_COMMIT],
-    "diff-cover": [MAIN],
-    "interrogate": [CODE_QUALITY],
-    "xenon": [CODE_QUALITY],
+    "ruff": ("PRE_COMMIT", "CODE_QUALITY"),
+    "mypy": ("PRE_COMMIT",),
+    "bandit": ("PRE_COMMIT",),
+    "pip-audit": ("PRE_COMMIT",),
+    "diff-cover": ("MAIN",),
+    "interrogate": ("CODE_QUALITY",),
+    "xenon": ("CODE_QUALITY",),
 }
+
+
+def _surface_files(tool: str) -> list[Path]:
+    """The surfaces a tool's pin must appear on, from the current constants."""
+    return [globals()[name] for name in SURFACES[tool]]
+
+
+def _executable_text(text: str) -> str:
+    """The file text with comments removed — prose cannot pin a tool.
+
+    Full-line comments are dropped, and each remaining line is cut at its
+    first ``#`` (a trailing comment). What is left is only executable/config
+    context: the literal lines a pin must be part of. A mention that lives in
+    a comment — full-line or trailing — is not a pin and must never satisfy
+    the guard.
+    """
+    lines = [
+        line.split("#", 1)[0] for line in text.splitlines() if not line.lstrip().startswith("#")
+    ]
+    return "\n".join(lines)
 
 
 def _missing(tool: str, version: str) -> list[Path]:
     """Surfaces missing an explicit pin of tool@version / tool==version."""
     out: list[Path] = []
-    for surface in SURFACES[tool]:
-        text = surface.read_text(encoding="utf-8")
+    for surface in _surface_files(tool):
+        text = _executable_text(surface.read_text(encoding="utf-8"))
         if tool == "ruff":
             # pre-commit expresses this as a rev under the ruff-pre-commit repo
             pat = re.compile(rf"ruff-pre-commit\n\s*rev:\s*v{re.escape(version)}")

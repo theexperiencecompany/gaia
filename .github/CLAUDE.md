@@ -50,7 +50,11 @@ Three layers, from cheap to precise:
 1. **`code-quality.yml` `changes` job** — one no-toolchain job diffs the PR
    and skips whole language lanes (Python lanes on a TS-only PR and vice
    versa). Lanes skipped this way count as PASSING in the gate; a failed
-   `changes` job fails the gate.
+   `changes` job fails the gate. The detect lists are a deliberate superset
+   that includes workflow/config files (yaml/yml/toml/lock/json): a
+   workflow-only (`.yml`) PR lights every lane up so changes to CI itself
+   get validated, but each lane self-skips via its own narrower
+   `changed-files.sh` list — lane lists NEVER include yml.
 2. **`main.yml` `detect` job** — `nx show projects --affected` (via
    `nrwl/nx-set-shas`, base `master`) computes the affected project lists
    that gate build/test jobs and scope their `-p` arguments.

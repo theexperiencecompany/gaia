@@ -5,7 +5,7 @@ for. Plain-Python AST checkers, stdlib only, one file per rule plus a shared
 runner. They run in the `static-python` CI job and the api pre-commit config.
 
 ```bash
-# Run against the API app tree (exits non-zero on any violation):
+# Run against the API app tree (exits non-zero on any violation or crashed rule):
 python3 tools/lints/run.py apps/api/app
 
 # Unit tests:
@@ -228,6 +228,21 @@ This replaces the old count-baseline (``config/suppressions-baseline.json``,
 deleted): counting suppressions was always a proxy for "every suppression is
 justified" — now the real invariant is enforced directly.
 
+### Staleness watchdog (per-file entries)
+
+Inline noqas clean themselves up via RUF100; config exemptions cannot. The
+suppression-hygiene lane therefore also runs:
+
+```bash
+python3 tools/lints/check_ignore_staleness.py
+```
+
+which re-runs every concrete `per-file-ignores` entry's rule against its file
+with only that entry stripped from a temp copy of the config — every other
+setting stays exactly as configured — and fails when an entry masks nothing
+anymore: delete it. Pattern globs are skipped: they are category policy, not
+per-file debt.
+
 ---
 
 ## no-silent-fallback
@@ -257,22 +272,6 @@ is a blanket.
 handler does not shift it and fire a false alarm. It grandfathers ten probe/parse
 sites that predate the rule. Like the `no-service-classes` allowlist it is a
 ratchet — remove an entry when the site is fixed, never add one.
-
-### Staleness watchdog (per-file entries)
-
-Inline noqas clean themselves up via RUF100; config exemptions cannot. The
-suppression-hygiene lane therefore also runs:
-
-```bash
-python3 tools/lints/check_ignore_staleness.py
-```
-
-which re-runs every concrete `per-file-ignores` entry's rule with the
-exemption stripped (`--isolated`) and fails when an entry masks nothing
-anymore — delete it. Pattern globs are skipped: they are category policy, not
-per-file debt.
-
----
 
 ---
 
