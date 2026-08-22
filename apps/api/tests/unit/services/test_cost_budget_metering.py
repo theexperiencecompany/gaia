@@ -256,6 +256,88 @@ class TestTokenOnlyCalls:
 
         assert await get_request_tokens(REQUEST) == 15
 
+    @pytest.mark.regression
+    async def test_cached_input_does_not_count_against_the_request_ceiling(self) -> None:
+        """The ceiling bounds runaway loops, not cache economics.
+
+        A cached prompt prefix rides every model call in a turn nearly free —
+        an ordinary retrieve→bind→act turn re-sends ~30k cached tokens per call
+        and blew the 300k free ceiling (82% of it cache reads) before the agent
+        could deliver its result. Only uncached input counts as work here.
+        """
+        await record_model_call_usage(
+            USER,
+            0.01,
+            REQUEST,
+            input_tokens=1000,
+            output_tokens=100,
+            cached_tokens=900,
+            charge_to_budget=True,
+        )
+        await record_model_call_usage(
+            USER,
+            0.01,
+            REQUEST,
+            input_tokens=1000,
+            output_tokens=100,
+            cached_tokens=1000,  # fully cache-served call moves nothing
+            charge_to_budget=True,
+        )
+
+        assert await get_request_tokens(REQUEST) == 300
+
+    async def test_cached_tokens_exceeding_input_clamp_at_zero_uncached(self) -> None:
+        """Malformed provider usage (cache_read > input) must not make the
+        counter go backwards — output still counts, uncached floors at 0."""
+        await record_model_call_usage(
+            USER,
+            0.01,
+            REQUEST,
+            input_tokens=100,
+            output_tokens=50,
+            cached_tokens=500,
+            charge_to_budget=True,
+        )
+
+        assert await get_request_tokens(REQUEST) == 50
+
+    async def test_a_fully_cache_served_call_with_no_output_moves_nothing(
+        self, rollup: AsyncMock
+    ) -> None:
+        """Nothing fresh entered the tree, so the ceiling sees nothing — but the
+        call was still real work and must keep its durable booking."""
+        await record_model_call_usage(
+            USER,
+            0.01,
+            REQUEST,
+            input_tokens=1000,
+            output_tokens=0,
+            cached_tokens=1000,
+            charge_to_budget=True,
+        )
+
+        assert await get_request_tokens(REQUEST) == 0
+        rollup.assert_awaited_once()
+        assert rollup.await_args.kwargs["cached_tokens"] == 1000
+
+    async def test_an_ordinary_multi_call_turn_stays_well_under_the_ceiling(self) -> None:
+        """The production shape that used to trip the wall: ~10 model calls per
+        turn, each re-sending a ~30k prompt of which ~25k is cached prefix.
+        Raw tokens cross 300k; the work is ~58k."""
+        for _ in range(10):
+            await record_model_call_usage(
+                USER,
+                0.008,
+                REQUEST,
+                input_tokens=30_000,
+                output_tokens=800,
+                cached_tokens=25_000,
+                charge_to_budget=True,
+            )
+
+        # Raw would be 308_000; only the fresh 5_800/call counts here.
+        assert await get_request_tokens(REQUEST) == 58_000
+
     async def test_a_failed_rollup_is_named_in_the_warning(self, rollup: AsyncMock) -> None:
         """Fail-open is only safe if the failure is findable: the operation label
         is what tells you the durable Mongo write dropped rather than the Redis
