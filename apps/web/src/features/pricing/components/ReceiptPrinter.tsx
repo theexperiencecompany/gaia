@@ -4,43 +4,19 @@ import { Spinner } from "@heroui/spinner";
 import { CheckmarkCircle02Icon } from "@icons";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
-import {
-  type ComponentPropsWithoutRef,
-  createContext,
-  type ReactNode,
-  useContext,
-} from "react";
+import { createContext, useContext } from "react";
+import type {
+  ReceiptFeedMotion,
+  ReceiptPrinterHeaderProps,
+  ReceiptPrinterMachineProps,
+  ReceiptPrinterOutputProps,
+  ReceiptPrinterPaperProps,
+  ReceiptPrinterRootProps,
+  ReceiptPrinterScreenProps,
+  ReceiptPrinterStage,
+  ReceiptPrinterStatusProps,
+} from "@/features/pricing/components/receipt-printer.types";
 import { cn } from "@/lib/utils";
-
-export type ReceiptPrinterStage = "processing" | "printing" | "complete";
-export type ReceiptFeedMotion = "smooth" | "stepped";
-
-export type ReceiptPrinterRootProps = Omit<
-  ComponentPropsWithoutRef<"section">,
-  "children"
-> & {
-  /** Disables all stage transitions when false. */
-  animate?: boolean;
-  children: ReactNode;
-  /** Controls whether the paper feeds continuously or one line at a time. */
-  feedMotion?: ReceiptFeedMotion;
-  /** Current state of the printer. */
-  stage: ReceiptPrinterStage;
-};
-
-export type ReceiptPrinterMachineProps = ComponentPropsWithoutRef<"div">;
-export type ReceiptPrinterHeaderProps = ComponentPropsWithoutRef<"div">;
-export type ReceiptPrinterScreenProps = ComponentPropsWithoutRef<"div">;
-export type ReceiptPrinterOutputProps = ComponentPropsWithoutRef<"div">;
-export type ReceiptPrinterPaperProps = ComponentPropsWithoutRef<"article">;
-
-export type ReceiptPrinterStatusProps = Omit<
-  ComponentPropsWithoutRef<"div">,
-  "children"
-> & {
-  /** Custom status content. Defaults to a label derived from the current stage. */
-  children?: ReactNode;
-};
 
 type ReceiptPrinterContextValue = {
   animate: boolean;

@@ -1,22 +1,20 @@
 "use client";
 
 import { useEffect, useReducer } from "react";
-import type { ReceiptPrinterStage } from "@/features/pricing/components/ReceiptPrinter";
+import type { ReceiptPrinterStage } from "@/features/pricing/components/receipt-printer.types";
 
 /**
  * How long the paper feed animation runs before the printer reports
  * "complete". Matches the 1.75s stepped-feed transition plus a beat of
  * settle time so the receipt comes to rest before the check appears.
  */
-export const PRINT_FEED_DURATION_MS = 2_200;
+const PRINT_FEED_DURATION_MS = 2_200;
 
 export type ReceiptStageState = {
   stage: ReceiptPrinterStage;
 };
 
-export type ReceiptStageEvent =
-  | { type: "PAYMENT_CONFIRMED" }
-  | { type: "PRINT_FINISHED" };
+export type ReceiptStageEvent = "payment-confirmed" | "print-finished";
 
 export const initialReceiptStageState: ReceiptStageState = {
   stage: "processing",
@@ -26,11 +24,11 @@ export function receiptStageReducer(
   state: ReceiptStageState,
   event: ReceiptStageEvent,
 ): ReceiptStageState {
-  switch (event.type) {
-    case "PAYMENT_CONFIRMED":
+  switch (event) {
+    case "payment-confirmed":
       // Idempotent: confirmation can only advance processing → printing.
       return state.stage === "processing" ? { stage: "printing" } : state;
-    case "PRINT_FINISHED":
+    case "print-finished":
       return state.stage === "printing" ? { stage: "complete" } : state;
   }
 }
@@ -51,7 +49,7 @@ export function useReceiptPrinterStage(
 
   useEffect(() => {
     if (paymentConfirmed) {
-      dispatch({ type: "PAYMENT_CONFIRMED" });
+      dispatch("payment-confirmed");
     }
   }, [paymentConfirmed]);
 
@@ -61,7 +59,7 @@ export function useReceiptPrinterStage(
     }
 
     const timer = setTimeout(
-      () => dispatch({ type: "PRINT_FINISHED" }),
+      () => dispatch("print-finished"),
       PRINT_FEED_DURATION_MS,
     );
     return () => clearTimeout(timer);

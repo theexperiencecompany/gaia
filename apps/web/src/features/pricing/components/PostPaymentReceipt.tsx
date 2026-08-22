@@ -5,10 +5,8 @@ import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import Image from "next/image";
 import { RaisedButton } from "@/components/ui/raised-button";
-import {
-  ReceiptPrinter,
-  type ReceiptPrinterStage,
-} from "@/features/pricing/components/ReceiptPrinter";
+import { ReceiptPrinter } from "@/features/pricing/components/ReceiptPrinter";
+import type { ReceiptPrinterStage } from "@/features/pricing/components/receipt-printer.types";
 import { CENTS_PER_DOLLAR } from "@/features/pricing/constants";
 
 const easeOut = [0.23, 1, 0.32, 1] as const;
