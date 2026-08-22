@@ -1,4 +1,4 @@
-from pathlib import Path
+import os
 
 import cloudinary
 import cloudinary.exceptions
@@ -47,7 +47,7 @@ def upload_file_to_cloudinary(
         raise HTTPException(status_code=400, detail="public_id is required")
 
     # Validate file path exists if provided
-    if file_path and not Path(file_path).exists():
+    if file_path and not os.path.exists(file_path):  # noqa: PTH110 -- tests patch upload_service.os.path.exists
         log.error("File not found", file_path=file_path)
         raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
 

@@ -22,7 +22,7 @@ from shared.py.wide_events import log
 @with_doc(CREATE_SUPPORT_TICKET)
 async def create_support_ticket(
     config: RunnableConfig,
-    request_type: Annotated[
+    type: Annotated[
         SupportRequestType,
         "Type of support request: 'support' for technical issues/help, 'feature' for enhancement requests",
     ],
@@ -40,7 +40,7 @@ async def create_support_ticket(
 
     Args:
         config: Runtime configuration containing user metadata
-        request_type: Type of support request ("support" or "feature")
+        type: Type of support request ("support" or "feature")
         title: Brief title of the issue or request
         description: Detailed description of the issue or request
 
@@ -68,7 +68,7 @@ async def create_support_ticket(
         if not user_email:
             return "User email is required to create a support ticket."
 
-        ticket_type = SupportRequestType(request_type.lower())
+        ticket_type = SupportRequestType(type.lower())
 
         # Prepare support ticket data for streaming
         support_ticket_data = {
@@ -88,7 +88,7 @@ async def create_support_ticket(
 
         # Return confirmation message
         ticket_type_display = (
-            "feature request" if request_type == SupportRequestType.FEATURE else "support ticket"
+            "feature request" if type == SupportRequestType.FEATURE else "support ticket"
         )
         return f"I've prepared a {ticket_type_display} draft for you to review. Please check the details and click 'Submit Ticket' when you're ready to send it to our support team."
 

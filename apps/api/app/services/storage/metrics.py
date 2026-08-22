@@ -82,7 +82,7 @@ Usage
         return await _go()
 
     # or, when the caller already has a duration:
-    record_fs_op(FsOps.WRITE_SESSION_FILE, duration_ms=4.2, num_bytes=size)
+    record_fs_op(FsOps.WRITE_SESSION_FILE, duration_ms=4.2, bytes=size)
 
 At the end of a `wide_task`, call::
 
@@ -367,7 +367,7 @@ def record_fs_op(
     *,
     duration_ms: float,
     error: BaseException | None = None,
-    num_bytes: int = 0,
+    bytes: int = 0,
     **labels: str,
 ) -> None:
     """Record one completed FS op.
@@ -386,8 +386,8 @@ def record_fs_op(
     stats.count += 1
     stats.total_ms += duration_ms
     stats.max_ms = max(stats.max_ms, duration_ms)
-    if num_bytes:
-        stats.bytes += num_bytes
+    if bytes:
+        stats.bytes += bytes
     if error is not None:
         stats.errors += 1
         stats.last_error_type = type(error).__name__
@@ -402,8 +402,8 @@ def record_fs_op(
         )
         _FS_OP_TOTAL.labels(operation=op, mode=mode, status=status).inc()
         _FS_OP_LAST_SEEN.labels(operation=op).set(time.time())
-        if num_bytes > 0:
-            _FS_OP_BYTES_TOTAL.labels(operation=op).inc(num_bytes)
+        if bytes > 0:
+            _FS_OP_BYTES_TOTAL.labels(operation=op).inc(bytes)
     except Exception as e:  # dashboard surface must not break callers
         log.warning(
             "[metrics] prometheus observe failed",
