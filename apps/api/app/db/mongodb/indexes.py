@@ -61,6 +61,9 @@ async def create_all_indexes() -> None:
             create_e2b_sandbox_indexes(),
             create_hil_approvals_indexes(),
             create_pending_platform_registration_indexes(),
+            create_local_credential_indexes(),
+            create_instance_settings_indexes(),
+            create_provider_credential_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -93,6 +96,9 @@ async def create_all_indexes() -> None:
             "e2b_sandboxes",
             "hil_approvals",
             "pending_platform_registrations",
+            "auth_credentials",
+            "instance_settings",
+            "provider_credentials",
         ]
 
         index_results = {}
@@ -774,6 +780,62 @@ async def _create_index_safe(
         # IndexOptionsConflict (code 85) - index exists with different name
         if "IndexOptionsConflict" in error_str or "'code': 85" in error_str:
             return  # Silently skip - equivalent index already exists
+        raise
+
+
+async def create_local_credential_indexes() -> None:
+    """Create indexes for auth_credentials collection (local auth mode)."""
+    collection = get_async_collection("auth_credentials")
+    try:
+        await asyncio.gather(
+            # One credential per user — session lookups resolve by user_id.
+            _create_index_safe(collection, "user_id", unique=True),
+            # THE registration gate: every credential carries the constant
+            # slot="admin", so this index admits exactly ONE document ever —
+            # concurrent first signups race here and Mongo admits one, instead
+            # of a check-then-create that two requests can both pass.
+            _create_index_safe(collection, "slot", unique=True),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating local credential indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_instance_settings_indexes() -> None:
+    """Create indexes for instance_settings collection."""
+    collection = get_async_collection("instance_settings")
+    try:
+        await asyncio.gather(
+            # Business-key lookup (e.g. key="secrets"); one doc per key.
+            _create_index_safe(collection, "key", unique=True),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating instance settings indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_provider_credential_indexes() -> None:
+    """Create indexes for provider_credentials collection."""
+    collection = get_async_collection("provider_credentials")
+    try:
+        await asyncio.gather(
+            # One credential document per provider; upserts race on this key.
+            _create_index_safe(collection, "provider", unique=True),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating provider credential indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 

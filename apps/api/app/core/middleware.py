@@ -101,8 +101,13 @@ def configure_middleware(app: FastAPI) -> None:
 
     # WorkOS authentication — inside the logging boundary, so its rejections
     # are logged and its log.set()/log.error() calls reach the wide event.
-    workos_client = AsyncWorkOSClient(
-        api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID
+    # The client is built only for AUTH_MODE=workos: local-mode instances have
+    # no WorkOS credentials at all, and constructing the client with empty
+    # strings would defeat the middleware's own lazy guard.
+    workos_client = (
+        AsyncWorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID)
+        if settings.AUTH_MODE == "workos"
+        else None
     )
     app.add_middleware(WorkOSAuthMiddleware, workos_client=workos_client)
 

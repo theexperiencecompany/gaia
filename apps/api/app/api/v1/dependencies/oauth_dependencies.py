@@ -14,6 +14,7 @@ from app.utils.auth_utils import (
     build_user_context,
     resolve_dev_bypass_user,
 )
+from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE, resolve_session_token
 from app.utils.timezone import Timezone, TimezoneSource, resolve_home_timezone
 from shared.py.wide_events import log, spawn_logged_task
 
@@ -141,6 +142,44 @@ async def get_current_user_ws(websocket: WebSocket) -> AuthenticatedUser:
         )
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return {}
+
+    # Local (self-host) mode: authenticate the same session JWT the HTTP
+    # middleware accepts, from the cookie or the Sec-WebSocket-Protocol bearer
+    # fallback mobile clients use. WebSockets never pass through
+    # WorkOSAuthMiddleware, so this mirrors _dispatch_local_session here.
+    if settings.AUTH_MODE == "local":
+        token = websocket.cookies.get(LOCAL_SESSION_COOKIE)
+        if not token:
+            protocol_header = websocket.headers.get("sec-websocket-protocol", "")
+            if protocol_header.startswith("Bearer, "):
+                token = protocol_header[8:]
+
+        if not token:
+            log.info(
+                f"{LogTag.OAUTH} No local session cookie or protocol token in WebSocket request"
+            )
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return {}
+
+        user_id = await resolve_session_token(token)
+        if not user_id:
+            log.warning(f"{LogTag.OAUTH} WebSocket local-session authentication failed")
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return {}
+
+        user_data = await user_repository.get(user_id)
+        if user_data is None:
+            log.warning(
+                f"{LogTag.OAUTH} WebSocket local session resolved to missing user",
+                user_id=user_id,
+            )
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return {}
+
+        return cast(
+            AuthenticatedUser,
+            build_user_context(user_to_legacy_dict(user_data), auth_provider="email"),
+        )
 
     # Extract the session cookie from WebSocket
     wos_session = websocket.cookies.get("wos_session")
