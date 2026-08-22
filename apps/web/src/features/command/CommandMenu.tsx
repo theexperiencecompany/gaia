@@ -12,8 +12,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight } from "@/components/shared/icons";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { PaletteRow } from "./components/PaletteRow";
-import { useChatSearch } from "./data/useChatSearch";
+import {
+  MIN_CHARS,
+  useChatSearch,
+  useMemorySearch,
+} from "./data/useChatSearch";
 import { useCommandData } from "./data/useCommandData";
+import { frecencyScore, useFrecencyStore } from "./frecency";
 import {
   ANIMATION_CONFIG,
   rowEntrance,
@@ -22,8 +27,8 @@ import {
 import {
   buildSections,
   isNumbered,
+  type Level,
   type Row,
-  type View,
 } from "./model/paletteModel";
 import type {
   CommandAction,
@@ -53,11 +58,38 @@ function resolveDigitRow(
 const canDrill = (row?: Row): boolean =>
   !!row && (row.kind === "category" || (row.kind === "item" && row.canDrill));
 
+/**
+ * Client-only analytics for row activation — the server can't see which
+ * palette rows a user runs, so this never double-counts backend events.
+ * Executions (items/actions/ask) fire command:item_executed; item rows
+ * activated while searching additionally count as search:result_clicked.
+ */
+function trackActivation(row: Row, query: string): void {
+  if (row.kind === "item") {
+    // Record the pick so frecency can boost this item in future rankings.
+    useFrecencyStore.getState().record(row.item.id);
+    trackEvent(ANALYTICS_EVENTS.COMMAND_ITEM_EXECUTED, {
+      item_type: row.item.type,
+    });
+    if (query.trim() !== "") {
+      trackEvent(ANALYTICS_EVENTS.SEARCH_RESULT_CLICKED, {
+        result_type: row.item.type,
+      });
+    }
+  } else if (row.kind === "action" || row.kind === "ask") {
+    trackEvent(ANALYTICS_EVENTS.COMMAND_ITEM_EXECUTED, {
+      item_type: "action",
+    });
+  }
+}
+
 /** What Enter will do for the highlighted row, phrased for the footer. */
 function enterLabel(row?: Row): string {
   switch (row?.kind) {
     case "back":
       return "Go back";
+    case "loading":
+      return "Searching…";
     case "category":
       return row.group.items.length === 0 ? "Open" : "Browse";
     case "item":
@@ -67,7 +99,7 @@ function enterLabel(row?: Row): string {
     case "nav":
       return row.label;
     case "ask":
-      return "Ask GAIA";
+      return row.query.trim() ? "Ask & send" : "Open chat";
     default:
       return "Open";
   }
@@ -82,13 +114,15 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
     context,
     buildSearchChat,
     buildSearchMessage,
+    buildSearchMemory,
     askGaia,
   } = useCommandData(host);
   const inputRef = useRef<HTMLInputElement>(null);
   const formInputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const [stack, setStack] = useState<View[]>([]);
-  const [query, setQuery] = useState("");
+  // One entry per drill-down level; each level remembers the query typed in
+  // it, so going back restores what was on screen (not a blank input).
+  const [levels, setLevels] = useState<Level[]>([{ query: "" }]);
   const [highlightedId, setHighlightedId] = useState<string>();
   // Drives the list's entrance slide: +1 when going deeper, -1 when going back.
   const [direction, setDirection] = useState<1 | -1>(1);
@@ -97,17 +131,60 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
   const [formAction, setFormAction] = useState<CommandAction | null>(null);
   const [formValue, setFormValue] = useState("");
 
-  const view = stack.at(-1);
+  const depth = levels.length - 1;
+  const view = levels[depth].view;
+  const query = levels[depth].query;
 
-  const serverResults = useChatSearch(query);
+  /** Update the query of the level currently on screen. */
+  const setQuery = useCallback((q: string) => {
+    setLevels((ls) => {
+      const next = [...ls];
+      next[next.length - 1] = { ...next[next.length - 1], query: q };
+      return next;
+    });
+  }, []);
+
+  const frecencyEntries = useFrecencyStore((s) => s.entries);
+  const boost = useCallback(
+    (item: CommandItem) => frecencyScore(frecencyEntries, item.id) * 3,
+    [frecencyEntries],
+  );
+
+  const { results: serverResults, debounced: chatsDebounced } =
+    useChatSearch(query);
+  const { memories: searchedMemories, debounced: memoriesDebounced } =
+    useMemorySearch(query);
+  // Server rows only render while the results answer the query on screen —
+  // during the debounce window the hooks still hold the previous query's
+  // hits, and the floor score would keep stale rows visible and clickable.
+  const trimmed = query.trim();
+  const chatsFresh = chatsDebounced === trimmed;
+  const memoriesFresh = memoriesDebounced === trimmed;
   const searchChats = useMemo(
-    () => (serverResults?.conversations ?? []).map(buildSearchChat),
-    [serverResults, buildSearchChat],
+    () =>
+      (chatsFresh ? (serverResults?.conversations ?? []) : []).map(
+        buildSearchChat,
+      ),
+    [chatsFresh, serverResults, buildSearchChat],
   );
   const searchMessages = useMemo(
-    () => (serverResults?.messages ?? []).map(buildSearchMessage),
-    [serverResults, buildSearchMessage],
+    () =>
+      (chatsFresh ? (serverResults?.messages ?? []) : []).map(
+        buildSearchMessage,
+      ),
+    [chatsFresh, serverResults, buildSearchMessage],
   );
+  const searchMemories = useMemo(
+    () =>
+      (memoriesFresh ? searchedMemories : [])
+        .map(buildSearchMemory)
+        .filter((item): item is CommandItem => item !== null),
+    [memoriesFresh, searchedMemories, buildSearchMemory],
+  );
+  // Waiting covers both in-flight fetches and the debounce gap itself, but
+  // never for queries too short to ever hit the server.
+  const searchLoading =
+    trimmed.length >= MIN_CHARS && (!chatsFresh || !memoriesFresh);
 
   const sections = useMemo(
     () =>
@@ -119,8 +196,22 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
         context,
         searchChats,
         searchMessages,
+        searchMemories,
+        searchLoading,
+        boost,
       }),
-    [view, query, groups, recent, context, searchChats, searchMessages],
+    [
+      view,
+      query,
+      groups,
+      recent,
+      context,
+      searchChats,
+      searchMessages,
+      searchMemories,
+      searchLoading,
+      boost,
+    ],
   );
 
   const flatRows = useMemo(() => sections.flatMap((s) => s.rows), [sections]);
@@ -158,7 +249,37 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
       listRef.current?.scrollTo({ top: 0 }),
     );
     return () => cancelAnimationFrame(id);
-  }, [query, stack.length]);
+  }, [query, depth]);
+
+  // Scroll shadows: visible only when content extends past a viewport edge.
+  const [scrollShadow, setScrollShadow] = useState({
+    top: false,
+    bottom: false,
+  });
+  const updateScrollShadow = useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const top = el.scrollTop > 4;
+    const bottom = el.scrollTop + el.clientHeight < el.scrollHeight - 4;
+    // Same-value bail: content-driven effects here would otherwise loop
+    // (new object → rerender → effect → new object).
+    setScrollShadow((prev) =>
+      prev.top === top && prev.bottom === bottom ? prev : { top, bottom },
+    );
+  }, []);
+  useEffect(() => {
+    // Content changes (results, level) can add/remove scrollability.
+    updateScrollShadow();
+  }, [flatRows, depth, updateScrollShadow]);
+
+  // Screen-reader announcement once typing settles: how many rows matched.
+  const [resultCount, setResultCount] = useState(0);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setResultCount(query.trim() ? flatRows.filter(isNumbered).length : 0);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [flatRows, query]);
 
   // Mounted only while open: fire the open event, and restore focus on close.
   // The opener is captured by the store's open action — before this mounts and
@@ -170,23 +291,22 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
 
   const drillCategory = useCallback((groupId: string) => {
     setDirection(1);
-    setStack((s) => [...s, { level: "category", groupId }]);
-    setQuery("");
+    setLevels((ls) => [
+      ...ls,
+      { view: { level: "category", groupId }, query: "" },
+    ]);
   }, []);
   const drillItem = useCallback((item: CommandItem) => {
     setDirection(1);
-    setStack((s) => [...s, { level: "item", item }]);
-    setQuery("");
+    setLevels((ls) => [...ls, { view: { level: "item", item }, query: "" }]);
   }, []);
   const back = useCallback(() => {
     setDirection(-1);
-    setStack((s) => s.slice(0, -1));
-    setQuery("");
+    setLevels((ls) => (ls.length > 1 ? ls.slice(0, -1) : ls));
   }, []);
-  const goToDepth = (depth: number) => {
+  const goToDepth = (target: number) => {
     setDirection(-1);
-    setStack((s) => s.slice(0, depth));
-    setQuery("");
+    setLevels((ls) => ls.slice(0, target + 1));
   };
 
   // An empty entity category (e.g. workflows/integrations not yet fetched) has
@@ -214,6 +334,7 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
 
   const activate = useCallback(
     (row: Row) => {
+      trackActivation(row, query);
       switch (row.kind) {
         case "back":
           back();
@@ -232,11 +353,13 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
           close();
           break;
         case "ask":
-          askGaia(row.query);
+          // An empty query just opens a chat; a typed query is the intent —
+          // send it. Shift+Enter prefills instead (handled in keydown).
+          askGaia(row.query, row.query.trim() !== "");
           break;
       }
     },
-    [back, activateCategory, runAction, router, close, askGaia],
+    [back, activateCategory, runAction, router, close, askGaia, query],
   );
 
   const submitForm = useCallback(async () => {
@@ -258,13 +381,55 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
     [drillItem, activateCategory],
   );
 
-  const handleKeyDown = useCallback(
-    (event: React.KeyboardEvent) => {
-      if (formAction) return; // the inline form input handles its own keys
+  // Escape / Tab / arrows / Shift+Enter — the drill- and level-level keys.
+  const handleNavigationKey = useCallback(
+    (event: React.KeyboardEvent, highlighted: Row | undefined): boolean => {
       const el = inputRef.current;
       const caretAtEnd = !el || el.selectionStart === el.value.length;
       const caretAtStart =
         !el || (el.selectionStart === 0 && el.selectionEnd === 0);
+
+      // Shift+Enter on the ask row prefills the composer instead of sending.
+      if (
+        event.key === "Enter" &&
+        event.shiftKey &&
+        highlighted?.kind === "ask"
+      ) {
+        event.preventDefault();
+        askGaia(highlighted.query, false);
+        return true;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        depth ? back() : close();
+        return true;
+      }
+      if (event.key === "Tab" && canDrill(highlighted)) {
+        event.preventDefault();
+        openSecondary(highlighted);
+        return true;
+      }
+      if (event.key === "ArrowRight" && caretAtEnd && canDrill(highlighted)) {
+        event.preventDefault();
+        openSecondary(highlighted);
+        return true;
+      }
+      const wantsBack =
+        (event.key === "ArrowLeft" && caretAtStart) ||
+        (event.key === "Backspace" && query === "");
+      if (wantsBack && depth) {
+        event.preventDefault();
+        back();
+        return true;
+      }
+      return false;
+    },
+    [askGaia, depth, back, close, openSecondary, query],
+  );
+
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent) => {
+      if (formAction) return; // the inline form input handles its own keys
       const highlighted = flatRows.find((r) => r.id === highlightedId);
 
       const digitRow = resolveDigitRow(event, query, numberedRows);
@@ -273,28 +438,7 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
         activate(digitRow);
         return;
       }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        stack.length ? back() : close();
-        return;
-      }
-      if (event.key === "Tab" && canDrill(highlighted)) {
-        event.preventDefault();
-        openSecondary(highlighted);
-        return;
-      }
-      if (event.key === "ArrowRight" && caretAtEnd && canDrill(highlighted)) {
-        event.preventDefault();
-        openSecondary(highlighted);
-        return;
-      }
-      const wantsBack =
-        (event.key === "ArrowLeft" && caretAtStart) ||
-        (event.key === "Backspace" && query === "");
-      if (wantsBack && stack.length) {
-        event.preventDefault();
-        back();
-      }
+      handleNavigationKey(event, highlighted);
     },
     [
       formAction,
@@ -302,22 +446,29 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
       highlightedId,
       query,
       numberedRows,
-      stack,
       activate,
-      openSecondary,
-      back,
-      close,
+      handleNavigationKey,
     ],
   );
 
-  const crumbs = stack.map((v, i) => ({
-    key: v.level === "category" ? `cat:${v.groupId}` : `item:${v.item.id}`,
-    label:
-      v.level === "category"
-        ? (groups.find((g) => g.id === v.groupId)?.heading ?? "")
-        : v.item.title,
-    depth: i + 1,
-  }));
+  const crumbs = levels.slice(1).map((l, i) => {
+    const view = l.view;
+    return {
+      key:
+        view?.level === "category"
+          ? `cat:${view.groupId}`
+          : view?.level === "item"
+            ? `item:${view.item.id}`
+            : `level:${i}`,
+      label:
+        view?.level === "category"
+          ? (groups.find((g) => g.id === view.groupId)?.heading ?? "")
+          : view?.level === "item"
+            ? view.item.title
+            : "",
+      depth: i + 1,
+    };
+  });
 
   const placeholder = view ? "Filter..." : "Search or jump to...";
   const noResults =
@@ -419,53 +570,73 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
           )}
 
           {!formAction && (
-            <Command.List ref={listRef} className={S.list}>
-              <Command.Empty className={S.empty}>
-                No results found.
-              </Command.Empty>
-              {noResults && (
-                <div className="flex flex-col items-center gap-2 py-6 text-zinc-500">
-                  <SearchIcon className="h-6 w-6 text-zinc-600" />
-                  <p className="text-sm">No results for "{query.trim()}"</p>
+            <div className={S.listWrapper}>
+              {/* Scroll shadows — fade in when the list can scroll that way. */}
+              <div
+                aria-hidden
+                className={`${S.scrollShadow} ${scrollShadow.top ? "opacity-100" : "opacity-0"}`}
+              />
+              <div
+                aria-hidden
+                className={`${S.scrollShadow} ${S.scrollShadowBottom} ${scrollShadow.bottom ? "opacity-100" : "opacity-0"}`}
+              />
+              <Command.List
+                ref={listRef}
+                className={S.list}
+                onScroll={updateScrollShadow}
+              >
+                {noResults && (
+                  <div className="flex flex-col items-center gap-2 py-6 text-zinc-500">
+                    <SearchIcon className="h-6 w-6 text-zinc-600" />
+                    <p className="text-sm">No results for "{query.trim()}"</p>
+                  </div>
+                )}
+                {/* Keyed by depth so moving between levels remounts the list and
+                    replays the entrance slide; typing within a level does not. */}
+                <div key={depth}>
+                  {sections.map((section, index) => (
+                    <CommandSection
+                      key={section.id}
+                      heading={section.heading}
+                      showSeparator={index > 0}
+                    >
+                      {section.rows.map((row) => (
+                        <m.div
+                          key={row.id}
+                          {...rowEntrance({
+                            index: rowIndex.get(row.id) ?? 0,
+                            direction,
+                            browsing: query.trim() === "",
+                            reduced,
+                          })}
+                        >
+                          <PaletteRow
+                            row={row}
+                            number={numbered.get(row.id)}
+                            onActivate={() => activate(row)}
+                            onSecondary={() => openSecondary(row)}
+                          />
+                        </m.div>
+                      ))}
+                    </CommandSection>
+                  ))}
                 </div>
-              )}
-              {/* Keyed by depth so moving between levels remounts the list and
-                  replays the entrance slide; typing within a level does not. */}
-              <div key={stack.length}>
-                {sections.map((section, index) => (
-                  <CommandSection
-                    key={section.id}
-                    heading={section.heading}
-                    showSeparator={index > 0}
-                  >
-                    {section.rows.map((row) => (
-                      <m.div
-                        key={row.id}
-                        {...rowEntrance({
-                          index: rowIndex.get(row.id) ?? 0,
-                          direction,
-                          browsing: query.trim() === "",
-                          reduced,
-                        })}
-                      >
-                        <PaletteRow
-                          row={row}
-                          number={numbered.get(row.id)}
-                          onActivate={() => activate(row)}
-                          onSecondary={() => openSecondary(row)}
-                        />
-                      </m.div>
-                    ))}
-                  </CommandSection>
-                ))}
-              </div>
-            </Command.List>
+              </Command.List>
+            </div>
           )}
+
+          {/* Settled result count for screen readers (visually hidden). */}
+          <div role="status" aria-live="polite" className={S.liveRegion}>
+            {query.trim() && resultCount > 0 ? `${resultCount} results` : ""}
+          </div>
 
           <div className={`${S.footer} flex items-center gap-4`}>
             {formAction ? (
               <>
-                <Hint k={<Kbd keys={["enter"]} />} label="Save" />
+                <Hint
+                  k={<Kbd keys={["enter"]} />}
+                  label={formAction.form?.submitLabel ?? "Save"}
+                />
                 <Hint k={<Kbd>esc</Kbd>} label="Cancel" />
               </>
             ) : (
@@ -475,10 +646,7 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
                   label={enterLabel(highlighted)}
                 />
                 {showActionsHint && <Hint k={<Kbd>Tab</Kbd>} label="Actions" />}
-                <Hint
-                  k={<Kbd>esc</Kbd>}
-                  label={stack.length ? "Back" : "Close"}
-                />
+                <Hint k={<Kbd>esc</Kbd>} label={depth ? "Back" : "Close"} />
               </>
             )}
           </div>

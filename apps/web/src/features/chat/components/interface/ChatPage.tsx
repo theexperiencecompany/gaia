@@ -31,6 +31,7 @@ import { toast } from "@/lib/toast";
 import { syncSingleConversation } from "@/services/syncService";
 import { useChatStore } from "@/stores/chatStore";
 import {
+  useComposerStore,
   useComposerTextActions,
   usePendingPrompt,
 } from "@/stores/composerStore";
@@ -50,6 +51,9 @@ const MainChat = React.memo(function MainChat() {
   const openPricingModal = usePricingModalStore((s) => s.openModal);
   const pendingPrompt = usePendingPrompt();
   const { clearPendingPrompt } = useComposerTextActions();
+  // Once-per-prompt guard for the palette's auto-send handoff (reset in the
+  // consumer effect below when the prompt is consumed / cleared).
+  const autoAskFiredRef = useRef(false);
   const setActiveConversationId = useChatStore(
     (state) => state.setActiveConversationId,
   );
@@ -169,11 +173,32 @@ const MainChat = React.memo(function MainChat() {
   });
 
   useEffect(() => {
-    if (pendingPrompt && appendToInputRef.current) {
-      appendToInputRef.current(pendingPrompt);
-      clearPendingPrompt();
+    // Consume each prompt exactly once. StrictMode replays mount effects
+    // against the same state snapshot — without this guard an auto-send
+    // handoff is followed by a second pass reading the stale prompt and
+    // duplicating it into the composer.
+    if (!pendingPrompt) {
+      autoAskFiredRef.current = false;
+      return;
     }
-  }, [pendingPrompt, clearPendingPrompt, appendToInputRef]);
+    if (autoAskFiredRef.current) return;
+    autoAskFiredRef.current = true;
+
+    // Palette "Ask GAIA" hands over with auto-send: skip the composer and
+    // fire the message directly (once — the layout can remount mid-send).
+    if (useComposerStore.getState().pendingAutoSend) {
+      useComposerStore.getState().setPendingAutoSend(false);
+      setTimeout(() => {
+        sendMessage(pendingPrompt, { conversationId: null });
+      }, 0);
+      clearPendingPrompt();
+      return;
+    }
+    if (appendToInputRef.current) {
+      appendToInputRef.current(pendingPrompt);
+    }
+    clearPendingPrompt();
+  }, [pendingPrompt, clearPendingPrompt, appendToInputRef, sendMessage]);
 
   useEffect(() => {
     const queryParam = new URLSearchParams(window.location.search).get("q");

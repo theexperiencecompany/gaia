@@ -1,5 +1,10 @@
-// Visual contract for the command menu — kept identical to the original GAIA
-// Command K so the look is unchanged. Tweak here to restyle the whole palette.
+// Visual contract for the command menu. Tweak here to restyle the whole
+// palette.
+//
+// Motion philosophy (research consensus — Rauno, Linear, Geist): a palette
+// is a hundred-times-a-day surface. It must APPEAR instantly; only the exit
+// fades. The list keeps a directional slide between levels (browsing feels
+// spatial) but stays still while filtering.
 
 const EASE = [0.19, 1, 0.22, 1] as [number, number, number, number];
 
@@ -8,13 +13,18 @@ export const ANIMATION_CONFIG = {
     initial: { opacity: 0 },
     animate: { opacity: 1 },
     exit: { opacity: 0 },
-    transition: { duration: 0.2, ease: EASE },
+    transition: { duration: 0.15, ease: "linear" as const },
   },
   container: {
-    initial: { opacity: 0, scale: 0.95, y: -8 },
-    animate: { opacity: 1, scale: 1, y: 0 },
-    exit: { opacity: 0, scale: 0.95, y: -8 },
-    transition: { duration: 0.2, ease: EASE },
+    initial: { opacity: 0 },
+    animate: { opacity: 1 },
+    exit: { opacity: 0 },
+    // Open is near-instant; exit gets a short fade so dismissal reads.
+    transition: {
+      duration: 0.12,
+      ease: "linear" as const,
+      exit: { duration: 0.15, ease: EASE },
+    },
   },
 } as const;
 
@@ -62,14 +72,22 @@ export const COMMAND_MENU_STYLES = {
     "flex items-center gap-3 border-b border-zinc-800/30 px-5 py-4 mb-2",
   input:
     "flex-1 bg-transparent text-zinc-100 placeholder-zinc-500 outline-none",
-  list: "max-h-[400px] overflow-x-hidden overflow-y-auto pb-3 outline-none!",
-  empty: "flex h-16 items-center justify-center text-sm text-zinc-500",
+  listWrapper: "relative",
+  list: "max-h-[480px] overflow-x-hidden overflow-y-auto pb-3 outline-none!",
+  // Gradient hairlines pinned to the list viewport edges; opacity toggled
+  // from the scroll handler (see updateScrollShadow).
+  scrollShadow:
+    "pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-gradient-to-b from-zinc-950/80 to-transparent transition-opacity duration-150",
+  scrollShadowBottom:
+    "bottom-auto top-auto inset-x-0 bottom-0 bg-gradient-to-t from-zinc-950/80 to-transparent",
   separator: "mx-3 h-px bg-zinc-800/50",
   flexOne: "flex-1",
   contentWrapper: "min-w-0 flex-1",
   resultSubtitle: "truncate text-xs text-zinc-500",
   footer: "border-t border-zinc-800/30 px-5 py-3",
   footerText: "text-xs text-zinc-500",
+  liveRegion:
+    "pointer-events-none absolute h-px w-px overflow-hidden whitespace-nowrap [clip:rect(0,0,0,0)]",
   modalWrapper: "fixed inset-0 z-50 flex items-start justify-center pt-[20vh]",
   groupHeadings:
     "[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pt-5 [&_[cmdk-group-heading]]:pb-2 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-zinc-500",

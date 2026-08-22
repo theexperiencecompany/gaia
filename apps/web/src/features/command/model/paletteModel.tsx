@@ -7,13 +7,21 @@ export type View =
   | { level: "category"; groupId: string }
   | { level: "item"; item: CommandItem };
 
+/** One level of the drill-down stack: what it shows plus the query typed there. */
+export interface Level {
+  /** Undefined at the root level. */
+  view?: View;
+  query: string;
+}
+
 export type Row =
   | { kind: "category"; id: string; group: CommandGroup }
   | { kind: "item"; id: string; item: CommandItem; canDrill: boolean }
   | { kind: "action"; id: string; action: CommandAction }
   | { kind: "nav"; id: string; label: string; icon: ReactNode; path: string }
   | { kind: "ask"; id: string; query: string }
-  | { kind: "back"; id: string };
+  | { kind: "back"; id: string }
+  | { kind: "loading"; id: string };
 
 interface Section {
   id: string;
@@ -23,46 +31,32 @@ interface Section {
 
 /** Rows that never get a number badge (navigation / special affordances). */
 export const isNumbered = (row: Row) =>
-  row.kind !== "nav" && row.kind !== "back" && row.kind !== "ask";
+  row.kind !== "nav" &&
+  row.kind !== "back" &&
+  row.kind !== "ask" &&
+  row.kind !== "loading";
 
-/** Relevance score for ranking search results (0 = no match). */
-function scoreText(q: string, text: string): number {
-  if (!text) return 0;
-  const t = text.toLowerCase();
-  if (t === q) return 100;
-  if (t.startsWith(q)) return 80;
-  if (t.includes(` ${q}`)) return 60;
-  if (t.includes(q)) return 40;
-  let i = 0;
-  for (const char of t) {
-    if (char === q[i]) i++;
-    if (i === q.length) return 20;
-  }
-  return 0;
-}
+import { scoreFields } from "./scorer";
 
-const itemScore = (q: string, item: CommandItem) =>
-  scoreText(q, item.title) * 2 +
-  scoreText(q, item.subtitle ?? "") +
-  scoreText(q, item.keywords ?? "");
+/** Relevance of an item for a query across its title/subtitle/keywords. */
+const itemScore = (query: string, item: CommandItem) =>
+  scoreFields(query, [
+    { text: item.title, weight: 2 },
+    { text: item.subtitle },
+    { text: item.keywords },
+  ]);
+
+/** Relevance of any single string for a query (headings, action labels). */
+const textScore = (query: string, text: string) =>
+  scoreFields(query, [{ text }]);
+
+/** Does a query match at all — used to include/exclude rows while browsing. */
+const matchesText = (query: string, text: string): boolean => {
+  if (!query.trim()) return true;
+  return scoreFields(query, [{ text }]) > 0;
+};
 
 const BACK_ROW: Row = { kind: "back", id: "back" };
-
-function matches(query: string, text: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  const haystack = text.toLowerCase();
-  if (haystack.includes(q)) return true;
-  let i = 0;
-  for (const char of haystack) {
-    if (char === q[i]) i++;
-    if (i === q.length) return true;
-  }
-  return false;
-}
-
-const itemText = (item: CommandItem) =>
-  `${item.title} ${item.subtitle ?? ""} ${item.keywords ?? ""}`;
 
 const toItemRow = (item: CommandItem): Row => ({
   kind: "item",
@@ -89,12 +83,17 @@ interface SectionParams {
   context: { heading: string; item: CommandItem } | null;
   searchChats: CommandItem[];
   searchMessages: CommandItem[];
+  searchMemories: CommandItem[];
+  /** True while a server search/recall request is in flight. */
+  searchLoading: boolean;
+  /** Extra relevance for items the user has picked before (frecency). */
+  boost?: (item: CommandItem) => number;
 }
 
 function itemActionSections(item: CommandItem, query: string): Section[] {
   const rows: Row[] = [BACK_ROW];
   for (const a of item.actions) {
-    if (matches(query, a.label))
+    if (matchesText(query, a.label))
       rows.push({ kind: "action", id: `act:${a.id}`, action: a });
   }
   return [{ id: "actions", rows }];
@@ -102,7 +101,7 @@ function itemActionSections(item: CommandItem, query: string): Section[] {
 
 function categorySections(group: CommandGroup, query: string): Section[] {
   const rows: Row[] = [BACK_ROW];
-  if (group.path && matches(query, `go to ${group.heading}`)) {
+  if (group.path && matchesText(query, `go to ${group.heading}`)) {
     rows.push({
       kind: "nav",
       id: `goto:${group.id}`,
@@ -111,8 +110,19 @@ function categorySections(group: CommandGroup, query: string): Section[] {
       path: group.path,
     });
   }
+  for (const link of group.links ?? []) {
+    if (matchesText(query, link.label))
+      rows.push({
+        kind: "nav",
+        id: `link:${link.label}`,
+        label: link.label,
+        icon: <ArrowUpRight01Icon width={18} height={18} />,
+        path: link.path,
+      });
+  }
   for (const item of group.items) {
-    if (matches(query, itemText(item))) rows.push(toItemRow(item));
+    // Empty query = browsing: show everything unranked.
+    if (!query.trim() || itemScore(query, item) > 0) rows.push(toItemRow(item));
   }
   return [{ id: group.id, rows }];
 }
@@ -127,11 +137,20 @@ function scoredSection(
   id: string,
   heading: string,
   items: CommandItem[],
-  q: string,
+  query: string,
   minScore = 0,
+  boost?: (item: CommandItem) => number,
 ): ScoredSection | null {
   const ranked = items
-    .map((item) => ({ item, score: Math.max(itemScore(q, item), minScore) }))
+    .map((item) => ({
+      item,
+      // Frecency boosts near-equal matches but can't push a row past an
+      // exact/prefix title match.
+      score: Math.min(
+        Math.max(itemScore(query, item), minScore) + (boost?.(item) ?? 0),
+        200,
+      ),
+    }))
     .filter((r) => r.score > 0)
     .sort((a, b) => b.score - a.score);
   if (!ranked.length) return null;
@@ -142,14 +161,14 @@ function scoredSection(
 }
 
 function searchSections(params: SectionParams): Section[] {
-  const { groups, query, searchChats, searchMessages } = params;
-  const q = query.trim().toLowerCase();
+  const { groups, query, searchChats, searchMessages, searchMemories, boost } =
+    params;
   const sections: Section[] = [];
 
   // "Jump to" — categories whose name matches (e.g. "workflows" → Workflows).
   const jump = groups
-    .filter((g) => g.kind === "entity" && scoreText(q, g.heading) > 0)
-    .sort((a, b) => scoreText(q, b.heading) - scoreText(q, a.heading))
+    .filter((g) => g.kind === "entity" && textScore(query, g.heading) > 0)
+    .sort((a, b) => textScore(query, b.heading) - textScore(query, a.heading))
     .map<Row>((g) => ({ kind: "category", id: `cat:${g.id}`, group: g }));
   if (jump.length)
     sections.push({ id: "jump", heading: "Jump to", rows: jump });
@@ -161,30 +180,75 @@ function searchSections(params: SectionParams): Section[] {
   const localChats = chatGroup?.items ?? [];
   const localIds = new Set(localChats.map((i) => i.id));
   const allChats = dedupeById([
-    ...localChats.filter((i) => itemScore(q, i) > 0),
+    ...localChats.filter((i) => itemScore(query, i) > 0),
     ...searchChats.filter((i) => !localIds.has(i.id)),
   ]);
   // Server hits are relevant even if the local scorer can't see the body.
-  const chatSection = scoredSection("chats", "Chats", allChats, q, 30);
+  const chatSection = scoredSection(
+    "chats",
+    "Chats",
+    allChats,
+    query,
+    30,
+    boost,
+  );
   if (chatSection) results.push(chatSection);
 
   const msgSection = scoredSection(
     "messages",
     "Messages",
     dedupeById(searchMessages),
-    q,
+    query,
     30,
+    boost,
   );
   if (msgSection) results.push(msgSection);
 
+  // Semantic memory recall — merged with the local memories list, server
+  // hits deduped against it and floored like the other server facets.
+  const memoryGroup = groups.find((g) => g.id === "memories");
+  const localMemories = memoryGroup?.items ?? [];
+  const localMemoryIds = new Set(localMemories.map((i) => i.id));
+  const allMemories = dedupeById([
+    ...localMemories.filter((i) => itemScore(query, i) > 0),
+    ...searchMemories.filter((i) => !localMemoryIds.has(i.id)),
+  ]);
+  const memSection = scoredSection(
+    "memories",
+    "Memories",
+    allMemories,
+    query,
+    30,
+    boost,
+  );
+  if (memSection) results.push(memSection);
+
   for (const group of groups) {
-    if (group.id === "chats") continue;
-    const scored = scoredSection(group.id, group.heading, group.items, q);
+    // chats + memories have dedicated merged sections above.
+    if (group.id === "chats" || group.id === "memories") continue;
+    const scored = scoredSection(
+      group.id,
+      group.heading,
+      group.items,
+      query,
+      0,
+      boost,
+    );
     if (scored) results.push(scored);
   }
 
   results.sort((a, b) => b.score - a.score);
   sections.push(...results.map((r) => r.section));
+
+  // First fetch of a query: no server rows to show yet — say so instead of
+  // leaving the user wondering whether chats/messages/memories were searched.
+  if (params.searchLoading && results.length === 0) {
+    sections.push({
+      id: "loading",
+      heading: "Searching…",
+      rows: [{ kind: "loading", id: "search-loading" }],
+    });
+  }
 
   // Always offer the AI escape hatch.
   sections.push({ id: "ask", rows: [{ kind: "ask", id: "ask", query }] });

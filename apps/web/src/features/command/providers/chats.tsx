@@ -12,7 +12,6 @@ import {
 } from "@icons";
 import { SystemPurpose } from "@/features/chat/api/chatApi";
 import type { ChatActions } from "@/features/chat/hooks/useChatActions";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { ACTION_ICON, ICON } from "../model/constants";
 import { relativeTime } from "../model/format";
 import type { BuildCtx, CommandAction, CommandItem } from "../model/types";
@@ -131,14 +130,7 @@ export function makeMessageItem(
       id: "open",
       label: "Open conversation",
       icon: <ArrowUpRight01Icon {...ACTION_ICON} />,
-      run: () => {
-        trackEvent(ANALYTICS_EVENTS.SEARCH_RESULT_CLICKED, {
-          result_type: "message",
-          conversation_id: msg.conversation_id,
-          message_id: msg.message_id,
-        });
-        ctx.navigate(`/c/${msg.conversation_id}`)();
-      },
+      run: ctx.navigate(`/c/${msg.conversation_id}`),
     },
     actions: [],
   };
