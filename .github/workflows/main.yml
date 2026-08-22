@@ -152,6 +152,14 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       # Also exports the suite's service env (URLs, ENV, USE_REAL_SERVICES).
+      # Restore the uv venv BEFORE the composite below (its uv sync becomes a
+      # fast no-op against a matching lock). Key is lock-scoped, so one
+      # upload serves every PR until the lock moves.
+      - name: Restore uv venv
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: apps/api/.venv
+          key: uvvenv-${{ runner.os }}-${{ hashFiles('uv.lock','apps/api/pyproject.toml') }}
       # install-node: false — the sharded selection doesn't drive the
       # device-bridge CLI; skipping pnpm saves ~56-75s per shard (measured
       # green in the 6-shard era, 8.6m total vs 13.4m with Node).
@@ -187,6 +195,12 @@ jobs:
         with:
           path: apps/api/.pytest_cache
           key: pytest-split-${{ runner.os }}-${{ hashFiles('apps/api/tests/**/*.py','apps/api/pyproject.toml','uv.lock') }}-${{ matrix.shard }}-${{ github.run_id }}
+      - name: Save uv venv
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: apps/api/.venv
+          key: uvvenv-${{ runner.os }}-${{ hashFiles('uv.lock','apps/api/pyproject.toml') }}
       - name: Upload shard coverage + junit
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -222,6 +236,11 @@ jobs:
           fetch-depth: 0
       # This job merges .coverage files and runs schemathesis/gaia-shared;
       # none of them drive the device-bridge CLI, so skip Node (~56-75s).
+      - name: Restore uv venv
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: apps/api/.venv
+          key: uvvenv-${{ runner.os }}-${{ hashFiles('uv.lock','apps/api/pyproject.toml') }}
       - uses: ./.github/actions/setup-python-test-env
         with:
           install-node: "false"
