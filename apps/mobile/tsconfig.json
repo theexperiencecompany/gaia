@@ -17,8 +17,5 @@
     "expo-env.d.ts",
     "src/uniwind-types.d.ts"
   ],
-  "exclude": [
-    "src/**/*.test.ts",
-    "vitest.config.ts"
-  ]
+  "exclude": ["src/**/*.test.ts", "vitest.config.ts"]
 }
