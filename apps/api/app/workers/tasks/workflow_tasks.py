@@ -215,7 +215,7 @@ async def process_workflow_generation_task(
     except Exception as e:
         # Clear the generating flag on failure too
         try:
-            from app.services.workflow.queue_service import (  # noqa: PLC0415 -- function
+            from app.services.workflow.queue_service import (  # noqa: PLC0415 -- heavy workflow queue loads only when this task runs
                 WorkflowQueueService,
             )
 
@@ -666,7 +666,7 @@ async def execute_workflow_as_chat(
     """
 
     # Avoid circular import
-    from app.agents.core.agent import call_agent_silent  # noqa: PLC0415 -- breaks c
+    from app.agents.core.agent import call_agent_silent  # noqa: PLC0415 -- agent cycle
 
     user_id = user["user_id"]
 

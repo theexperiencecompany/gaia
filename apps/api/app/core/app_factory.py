@@ -32,7 +32,7 @@ from app.core.middleware import configure_middleware
 # lazy-imported on first use, and /metrics omits the fs_op_* metadata lines
 # until the first FS-shaped operation runs.
 # Imported for router-registration side effects.
-from app.services.storage import metrics as _fs_metrics  # noqa: F401 -- imported for
+from app.services.storage import metrics as _fs_metrics  # noqa: F401 -- side effects
 from app.utils.errors import AppError
 from shared.py.wide_events import log as wide_log
 

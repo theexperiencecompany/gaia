@@ -37,7 +37,7 @@ class RedisPoolManager:
                 )
 
                 # Settings load deferred until a pool is actually created.
-                from app.config.settings import (  # noqa: PLC0415 -- Settings load
+                from app.config.settings import (  # noqa: PLC0415 -- settings on demand
                     settings,
                 )
 

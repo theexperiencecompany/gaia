@@ -543,7 +543,7 @@ class WorkflowService:
             # Enrich all workflows with integration fields in one status call.
             # Deferred import: oauth_service → provisioner → service is circular.
             if workflows:
-                from app.services.oauth import oauth_service  # noqa: PLC0415 -- breaks c
+                from app.services.oauth import oauth_service  # noqa: PLC0415 -- oauth
 
                 status_map = await oauth_service.get_all_integrations_status(user_id)
                 for workflow in workflows:

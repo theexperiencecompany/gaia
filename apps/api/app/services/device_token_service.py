@@ -150,7 +150,7 @@ def get_device_token_service() -> DeviceTokenService:
 
     if device_token_service is None:
         # Deferred import: kept inside the lazy singleton so MongoDB connects on first service access
-        from app.db.mongodb.mongodb import init_mongodb  # noqa: PLC0415 -- kept inside
+        from app.db.mongodb.mongodb import init_mongodb  # noqa: PLC0415 -- lazy init
 
         mongodb = init_mongodb()
         device_token_service = DeviceTokenService(mongodb)
