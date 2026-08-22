@@ -1,33 +1,51 @@
-# CI Metrics — Before → After
+# CI Metrics — Before → After (PR #1064)
 
-Measured on 100+ runs (baseline) vs 5 manual runs on `fix/ci-improve-all-14` (heads `8afbe9f`, `802e62c`, `2479afb`).
+Every number below is a real GitHub Actions run, cited by run id. Regenerate the
+charts with `uv run --with matplotlib --no-project python docs/ci-metrics/generate.py`
+after re-measuring (the data lives inline in `generate.py`).
 
-| Metric | Before | After | Saved | % | Method |
-|---|---|---|---|---|---|
-| PR gate (full Python+TS) | 11.5m | 8.2m | 3.3m | -29% | `gh run list` wall median + `4` shards + `.nx/cache` |
-| PR gate (TS only) | 4.9m | 3.0m | 1.9m | -39% | `test-typescript` wall median + `.nx/cache` |
-| Master deploy | 18m | 8.5m | 9.5m | -53% | Docker gha `scope` + `--parallel` + `.nx/cache` |
-| Runners / PR | 30 | 11 | 19 | -63% | Dedupe installs, .nx cache, Docker scope |
-| Cancelled % | 31% | 4% | 27pp | -87% | Coalesce 5 merges → final wins |
-| Docker API warm | 8m | 1.8m | 6.2m | -78% | `type=gha,scope` + `mode=max` |
-| Next warm | 4m | 0.9m | 3.1m | -78% | Key only lock+config (open-next+wrangler) |
-| Billable pnpm | 11.25m | 0.6m | 10.65m | -95% | 15× → 1× via `setup-node-pnpm` composite |
+## PR time-to-green (main.yml wall, the required gate)
 
-Charts:
-- `pr-gate-before-after.png` — PR gate & master deploy wall time
-- `cost-noise.png` — runners & cancelled
-- `build-cache.png` — cold → warm for Docker/Next/pnpm
-- `time-saved-per-issue.png` — stacked per-issue savings (shard, Docker scope, .nx, Next, coalesce, pnpm)
+| Config | Wall | Run |
+|---|---|---|
+| Baseline: 4 shards, Node installed in every python job | 13.4m | 32571454554 |
+| 6 shards, `install-node: false` in shards/coverage | 11.2m | iter 1 |
+| device-bridge in its own Node lane, `cache/restore` split (no post-save re-upload) | 9.1m | iter 3 |
+| Final: + python-static merge, build nx-cache save master-only | **8.9m** | 32600506166 |
+| Final, second sample | 8.4m | 32599901671 |
 
-All numbers conservative, verified via `gh workflow run` on `fix/ci-improve-all-14` and `actionlint`/`yaml.safe_load`. After `2479afb` unified caching, Docker scope and `.nx/cache` save an extra ~0.3m vs previous 6.5m gate.
+![PR gate before after](./pr-gate-before-after.png)
 
+code-quality.yml (parallel, not the gate tail): ~4m → **3m26s–3m38s** (runs
+32600505939, 32599901385) after merging the four uv python lanes into one
+`python-static` job (−3 runners/PR).
 
-## Accurate Wall vs Median (Python & TypeScript) — heads `8afbe9f`/`5536e93` (5 runs median)
+The remaining ~8.5m floor is load-bearing: detect 60s → slowest pytest shard
+~270s (210s of it is pytest itself) → coverage combine + schemathesis ~104s →
+gate. Further cuts are test-suite work, not CI work.
 
-| Lane | Wall Before | Wall After | Saved | Median Before | Median After | Saved |
-|---|---|---|---|---|---|---|
-| Python (Quality Checks) | 11.5m | 8.2m | 3.3m (-29%) | 5.1m | 3.8m | 1.3m (-25%) |
-| TypeScript (Code Quality TS jobs) | 4.9m | 3.0m | 1.9m (-39%) | 2.8m | 1.9m | 0.9m (-32%) |
-| Master deploy | 18m | 8.5m | 9.5m (-53%) | — | — | — |
+## Docker image builds — GHCR registry cache replaces the GHA cache service
 
-Wall = `workflow created_at → updated_at` (includes queue). Median = median `test-python` shard or `test-typescript` job duration. Sharding `3→4` saves `~1.3m` median shard time; `.nx/cache` on `build`/`test-typescript` saves `~0.9m` median TS time. Charts: `wall-time-by-lane.png`, `median-time-by-lane.png`, `pr-gate-accurate.png`.
+The "~450s GHCR push" in earlier notes was mislabeled: buildx logs show the
+actual GHCR image push is 36–40s; the 449s was the `cache-to: type=gha,mode=max`
+export (the GHA cache API writes large layers at ~10MB/s). Moving the layer
+cache to GHCR (`<repo>:buildcache`, `mode=max`, zstd) removes it:
+
+| Job | type=gha (32599902431) | registry cold (32603173594) | registry warm (32604043926) |
+|---|---|---|---|
+| docker-web | 951s (cache export 449s) | 577s (export 95s) | **115s** |
+| docker-release | 740s | 825s | **344s** |
+| docker-grafana | 32–57s | 27s | 37s |
+
+![Docker registry cache](./docker-registry-cache.png)
+
+A real master push lands between cold and warm (dependency layers warm, source
+and build layers rebuild); the 449s export cost is gone in every case.
+
+## Master merge→deploy (estimate until first post-merge run)
+
+Pre-branch success-only master wall: ~21.7m (gate green at ~10.5m, then the
+serial docker + deploy phase). With the phase split, images build in parallel
+with the gate, so the expected wall is gate (~10m) ∥ docker (≤ 825s cold) plus
+the deploy phase (~2–3m) ≈ **13–14m**. The phase wiring has never executed on
+master — verify on the first post-merge run before quoting these numbers.
