@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 import pytest
 
-from app.models.payment_models import PlanType
+from app.schemas.usage import UsageBudget, UsageSummary
 from app.services.analytics_service import AnalyticsEvents
 
 SUMMARY_URL = "/api/v1/usage/summary"
@@ -33,11 +33,7 @@ def _noop_analytics():
 
 
 # Patch targets
-_PAYMENT_SERVICE = (
-    "app.services.payments.payment_service.payment_service.get_user_subscription_status"
-)
-_GET_REALTIME_USAGE = "app.api.v1.endpoints.usage._get_realtime_usage"
-_GET_BUDGET_STATUS = "app.api.v1.endpoints.usage.get_budget_status"
+_BUILD_USAGE_SUMMARY = "app.api.v1.endpoints.usage.build_usage_summary"
 _USAGE_SERVICE = "app.api.v1.endpoints.usage.usage_service"
 
 _MOCK_BUDGET = {
@@ -47,10 +43,15 @@ _MOCK_BUDGET = {
 }
 
 
-def _mock_subscription(plan_type: str = "free") -> MagicMock:
-    sub = MagicMock()
-    sub.plan_type = PlanType(plan_type)
-    return sub
+def _mock_summary(plan_type: str = "free") -> UsageSummary:
+    return UsageSummary(
+        user_id="507f1f77bcf86cd799439011",
+        plan_type=plan_type,
+        primary_feature="chat_messages",
+        features={},
+        budget=UsageBudget.model_validate(_MOCK_BUDGET),
+        last_updated="2025-01-01T00:00:00+00:00",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -62,33 +63,10 @@ class TestGetUsageSummary:
     """Tests for the get usage summary endpoint."""
 
     async def test_get_summary_returns_200(self, client: AsyncClient):
-        mock_sub = _mock_subscription()
-        mock_features: dict = {
-            "chat": {
-                "title": "Chat Messages",
-                "description": "AI chat messages",
-                # Pro's limits ride every feature so a free UI can show the delta.
-                "upgrade": {"day": 0, "month": 60000},
-                "periods": {
-                    "day": {
-                        "used": 5,
-                        "limit": 50,
-                        "percentage": 10.0,
-                        "reset_time": "2025-01-02T00:00:00+00:00",
-                        "remaining": 45,
-                    }
-                },
-            }
-        }
-
-        with (
-            patch(_PAYMENT_SERVICE, new_callable=AsyncMock, return_value=mock_sub),
-            patch(
-                _GET_REALTIME_USAGE,
-                new_callable=AsyncMock,
-                return_value=mock_features,
-            ),
-            patch(_GET_BUDGET_STATUS, new_callable=AsyncMock, return_value=_MOCK_BUDGET),
+        with patch(
+            _BUILD_USAGE_SUMMARY,
+            new_callable=AsyncMock,
+            return_value=_mock_summary(),
         ):
             response = await client.get(SUMMARY_URL)
 
@@ -103,32 +81,12 @@ class TestGetUsageSummary:
         assert "last_updated" in data
 
     async def test_summary_captures_usage_queried(self, client: AsyncClient):
-        mock_sub = _mock_subscription()
-        mock_features: dict = {
-            "chat": {
-                "title": "Chat Messages",
-                "description": "AI chat messages",
-                "upgrade": {"day": 0, "month": 60000},
-                "periods": {
-                    "day": {
-                        "used": 5,
-                        "limit": 50,
-                        "percentage": 10.0,
-                        "reset_time": "2025-01-02T00:00:00+00:00",
-                        "remaining": 45,
-                    }
-                },
-            }
-        }
-
         with (
-            patch(_PAYMENT_SERVICE, new_callable=AsyncMock, return_value=mock_sub),
             patch(
-                _GET_REALTIME_USAGE,
+                _BUILD_USAGE_SUMMARY,
                 new_callable=AsyncMock,
-                return_value=mock_features,
+                return_value=_mock_summary(),
             ),
-            patch(_GET_BUDGET_STATUS, new_callable=AsyncMock, return_value=_MOCK_BUDGET),
             patch(ANALYTICS_PATCH) as mock_capture,
         ):
             response = await client.get(SUMMARY_URL)
@@ -138,12 +96,10 @@ class TestGetUsageSummary:
         assert type(mock_capture.call_args.args[1]["plan_type"]) is str
 
     async def test_get_summary_pro_plan(self, client: AsyncClient):
-        mock_sub = _mock_subscription("pro")
-
-        with (
-            patch(_PAYMENT_SERVICE, new_callable=AsyncMock, return_value=mock_sub),
-            patch(_GET_REALTIME_USAGE, new_callable=AsyncMock, return_value={}),
-            patch(_GET_BUDGET_STATUS, new_callable=AsyncMock, return_value=_MOCK_BUDGET),
+        with patch(
+            _BUILD_USAGE_SUMMARY,
+            new_callable=AsyncMock,
+            return_value=_mock_summary("pro"),
         ):
             response = await client.get(SUMMARY_URL)
 
@@ -153,7 +109,7 @@ class TestGetUsageSummary:
 
     async def test_get_summary_service_error_returns_500(self, client: AsyncClient):
         with patch(
-            _PAYMENT_SERVICE,
+            _BUILD_USAGE_SUMMARY,
             new_callable=AsyncMock,
             side_effect=Exception("Redis down"),
         ):

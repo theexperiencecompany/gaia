@@ -2,39 +2,20 @@
 Usage tracking API endpoints.
 """
 
-import asyncio
-from datetime import UTC, datetime
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
-from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
-from app.config.rate_limits import (
-    FEATURE_LIMITS,
-    PRIMARY_METERED_FEATURE,
-    RateLimitPeriod,
-    get_feature_info,
-    get_limits_for_plan,
-    get_reset_time,
-)
-from app.models.payment_models import PlanType
+from app.config.rate_limits import FEATURE_LIMITS, get_feature_info
 from app.models.usage_models import (
     HistoryFeatureUsage,
     HistoryUsagePeriod,
     UsageHistoryEntry,
 )
-from app.schemas.usage import (
-    FeaturePeriodUsage,
-    FeatureUpgrade,
-    FeatureUsageSummary,
-    UsageActivityResponse,
-    UsageSummary,
-)
+from app.schemas.usage import UsageActivityResponse, UsageSummary
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
-from app.services.cost_budget import get_budget_status
-from app.services.payments.payment_service import payment_service
 from app.services.usage_activity import get_activity
 from app.services.usage_service import UsageService
+from app.services.usage_summary import build_usage_summary
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/usage", tags=["usage"])
@@ -48,34 +29,15 @@ async def get_usage_summary(user_id: str = Depends(get_user_id)) -> UsageSummary
     log.set(operation="get_usage_summary")
 
     try:
-        # Get user subscription
-        subscription = await payment_service.get_user_subscription_status(user_id)
-        user_plan = subscription.plan_type or PlanType.FREE
+        summary = await build_usage_summary(user_id)
 
-        # Both read independent Redis keys — issue them concurrently.
-        features_formatted, budget = await asyncio.gather(
-            _get_realtime_usage(user_id, user_plan),
-            get_budget_status(user_id, user_plan),
-        )
-
-        log.set(period="realtime", result_count=len(features_formatted))
+        log.set(period="realtime", result_count=len(summary.features))
         log.set(outcome="success")
         capture_context_event(
             AnalyticsEvents.USAGE_QUERIED,
-            # plan_type is always a PlanType enum here (subscription.plan_type
-            # defaults to PlanType.FREE) — the hasattr fallback was dead code.
-            {"plan_type": user_plan.value},
+            {"plan_type": summary.plan_type},
         )
-        return UsageSummary(
-            user_id=user_id,
-            plan_type=user_plan.value if hasattr(user_plan, "value") else str(user_plan),
-            # The feature the usage UI leads with (its free wall is the cost
-            # budget) — sourced from config so client and server never drift.
-            primary_feature=PRIMARY_METERED_FEATURE,
-            features=features_formatted,
-            budget=budget,
-            last_updated=datetime.now(UTC).isoformat(),
-        )
+        return summary
     except Exception as e:
         log.error(
             "Error getting usage summary",
@@ -158,44 +120,3 @@ async def get_usage_activity(
             error_type=type(e).__name__,
         )
         raise HTTPException(status_code=500, detail="Failed to get usage activity")
-
-
-async def _get_realtime_usage(user_id: str, user_plan: PlanType) -> dict[str, FeatureUsageSummary]:
-    """Get real-time usage data directly from Redis for all features."""
-    features_formatted: dict[str, FeatureUsageSummary] = {}
-
-    for feature_key in FEATURE_LIMITS:
-        feature_info = get_feature_info(feature_key)
-        pro_limits = get_limits_for_plan(feature_key, PlanType.PRO)
-        periods: dict[str, FeaturePeriodUsage] = {}
-
-        current_limits = get_limits_for_plan(feature_key, user_plan)
-
-        for period in ["day", "month"]:
-            limit = getattr(current_limits, period, 0)
-            if limit > 0:
-                # Get real-time usage from Redis
-                redis_key = tiered_limiter._get_redis_key(
-                    user_id, feature_key, getattr(RateLimitPeriod, period.upper())
-                )
-                current_usage = await tiered_limiter.redis.get(redis_key)
-                current_usage = int(current_usage) if current_usage else 0
-
-                reset_time = get_reset_time(getattr(RateLimitPeriod, period.upper()))
-                periods[period] = FeaturePeriodUsage(
-                    used=current_usage,
-                    limit=limit,
-                    percentage=(current_usage / limit * 100),
-                    reset_time=reset_time.isoformat(),
-                    remaining=max(0, limit - current_usage),
-                )
-
-        features_formatted[feature_key] = FeatureUsageSummary(
-            title=feature_info.title,
-            description=feature_info.description,
-            # Pro tier's limits, so a free user's UI can show the upgrade delta.
-            upgrade=FeatureUpgrade(day=pro_limits.day, month=pro_limits.month),
-            periods=periods,
-        )
-
-    return features_formatted

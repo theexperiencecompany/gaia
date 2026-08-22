@@ -24,12 +24,24 @@ from app.agents.workspace.skill_loader import (
     load_builtin_skills,
 )
 from app.agents.workspace.system_docs import (
+    ACCOUNT_CUSTOM_INSTRUCTIONS_GUIDE_MD,
+    ACCOUNT_GUIDE_MD,
+    ACCOUNT_LINKED_ACCOUNTS_GUIDE_MD,
+    ACCOUNT_NOTIFICATIONS_GUIDE_MD,
+    ACCOUNT_PREFERENCES_GUIDE_MD,
+    ACCOUNT_SUBSCRIPTION_GUIDE_MD,
+    ACCOUNT_USAGE_GUIDE_MD,
+    ACCOUNT_VOICES_GUIDE_MD,
     GAIA_TASKS_GUIDE_MD,
     INDEX_MD,
     INTEGRATIONS_GUIDE_MD,
     MEMORY_GUIDE_MD,
     SESSIONS_GUIDE_MD,
     USER_TODOS_GUIDE_MD,
+)
+from app.constants.account import (
+    ACCOUNT_DIR,
+    ACCOUNT_GUIDES_DIRNAME,
 )
 from app.constants.skills import EXECUTOR_SUBAGENT_ID, SKILL_BODY_FILENAME
 
@@ -50,6 +62,19 @@ _STATIC_DOCS: list[tuple[str, str]] = [
     ("gaia-tasks/GUIDE.md", GAIA_TASKS_GUIDE_MD),
     ("todos/GUIDE.md", USER_TODOS_GUIDE_MD),
     ("memory/GUIDE.md", MEMORY_GUIDE_MD),
+    (f"{ACCOUNT_DIR}/GUIDE.md", ACCOUNT_GUIDE_MD),
+    *(
+        (f"{ACCOUNT_DIR}/{ACCOUNT_GUIDES_DIRNAME}/{name}.md", body)
+        for name, body in [
+            ("subscription", ACCOUNT_SUBSCRIPTION_GUIDE_MD),
+            ("usage", ACCOUNT_USAGE_GUIDE_MD),
+            ("notifications", ACCOUNT_NOTIFICATIONS_GUIDE_MD),
+            ("preferences", ACCOUNT_PREFERENCES_GUIDE_MD),
+            ("custom-instructions", ACCOUNT_CUSTOM_INSTRUCTIONS_GUIDE_MD),
+            ("voices", ACCOUNT_VOICES_GUIDE_MD),
+            ("linked-accounts", ACCOUNT_LINKED_ACCOUNTS_GUIDE_MD),
+        ]
+    ),
 ]
 
 
