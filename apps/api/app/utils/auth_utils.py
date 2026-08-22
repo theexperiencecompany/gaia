@@ -64,6 +64,18 @@ def build_user_context(
         **extra,
     }
     context.pop("_id", None)
+    # Self-host has no hosted onboarding pipeline (Gmail scan, name capture…):
+    # a fresh local admin would otherwise be permanently gated out of chat by
+    # clients keying on ``onboarding.completed``. Synthesize the completed
+    # state read-only, per request — nothing is written back to Mongo, and
+    # AUTH_MODE=workos deployments are byte-for-byte unchanged.
+    if settings.AUTH_MODE == "local":
+        onboarding = context.get("onboarding")
+        if not isinstance(onboarding, dict):
+            onboarding = {}
+        onboarding.setdefault("completed", True)
+        onboarding.setdefault("phase", "completed")
+        context["onboarding"] = onboarding
     # Correct by construction: assembled right above from an already-validated
     # UserDocument plus the auth-path flags. cast(), not isinstance() (item 12) —
     # the spread of `user_data` is what mypy can't follow, not the shape itself.

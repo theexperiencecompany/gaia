@@ -82,6 +82,11 @@ class UserDirectory:
     async def create(self, doc: UserDocument) -> UserDocument:
         await asyncio.sleep(0)
         stored = doc.model_copy(update={"id": str(ObjectId())})
+        # Mirror the real repository: base._insert stamps timestamps on the
+        # persisted document, so consumers see created_at on the returned doc.
+        now = datetime.now(UTC)
+        if stored.created_at is None:
+            stored = stored.model_copy(update={"created_at": now, "updated_at": now})
         self.created.append(stored)
         self.by_email[stored.email] = stored
         return stored
@@ -266,6 +271,7 @@ class TestSignup:
         # Regression: the payload must be JSON-safe — Mongo datetimes used to
         # blow up JSONResponse *after* the rows were committed, so the client
         # saw a 500 for a signup that had actually succeeded.
+        assert "created_at" in body["user"], f"payload keys: {sorted(body['user'])}"
         assert isinstance(body["user"]["created_at"], str)
 
         created = patched_repos.created[0]
