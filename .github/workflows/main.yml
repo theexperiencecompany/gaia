@@ -332,6 +332,11 @@ jobs:
           version: "0.8.17"
           enable-cache: true
           prune-cache: true
+      - name: Restore uv venv
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: apps/api/.venv
+          key: uvvenv-${{ runner.os }}-${{ hashFiles('uv.lock','apps/api/pyproject.toml') }}
       - name: Sync Python dependencies
         shell: bash
         run: uv sync --frozen --package gaia --group backend --group dev
@@ -537,11 +542,14 @@ jobs:
       - test-python
       - test-python-coverage
       - test-typescript
-      - test-fast
       - test-harness-tools
       - trivy-scan
       - regression-proof
       - test-device-bridge
+      # test-fast deliberately absent: it's the same suite selection the
+      # shards already run (hermetic, no services), and as a gating lane it
+      # only added a runner to the queue and a redundant red signal. It still
+      # runs as a non-blocking budget probe (its documented role).
       # static checks + dead-code live in code-quality.yml (its own gate)
       # changelog-sync deliberately excluded (non-blocking, auto-opens fix PRs)
       # coverage is measured inside test-python itself (--cov-fail-under=70 temporary, target 80),
@@ -556,7 +564,6 @@ jobs:
           echo "  build:              ${{ needs.build.result }}"
           echo "  test-python:        ${{ needs.test-python.result }}"
           echo "  test-typescript:    ${{ needs.test-typescript.result }}"
-          echo "  test-fast:          ${{ needs.test-fast.result }}"
           echo "  test-harness-tools: ${{ needs.test-harness-tools.result }}"
           echo "  trivy-scan:         ${{ needs.trivy-scan.result }}"
           echo "  regression-proof:   ${{ needs.regression-proof.result }}"
@@ -569,7 +576,6 @@ jobs:
             echo "| build | ${{ needs.build.result }} |"
             echo "| test-python | ${{ needs.test-python.result }} |"
             echo "| test-python-coverage | ${{ needs.test-python-coverage.result }} |"
-            echo "| test-fast | ${{ needs.test-fast.result }} |"
             echo "| test-typescript | ${{ needs.test-typescript.result }} |"
             echo "| test-harness-tools | ${{ needs.test-harness-tools.result }} |"
             echo "| trivy-scan | ${{ needs.trivy-scan.result }} |"
@@ -581,7 +587,6 @@ jobs:
             "${{ needs.test-python.result }}" \
             "${{ needs.test-python-coverage.result }}" \
             "${{ needs.test-typescript.result }}" \
-            "${{ needs.test-fast.result }}" \
             "${{ needs.test-harness-tools.result }}" \
             "${{ needs.trivy-scan.result }}" \
             "${{ needs.regression-proof.result }}"; do
