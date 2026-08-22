@@ -232,6 +232,36 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
     return () => cancelAnimationFrame(id);
   }, [query, depth]);
 
+  // Scroll shadows: visible only when content extends past a viewport edge.
+  const [scrollShadow, setScrollShadow] = useState({
+    top: false,
+    bottom: false,
+  });
+  const updateScrollShadow = useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const top = el.scrollTop > 4;
+    const bottom = el.scrollTop + el.clientHeight < el.scrollHeight - 4;
+    // Same-value bail: content-driven effects here would otherwise loop
+    // (new object → rerender → effect → new object).
+    setScrollShadow((prev) =>
+      prev.top === top && prev.bottom === bottom ? prev : { top, bottom },
+    );
+  }, []);
+  useEffect(() => {
+    // Content changes (results, level) can add/remove scrollability.
+    updateScrollShadow();
+  }, [flatRows, depth, updateScrollShadow]);
+
+  // Screen-reader announcement once typing settles: how many rows matched.
+  const [resultCount, setResultCount] = useState(0);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setResultCount(query.trim() ? flatRows.filter(isNumbered).length : 0);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [flatRows, query]);
+
   // Mounted only while open: fire the open event, and restore focus on close.
   // The opener is captured by the store's open action — before this mounts and
   // the palette input auto-focuses — so cleanup returns focus to the trigger.
@@ -521,45 +551,65 @@ export default function CommandMenu({ host }: { host: CommandHost }) {
           )}
 
           {!formAction && (
-            <Command.List ref={listRef} className={S.list}>
-              {noResults && (
-                <div className="flex flex-col items-center gap-2 py-6 text-zinc-500">
-                  <SearchIcon className="h-6 w-6 text-zinc-600" />
-                  <p className="text-sm">No results for "{query.trim()}"</p>
+            <div className={S.listWrapper}>
+              {/* Scroll shadows — fade in when the list can scroll that way. */}
+              <div
+                aria-hidden
+                className={`${S.scrollShadow} ${scrollShadow.top ? "opacity-100" : "opacity-0"}`}
+              />
+              <div
+                aria-hidden
+                className={`${S.scrollShadow} ${S.scrollShadowBottom} ${scrollShadow.bottom ? "opacity-100" : "opacity-0"}`}
+              />
+              <Command.List
+                ref={listRef}
+                className={S.list}
+                onScroll={updateScrollShadow}
+              >
+                {noResults && (
+                  <div className="flex flex-col items-center gap-2 py-6 text-zinc-500">
+                    <SearchIcon className="h-6 w-6 text-zinc-600" />
+                    <p className="text-sm">No results for "{query.trim()}"</p>
+                  </div>
+                )}
+                {/* Keyed by depth so moving between levels remounts the list and
+                    replays the entrance slide; typing within a level does not. */}
+                <div key={depth}>
+                  {sections.map((section, index) => (
+                    <CommandSection
+                      key={section.id}
+                      heading={section.heading}
+                      showSeparator={index > 0}
+                    >
+                      {section.rows.map((row) => (
+                        <m.div
+                          key={row.id}
+                          {...rowEntrance({
+                            index: rowIndex.get(row.id) ?? 0,
+                            direction,
+                            browsing: query.trim() === "",
+                            reduced,
+                          })}
+                        >
+                          <PaletteRow
+                            row={row}
+                            number={numbered.get(row.id)}
+                            onActivate={() => activate(row)}
+                            onSecondary={() => openSecondary(row)}
+                          />
+                        </m.div>
+                      ))}
+                    </CommandSection>
+                  ))}
                 </div>
-              )}
-              {/* Keyed by depth so moving between levels remounts the list and
-                  replays the entrance slide; typing within a level does not. */}
-              <div key={depth}>
-                {sections.map((section, index) => (
-                  <CommandSection
-                    key={section.id}
-                    heading={section.heading}
-                    showSeparator={index > 0}
-                  >
-                    {section.rows.map((row) => (
-                      <m.div
-                        key={row.id}
-                        {...rowEntrance({
-                          index: rowIndex.get(row.id) ?? 0,
-                          direction,
-                          browsing: query.trim() === "",
-                          reduced,
-                        })}
-                      >
-                        <PaletteRow
-                          row={row}
-                          number={numbered.get(row.id)}
-                          onActivate={() => activate(row)}
-                          onSecondary={() => openSecondary(row)}
-                        />
-                      </m.div>
-                    ))}
-                  </CommandSection>
-                ))}
-              </div>
-            </Command.List>
+              </Command.List>
+            </div>
           )}
+
+          {/* Settled result count for screen readers (visually hidden). */}
+          <div role="status" aria-live="polite" className={S.liveRegion}>
+            {query.trim() && resultCount > 0 ? `${resultCount} results` : ""}
+          </div>
 
           <div className={`${S.footer} flex items-center gap-4`}>
             {formAction ? (

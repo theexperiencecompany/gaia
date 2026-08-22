@@ -413,39 +413,51 @@ export function useCommandData(host: CommandHost): CommandData {
     return null;
   }, [groups, pathname, searchParams]);
 
-  const buildSearchChat = (result: SearchConversationResult): CommandItem =>
-    chats.byConv.get(result.conversation_id) ??
-    makeChatItem(
-      { conversation_id: result.conversation_id, title: result.description },
-      ctx,
-      chatActions,
-      false,
-    );
+  // Stable identities: these feed useMemo/useEffect deps in CommandMenu —
+  // recreated-per-render callbacks would invalidate its memoization on every
+  // render.
+  const buildSearchChat = useCallback(
+    (result: SearchConversationResult): CommandItem =>
+      chats.byConv.get(result.conversation_id) ??
+      makeChatItem(
+        { conversation_id: result.conversation_id, title: result.description },
+        ctx,
+        chatActions,
+        false,
+      ),
+    [chats.byConv, ctx, chatActions],
+  );
 
-  const buildSearchMessage = (result: {
-    conversation_id: string;
-    message: { message_id: string };
-    snippet: string;
-  }): CommandItem =>
-    makeMessageItem(
-      {
-        conversation_id: result.conversation_id,
-        message_id: result.message.message_id,
-        snippet: result.snippet,
-      },
-      ctx,
-    );
+  const buildSearchMessage = useCallback(
+    (result: {
+      conversation_id: string;
+      message: { message_id: string };
+      snippet: string;
+    }): CommandItem =>
+      makeMessageItem(
+        {
+          conversation_id: result.conversation_id,
+          message_id: result.message.message_id,
+          snippet: result.snippet,
+        },
+        ctx,
+      ),
+    [ctx],
+  );
 
   /** Semantic memory hit — open-only row (no list position to refresh). */
-  const buildSearchMemory = (mem: MemoryEntry): CommandItem | null => {
-    if (!mem.id) return null;
-    return makeMemoryItem(
-      { ...mem, id: mem.id },
-      ctx,
-      { refetch: refetchMemories },
-      false,
-    );
-  };
+  const buildSearchMemory = useCallback(
+    (mem: MemoryEntry): CommandItem | null => {
+      if (!mem.id) return null;
+      return makeMemoryItem(
+        { ...mem, id: mem.id },
+        ctx,
+        { refetch: refetchMemories },
+        false,
+      );
+    },
+    [ctx, refetchMemories],
+  );
 
   const askGaia = useCallback(
     (query: string, autoSend = false) => {
