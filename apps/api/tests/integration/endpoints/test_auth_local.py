@@ -263,6 +263,10 @@ class TestSignup:
         body = response.json()
         assert body["user"]["email"] == "admin@gaia.dev"
         assert body["user"]["auth_provider"] == "email"
+        # Regression: the payload must be JSON-safe — Mongo datetimes used to
+        # blow up JSONResponse *after* the rows were committed, so the client
+        # saw a 500 for a signup that had actually succeeded.
+        assert isinstance(body["user"]["created_at"], str)
 
         created = patched_repos.created[0]
         assert created.email == "admin@gaia.dev"

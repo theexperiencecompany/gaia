@@ -6,7 +6,8 @@ A self-host instance has exactly one administrator: the first signup creates
 it, every later signup is refused with ``registration_closed``.
 """
 
-from typing import Never
+from datetime import datetime
+from typing import Never, cast
 
 import bcrypt
 from fastapi import APIRouter, HTTPException, Request
@@ -81,8 +82,26 @@ def _clear_session_cookie(response: JSONResponse) -> None:
 
 def _user_payload(user: UserDocument) -> dict[str, object]:
     """Same shape the local middleware stores on ``request.state.user``, so a
-    client sees one identity shape from signup, login and ``GET /me``."""
-    return dict(build_user_context(user_to_legacy_dict(user), auth_provider="email"))
+    client sees one identity shape from signup, login and ``GET /me``.
+
+    JSON-safe on purpose: the legacy dict carries Mongo datetimes (created_at
+    etc.) that ``JSONResponse`` cannot encode — isoformat strings keep the
+    same information in the browser-facing payload.
+    """
+
+    def _jsonable(value: object) -> object:
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if isinstance(value, dict):
+            return {k: _jsonable(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [_jsonable(v) for v in value]
+        return value
+
+    return cast(
+        "dict[str, object]",
+        _jsonable(dict(build_user_context(user_to_legacy_dict(user), auth_provider="email"))),
+    )
 
 
 def _registration_closed(email: str) -> Never:
