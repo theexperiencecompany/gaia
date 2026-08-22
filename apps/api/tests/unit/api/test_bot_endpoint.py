@@ -875,6 +875,50 @@ class TestBotChatStreamBody:
         assert '"done": true' in body
         assert '"conversation_id": "conv-1"' in body
 
+    async def test_a_rate_limit_card_reaches_the_bot_as_a_notice_for_this_user(
+        self, client: AsyncClient
+    ):
+        """The web-only rate-limit card is the one frame the translator must
+        convert, not drop — and it is minted for the RESOLVED user, so the
+        checkout link inside it attributes to their account."""
+
+        async def walled() -> AsyncGenerator[str, None]:
+            yield (
+                'data: {"tool_data": {"tool_name": "rate_limit_data",'
+                ' "data": {"feature": "chat_messages", "current_plan": "free"}}}\n\n'
+            )
+            yield "data: [DONE]\n\n"
+
+        mint = AsyncMock(return_value="upgrade-link-notice")
+        with patch("app.api.v1.endpoints.bot._bot_rate_limit_notice", mint):
+            body = await self._collect(client, walled())
+
+        mint.assert_awaited_once_with(
+            {
+                "tool_data": {
+                    "tool_name": "rate_limit_data",
+                    "data": {"feature": "chat_messages", "current_plan": "free"},
+                }
+            },
+            "uid1",
+        )
+        # The notice rides as its own text frame, blank-padded on both sides.
+        assert '"text": "\\n\\nupgrade-link-notice\\n\\n"' in body
+
+    async def test_a_non_rate_limit_card_yields_no_notice_frame(self, client: AsyncClient):
+        async def other_card() -> AsyncGenerator[str, None]:
+            yield 'data: {"tool_data": {"tool_name": "memory_data", "data": {}}}\n\n'
+            yield "data: [DONE]\n\n"
+
+        mint = AsyncMock(return_value=None)
+        with patch("app.api.v1.endpoints.bot._bot_rate_limit_notice", mint):
+            body = await self._collect(client, other_card())
+
+        mint.assert_awaited_once_with(
+            {"tool_data": {"tool_name": "memory_data", "data": {}}}, "uid1"
+        )
+        assert '"text": "\\n\\n' not in body
+
     async def test_the_session_token_is_the_first_thing_the_bot_receives(self, client: AsyncClient):
         """The bot stores this to authenticate follow-up calls for the turn."""
 
@@ -1185,6 +1229,7 @@ class TestBotRateLimitNotice:
 
     async def test_dodo_failure_degrades_to_the_pricing_page(self) -> None:
         """A marketing link must never cost the user their reply."""
+        log.reset()
         with patch(
             "app.api.v1.endpoints.bot.payment_service.create_pro_checkout",
             AsyncMock(side_effect=RuntimeError("dodo down")),
@@ -1193,6 +1238,16 @@ class TestBotRateLimitNotice:
 
         assert notice is not None
         assert "/pricing)" in notice
+        # The fallback is loud: the wide event carries the full warning, not a
+        # silent degrade.
+        assert log.get()["warnings"] == [
+            {
+                "msg": "[PAYMENT] Could not mint bot upgrade link, falling back to pricing page",
+                "user": {"id": "user_1"},
+                "error_type": "RuntimeError",
+                "error": "dodo down",
+            }
+        ]
 
     async def test_pro_user_gets_no_pitch_and_no_session(self) -> None:
         checkout = AsyncMock()
