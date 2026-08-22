@@ -103,7 +103,7 @@ class TestConnectAccount:
         connection_request.redirect_url = "https://example.com/redirect"
         connection_request.id = "conn123"
 
-        svc.composio.connected_accounts.initiate.return_value = connection_request
+        svc.composio.connected_accounts.link.return_value = connection_request
 
         with (
             patch(
@@ -131,7 +131,7 @@ class TestConnectAccount:
         connection_request.redirect_url = "https://example.com/redirect"
         connection_request.id = "conn123"
 
-        svc.composio.connected_accounts.initiate.return_value = connection_request
+        svc.composio.connected_accounts.link.return_value = connection_request
 
         with (
             patch(
@@ -157,7 +157,7 @@ class TestConnectAccount:
         svc = _make_service()
         config = MagicMock()
         config.auth_config_id = "auth123"
-        svc.composio.connected_accounts.initiate.side_effect = RuntimeError("boom")
+        svc.composio.connected_accounts.link.side_effect = RuntimeError("boom")
 
         with (
             patch(

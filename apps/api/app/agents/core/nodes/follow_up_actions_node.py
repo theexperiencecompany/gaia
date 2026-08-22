@@ -10,6 +10,9 @@ from langgraph.store.base import BaseStore
 from langgraph.types import StreamWriter
 from pydantic import BaseModel, Field
 
+from app.agents.core.integration_capabilities import (
+    get_user_integration_capabilities,
+)
 from app.agents.llm.client import ainvoke_structured
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.general import CALL_EXECUTOR_NAME
@@ -17,9 +20,6 @@ from app.constants.log_tags import LogTag
 from app.models.agent_models import agent_configurable
 from app.models.stream_events import MainResponseCompleteFrame
 from app.override.langgraph_bigtool.utils import State
-from app.services.integrations.user_integrations import (
-    get_user_integration_capabilities,
-)
 from app.templates.docstrings.follow_up_actions_tool_docs import (
     SUGGEST_FOLLOW_UP_ACTIONS,
 )

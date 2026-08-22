@@ -170,6 +170,49 @@ class TestGetMyIntegrations:
         assert item.status == "created"
         assert item.tool_count == 2
 
+    async def test_expired_platform_integration_carries_expired_at(
+        self, mock_deps, mock_redis_cache
+    ):
+        """The UI renders "Disconnected <n> ago" from this — dropping it collapses
+        a connection that broke into one that was never set up."""
+        died = datetime(2026, 8, 15, 9, 0, tzinfo=UTC)
+        mock_deps.user.return_value = UserIntegrationsListResponse(
+            integrations=[
+                _user_integration(
+                    integration_id="github",
+                    status="expired",
+                    expired_at=died,
+                    integration=_integration_response(
+                        integration_id="github", name="GitHub", source="platform"
+                    ),
+                )
+            ]
+        )
+
+        result = await get_my_integrations(USER_ID)
+
+        item = result.integrations[0]
+        assert item.status == "expired"
+        assert item.expired_at == died
+
+    async def test_platform_integration_without_user_record_has_no_expired_at(
+        self, mock_deps, mock_redis_cache
+    ):
+        result = await get_my_integrations(USER_ID)
+
+        assert result.integrations[0].expired_at is None
+
+    async def test_expired_custom_integration_carries_expired_at(self, mock_deps, mock_redis_cache):
+        died = datetime(2026, 8, 15, 9, 0, tzinfo=UTC)
+        mock_deps.user.return_value = UserIntegrationsListResponse(
+            integrations=[_user_integration(status="expired", expired_at=died)]
+        )
+
+        result = await get_my_integrations(USER_ID)
+
+        custom = next(i for i in result.integrations if i.id == "custom-tool")
+        assert custom.expired_at == died
+
     async def test_custom_integration_appended(self, mock_deps, mock_redis_cache):
         mock_deps.user.return_value = UserIntegrationsListResponse(
             integrations=[_user_integration()]

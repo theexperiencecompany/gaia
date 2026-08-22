@@ -813,7 +813,7 @@ async def regenerate_workflow_steps(
     )
 
     # Import here to avoid circular imports
-    from app.services.workflow import WorkflowService
+    from app.services.workflow.service import WorkflowService
 
     # Regenerate steps using the service method (without background queue)
     await WorkflowService.regenerate_workflow_steps(
@@ -842,7 +842,7 @@ async def generate_workflow_steps(ctx: dict[str, Any], workflow_id: str, user_id
     """
     log.set(workflow_id=workflow_id, user_id=user_id)
     # Import here to avoid circular imports
-    from app.services.workflow import WorkflowService
+    from app.services.workflow.service import WorkflowService
 
     # Generate steps using the service method
     await WorkflowService._generate_workflow_steps(workflow_id, user_id)

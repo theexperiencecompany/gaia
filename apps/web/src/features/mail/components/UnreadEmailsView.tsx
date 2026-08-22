@@ -22,6 +22,8 @@ import type { EmailData, EmailFetchData } from "@/types/features/mailTypes";
 interface UnreadEmailsViewProps {
   emails?: EmailData[];
   isConnected?: boolean;
+  /** Connect/Reconnect/Retry — the verb that matches Gmail's current status. */
+  connectLabel?: string;
   onConnect?: (integrationId: string) => void;
   isFetching?: boolean;
   onLoadMore?: () => void;
@@ -32,6 +34,7 @@ interface UnreadEmailsViewProps {
 const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
   emails = [],
   isConnected = true,
+  connectLabel = "Connect",
   onConnect,
   isFetching = false,
   onLoadMore,
@@ -138,8 +141,8 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
       isConnected={isConnected}
       connectIntegrationId="gmail"
       onConnect={onConnect}
-      connectButtonText="Connect"
-      connectTitle="Connect Your Gmail"
+      connectButtonText={connectLabel}
+      connectTitle={`${connectLabel} Your Gmail`}
       connectDescription="Access and manage your emails"
       connectIcon={<Gmail width={32} height={32} />}
       actions={actions}

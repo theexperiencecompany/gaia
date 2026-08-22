@@ -14,6 +14,7 @@ from app.agents.core.subagents.handoff_tools import (
     index_custom_mcp_as_subagent,
 )
 from app.agents.core.subagents.provider_subagents import SubagentUnavailableError
+from app.db.repositories.user_integrations import user_integration_repository
 from app.models.integration_models import Integration
 from app.models.mcp_config import MCPConfig, SubAgentConfig
 from app.models.subagent_models import Subagent
@@ -66,14 +67,19 @@ def _make_subagent(
 
 
 @contextmanager
-def _ui_graph_run(writer: MagicMock) -> Iterator[None]:
-    """Make the connect prompt believe it is running inside a UI chat turn."""
+def _ui_graph_run(writer: MagicMock, *, expired: bool = False) -> Iterator[None]:
+    """Make the connect prompt believe it is running inside a UI chat turn.
+
+    ``expired`` is the stored connection status the prompt reads to tell a dead
+    grant from one that was never set up.
+    """
     with (
         patch(
             "app.utils.integration_checker.get_config",
             return_value={"configurable": {"source_category": "ui"}},
         ),
         patch("app.utils.integration_checker.get_stream_writer", return_value=writer),
+        patch.object(user_integration_repository, "is_expired", AsyncMock(return_value=expired)),
     ):
         yield
 
@@ -138,6 +144,36 @@ class TestCheckIntegrationConnection:
         assert result is not None
         assert "needs to be connected" in result
         assert _connect_card_ids(mock_writer) == ["gmail"]
+
+    async def test_a_dead_connection_asks_the_user_to_sign_in_again(self):
+        """`check_integration_status` only says "not usable" — the stored record
+        is what stops a died-on-us connection reading as a first-time connect."""
+        mock_writer = MagicMock()
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools.get_subagent_by_id",
+                return_value=_make_subagent("gmail"),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.check_integration_status",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            _ui_graph_run(mock_writer, expired=True),
+        ):
+            result = await check_integration_connection("gmail", "user1")
+
+        assert result is not None
+        assert "EXPIRED" in result
+        assert "sign in again" in result
+        assert "needs to be connected" not in result
+        card = next(
+            call.args[0]["integration_connection_required"]
+            for call in mock_writer.call_args_list
+            if "integration_connection_required" in call.args[0]
+        )
+        assert card["expired"] is True
+        assert card["message"] == "Your Gmail connection expired. Sign in again to keep using it."
 
     async def test_status_check_failure_propagates(self):
         """A failed status check must not be swallowed into "connected"."""
@@ -588,6 +624,7 @@ def _bot_graph_run() -> Iterator[None]:
             return_value={"configurable": {"source_category": "bot"}},
         ),
         patch("app.utils.integration_checker.get_stream_writer", return_value=MagicMock()),
+        patch.object(user_integration_repository, "is_expired", AsyncMock(return_value=False)),
     ):
         yield
 
