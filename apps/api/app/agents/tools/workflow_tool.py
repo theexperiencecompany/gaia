@@ -213,9 +213,9 @@ async def get_workflow(
             return error_response("not_found", f"Workflow {workflow_id} not found")
 
         writer = get_stream_writer()
-        writer({"workflow_data": {"action": "get", "workflow": workflow.model_dump()}})
+        writer({"workflow_data": {"action": "get", "workflow": workflow.model_dump(mode="json")}})
 
-        return success_response(workflow.model_dump())
+        return success_response(workflow.model_dump(mode="json"))
 
     except Exception as e:
         log.error(
@@ -280,7 +280,9 @@ async def pause_workflow(
             return error_response("not_found", f"Workflow {workflow_id} not found")
 
         writer = get_stream_writer()
-        writer({"workflow_data": {"action": "paused", "workflow": workflow.model_dump()}})
+        writer(
+            {"workflow_data": {"action": "paused", "workflow": workflow.model_dump(mode="json")}}
+        )
 
         return success_response(
             {"workflow_id": workflow.id, "title": workflow.title, "activated": workflow.activated}
@@ -319,7 +321,9 @@ async def resume_workflow(
             return error_response("not_found", f"Workflow {workflow_id} not found")
 
         writer = get_stream_writer()
-        writer({"workflow_data": {"action": "resumed", "workflow": workflow.model_dump()}})
+        writer(
+            {"workflow_data": {"action": "resumed", "workflow": workflow.model_dump(mode="json")}}
+        )
 
         return success_response(
             {"workflow_id": workflow.id, "title": workflow.title, "activated": workflow.activated}
