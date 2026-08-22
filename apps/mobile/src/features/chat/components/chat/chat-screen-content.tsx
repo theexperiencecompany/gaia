@@ -197,7 +197,7 @@ export function ChatScreenContent({
     progressToolName,
     flatListRef,
     sendMessage,
-    retryLastMessage,
+    retryMessage,
     cancelStream,
     scrollToBottom,
     refetch,
@@ -502,7 +502,7 @@ export function ChatScreenContent({
           onFollowUpAction={handleFollowUpAction}
           onReply={handleReply}
           onLongPress={handleLongPressMessage}
-          onRetry={retryLastMessage}
+          onRetry={() => retryMessage(message.id)}
           isLoading={isLastMessage && isTyping}
           isLastMessage={isLastMessage}
           loadingMessage={showLoading ? displayMessage : undefined}
@@ -519,7 +519,7 @@ export function ChatScreenContent({
       isTyping,
       progress,
       progressToolName,
-      retryLastMessage,
+      retryMessage,
     ],
   );
 

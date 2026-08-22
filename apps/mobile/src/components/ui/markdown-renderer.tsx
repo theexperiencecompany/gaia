@@ -9,6 +9,18 @@ import {
 } from "react-native";
 import { WebView } from "react-native-webview";
 import {
+  type Block,
+  blockKey,
+  decodeEntities,
+  type InlineSegment,
+  type ListItem,
+  listItemKey,
+  parseBlocks,
+  repairStreamingMarkdown,
+  segmentKey,
+  type TableAlignment,
+} from "@/components/ui/markdown-parser";
+import {
   CodeBlock,
   InlineCode,
 } from "@/features/chat/components/code-block/CodeBlock";
@@ -24,8 +36,6 @@ const COLORS = {
   linkColor: "#00bbff",
 } as const;
 
-// -- Types --------------------------------------------------------------------
-
 export interface MarkdownRendererProps {
   content: string;
   /**
@@ -33,486 +43,6 @@ export interface MarkdownRendererProps {
    * fences/bold/etc.) so literal markers never flash mid-token.
    */
   isStreaming?: boolean;
-}
-
-type InlineSegment =
-  | { type: "text"; text: string }
-  | { type: "bold"; text: string }
-  | { type: "italic"; text: string }
-  | { type: "boldItalic"; text: string }
-  | { type: "code"; text: string }
-  | { type: "link"; text: string; url: string }
-  | { type: "image"; alt: string; url: string }
-  | { type: "strikethrough"; text: string }
-  | { type: "mathInline"; text: string };
-
-interface ListItem {
-  blocks: Block[];
-  task: boolean;
-  checked: boolean;
-}
-
-type TableAlignment = "left" | "center" | "right" | null;
-
-type Block =
-  | { type: "paragraph"; segments: InlineSegment[] }
-  | { type: "heading"; level: number; segments: InlineSegment[] }
-  | { type: "codeBlock"; language: string; code: string }
-  | { type: "blockquote"; segments: InlineSegment[] }
-  | { type: "list"; ordered: boolean; start: number; items: ListItem[] }
-  | { type: "table"; alignments: TableAlignment[]; rows: string[][] }
-  | { type: "hr" }
-  | { type: "mathBlock"; code: string };
-
-// -- Streaming repair ---------------------------------------------------------
-
-/**
- * Patch the most common incomplete-markdown states while tokens are still
- * arriving, so partial output renders as text rather than raw markers
- * (mirrors Streamdown's parseIncompleteMarkdown on web):
- *  - unclosed ``` fence → close it so the half-streamed code renders as a block
- *  - unclosed $$ math fence → close it
- *  - dangling inline emphasis/code markers at end of text → close them
- */
-export function repairStreamingMarkdown(md: string): string {
-  let out = md;
-
-  const fenceCount = (out.match(/^[^\S\n]*```/gm) ?? []).length;
-  if (fenceCount % 2 === 1) out += "\n```";
-
-  const mathFenceCount = (out.match(/^\$\$/gm) ?? []).length;
-  if (mathFenceCount % 2 === 1) out += "\n$$";
-
-  // Close dangling inline markers, longest first, recounting after each append
-  // so an appended marker doesn't skew later parity checks.
-  for (const marker of ["**", "__", "~~"]) {
-    const count = (
-      out.match(new RegExp(marker.replace(/\*/g, "\\*"), "g")) ?? []
-    ).length;
-    if (count % 2 === 1) out += marker;
-  }
-  const backtickCount = (out.match(/`/g) ?? []).length;
-  if (backtickCount % 2 === 1) out += "`";
-  // Single-marker emphasis (* and _): only append when the trailing run looks
-  // like an unclosed opener — a lone marker at the very end of the text.
-  for (const marker of ["*", "_"]) {
-    if (out.endsWith(marker) && !out.endsWith(marker.repeat(2))) {
-      // Count non-doubled occurrences conservatively; appending only when the
-      // text ends with exactly one avoids corrupting valid mid-text emphasis.
-      out += marker;
-    }
-  }
-
-  return out;
-}
-
-// -- Entity decoding ----------------------------------------------------------
-
-const ENTITIES: Record<string, string> = {
-  amp: "&",
-  lt: "<",
-  gt: ">",
-  quot: '"',
-  nbsp: " ",
-  "#39": "'",
-};
-
-function decodeEntities(text: string): string {
-  return text.replace(/&(#39|amp|lt|gt|quot|nbsp);/g, (_, entity: string) => {
-    return ENTITIES[entity] ?? `&${entity};`;
-  });
-}
-
-// -- Inline parsing -----------------------------------------------------------
-
-function segmentFromMatch(match: RegExpExecArray): InlineSegment | null {
-  if (match[1]) return { type: "image", alt: match[2], url: match[3] };
-  if (match[4] && match[5]) {
-    return { type: "link", text: match[4], url: match[5] };
-  }
-  if (match[6] || match[7]) {
-    return { type: "boldItalic", text: match[6] || match[7] };
-  }
-  if (match[8] || match[9]) {
-    return { type: "bold", text: match[8] || match[9] };
-  }
-  if (match[10] || match[11]) {
-    return { type: "italic", text: match[10] || match[11] };
-  }
-  if (match[12]) {
-    return { type: "strikethrough", text: match[12] };
-  }
-  if (match[13]) {
-    return { type: "mathInline", text: match[13] };
-  }
-  if (match[14]) {
-    return { type: "code", text: match[14] };
-  }
-  return null;
-}
-
-// Order matters: image before link; bold-italic before bold before italic;
-// $...$ before backtick.
-const INLINE_REGEX = new RegExp(
-  [
-    /!\[([^\]]*)\]\(([^)]+)\)/.source, // 1-3 image
-    /\[([^\]]+)\]\(([^)]+)\)/.source, // 4-5 link
-    /\*\*\*([\s\S]+?)\*\*\*/.source, // 6 bold-italic ***
-    /___([\s\S]+?)___/.source, // 7 bold-italic ___
-    /\*\*([\s\S]+?)\*\*/.source, // 8 bold **
-    /__([\s\S]+?)__/.source, // 9 bold __
-    /(?<![\w*])\*(?!\s)([^*\n]+?)(?<!\s)\*(?![\w*])/.source, // 10 italic *
-    /(?<![\w_])_(?!\s)([^_\n]+?)(?<!\s)_(?![\w_])/.source, // 11 italic _
-    /~~([\s\S]+?)~~/.source, // 12 strikethrough
-    /\$([^$\n]+?)\$/.source, // 13 math inline
-    /`([^`\n]+)`/.source, // 14 code
-  ].join("|"),
-  "g",
-);
-
-function parseInline(text: string): InlineSegment[] {
-  const segments: InlineSegment[] = [];
-  INLINE_REGEX.lastIndex = 0;
-  let lastIndex = 0;
-  let match = INLINE_REGEX.exec(text);
-
-  while (match !== null) {
-    if (match.index > lastIndex) {
-      segments.push({
-        type: "text",
-        text: decodeEntities(text.slice(lastIndex, match.index)),
-      });
-    }
-
-    const segment = segmentFromMatch(match);
-    if (segment) {
-      segments.push(segment);
-    }
-
-    lastIndex = match.index + match[0].length;
-    match = INLINE_REGEX.exec(text);
-  }
-
-  if (lastIndex < text.length) {
-    segments.push({
-      type: "text",
-      text: decodeEntities(text.slice(lastIndex)),
-    });
-  }
-
-  if (segments.length === 0) {
-    segments.push({ type: "text", text: decodeEntities(text) });
-  }
-
-  return segments;
-}
-
-// -- Block parsing ------------------------------------------------------------
-
-// A single parsing step: an optional block plus the index to resume from.
-// `block === null` means lines were consumed without producing a block.
-type BlockParseResult = { block: Block | null; next: number };
-
-function parseMathBlockLines(
-  lines: string[],
-  start: number,
-): BlockParseResult | null {
-  if (lines[start].trim() !== "$$") return null;
-  const mathLines: string[] = [];
-  let i = start + 1;
-  while (i < lines.length && lines[i].trim() !== "$$") {
-    mathLines.push(lines[i]);
-    i++;
-  }
-  i++; // skip closing $$
-  return { block: { type: "mathBlock", code: mathLines.join("\n") }, next: i };
-}
-
-function parseCodeBlockLines(
-  lines: string[],
-  start: number,
-): BlockParseResult | null {
-  if (!lines[start].trimStart().startsWith("```")) return null;
-  const language = lines[start].trimStart().slice(3).trim();
-  const codeLines: string[] = [];
-  let i = start + 1;
-  while (i < lines.length && !lines[i].trimStart().startsWith("```")) {
-    codeLines.push(lines[i]);
-    i++;
-  }
-  i++; // skip closing ```
-  return {
-    block: { type: "codeBlock", language, code: codeLines.join("\n") },
-    next: i,
-  };
-}
-
-// Captures the first marker and requires every repeat to match it, so mixed
-// sequences like "- * _" stay text (CommonMark only treats a uniform run as a
-// rule). Unambiguous by construction (every \s* is anchored between mandatory
-// chars), so it cannot backtrack exponentially on adversarial input.
-const HR_LINE_REGEX = /^\s*([-*_])(?:\s*\1){2,}\s*$/;
-
-function isHrLine(line: string): boolean {
-  return HR_LINE_REGEX.test(line);
-}
-
-function parseHrLine(lines: string[], start: number): BlockParseResult | null {
-  if (!isHrLine(lines[start])) return null;
-  return { block: { type: "hr" }, next: start + 1 };
-}
-
-const HEADING_LINE_REGEX = /^(#{1,6})\s+(.+)/;
-
-function parseHeadingLine(
-  lines: string[],
-  start: number,
-): BlockParseResult | null {
-  const headingMatch = lines[start].match(HEADING_LINE_REGEX);
-  if (!headingMatch) return null;
-  return {
-    block: {
-      type: "heading",
-      level: headingMatch[1].length,
-      segments: parseInline(headingMatch[2]),
-    },
-    next: start + 1,
-  };
-}
-
-// `>` with or without a trailing space opens a quote (CommonMark allows both).
-const BLOCKQUOTE_LINE_REGEX = /^\s{0,3}>\s?(.*)$/;
-
-function parseBlockquoteLines(
-  lines: string[],
-  start: number,
-): BlockParseResult | null {
-  const openMatch = lines[start].match(BLOCKQUOTE_LINE_REGEX);
-  if (!openMatch) return null;
-  const quoteLines: string[] = [openMatch[1]];
-  let i = start + 1;
-  while (i < lines.length) {
-    const match = lines[i].match(BLOCKQUOTE_LINE_REGEX);
-    if (!match) break;
-    quoteLines.push(match[1]);
-    i++;
-  }
-  return {
-    block: { type: "blockquote", segments: parseInline(quoteLines.join("\n")) },
-    next: i,
-  };
-}
-
-// -- Lists (nested + task lists) ----------------------------------------------
-
-const UNORDERED_ITEM_REGEX = /^(\s*)([-*+])\s+(.*)$/;
-const ORDERED_ITEM_REGEX = /^(\s*)(\d+)[.)]\s+(.*)$/;
-const TASK_CHECKBOX_REGEX = /^\[([ xX])\]\s+(.*)$/;
-
-/** Marker info for a list-item line, or null when the line opens no item. */
-function itemMarker(
-  line: string,
-  ordered: boolean,
-): { indent: number; rest: string } | null {
-  const match = ordered
-    ? line.match(ORDERED_ITEM_REGEX)
-    : line.match(UNORDERED_ITEM_REGEX);
-  if (!match) return null;
-  return { indent: match[1].length, rest: match[3] };
-}
-
-/**
- * Parse a (possibly nested) list starting at `start`. Items at the opening
- * line's indent delimit items; deeper-indented continuation lines belong to
- * the current item and are recursively parsed as blocks, which is what makes
- * nested sublists render correctly.
- */
-function parseListLines(
-  lines: string[],
-  start: number,
-): BlockParseResult | null {
-  const ordered = ORDERED_ITEM_REGEX.test(lines[start]);
-  const first = itemMarker(lines[start], ordered);
-  if (!first) return null;
-
-  const baseIndent = first.indent;
-  const items: ListItem[] = [];
-
-  let i = start;
-  while (i < lines.length) {
-    const line = lines[i];
-    const marker = itemMarker(line, ordered);
-
-    // A sibling item at the same level opens a new entry.
-    if (!marker || marker.indent < baseIndent) break;
-
-    const task = marker.rest.match(TASK_CHECKBOX_REGEX);
-    const itemLines = [task ? task[2] : marker.rest];
-    items.push({
-      blocks: [],
-      task: !!task,
-      checked: task ? task[1].toLowerCase() === "x" : false,
-    });
-    i++;
-
-    // Continuation lines belong to this item: nested sublists (deeper-indent
-    // markers) and indented wrapped text. Anything else ends the item; the
-    // recursive parseBlocks on itemLines is what renders nested lists.
-    while (i < lines.length && lines[i].trim() !== "") {
-      const cont = lines[i];
-      const contIndent = cont.match(/^\s*/)?.[0].length ?? 0;
-      const nestedMarker = itemMarker(cont, ordered);
-      const isNested =
-        (nestedMarker && nestedMarker.indent > baseIndent) ||
-        contIndent > baseIndent + 1;
-      if (!isNested) break;
-      itemLines.push(cont.trimStart());
-      i++;
-    }
-    items[items.length - 1].blocks = parseBlocks(itemLines);
-  }
-
-  const startIndex = ordered
-    ? Number.parseInt(lines[start].match(ORDERED_ITEM_REGEX)?.[2] ?? "1", 10)
-    : 1;
-
-  return {
-    block: {
-      type: "list",
-      ordered,
-      start: Number.isNaN(startIndex) ? 1 : startIndex,
-      items,
-    },
-    next: i,
-  };
-}
-
-// -- Tables -------------------------------------------------------------------
-
-const TABLE_DELIM_REGEX = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/;
-
-// Protect escaped pipes, split, then restore. A sentinel string rather than
-// a control character so the split stays regex-free.
-const ESCAPED_PIPE_SENTINEL = "\u0001gaia-pipe\u0001";
-function splitTableRow(line: string): string[] {
-  let trimmed = line.trim();
-  if (trimmed.startsWith("|")) trimmed = trimmed.slice(1);
-  if (trimmed.endsWith("|") && !trimmed.endsWith("\\|")) {
-    trimmed = trimmed.slice(0, -1);
-  }
-  return trimmed
-    .replace(/\\\|/g, ESCAPED_PIPE_SENTINEL)
-    .split("|")
-    .map((cell) => cell.replaceAll(ESCAPED_PIPE_SENTINEL, "|").trim());
-}
-
-function parseTableLines(
-  lines: string[],
-  start: number,
-): BlockParseResult | null {
-  if (start + 1 >= lines.length) return null;
-  const header = lines[start];
-  const delim = lines[start + 1];
-  if (!header.includes("|") || !TABLE_DELIM_REGEX.test(delim)) return null;
-
-  const alignments: TableAlignment[] = splitTableRow(delim).map((cell) => {
-    const left = cell.startsWith(":");
-    const right = cell.endsWith(":");
-    if (left && right) return "center";
-    if (right) return "right";
-    if (left) return "left";
-    return null;
-  });
-
-  const rows: string[][] = [splitTableRow(header)];
-  let i = start + 2;
-  while (i < lines.length && lines[i].includes("|") && lines[i].trim() !== "") {
-    rows.push(splitTableRow(lines[i]));
-    i++;
-  }
-
-  return { block: { type: "table", alignments, rows }, next: i };
-}
-
-// -- Paragraph ----------------------------------------------------------------
-
-function isBlockBoundary(line: string): boolean {
-  return (
-    line.trim() === "" ||
-    line.trim() === "$$" ||
-    line.trimStart().startsWith("```") ||
-    BLOCKQUOTE_LINE_REGEX.test(line) ||
-    HEADING_LINE_REGEX.test(line) ||
-    UNORDERED_ITEM_REGEX.test(line) ||
-    ORDERED_ITEM_REGEX.test(line) ||
-    TABLE_DELIM_REGEX.test(line) ||
-    isHrLine(line)
-  );
-}
-
-function parseParagraphLines(lines: string[], start: number): BlockParseResult {
-  if (lines[start].trim() === "") {
-    return { block: null, next: start + 1 };
-  }
-  const paraLines: string[] = [];
-  let i = start;
-  while (i < lines.length && !isBlockBoundary(lines[i])) {
-    paraLines.push(lines[i]);
-    i++;
-  }
-  return {
-    block:
-      paraLines.length > 0
-        ? {
-            // Preserve single newlines inside a paragraph (remark-breaks
-            // parity) — RNText renders \n as a visual line break.
-            type: "paragraph",
-            segments: parseInline(paraLines.join("\n")),
-          }
-        : null,
-    next: i,
-  };
-}
-
-function parseBlocks(lines: string[]): Block[] {
-  const blocks: Block[] = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    const result =
-      parseMathBlockLines(lines, i) ??
-      parseCodeBlockLines(lines, i) ??
-      parseHrLine(lines, i) ??
-      parseHeadingLine(lines, i) ??
-      parseTableLines(lines, i) ??
-      parseBlockquoteLines(lines, i) ??
-      parseListLines(lines, i) ??
-      parseParagraphLines(lines, i);
-
-    if (result.block) {
-      blocks.push(result.block);
-    }
-    i = result.next;
-  }
-
-  return blocks;
-}
-
-// -- Key helpers --------------------------------------------------------------
-
-function segmentKey(seg: InlineSegment, idx: number): string {
-  const label = seg.type === "image" ? seg.url : seg.text;
-  return `${seg.type}-${idx}-${label.slice(0, 12)}`;
-}
-
-function blockKey(block: Block, idx: number): string {
-  if (block.type === "codeBlock") return `cb-${idx}-${block.language}`;
-  if (block.type === "hr") return `hr-${idx}`;
-  return `${block.type}-${idx}`;
-}
-
-function listItemKey(item: ListItem, idx: number): string {
-  return `li-${idx}-${item.blocks[0]?.type ?? "empty"}`;
 }
 
 // -- Rendering components -----------------------------------------------------
@@ -815,6 +345,23 @@ function TableBlock({
   const [header, ...body] = rows;
   if (!header) return null;
 
+  // Table cells are positional data with no natural identity, so stable keys
+  // are derived from positions up front — outside JSX — keeping the render
+  // map free of raw array indices.
+  const columns = alignments.map((align, i) => ({
+    id: `col-${i}`,
+    align: align ?? null,
+  }));
+  const headerRow = header.map((value, i) => ({ id: `h-${i}`, value }));
+  const bodyRows = body.map((cells, i) => ({
+    id: `row-${i}`,
+    cells: columns.map((col, c) => ({
+      id: `${col.id}-${c}`,
+      value: cells[c] ?? "",
+      align: col.align,
+    })),
+  }));
+
   return (
     <View
       style={{
@@ -826,37 +373,31 @@ function TableBlock({
     >
       {/* Header row */}
       <View style={{ flexDirection: "row", backgroundColor: "#27272a" }}>
-        {header.map((cell, col) => (
+        {headerRow.map((cell, i) => (
           <View
-            // biome-ignore lint/suspicious/noArrayIndexKey: positional column identity; cell text can repeat
-            key={`h-${col}`}
+            key={cell.id}
             style={{ flex: 1, paddingHorizontal: 10, paddingVertical: 8 }}
           >
-            <TableCellText value={cell} bold align={alignments[col] ?? null} />
+            <TableCellText value={cell.value} bold align={columns[i].align} />
           </View>
         ))}
       </View>
       {/* Body rows */}
-      {body.map((row, rowIdx) => (
+      {bodyRows.map((row) => (
         <View
-          // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional data with no stable identity
-          key={`r-${rowIdx}`}
+          key={row.id}
           style={{
             flexDirection: "row",
             borderTopWidth: 1,
             borderTopColor: "rgba(63,63,70,0.5)",
           }}
         >
-          {header.map((_, col) => (
+          {row.cells.map((cell) => (
             <View
-              // biome-ignore lint/suspicious/noArrayIndexKey: same positional column identity as the header
-              key={`c-${rowIdx}-${col}`}
+              key={cell.id}
               style={{ flex: 1, paddingHorizontal: 10, paddingVertical: 8 }}
             >
-              <TableCellText
-                value={row[col] ?? ""}
-                align={alignments[col] ?? null}
-              />
+              <TableCellText value={cell.value} align={cell.align} />
             </View>
           ))}
         </View>

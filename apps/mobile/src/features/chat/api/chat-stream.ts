@@ -37,6 +37,12 @@ export interface StreamCallbacks {
   onImageData?: (data: ImageData) => void;
   onDone: () => void;
   onError?: (error: Error) => void;
+  /**
+   * The SSE transport closed before the backend sent its done event — the
+   * response is truncated. Consumers should keep the partial text but mark
+   * the turn as failed (retryable), never as complete.
+   */
+  onTransportClosed?: () => void;
 }
 
 export interface ChatStreamRequest {
@@ -214,6 +220,18 @@ export async function fetchChatStream(
     messages: formattedMessages,
   };
 
+  // Set once the backend's own done event has been handled. A transport close
+  // after that is normal; one BEFORE it means a truncated response.
+  let sawBackendDone = false;
+
+  const wrappedCallbacks: StreamCallbacks = {
+    ...callbacks,
+    onDone: () => {
+      sawBackendDone = true;
+      callbacks.onDone();
+    },
+  };
+
   return createSSEConnection(
     "/chat-stream",
     {
@@ -222,7 +240,7 @@ export async function fetchChatStream(
         const parsedEvents = parseChatStreamEvent(event.data);
 
         for (const parsed of parsedEvents) {
-          const finished = handleParsedStreamEvent(parsed, callbacks);
+          const finished = handleParsedStreamEvent(parsed, wrappedCallbacks);
           if (finished) {
             return;
           }
@@ -232,7 +250,8 @@ export async function fetchChatStream(
         callbacks.onError?.(error);
       },
       onClose: () => {
-        callbacks.onDone();
+        if (sawBackendDone) return; // already settled via onDone
+        callbacks.onTransportClosed?.();
       },
     },
     {

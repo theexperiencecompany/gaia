@@ -42,8 +42,11 @@ interface UseChatReturn {
   conversationId: string | null;
   flatListRef: React.RefObject<FlashListRef<Message> | null>;
   sendMessage: (text: string, opts?: SendMessageOptions) => Promise<void>;
-  /** Re-run the most recent send after a failure, preserving its options. */
-  retryLastMessage: () => void;
+  /**
+   * Re-run a failed turn, preserving its original send options. Only the most
+   * recent assistant message — the one the request is bound to — is retryable.
+   */
+  retryMessage: (failedMessageId: string) => void;
   cancelStream: () => void;
   scrollToBottom: () => void;
   refetch: () => Promise<void>;
@@ -70,6 +73,8 @@ export function useChat(
   const lastRequestRef = useRef<{
     text: string;
     opts: SendMessageOptions;
+    /** Assistant message this request produced (temp id until server assigns). */
+    assistantMessageId: string;
   } | null>(null);
   const queryClient = useQueryClient();
 
@@ -221,29 +226,6 @@ export function useChat(
       const selectedWorkflow = opts?.selectedWorkflow ?? null;
       const attachments = opts?.attachments ?? [];
 
-      lastRequestRef.current = {
-        text,
-        opts: {
-          replyToMessage,
-          selectedTool,
-          toolCategory,
-          selectedWorkflow,
-          attachments,
-        },
-      };
-
-      const uploadedFileIds = attachments
-        .filter((a) => a.fileId)
-        .map((a) => a.fileId as string);
-      const uploadedFileData = attachments
-        .filter((a) => a.fileId)
-        .map((a) => ({
-          fileId: a.fileId as string,
-          fileName: a.name,
-          contentType: a.mimeType,
-          fileSize: a.size,
-        }));
-
       const userMessage: Message = {
         id: `temp-user-${Date.now()}`,
         text,
@@ -258,6 +240,30 @@ export function useChat(
         isUser: false,
         timestamp: new Date(),
       };
+
+      lastRequestRef.current = {
+        text,
+        opts: {
+          replyToMessage,
+          selectedTool,
+          toolCategory,
+          selectedWorkflow,
+          attachments,
+        },
+        assistantMessageId: aiMessage.id,
+      };
+
+      const uploadedFileIds = attachments
+        .filter((a) => a.fileId)
+        .map((a) => a.fileId as string);
+      const uploadedFileData = attachments
+        .filter((a) => a.fileId)
+        .map((a) => ({
+          fileId: a.fileId as string,
+          fileName: a.name,
+          contentType: a.mimeType,
+          fileSize: a.size,
+        }));
 
       const storeKey = activeConvIdRef.current || `temp-${Date.now()}`;
       activeConvIdRef.current = storeKey;
@@ -390,6 +396,15 @@ export function useChat(
                 liveStore.setStreamingState({ conversationId: newConvId });
                 liveStore.setActiveChatId(newConvId);
 
+                // The server-assigned bot id replaces our temp id — keep the
+                // retry binding pointing at the real message.
+                if (lastRequestRef.current) {
+                  lastRequestRef.current = {
+                    ...lastRequestRef.current,
+                    assistantMessageId: botMsgId,
+                  };
+                }
+
                 // Show the new conversation in the sidebar immediately by
                 // prepending to the React Query cache (the sidebar's single
                 // source of truth); the background refetch confirms it.
@@ -466,6 +481,17 @@ export function useChat(
                 });
             },
             onDone: () => settle("done"),
+            onTransportClosed: () => {
+              // Transport died before the backend's done event — the answer
+              // is truncated. Keep the partial text, mark retryable.
+              console.error("Stream closed before completion");
+              useChatStore
+                .getState()
+                .updateLastAssistantMessage(activeConvIdRef.current!, {
+                  error: "Connection lost before the response finished.",
+                });
+              settle("error");
+            },
             onError: (error) => {
               console.error("Stream error:", error);
               // Keep everything streamed so far — only mark the message as
@@ -504,16 +530,22 @@ export function useChat(
     ],
   );
 
-  const retryLastMessage = useCallback(() => {
-    const last = lastRequestRef.current;
-    const convId = activeConvIdRef.current;
-    if (!last || !convId) return;
+  const retryMessage = useCallback(
+    (failedMessageId: string) => {
+      const last = lastRequestRef.current;
+      const convId = activeConvIdRef.current;
+      if (!last || !convId) return;
+      // Only the assistant message this request produced is retryable.
+      if (failedMessageId !== last.assistantMessageId) return;
 
-    // Drop the failed assistant message (and anything after the last user
-    // message) from both the streaming store and the query cache, then re-send.
-    const store = useChatStore.getState();
-    const msgs = store.messagesByConversation[convId];
-    if (msgs) {
+      // Settlement clears the transient store; the finalized messages live in
+      // the React Query cache — read from whichever still has them.
+      const store = useChatStore.getState();
+      const msgs =
+        store.messagesByConversation[convId] ??
+        queryClient.getQueryData<Message[]>(chatKeys.messages(convId));
+      if (!msgs) return;
+
       // Drop everything after the last user message (the failed response).
       let lastUserIdx = -1;
       for (let i = msgs.length - 1; i >= 0; i--) {
@@ -522,15 +554,18 @@ export function useChat(
           break;
         }
       }
-      const kept = lastUserIdx >= 0 ? msgs.slice(0, lastUserIdx + 1) : msgs;
+      if (lastUserIdx < 0) return;
+
+      const kept = msgs.slice(0, lastUserIdx + 1);
       store.setMessages(convId, kept);
       if (!convId.startsWith("temp-")) {
         queryClient.setQueryData(chatKeys.messages(convId), kept);
       }
-    }
 
-    void sendMessage(last.text, last.opts);
-  }, [sendMessage, queryClient]);
+      void sendMessage(last.text, last.opts);
+    },
+    [sendMessage, queryClient],
+  );
 
   const refetch = useCallback(async () => {
     if (currentConversationId) {
@@ -547,7 +582,7 @@ export function useChat(
     conversationId: currentConversationId,
     flatListRef,
     sendMessage,
-    retryLastMessage,
+    retryMessage,
     cancelStream,
     scrollToBottom,
     refetch,

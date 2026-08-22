@@ -78,6 +78,14 @@ export async function createSSEConnection(
     }
   };
 
+  /** Disarm the watchdog without ending the connection (used before retries). */
+  const disarmStallWatchdog = () => {
+    if (stallTimeoutId !== null) {
+      clearTimeout(stallTimeoutId);
+      stallTimeoutId = null;
+    }
+  };
+
   controller.signal.addEventListener("abort", cleanup);
 
   async function connect(): Promise<void> {
@@ -163,6 +171,9 @@ export async function createSSEConnection(
 
       if (retryCount < maxRetries) {
         retryCount += 1;
+        // Disarm before backoff — a stale watchdog firing mid-retry would
+        // cleanup() and cancel the scheduled reconnect.
+        disarmStallWatchdog();
         const delay = computeRetryDelay(retryCount - 1, initialRetryDelayMs);
         console.warn(
           `[SSE] Connection error (attempt ${retryCount}/${maxRetries}), retrying in ${delay}ms`,
@@ -198,6 +209,7 @@ export async function createSSEConnection(
         cleanup();
       } else {
         retryCount += 1;
+        disarmStallWatchdog();
         const delay = computeRetryDelay(retryCount - 1, initialRetryDelayMs);
         console.warn(
           `[SSE] Unexpected close (attempt ${retryCount}/${maxRetries}), retrying in ${delay}ms`,
