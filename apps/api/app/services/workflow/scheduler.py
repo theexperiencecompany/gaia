@@ -61,13 +61,28 @@ class WorkflowScheduler(BaseSchedulerService):
         """Get the ARQ job name for workflow processing."""
         return "execute_workflow_by_id"
 
-    def _build_job_args(self, task_id: str) -> tuple[str, dict[str, str]]:
+    def _build_job_args(self, task_id: str, scheduled_at: datetime) -> tuple[str, dict[str, Any]]:
         """Mark scheduler-originated fires so the executor re-arms the next
         occurrence; manual "run now" executions pass their own context and so are
-        never tagged as scheduled."""
-        return (task_id, {"trigger_type": TriggerType.SCHEDULE.value})
+        never tagged as scheduled.
 
-    async def claim_scheduled_for_execution(self, workflow_id: str) -> bool:
+        ``scheduled_for`` pins the occurrence this job was armed for. ARQ has no
+        job cancellation, so after a reschedule the old deferred job still fires;
+        the worker compares the stamp against the workflow's current
+        ``trigger_config.next_run`` and skips the stale fire instead of running
+        the workflow at its original time.
+        """
+        return (
+            task_id,
+            {
+                "trigger_type": TriggerType.SCHEDULE.value,
+                "scheduled_for": int(scheduled_at.timestamp()),
+            },
+        )
+
+    async def claim_scheduled_for_execution(
+        self, workflow_id: str, expected_next_run: datetime | None = None
+    ) -> bool:
         """Atomically claim a live, idle workflow for a fire (SCHEDULED -> EXECUTING).
 
         The claim verifies BOTH axes at once: liveness (`activated=True`) and
@@ -77,13 +92,21 @@ class WorkflowScheduler(BaseSchedulerService):
         - the workflow has been deactivated (`activated=False`) but a deferred ARQ
           job for an earlier-armed occurrence is still in Redis and fires anyway.
 
+        ``expected_next_run`` adds the freshness axis: a fire armed for an
+        occurrence that has since been rescheduled away (the old deferred ARQ job
+        firing after the cron changed) is rejected because
+        ``trigger_config.next_run`` no longer matches. Legacy jobs without a stamp
+        pass None and claim exactly as before.
+
         Keeping liveness (`activated`) and run-state (`status`) as independent fields
         is deliberate: deactivate/reactivate only flips `activated`, so a reactivated
         workflow is still status="scheduled" and immediately claimable — no stale
         status can wedge it. The re-arm at the end of execution returns the row to
         "scheduled" with its next run time.
         """
-        return await workflow_repository.claim_for_execution(workflow_id)
+        return await workflow_repository.claim_for_execution(
+            workflow_id, expected_next_run=expected_next_run
+        )
 
     async def get_task(self, task_id: str, user_id: str | None = None) -> Workflow | None:
         """Get a workflow by ID, or None if not found."""

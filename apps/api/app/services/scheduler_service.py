@@ -267,11 +267,13 @@ class BaseSchedulerService(ABC):
         await self.reschedule_task(task.id, next_run)
         log.info("Rescheduled recurring task for", id=task.id, next_run=next_run)
 
-    def _build_job_args(self, task_id: str) -> tuple[object, ...]:
+    def _build_job_args(self, task_id: str, _scheduled_at: datetime) -> tuple[object, ...]:
         """Positional args passed to the ARQ job. Subclasses may add context.
 
         Heterogeneous by design — ARQ takes opaque ``*args`` and the workflow
-        scheduler appends a trigger-context dict after the id.
+        scheduler appends a trigger-context dict (including the armed fire time)
+        after the id. The base itself needs only the id; ``_scheduled_at`` is part
+        of the seam so subclasses can stamp their jobs with it.
         """
         return (task_id,)
 
@@ -282,9 +284,14 @@ class BaseSchedulerService(ABC):
             log.error("ARQ pool not initialized")
             return False
 
+        # The armed time is what the DB holds for this occurrence; the job stamp
+        # must carry it even when a past-due shift below moves the actual defer.
+        armed_for = scheduled_at
+
         tz_was_naive = scheduled_at.tzinfo is None
         if tz_was_naive:
             scheduled_at = scheduled_at.replace(tzinfo=UTC)
+            armed_for = armed_for.replace(tzinfo=UTC)
             log.warning(
                 "Task scheduled_at was naive; assumed UTC — this is a common source of timezone drift, check the caller",
                 task_id=task_id,
@@ -315,7 +322,7 @@ class BaseSchedulerService(ABC):
         job = await enqueue_worker_job(
             self.arq_pool,
             job_name,
-            *self._build_job_args(task_id),
+            *self._build_job_args(task_id, armed_for),
             _job_id=job_id,
             _defer_until=scheduled_at,
         )
