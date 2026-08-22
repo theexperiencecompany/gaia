@@ -75,6 +75,27 @@ export function workflowIconLabel(name: string): string {
     .trim();
 }
 
+/** All match candidates for a raw query term: the term itself plus its singular form when plural. */
+function termVariants(rawTerm: string): string[] {
+  const singular = singularize(rawTerm);
+  return singular === rawTerm ? [rawTerm] : [rawTerm, singular];
+}
+
+/** Best score for one term against an icon: 5 exact/prefix name > 4 word prefix > 3 name substring > 2 keyword prefix > 1 keyword substring; 0 means no match. */
+function scoreIconForTerm(
+  term: string,
+  def: WorkflowIconDef,
+  normalizedName: string,
+  nameWords: string[],
+): number {
+  if (normalizedName === term || normalizedName.startsWith(term)) return 5;
+  if (nameWords.some((word) => word.startsWith(term))) return 4;
+  if (normalizedName.includes(term)) return 3;
+  if (def.keywords.some((keyword) => keyword.startsWith(term))) return 2;
+  if (def.keywords.some((keyword) => keyword.includes(term))) return 1;
+  return 0;
+}
+
 /** Ranked search: exact/prefix name match > name substring > keyword prefix > keyword substring. Every whitespace-separated query term must match; empty query returns the full catalog. */
 export function searchWorkflowIcons(query: string): WorkflowIconDef[] {
   const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -91,25 +112,12 @@ export function searchWorkflowIcons(query: string): WorkflowIconDef[] {
     let matchesAllTerms = true;
 
     for (const rawTerm of terms) {
-      const variants =
-        singularize(rawTerm) === rawTerm
-          ? [rawTerm]
-          : [rawTerm, singularize(rawTerm)];
       let termScore = 0;
-      for (const term of variants) {
-        let variantScore = 0;
-        if (normalizedName === term || normalizedName.startsWith(term)) {
-          variantScore = 5;
-        } else if (nameWords.some((word) => word.startsWith(term))) {
-          variantScore = 4;
-        } else if (normalizedName.includes(term)) {
-          variantScore = 3;
-        } else if (def.keywords.some((keyword) => keyword.startsWith(term))) {
-          variantScore = 2;
-        } else if (def.keywords.some((keyword) => keyword.includes(term))) {
-          variantScore = 1;
-        }
-        termScore = Math.max(termScore, variantScore);
+      for (const term of termVariants(rawTerm)) {
+        termScore = Math.max(
+          termScore,
+          scoreIconForTerm(term, def, normalizedName, nameWords),
+        );
       }
 
       if (termScore === 0) {

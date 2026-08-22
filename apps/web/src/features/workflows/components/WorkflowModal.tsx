@@ -24,6 +24,7 @@ import WorkflowLoadingState from "@/features/workflows/components/workflow-modal
 import WorkflowRightPanel from "@/features/workflows/components/workflow-modal/WorkflowRightPanel";
 import WorkflowStepsPreviewCard from "@/features/workflows/components/workflow-modal/WorkflowStepsPreviewCard";
 import WorkflowTriggerSection from "@/features/workflows/components/workflow-modal/WorkflowTriggerSection";
+import { useWorkflowActions } from "@/features/workflows/hooks/useWorkflowActions";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import { useRouter } from "@/i18n/navigation";
@@ -165,10 +166,12 @@ export default function WorkflowModal({
   const {
     addWorkflow: addToStore,
     updateWorkflow: updateInStore,
-    removeWorkflow: removeFromStore,
     fetchWorkflows,
     invalidateCache,
   } = useWorkflowsStore();
+
+  // Shared workflow mutations (API + store sync)
+  const workflowActions = useWorkflowActions();
 
   // Zustand UI state
   const {
@@ -764,8 +767,7 @@ export default function WorkflowModal({
         is_public: existingWorkflow.is_public,
       });
 
-      await workflowApi.deleteWorkflow(existingWorkflow.id);
-      removeFromStore(existingWorkflow.id);
+      await workflowActions.remove(existingWorkflow.id);
 
       if (onWorkflowDeleted) onWorkflowDeleted(existingWorkflow.id);
 
@@ -802,11 +804,7 @@ export default function WorkflowModal({
 
     setIsTogglingActivation(true);
     try {
-      if (newActivated) {
-        await workflowApi.activateWorkflow(currentWorkflow.id);
-      } else {
-        await workflowApi.deactivateWorkflow(currentWorkflow.id);
-      }
+      await workflowActions.setActivated(currentWorkflow.id, newActivated);
 
       // Update currentWorkflow activation state
       setCurrentWorkflow({
@@ -814,7 +812,6 @@ export default function WorkflowModal({
         activated: newActivated,
       });
       setIsActivated(newActivated);
-      updateInStore(currentWorkflow.id, { activated: newActivated });
       invalidateCache();
       await fetchWorkflows();
     } catch (error) {
