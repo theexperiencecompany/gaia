@@ -371,7 +371,9 @@ describe("SlackAdapter - handleSlackStreaming", () => {
       expect.any(Function), // onAuthError callback
       expect.any(Function), // onGenericError callback
       expect.objectContaining({ platform: "slack" }),
-      undefined,
+      expect.objectContaining({
+        distinctId: expect.any(String),
+      }),
     );
   });
 
@@ -691,7 +693,9 @@ describe("SlackAdapter - app_mention event handling", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "slack" }),
-      undefined,
+      expect.objectContaining({
+        distinctId: expect.any(String),
+      }),
     );
   });
 
@@ -776,7 +780,9 @@ describe("SlackAdapter - DM message event handling", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "slack" }),
-      undefined,
+      expect.objectContaining({
+        distinctId: expect.any(String),
+      }),
     );
   });
 

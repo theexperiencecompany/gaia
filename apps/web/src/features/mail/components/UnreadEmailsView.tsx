@@ -22,6 +22,8 @@ import type { EmailData, EmailFetchData } from "@/types/features/mailTypes";
 /** Connection + fetch status of the Gmail inbox backing the card. */
 interface UnreadEmailsStatus {
   isConnected?: boolean;
+  /** Connect/Reconnect/Retry — the verb that matches Gmail's current status. */
+  connectLabel?: string;
   isFetching?: boolean;
   hasNextPage?: boolean;
   isFetchingNextPage?: boolean;
@@ -38,6 +40,7 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
   emails = [],
   status: {
     isConnected = true,
+    connectLabel = "Connect",
     isFetching = false,
     hasNextPage,
     isFetchingNextPage,
@@ -145,8 +148,8 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
       isConnected={isConnected}
       connectIntegrationId="gmail"
       onConnect={onConnect}
-      connectButtonText="Connect"
-      connectTitle="Connect Your Gmail"
+      connectButtonText={connectLabel}
+      connectTitle={`${connectLabel} Your Gmail`}
       connectDescription="Access and manage your emails"
       connectIcon={<Gmail width={32} height={32} />}
       actions={actions}

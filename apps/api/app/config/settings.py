@@ -132,6 +132,9 @@ class CommonSettings(BaseAppSettings):
     # ----------------------------------------------
     # Observability
     # ----------------------------------------------
+    POSTHOG_PROJECT_TOKEN: str | None = None
+    POSTHOG_HOST: str | None = None
+
     # Secret token Prometheus sends as "Authorization: Bearer <token>" when
     # scraping /metrics. Generate with: openssl rand -hex 32
     METRICS_TOKEN: str | None = None
@@ -399,7 +402,6 @@ class ProductionSettings(CommonSettings):
     # Monitoring & Analytics
     # ----------------------------------------------
     SENTRY_DSN: str
-    POSTHOG_API_KEY: str
 
     # ----------------------------------------------
     # MCP OAuth Credentials
@@ -438,6 +440,8 @@ class ProductionSettings(CommonSettings):
     WHATSAPP_PHONE_NUMBER: str | None = (
         None  # E.164 without +, e.g. "15551234567" — used for wa.me links
     )
+    SPECTRUM_PROJECT_ID: str | None = None
+    SPECTRUM_PROJECT_SECRET: str | None = None
 
     # ----------------------------------------------
     # Bot OAuth Configuration (Optional)
@@ -599,7 +603,6 @@ class DevelopmentSettings(CommonSettings):
     # Monitoring & Analytics
     # ----------------------------------------------
     SENTRY_DSN: str | None = None
-    POSTHOG_API_KEY: str | None = None
 
     # ----------------------------------------------
     # MCP OAuth Credentials
@@ -655,6 +658,8 @@ class DevelopmentSettings(CommonSettings):
     WHATSAPP_PHONE_NUMBER: str | None = (
         None  # E.164 without +, e.g. "15551234567" — used for wa.me links
     )
+    SPECTRUM_PROJECT_ID: str | None = None
+    SPECTRUM_PROJECT_SECRET: str | None = None
 
     # ----------------------------------------------
     # Bot OAuth Configuration (Optional)

@@ -36,7 +36,6 @@ interface VirtualizedItemProps {
   categoryDisplayMap: Record<string, { displayName: string; iconUrl?: string }>;
   onIntegrationClick?: (integrationId: string) => void;
   openedViaButton?: boolean;
-  searchQuery?: string;
 }
 
 const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
@@ -50,7 +49,6 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
   categoryDisplayMap,
   onIntegrationClick,
   openedViaButton,
-  searchQuery,
 }) => {
   const baseStyle = {
     transform: `translateY(${virtualRow.start}px)`,
@@ -94,7 +92,7 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
               tool_name: match.tool.name,
               tool_category: match.tool.category,
               opened_via_button: openedViaButton,
-              search_query: searchQuery || null,
+              // The typed filter query is user free text — intentionally not sent.
             });
             onSelect(match);
           }}
@@ -509,7 +507,6 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                       categoryDisplayMap={categoryDisplayMap}
                       onIntegrationClick={onIntegrationClick}
                       openedViaButton={openedViaButton}
-                      searchQuery={searchQuery}
                     />
                   );
                 })}

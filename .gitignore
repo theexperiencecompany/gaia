@@ -182,3 +182,9 @@ dump.rdb
 
 # Piolium security-scanner artifacts (CodeQL DBs, run transcripts)
 piolium/
+
+# Per-invocation mutation workdirs (scripts/test/mutation.sh, .mutation-$$) —
+# a full app/tests/scripts copy plus mutmut's mutants/ tree, ~3.5k files. Left
+# behind only on a crash or MUTMUT_KEEP_WORKDIR=1, and swept into a commit once.
+.mutation-*/
+mutants/

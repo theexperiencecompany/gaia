@@ -7,6 +7,7 @@ import { useState } from "react";
 import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
 import { userInfoToStoreUser } from "@/features/auth/utils/userInfoToStoreUser";
 import { completeOnboarding } from "@/features/onboarding/api/onboardingApi";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { isDevelopment } from "@/lib/fetchAll";
 import { toast } from "@/lib/toast";
 
@@ -24,6 +25,7 @@ export function DevSkipOnboarding() {
   if (!isDevelopment()) return null;
 
   const skip = async () => {
+    trackEvent(ANALYTICS_EVENTS.ONBOARDING_SKIPPED, { source: "dev_skip" });
     setLoading(true);
     try {
       const res = await completeOnboarding({

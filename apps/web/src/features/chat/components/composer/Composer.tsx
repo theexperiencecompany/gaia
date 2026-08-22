@@ -43,7 +43,6 @@ interface MainSearchbarProps {
   } | null>;
   appendToInputRef?: React.RefObject<((text: string) => void) | null>;
   hasMessages: boolean;
-  conversationId?: string;
   voiceModeActive: () => void;
   /** Hover intent on the voice button — used to prefetch the session token. */
   onVoiceModeHover?: () => void;
@@ -55,7 +54,6 @@ const Composer: React.FC<MainSearchbarProps> = ({
   fileUploadRef,
   appendToInputRef,
   hasMessages,
-  conversationId,
   voiceModeActive,
   onVoiceModeHover,
 }) => {
@@ -81,8 +79,8 @@ const Composer: React.FC<MainSearchbarProps> = ({
     useReplyToMessage();
 
   const { handleFormSubmit, handleRemoveSelectedTool, handleKeyDown } =
-    useComposerSubmit({ conversationId, inputRef, scrollToBottom });
-  const { attachFiles } = useFileAttachments(conversationId);
+    useComposerSubmit({ inputRef, scrollToBottom });
+  const { attachFiles } = useFileAttachments();
   useComposerPaste({ inputRef, attachFiles });
   const { handleToggleSlashCommandDropdown, handleIntegrationClick } =
     useSlashCommandDropdownControl({

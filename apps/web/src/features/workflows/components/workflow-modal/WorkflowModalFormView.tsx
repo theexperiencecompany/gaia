@@ -140,6 +140,7 @@ export default function WorkflowModalFormView({
                 errors={errors}
                 currentWorkflow={currentWorkflow}
                 isActivated={activation.isActive}
+                needsSetup={missingIntegrations.length > 0}
                 isTogglingActivation={activation.isToggling}
                 onToggleActivation={onActivationToggle}
                 isPublic={!!currentWorkflow?.is_public}

@@ -1,8 +1,5 @@
 // ChatBubbleBot.tsx
-import {
-  splitByBreaksPreservingFences,
-  splitMessageByBreaks,
-} from "@shared/utils";
+import { splitMessageByBreaks } from "@shared/utils";
 import * as m from "motion/react-m";
 import Image from "next/image";
 import { type ReactNode, useCallback, useMemo, useRef } from "react";
@@ -91,9 +88,7 @@ export default function ChatBubbleBot(
     if (!itShouldShowTextBubble) return 0;
     const cleanText = parseThinkingFromText(text?.toString() || "").cleanText;
     if (!cleanText) return 0;
-    const parts = cleanText.includes(":::openui")
-      ? splitByBreaksPreservingFences(cleanText)
-      : splitMessageByBreaks(cleanText);
+    const parts = splitMessageByBreaks(cleanText);
     return Math.max(0, parts.length - 1) * MESSAGE_BREAK_STAGGER_SECONDS;
   }, [text, itShouldShowTextBubble]);
 

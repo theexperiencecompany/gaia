@@ -10,6 +10,7 @@ import { useMemo, useState } from "react";
 import { SidebarHeaderButton } from "@/components/layout/headers/SidebarHeaderButton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { NotificationStatus } from "../../../types/features/notificationTypes";
 import { NotificationConnectBanner } from "./NotificationConnectBanner";
 import { NotificationItem } from "./NotificationItem";
@@ -37,6 +38,10 @@ export function NotificationCenter({
     useNotifications(notificationOptions);
 
   const handleMarkAsRead = async (notificationId: string) => {
+    trackEvent(ANALYTICS_EVENTS.NOTIFICATION_VIEWED, {
+      notification_id: notificationId,
+      source: "popover",
+    });
     await markAsRead(notificationId);
   };
 

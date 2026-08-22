@@ -218,12 +218,23 @@ CATEGORY_PATH_MAX_DEPTH = 3
 
 # Maximum transcript size fed to the extraction LLM (characters). When a
 # transcript exceeds the cap we keep the head (opening context) and the tail
-# (most recent exchanges) and drop the middle. Sized so a long single session
-# (~20k chars) survives whole — truncation loses mid-conversation details
-# that the user may ask about weeks later.
-EXTRACTION_TRANSCRIPT_MAX_CHARS = 24_000
-EXTRACTION_TRANSCRIPT_HEAD_CHARS = 4_000
-EXTRACTION_TRANSCRIPT_TAIL_CHARS = 20_000
+# (most recent exchanges) and drop the middle. Sized so a long multi-day
+# session (~100k chars) survives whole — truncation loses mid-conversation
+# details that the user may ask about weeks later, and the sliding window
+# also breaks the lane's byte-prefix cache (below).
+#
+# Cache note: the extraction call runs 1-2x per turn; the transcript is the
+# byte-prefix cache's payload. With a small cap the head+tail window SLIDES
+# every turn, so the byte prefix breaks at the truncation marker and the whole
+# transcript re-sends uncached (measured ~30% hit on the lane). The cap is
+# therefore sized so real conversations stay under it and the transcript is
+# append-only — the prefix then extends through it and only the newest
+# exchange is uncached. (The original 10k cap bounded the extraction's cache
+# footprint when it shared the conversation's provider cache; it has run on
+# direct Gemini since — a separate cache store — so that constraint is gone.)
+EXTRACTION_TRANSCRIPT_MAX_CHARS = 100_000
+EXTRACTION_TRANSCRIPT_HEAD_CHARS = 40_000
+EXTRACTION_TRANSCRIPT_TAIL_CHARS = 60_000
 
 # Default importance assigned to a fact when the extractor omits it.
 DEFAULT_MEMORY_IMPORTANCE = 0.5

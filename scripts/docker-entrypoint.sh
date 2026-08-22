@@ -157,8 +157,9 @@ if [ "$_jfs_can_mount" = "1" ] && command -v juicefs >/dev/null 2>&1; then
         # Host mount only — sandbox clients pass 0 (mount_juicefs.sh) since the
         # host is already the single GC owner.
         # Skipped entirely in Swarm prod: the volume plugin mounts $JFS_MOUNT_PATH
-        # first so `mountpoint -q` short-circuits. Prod's interval is in the
-        # gaia_jfs mountFlags. This path serves selfhost / dockered-dev.
+        # first so `mountpoint -q` short-circuits. Prod's interval is the
+        # `-o backup-meta=1h` option on the gaia_jfs_v2 volume. This path serves
+        # selfhost / dockered-dev.
         # No --writeback: writeback loses data on container kill, unacceptable for agent writes.
         # `|| true`: --background's readiness probe gives up after ~10s, but on a
         # remote meta (e.g. Neon / cloud Postgres) the daemon often needs longer

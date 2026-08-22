@@ -33,6 +33,7 @@ from app.agents.core.background.executor_queue import clear_collection_marker
 from app.agents.core.background.redis_writer import make_redis_stream_writer
 from app.agents.core.background.session import get_pending_subagents
 from app.agents.core.subagents.handoff_tools import resume_parked_subagent
+from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.hil import HIL_BATCH_INTERRUPT_TYPE
 from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable, agent_configurable
@@ -96,7 +97,10 @@ async def wait_for_subagents(
         result_count=len(results),
         stream_id=stream_id,
     )
-    return "\n\n---\n\n".join(f"[{item['agent']} result]\n{item['message']}" for item in results)
+    return "".join(
+        wrap_agent_payload(AgentTag.SUBAGENT_RESULT, item["message"], agent=item["agent"])
+        for item in results
+    )
 
 
 async def _poll_live_tasks(stream_id: str, timeout: int) -> None:

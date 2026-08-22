@@ -112,6 +112,11 @@ const STREAM_TIMEOUT_MS = 600_000;
 /** No-data inactivity timeout (5 min). */
 const INACTIVITY_TIMEOUT_MS = 300_000;
 
+export const BOT_STREAM_ERROR = {
+  notAuthenticated: "not_authenticated",
+  planRequired: "plan_required",
+} as const;
+
 /** The subset of an SSE `data:` frame the streamer acts on. */
 interface SseFrame {
   keepalive?: boolean;
@@ -226,9 +231,9 @@ async function streamChatOnce(
           receivedKeepalive = true;
           return false;
         }
-        if (frame.error === "not_authenticated") {
+        if (frame.error === BOT_STREAM_ERROR.notAuthenticated) {
           finish();
-          await onError(new Error("not_authenticated"));
+          await onError(new Error(BOT_STREAM_ERROR.notAuthenticated));
           return true;
         }
         if (frame.error) {
@@ -345,8 +350,14 @@ async function streamChatOnce(
             if (isRetryable && !fullText) {
               // No content received yet — store for re-throw so streamChat can retry
               streamError = err;
+            } else if (fullText) {
+              // The connection died, but the answer is already assembled here.
+              // Deliver it exactly as the `end` handler does — replacing real
+              // content with an error card loses a reply the user had earned,
+              // and on a non-streaming platform (Discord/WhatsApp render only
+              // at onDone) it means they see nothing at all.
+              await onDone(fullText, conversationId);
             } else {
-              // Has partial content or non-retryable — surface to user
               await onError(new Error(toStreamErrorMessage(err.message)));
             }
           }

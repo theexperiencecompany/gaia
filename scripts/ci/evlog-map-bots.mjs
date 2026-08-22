@@ -59,6 +59,7 @@ const BOT_SRC_DIRS = [
   "apps/bots/slack/src",
   "apps/bots/telegram/src",
   "apps/bots/whatsapp/src",
+  "apps/bots/imessage/src",
   // The shared library is scanned for registrations too, not just for the
   // named boundaries below: the process signal/fault handlers, the AMQP
   // consumer and the shared HTTP routes all live here, and a scan that only

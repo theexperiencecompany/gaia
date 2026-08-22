@@ -7,23 +7,15 @@ import Image from "next/image";
 import { RedirectType, redirect } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
+import {
+  BOT_PLATFORM_ICONS,
+  BOT_PLATFORM_LABELS,
+  isBotPlatform,
+} from "@/config/botPlatforms";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { apiService } from "@/lib/api/service";
 import { toast } from "@/lib/toast";
 import { useUserStore } from "@/stores/userStore";
-
-const PLATFORM_CONFIG: Record<
-  string,
-  {
-    name: string;
-    iconSrc: string;
-  }
-> = {
-  discord: { name: "Discord", iconSrc: "/images/icons/macos/discord.webp" },
-  slack: { name: "Slack", iconSrc: "/images/icons/macos/slack.webp" },
-  telegram: { name: "Telegram", iconSrc: "/images/icons/macos/telegram.webp" },
-  whatsapp: { name: "WhatsApp", iconSrc: "/images/icons/macos/whatsapp.webp" },
-};
 
 /** Shared card shell: rounded, flat, no outline, no shadow — matches GAIA surfaces. */
 function Card({ children }: { children: React.ReactNode }) {
@@ -79,7 +71,13 @@ export default function LinkPlatformClient({
     getServerHydrationSnapshot,
   );
 
-  const config = platform ? PLATFORM_CONFIG[platform] : null;
+  const config =
+    platform && isBotPlatform(platform)
+      ? {
+          name: BOT_PLATFORM_LABELS[platform],
+          iconSrc: BOT_PLATFORM_ICONS[platform],
+        }
+      : null;
 
   useEffect(() => {
     if (token) {

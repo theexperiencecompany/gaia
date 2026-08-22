@@ -201,7 +201,7 @@ async def install_from_github(
 
         # Apply target override, then validate the effective target so a repo's
         # frontmatter can't scope a skill to an unconnected/invalid agent.
-        target = target_override if target_override else metadata.target
+        target = target_override or metadata.target
         if allowed_targets is not None and target not in allowed_targets:
             raise ValueError(
                 f"Target '{target}' is not available. "
@@ -451,19 +451,11 @@ async def update_skill_inline(
     return updated
 
 
-async def uninstall_skill_full(user_id: str, skill_id: str) -> bool:
-    """Uninstall a skill: remove from registry AND delete VFS files.
-
-    Args:
-        user_id: Owner user ID
-        skill_id: Skill document ID
-
-    Returns:
-        True if uninstalled, False if not found
-    """
+async def uninstall_skill_full(user_id: str, skill_id: str) -> Skill | None:
+    """Uninstall a skill (registry + VFS files); returns it, or None if not found."""
     skill = await get_skill(user_id, skill_id)
     if not skill:
-        return False
+        return None
 
     log.set(
         user_id=user_id,
@@ -488,4 +480,5 @@ async def uninstall_skill_full(user_id: str, skill_id: str) -> bool:
     # Remove from registry
     # uninstall_skill is wrapped in @CacheInvalidator, whose __call__ erases the
     # return type to Awaitable[Any]; uninstall_skill itself is annotated -> bool.
-    return cast(bool, await uninstall_skill(user_id, skill_id))
+    removed = cast(bool, await uninstall_skill(user_id, skill_id))
+    return skill if removed else None

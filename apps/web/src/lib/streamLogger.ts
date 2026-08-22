@@ -2,13 +2,18 @@
  * Dev-only structured stream logger.
  *
  * Records every streaming-related event (SSE frames, WebSocket dispatches,
- * accumulator applications, store writes, DB writes, lifecycle transitions)
- * into a ring buffer exposed as `window.__STREAM_LOG__`, mirrored to the
- * console. This is the observability backbone for debugging streaming and for
- * the Chrome DevTools verification harness (`window.__STREAM_LOG_DUMP__()`).
+ * accumulator applications, store writes, DB writes, render outcomes, lifecycle
+ * transitions) into a ring buffer exposed as `window.__STREAM_LOG__`, mirrored
+ * to the console. This is the observability backbone for debugging streaming and
+ * for the Chrome DevTools verification harness (`window.__STREAM_LOG_DUMP__()`).
+ *
+ * Every entry is also shipped to disk as NDJSON (see `streamRecordingSink`) so a
+ * coding agent can read what the browser received without a browser.
  *
  * Every function is a no-op in production builds.
  */
+
+import { shipStreamLogEntry } from "./streamRecordingSink";
 
 export type StreamLogLayer =
   | "sse"
@@ -16,11 +21,15 @@ export type StreamLogLayer =
   | "accumulator"
   | "store"
   | "db"
+  | "render"
   | "lifecycle";
 
 export interface StreamLogEntry {
   seq: number;
   ts: string;
+  /** Milliseconds since the most recent stream start (`*:start` lifecycle
+   *  entry), so a reader can see the shape of a turn without parsing `ts`. */
+  dtMs: number;
   layer: StreamLogLayer;
   event: string;
   turnKey?: string;
@@ -38,6 +47,7 @@ interface StreamLogWindow extends Window {
 }
 
 let seq = 0;
+let streamStartedAt = Date.now();
 
 const getBuffer = (): StreamLogEntry[] | null => {
   if (!isDev || typeof window === "undefined") return null;
@@ -61,9 +71,14 @@ export const streamLog = (
   const buffer = getBuffer();
   if (!buffer) return;
 
+  if (layer === "lifecycle" && event.endsWith(":start")) {
+    streamStartedAt = Date.now();
+  }
+
   const entry: StreamLogEntry = {
     seq: ++seq,
     ts: new Date().toISOString(),
+    dtMs: Date.now() - streamStartedAt,
     layer,
     event,
     turnKey: context?.turnKey,
@@ -72,6 +87,7 @@ export const streamLog = (
   };
 
   buffer.push(entry);
+  shipStreamLogEntry(entry);
   if (buffer.length > RING_BUFFER_CAP) {
     buffer.splice(0, buffer.length - RING_BUFFER_CAP);
   }

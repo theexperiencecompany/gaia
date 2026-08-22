@@ -68,6 +68,11 @@ export function useWorkflowCardActions({
     if (!workflow || isLoading) return;
     setIsLoading(true);
     try {
+      trackEvent(ANALYTICS_EVENTS.WORKFLOWS_EXECUTED, {
+        workflow_id: workflow.id,
+        step_count: workflow.steps?.length || 0,
+        trigger_type: workflow.trigger_config.type,
+      });
       selectWorkflow(workflow, { autoSend: true });
       onActionComplete?.();
     } catch (error) {
@@ -121,6 +126,12 @@ export function useWorkflowCardActions({
 
       if (result.success && result.workflow) {
         toast.success("Workflow created successfully!", { id: toastId });
+        trackEvent(ANALYTICS_EVENTS.WORKFLOWS_CREATED, {
+          workflow_id: result.workflow.id,
+          step_count: result.workflow.steps?.length || 0,
+          trigger_type: "manual",
+          has_schedule: false,
+        });
         selectWorkflow(result.workflow, { autoSend: variant === "suggestion" });
         onActionComplete?.();
       }
@@ -134,7 +145,8 @@ export function useWorkflowCardActions({
 
   const handleInsertPrompt = () => {
     if (prompt) {
-      trackEvent(ANALYTICS_EVENTS.USE_CASES_PROMPT_INSERTED, { title });
+      // `title` is user-authored free text — intentionally not sent.
+      trackEvent(ANALYTICS_EVENTS.USE_CASES_PROMPT_INSERTED);
       appendToInput(prompt);
       router.push("/c");
       onActionComplete?.();

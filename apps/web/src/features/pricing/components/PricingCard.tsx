@@ -10,6 +10,7 @@ import { TextMorph } from "torph/react";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { ShineBorder } from "@/components/ui/shine-border";
 import { useUser } from "@/features/auth/hooks/useUser";
+import { PlanFeature } from "@/features/pricing/components/PlanFeature";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import {
@@ -342,14 +343,14 @@ export function PricingCard({
           features.map((feature) => (
             <div
               key={feature}
-              className="flex items-center gap-3 text-sm font-light"
+              className="flex items-start gap-3 text-sm font-light"
             >
               <Tick02Icon
                 height="15"
                 width="15"
-                className={`shrink-0 ${isPro ? "text-primary" : "text-zinc-500"}`}
+                className={`mt-1 shrink-0 ${isPro ? "text-primary" : "text-zinc-500"}`}
               />
-              <span className="whitespace-nowrap text-zinc-300">{feature}</span>
+              <PlanFeature feature={feature} />
             </div>
           ))}
       </div>

@@ -1,6 +1,10 @@
 "use client";
 
 import { Button } from "@heroui/react";
+import {
+  CONNECT_ACTION_LABEL,
+  integrationConnectionState,
+} from "@shared/utils";
 import type React from "react";
 import { useMemo } from "react";
 
@@ -35,8 +39,11 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
   } = useSharedCalendar();
 
   const { getIntegrationStatus, connectIntegration } = useIntegrations();
-  const isCalendarConnected =
-    getIntegrationStatus("googlecalendar")?.connected ?? false;
+  const calendarState = integrationConnectionState(
+    getIntegrationStatus("googlecalendar")?.status,
+  );
+  const isCalendarConnected = calendarState === "connected";
+  const connectLabel = CONNECT_ACTION_LABEL[calendarState];
 
   // Store selectors (render-only; scroll state lives in
   // useWeeklyCalendarScroll)
@@ -66,17 +73,17 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
           <div className="flex h-full w-full flex-col items-center justify-center gap-2">
             <GoogleCalendarIcon className="h-12 w-12 text-zinc-600" />
             <h2 className="text-xl font-semibold text-zinc-300 mt-2">
-              Connect Google Calendar
+              {connectLabel} Google Calendar
             </h2>
             <p className="text-sm text-zinc-500 text-center max-w-lg">
-              Connect your Calendar to view and manage your events in GAIA.
+              View and manage your events in GAIA.
             </p>
             <Button
               color="primary"
               className="mt-4"
               onPress={() => connectIntegration("googlecalendar")}
             >
-              Connect Calendar
+              {connectLabel} Calendar
             </Button>
           </div>
         ) : (

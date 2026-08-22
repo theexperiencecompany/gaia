@@ -8,10 +8,12 @@ import { useEffect, useMemo, useRef } from "react";
 import type { ToolDataEntry } from "@/config/registries/toolRegistry";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { relayDesktopToolRequest } from "@/features/chat/utils/desktopToolBridge";
+import { loadingLabelForEvent } from "@/features/chat/utils/loadingHints";
 import { db, type IMessage } from "@/lib/db/chatDb";
 import { streamLog, streamLogError } from "@/lib/streamLogger";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { useChatStore } from "@/stores/chatStore";
+import { useStreamStore } from "@/stores/streamStore";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
 import type { ImageData, MemoryData } from "@/types/features/toolDataTypes";
 
@@ -29,6 +31,9 @@ interface ExecutorStreamStartedEvent {
   stream_id: string;
   conversation_id: string;
   task_id: string;
+  /** Set for a HIL resume: the ORIGINAL turn's bot message, which this stream
+   *  continues. Absent for a plain queued run, which gets its own placeholder. */
+  bot_message_id?: string | null;
 }
 
 /** Project the shared accumulator onto the placeholder message record. */
@@ -60,6 +65,7 @@ export const createExecutorStreamHandler =
   async (raw: unknown): Promise<void> => {
     const event = raw as ExecutorStreamStartedEvent;
     const { stream_id, conversation_id, task_id } = event;
+    const resumedMessageId = event.bot_message_id ?? null;
 
     if (!stream_id || !conversation_id || !task_id) {
       return;
@@ -81,32 +87,56 @@ export const createExecutorStreamHandler =
       detail: { stream_id, task_id },
     });
 
-    // Create a placeholder message in the store for live tool progress.
-    // id === task_id so useBgMessageWebSocket can find and remove it when the
-    // final conversation.new_message arrives.
-    const placeholder: IMessage = {
-      id: task_id,
-      conversationId: conversation_id,
-      content: "",
-      role: "assistant",
-      status: "sending",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      messageId: task_id,
-      tool_data: null,
-    };
-    useChatStore.getState().addOrUpdateMessage(placeholder);
-    // Persist the placeholder (keyed by task_id) so live tool cards survive a
-    // refresh that happens before the final conversation.new_message arrives.
-    // useBgMessageWebSocket replaces this entry by task_id when the final
-    // message lands; an orphaned placeholder is only possible if the run is
-    // never finalized, in which case keeping its cards is the desired outcome.
-    await db.putMessage(placeholder);
+    // A HIL resume continues the original turn's message: stream into THAT
+    // record so the turn keeps one tool accordion. Only a run with no message
+    // to continue (a plain queued task) opens its own placeholder.
+    const existing = resumedMessageId
+      ? (
+          useChatStore.getState().messagesByConversation[conversation_id] ?? []
+        ).find((m) => m.id === resumedMessageId)
+      : undefined;
+    const targetId = existing ? resumedMessageId! : task_id;
+
+    if (!existing) {
+      // Create a placeholder message in the store for live tool progress.
+      // id === task_id so useBgMessageWebSocket can find and remove it when the
+      // final conversation.new_message arrives.
+      const placeholder: IMessage = {
+        id: task_id,
+        conversationId: conversation_id,
+        content: "",
+        role: "assistant",
+        status: "sending",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        messageId: task_id,
+        tool_data: null,
+      };
+      useChatStore.getState().addOrUpdateMessage(placeholder);
+      // Persist the placeholder (keyed by task_id) so live tool cards survive a
+      // refresh that happens before the final conversation.new_message arrives.
+      // useBgMessageWebSocket replaces this entry by task_id when the final
+      // message lands; an orphaned placeholder is only possible if the run is
+      // never finalized, in which case keeping its cards is the desired outcome.
+      await db.putMessage(placeholder);
+    }
 
     const controller = new AbortController();
     controllers.add(controller);
 
+    // The projection below REPLACES the record's fields, so a continued message
+    // must seed the accumulator with what it already has or its earlier cards
+    // and text would be wiped by the first resumed frame.
     let acc = createTurnAccumulator();
+    if (existing) {
+      acc = {
+        ...acc,
+        responseText: existing.content ?? "",
+        toolData: [
+          ...((existing.tool_data as TurnAccumulator["toolData"]) ?? []),
+        ],
+      };
+    }
 
     // Coalesced IndexedDB persistence: the store update renders live, the
     // throttled DB write is only a refresh-survival snapshot.
@@ -129,8 +159,8 @@ export const createExecutorStreamHandler =
     const flushToStore = () => {
       const state = useChatStore.getState();
       const msgs = state.messagesByConversation[conversation_id] ?? [];
-      const current = msgs.find((m) => m.id === task_id);
-      // Placeholder momentarily absent — skip this frame, keep the stream alive.
+      const current = msgs.find((m) => m.id === targetId);
+      // Target momentarily absent — skip this frame, keep the stream alive.
       if (!current) return;
       const updated = applyAccumulatorToMessage(current, acc);
       state.updateMessageInPlace(updated);
@@ -148,7 +178,7 @@ export const createExecutorStreamHandler =
       pendingWrite = null;
       const state = useChatStore.getState();
       const msgs = state.messagesByConversation[conversation_id] ?? [];
-      const current = msgs.find((m) => m.id === task_id);
+      const current = msgs.find((m) => m.id === targetId);
       if (current) {
         const finalized: IMessage = {
           ...applyAccumulatorToMessage(current, acc),
@@ -194,6 +224,20 @@ export const createExecutorStreamHandler =
                 detail: parsed.raw,
               });
               continue;
+            }
+            // The loading indicator is driven by the turn session, which is no
+            // longer reading anything — a resumed run streams here instead. Left
+            // unlabelled, the indicator froze on whatever the pause set
+            // ("Resuming") for the entire rest of the run.
+            const label = loadingLabelForEvent(parsed);
+            if (label) {
+              useStreamStore
+                .getState()
+                .setSessionLoadingText(
+                  conversation_id,
+                  label.text,
+                  label.toolInfo,
+                );
             }
             acc = applyStreamEvent(acc, parsed);
           }

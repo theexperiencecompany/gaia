@@ -4,7 +4,6 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from app.agents.tools.core.registry import get_tool_registry
 from app.config.oauth_config import get_integration_by_id
 from app.constants.cache import ONE_DAY_TTL, USER_INTEGRATION_CACHE_PATTERNS
 from app.constants.log_tags import LogTag
@@ -15,7 +14,6 @@ from app.db.repositories.users import user_repository
 from app.decorators.caching import Cacheable, CacheInvalidator
 from app.models.integration_models import (
     IntegrationResponse,
-    IntegrationTool,
     UserIntegration,
     UserIntegrationDocument,
     UserIntegrationResponse,
@@ -81,6 +79,7 @@ async def get_user_integrations(user_id: str) -> UserIntegrationsListResponse:
                 status=ui.status,
                 created_at=ui.created_at,
                 connected_at=ui.connected_at,
+                expired_at=ui.expired_at,
                 integration=integration,
             )
         )
@@ -247,72 +246,3 @@ async def remove_user_integration(user_id: str, integration_id: str) -> bool:
 async def check_user_has_integration(user_id: str, integration_id: str) -> bool:
     """Check if a user has added a specific integration."""
     return await user_integration_repository.exists(user_id, integration_id)
-
-
-@Cacheable(key_pattern="tools:user:{user_id}:integration_capabilities", ttl=ONE_DAY_TTL)
-async def get_user_integration_capabilities(user_id: str) -> dict[str, Any]:
-    """
-    Get capabilities (tools) for user's connected integrations + core tools.
-
-    This is optimized for follow-up action generation to avoid passing
-    all tools to the LLM. Instead, only tools from user's connected
-    integrations plus core built-in tools are included.
-
-    Returns:
-        Dict with:
-        - integration_names: List of connected integration names
-        - tool_names: List of available tool names (core + integrations)
-        - capabilities: Dict mapping integration_id -> list of tool info
-    """
-
-    # Get core tools that are always available (categories that don't require integration)
-    tool_registry = await get_tool_registry()
-    core_categories = tool_registry.get_core_categories()
-
-    tool_names_set = set()
-
-    # Add core tool names
-    for category in core_categories:
-        for tool in category.tools:
-            tool_names_set.add(tool.name)
-
-    # Only the user's *connected* (authenticated) integrations. These tool names
-    # feed user-clickable follow-up suggestions, so a merely-added but
-    # not-yet-connected integration must not surface — its suggested action would
-    # fail at execution time.
-    connected_ids = await get_connected_integration_ids(user_id)
-
-    integration_names = []
-    capabilities = {}
-
-    for integration_id in connected_ids:
-        # Get integration details with tools
-        integration = await get_integration_details(integration_id)
-        if not integration:
-            continue
-
-        integration_names.append(integration.name)
-
-        # Extract tool names and descriptions
-        tools_info = []
-        integration_tool: IntegrationTool
-        for integration_tool in integration.tools:
-            tool_names_set.add(integration_tool.name)
-            tools_info.append(
-                {
-                    "name": integration_tool.name,
-                    "description": integration_tool.description or "",
-                }
-            )
-
-        if tools_info:
-            capabilities[integration_id] = {
-                "name": integration.name,
-                "tools": tools_info,
-            }
-
-    return {
-        "integration_names": integration_names,
-        "tool_names": list(tool_names_set),
-        "capabilities": capabilities,
-    }

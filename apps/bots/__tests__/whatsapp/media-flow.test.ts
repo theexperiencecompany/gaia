@@ -75,6 +75,9 @@ vi.mock("@gaia/shared", async () => {
       friendlyMediaError: vi.fn(real.friendlyMediaError),
       unsupportedMediaMessage: vi.fn(real.unsupportedMediaMessage),
       extractSubcommandArgs: vi.fn(real.extractSubcommandArgs),
+      // The capped reader is real: these tests assert the adapter never
+      // materialises more than the cap it was handed.
+      readResponseBytesCapped: vi.fn(real.readResponseBytesCapped),
     },
     defaultRichMarkdown: "*GAIA Help*\nUse /gaia to chat",
   });
@@ -84,7 +87,11 @@ vi.mock("@gaia/shared", async () => {
 // Imports — happen after mocks so the adapter picks them up.
 // ---------------------------------------------------------------------------
 
-import { handleStreamingChat } from "@gaia/shared";
+import {
+  handleStreamingChat,
+  MEDIA_READ_TIMEOUT_MS,
+  readResponseBytesCapped,
+} from "@gaia/shared";
 import { WhatsAppAdapter } from "../../whatsapp/src/adapter";
 import type { ExtractedMedia } from "../../whatsapp/src/webhook.types";
 
@@ -143,6 +150,43 @@ function resolveCalls(adapter: WhatsAppAdapter): ReturnType<typeof vi.fn> {
   return (adapter as unknown as MediaInternals).resolveIncomingMedia;
 }
 
+/** Kapso `download({ as: "response" })` hands back an unconsumed Response. */
+function mediaResponse(bytes: Uint8Array): Response {
+  return {
+    ok: true,
+    status: 200,
+    body: new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(bytes);
+        controller.close();
+      },
+    }),
+  } as unknown as Response;
+}
+
+function endlessMediaResponse(chunk: number): {
+  response: Response;
+  produced: () => number;
+  cancelled: () => boolean;
+} {
+  let produced = 0;
+  let cancelled = false;
+  const response = {
+    ok: true,
+    status: 200,
+    body: new ReadableStream<Uint8Array>({
+      pull(controller) {
+        produced += chunk;
+        controller.enqueue(new Uint8Array(chunk).fill(6));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    }),
+  } as unknown as Response;
+  return { response, produced: () => produced, cancelled: () => cancelled };
+}
+
 function media(overrides: Partial<ExtractedMedia>): ExtractedMedia {
   return {
     kind: "image",
@@ -195,7 +239,9 @@ describe("WhatsAppAdapter - media routing", () => {
     vi.clearAllMocks();
     mockSendText.mockResolvedValue({ messages: [{ id: "sent-msg" }] });
     mockMarkRead.mockResolvedValue(undefined);
-    mockMediaDownload.mockResolvedValue(new Uint8Array([1, 2, 3, 4, 5]).buffer);
+    mockMediaDownload.mockResolvedValue(
+      mediaResponse(new Uint8Array([1, 2, 3, 4, 5])),
+    );
   });
 
   afterEach(() => {
@@ -261,17 +307,71 @@ describe("WhatsAppAdapter - media routing", () => {
 
     // The adapter must hand resolveIncomingMedia a thunk, not pre-downloaded
     // bytes — unsupported kinds must be able to skip the download entirely.
-    const thunk = resolveCalls(adapter).mock
-      .calls[0][1] as () => Promise<Uint8Array>;
+    const thunk = resolveCalls(adapter).mock.calls[0][1] as (
+      maxBytes: number,
+    ) => Promise<Uint8Array>;
     expect(mockMediaDownload).not.toHaveBeenCalled();
 
-    const bytes = await thunk();
+    const bytes = await thunk(1000);
     expect(mockMediaDownload).toHaveBeenCalledWith({
       mediaId: "wa-media-download",
       phoneNumberId: "test-phone-id",
+      as: "response",
     });
     expect(bytes).toBeInstanceOf(Uint8Array);
     expect(Array.from(bytes)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it("forwards the Kapso-declared media size so an oversize file skips the download", async () => {
+    const adapter = buildAdapter();
+    setOutcome(adapter, { action: "reply", text: "too large" });
+
+    await callHandle(adapter, media({ sizeBytes: 12_582_912 }));
+
+    expect(resolveCalls(adapter).mock.calls[0][0]).toMatchObject({
+      sizeBytes: 12_582_912,
+    });
+    expect(mockMediaDownload).not.toHaveBeenCalled();
+  });
+
+  it("reads the Kapso media through a capped stream instead of buffering it whole", async () => {
+    const chunk = 256;
+    const { response, produced, cancelled } = endlessMediaResponse(chunk);
+    mockMediaDownload.mockResolvedValue(response);
+    const adapter = buildAdapter();
+    setOutcome(adapter, { action: "chat", text: "x", attachments: [] });
+
+    await callHandle(adapter, media({ mediaId: "wa-media-huge" }));
+
+    const thunk = resolveCalls(adapter).mock.calls[0][1] as (
+      maxBytes: number,
+    ) => Promise<Uint8Array>;
+    const bytes = await thunk(1000);
+
+    expect(bytes.byteLength).toBe(1000);
+    expect(cancelled()).toBe(true);
+    expect(produced()).toBeLessThanOrEqual(1000 + 2 * chunk);
+    expect(vi.mocked(readResponseBytesCapped).mock.calls[0][3]).toBe(
+      MEDIA_READ_TIMEOUT_MS,
+    );
+  });
+
+  it("surfaces a failed Kapso media fetch instead of treating the error body as bytes", async () => {
+    mockMediaDownload.mockResolvedValue({
+      ok: false,
+      status: 410,
+      body: null,
+    } as unknown as Response);
+    const adapter = buildAdapter();
+    setOutcome(adapter, { action: "chat", text: "x", attachments: [] });
+
+    await callHandle(adapter, media({ mediaId: "wa-media-gone" }));
+
+    const thunk = resolveCalls(adapter).mock.calls[0][1] as (
+      maxBytes: number,
+    ) => Promise<Uint8Array>;
+
+    await expect(thunk(1000)).rejects.toMatchObject({ status: 410 });
   });
 
   it("dispatches a 'chat' outcome to handleStreamingChat with fileIds and fileData", async () => {
@@ -414,7 +514,9 @@ describe("WhatsAppAdapter - unsupported media (extractMedia returns null)", () =
   beforeEach(() => {
     vi.clearAllMocks();
     mockSendText.mockResolvedValue({ messages: [{ id: "sent-msg" }] });
-    mockMediaDownload.mockResolvedValue(new Uint8Array([1, 2, 3]).buffer);
+    mockMediaDownload.mockResolvedValue(
+      mediaResponse(new Uint8Array([1, 2, 3])),
+    );
   });
 
   afterEach(() => {
@@ -431,7 +533,7 @@ describe("WhatsAppAdapter - unsupported media (extractMedia returns null)", () =
     await flushQueue();
 
     expect(lastSentBody()).toBe(unsupportedMediaMessage("contacts"));
-    expect(lastSentBody()).toMatch(/contacts messages/i);
+    expect(lastSentBody()).toMatch(/contact cards/i);
     expect(handleStreamingChat).not.toHaveBeenCalled();
     expect(mockMediaDownload).not.toHaveBeenCalled();
   });

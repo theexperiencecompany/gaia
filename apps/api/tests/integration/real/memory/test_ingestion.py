@@ -16,7 +16,12 @@ from app.constants.memory import CONSOLIDATION_PENDING_KEY, MemorySourceType, Re
 from app.memory import consolidation
 from app.memory.engine import RetainResult, memory_engine
 from app.memory.schemas import ExtractedMemoryBatch
-from tests.integration.real.memory.llm import FakeMemoryLLM, make_batch, make_fact
+from tests.integration.real.memory.llm import (
+    FakeMemoryLLM,
+    human_prompt,
+    make_batch,
+    make_fact,
+)
 from tests.integration.real.memory.store import (
     chroma_user_vector_ids,
     chroma_vector_metadata,
@@ -255,7 +260,7 @@ async def test_concurrent_retains_do_not_corrupt_graph_or_journal(
     }
 
     def respond(messages: list[BaseMessage]) -> ExtractedMemoryBatch:
-        transcript = str(messages[-1].content)
+        transcript = human_prompt(messages)
         for key, batch in batches.items():
             if key in transcript:
                 return batch

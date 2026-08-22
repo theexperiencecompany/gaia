@@ -5,7 +5,6 @@ import type React from "react";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useSendMessage } from "@/hooks/useSendMessage";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import {
   useComposerFiles,
   useComposerIsUploading,
@@ -18,18 +17,16 @@ import { useReplyToMessage } from "@/stores/replyToMessageStore";
 import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
 
 interface UseComposerSubmitParams {
-  conversationId?: string;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   scrollToBottom: () => void;
 }
 
 /**
  * Sending a chat message from the composer: the guards (workflow auto-send,
- * pending uploads, empty input), send analytics, dispatch and post-send
- * cleanup, plus the Enter/Escape keyboard contract on the input.
+ * pending uploads, empty input), dispatch and post-send cleanup, plus the
+ * Enter/Escape keyboard contract on the input.
  */
 export function useComposerSubmit({
-  conversationId,
   inputRef,
   scrollToBottom,
 }: UseComposerSubmitParams) {
@@ -75,18 +72,6 @@ export function useComposerSubmit({
     }
     // Note: Loading state is now set in useSendMessage AFTER user message is persisted
     // This ensures the loading indicator appears AFTER the user message in the UI
-
-    trackEvent(ANALYTICS_EVENTS.CHAT_MESSAGE_SENT, {
-      has_text: !!inputText,
-      has_files: uploadedFiles.length > 0,
-      file_count: uploadedFiles.length,
-      has_tool: !!selectedTool,
-      tool_name: selectedTool,
-      tool_category: selectedToolCategory,
-      has_workflow: !!selectedWorkflow,
-      workflow_name: selectedWorkflow?.title,
-      conversation_id: conversationId,
-    });
 
     sendMessage(inputText, {
       files: uploadedFileData,

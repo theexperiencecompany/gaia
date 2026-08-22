@@ -565,11 +565,43 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
 
-    async def record_limit_email_sent(self, user_id: str) -> None:
-        """Stamp the usage-limit upsell email send time (the 1/week dedupe marker)."""
+    async def claim_limit_email_slot(
+        self, user_id: str, *, stale_before: datetime
+    ) -> UserDocument | None:
+        """Take the weekly limit-email slot, or return None if it is already taken.
+
+        Stamping the marker AFTER sending let two concurrent limit hits both read
+        an eligible user and both send — the read and the write straddle a network
+        send, so the window is wide, not theoretical. The claim is one conditional
+        update: only a document whose marker is missing or older than
+        ``stale_before`` matches, so exactly one caller wins and the loser sends
+        nothing.
+
+        Returns the BEFORE image, whose ``last_limit_email_sent`` is the value to
+        put back if the send then fails (see ``release_limit_email_slot``).
+        """
+        return await self._apply_raw_update(
+            {
+                "_id": self._id_value(user_id),
+                "$or": [
+                    {"last_limit_email_sent": None},
+                    {"last_limit_email_sent": {"$lt": stale_before}},
+                ],
+            },
+            {"$set": {"last_limit_email_sent": datetime.now(UTC)}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
+    async def release_limit_email_slot(self, user_id: str, previous: datetime | None) -> None:
+        """Put the weekly marker back after a claimed send failed.
+
+        Without this a failed send burns the whole week: the marker says an email
+        went out when none did, and the user hears nothing for seven days.
+        """
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
-            {"$set": {"last_limit_email_sent": datetime.now(UTC)}},
+            {"$set": {"last_limit_email_sent": previous}},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )

@@ -88,6 +88,15 @@ const todos = await apiService.get<Todo[]>("/api/todos");
 - Every major feature area that renders independently should be wrapped in an `ErrorBoundary`.
 - Use the shared one at `src/components/shared/ErrorBoundary.tsx` — do not create new ones. It catches rendering errors and reports to PostHog automatically.
 
+## Analytics (PostHog)
+
+Naming, identity and the no-PII rule are in the root `CLAUDE.md`. Web specifics:
+
+- `trackEvent(ANALYTICS_EVENTS.X, { ... })` from `src/lib/analytics.ts` — never `posthog.capture` directly, and never a bare string event name. Add new names to `ANALYTICS_EVENTS` in that file.
+- Users are identified by the **backend user id** (`useFetchUser`), not the WorkOS id or email, so web events join the API's.
+- Ingestion is proxied through `/ingest/*` so ad blockers cannot drop it; those rewrites follow `NEXT_PUBLIC_POSTHOG_HOST` (`next.config.mjs`), and `skipTrailingSlashRedirect: true` is required for it.
+- Prefer capturing server-side when the backend already sees the action — a client capture is the one an ad blocker eats. Capture on success, not on click.
+
 ## State Management
 
 Zustand (v5). Stores live in `src/stores/` and are named `use<Name>Store`.

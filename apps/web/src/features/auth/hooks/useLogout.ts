@@ -3,7 +3,7 @@ import { del } from "idb-keyval";
 import { useRouter } from "next/navigation";
 import { useCallback } from "react";
 import { useElectron } from "@/hooks/useElectron";
-import { resetUser } from "@/lib/analytics";
+import { ANALYTICS_EVENTS, resetUser, trackEvent } from "@/lib/analytics";
 import { db } from "@/lib/db/chatDb";
 import { authApi } from "../api/authApi";
 
@@ -88,7 +88,9 @@ export const useLogout = () => {
 
     await clearAllStorage();
 
-    // Reset PostHog user identity after logout request completes
+    // Capture before resetting so the event stays attributed to the user
+    // who logged out, then reset the PostHog identity.
+    trackEvent(ANALYTICS_EVENTS.USER_LOGGED_OUT);
     resetUser();
 
     // Redirection will be handled by the authApi.logout method

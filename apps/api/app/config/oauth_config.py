@@ -444,7 +444,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
         short_name="gmail",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_svLPDmjcTVMX",
+            auth_config_id="ac_zLZJrT48iedR",
             toolkit="GMAIL",
             toolkit_version="20260107_00",
         ),
@@ -1985,16 +1985,9 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             use_cases="product analytics, user behavior analysis, A/B testing, feature flag management, session replay analysis",
             system_prompt=POSTHOG_AGENT_SYSTEM_PROMPT,
             use_direct_tools=False,
-            auto_bind_tools=[
-                "query-run",
-                "query-generate-hogql-from-question",
-                "insight-create-from-query",
-                "insight-get",
-                "insights-get-all",
-                "create-feature-flag",
-                "feature-flag-get-all",
-                "experiment-create",
-            ],
+            # PostHog's MCP runs in CLI mode: one `exec` tool wraps every
+            # PostHog tool, reached via search/info/schema/call subcommands.
+            auto_bind_tools=["exec"],
             memory_prompt=POSTHOG_MEMORY_PROMPT,
         ),
         content=POSTHOG_CONTENT,
@@ -2041,6 +2034,20 @@ def get_integration_by_config(auth_config_id: str) -> OAuthIntegration | None:
             i
             for i in OAUTH_INTEGRATIONS
             if i.composio_config and i.composio_config.auth_config_id == auth_config_id
+        ),
+        None,
+    )
+
+
+@cache
+def get_integration_by_toolkit(toolkit: str) -> OAuthIntegration | None:
+    """Get an integration by its Composio toolkit slug (case-insensitive)."""
+    normalized = toolkit.upper()
+    return next(
+        (
+            i
+            for i in OAUTH_INTEGRATIONS
+            if i.composio_config and i.composio_config.toolkit.upper() == normalized
         ),
         None,
     )

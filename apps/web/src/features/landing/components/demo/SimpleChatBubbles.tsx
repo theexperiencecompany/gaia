@@ -1,7 +1,6 @@
+import { splitMessageByBreaks } from "@shared/utils";
 import Image from "next/image";
 import { type ReactNode, useId } from "react";
-
-import { splitMessageByBreaks } from "@/features/chat/utils/messageBreakUtils";
 import { cn } from "@/lib/utils";
 
 export function SimpleChatBubbleBot({

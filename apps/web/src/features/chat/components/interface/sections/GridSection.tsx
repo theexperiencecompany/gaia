@@ -20,6 +20,9 @@ interface GridSectionProps {
   workflows?: Workflow[];
   isCalendarConnected: boolean;
   isGmailConnected: boolean;
+  /** Connect/Reconnect/Retry — the verb matching each integration's status. */
+  calendarConnectLabel: string;
+  gmailConnectLabel: string;
   emailsLoading?: boolean;
   onLoadMoreEmails?: () => void;
   hasMoreEmails?: boolean;
@@ -40,6 +43,8 @@ export const GridSection = ({
   workflows = EMPTY_WORKFLOWS,
   isCalendarConnected,
   isGmailConnected,
+  calendarConnectLabel,
+  gmailConnectLabel,
   emailsLoading = false,
   onLoadMoreEmails,
   hasMoreEmails,
@@ -67,6 +72,7 @@ export const GridSection = ({
           emails={unreadEmails}
           status={{
             isConnected: isGmailConnected,
+            connectLabel: gmailConnectLabel,
             isFetching: emailsLoading,
             hasNextPage: hasMoreEmails,
             isFetchingNextPage: emailsFetchingMore,
@@ -78,6 +84,7 @@ export const GridSection = ({
           events={events}
           calendars={calendars}
           isConnected={isCalendarConnected}
+          connectLabel={calendarConnectLabel}
           onConnect={handleConnect}
           onEventClick={(_event) => {
             router.push("/calendar");

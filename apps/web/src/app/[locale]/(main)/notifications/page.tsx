@@ -5,7 +5,6 @@ import NotificationsHeader from "@/components/layout/headers/NotificationsHeader
 import { EmailPreviewModal } from "@/features/mail/components/EmailPreviewModal";
 import { NotificationConnectBanner } from "@/features/notification/components/NotificationConnectBanner";
 import { NotificationsList } from "@/features/notification/components/NotificationsList";
-import { useAllNotifications } from "@/features/notification/hooks/useAllNotifications";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useHeader } from "@/hooks/layout/useHeader";
 import { toast } from "@/lib/toast";
@@ -20,33 +19,27 @@ export default function NotificationsPage() {
   const [selectedTab, setSelectedTab] = useState<string>("unread");
   const { setHeader } = useHeader();
 
-  // Get unread notifications
+  // Both views read the same store entry, so this is a single fetch.
   const {
     notifications: unreadNotifications,
     loading: unreadLoading,
-    refetch: refetchUnread,
+    refetch: refreshNotifications,
   } = useNotifications({
     status: NotificationStatus.DELIVERED,
     limit: 100,
     channel_type: "inapp",
   });
 
-  // Get all notifications data
-  const {
-    allNotifications,
-    loading: allLoading,
-    refetchAll,
-  } = useAllNotifications({
-    limit: 100,
-    channel_type: "inapp",
-  });
+  const { notifications: allNotifications, loading: allLoading } =
+    useNotifications({
+      limit: 100,
+      channel_type: "inapp",
+    });
 
-  // Simple mark as read that refreshes both lists
   const handleMarkAsRead = async (notificationId: string) => {
     try {
       await NotificationsAPI.markAsRead(notificationId);
-      // Refresh both lists in parallel after marking as read
-      await Promise.all([refetchUnread(), refetchAll()]);
+      await refreshNotifications();
     } catch (error) {
       console.error("Error marking notification as read:", error);
     }
@@ -60,19 +53,13 @@ export default function NotificationsPage() {
           return;
         }
         await NotificationsAPI.bulkMarkAsRead(notificationIds);
-        // Refresh both lists in parallel
-        await Promise.all([refetchUnread(), refetchAll()]);
+        await refreshNotifications();
       } catch (error) {
         console.error("Error marking notification as read:", error);
       }
     },
-    [refetchUnread, refetchAll],
+    [refreshNotifications],
   );
-
-  // Simple refresh function
-  const refreshNotifications = useCallback(async () => {
-    await Promise.all([refetchAll(), refetchUnread()]);
-  }, [refetchAll, refetchUnread]);
 
   // Handle modal opening from notification actions
   const handleModalOpen = (config: ModalConfig) => {

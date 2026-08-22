@@ -6,6 +6,7 @@
 
 import * as Sentry from "@sentry/nextjs";
 import NextError from "next/error";
+import posthog from "posthog-js";
 import { useEffect, useState } from "react";
 
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
@@ -32,21 +33,19 @@ function GlobalErrorView({ error }: GlobalErrorProps) {
   const [recovering, setRecovering] = useState(isChunk);
 
   useEffect(() => {
-    if (!isChunk) {
-      Sentry.captureException(error);
-      trackEvent(ANALYTICS_EVENTS.ERROR_OCCURRED, {
-        error_type: "global_error",
-        error_message: error.message,
-        error_stack: error.stack,
-        digest: error.digest,
-      });
-      return;
-    }
-    // Stale-asset chunk failure — reload once for fresh chunks. Skip Sentry:
-    // this is an expected deploy-boundary condition, not an app fault.
-    if (recoverFromChunkError(error) !== "reloading") {
-      setRecovering(false);
-    }
+    if (isChunk && recoverFromChunkError(error) === "reloading") return;
+    setRecovering(false);
+    if (isChunk) return;
+
+    Sentry.captureException(error);
+    posthog.captureException(error);
+    // Full diagnostics go through Sentry/captureException above; error
+    // message/stack can carry user content, so analytics only gets the stable
+    // type and digest.
+    trackEvent(ANALYTICS_EVENTS.ERROR_OCCURRED, {
+      error_type: "global_error",
+      digest: error.digest,
+    });
   }, [error, isChunk]);
 
   return (
