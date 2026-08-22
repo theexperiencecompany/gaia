@@ -23,6 +23,8 @@ import json
 from typing import Any
 from uuid import uuid4
 
+from redis.exceptions import RedisError
+
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.trigger_configs import GmailPollInboxConfig
@@ -95,40 +97,68 @@ async def buffer_trigger_event(
         return False
 
     key = TRIGGER_BATCH_KEY.format(workflow_id=workflow_id)
-    buffered = await client.rpush(key, json.dumps(data, default=str))
-    if buffered > MAX_TRIGGER_BATCH_EVENTS:
-        await client.ltrim(key, -MAX_TRIGGER_BATCH_EVENTS, -1)
+    try:
+        buffered = await client.rpush(key, json.dumps(data, default=str))
+        if buffered > MAX_TRIGGER_BATCH_EVENTS:
+            await client.ltrim(key, -MAX_TRIGGER_BATCH_EVENTS, -1)
+            log.warning(
+                f"{LogTag.TRIGGER} Trigger batch full — oldest events dropped",
+                workflow_id=workflow_id,
+                user_id=user_id,
+                dropped_count=buffered - MAX_TRIGGER_BATCH_EVENTS,
+                max_batch=MAX_TRIGGER_BATCH_EVENTS,
+            )
+        await client.expire(
+            key,
+            max(window_seconds * TRIGGER_BATCH_TTL_MULTIPLIER, TRIGGER_BATCH_TTL_FLOOR_SECONDS),
+        )
+    except RedisError as exc:
+        # Same degradation as a missing client: the caller dispatches the event
+        # immediately instead. If the rpush landed before the failure the event
+        # may ALSO ride a later batch — a rare duplicate is the right trade
+        # against dropping it.
         log.warning(
-            f"{LogTag.TRIGGER} Trigger batch full — oldest events dropped",
+            f"{LogTag.TRIGGER} Redis write failed — trigger event cannot be batched",
             workflow_id=workflow_id,
             user_id=user_id,
-            dropped_count=buffered - MAX_TRIGGER_BATCH_EVENTS,
-            max_batch=MAX_TRIGGER_BATCH_EVENTS,
+            error=str(exc),
+            error_type=type(exc).__name__,
         )
-        buffered = MAX_TRIGGER_BATCH_EVENTS
-    await client.expire(
-        key, max(window_seconds * TRIGGER_BATCH_TTL_MULTIPLIER, TRIGGER_BATCH_TTL_FLOOR_SECONDS)
-    )
+        return False
 
     # One id per workflow: while a batch run is queued or executing, every
     # further event's enqueue is deduped away and it simply rides the buffer.
     # `keep_result = 0` (WorkerSettings) frees the id the moment the run ends,
     # so the next event opens a fresh window instead of being stranded.
-    pool = await RedisPoolManager.get_pool()
-    job = await enqueue_worker_job(
-        pool,
-        "execute_workflow_by_id",
-        workflow_id,
-        {**context, "trigger_batch_key": key},
-        _job_id=f"trigger_batch:{workflow_id}",
-        _defer_by=window_seconds,
-    )
+    try:
+        pool = await RedisPoolManager.get_pool()
+        job = await enqueue_worker_job(
+            pool,
+            "execute_workflow_by_id",
+            workflow_id,
+            {**context, "trigger_batch_key": key},
+            _job_id=f"trigger_batch:{workflow_id}",
+            _defer_by=window_seconds,
+        )
+    except Exception as exc:
+        # The event is buffered but nothing is scheduled to drain it — without
+        # the fallback it would sit until the next event or expire unprocessed.
+        # Immediate dispatch may duplicate it into a later batch; same trade as
+        # the Redis-write failure above.
+        log.warning(
+            f"{LogTag.TRIGGER} Batch run scheduling failed — dispatching event immediately",
+            workflow_id=workflow_id,
+            user_id=user_id,
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+        return False
 
     log.info(
         f"{LogTag.TRIGGER} Trigger event buffered for batched run",
         workflow_id=workflow_id,
         user_id=user_id,
-        buffered_count=buffered,
+        buffered_count=min(buffered, MAX_TRIGGER_BATCH_EVENTS),
         window_seconds=window_seconds,
         scheduled_run=job is not None,
     )

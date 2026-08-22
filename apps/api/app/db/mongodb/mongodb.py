@@ -3,6 +3,7 @@ from functools import lru_cache
 import sys
 from typing import Any
 
+from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection, AsyncIOMotorDatabase
 import pymongo
 from pymongo.server_api import ServerApi
@@ -114,3 +115,10 @@ def init_mongodb() -> MongoDB:
     mongodb_instance.ping()
     log.info(f"{LogTag.MONGO} Successfully connected to MongoDB.")
     return mongodb_instance
+
+
+def object_id_filter(id_value: str) -> dict[str, ObjectId]:
+    """The ``_id`` filter for a 24-hex string id — the id-codec stays in app/db
+    (repository-boundaries lint), so raw-connection operational scripts never
+    import bson themselves."""
+    return {"_id": ObjectId(id_value)}
