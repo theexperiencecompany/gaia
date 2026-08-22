@@ -3,6 +3,7 @@
 import { Brain02Icon, ConnectIcon, PencilEdit02Icon } from "@icons";
 import { useInView } from "motion/react";
 import { useRef } from "react";
+import { getHomeSection } from "@/features/landing/content/home-content";
 import { ChatDemo, type ChatMessageItem } from "../iphone/ChatDemo";
 import { SplitShowcase } from "./SplitShowcase";
 
@@ -34,8 +35,8 @@ export default function MemorySection() {
   const inView = useInView(tileRef, { once: true, amount: 0.45 });
   return (
     <SplitShowcase
-      title="It remembers, so you don't"
-      subtitle="Say something once and GAIA files it away, then acts on it at exactly the right moment, even weeks later."
+      title={getHomeSection("memory").heading}
+      subtitle={getHomeSection("memory").description}
       rows={[
         {
           icon: <Brain02Icon width={18} height={18} />,

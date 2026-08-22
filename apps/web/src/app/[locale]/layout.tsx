@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
-import Script from "next/script";
 import { hasLocale, NextIntlClientProvider } from "next-intl";
 import { setRequestLocale } from "next-intl/server";
 import { type ReactNode, Suspense } from "react";
@@ -10,11 +9,7 @@ import { ChunkErrorRecovery } from "@/components/shared/ChunkErrorRecovery";
 import { routing } from "@/i18n/routing";
 import AnalyticsLayout from "@/layouts/AnalyticsLayout";
 import RootProviders from "@/layouts/RootProviders";
-import {
-  generateOrganizationSchema,
-  generateWebSiteSchema,
-  siteConfig,
-} from "@/lib/seo";
+import { siteConfig } from "@/lib/seo";
 
 const OG_LOCALE_MAP: Record<string, string> = {
   en: "en_US",
@@ -194,14 +189,6 @@ export default async function LocaleLayout({ children, params }: Props) {
             </RootProviders>
           </div>
         </NextIntlClientProvider>
-
-        <Script id="json-ld-organization" type="application/ld+json">
-          {JSON.stringify(generateOrganizationSchema())}
-        </Script>
-
-        <Script id="json-ld-website" type="application/ld+json">
-          {JSON.stringify(generateWebSiteSchema())}
-        </Script>
 
         <ChunkErrorRecovery />
         <AnalyticsLayout />

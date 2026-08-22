@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
+import { getHomeSection } from "@/features/landing/content/home-content";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
 import { Link } from "@/i18n/navigation";
 import GetStartedButton from "../shared/GetStartedButton";
@@ -7,13 +8,14 @@ import { TextSoftBlurIn } from "../shared/TextSoftBlurIn";
 
 export default function UseCasesSectionLanding() {
   const contentRef = useRef(null);
+  const section = getHomeSection("use-cases");
 
   return (
     <div className="relative flex flex-col items-center justify-start px-4 py-16 sm:px-6 sm:py-24">
       <div className="relative z-1 flex w-full max-w-7xl flex-col items-center justify-center p-4 sm:p-6 lg:p-7 gap-10">
         <TextSoftBlurIn
-          text="If you do it, GAIA can automate it"
-          as="h3"
+          text={section.heading}
+          as="h2"
           className="text-4xl font-serif font-normal!"
         />
         <div className="max-w-5xl">
@@ -42,7 +44,6 @@ export default function UseCasesSectionLanding() {
             text="Who it's for"
             href="/for"
           />
-          {/* <Button variant="flat">Who it's for</Button> */}
         </div>
       </div>
     </div>

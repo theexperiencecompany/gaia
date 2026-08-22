@@ -10,6 +10,7 @@ import {
   WhatsappIcon,
 } from "@/components/shared/icons";
 
+import { getHomeSection } from "@/features/landing/content/home-content";
 import GetStartedButton from "../shared/GetStartedButton";
 import { TextSoftBlurIn } from "../shared/TextSoftBlurIn";
 
@@ -62,14 +63,14 @@ export default function FinalSection({
 
         <div className="relative z-20 flex w-full max-w-5xl flex-col items-center justify-center gap-4 text-center">
           <TextSoftBlurIn
-            text="Stop doing everything yourself"
+            text={getHomeSection("get-started").heading}
             as="h2"
             className="z-10 px-2 text-center text-[clamp(2.8rem,8.3vw,5rem)] leading-[1.05] font-serif font-normal tracking-tight text-white md:text-6xl"
             gradient="linear-gradient(to bottom, #ffffff, #dbdbdb)"
           />
 
           <p className="z-1 mb-3 max-w-sm px-4 text-base leading-6 font-light text-zinc-200 sm:mb-6 sm:max-w-(--breakpoint-md) sm:px-0 sm:text-xl sm:leading-7 md:text-2xl">
-            Join thousands of professionals who gave their grunt work to GAIA.
+            {getHomeSection("get-started").description}
           </p>
 
           <GetStartedButton

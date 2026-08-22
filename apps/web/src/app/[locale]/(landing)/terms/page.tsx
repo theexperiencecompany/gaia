@@ -49,7 +49,7 @@ const TermsOfService = () => {
           <p className="mb-4 text-sm">Effective Date: August 14, 2026</p>
           <p className="mb-4">
             This Terms of Service Agreement (this "Agreement") is entered into
-            by and between The Experience Company, Inc., a Delaware corporation
+            by and between The Experience Comp, Inc., a Delaware corporation
             ("Company," "GAIA," "we," "us," or "our"), and you, the individual
             or entity accessing or using our artificial intelligence assistant
             services and platform (the "Service"). BY ACCESSING OR USING THE
@@ -252,7 +252,7 @@ const TermsOfService = () => {
                 </li>
                 <li>
                   <strong>Refund Requests:</strong> Refund requests should be
-                  submitted to support@heygaia.so within thirty (30) days of the
+                  submitted to support@heygaia.io within thirty (30) days of the
                   original charge and will be reviewed on a case-by-case basis.
                 </li>
               </ul>
@@ -273,7 +273,7 @@ const TermsOfService = () => {
                 </li>
                 <li>
                   <strong>Support Cancellation:</strong> Alternatively, contact
-                  our support team at support@heygaia.so with your cancellation
+                  our support team at support@heygaia.io with your cancellation
                   request;
                 </li>
                 <li>
@@ -591,7 +591,7 @@ const TermsOfService = () => {
             <p className="mb-4">
               Before initiating arbitration, you and Company agree to try to
               resolve the dispute informally. Send a written notice describing
-              the dispute and the relief sought to support@heygaia.so. If the
+              the dispute and the relief sought to support@heygaia.io. If the
               dispute is not resolved within sixty (60) days, either party may
               begin arbitration.
             </p>
@@ -637,7 +637,7 @@ const TermsOfService = () => {
             <p className="mb-4">
               You may opt out of the arbitration agreement in Section 18.3 and
               the class action waiver in Section 18.6 by emailing
-              support@heygaia.so with the subject line "Arbitration Opt-Out"
+              support@heygaia.io with the subject line "Arbitration Opt-Out"
               within thirty (30) days of first accepting this Agreement, stating
               your name and the email address on your account. Opting out will
               not affect any other part of this Agreement, and Company will not
@@ -693,14 +693,14 @@ const TermsOfService = () => {
             For any questions, concerns, or notices regarding this Agreement,
             please contact us at:
             <br />
-            The Experience Company, Inc.
+            The Experience Comp, Inc.
             <br />
             Email:{" "}
             <a
               className="text-blue-500 underline"
-              href="mailto:support@heygaia.so"
+              href="mailto:support@heygaia.io"
             >
-              support@heygaia.so
+              support@heygaia.io
             </a>
           </p>
         </div>

@@ -5,6 +5,7 @@ import { CircleArrowRight02Icon } from "@icons";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
+import { getHomeSection } from "@/features/landing/content/home-content";
 import { Link } from "@/i18n/navigation";
 import LargeHeader from "../shared/LargeHeader";
 
@@ -419,8 +420,8 @@ export default function Tired() {
 
       <LargeHeader
         chipText="Stop context-switching"
-        headingText="Every tool. One assistant."
-        subHeadingText="Plug in your stack once. GAIA takes action across Gmail, Slack, Notion, Calendar and 100+ more."
+        headingText={getHomeSection("integrations").heading}
+        subHeadingText={getHomeSection("integrations").description}
         centered
       />
 

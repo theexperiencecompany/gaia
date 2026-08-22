@@ -12,6 +12,7 @@ import * as m from "motion/react-m";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
+import { getHomeSection } from "@/features/landing/content/home-content";
 import { Link } from "@/i18n/navigation";
 
 import {
@@ -322,8 +323,8 @@ export default function BotsShowcaseSection() {
       <div className="flex w-full max-w-6xl flex-col items-center gap-8">
         <LargeHeader
           chipText="Available everywhere"
-          headingText="Reach GAIA from anywhere"
-          subHeadingText="No new app to learn. Just open the one you already have open."
+          headingText={getHomeSection("bots").heading}
+          subHeadingText={getHomeSection("bots").description}
           centered
         />
         <InViewMount minHeight="640px" className="w-full">

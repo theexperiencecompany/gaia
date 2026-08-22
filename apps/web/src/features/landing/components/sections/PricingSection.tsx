@@ -5,7 +5,7 @@ import { Tab, Tabs } from "@heroui/tabs";
 import { ArrowRight02Icon } from "@icons";
 import Link from "next/link";
 import { useState } from "react";
-
+import { getHomeSection } from "@/features/landing/content/home-content";
 import { PricingCards } from "@/features/pricing/components/PricingCards";
 import LargeHeader from "../shared/LargeHeader";
 
@@ -16,8 +16,8 @@ export default function PricingSection() {
     <section className="flex w-full flex-col items-center px-4 py-16 sm:px-6 sm:py-24">
       <LargeHeader
         chipText="Pricing"
-        headingText="$1 a day to never work again."
-        subHeadingText="Free to start. The cheapest hire you'll ever make."
+        headingText={getHomeSection("pricing").heading}
+        subHeadingText={getHomeSection("pricing").description}
         centered
       />
 

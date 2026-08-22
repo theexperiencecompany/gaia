@@ -7,12 +7,14 @@ import { homepageFAQs } from "@/lib/faq";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
-  generateOrganizationSchema,
   generatePageMetadata,
   generateWebPageSchema,
-  generateWebSiteSchema,
   siteConfig,
 } from "@/lib/seo";
+import {
+  generateOrganizationSchema,
+  generateWebSiteSchema,
+} from "@/lib/seo/organization-schema";
 
 // ISR: give the homepage a stable incremental-cache entry so OpenNext's cache
 // interception serves it without booting the full Next server (the worker

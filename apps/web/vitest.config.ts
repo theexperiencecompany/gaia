@@ -7,7 +7,12 @@ export default defineConfig({
     jsxImportSource: "react",
   },
   test: {
-    include: ["src/__tests__/**/*.test.ts", "src/__tests__/**/*.test.tsx"],
+    include: [
+      "src/__tests__/**/*.test.ts",
+      "src/__tests__/**/*.test.tsx",
+      // Co-located tests for lib/agentic modules (content negotiation).
+      "src/lib/agentic/**/*.test.ts",
+    ],
     globals: true,
     environment: "node",
     reporters: ["verbose"],

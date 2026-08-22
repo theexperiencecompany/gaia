@@ -6,8 +6,8 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { StarFilledIcon } from "@/components/shared/icons";
 import { RaisedButton } from "@/components/ui/raised-button";
 import Spinner from "@/components/ui/spinner";
+import { getHomeSection } from "@/features/landing/content/home-content";
 import { useGitHubContributors } from "@/hooks/useGitHubContributors";
-
 import LargeHeader from "../shared/LargeHeader";
 
 // Import the GitHubContributor type
@@ -93,8 +93,8 @@ export default function OpenSource() {
     >
       <div className="flex w-full max-w-7xl flex-col items-center justify-center rounded-2xl bg-gradient-to-b from-zinc-900 to-zinc-950 px-4 py-6 outline-1 outline-zinc-900 sm:rounded-3xl sm:p-8 lg:rounded-4xl lg:p-10">
         <LargeHeader
-          headingText="Your data stays yours"
-          subHeadingText="GAIA is fully open source. Run it on your own server, audit every line of code, and never worry about your data being sold or misused."
+          headingText={getHomeSection("open-source").heading}
+          subHeadingText={getHomeSection("open-source").description}
           centered
         />
         <div className="flex -space-x-8 sm:-space-x-12 lg:-space-x-16">

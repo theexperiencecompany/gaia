@@ -1,5 +1,9 @@
 import { CircleArrowRight02Icon } from "@icons";
 import Image from "next/image";
+import {
+  HERO_TITLE_LINES,
+  HOME_CONTENT,
+} from "@/features/landing/content/home-content";
 import type { LatestRelease } from "@/features/landing/utils/getLatestRelease";
 import { Link } from "@/i18n/navigation";
 import GetStartedButton from "../shared/GetStartedButton";
@@ -55,11 +59,11 @@ export default function HeroSection({
 
         <div onClick={onTextClick} className="cursor-default select-none">
           <h1
-            aria-label="Get a workday back every week"
+            aria-label={HOME_CONTENT.heroTitle}
             className="max-w-(--breakpoint-2xl) text-center text-[3.2rem] leading-none sm:text-[5.75rem] font-semibold overflow-visible font-serif"
           >
             <TextSoftBlurIn
-              text="Get a workday back"
+              text={HERO_TITLE_LINES[0]}
               as="span"
               immediate
               charStagger={0.04}
@@ -71,7 +75,7 @@ export default function HeroSection({
               }
             />
             <TextSoftBlurIn
-              text="every week"
+              text={HERO_TITLE_LINES[1]}
               as="span"
               immediate
               startDelay={0.4}
@@ -93,10 +97,7 @@ export default function HeroSection({
           <div
             className={`mb-3 max-w-(--breakpoint-lg) items-center justify-center gap-x-1.5 gap-y-1 px-4 py-0 text-center text-lg leading-7 sm:px-0 sm:text-xl ${isDark ? "text-zinc-200" : "text-black"}`}
           >
-            <span>
-              GAIA watches your inbox, calendar, and tools and acts before you
-              ask.
-            </span>
+            <span>{HOME_CONTENT.heroSubtitle}</span>
             <br />
             <div className="inline-flex flex-wrap items-center justify-center gap-y-1 align-middle">
               <span>Text it on</span>
@@ -143,9 +144,11 @@ export default function HeroSection({
                   ? "text-black! px-1 hover:scale-105"
                   : "text-white! px-1 hover:scale-105"
               }
+              href={HOME_CONTENT.heroCtas[0].href}
               text={
                 <div className="flex items-center gap-1.5">
-                  Sign Up <CircleArrowRight02Icon width={20} height={20} />
+                  {HOME_CONTENT.heroCtas[0].label}{" "}
+                  <CircleArrowRight02Icon width={20} height={20} />
                 </div>
               }
             />

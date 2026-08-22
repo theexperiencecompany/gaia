@@ -248,6 +248,39 @@ function drawGlow(ctx: CanvasRenderingContext2D, dots: Dot[]): void {
   }
 }
 
+/** Drop click waves whose front has crossed the whole canvas (all times ms). */
+function pruneExpiredWaves(
+  waves: ClickWave[],
+  now: number,
+  waveLifetime: number,
+): void {
+  for (let i = waves.length - 1; i >= 0; i--) {
+    if (now - waves[i].start > waveLifetime) waves.splice(i, 1);
+  }
+}
+
+/**
+ * Sum every active click wave for one dot: the dot swells on a sin bump as
+ * each wavefront reaches it (arrival time = distance / CLICK_SPEED), so the
+ * ripple physically travels across the whole lockup.
+ */
+function clickWaveLift(
+  waves: ClickWave[],
+  dot: Dot,
+  now: number,
+  cssW: number,
+): number {
+  let click = 0;
+  for (const wave of waves) {
+    const d = Math.hypot(dot.x - wave.x, dot.y - wave.y);
+    const phase = ((now - wave.start) / 1000 - d / CLICK_SPEED) / CLICK_RISE;
+    if (phase < 0 || phase > 1) continue;
+    const edgeFalloff = 1 - CLICK_EDGE_FALLOFF * smoothstep(0, cssW, d);
+    click += CLICK_AMP * edgeFalloff * Math.sin(Math.PI * phase);
+  }
+  return click;
+}
+
 /**
  * Pointer interaction: dots inside a circle around the cursor swell and
  * trail it smoothly as it moves over the wordmark, and a pointerdown sends a
@@ -291,9 +324,7 @@ function attachPointerInteraction(
     // Prune click waves whose front has crossed the whole canvas (all times
     // in ms).
     const waveLifetime = (cssW / CLICK_SPEED + CLICK_RISE + 0.25) * 1000;
-    for (let i = waves.length - 1; i >= 0; i--) {
-      if (now - waves[i].start > waveLifetime) waves.splice(i, 1);
-    }
+    pruneExpiredWaves(waves, now, waveLifetime);
 
     // The ripple center trails the cursor with exponential smoothing.
     if (!cursorAdopted) {
@@ -315,19 +346,7 @@ function attachPointerInteraction(
       const ripple = RIPPLE_LIFT * smoothstep(RIPPLE_RADIUS, 0, dist);
       let target = pointerInside ? ripple : 0;
 
-      // Sum every active click wave: each dot swells on a sin bump as the
-      // wavefront reaches it (arrival time = distance / CLICK_SPEED), so the
-      // ripple physically travels across the whole lockup.
-      let click = 0;
-      for (const wave of waves) {
-        const d = Math.hypot(dot.x - wave.x, dot.y - wave.y);
-        const phase =
-          ((now - wave.start) / 1000 - d / CLICK_SPEED) / CLICK_RISE;
-        if (phase < 0 || phase > 1) continue;
-        const edgeFalloff = 1 - CLICK_EDGE_FALLOFF * smoothstep(0, cssW, d);
-        click += CLICK_AMP * edgeFalloff * Math.sin(Math.PI * phase);
-      }
-      target += click;
+      target += clickWaveLift(waves, dot, now, cssW);
 
       const targetRadius = dot.base * (1 + target);
       dot.radius += (targetRadius - dot.radius) * ease;

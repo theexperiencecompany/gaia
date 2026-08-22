@@ -3,6 +3,7 @@
 import { AlarmClockIcon, CheckmarkCircle02Icon, TaskDailyIcon } from "@icons";
 import { useInView } from "motion/react";
 import { useRef } from "react";
+import { getHomeSection } from "@/features/landing/content/home-content";
 import { ChatDemo, type ChatMessageItem } from "../iphone/ChatDemo";
 import { SplitShowcase } from "./SplitShowcase";
 
@@ -42,8 +43,8 @@ export default function RunsYourDaySection() {
   const inView = useInView(tileRef, { once: true, amount: 0.45 });
   return (
     <SplitShowcase
-      title="Your day runs itself"
-      subtitle="One briefing in the morning, one tap to approve. GAIA works through your inbox, calendar, and tasks while you do the real work."
+      title={getHomeSection("runs-your-day").heading}
+      subtitle={getHomeSection("runs-your-day").description}
       rows={[
         {
           icon: <AlarmClockIcon width={18} height={18} />,

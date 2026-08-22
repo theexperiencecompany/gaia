@@ -8,6 +8,7 @@ import {
 import { AnimatePresence, useInView } from "motion/react";
 import * as m from "motion/react-m";
 import { useRef, useState } from "react";
+import { getHomeSection } from "@/features/landing/content/home-content";
 import { cn } from "@/lib/utils";
 import { ChatDemo, type ChatMessageItem } from "../iphone/ChatDemo";
 import { SplitShowcase } from "./SplitShowcase";
@@ -95,8 +96,8 @@ export default function WorkflowsSection() {
   return (
     <SplitShowcase
       reverse
-      title="Put your life on autopilot."
-      subtitle="Tell GAIA what to automate in plain language. Set a schedule or a trigger and it runs the steps across your tools. No code."
+      title={getHomeSection("workflows").heading}
+      subtitle={getHomeSection("workflows").description}
       rows={ROWS}
     >
       <div ref={tileRef} className="absolute inset-0 flex flex-col bg-white">

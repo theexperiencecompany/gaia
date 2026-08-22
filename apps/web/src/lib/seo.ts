@@ -19,7 +19,6 @@ import type {
   Question,
   SoftwareApplication,
   WebPage,
-  WebSite,
   WithContext,
 } from "schema-dts";
 
@@ -216,83 +215,6 @@ export function generatePageMetadata({
   }
 
   return metadata;
-}
-
-/**
- * Generate Organization structured data (JSON-LD)
- * Enhanced for GAIA brand disambiguation in Google Knowledge Graph
- */
-export function generateOrganizationSchema(): WithContext<Organization> {
-  return {
-    "@context": "https://schema.org",
-    "@type": "Organization",
-    "@id": `${siteConfig.url}/#organization`,
-    name: siteConfig.short_name,
-    alternateName: [
-      "GAIA AI",
-      "GAIA AI Assistant",
-      "Hey GAIA",
-      "GAIA Assistant",
-      "GAIA Personal AI",
-      "heygaia",
-    ],
-    url: siteConfig.url,
-    logo: `${siteConfig.url}/images/logos/logo.webp`,
-    image: `${siteConfig.url}/og-image.webp`,
-    description: siteConfig.description,
-    foundingDate: "2025",
-    foundingLocation: {
-      "@type": "Place",
-      name: "India",
-    },
-    founders: siteConfig.founders.map(
-      (founder): Person => ({
-        "@type": "Person",
-        name: founder.name,
-        jobTitle: founder.role,
-        sameAs: [founder.twitter, founder.linkedin].filter(Boolean),
-      }),
-    ),
-    sameAs: [
-      siteConfig.links.twitter,
-      siteConfig.links.github,
-      siteConfig.links.linkedin,
-      siteConfig.links.youtube,
-      siteConfig.links.discord,
-      siteConfig.url,
-      "https://docs.heygaia.io",
-    ],
-    contactPoint: {
-      "@type": "ContactPoint",
-      contactType: "Customer Support",
-      url: `${siteConfig.url}/contact`,
-      availableLanguage: ["English"],
-    },
-    slogan: "Your Personal AI Assistant",
-    keywords: "AI assistant, personal AI, productivity, automation, GAIA",
-  };
-}
-
-/**
- * Generate WebSite structured data (JSON-LD)
- */
-export function generateWebSiteSchema(): WithContext<WebSite> {
-  return {
-    "@context": "https://schema.org",
-    "@type": "WebSite",
-    name: siteConfig.short_name,
-    alternateName: siteConfig.name,
-    url: siteConfig.url,
-    description: siteConfig.description,
-    potentialAction: {
-      "@type": "SearchAction",
-      target: {
-        "@type": "EntryPoint",
-        urlTemplate: `${siteConfig.url}/use-cases?q={search_term_string}`,
-      },
-      "query-input": "required name=search_term_string",
-    } as unknown as WebSite["potentialAction"],
-  };
 }
 
 /**
