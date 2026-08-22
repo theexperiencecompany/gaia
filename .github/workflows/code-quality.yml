@@ -564,11 +564,11 @@ jobs:
           echo "::group::bandit (low severity, low confidence — no exclusions)"
           FILES=$(scripts/ci/changed-py-source.sh)
           if [ "$FILES" = "__FULL__" ]; then
-            uvx bandit -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low
+            uvx --no-build bandit@1.9.4 -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low
           elif [ -z "$FILES" ]; then
             echo "No matching changed files — skipping."
           else
-            uvx bandit -c pyproject.toml $FILES --severity-level low --confidence-level low
+            uvx --no-build bandit@1.9.4 -c pyproject.toml $FILES --severity-level low --confidence-level low
           fi
           echo "::endgroup::"
           echo "Security: OK (0 issues across all severity levels)"
@@ -734,8 +734,8 @@ jobs:
           prune-cache: true
       - name: Install vulture (Python dead-code detector)
         run: |
-          echo "::group::uv tool install vulture"
-          uv tool install vulture
+          echo "::group::uv tool install vulture@2.16"
+          uv tool install vulture@2.16
           echo "::endgroup::"
       - name: knip (TypeScript) + vulture (Python) dead-code scan (strict)
         run: |
