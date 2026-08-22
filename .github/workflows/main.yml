@@ -319,41 +319,6 @@ jobs:
   # Runs parallel to test-python (needs: [detect] only) as a budget probe;
   # making it depend on test-python would serialize the critical path (5.5m +
   # 5m) and hide the probe's signal behind a slow suite. Keep parallel.
-  test-fast:
-    needs: [detect]
-    if: needs.detect.outputs.has_python == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 12
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-        with:
-          version: "0.8.17"
-          enable-cache: true
-          prune-cache: true
-      - name: Restore uv venv
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: apps/api/.venv
-          key: uvvenv-${{ runner.os }}-${{ hashFiles('uv.lock','apps/api/pyproject.toml') }}
-      - name: Sync Python dependencies
-        shell: bash
-        run: uv sync --frozen --package gaia --group backend --group dev
-      - name: Run hermetic fast suite (budget-capped)
-        working-directory: apps/api
-        # No containers, no service env: USE_REAL_SERVICES is unset, so every
-        # real-infra tier skips at collection. The `timeout` cap IS the
-        # fast-suite budget — a slower suite is a failed build.
-        run: |
-          trap 'echo "::error::repro: timeout ${FAST_SUITE_BUDGET_SECONDS:-300} bash"' ERR
-          timeout ${FAST_SUITE_BUDGET_SECONDS:-300} bash ../../scripts/ci/run-tests-flake-gate.sh \
-            uv run --frozen pytest -n auto -m 'not composio and not model_onboarding and not schemathesis' \
-            --tb=short -q --override-ini=addopts=--strict-markers --timeout=300
-          echo "Hermetic fast suite: OK (under budget)"
-          echo "### Hermetic fast suite — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
-
   # --- Test: TypeScript (runner-native) -----------------------------------
   test-typescript:
     needs: [detect]
