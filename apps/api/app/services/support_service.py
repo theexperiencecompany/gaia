@@ -146,21 +146,26 @@ async def _rollback_created_request(
     user_id: str,
     email_error: Exception,
 ) -> None:
-    """Best-effort deletion of the stored request after email sending failed."""
+    """Best-effort deletion of the stored request after email sending failed.
+
+    Raises on failure — the caller must not report the request as uncreated
+    when compensation itself failed (the request would remain stored and a
+    blind retry would duplicate it).
+    """
     try:
         if await support_request_repository.delete(request_id, user_id=user_id):
             log.info(
                 "Successfully rolled back support request from database",
                 ticket_id=ticket_id,
             )
-        else:
-            log.error(
-                "Failed to rollback support request from database",
-                ticket_id=ticket_id,
-                error=str(email_error),
-                error_type=type(email_error).__name__,
-                user_id=user_id,
-            )
+            return
+        log.error(
+            "Failed to rollback support request from database",
+            ticket_id=ticket_id,
+            error=str(email_error),
+            error_type=type(email_error).__name__,
+            user_id=user_id,
+        )
     except Exception as rollback_error:
         log.error(
             "Error during rollback for ticket",
@@ -169,6 +174,22 @@ async def _rollback_created_request(
             error_type=type(rollback_error).__name__,
             user_id=user_id,
         )
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Email sending failed and automatic cleanup of the support "
+                "request also failed. The request may still be stored — "
+                "please contact support instead of retrying."
+            ),
+        ) from rollback_error
+    raise HTTPException(
+        status_code=500,
+        detail=(
+            "Email sending failed and automatic cleanup of the support "
+            "request also failed. The request may still be stored — "
+            "please contact support instead of retrying."
+        ),
+    ) from email_error
 
 
 async def _process_attachments(
@@ -205,13 +226,22 @@ async def _process_attachments(
             for attachment in attachments
         ]
 
-        # Execute all uploads in parallel
-        upload_results = await asyncio.gather(*upload_tasks)
+        # Execute all uploads in parallel; collect every outcome so files
+        # uploaded before a failure are still cleaned up.
+        upload_results = await asyncio.gather(*upload_tasks, return_exceptions=True)
 
-        # Extract URLs and attachment metadata from results
-        for file_url, attachment_metadata in upload_results:
+        first_error: BaseException | None = None
+        for upload_result in upload_results:
+            if isinstance(upload_result, BaseException):
+                if first_error is None:
+                    first_error = upload_result
+                continue
+            file_url, attachment_metadata = upload_result
             attachment_urls.append(file_url)
             processed_attachments.append(attachment_metadata)
+
+        if first_error is not None:
+            raise first_error
 
         log.info(
             "Successfully uploaded files in parallel for ticket",
@@ -369,7 +399,6 @@ async def create_support_request_with_attachments(
     log.set(
         component="support_service",
         user_id=user_id,
-        user_email=user_email,
         attachment_count=len(attachments),
     )
     request_id = None

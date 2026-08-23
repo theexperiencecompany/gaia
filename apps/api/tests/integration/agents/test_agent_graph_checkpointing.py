@@ -391,6 +391,7 @@ class TestMultiTurnConversation:
         ]
 
         builder = create_agent(
+            tool_registry={},
             llm=fake_llm,
             tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
             hooks_config=HookConfig(pre_model_hooks=pre_model_hooks),
@@ -434,6 +435,7 @@ class TestMultiTurnConversation:
         fake_llm = create_fake_llm(["Reply A", "Reply B"])
 
         builder = create_agent(
+            tool_registry={},
             llm=fake_llm,
             tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
             hooks_config=HookConfig(
@@ -480,6 +482,7 @@ class TestStatePersistence:
         fake_llm = create_fake_llm(["Persisted response"])
 
         builder = create_agent(
+            tool_registry={},
             llm=fake_llm,
             tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
             hooks_config=HookConfig(
@@ -518,6 +521,7 @@ class TestStatePersistence:
         fake_llm = create_fake_llm(["State values response"])
 
         builder = create_agent(
+            tool_registry={},
             llm=fake_llm,
             tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
             hooks_config=HookConfig(
@@ -571,6 +575,7 @@ class TestCheckpointRecovery:
 
         # Graph instance 1
         builder1 = create_agent(
+            tool_registry={},
             llm=fake_llm_1,
             tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
             hooks_config=HookConfig(pre_model_hooks=hooks),
@@ -585,6 +590,7 @@ class TestCheckpointRecovery:
 
         # Graph instance 2 (new compilation, same checkpointer)
         builder2 = create_agent(
+            tool_registry={},
             llm=fake_llm_2,
             tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
             hooks_config=HookConfig(pre_model_hooks=hooks),
@@ -619,6 +625,7 @@ class TestCheckpointRecovery:
         config = _thread_config()
 
         builder1 = create_agent(
+            tool_registry={},
             llm=fake_llm_1,
             tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
             hooks_config=HookConfig(pre_model_hooks=hooks),
@@ -633,6 +640,7 @@ class TestCheckpointRecovery:
 
         # Build new graph, same checkpointer, same thread
         builder2 = create_agent(
+            tool_registry={},
             llm=fake_llm_2,
             tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
             hooks_config=HookConfig(pre_model_hooks=hooks),
@@ -670,6 +678,7 @@ class TestPreModelHooksExecution:
         fake_llm = create_fake_llm(["Response after filtering"])
 
         builder = create_agent(
+            tool_registry={},
             llm=fake_llm,
             tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
             hooks_config=HookConfig(
@@ -725,6 +734,7 @@ class TestPreModelHooksExecution:
         fake_llm = create_fake_llm(["System prompt managed"])
 
         builder = create_agent(
+            tool_registry={},
             llm=fake_llm,
             tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
             hooks_config=HookConfig(
@@ -774,6 +784,7 @@ class TestPreModelHooksExecution:
         sentinel = RuntimeError("hooks-execution-sentinel-error")
 
         builder = create_agent(
+            tool_registry={},
             llm=fake_llm,
             tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
             hooks_config=HookConfig(
@@ -814,6 +825,7 @@ class TestErrorDuringInvocation:
         fake_llm_ok = create_fake_llm(["Successful first response"])
 
         builder1 = create_agent(
+            tool_registry={},
             llm=fake_llm_ok,
             tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
             hooks_config=HookConfig(pre_model_hooks=hooks),
@@ -841,6 +853,7 @@ class TestErrorDuringInvocation:
         error_llm = ErrorLLM(responses=[])
 
         builder2 = create_agent(
+            tool_registry={},
             llm=error_llm,
             tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
             hooks_config=HookConfig(pre_model_hooks=hooks),
@@ -857,6 +870,7 @@ class TestErrorDuringInvocation:
         # Verify state is not corrupted: retrieve state from a third graph instance
         fake_llm_3 = create_fake_llm(["Recovery response"])
         builder3 = create_agent(
+            tool_registry={},
             llm=fake_llm_3,
             tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
             hooks_config=HookConfig(pre_model_hooks=hooks),
@@ -894,6 +908,7 @@ class TestErrorDuringInvocation:
         # Turn 1: success
         fake_llm_1 = create_fake_llm(["Turn 1 OK"])
         builder1 = create_agent(
+            tool_registry={},
             llm=fake_llm_1,
             tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
             hooks_config=HookConfig(pre_model_hooks=hooks),
@@ -916,6 +931,7 @@ class TestErrorDuringInvocation:
 
         broken_llm = BrokenLLM(responses=[])
         builder2 = create_agent(
+            tool_registry={},
             llm=broken_llm,
             tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
             hooks_config=HookConfig(pre_model_hooks=hooks),
@@ -932,6 +948,7 @@ class TestErrorDuringInvocation:
         # Turn 3: recovery
         fake_llm_3 = create_fake_llm(["Turn 3 recovery"])
         builder3 = create_agent(
+            tool_registry={},
             llm=fake_llm_3,
             tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
             hooks_config=HookConfig(pre_model_hooks=hooks),

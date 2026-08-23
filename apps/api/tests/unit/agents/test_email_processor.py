@@ -6,6 +6,8 @@ from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
+import pytest
+
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.memory.email_processor import (
     OnboardingFetchOptions,
@@ -902,13 +904,11 @@ class TestFetchEmailsForOnboardingPins:
         assert mock_search.await_args_list[1].kwargs["page_token"] == "tok"
 
     @patch(_PATCH_SEARCH, new_callable=AsyncMock)
-    async def test_fetch_error_is_swallowed_and_partial_result_returned(
-        self, mock_search: AsyncMock
-    ) -> None:
+    async def test_fetch_error_is_propagated_after_logging(self, mock_search: AsyncMock) -> None:
         mock_search.side_effect = RuntimeError("gmail down")
         with patch("app.agents.memory.email_processor.log") as log:
-            result = await fetch_emails_for_onboarding(USER_ID)
-        assert result == []
+            with pytest.raises(RuntimeError, match="gmail down"):
+                await fetch_emails_for_onboarding(USER_ID)
         log.error.assert_called_once()
         assert log.error.call_args.kwargs["error_type"] == "RuntimeError"
         assert log.error.call_args.kwargs["user_id"] == USER_ID
@@ -944,6 +944,15 @@ class TestCollectStorageResultsPins:
 
         assert result["successful"] == 1
         assert result["processing_complete"] is True
+        # Storage failed → the scan watermark must NOT advance, or the
+        # parsed-but-unstored emails would be skipped on every later run.
+        mock_users.set_gmail_scan_timestamp.assert_not_awaited()
+        held = [
+            c
+            for c in log.warning.call_args_list
+            if c.args and "watermark not advanced" in str(c.args[0])
+        ]
+        assert len(held) == 1
         failed_calls = [
             c
             for c in log.warning.call_args_list

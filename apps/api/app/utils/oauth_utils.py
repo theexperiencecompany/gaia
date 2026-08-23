@@ -74,7 +74,7 @@ async def build_google_oauth_url(
 
 
 async def upload_user_picture(image_bytes: bytes, public_id: str) -> str:
-    log.set(operation="upload_user_picture", cloudinary_public_id=public_id)
+    log.set(operation="upload_user_picture")
     """
     Uploads image bytes to Cloudinary and returns the secure URL.
 

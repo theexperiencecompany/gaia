@@ -313,6 +313,7 @@ async def fetch_emails_for_onboarding(
             error=str(e),
             exc_info=True,
         )
+        raise
 
     log.info(
         f"{LogTag.MEMORY} fetch_emails_for_onboarding finished",
@@ -510,9 +511,18 @@ async def _collect_profile_extraction(
 
 
 async def _mark_processing_complete(
-    user_id: str, processing_complete: bool, processed_total: int, timer: _StepTimer
+    user_id: str,
+    processing_complete: bool,
+    processed_total: int,
+    timer: _StepTimer,
+    advance_watermark: bool = True,
 ) -> None:
-    """Mark onboarding complete and refresh the scan timestamp; both best-effort."""
+    """Mark onboarding complete and refresh the scan timestamp; both best-effort.
+
+    The Gmail scan watermark is only advanced when every storage task
+    succeeded — advancing it after a failed write would permanently skip the
+    emails that were parsed but never durably stored.
+    """
     # ALWAYS mark as complete and trigger completion events
     # This ensures the frontend gets the "show me around" button
     try:
@@ -534,8 +544,14 @@ async def _mark_processing_complete(
             user_id=user_id,
         )
 
-    # Update the scan timestamp after processing (regardless of success/failure)
-    # This prevents re-scanning the same emails
+    # Update the scan timestamp only after durable storage succeeded, so a
+    # later run re-fetches anything that failed to persist.
+    if not advance_watermark:
+        log.warning(
+            f"{LogTag.MEMORY} Gmail scan watermark not advanced due to storage failures",
+            user_id=user_id,
+        )
+        return
     try:
         current_time = datetime.now(UTC)
         await user_repository.set_gmail_scan_timestamp(user_id, current_time)
@@ -621,7 +637,11 @@ async def process_gmail_to_memory(user_id: str) -> GmailProcessingStats:
     # Mark as complete if we processed ANY emails, even if some storage failed
     processing_complete = total_parsed > 0
     await _mark_processing_complete(
-        user_id, processing_complete, total_parsed + profiles_stored, timer
+        user_id,
+        processing_complete,
+        total_parsed + profiles_stored,
+        timer,
+        advance_watermark=storage_errors == 0,
     )
 
     log.info(f"{LogTag.MEMORY} Onboarding email pipeline timing breakdown", summary=timer.summary())

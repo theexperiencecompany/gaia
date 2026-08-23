@@ -93,27 +93,27 @@ def _fetch_page_title(
     page_id: str,
     auth_credentials: dict[str, Any],
 ) -> str:
-    try:
-        title_response = _execute_notion_action(
-            composio,
-            "NOTION_GET_PAGE_PROPERTY_ACTION",
-            {"page_id": page_id, "property_id": "title"},
-            auth_credentials,
+    title_response = _execute_notion_action(
+        composio,
+        "NOTION_GET_PAGE_PROPERTY_ACTION",
+        {"page_id": page_id, "property_id": "title"},
+        auth_credentials,
+    )
+    if not title_response["successful"]:
+        raise AppError(
+            message=f"Failed to fetch Notion page title: {title_response.get('error')}",
+            status_code=502,
         )
-        if not title_response["successful"]:
-            log.warning(f"{LogTag.TOOL} Failed to fetch title", error=title_response.get("error"))
-        else:
-            # ToolExecutionResponse.data is typed as a plain Dict, but real
-            # Notion API responses aren't guaranteed to match — keep the
-            # defensive isinstance check meaningful by widening the type here.
-            title_data = cast("object", title_response["data"])
-            results = title_data.get("results", []) if isinstance(title_data, dict) else []
-            if isinstance(results, list):
-                for item in results:
-                    if item.get("type") == "title" and item.get("title"):
-                        return str(item["title"].get("plain_text", ""))
-    except Exception as e:
-        log.warning(f"{LogTag.TOOL} Could not fetch title", error_type=type(e).__name__)
+
+    # ToolExecutionResponse.data is typed as a plain Dict, but real
+    # Notion API responses aren't guaranteed to match — keep the
+    # defensive isinstance check meaningful by widening the type here.
+    title_data = cast("object", title_response["data"])
+    results = title_data.get("results", []) if isinstance(title_data, dict) else []
+    if isinstance(results, list):
+        for item in results:
+            if item.get("type") == "title" and item.get("title"):
+                return str(item["title"].get("plain_text", ""))
     return ""
 
 

@@ -1360,12 +1360,15 @@ class TestRollbackCreatedRequest:
         )
         log.error.assert_not_called()
 
-    async def test_delete_false_logs_error_with_exact_args(self, mock_support_repo):
+    async def test_delete_false_logs_error_and_raises_compensation_failure(self, mock_support_repo):
         mock_support_repo.delete.return_value = False
         err = ValueError("smtp down")
         with patch("app.services.support_service.log") as log:
-            await _rollback_created_request("GAIA-2", "req-2", USER_ID, err)
+            with pytest.raises(HTTPException) as exc_info:
+                await _rollback_created_request("GAIA-2", "req-2", USER_ID, err)
 
+        assert exc_info.value.status_code == 500
+        assert "cleanup" in exc_info.value.detail
         log.error.assert_called_once_with(
             "Failed to rollback support request from database",
             ticket_id="GAIA-2",
@@ -1375,11 +1378,17 @@ class TestRollbackCreatedRequest:
         )
         log.info.assert_not_called()
 
-    async def test_delete_raising_logs_error_with_rollback_error(self, mock_support_repo):
+    async def test_delete_raising_logs_error_and_raises_compensation_failure(
+        self, mock_support_repo
+    ):
         mock_support_repo.delete.side_effect = RuntimeError("mongo write failed")
         with patch("app.services.support_service.log") as log:
-            await _rollback_created_request("GAIA-3", "req-3", USER_ID, ValueError("email"))
+            with pytest.raises(HTTPException) as exc_info:
+                await _rollback_created_request("GAIA-3", "req-3", USER_ID, ValueError("email"))
 
+        assert exc_info.value.status_code == 500
+        assert "cleanup" in exc_info.value.detail
+        assert isinstance(exc_info.value.__cause__, RuntimeError)
         log.error.assert_called_once_with(
             "Error during rollback for ticket",
             ticket_id="GAIA-3",
@@ -1414,7 +1423,11 @@ class TestProcessAttachmentsPins:
     ):
         calls: list[str] = []
 
-        async def flaky(*args: Any, **kwargs: Any) -> str:
+        def flaky(*args: Any, **kwargs: Any) -> str:
+            # upload_file_to_cloudinary is called synchronously (via
+            # loop.run_in_executor), so this stand-in must be sync too --
+            # an async side_effect here would return an un-awaited coroutine
+            # instead of ever raising.
             calls.append("upload")
             if len(calls) == 2:
                 raise RuntimeError("cloudinary down")
@@ -1426,14 +1439,20 @@ class TestProcessAttachmentsPins:
         async def fake_delete(urls: list[str]) -> None:
             deleted.append(list(urls))
 
+        # _upload_single_attachment wraps any upload failure into an
+        # HTTPException (keeping the original as __cause__) before
+        # _process_attachments ever sees it.
         with (
             patch("app.services.support_service._delete_uploaded_files", side_effect=fake_delete),
-            pytest.raises(RuntimeError, match="cloudinary down"),
+            pytest.raises(HTTPException) as exc_info,
         ):
             await _process_attachments(
                 [_make_upload_file(), _make_upload_file()], "GAIA-2", datetime.now(UTC)
             )
 
+        assert exc_info.value.status_code == 500
+        assert isinstance(exc_info.value.__cause__, RuntimeError)
+        assert str(exc_info.value.__cause__) == "cloudinary down"
         assert deleted == [["https://res.cloudinary.com/demo/support/ticket_file.png"]]
 
 
@@ -1457,9 +1476,16 @@ class TestCreateSupportRequestLogPins:
         delete_args = mock_support_repo.delete.await_args
         assert delete_args.args[0] == delete_args.kwargs.get("request_id", delete_args.args[0])
         assert delete_args.kwargs["user_id"] == USER_ID
+        # _send_support_email_notifications logs its own failure first; find
+        # the support-service-level call by name rather than assuming index 0.
+        ticket_id = next(
+            c.kwargs["ticket_id"]
+            for c in log.error.call_args_list
+            if c.args[0] == "Email sending failed for ticket"
+        )
         log.error.assert_any_call(
             "Email sending failed for ticket",
-            ticket_id=log.error.call_args_list[0].kwargs["ticket_id"],
+            ticket_id=ticket_id,
             error="smtp refused",
             error_type="RuntimeError",
             user_id=USER_ID,

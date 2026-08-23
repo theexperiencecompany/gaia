@@ -279,9 +279,7 @@ class TestUploadUserPictureLogPins:
         with patch("app.utils.oauth_utils.log") as log:
             await upload_user_picture(b"data", "pid-1")
 
-        log.set.assert_called_once_with(
-            operation="upload_user_picture", cloudinary_public_id="pid-1"
-        )
+        log.set.assert_called_once_with(operation="upload_user_picture")
         log.info.assert_called_once_with(
             f"{LogTag.OAUTH} Image uploaded successfully. URL",
             image_url="https://cdn.example.com/img.png",

@@ -87,7 +87,6 @@ def _log_upload_context(
         file=FileContext(
             operation="upload",
             file_id=upload.file_id,
-            filename=upload.filename,
             content_type=upload.content_type,
             size_bytes=upload.size_bytes,
             conversation_id=conversation_id or "",

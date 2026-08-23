@@ -23,6 +23,7 @@ from app.constants.cache import (
 from app.constants.log_tags import LogTag
 from app.db.repositories.skills import skill_repository
 from app.decorators.caching import Cacheable, CacheInvalidator
+from app.utils.errors import AppError
 from shared.py.wide_events import SkillContext, log
 
 # Invalidation patterns for write operations — clears all agent variants for the user
@@ -54,12 +55,20 @@ class SkillInstallRequest:
     allowed_tools: list[str] | None = None
 
 
-@CacheInvalidator(key_patterns=_SKILLS_INVALIDATION_PATTERNS)
+def _skills_invalidation_keys_for_request(
+    _func_name: str, request: SkillInstallRequest
+) -> list[str]:
+    """install_skill takes a single request object, so key_patterns' flat-argument
+    binding can't reach ``user_id`` -- resolve it from the request instead."""
+    return [pattern.format(user_id=request.user_id) for pattern in _SKILLS_INVALIDATION_PATTERNS]
+
+
+@CacheInvalidator(key_generator=_skills_invalidation_keys_for_request)
 async def install_skill(request: SkillInstallRequest) -> Skill:
     """Register a newly installed skill in the registry.
 
-    Returns the created Skill with its assigned ID. Raises ``ValueError`` if a
-    skill with the same name already exists for the same target.
+    Returns the created Skill with its assigned ID. Raises ``AppError`` (409)
+    if a skill with the same name already exists for the same target.
     """
     log.set(
         user_id=request.user_id,
@@ -69,9 +78,14 @@ async def install_skill(request: SkillInstallRequest) -> Skill:
     # Check for duplicate by name + user_id + target
     existing = await skill_repository.find_by_name(request.user_id, request.name, request.target)
     if existing:
-        raise ValueError(
-            f"Skill '{request.name}' already installed for target "
-            f"'{request.target}'. Uninstall first or use a different name."
+        raise AppError(
+            message=(
+                f"Skill '{request.name}' already installed for target "
+                f"'{request.target}'. Uninstall first or use a different name."
+            ),
+            why="Skill names are unique per user and target.",
+            fix="Uninstall the existing skill first, or install under a different name.",
+            status_code=409,
         )
 
     skill = Skill(

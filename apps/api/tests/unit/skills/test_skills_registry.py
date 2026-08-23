@@ -24,6 +24,7 @@ from app.agents.skills.registry import (
     list_skills,
     uninstall_skill,
 )
+from app.utils.errors import AppError
 
 
 @pytest.fixture
@@ -360,7 +361,7 @@ class TestInstallSkill:
     async def test_raises_on_duplicate(self, mock_skill_repo):
         mock_skill_repo.find_by_name = AsyncMock(return_value=_skill(name="my-skill"))
         mock_skill_repo.create = AsyncMock()
-        with pytest.raises(ValueError, match="already installed"):
+        with pytest.raises(AppError, match="already installed"):
             await install_skill(
                 SkillInstallRequest(
                     user_id="u1",

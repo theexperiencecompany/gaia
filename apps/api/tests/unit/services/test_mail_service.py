@@ -605,12 +605,11 @@ class TestSearchMessages:
 
         assert result == GmailMessagesResponse(messages=[])
 
-    async def test_returns_empty_result_on_exception(self, mock_invoke_gmail_tool):
+    async def test_exception_propagates(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.side_effect = Exception("503")
 
-        result = await search_messages(USER_ID)
-
-        assert result == GmailMessagesResponse(messages=[])
+        with pytest.raises(Exception, match="503"):
+            await search_messages(USER_ID)
 
     async def test_uses_empty_string_for_missing_query(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
@@ -1279,11 +1278,11 @@ class TestSearchMessagesParamPins:
         assert response.messages == []
         log.set_ns.assert_called_once_with("mail", success=False)
 
-    async def test_exception_returns_empty_response_and_sets_ns(self, mock_invoke_gmail_tool):
+    async def test_exception_propagates_after_setting_ns(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.side_effect = RuntimeError("down")
         with patch("app.services.mail.mail_service.log") as log:
-            response = await search_messages(USER_ID, query="q")
-        assert response.messages == []
+            with pytest.raises(RuntimeError, match="down"):
+                await search_messages(USER_ID, query="q")
         log.set_ns.assert_called_once_with("mail", success=False)
 
 

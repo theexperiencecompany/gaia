@@ -46,6 +46,19 @@ R = TypeVar("R")
 # splits the two cases so R is the awaited value in both.
 _SyncOrAsync = Callable[P, Coroutine[Any, Any, R]] | Callable[P, R]
 
+# A key generator receives the wrapped function's name plus its call args/kwargs
+# (arbitrary per call site, see `_pattern_to_key`) and returns the cache key --
+# sync or async, matching the two real key generators in this codebase
+# (`_recall_cache_key` and the CacheInvalidator custom-key examples above).
+_KeyGenerator = Callable[..., str] | Callable[..., Coroutine[Any, Any, str]]
+
+# CacheInvalidator's generator may bust one key or several (e.g. a function
+# whose invalidation needs multiple key_patterns but whose signature doesn't
+# expose a flat argument per placeholder -- see install_skill).
+_InvalidationKeyGenerator = (
+    Callable[..., str | list[str]] | Callable[..., Coroutine[Any, Any, str | list[str]]]
+)
+
 
 class Cacheable:
     """
@@ -97,7 +110,7 @@ class Cacheable:
     def __init__(
         self,
         key_pattern: str | None = None,
-        key_generator: Callable | None = None,
+        key_generator: _KeyGenerator | None = None,
         ttl: int = ONE_YEAR_TTL,
         model: type[Any] | None = None,
         smart_hash: bool = False,
@@ -255,7 +268,7 @@ class CacheInvalidator:
     def __init__(
         self,
         key_patterns: list[str] | None = None,
-        key_generator: Callable | None = None,
+        key_generator: _InvalidationKeyGenerator | None = None,
         key: str | None = None,
     ):
         """
@@ -263,7 +276,8 @@ class CacheInvalidator:
 
         Args:
             key_pattern: Optional string template for the cache key (e.g. "{arg1}:{arg2}")
-            key_generator: Optional custom function to generate cache keys
+            key_generator: Optional custom function returning one key, or several,
+                to invalidate
             ttl: Time-to-live for cache entries in seconds. None means no expiration
             key: Optional static key for caching
         """
@@ -299,10 +313,10 @@ class CacheInvalidator:
             elif self.key_generator:
                 # Handle both sync and async key generators
                 if asyncio.iscoroutinefunction(self.key_generator):
-                    key = await self.key_generator(func.__name__, *args, **kwargs)
+                    generated = await self.key_generator(func.__name__, *args, **kwargs)
                 else:
-                    key = self.key_generator(func.__name__, *args, **kwargs)
-                cache_keys = [key]
+                    generated = self.key_generator(func.__name__, *args, **kwargs)
+                cache_keys = generated if isinstance(generated, list) else [generated]
             else:
                 if not self.key_patterns:
                     raise ValueError("key_pattern must be provided if key_generator is not used.")

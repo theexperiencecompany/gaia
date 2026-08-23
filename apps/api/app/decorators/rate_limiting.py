@@ -141,6 +141,18 @@ def _limit_hit_exception(
     # when executing inside a LangGraph graph).
     try:
         writer = get_stream_writer()
+    except RuntimeError as stream_error:
+        # "not in a runnable context" (workflows, background tasks) — the card
+        # is decoration, the exception below is the outcome. Only the missing
+        # context is swallowed; card construction and delivery failures
+        # propagate.
+        log.debug(
+            f"{LogTag.API} Rate limit card not streamed",
+            actual_feature_key=actual_feature_key,
+            error=str(stream_error),
+            error_type=type(stream_error).__name__,
+        )
+    else:
         writer(
             build_rate_limit_card(
                 feature=actual_feature_key,
@@ -148,15 +160,6 @@ def _limit_hit_exception(
                 reset_time=reset_time,
                 current_plan=plan_label(user_plan),
             )
-        )
-    except Exception as stream_error:
-        # Usually just "not in a streaming context" (workflows, background
-        # tasks); the card is decoration, the exception below is the outcome.
-        log.debug(
-            f"{LogTag.API} Rate limit card not streamed",
-            actual_feature_key=actual_feature_key,
-            error=str(stream_error),
-            error_type=type(stream_error).__name__,
         )
 
     return LangChainRateLimitException(

@@ -439,7 +439,7 @@ async def search_messages(
 
     except Exception:
         log.set_ns("mail", success=False)
-        return GmailMessagesResponse(messages=[])
+        raise
 
 
 async def create_label(

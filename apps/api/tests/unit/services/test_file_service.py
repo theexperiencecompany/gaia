@@ -1039,9 +1039,8 @@ class TestLogUploadContext:
         kwargs: dict[str, Any] = {
             "operation": "upload",
             "file_id": "f1",
-            "filename": "report.pdf",
             "content_type": "application/pdf",
-            "size_bytes": 10,
+            "size_bytes": 1,  # len(b"x") -- both tests below upload single-byte content
             "conversation_id": "",
             "has_summary": False,
             "page_count": 0,
@@ -1083,9 +1082,9 @@ class TestLogUploadContext:
             )
 
         ctx = log.set.call_args.kwargs["file"]
-        assert ctx.conversation_id == ""
-        assert ctx.has_summary is False
-        assert ctx.page_count == 0
+        assert ctx["conversation_id"] == ""
+        assert ctx["has_summary"] is False
+        assert ctx["page_count"] == 0
 
 
 class TestFileServiceUploadPins:
@@ -1126,13 +1125,17 @@ class TestFileServiceUploadPins:
         mock_cloudinary_upload.return_value = {
             "secure_url": "https://res.cloudinary.com/test/uploaded.pdf"
         }
+        # A real PageWiseSummary is a list of DocumentSummaryModel dumps
+        # (``{"data": {...}, "summary": ...}``) -- render_summary_markdown
+        # (exercised for real via mock_sandbox_mirror) indexes into that shape.
+        page_summary = [{"summary": "page-one", "data": {"page_number": 1, "content": "body"}}]
         with patch(
             "app.services.files.service.generate_file_summary", new_callable=AsyncMock
         ) as gen:
             gen.return_value = {"pages": [{"page_number": 1, "summary": "s"}]}
             with patch(
                 "app.services.files.service.process_summary",
-                return_value=("short desc", ["page-one"]),
+                return_value=("short desc", page_summary),
             ) as proc:
                 result = await FileService.upload(
                     file=_upload_file_mock(),
@@ -1142,4 +1145,4 @@ class TestFileServiceUploadPins:
 
         proc.assert_called_once_with({"pages": [{"page_number": 1, "summary": "s"}]})
         assert result.description == "short desc"
-        assert result.page_wise_summary == ["page-one"]
+        assert result.page_wise_summary == page_summary

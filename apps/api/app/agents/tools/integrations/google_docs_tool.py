@@ -82,11 +82,14 @@ def _share_doc(request: ShareDocInput, user_id: str) -> dict[str, Any]:
     if errors and not shared:
         raise RuntimeError(f"Failed to share document with all recipients: {errors}")
 
-    return {
+    response: dict[str, Any] = {
         "document_id": request.document_id,
         "url": f"https://docs.google.com/document/d/{request.document_id}/edit",
         "shared": shared,
     }
+    if errors:
+        response["errors"] = errors
+    return response
 
 
 def _fetch_document_data(
@@ -196,31 +199,27 @@ def _delete_doc(request: DeleteDocInput, user_id: str) -> dict[str, Any]:
 
 def _gather_recent_docs(user_id: str) -> dict[str, Any]:
     mime = "application/vnd.google-apps.document"
-    files: list[dict[str, Any]] = []
-    try:
-        data = proxy_request_sync(
-            user_id=user_id,
-            toolkit=DOCS_TOOLKIT,
-            endpoint=f"{DRIVE_API_BASE}/files",
-            method="GET",
-            query={
-                "q": f"mimeType='{mime}'",
-                "orderBy": "viewedByMeTime desc",
-                "pageSize": 20,
-                "fields": "files(id,name,modifiedTime,webViewLink)",
-            },
-        )
-        files = [
-            {
-                "id": f.get("id"),
-                "name": f.get("name"),
-                "modified": f.get("modifiedTime"),
-                "url": f.get("webViewLink"),
-            }
-            for f in (data or {}).get("files", [])
-        ]
-    except Exception as e:
-        log.debug(f"{LogTag.TOOL} Google Docs fetch failed", error_type=type(e).__name__)
+    data = proxy_request_sync(
+        user_id=user_id,
+        toolkit=DOCS_TOOLKIT,
+        endpoint=f"{DRIVE_API_BASE}/files",
+        method="GET",
+        query={
+            "q": f"mimeType='{mime}'",
+            "orderBy": "viewedByMeTime desc",
+            "pageSize": 20,
+            "fields": "files(id,name,modifiedTime,webViewLink)",
+        },
+    )
+    files = [
+        {
+            "id": f.get("id"),
+            "name": f.get("name"),
+            "modified": f.get("modifiedTime"),
+            "url": f.get("webViewLink"),
+        }
+        for f in (data or {}).get("files", [])
+    ]
 
     return {"recent_docs": files, "doc_count": len(files)}
 

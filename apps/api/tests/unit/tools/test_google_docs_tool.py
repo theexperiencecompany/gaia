@@ -170,6 +170,13 @@ def test_share_doc_partial_failure_collects_error_and_keeps_successes() -> None:
                 "notification_sent": True,
             }
         ],
+        "errors": [
+            {
+                "email": "bad@x.com",
+                "role": "writer",
+                "error": "Failed to share: 403 - Drive said no",
+            }
+        ],
     }
 
 

@@ -1,5 +1,6 @@
 """Unit tests for onboarding service and post-onboarding service."""
 
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from bson import ObjectId
@@ -27,7 +28,7 @@ from app.services.onboarding.post_onboarding_service import (
 
 
 @pytest.fixture
-def mock_repo():
+def mock_repo() -> Iterator[MagicMock]:
     with patch("app.services.onboarding.onboarding_service.user_repository") as repo:
         repo.complete_onboarding = AsyncMock()
         repo.get = AsyncMock()
@@ -37,7 +38,7 @@ def mock_repo():
 
 
 @pytest.fixture
-def mock_save_personalization():
+def mock_save_personalization() -> Iterator[AsyncMock]:
     with patch(
         "app.services.onboarding.post_onboarding_service.user_repository.save_personalization",
         new_callable=AsyncMock,
@@ -46,22 +47,22 @@ def mock_save_personalization():
 
 
 @pytest.fixture
-def sample_user_id():
+def sample_user_id() -> str:
     return str(ObjectId())
 
 
 @pytest.fixture
-def sample_onboarding_request():
+def sample_onboarding_request() -> OnboardingRequest:
     return OnboardingRequest(name="Alice", profession="Engineer", timezone="UTC")
 
 
 @pytest.fixture
-def sample_background_tasks():
+def sample_background_tasks() -> BackgroundTasks:
     return MagicMock(spec=BackgroundTasks)
 
 
 @pytest.fixture
-def mock_enqueue_intelligence_job():
+def mock_enqueue_intelligence_job() -> Iterator[AsyncMock]:
     with patch(
         "app.services.onboarding.onboarding_service.enqueue_intelligence_job",
         new_callable=AsyncMock,
@@ -70,7 +71,7 @@ def mock_enqueue_intelligence_job():
 
 
 @pytest.fixture
-def sample_user(sample_user_id):
+def sample_user(sample_user_id: str) -> UserDocument:
     return UserDocument.model_validate(
         {
             "id": sample_user_id,
@@ -87,13 +88,13 @@ def sample_user(sample_user_id):
 class TestCompleteOnboarding:
     async def test_successful_onboarding(
         self,
-        mock_repo,
-        mock_enqueue_intelligence_job,
-        sample_user_id,
-        sample_onboarding_request,
-        sample_background_tasks,
-        sample_user,
-    ):
+        mock_repo: MagicMock,
+        mock_enqueue_intelligence_job: AsyncMock,
+        sample_user_id: str,
+        sample_onboarding_request: OnboardingRequest,
+        sample_background_tasks: BackgroundTasks,
+        sample_user: UserDocument,
+    ) -> None:
         mock_repo.complete_onboarding.return_value = sample_user
 
         result = await complete_onboarding(
@@ -106,8 +107,12 @@ class TestCompleteOnboarding:
         sample_background_tasks.add_task.assert_called_once()
 
     async def test_user_not_found(
-        self, mock_repo, sample_user_id, sample_onboarding_request, sample_background_tasks
-    ):
+        self,
+        mock_repo: MagicMock,
+        sample_user_id: str,
+        sample_onboarding_request: OnboardingRequest,
+        sample_background_tasks: BackgroundTasks,
+    ) -> None:
         mock_repo.complete_onboarding.return_value = None
         mock_repo.get.return_value = None
 
@@ -120,12 +125,12 @@ class TestCompleteOnboarding:
 
     async def test_already_onboarded_replays_idempotently(
         self,
-        mock_repo,
+        mock_repo: MagicMock,
         sample_user,
-        sample_user_id,
-        sample_onboarding_request,
-        sample_background_tasks,
-    ):
+        sample_user_id: str,
+        sample_onboarding_request: OnboardingRequest,
+        sample_background_tasks: BackgroundTasks,
+    ) -> None:
         # The atomic gate makes a repeat submission a no-op: complete_onboarding
         # returns None and the existing user is returned unchanged.
         mock_repo.complete_onboarding.return_value = None
@@ -140,12 +145,12 @@ class TestCompleteOnboarding:
 
     async def test_enqueue_failure_rolls_back_and_raises_503(
         self,
-        mock_repo,
+        mock_repo: MagicMock,
         sample_user,
-        sample_user_id,
-        sample_onboarding_request,
-        sample_background_tasks,
-    ):
+        sample_user_id: str,
+        sample_onboarding_request: OnboardingRequest,
+        sample_background_tasks: BackgroundTasks,
+    ) -> None:
         mock_repo.complete_onboarding.return_value = sample_user
 
         with patch(
@@ -164,12 +169,12 @@ class TestCompleteOnboarding:
 
     async def test_sets_timezone(
         self,
-        mock_repo,
-        mock_enqueue_intelligence_job,
-        sample_user_id,
-        sample_background_tasks,
-        sample_user,
-    ):
+        mock_repo: MagicMock,
+        mock_enqueue_intelligence_job: AsyncMock,
+        sample_user_id: str,
+        sample_background_tasks: BackgroundTasks,
+        sample_user: UserDocument,
+    ) -> None:
         request = OnboardingRequest(
             name="Alice", profession="Engineer", timezone="America/New_York"
         )
@@ -181,12 +186,12 @@ class TestCompleteOnboarding:
 
     async def test_passes_exact_normalized_kwargs_to_repository(
         self,
-        mock_repo,
-        mock_enqueue_intelligence_job,
-        sample_user_id,
-        sample_background_tasks,
-        sample_user,
-    ):
+        mock_repo: MagicMock,
+        mock_enqueue_intelligence_job: AsyncMock,
+        sample_user_id: str,
+        sample_background_tasks: BackgroundTasks,
+        sample_user: UserDocument,
+    ) -> None:
         request = OnboardingRequest(
             name="Alice",
             profession="Engineer",
@@ -237,12 +242,12 @@ class TestCompleteOnboarding:
 
     async def test_blank_and_absent_optionals_normalize_to_none_and_split_mode(
         self,
-        mock_repo,
-        mock_enqueue_intelligence_job,
-        sample_user_id,
-        sample_background_tasks,
-        sample_user,
-    ):
+        mock_repo: MagicMock,
+        mock_enqueue_intelligence_job: AsyncMock,
+        sample_user_id: str,
+        sample_background_tasks: BackgroundTasks,
+        sample_user: UserDocument,
+    ) -> None:
         request = OnboardingRequest(
             name="Alice",
             profession="Engineer",
@@ -269,8 +274,12 @@ class TestCompleteOnboarding:
         )
 
     async def test_generic_exception_returns_500(
-        self, mock_repo, sample_user_id, sample_onboarding_request, sample_background_tasks
-    ):
+        self,
+        mock_repo: MagicMock,
+        sample_user_id: str,
+        sample_onboarding_request: OnboardingRequest,
+        sample_background_tasks: BackgroundTasks,
+    ) -> None:
         mock_repo.complete_onboarding.side_effect = RuntimeError("Unexpected")
 
         with pytest.raises(HTTPException) as exc_info:
@@ -281,7 +290,7 @@ class TestCompleteOnboarding:
 
 
 class TestGetUserOnboardingStatus:
-    async def test_returns_status(self, mock_repo, sample_user_id):
+    async def test_returns_status(self, mock_repo: MagicMock, sample_user_id: str) -> None:
         mock_repo.get.return_value = UserDocument.model_validate(
             {
                 "id": sample_user_id,
@@ -298,7 +307,9 @@ class TestGetUserOnboardingStatus:
         assert result.completed is True
         assert result.preferences.profession == "Engineer"
 
-    async def test_user_not_found_raises_404(self, mock_repo, sample_user_id):
+    async def test_user_not_found_raises_404(
+        self, mock_repo: MagicMock, sample_user_id: str
+    ) -> None:
         mock_repo.get.return_value = None
 
         with pytest.raises(HTTPException) as exc_info:
@@ -306,7 +317,7 @@ class TestGetUserOnboardingStatus:
         assert exc_info.value.status_code == 404
         assert "User not found" in exc_info.value.detail
 
-    async def test_no_onboarding_data(self, mock_repo, sample_user_id):
+    async def test_no_onboarding_data(self, mock_repo: MagicMock, sample_user_id: str) -> None:
         mock_repo.get.return_value = UserDocument.model_validate({"id": sample_user_id})
 
         result = await get_user_onboarding_status(sample_user_id)
@@ -314,7 +325,7 @@ class TestGetUserOnboardingStatus:
         assert result.completed is False
         assert result.preferences.profession is None
 
-    async def test_exception_raises_500(self, mock_repo):
+    async def test_exception_raises_500(self, mock_repo: MagicMock) -> None:
         mock_repo.get.side_effect = Exception("DB error")
 
         with pytest.raises(HTTPException) as exc_info:
@@ -323,7 +334,7 @@ class TestGetUserOnboardingStatus:
 
 
 class TestUpdateOnboardingPreferences:
-    async def test_updates_preferences(self, mock_repo, sample_user_id):
+    async def test_updates_preferences(self, mock_repo: MagicMock, sample_user_id: str) -> None:
         mock_repo.update_onboarding_preferences.return_value = UserDocument.model_validate(
             {"id": sample_user_id, "onboarding": {"preferences": {"profession": "Designer"}}}
         )
@@ -334,7 +345,7 @@ class TestUpdateOnboardingPreferences:
         assert result["_id"] == sample_user_id
         assert result["user_id"] == sample_user_id
 
-    async def test_user_not_found(self, mock_repo, sample_user_id):
+    async def test_user_not_found(self, mock_repo: MagicMock, sample_user_id: str) -> None:
         mock_repo.update_onboarding_preferences.return_value = None
 
         with pytest.raises(HTTPException) as exc_info:
@@ -343,7 +354,9 @@ class TestUpdateOnboardingPreferences:
             )
         assert exc_info.value.status_code == 404
 
-    async def test_partial_patch_merges_only_sent_fields(self, mock_repo, sample_user_id):
+    async def test_partial_patch_merges_only_sent_fields(
+        self, mock_repo: MagicMock, sample_user_id: str
+    ) -> None:
         mock_repo.update_onboarding_preferences.return_value = UserDocument.model_validate(
             {"id": sample_user_id, "onboarding": {"preferences": {}}}
         )
@@ -357,7 +370,9 @@ class TestUpdateOnboardingPreferences:
         patch_arg = mock_repo.update_onboarding_preferences.call_args[0][1]
         assert patch_arg.model_dump(exclude_unset=True) == {"custom_instructions": "Focus on email"}
 
-    async def test_generic_exception_returns_500(self, mock_repo, sample_user_id):
+    async def test_generic_exception_returns_500(
+        self, mock_repo: MagicMock, sample_user_id: str
+    ) -> None:
         mock_repo.update_onboarding_preferences.side_effect = RuntimeError("Unexpected")
 
         with pytest.raises(HTTPException) as exc_info:
@@ -368,7 +383,9 @@ class TestUpdateOnboardingPreferences:
 
 
 class TestSavePersonalizationData:
-    async def test_saves_data(self, mock_save_personalization, sample_user_id):
+    async def test_saves_data(
+        self, mock_save_personalization: AsyncMock, sample_user_id: str
+    ) -> None:
         await save_personalization_data(
             sample_user_id,
             house="explorer",
@@ -393,7 +410,9 @@ class TestSavePersonalizationData:
         assert kwargs["overlay_color"] == "#ff0000"
         assert kwargs["overlay_opacity"] == 80
 
-    async def test_handles_exception(self, mock_save_personalization, sample_user_id):
+    async def test_handles_exception(
+        self, mock_save_personalization: AsyncMock, sample_user_id: str
+    ) -> None:
         mock_save_personalization.side_effect = Exception("DB error")
 
         await save_personalization_data(
@@ -411,7 +430,7 @@ class TestSavePersonalizationData:
 
 
 class TestSeedInitialUserData:
-    async def test_seeds_onboarding_todo(self):
+    async def test_seeds_onboarding_todo(self) -> None:
         with patch(
             "app.services.onboarding.post_onboarding_service.seed_onboarding_todo",
             new_callable=AsyncMock,
@@ -419,7 +438,7 @@ class TestSeedInitialUserData:
             await seed_initial_user_data("user1")
             mock_todo.assert_awaited_once_with("user1")
 
-    async def test_handles_exception(self):
+    async def test_handles_exception(self) -> None:
         with patch(
             "app.services.onboarding.post_onboarding_service.seed_onboarding_todo",
             new_callable=AsyncMock,
@@ -433,13 +452,13 @@ class TestOnboardingServiceLogPins:
 
     async def test_complete_onboarding_success_log_is_exact(
         self,
-        mock_repo,
-        mock_enqueue_intelligence_job,
-        sample_user_id,
-        sample_onboarding_request,
-        sample_background_tasks,
-        sample_user,
-    ):
+        mock_repo: MagicMock,
+        mock_enqueue_intelligence_job: AsyncMock,
+        sample_user_id: str,
+        sample_onboarding_request: OnboardingRequest,
+        sample_background_tasks: BackgroundTasks,
+        sample_user: UserDocument,
+    ) -> None:
         mock_repo.complete_onboarding.return_value = sample_user
         with patch("app.services.onboarding.onboarding_service.log") as log:
             await complete_onboarding(
@@ -454,11 +473,11 @@ class TestOnboardingServiceLogPins:
 
     async def test_complete_onboarding_replay_log_is_exact(
         self,
-        mock_repo,
-        sample_user_id,
-        sample_onboarding_request,
-        sample_background_tasks,
-    ):
+        mock_repo: MagicMock,
+        sample_user_id: str,
+        sample_onboarding_request: OnboardingRequest,
+        sample_background_tasks: BackgroundTasks,
+    ) -> None:
         # The atomic gate makes a repeat submission a no-op: complete_onboarding
         # returns None and the existing user is returned unchanged.
         existing = UserDocument.model_validate(
@@ -481,12 +500,12 @@ class TestOnboardingServiceLogPins:
 
     async def test_enqueue_failure_rolls_back_with_exact_error_log(
         self,
-        mock_repo,
-        sample_user_id,
-        sample_onboarding_request,
-        sample_background_tasks,
-        sample_user,
-    ):
+        mock_repo: MagicMock,
+        sample_user_id: str,
+        sample_onboarding_request: OnboardingRequest,
+        sample_background_tasks: BackgroundTasks,
+        sample_user: UserDocument,
+    ) -> None:
         mock_repo.complete_onboarding.return_value = sample_user
         with (
             patch(
@@ -513,8 +532,12 @@ class TestOnboardingServiceLogPins:
         )
 
     async def test_generic_exception_logs_exactly_and_raises_500_with_exact_detail(
-        self, mock_repo, sample_user_id, sample_onboarding_request, sample_background_tasks
-    ):
+        self,
+        mock_repo: MagicMock,
+        sample_user_id: str,
+        sample_onboarding_request: OnboardingRequest,
+        sample_background_tasks: BackgroundTasks,
+    ) -> None:
         mock_repo.complete_onboarding.side_effect = RuntimeError("Unexpected")
         with patch("app.services.onboarding.onboarding_service.log") as log:
             with pytest.raises(HTTPException) as exc_info:
@@ -534,12 +557,12 @@ class TestOnboardingServiceLogPins:
 
     async def test_rollback_failure_logs_exactly_and_still_raises_503(
         self,
-        mock_repo,
-        sample_user_id,
-        sample_onboarding_request,
-        sample_background_tasks,
-        sample_user,
-    ):
+        mock_repo: MagicMock,
+        sample_user_id: str,
+        sample_onboarding_request: OnboardingRequest,
+        sample_background_tasks: BackgroundTasks,
+        sample_user: UserDocument,
+    ) -> None:
         mock_repo.complete_onboarding.return_value = sample_user
         with (
             patch(
@@ -571,8 +594,8 @@ class TestOnboardingServiceLogPins:
         )
 
     async def test_get_status_returns_every_field_from_the_document(
-        self, mock_repo, sample_user_id
-    ):
+        self, mock_repo: MagicMock, sample_user_id: str
+    ) -> None:
         user = UserDocument.model_validate(
             {
                 "id": sample_user_id,
@@ -596,8 +619,8 @@ class TestOnboardingServiceLogPins:
         assert status.first_message_conversation_id == "conv-9"
 
     async def test_get_status_generic_error_raises_500_with_exact_detail(
-        self, mock_repo, sample_user_id
-    ):
+        self, mock_repo: MagicMock, sample_user_id: str
+    ) -> None:
         mock_repo.get.side_effect = RuntimeError("mongo down")
         with pytest.raises(HTTPException) as exc_info:
             await get_user_onboarding_status(sample_user_id)
@@ -605,7 +628,9 @@ class TestOnboardingServiceLogPins:
         assert exc_info.value.status_code == 500
         assert exc_info.value.detail == "An internal error occurred"
 
-    async def test_update_preferences_success_log_is_exact(self, mock_repo, sample_user_id):
+    async def test_update_preferences_success_log_is_exact(
+        self, mock_repo: MagicMock, sample_user_id: str
+    ) -> None:
         updated = UserDocument(id=sample_user_id, name="Alice")
         mock_repo.update_onboarding_preferences.return_value = updated
         prefs = OnboardingPreferences(profession="Writer", response_style="formal")
@@ -620,8 +645,8 @@ class TestOnboardingServiceLogPins:
         mock_repo.update_onboarding_preferences.assert_awaited_once_with(sample_user_id, prefs)
 
     async def test_update_preferences_generic_error_raises_500_with_exact_detail(
-        self, mock_repo, sample_user_id
-    ):
+        self, mock_repo: MagicMock, sample_user_id: str
+    ) -> None:
         mock_repo.update_onboarding_preferences.side_effect = RuntimeError("db down")
         prefs = OnboardingPreferences(profession="Writer", response_style="formal")
 
@@ -635,12 +660,12 @@ class TestOnboardingServiceLogPins:
 class TestCompleteOnboardingExactKwargs:
     async def test_repository_receives_the_exact_normalized_kwargs(
         self,
-        mock_repo,
-        mock_enqueue_intelligence_job,
-        sample_user_id,
-        sample_background_tasks,
-        sample_user,
-    ):
+        mock_repo: MagicMock,
+        mock_enqueue_intelligence_job: AsyncMock,
+        sample_user_id: str,
+        sample_background_tasks: BackgroundTasks,
+        sample_user: UserDocument,
+    ) -> None:
         mock_repo.complete_onboarding.return_value = sample_user
         request = OnboardingRequest(
             name="  Alice  ",
