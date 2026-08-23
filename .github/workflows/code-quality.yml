@@ -146,7 +146,7 @@ jobs:
             # Capture first, grep second: `biome | grep -q` lets grep close the
             # pipe early, SIGPIPE-kills biome under pipefail, and the false
             # exit code makes the gate report a pass. No pipes.
-            BIOME_OUT=$(pnpm exec biome check $BIOME_TARGETS 2>&1 || true)
+            BIOME_OUT=$(pnpm exec biome check "$BIOME_TARGETS" 2>&1 || true)
             echo "$BIOME_OUT"
             case "$BIOME_OUT" in
               *"suppressions/unused"*)
