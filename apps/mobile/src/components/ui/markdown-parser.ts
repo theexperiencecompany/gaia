@@ -433,6 +433,12 @@ function parseParagraphLines(lines: string[], start: number): BlockParseResult {
     paraLines.push(lines[i]);
     i++;
   }
+  if (i === start) {
+    // The line is a boundary no earlier parser accepted (e.g. a table
+    // delimiter with no header above it). Consume exactly one line as text —
+    // returning `next: start` here would stall parseBlocks forever.
+    return { block: null, next: start + 1 };
+  }
   return {
     block:
       paraLines.length > 0
@@ -465,7 +471,9 @@ function parseBlocks(lines: string[]): Block[] {
     if (result.block) {
       blocks.push(result.block);
     }
-    i = result.next;
+    // Guard against any parser ever returning zero progress — a stalled
+    // index here would hang the render thread.
+    i = Math.max(result.next, i + 1);
   }
 
   return blocks;

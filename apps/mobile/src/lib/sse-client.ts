@@ -135,9 +135,11 @@ export async function createSSEConnection(
     armStallWatchdog();
 
     const handleAbort = () => {
+      // Caller-initiated cancellation — the aborting code owns its own
+      // cleanup. Firing onClose here would make an intentional cancel
+      // indistinguishable from an unexpected transport failure.
       es.removeAllEventListeners();
       es.close();
-      callbacks.onClose?.();
     };
 
     controller.signal.addEventListener("abort", handleAbort);

@@ -546,7 +546,8 @@ export function useChat(
         queryClient.getQueryData<Message[]>(chatKeys.messages(convId));
       if (!msgs) return;
 
-      // Drop everything after the last user message (the failed response).
+      // Drop the failed turn entirely, INCLUDING the user message —
+      // sendMessage below appends a fresh copy of it.
       let lastUserIdx = -1;
       for (let i = msgs.length - 1; i >= 0; i--) {
         if (msgs[i].isUser) {
@@ -556,7 +557,7 @@ export function useChat(
       }
       if (lastUserIdx < 0) return;
 
-      const kept = msgs.slice(0, lastUserIdx + 1);
+      const kept = msgs.slice(0, lastUserIdx);
       store.setMessages(convId, kept);
       if (!convId.startsWith("temp-")) {
         queryClient.setQueryData(chatKeys.messages(convId), kept);

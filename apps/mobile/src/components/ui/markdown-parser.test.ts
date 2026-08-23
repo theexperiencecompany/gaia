@@ -102,6 +102,22 @@ describe("parseBlocks", () => {
   });
 });
 
+describe("parseBlocks — termination guarantees", () => {
+  it("does not stall on a delimiter line with no table header", () => {
+    // Regression: a lone table-delimiter line is a block boundary that no
+    // parser accepts; parseBlocks must advance past it, not loop forever.
+    expect(() =>
+      parseBlocks(["| --- | --- |", "hello"]).map((b) => b.type),
+    ).not.toThrow();
+    const blocks = parseBlocks(["| --- | --- |", "hello"]);
+    expect(blocks.some((b) => b.type === "paragraph")).toBe(true);
+  });
+
+  it("does not stall on a lone delimiter line", () => {
+    expect(parseBlocks(["| --- | --- |"])).toEqual([]);
+  });
+});
+
 describe("repairStreamingMarkdown", () => {
   it("closes an unclosed code fence opened at line start", () => {
     const md = "Here is code:\n```js\nconst x = 1;";
