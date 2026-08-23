@@ -170,6 +170,8 @@ services:
       # (or has an untrusted TLS cert) from inside this container, which would
       # otherwise turn every server-rendered page into a "not found".
       API_BASE_URL_INTERNAL: ${API_BASE_URL_INTERNAL:-http://gaia-backend:8000/api/v1/}
+      # Auth mode for SSR of login/signup (self-host defaults to local).
+      AUTH_MODE: ${AUTH_MODE:-local}
       # Public URL browsers use to reach this container. At container start,
       # apps/web/docker-entrypoint.sh rewrites it over the placeholder API URL
       # baked into the JS bundle (the Dockerfile's default), so one published
