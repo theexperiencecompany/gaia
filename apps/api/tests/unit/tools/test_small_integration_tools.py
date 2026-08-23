@@ -401,6 +401,25 @@ class TestTodoistGatherContext:
         # Falls through to data itself which is a dict, isinstance check fails -> tasks = []
         assert result["tasks"] == []
 
+    @patch(f"{TODOIST_MODULE}.datetime", _UTCOnlyDateTime)
+    @patch(f"{TODOIST_MODULE}.execute_tool")
+    def test_overdue_boundary_is_the_utc_today(self, mock_exec: MagicMock) -> None:
+        """A task due today is not yet overdue; yesterday is. Pinned to a fake UTC
+        clock so a local-time read or a mangled date format fails here."""
+        mock_exec.return_value = {
+            "items": [
+                {"id": "1", "content": "Due today", "due": {"date": "2026-06-15"}},
+                {"id": "2", "content": "Due tomorrow", "due": {"date": "2026-06-16"}},
+                {"id": "3", "content": "Due yesterday", "due": {"date": "2026-06-14"}},
+            ]
+        }
+
+        captured = self._register()
+        fn = captured["CUSTOM_GATHER_CONTEXT"]
+        result = fn(GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY)
+
+        assert [t["content"] for t in result["overdue_tasks"]] == ["Due yesterday"]
+
 
 # =============================================================================
 # ASANA TOOLS
@@ -445,6 +464,25 @@ class TestAsanaGatherContext:
         fn = captured["CUSTOM_GATHER_CONTEXT"]
         with pytest.raises(ValueError, match="Missing user_id"):
             fn(GatherContextInput(), EXECUTE_REQUEST, {})
+
+    @patch(f"{ASANA_MODULE}.datetime", _UTCOnlyDateTime)
+    @patch(f"{ASANA_MODULE}.execute_tool")
+    def test_overdue_boundary_is_the_utc_today(self, mock_exec: MagicMock) -> None:
+        """A task due today is not yet overdue; yesterday is. Pinned to a fake UTC
+        clock so a local-time read or a mangled date format fails here."""
+        mock_exec.return_value = {
+            "data": [
+                {"gid": "1", "name": "Due today", "due_on": "2026-06-15"},
+                {"gid": "2", "name": "Due tomorrow", "due_on": "2026-06-16"},
+                {"gid": "3", "name": "Due yesterday", "due_on": "2026-06-14"},
+            ]
+        }
+
+        captured = self._register()
+        fn = captured["CUSTOM_GATHER_CONTEXT"]
+        result = fn(GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY)
+
+        assert [t["name"] for t in result["overdue_tasks"]] == ["Due yesterday"]
 
     @patch(f"{ASANA_MODULE}.execute_tool")
     def test_no_overdue(self, mock_exec: MagicMock) -> None:
@@ -565,6 +603,25 @@ class TestGoogleTasksGatherContext:
         fn = captured["CUSTOM_GATHER_CONTEXT"]
         with pytest.raises(ValueError, match="Missing user_id"):
             fn(GatherContextInput(), EXECUTE_REQUEST, {})
+
+    @patch(f"{GOOGLE_TASKS_MODULE}.datetime", _UTCOnlyDateTime)
+    @patch(f"{GOOGLE_TASKS_MODULE}.execute_tool")
+    def test_overdue_boundary_is_the_utc_today(self, mock_exec: MagicMock) -> None:
+        """A task due today is not yet overdue; yesterday is. Pinned to a fake UTC
+        clock so a local-time read or a mangled date format fails here."""
+        mock_exec.return_value = {
+            "items": [
+                {"id": "1", "title": "Due today", "due": "2026-06-15"},
+                {"id": "2", "title": "Due tomorrow", "due": "2026-06-16"},
+                {"id": "3", "title": "Due yesterday", "due": "2026-06-14"},
+            ]
+        }
+
+        captured = self._register()
+        fn = captured["CUSTOM_GATHER_CONTEXT"]
+        result = fn(GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY)
+
+        assert [t["title"] for t in result["overdue_tasks"]] == ["Due yesterday"]
 
     @patch(f"{GOOGLE_TASKS_MODULE}.execute_tool")
     def test_fallback_to_tasks_key(self, mock_exec: MagicMock) -> None:
