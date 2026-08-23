@@ -512,6 +512,34 @@ class TestLazyLoaderReset:
         ll.reset()
         assert ll._instance is None
 
+    def test_reset_async_loader_from_running_loop_resets_synchronously(self):
+        """Inside a running loop neither await nor run_until_complete is
+        possible, so the reset degrades to a synchronous clear."""
+
+        async def loader():
+            return 1
+
+        async def scenario():
+            ll = LazyLoader(loader, strategy=MissingKeyStrategy.SILENT)
+            ll._instance = "cached"
+            ll.reset()
+            assert ll._instance is None
+
+        asyncio.run(scenario())
+
+    def test_reset_async_loader_without_a_loop_takes_the_async_lock(self):
+        """No running loop: the reset goes through _async_reset, which demands
+        the provider's async lock."""
+
+        async def loader():
+            return 1
+
+        ll = LazyLoader(loader, strategy=MissingKeyStrategy.SILENT)
+        ll._async_lock = None
+        ll._instance = "cached"
+        with pytest.raises(RuntimeError, match="Async lock not initialized"):
+            ll.reset()
+
     def test_reset_global_context(self):
         loader = LazyLoader(
             lambda: None,

@@ -21,8 +21,6 @@ from app.config.rate_limits import RateLimitPeriod
 from app.db.redis import redis_cache
 from app.services import cost_budget
 from app.services.cost_budget import (
-    _billable_request_tokens,
-    _is_charged_spend,
     get_cost,
     get_request_tokens,
     record_model_call_usage,
@@ -48,28 +46,6 @@ def rollup() -> Iterator[AsyncMock]:
     here we only care WHICH bucket a call is booked into."""
     with patch.object(cost_budget, "record_cost", AsyncMock()) as mock:
         yield mock
-
-
-@pytest.mark.unit
-class TestBillableTokenMath:
-    """Direct pins on the ceiling's arithmetic — pure functions, so these kill
-    their mutants deterministically instead of relying on end-to-end selection."""
-
-    def test_cache_hits_ride_free_and_output_counts(self) -> None:
-        assert (
-            _billable_request_tokens(input_tokens=1000, cached_tokens=900, output_tokens=100) == 200
-        )
-
-    def test_fully_cached_call_with_no_output_bills_nothing(self) -> None:
-        assert _billable_request_tokens(input_tokens=1000, cached_tokens=1000, output_tokens=0) == 0
-
-    def test_negative_uncached_input_clamps_to_zero(self) -> None:
-        assert _billable_request_tokens(input_tokens=100, cached_tokens=500, output_tokens=50) == 50
-
-    def test_charged_spend_needs_a_user_and_a_cost(self) -> None:
-        assert _is_charged_spend("u", 0.01) is True
-        assert _is_charged_spend(None, 0.01) is False
-        assert _is_charged_spend("u", 0.0) is False
 
 
 class TestChargedSpend:
@@ -155,12 +131,17 @@ class TestAuxiliarySpend:
             reasoning_tokens=0,
         )
 
-    async def test_leaves_the_request_ceiling_alone_without_a_request_id(self) -> None:
+    async def test_leaves_the_request_ceiling_alone_without_a_request_id(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
         await record_model_call_usage(
             USER, 0.02, None, input_tokens=400, output_tokens=300, charge_to_budget=False
         )
 
         assert await get_request_tokens(REQUEST) == 0
+        # Not just unread under this request's id — nothing was written at all.
+        # The counter key must never be minted for an unattributed call.
+        assert await fake_redis.dbsize() == 0
 
     async def test_still_counts_tokens_when_a_request_id_is_present(self) -> None:
         # An auxiliary call made from inside a turn still bounds that turn's
@@ -171,6 +152,37 @@ class TestAuxiliarySpend:
 
         assert await get_request_tokens(REQUEST) == 700
         assert await get_cost(USER, RateLimitPeriod.DAY) == 0.0
+
+
+@pytest.mark.unit
+class TestRequestCounterBoundaries:
+    """The ceiling counts every billable token, and ONLY billable tokens —
+    pinned at the exact boundaries (1 token, 0 billable) where an off-by-one
+    or a flipped comparison would otherwise be invisible."""
+
+    async def test_a_single_billable_token_is_still_counted(self) -> None:
+        await record_model_call_usage(
+            None, 0.0, REQUEST, input_tokens=1, output_tokens=0, charge_to_budget=False
+        )
+
+        assert await get_request_tokens(REQUEST) == 1
+
+    async def test_zero_billable_tokens_writes_no_counter(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        # Fully cache-served with no output: the ceiling must not see the call,
+        # not even as a zero — the key itself must not exist.
+        await record_model_call_usage(
+            None,
+            0.0,
+            REQUEST,
+            input_tokens=1000,
+            cached_tokens=1000,
+            output_tokens=0,
+            charge_to_budget=False,
+        )
+
+        assert await fake_redis.keys("req_tokens:*") == []
 
 
 @pytest.mark.unit

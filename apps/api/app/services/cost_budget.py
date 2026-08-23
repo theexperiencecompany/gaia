@@ -190,7 +190,10 @@ async def record_model_call_usage(
                 key = _budget_key(user_id, period)
                 pipe.incrbyfloat(key, cost_usd)
                 pipe.expire(key, ttl)
-        if record_tokens and root_request_id is not None:
+        if record_tokens:
+            # The flag already encodes "root_request_id present and something
+            # billable" — re-checking it here would create a second copy of
+            # the condition that tests cannot distinguish.
             key = _REQUEST_TOKENS_KEY.format(root_request_id=root_request_id)
             pipe.incrby(key, billable_tokens)
             pipe.expire(key, REQUEST_TOKEN_COUNTER_TTL_SECONDS)

@@ -179,7 +179,13 @@ jobs:
           COVERAGE_FILE: .coverage.${{ matrix.shard }}
         run: |
           trap 'echo "::error::repro: bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest"' ERR
-          bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest -n auto -m 'not composio and not model_onboarding and not schemathesis' \
+          # -p no:randomly: pytest-split's partition is only exact when every
+          # process (all 6 shards AND every xdist worker) sees the SAME item
+          # order. pytest-randomly reshuffles per process, so each shard computed
+          # a different group and some tests fell into the cracks — they never ran
+          # anywhere while every shard stayed green, and diff-cover then failed on
+          # lines whose tests silently vanished. Canonical order => exact partition.
+          bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest -n auto -p no:randomly -m 'not composio and not model_onboarding and not schemathesis' \
             --splits 6 --group ${{ matrix.shard }} \
             --ignore=tests/integration/real/test_device_bridge_e2e.py \
             --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \

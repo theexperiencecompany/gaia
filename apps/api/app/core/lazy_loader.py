@@ -417,24 +417,17 @@ class LazyLoader(Generic[T]):
                     self._instance = None
                     self._is_configured = False
 
-            # If we're in an async context, this should be awaited
-            # Otherwise, we'll do our best with sync reset
+            # get_running_loop() succeeds only INSIDE a running loop, where
+            # awaiting or run_until_complete are both impossible — reset
+            # synchronously and hope for the best. Anywhere else (no loop at
+            # all) take the async lock properly on a throwaway loop. Unlike
+            # the old get_event_loop() probe this never warns and never
+            # fabricates a loop.
             try:
-                # get_event_loop() is deprecated outside a running loop (3.12+)
-                # and raises DeprecationWarning there — detect a RUNNING loop
-                # instead, which never warns and never fabricates one.
-                loop = asyncio.get_running_loop()
+                asyncio.get_running_loop()
             except RuntimeError:
-                loop = None
-            if loop is not None and loop.is_running():
-                # We're in an async context, but we can't await here
-                # Just reset synchronously and hope for the best
-                self._instance = None
-                self._is_configured = False
-            elif loop is not None:
-                loop.run_until_complete(_async_reset())
+                asyncio.run(_async_reset())
             else:
-                # No event loop, just reset synchronously
                 self._instance = None
                 self._is_configured = False
         else:
