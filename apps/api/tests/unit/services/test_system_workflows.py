@@ -7,6 +7,7 @@ Covers:
   trigger registration failure, old trigger unregister failure (non-fatal)
 """
 
+from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from pymongo.errors import DuplicateKeyError
@@ -456,3 +457,166 @@ class TestResetSystemWorkflowToDefault:
 
         assert result is True
         mock_repo.reset_system_workflow.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.workflow_repository")
+    @patch(f"{MODULE}.ensure_trigger_config_object")
+    async def test_reset_restores_prompt(
+        self,
+        mock_ensure: MagicMock,
+        mock_repo: MagicMock,
+    ) -> None:
+        """The run executes workflow.prompt, so reset must restore it too."""
+        mock_repo.get_system_workflow_for_user = AsyncMock(
+            return_value=_existing_wf(key="manual_wf", composio_trigger_ids=None, trigger_name=None)
+        )
+        mock_repo.reset_system_workflow = AsyncMock()
+
+        from app.models.workflow_models import TriggerType
+
+        trigger_config = MagicMock()
+        trigger_config.type = TriggerType.MANUAL
+        trigger_config.trigger_name = None
+        trigger_config.model_dump.return_value = {"type": "manual"}
+        mock_ensure.return_value = trigger_config
+
+        req = _make_workflow_request()
+        req.prompt = "the factory prompt"
+        factory = MagicMock(return_value=req)
+
+        with patch.dict(f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"manual_wf": factory}):
+            from app.services.system_workflows.provisioner import (
+                reset_system_workflow_to_default,
+            )
+
+            result = await reset_system_workflow_to_default("wf-1", "user-1")
+
+        assert result is True
+        kwargs = mock_repo.reset_system_workflow.await_args.kwargs
+        assert kwargs["prompt"] == "the factory prompt"
+
+    def _schedule_trigger_config(self) -> MagicMock:
+        from datetime import datetime
+
+        from app.models.workflow_models import TriggerType
+
+        trigger_config = MagicMock()
+        trigger_config.type = TriggerType.SCHEDULE
+        trigger_config.trigger_name = None
+        trigger_config.cron_expression = "0 8 * * *"
+        trigger_config.timezone = None
+        trigger_config.next_run = datetime(2026, 8, 25, 8, 0, tzinfo=UTC)
+        trigger_config.model_dump.return_value = {"type": "schedule"}
+        return trigger_config
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.get_user_by_id")
+    @patch(f"{MODULE}.workflow_scheduler")
+    @patch(f"{MODULE}.workflow_repository")
+    @patch(f"{MODULE}.ensure_trigger_config_object")
+    async def test_reset_stamps_timezone_and_recomputes_next_run(
+        self,
+        mock_ensure: MagicMock,
+        mock_repo: MagicMock,
+        mock_scheduler: MagicMock,
+        mock_get_user: MagicMock,
+    ) -> None:
+        """Schedule definitions carry no timezone; reset must stamp the profile
+        timezone (as provisioning does) and recompute next_run from the cron."""
+        existing = _existing_wf(key="sched_wf", composio_trigger_ids=None, trigger_name=None)
+        existing.activated = False
+        mock_repo.get_system_workflow_for_user = AsyncMock(return_value=existing)
+        mock_repo.reset_system_workflow = AsyncMock()
+        mock_get_user.return_value = {"timezone": "Asia/Kolkata"}
+        mock_scheduler.schedule_workflow_execution = AsyncMock(return_value=True)
+
+        trigger_config = self._schedule_trigger_config()
+        mock_ensure.return_value = trigger_config
+
+        factory = MagicMock(return_value=_make_workflow_request())
+
+        with patch.dict(f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"sched_wf": factory}):
+            from app.services.system_workflows.provisioner import (
+                reset_system_workflow_to_default,
+            )
+
+            result = await reset_system_workflow_to_default("wf-1", "user-1")
+
+        assert result is True
+        assert trigger_config.timezone == "Asia/Kolkata"
+        trigger_config.update_next_run.assert_called_once_with(user_timezone="Asia/Kolkata")
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.get_user_by_id")
+    @patch(f"{MODULE}.workflow_scheduler")
+    @patch(f"{MODULE}.workflow_repository")
+    @patch(f"{MODULE}.ensure_trigger_config_object")
+    async def test_reset_rearms_activated_schedule_workflow(
+        self,
+        mock_ensure: MagicMock,
+        mock_repo: MagicMock,
+        mock_scheduler: MagicMock,
+        mock_get_user: MagicMock,
+    ) -> None:
+        """An activated workflow whose reset yields a schedule trigger must get a
+        queued fire, or it sits with a cron and no future run."""
+        existing = _existing_wf(key="sched_wf", composio_trigger_ids=None, trigger_name=None)
+        existing.activated = True
+        mock_repo.get_system_workflow_for_user = AsyncMock(return_value=existing)
+        mock_repo.reset_system_workflow = AsyncMock()
+        mock_get_user.return_value = {"timezone": "UTC"}
+        mock_scheduler.schedule_workflow_execution = AsyncMock(return_value=True)
+
+        trigger_config = self._schedule_trigger_config()
+        mock_ensure.return_value = trigger_config
+
+        factory = MagicMock(return_value=_make_workflow_request())
+
+        with patch.dict(f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"sched_wf": factory}):
+            from app.services.system_workflows.provisioner import (
+                reset_system_workflow_to_default,
+            )
+
+            result = await reset_system_workflow_to_default("wf-1", "user-1")
+
+        assert result is True
+        mock_scheduler.schedule_workflow_execution.assert_awaited_once_with(
+            "wf-1",
+            trigger_config.next_run,
+            repeat="0 8 * * *",
+        )
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.get_user_by_id")
+    @patch(f"{MODULE}.workflow_scheduler")
+    @patch(f"{MODULE}.workflow_repository")
+    @patch(f"{MODULE}.ensure_trigger_config_object")
+    async def test_reset_does_not_arm_deactivated_schedule_workflow(
+        self,
+        mock_ensure: MagicMock,
+        mock_repo: MagicMock,
+        mock_scheduler: MagicMock,
+        mock_get_user: MagicMock,
+    ) -> None:
+        """Reset preserves liveness: a deactivated workflow must not gain a fire."""
+        existing = _existing_wf(key="sched_wf", composio_trigger_ids=None, trigger_name=None)
+        existing.activated = False
+        mock_repo.get_system_workflow_for_user = AsyncMock(return_value=existing)
+        mock_repo.reset_system_workflow = AsyncMock()
+        mock_get_user.return_value = {"timezone": "UTC"}
+        mock_scheduler.schedule_workflow_execution = AsyncMock(return_value=True)
+
+        trigger_config = self._schedule_trigger_config()
+        mock_ensure.return_value = trigger_config
+
+        factory = MagicMock(return_value=_make_workflow_request())
+
+        with patch.dict(f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"sched_wf": factory}):
+            from app.services.system_workflows.provisioner import (
+                reset_system_workflow_to_default,
+            )
+
+            result = await reset_system_workflow_to_default("wf-1", "user-1")
+
+        assert result is True
+        mock_scheduler.schedule_workflow_execution.assert_not_awaited()
