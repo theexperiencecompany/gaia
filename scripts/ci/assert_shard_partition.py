@@ -49,8 +49,8 @@ def main(argv: list[str]) -> int:
         print(
             f"::error::Shards are not a partition: {len(repeated)} test(s) ran in more "
             f"than one shard, so ~{unrun} of {total} ran in none. The shards disagree "
-            "on collection order — pin every order-mutating plugin (--randomly-seed) "
-            "to the same value across shards.",
+            "on collection order — every plugin that reorders collection must be "
+            "disabled or seeded identically in each shard.",
             file=sys.stderr,
         )
         for tid, n in sorted(repeated.items())[:10]:

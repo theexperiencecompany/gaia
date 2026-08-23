@@ -864,11 +864,15 @@ class TestDispatchThreadsTheTurnsIdentity:
         self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
     ) -> None:
         """The executor's brief carries the verbatim request alongside comms'
-        paraphrase, so a detail comms dropped is still recoverable downstream."""
+        paraphrase, so a detail comms dropped is still recoverable downstream.
+
+        Sourced from the configurable, so it rides along whatever the comms model
+        did or did not emit — the tool call below passes no verbatim argument
+        because the schema no longer has one.
+        """
         await call_executor_with(
-            config=config_for(),
+            config=config_for(user_request="pls archive the junk mail and flag the offer thing"),
             task="triage the inbox",
-            verbatim_request="pls archive the junk mail and flag the offer thing",
         )
         await drain_background_tasks()
 
@@ -877,6 +881,27 @@ class TestDispatchThreadsTheTurnsIdentity:
             "Original request (verbatim):\npls archive the junk mail and flag the offer thing"
         )
         assert "triage the inbox" in brief
+
+    async def test_identifiers_survive_a_paraphrase_that_mangles_them(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        """Regression: a pasted billing table went to the executor with 3 of its 4
+        recipient addresses corrupted by the comms model's rewrite, and no verbatim
+        copy to check against. The brief must still carry the exact bytes even when
+        the model's `task` gets the identifiers wrong."""
+        pasted = (
+            "writetokhair@gmail.com\tFailed\t$30.00\tsub_0Ni7oWIA6kMF0ogWiKC3x\n"
+            "tmunson750@gmail.com\tCancelled\t$30.00\tsub_0NfdUP7ekmLIw59KBtWwa"
+        )
+        await call_executor_with(
+            config=config_for(user_request=pasted),
+            task="email writetokhair@gmail.com and tmndo.send@gmail.com about sub_0Ni7cWqI5",
+        )
+        await drain_background_tasks()
+
+        brief = spawned_runs[0]["task"]
+        assert pasted in brief
+        assert "sub_0NfdUP7ekmLIw59KBtWwa" in brief
 
 
 @pytest.mark.unit

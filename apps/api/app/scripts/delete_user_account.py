@@ -48,7 +48,6 @@ import shutil
 import sys
 from typing import Any, TypeAlias
 
-from bson import ObjectId
 import chromadb
 from composio_client import Composio
 from e2b import AsyncSandbox
@@ -61,7 +60,7 @@ import resend
 from workos import AsyncWorkOSClient
 
 from app.config.settings import settings
-from app.db.mongodb.mongodb import MONGO_DATABASE_NAME
+from app.db.mongodb.mongodb import MONGO_DATABASE_NAME, object_id_filter
 
 UID_RE = re.compile(r"^[0-9a-f]{24}$")
 JFS_USERS_ROOT = Path("/mnt/jfs/users")
@@ -111,7 +110,7 @@ def _mongo_inventory(db: MongoDatabase, uid: str, email: str) -> dict[str, int]:
             continue
         n = db[name].count_documents({"user_id": uid})
         if name == "users":
-            n += db.users.count_documents({"_id": ObjectId(uid)})
+            n += db.users.count_documents(object_id_filter(uid))
         if name == "support_requests":
             n = db[name].count_documents({"$or": [{"user_id": uid}, {"user_email": email}]})
         if n:
@@ -253,7 +252,7 @@ async def _run(args: argparse.Namespace) -> int:
                 n += db[name].delete_many({"platform_user_id": {"$in": platform_ids}}).deleted_count
             if n:
                 _step("mongo", f"{name}: deleted {n}")
-        deleted = db.users.delete_one({"_id": ObjectId(uid)}).deleted_count
+        deleted = db.users.delete_one(object_id_filter(uid)).deleted_count
         _step("mongo", f"users: deleted {deleted}")
     except Exception as e:
         _fail("mongo", e)

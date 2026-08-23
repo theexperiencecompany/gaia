@@ -186,6 +186,7 @@ def _inherit_from_parent_configurable(
     # judge checks the tool call against what the *user* actually asked, not against the
     # agent's restatement of it.
     merged["user_messages"] = base_configurable.get("user_messages") or merged["user_messages"]
+    merged["user_request"] = base_configurable.get("user_request") or merged["user_request"]
     # Same rule, same reason: established once wherever the root call site had the
     # full user document in hand, and a child never has its own copy to prefer.
     merged["user_preferences"] = (
@@ -258,6 +259,7 @@ async def build_agent_config(
     execution_mode: ExecutionMode | None = None,
     source: str | None = None,
     user_messages: list[str] | None = None,
+    user_request: str | None = None,
     user_preferences: dict[str, Any] | None = None,
     writing_style: dict[str, Any] | None = None,
     langfuse_trace_id: str | None = None,
@@ -275,6 +277,10 @@ async def build_agent_config(
             (parent-overrides) by the executor and every subagent, whose own tasks are
             agent-authored paraphrases. The HIL intent judge checks gated tool calls
             against these, so they must be the user's words — not a restatement.
+        user_request: The live turn's request exactly as typed, unclipped. Same
+            inheritance rule as ``user_messages``; ``call_executor`` folds it into the
+            executor brief so the worker tier is never left with only the comms
+            agent's paraphrase.
         user_preferences / writing_style: Onboarding data, same inheritance rule as
             ``user_messages`` — pass it at whichever root call site already has the
             full user document in hand (comms, background narration, the dev
@@ -318,6 +324,7 @@ async def build_agent_config(
         "active_todo_id": active_todo_id,
         "conversation_source": source,
         "user_messages": user_messages,
+        "user_request": user_request,
         "user_preferences": user_preferences,
         "writing_style": writing_style,
     }
@@ -370,6 +377,7 @@ async def build_agent_config(
         # The user's own verbatim turns (see build_agent_config). The HIL intent judge
         # reads these; child agents inherit them unchanged.
         "user_messages": resolved["user_messages"],
+        "user_request": resolved["user_request"],
         "user_preferences": resolved["user_preferences"],
         "writing_style": resolved["writing_style"],
         "user_id": user.get("user_id"),

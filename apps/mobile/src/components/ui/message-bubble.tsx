@@ -1,6 +1,7 @@
 import type * as React from "react";
 import { View } from "react-native";
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
+import { StreamingCursor } from "@/components/ui/streaming-cursor";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 
@@ -108,7 +109,19 @@ function MessageBubble({
           paddingVertical: spacing.sm + 2,
         }}
       >
-        {children ?? <MarkdownRenderer content={(message ?? "").trimEnd()} />}
+        {children ?? (
+          <View
+            style={{ flexDirection: "row", alignItems: "flex-end", gap: 2 }}
+          >
+            <View style={{ flexShrink: 1 }}>
+              <MarkdownRenderer
+                content={(message ?? "").trimEnd()}
+                isStreaming={isStreaming}
+              />
+            </View>
+            {isStreaming ? <StreamingCursor /> : null}
+          </View>
+        )}
       </View>
     </View>
   );

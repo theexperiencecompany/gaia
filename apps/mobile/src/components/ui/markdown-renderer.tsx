@@ -1,7 +1,25 @@
 import * as Linking from "expo-linking";
 import { memo, useCallback, useState } from "react";
-import { Text as RNText, View } from "react-native";
+import {
+  Image,
+  Text as RNText,
+  type StyleProp,
+  type TextStyle,
+  View,
+} from "react-native";
 import { WebView } from "react-native-webview";
+import {
+  type Block,
+  blockKey,
+  decodeEntities,
+  type InlineSegment,
+  type ListItem,
+  listItemKey,
+  parseBlocks,
+  repairStreamingMarkdown,
+  segmentKey,
+  type TableAlignment,
+} from "@/components/ui/markdown-parser";
 import {
   CodeBlock,
   InlineCode,
@@ -18,297 +36,68 @@ const COLORS = {
   linkColor: "#00bbff",
 } as const;
 
-// -- Types --------------------------------------------------------------------
-
-interface MarkdownRendererProps {
+export interface MarkdownRendererProps {
   content: string;
-}
-
-type InlineSegment =
-  | { type: "text"; text: string }
-  | { type: "bold"; text: string }
-  | { type: "italic"; text: string }
-  | { type: "boldItalic"; text: string }
-  | { type: "code"; text: string }
-  | { type: "link"; text: string; url: string }
-  | { type: "strikethrough"; text: string }
-  | { type: "mathInline"; text: string };
-
-type Block =
-  | { type: "paragraph"; segments: InlineSegment[] }
-  | { type: "heading"; level: number; segments: InlineSegment[] }
-  | { type: "codeBlock"; language: string; code: string }
-  | { type: "blockquote"; segments: InlineSegment[] }
-  | { type: "unorderedList"; items: InlineSegment[][] }
-  | { type: "orderedList"; items: InlineSegment[][] }
-  | { type: "hr" }
-  | { type: "mathBlock"; code: string };
-
-// -- Parsing ------------------------------------------------------------------
-
-function segmentFromMatch(match: RegExpExecArray): InlineSegment | null {
-  if (match[2] && match[3]) {
-    return { type: "link", text: match[2], url: match[3] };
-  }
-  if (match[4] || match[5]) {
-    return { type: "boldItalic", text: match[4] || match[5] };
-  }
-  if (match[6] || match[7]) {
-    return { type: "bold", text: match[6] || match[7] };
-  }
-  if (match[8] || match[9]) {
-    return { type: "italic", text: match[8] || match[9] };
-  }
-  if (match[10]) {
-    return { type: "strikethrough", text: match[10] };
-  }
-  if (match[11]) {
-    return { type: "mathInline", text: match[11] };
-  }
-  if (match[12]) {
-    return { type: "code", text: match[12] };
-  }
-  return null;
-}
-
-function parseInline(text: string): InlineSegment[] {
-  const segments: InlineSegment[] = [];
-  // Order matters: bold-italic before bold before italic; $...$ before backtick
-  const inlineRegex =
-    /(\[([^\]]+)\]\(([^)]+)\)|\*\*\*(.+?)\*\*\*|___(.+?)___|\*\*(.+?)\*\*|__(.+?)__|_(.+?)_|\*(.+?)\*|~~(.+?)~~|\$(.+?)\$|`([^`]+)`)/g;
-
-  let lastIndex = 0;
-  let match = inlineRegex.exec(text);
-
-  while (match !== null) {
-    // Push preceding plain text
-    if (match.index > lastIndex) {
-      segments.push({ type: "text", text: text.slice(lastIndex, match.index) });
-    }
-
-    const segment = segmentFromMatch(match);
-    if (segment) {
-      segments.push(segment);
-    }
-
-    lastIndex = match.index + match[0].length;
-    match = inlineRegex.exec(text);
-  }
-
-  if (lastIndex < text.length) {
-    segments.push({ type: "text", text: text.slice(lastIndex) });
-  }
-
-  if (segments.length === 0) {
-    segments.push({ type: "text", text });
-  }
-
-  return segments;
-}
-
-// A single parsing step: an optional block plus the index to resume from.
-// `block === null` means lines were consumed without producing a block.
-type BlockParseResult = { block: Block | null; next: number };
-
-function parseMathBlockLines(
-  lines: string[],
-  start: number,
-): BlockParseResult | null {
-  if (lines[start].trim() !== "$$") return null;
-  const mathLines: string[] = [];
-  let i = start + 1;
-  while (i < lines.length && lines[i].trim() !== "$$") {
-    mathLines.push(lines[i]);
-    i++;
-  }
-  i++; // skip closing $$
-  return { block: { type: "mathBlock", code: mathLines.join("\n") }, next: i };
-}
-
-function parseCodeBlockLines(
-  lines: string[],
-  start: number,
-): BlockParseResult | null {
-  if (!lines[start].trimStart().startsWith("```")) return null;
-  const language = lines[start].trimStart().slice(3).trim();
-  const codeLines: string[] = [];
-  let i = start + 1;
-  while (i < lines.length && !lines[i].trimStart().startsWith("```")) {
-    codeLines.push(lines[i]);
-    i++;
-  }
-  i++; // skip closing ```
-  return {
-    block: { type: "codeBlock", language, code: codeLines.join("\n") },
-    next: i,
-  };
-}
-
-// Captures the first marker and requires every repeat to match it, so mixed
-// sequences like "- * _" stay text (CommonMark only treats a uniform run as a
-// rule). Unambiguous by construction (every \s* is anchored between mandatory
-// chars), so it cannot backtrack exponentially on adversarial input.
-const HR_LINE_REGEX = /^\s*([-*_])(?:\s*\1){2,}\s*$/;
-
-function isHrLine(line: string): boolean {
-  return HR_LINE_REGEX.test(line);
-}
-
-function parseHrLine(lines: string[], start: number): BlockParseResult | null {
-  if (!isHrLine(lines[start])) return null;
-  return { block: { type: "hr" }, next: start + 1 };
-}
-
-function parseHeadingLine(
-  lines: string[],
-  start: number,
-): BlockParseResult | null {
-  const headingMatch = lines[start].match(/^(#{1,6})\s+(.+)/);
-  if (!headingMatch) return null;
-  return {
-    block: {
-      type: "heading",
-      level: headingMatch[1].length,
-      segments: parseInline(headingMatch[2]),
-    },
-    next: start + 1,
-  };
-}
-
-function parseBlockquoteLines(
-  lines: string[],
-  start: number,
-): BlockParseResult | null {
-  if (!lines[start].trimStart().startsWith("> ")) return null;
-  const quoteLines: string[] = [];
-  let i = start;
-  while (i < lines.length && lines[i].trimStart().startsWith("> ")) {
-    quoteLines.push(lines[i].replace(/^\s*>\s?/, ""));
-    i++;
-  }
-  return {
-    block: { type: "blockquote", segments: parseInline(quoteLines.join(" ")) },
-    next: i,
-  };
-}
-
-function parseListLines(
-  lines: string[],
-  start: number,
-): BlockParseResult | null {
-  const unordered = /^\s*[-*+]\s+/;
-  const ordered = /^\s*\d+[.)]\s+/;
-  const matcher = unordered.test(lines[start])
-    ? unordered
-    : ordered.test(lines[start])
-      ? ordered
-      : null;
-  if (!matcher) return null;
-  const items: InlineSegment[][] = [];
-  let i = start;
-  while (i < lines.length && matcher.test(lines[i])) {
-    items.push(parseInline(lines[i].replace(matcher, "")));
-    i++;
-  }
-  return {
-    block: {
-      type: matcher === unordered ? "unorderedList" : "orderedList",
-      items,
-    },
-    next: i,
-  };
-}
-
-function isBlockBoundary(line: string): boolean {
-  return (
-    line.trim() === "" ||
-    line.trim() === "$$" ||
-    line.trimStart().startsWith("```") ||
-    line.trimStart().startsWith("> ") ||
-    /^#{1,6}\s+/.test(line) ||
-    /^\s*[-*+]\s+/.test(line) ||
-    /^\s*\d+[.)]\s+/.test(line) ||
-    isHrLine(line)
-  );
-}
-
-function parseParagraphLines(lines: string[], start: number): BlockParseResult {
-  // Empty line: consume without producing a block.
-  if (lines[start].trim() === "") {
-    return { block: null, next: start + 1 };
-  }
-  const paraLines: string[] = [];
-  let i = start;
-  while (i < lines.length && !isBlockBoundary(lines[i])) {
-    paraLines.push(lines[i]);
-    i++;
-  }
-  return {
-    block:
-      paraLines.length > 0
-        ? { type: "paragraph", segments: parseInline(paraLines.join(" ")) }
-        : null,
-    next: i,
-  };
-}
-
-function parseMarkdown(raw: string): Block[] {
-  const blocks: Block[] = [];
-  const lines = raw.split("\n");
-  let i = 0;
-
-  while (i < lines.length) {
-    // Order matters and mirrors the original precedence.
-    const result =
-      parseMathBlockLines(lines, i) ??
-      parseCodeBlockLines(lines, i) ??
-      parseHrLine(lines, i) ??
-      parseHeadingLine(lines, i) ??
-      parseBlockquoteLines(lines, i) ??
-      parseListLines(lines, i) ??
-      parseParagraphLines(lines, i);
-
-    if (result.block) {
-      blocks.push(result.block);
-    }
-    i = result.next;
-  }
-
-  return blocks;
-}
-
-// -- Key helpers --------------------------------------------------------------
-
-function segmentKey(seg: InlineSegment, idx: number): string {
-  return `${seg.type}-${idx}-${seg.text.slice(0, 12)}`;
-}
-
-function blockKey(block: Block, idx: number): string {
-  if (block.type === "codeBlock") return `cb-${idx}-${block.language}`;
-  if (block.type === "hr") return `hr-${idx}`;
-  return `${block.type}-${idx}`;
-}
-
-function listItemKey(item: InlineSegment[], idx: number): string {
-  return `li-${idx}-${item[0]?.text.slice(0, 12)}`;
+  /**
+   * While streaming, incomplete markdown is repaired before parsing (unclosed
+   * fences/bold/etc.) so literal markers never flash mid-token.
+   */
+  isStreaming?: boolean;
 }
 
 // -- Rendering components -----------------------------------------------------
 
-function InlineContent({ segments }: { segments: InlineSegment[] }) {
+function useBodyTextStyle() {
   const { fontSize } = useResponsive();
+  return {
+    color: COLORS.text,
+    fontSize: fontSize.base,
+    lineHeight: Math.round(fontSize.base * 1.5),
+  } as const;
+}
+
+function MarkdownImage({ url, alt }: { url: string; alt: string }) {
+  const [failed, setFailed] = useState(false);
+  const bodyStyle = useBodyTextStyle();
+  if (failed) {
+    return (
+      <RNText style={[bodyStyle, { color: COLORS.linkColor }]}>
+        {alt || url}
+      </RNText>
+    );
+  }
+  return (
+    <Image
+      source={{ uri: url }}
+      accessibilityLabel={alt}
+      resizeMode="cover"
+      style={{
+        width: "100%",
+        height: 180,
+        borderRadius: 12,
+        marginVertical: 6,
+        backgroundColor: "#1c1c1f",
+      }}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+function InlineContent({
+  segments,
+  style,
+}: {
+  segments: InlineSegment[];
+  /** Applied to the root text node; nested segments inherit font/color. */
+  style?: StyleProp<TextStyle>;
+}) {
+  const bodyStyle = useBodyTextStyle();
   const handleLinkPress = useCallback((url: string) => {
-    Linking.openURL(url);
+    void Linking.openURL(url);
   }, []);
 
   return (
-    <RNText
-      style={{
-        color: COLORS.text,
-        fontSize: fontSize.base,
-        lineHeight: Math.round(fontSize.base * 1.5),
-      }}
-    >
+    <RNText style={[bodyStyle, style]}>
       {segments.map((seg, idx) => {
         const key = segmentKey(seg, idx);
         switch (seg.type) {
@@ -350,6 +139,8 @@ function InlineContent({ segments }: { segments: InlineSegment[] }) {
                 {seg.text}
               </RNText>
             );
+          case "image":
+            return <MarkdownImage key={key} url={seg.url} alt={seg.alt} />;
           case "strikethrough":
             return (
               <RNText key={key} style={{ textDecorationLine: "line-through" }}>
@@ -377,10 +168,10 @@ function HeadingBlock({
 
   // Heading sizes mapped to design-system token scale
   const sizeMap: Record<number, number> = {
-    1: responsiveFontSize["3xl"], // 30px
-    2: responsiveFontSize["2xl"], // 24px
-    3: responsiveFontSize.xl, // 20px
-    4: responsiveFontSize.lg, // 18px
+    1: responsiveFontSize["2xl"], // 24px — h1 in a chat bubble shouldn't be display-size
+    2: responsiveFontSize.xl, // 20px
+    3: responsiveFontSize.lg, // 18px
+    4: responsiveFontSize.base, // 16px
     5: responsiveFontSize.base, // 16px
     6: responsiveFontSize.sm, // 12px
   };
@@ -393,10 +184,10 @@ function HeadingBlock({
     6: 8,
   };
   const marginBottomMap: Record<number, number> = {
-    1: 16,
-    2: 12,
+    1: 12,
+    2: 10,
     3: 8,
-    4: 8,
+    4: 6,
     5: 4,
     6: 4,
   };
@@ -406,47 +197,19 @@ function HeadingBlock({
 
   return (
     <View style={{ marginTop, marginBottom }}>
-      <RNText
+      <InlineContent
+        segments={segments}
         style={{
-          color: COLORS.text,
           fontSize,
           fontWeight: "700",
           lineHeight: Math.round(fontSize * 1.25),
         }}
-      >
-        {segments.map((seg, idx) => {
-          const key = segmentKey(seg, idx);
-          switch (seg.type) {
-            case "code":
-              return <InlineCode key={key}>{seg.text}</InlineCode>;
-            case "link":
-              return (
-                <RNText
-                  key={key}
-                  style={{
-                    color: COLORS.linkColor,
-                    textDecorationLine: "underline",
-                  }}
-                  onPress={() => Linking.openURL(seg.url)}
-                >
-                  {seg.text}
-                </RNText>
-              );
-            default:
-              return <RNText key={key}>{seg.text}</RNText>;
-          }
-        })}
-      </RNText>
+      />
     </View>
   );
 }
 
 function BlockquoteBlock({ segments }: { segments: InlineSegment[] }) {
-  const { fontSize } = useResponsive();
-  const handleLinkPress = useCallback((url: string) => {
-    Linking.openURL(url);
-  }, []);
-
   return (
     <View
       style={{
@@ -456,122 +219,187 @@ function BlockquoteBlock({ segments }: { segments: InlineSegment[] }) {
         paddingVertical: 6,
         marginVertical: 6,
         backgroundColor: "rgba(63,63,70,0.35)",
+        borderRadius: 4,
       }}
     >
-      <RNText
-        style={{
-          color: COLORS.muted,
-          fontSize: fontSize.base,
-          lineHeight: Math.round(fontSize.base * 1.5),
-          fontStyle: "italic",
-        }}
-      >
-        {segments.map((seg, idx) => {
-          const key = segmentKey(seg, idx);
-          switch (seg.type) {
-            case "text":
-              return <RNText key={key}>{seg.text}</RNText>;
-            case "bold":
-              return (
-                <RNText key={key} style={{ fontWeight: "700" }}>
-                  {seg.text}
-                </RNText>
-              );
-            case "italic":
-              return (
-                <RNText key={key} style={{ fontStyle: "italic" }}>
-                  {seg.text}
-                </RNText>
-              );
-            case "boldItalic":
-              return (
-                <RNText
-                  key={key}
-                  style={{ fontWeight: "700", fontStyle: "italic" }}
-                >
-                  {seg.text}
-                </RNText>
-              );
-            case "strikethrough":
-              return (
-                <RNText
-                  key={key}
-                  style={{ textDecorationLine: "line-through" }}
-                >
-                  {seg.text}
-                </RNText>
-              );
-            case "code":
-              return <InlineCode key={key}>{seg.text}</InlineCode>;
-            case "link":
-              return (
-                <RNText
-                  key={key}
-                  style={{
-                    color: COLORS.linkColor,
-                    textDecorationLine: "underline",
-                  }}
-                  onPress={() => handleLinkPress(seg.url)}
-                >
-                  {seg.text}
-                </RNText>
-              );
-            default:
-              return <RNText key={key}>{seg.text}</RNText>;
-          }
-        })}
-      </RNText>
+      <InlineContent
+        segments={segments}
+        style={{ color: COLORS.muted, fontStyle: "italic" }}
+      />
     </View>
   );
 }
 
 function ListBlock({
   ordered,
+  start,
   items,
 }: {
   ordered: boolean;
-  items: InlineSegment[][];
+  start: number;
+  items: ListItem[];
 }) {
-  const { fontSize } = useResponsive();
+  const bodyStyle = useBodyTextStyle();
   return (
-    <View style={{ marginVertical: 4, paddingLeft: 16 }}>
-      {items.map((item, idx) => (
-        <View
-          key={listItemKey(item, idx)}
-          style={{ flexDirection: "row", marginBottom: 8, paddingRight: 8 }}
-        >
-          {ordered ? (
-            <RNText
-              style={{
-                color: COLORS.muted,
-                fontSize: fontSize.base,
-                lineHeight: Math.round(fontSize.base * 1.5),
-                width: 24,
-              }}
-            >
-              {`${idx + 1}.`}
-            </RNText>
-          ) : (
-            <View
-              style={{
-                width: 16,
-                alignItems: "center",
-                paddingTop: 8,
-              }}
-            >
+    <View style={{ marginVertical: 4, paddingLeft: 8 }}>
+      {items.map((item, idx) => {
+        const marker = ordered ? `${start + idx}.` : null;
+        return (
+          <View
+            key={listItemKey(item, idx)}
+            style={{ flexDirection: "row", marginBottom: 6, paddingRight: 8 }}
+          >
+            {item.task ? (
+              <View style={{ width: 24, paddingTop: 3 }}>
+                {/* Checkbox drawn with views, not glyph text */}
+                <View
+                  style={{
+                    width: 16,
+                    height: 16,
+                    borderRadius: 4,
+                    borderWidth: 1.5,
+                    borderColor: item.checked ? COLORS.linkColor : COLORS.muted,
+                    backgroundColor: item.checked
+                      ? COLORS.linkColor
+                      : "transparent",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {item.checked ? (
+                    <View
+                      style={{
+                        width: 8,
+                        height: 4,
+                        borderLeftWidth: 2,
+                        borderBottomWidth: 2,
+                        borderColor: "#000",
+                        transform: [{ rotate: "-45deg" }, { translateY: -1 }],
+                      }}
+                    />
+                  ) : null}
+                </View>
+              </View>
+            ) : marker ? (
+              <RNText style={{ ...bodyStyle, color: COLORS.muted, width: 24 }}>
+                {marker}
+              </RNText>
+            ) : (
               <View
                 style={{
-                  width: 4,
-                  height: 4,
-                  borderRadius: 2,
-                  backgroundColor: COLORS.muted,
+                  width: 24,
+                  alignItems: "center",
+                  paddingTop: Math.round(bodyStyle.fontSize * 0.55),
                 }}
-              />
+              >
+                <View
+                  style={{
+                    width: 4,
+                    height: 4,
+                    borderRadius: 2,
+                    backgroundColor: COLORS.muted,
+                  }}
+                />
+              </View>
+            )}
+            <View style={{ flex: 1 }}>
+              <RenderBlocks blocks={item.blocks} />
             </View>
-          )}
-          <View style={{ flex: 1 }}>
-            <InlineContent segments={item} />
           </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function TableCellText({
+  value,
+  bold,
+  align,
+}: {
+  value: string;
+  bold?: boolean;
+  align: TableAlignment;
+}) {
+  const bodyStyle = useBodyTextStyle();
+  return (
+    <RNText
+      style={[
+        bodyStyle,
+        bold ? { fontWeight: "600" } : null,
+        { textAlign: align ?? "left" },
+      ]}
+    >
+      {decodeEntities(value)}
+    </RNText>
+  );
+}
+
+function TableBlock({
+  alignments,
+  rows,
+}: {
+  alignments: TableAlignment[];
+  rows: string[][];
+}) {
+  const [header, ...body] = rows;
+  if (!header) return null;
+
+  // Table cells are positional data with no natural identity, so stable keys
+  // are derived from positions up front — outside JSX — keeping the render
+  // map free of raw array indices.
+  const columns = alignments.map((align, i) => ({
+    id: `col-${i}`,
+    align: align ?? null,
+  }));
+  const headerRow = header.map((value, i) => ({ id: `h-${i}`, value }));
+  const bodyRows = body.map((cells, i) => ({
+    id: `row-${i}`,
+    cells: columns.map((col, c) => ({
+      id: `${col.id}-${c}`,
+      value: cells[c] ?? "",
+      align: col.align,
+    })),
+  }));
+
+  return (
+    <View
+      style={{
+        marginVertical: 8,
+        borderRadius: 12,
+        overflow: "hidden",
+        backgroundColor: "#1f1f23",
+      }}
+    >
+      {/* Header row */}
+      <View style={{ flexDirection: "row", backgroundColor: "#27272a" }}>
+        {headerRow.map((cell, i) => (
+          <View
+            key={cell.id}
+            style={{ flex: 1, paddingHorizontal: 10, paddingVertical: 8 }}
+          >
+            <TableCellText value={cell.value} bold align={columns[i].align} />
+          </View>
+        ))}
+      </View>
+      {/* Body rows */}
+      {bodyRows.map((row) => (
+        <View
+          key={row.id}
+          style={{
+            flexDirection: "row",
+            borderTopWidth: 1,
+            borderTopColor: "rgba(63,63,70,0.5)",
+          }}
+        >
+          {row.cells.map((cell) => (
+            <View
+              key={cell.id}
+              style={{ flex: 1, paddingHorizontal: 10, paddingVertical: 8 }}
+            >
+              <TableCellText value={cell.value} align={cell.align} />
+            </View>
+          ))}
         </View>
       ))}
     </View>
@@ -584,7 +412,7 @@ function HorizontalRule() {
       style={{
         height: 1,
         backgroundColor: COLORS.hrColor,
-        marginVertical: 28,
+        marginVertical: 16,
       }}
     />
   );
@@ -708,19 +536,9 @@ function MathBlock({ code, inline }: { code: string; inline?: boolean }) {
   );
 }
 
-// -- Main component -----------------------------------------------------------
+// -- Block dispatcher ---------------------------------------------------------
 
-function MarkdownRendererInner({ content }: MarkdownRendererProps) {
-  if (!content || content.trim() === "") {
-    return null;
-  }
-
-  const blocks = parseMarkdown(content);
-
-  if (blocks.length === 0) {
-    return null;
-  }
-
+function RenderBlocks({ blocks }: { blocks: Block[] }) {
   return (
     <View>
       {blocks.map((block, idx) => {
@@ -732,7 +550,7 @@ function MarkdownRendererInner({ content }: MarkdownRendererProps) {
                 key={key}
                 style={{
                   marginTop: 0,
-                  marginBottom: idx < blocks.length - 1 ? 16 : 0,
+                  marginBottom: idx < blocks.length - 1 ? 12 : 0,
                 }}
               >
                 <InlineContent segments={block.segments} />
@@ -759,10 +577,23 @@ function MarkdownRendererInner({ content }: MarkdownRendererProps) {
             );
           case "blockquote":
             return <BlockquoteBlock key={key} segments={block.segments} />;
-          case "unorderedList":
-            return <ListBlock key={key} ordered={false} items={block.items} />;
-          case "orderedList":
-            return <ListBlock key={key} ordered={true} items={block.items} />;
+          case "list":
+            return (
+              <ListBlock
+                key={key}
+                ordered={block.ordered}
+                start={block.start}
+                items={block.items}
+              />
+            );
+          case "table":
+            return (
+              <TableBlock
+                key={key}
+                alignments={block.alignments}
+                rows={block.rows}
+              />
+            );
           case "hr":
             return <HorizontalRule key={key} />;
           case "mathBlock":
@@ -775,7 +606,26 @@ function MarkdownRendererInner({ content }: MarkdownRendererProps) {
   );
 }
 
+// -- Main component -----------------------------------------------------------
+
+function MarkdownRendererInner({
+  content,
+  isStreaming,
+}: MarkdownRendererProps) {
+  const source = isStreaming ? repairStreamingMarkdown(content) : content;
+  if (!source || source.trim() === "") {
+    return null;
+  }
+
+  const blocks = parseBlocks(source.split("\n"));
+
+  if (blocks.length === 0) {
+    return null;
+  }
+
+  return <RenderBlocks blocks={blocks} />;
+}
+
 const MarkdownRenderer = memo(MarkdownRendererInner);
 
-export type { MarkdownRendererProps };
 export { MarkdownRenderer };

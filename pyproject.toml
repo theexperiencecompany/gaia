@@ -746,6 +746,9 @@ skips = ["B101", "B311", "B404"]
 # ---------------------------------------------------------------------------
 [tool.interrogate]
 ignore-init-method = true
+# @overload stubs carry no body and must not duplicate the implementation's
+# docstring — only the implementation is documented.
+ignore-overloaded-functions = true
 ignore-init-module = true
 ignore-magic = true
 ignore-semiprivate = true
