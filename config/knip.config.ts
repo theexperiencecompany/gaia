@@ -166,6 +166,7 @@ const config: KnipConfig = {
   // Binaries provided by monorepo root, mise, Nx, or pnpm scripts (not in each
   // package.json). Includes nx target names invoked as `nx run <target>`.
   ignoreBinaries: [
+    "wrangler",
     "biome",
     "clean",
     "check",

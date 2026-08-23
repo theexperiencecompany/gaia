@@ -20,8 +20,9 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+from langchain_core.language_models import LanguageModelInput
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.runnables import RunnableConfig
 import pytest
 
 # ---------------------------------------------------------------------------
@@ -31,7 +32,11 @@ import pytest
 from app.agents.core.graph_builder.build_graph import build_comms_graph
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.config.settings import settings
-from tests.helpers import create_fake_llm, create_fake_llm_with_tool_calls
+from tests.helpers import (
+    BindableToolsFakeModel,
+    create_fake_llm,
+    create_fake_llm_with_tool_calls,
+)
 
 
 @pytest.fixture
@@ -829,11 +834,15 @@ class TestRealCommsAgent:
         # The LLM raises TimeoutError immediately when invoked
         timeout_error = TimeoutError("LLM request timed out")
 
-        class TimeoutFakeLLM(FakeMessagesListChatModel):
-            def bind_tools(self, tools: Any, **kwargs: Any) -> "TimeoutFakeLLM":
-                return self
-
-            async def ainvoke(self, *args, **kwargs):
+        class TimeoutFakeLLM(BindableToolsFakeModel):
+            async def ainvoke(
+                self,
+                input: LanguageModelInput,
+                config: RunnableConfig | None = None,
+                *,
+                stop: list[str] | None = None,
+                **kwargs: object,
+            ) -> AIMessage:
                 raise timeout_error
 
         fake_llm = TimeoutFakeLLM(responses=[])

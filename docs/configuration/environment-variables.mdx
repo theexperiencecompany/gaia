@@ -175,6 +175,15 @@ optional and have sensible defaults.
 | `GAIA_EMBEDDING_MODEL`         | Embedding model name (default `mixedbread-ai/mxbai-embed-large-v1`)          |
 | `GAIA_EMBEDDING_DIM`           | Embedding vector dimension (default `1024`)                                  |
 | `MEMORY_EMBEDDING_SIDECAR_URL` | URL of a shared embedding sidecar; loads the model in-process when unset     |
+| `MEMORY_EMBEDDING_SIDECAR_CONCURRENCY` | Max in-flight sidecar inferences (default `cores / MEMORY_ONNX_THREADS`)     |
+| `MEMORY_ONNX_THREADS`          | ONNX intra-op threads per inference (default `4`)                            |
+| `MEMORY_SIDECAR_MAX_BATCH_TEXTS` | Max texts per embedding forward pass / per HTTP call (default `16`)        |
+| `MEMORY_SIDECAR_MAX_BATCH_CHARS` | Max total characters per embed/rerank HTTP chunk (default `64000`)         |
+| `MEMORY_SIDECAR_MAX_TEXT_CHARS` | Hard cap on a single text; larger inputs are rejected with `413` (default `65000`) |
+| `MEMORY_SIDECAR_SLOT_WAIT_SECONDS` | How long a request waits for an inference slot before `503` (default `20`) |
+| `MEMORY_SIDECAR_RETRIES` | Retries for transient sidecar failures (`429`/`503`/connection errors) before failing (default `2`) |
+| `MEMORY_SIDECAR_RETRY_MAX_WAIT_SECONDS` | Backoff between sidecar retries in seconds (default `5`) |
+| `MEMORY_MODEL_CACHE_DIR`       | Persistent cache for fastembed model weights (~1.85GB, avoids re-download)   |
 | `GAIA_CHROMA_COLLECTION_SUFFIX`| Suffix appended to ChromaDB collection names (for isolating environments)    |
 
 ---

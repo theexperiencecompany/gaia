@@ -17,6 +17,18 @@ MAX_OUTPUT_CHARS = 120000
 # saves, so tiny outputs always stay inline.
 MIN_COMPACTION_SIZE = 500
 
+# LLM-summary tier: the compacted ToolMessage carries a model-written digest of
+# the output instead of only a file pointer, so the agent rarely needs to re-mine
+# the spilled file (the pointer stays as an optional add-on). Input is sampled
+# head+tail — tool outputs put schema/first records at the front and totals/errors
+# at the end — the digest is hard-capped, and the call is single-attempt with a
+# timeout so a slow endpoint can't stall the tool loop (failure degrades to the
+# deterministic tiers below).
+COMPACTION_SUMMARY_INPUT_HEAD_CHARS = 24_000  # ~6k tokens of prompt
+COMPACTION_SUMMARY_INPUT_TAIL_CHARS = 8_000  # ~2k tokens of prompt
+COMPACTION_SUMMARY_MAX_CHARS = 4_000  # ~1k tokens in context, vs 30k before
+COMPACTION_SUMMARY_TIMEOUT_SECONDS = 30
+
 # Fallback tier: when the workspace is unavailable there is nowhere to spill to,
 # so the output is truncated in place instead. Head and tail are both kept —
 # tool outputs put the schema/first records at the front and totals/errors at

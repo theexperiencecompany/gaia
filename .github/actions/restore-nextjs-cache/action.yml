@@ -7,9 +7,9 @@ description: >
 runs:
   using: composite
   steps:
-    - uses: actions/cache@v6
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: apps/web/.next/cache
-        key: nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/src/**/*.js', 'apps/web/src/**/*.jsx', 'apps/web/src/**/*.ts', 'apps/web/src/**/*.tsx') }}
+        key: nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','apps/web/next.config.mjs','apps/web/open-next.config.ts','apps/web/wrangler.jsonc') }}
         restore-keys: |
           nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-

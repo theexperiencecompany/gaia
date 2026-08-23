@@ -1,6 +1,6 @@
 "use client";
 
-import { Cancel01Icon } from "@icons";
+import { MinusSignIcon } from "@icons";
 import { OTPInput, OTPInputContext } from "input-otp";
 import * as React from "react";
 import { cn } from "@/lib/utils";
@@ -67,8 +67,8 @@ function InputOTPSlot({
 
 function InputOTPSeparator({ ...props }: React.ComponentProps<"div">) {
   return (
-    <div data-slot="input-otp-separator" {...props}>
-      <Cancel01Icon />
+    <div data-slot="input-otp-separator" aria-hidden="true" {...props}>
+      <MinusSignIcon className="size-3 text-zinc-600" />
     </div>
   );
 }

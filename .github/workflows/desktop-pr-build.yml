@@ -38,16 +38,10 @@ jobs:
     name: Build + prepare payload
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          version: 10.17.1
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: "pnpm"
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
       - uses: ./.github/actions/restore-nextjs-cache
       - name: Build web (standalone)
         run: pnpm nx build web --skip-nx-cache
@@ -61,8 +55,9 @@ jobs:
       # symlinks, and small enough to round-trip reliably.
       - name: Archive packaging payload
         run: tar -czf desktop-payload.tar.gz apps/desktop/out apps/desktop/.next-server-prepared
+      # upload v7 + download v8 — different artifact backends (v7 for upload, v8 for download), not a drift — both node24
       - name: Upload packaging payload
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: desktop-payload
           if-no-files-found: error
@@ -87,20 +82,12 @@ jobs:
             target: linux
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          version: 10.17.1
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: "pnpm"
-      # Installs electron-builder + the per-OS app-builder binaries + the
-      # desktop runtime deps that get packaged into the app.
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
       - name: Download packaging payload
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: desktop-payload
       - name: Unpack payload (restores apps/desktop/out + .next-server-prepared)

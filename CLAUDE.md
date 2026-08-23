@@ -404,6 +404,92 @@ rm -f file             # NOT: rm file
 rm -rf directory       # NOT: rm -r directory
 ```
 
+## CI Parallelism & Caching — Rules
+
+Rules for GitHub Actions, Nx affected, and Cloudflare deploys. Follow exactly — CI is the gate.
+
+- **Use local `.nx/cache` via `actions/cache@v4`, not Nx Cloud.** Restore at job start, save if miss. Key: `nx-${os}-${hashFiles(pnpm-lock.yaml,nx.json,**/project.json)}-${hashFiles(apps/**,libs/**)}`. Never use `restore-keys` without a hash — prevents cache poisoning.
+- **Single `pnpm install` / `uv sync` per workflow.** One `setup` job installs and caches (`pnpm-store-${hashFiles(pnpm-lock.yaml)}` + `~/.cache/uv` via `setup-uv` with `enable-cache` + `prune-cache: true`). Downstream jobs `needs: setup` — never reinstall per lane/job.
+- **Docker layer cache lives in GHCR (`type=registry`), per-image `:buildcache` tag.** Every `docker/build-push-action` and `nx docker:build` uses `cache-from/cache-to: type=registry,ref=ghcr.io/theexperiencecompany/<repo>:buildcache,mode=max,image-manifest=true,oci-mediatypes=true,compression=zstd`. The GHA cache service was the bottleneck, not the network: `type=gha,mode=max` export measured 449s of a 951s docker-web build (~10MB/s writes) while the actual GHCR image push was ~40s. Free on a public repo, no 10 GB eviction pressure. Never `mode=min` alone. All images (web, grafana, api, voice-agent, all five bots) use this scheme — no `type=gha` remains.
+- **Parallelize Docker builds.** `api` and `voice-agent` build in a matrix, not serially.
+- **Coalesce master merges — final deploy wins.** `code-quality.yml` / `main.yml` use `cancel-in-progress: true` on `refs/heads/master` so 5 rapid merges cancel to 1 final verification. `build.yml` keeps `cancel-in-progress: false` so a running deploy never dies. Final SHA via `nrwl/nx-set-shas` with base = last successful master verifies the union of all 5.
+- **Single affected detection.** One `detect` job runs `nrwl/nx-set-shas` and exports `base`/`head`; all lanes reuse it via `nx show projects --affected` / `nx affected`. Never duplicate `changed-files.sh` greps.
+- **Use `nx affected -t <target>` with `cache: true`, not raw tools.** Lanes run `nx affected -t lint type-check build` so unaffected projects hit cache and skip. Do not call `biome`, `ruff`, or `tsc` directly outside Nx unless wrapped via `nx run-many`.
+- **Keep `nx.json` inputs correct.** `api:build` (and similar) must list `pyproject.toml`, `uv.lock`, `libs/shared/py/**` etc. A missing input causes false cache hits that hide real changes.
+- **Shard the bottleneck.** `test-python` (~10 m) is sharded into 2 via `pytest-split` (`--splits 2 --group N`). `test-fast` stays a non-blocking budget probe — never gate the PR on it alone.
+- **Next.js cache key is minimal.** `restore-nextjs-cache` hashes only `pnpm-lock.yaml` + `next.config.*` + `open-next.config.ts` + `wrangler.jsonc`, never `apps/web/src/**`. Hashing sources thrashes the cache every commit.
+- **Emit timing summaries every lane.** Each job appends duration + cache hit/miss to `$GITHUB_STEP_SUMMARY` and uses `::group::` for install logs plus `::error file=,line=` / `::warning` annotations. No lane fails silently.
+- **Cloudflare deploys only via GitHub.** `deploy-web.yml` builds `pnpm --filter web cf:build`, uploads `apps/web/.open-next`, then deploys with `cloudflare/wrangler-action@v3` using `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` (minimal scope: Workers Scripts Write + R2 Write/Read + Routes Write). Workers Dashboard → Settings → Builds must stay Disconnected (`version_upload` only). PR previews deploy as `pr-<number>`; prod only on `refs/heads/master`.
+- **Move heavy scans to cron.** `trivy`, `pip-audit`, and mutation testing (2–3 runners, skip modules <5 lines) run weekly in `security-cron.yml`, not on every PR.
+- **Verify with real workflow runs + charts.** After CI changes, trigger `gh workflow run <workflow> --ref <branch>` on the branch, collect `gh run list` timings, and publish before/after bars in the PR body (images on the `pr-assets` branch) or `.agents/ci-report.html` (gitignored) — never commit metrics files into the source tree. Never claim CI is faster without measured runs.
+
+## CI Discrepancies & Conventions — What Was Fixed and How To Keep It Fixed
+
+Audits of all 12 workflows + 4 composites (`audit-*.md` in `.agents/plans/`) found **20 discrepancies** (8 P1 pinning/caching + 12 correctness/readability drifts). Every fix below is now the convention — **follow it for every new workflow, composite, or package bump**. If you diverge, the PR must explain why.
+
+### 1. Pinning Policy — All `uses:` Pinned to SHA
+
+- **Every external `uses:` is SHA-pinned with a trailing `# vX.Y.Z` comment.** Tags are mutable — a moved tag changes CI without a commit (supply-chain risk, zizmor `unpinned-uses` / `artipacked`).
+- Pinned examples: `docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0`, `astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0`, `pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10`, `gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0`, `amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1`.
+- **Also pin inside composites** — `setup-node-pnpm` (`pnpm/action-setup` is pinned, `actions/setup-node@v7` must also be pinned), `restore-nextjs-cache` (`actions/cache@v6`), `setup-python-test-env` (`actions/cache/restore@v6` / `save@v6`). A pinned workflow that calls an unpinned composite is still unpinned.
+- Exception: **local composites** (`./.github/actions/*`) are referenced by path, not SHA — intentional, not a gap.
+- **How to bump:** resolve the SHA for the tag (`gh api repos/<owner>/<repo>/git/refs/tags/<tag>` or `git ls-remote`), update SHA + comment together. Renovate/Dependabot bumps SHA+comment atomically — do not bump comment alone.
+
+### 2. Caching Strategy — Single `hashFiles` Convention
+
+- **One cache key fragment reused everywhere:** `hashFiles('pnpm-lock.yaml','nx.json','**/project.json')` for the infra shape. Secondary hash is source-scoped: `hashFiles('apps/**','libs/**')` (repo-wide) or `hashFiles('apps/web/**','libs/shared/ts/**')` (web-only jobs like `deploy-web.yml`). Never invent a third hashing scheme.
+- **Next.js cache is minimal** — `restore-nextjs-cache` hashes only `pnpm-lock.yaml` + `next.config.*` + `open-next.config.ts` + `wrangler.jsonc`, never `apps/web/src/**`. Hashing sources thrashes the cache every commit.
+- **Use local `.nx/cache` via `actions/cache@v4`, not Nx Cloud.** Restore at job start, save if miss. Key: `nx-${os}-${hashFiles(pnpm-lock.yaml,nx.json,**/project.json)}-${hashFiles(apps/**,libs/**)}`. Never use `restore-keys` without a hash — prevents cache poisoning.
+- **Single `pnpm install` / `uv sync` per workflow.** One `setup` job installs and caches (`pnpm-store-${hashFiles(pnpm-lock.yaml)}` + `~/.cache/uv` via `setup-uv` with `enable-cache: true` + `prune-cache: true`). Downstream jobs `needs: setup` — never reinstall per lane/job.
+- **Docker layer cache is `type=registry` per image (`<repo>:buildcache` in GHCR), zstd-compressed.** Superseded the `type=gha,scope=<image>` scheme: the GHA cache API wrote large layers at ~10MB/s (449s of the 951s docker-web build, measured run 32599902431) while GHCR pushes the same layers in ~40s. `mode=max` preserves intermediate layers; `image-manifest=true,oci-mediatypes=true` keeps GHCR compatible; one `:buildcache` tag per image repo so parallel builds never clobber each other.
+- **Do not mix `actions/cache` majors.** All workflows + composites use the same major (now `v5`/`v6` on `node24`; legacy `v4` was `node20`). Mixing `v5` vs `v6` creates separate namespaces and audit drift.
+
+### 3. Node24 Policy — All Actions on `node24`
+
+- **Every external action runs `node24` (verified via `action.yml` `runs.using: node24`).** No `node20`/`node16` remains.
+- Upgrades that already landed: `nrwl/nx-set-shas@v4→v5`, `astral-sh/setup-uv@v5.4.2→v9.0.0` (12 occurrences), `gitleaks-action@v2→v3`, `docker/login-action@v3→v4`, `aquasecurity/trivy-action@0.35→0.36`, `actions/cache@v4→v5/v6`, `actions/upload-artifact@v4→v6/v7`, `actions/download-artifact@v4→v7`. `actions/github-script@v7→v8` where used.
+- **When adding a new `uses:`:** fetch its `action.yml` via `raw.githubusercontent.com/<owner>/<repo>/<tag>/action.yml` and verify `runs.using: node24`. If it is `node20`, bump the tag until it is `node24` before merging. Pin the SHA at that tag.
+
+### 4. Coverage — 70% Temporary, Target 80%
+
+- `main.yml: test-python-coverage` enforces `--cov-fail-under=70` on the **merged** shard coverage (not per-shard). Per-shard runs use `--cov-fail-under=0` — a single shard covers a subset and must not gate.
+- **Why 70:** repo TOTAL is 78% today; the long-standing gate is 80%. `da968e1ca` relaxed 80→70 to unblock PRs (TOTAL 78% < 80 would red every PR for pre-existing debt, not the PR's change). The gate header and `quality-gate` job both carry `TODO: bump to 80% when coverage improves`.
+- **Do not raise to 80** until TOTAL is ≥80 and stays there. When you do, update both the `coverage report --fail-under` line and the `quality-gate` comment in the same PR. Diff-cover (`--fail-under=90` on changed lines) stays at 90 regardless.
+
+### 5. Trivy — Blocking (Was Advisory)
+
+- `main.yml: trivy-scan` is now **blocking**: `scan-type: fs`, `severity: CRITICAL,HIGH`, `scan-ref: .`, `exit-code: 1`, `ignore-unfixed: false`, `format: table`. `continue-on-error: false` (no silent pass). The job is in `quality-gate.needs` — a HIGH/CRITICAL fails the gate.
+- **Was advisory:** `continue-on-error: true` with 12 known HIGH in `pnpm-lock.yaml` (axios, brace-expansion, fast-uri, next CVEs, postcss, sharp) — flipping to blocking then would red every PR for pre-existing findings.
+- **Now:** lock already has overrides for those 12; trivy currently reports ~25 HIGH (axios 1.19.0, undici 6.28/7.29, tar 7.5.22, adm-zip 0.5.18, brace-expansion 5.0.9, etc.) — those must be fixed via `pnpm.overrides` before trivy goes green. **Do not set `ignore-unfixed: true`** to hide them; fix the package or add a per-finding allowlist with a linked CVE and expiry, reviewed in the same PR.
+
+### 6. Dead-Code — `wrangler` Is an Ignored Binary (Not Dead Code)
+
+- `deploy-web.yml` switched from `cloudflare/wrangler-action@v3` to `pnpm exec wrangler deploy` / `versions upload` (wrangler is already in `pnpm-lock.yaml` at 4.110.0; `wrangler-action` tried `npm i wrangler@3.90.0`/`pnpm add` without `-w` and failed with `ERESOLVE` / `ERR_PNPM_ADDING_TO_ROOT` in the pnpm workspace).
+- `knip` then flagged `wrangler` as an unlisted binary. Fix: `config/knip.config.ts: ignoreBinaries: ["wrangler", ...]` — correct, because wrangler is provided by the monorepo root `pnpm-lock.yaml` and invoked via `pnpm exec`, not listed per `apps/web/package.json`. `wrangler` is already in the root-deps allowlist comment ("Binaries provided by monorepo root, mise, Nx, or pnpm scripts").
+- **Do not remove `wrangler` from `ignoreBinaries`** and do not add it to `apps/web` `dependencies` to silence knip — it is a CLI invoked from CI, not a runtime import. Same rule applies to `biome`, `nx`, `uv`, `tsx`, `playwright` etc. already listed.
+
+### 7. Preview Deploy — `pnpm exec wrangler` (Not `wrangler-action`)
+
+- **Build:** `pnpm --filter ./apps/web cf:build` (path filter; `pnpm-workspace.yaml` globs resolve `./apps/web` — package name is `gaia` but path filter is canonical in this repo). Keep the `--filter ./apps/web` form; `pnpm --filter gaia` also works but is not the convention here.
+- **Prod deploy:** `pnpm exec wrangler deploy --config apps/web/wrangler.jsonc` with `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` in `env:` (not inline `${{ }}`). Minimal token scopes: `Workers Scripts Write + R2 Write/Read + Routes Write` on `d65fe47d…`, expires 2027-08-21.
+- **Preview deploy:** `pnpm exec wrangler versions upload --preview-alias pr-${{ github.event.number }} --config apps/web/wrangler.jsonc` — not `wrangler-action` `packageManager: npm` workaround (removed in `45632ba66`). Preview reuses `setup-node-pnpm` + built `.open-next` artifact (`path: apps/web/.open-next`, `include-hidden-files: true`).
+- **Why not `wrangler-action`:** it auto-detects `pnpm` and runs `pnpm add wrangler` without `-w` in a workspace root, which fails; forcing `packageManager: npm` then fails with peer `react@19.1.0 vs 19.2.3` `ERESOLVE`. `pnpm exec wrangler` avoids both by using the already-installed binary.
+
+### 8. Skipped / Non-Gated Lanes — Intentional, Not Forgotten
+
+- **`main.yml: quality-gate` deliberately excludes `changelog-sync`.** That job auto-opens a fix PR (`fix/changelog-sync-<branch>`) when `docs/release-notes/` is stale — it is non-blocking by design and must not red the gate.
+- **`main.yml: trivy-scan` is now included** (was excluded when advisory). Keep it in `quality-gate.needs` while blocking.
+- **`code-quality.yml: quality-gate` enforces 20 lanes** (biome, deps, circular, file-size, types-location, components-per-file, duplicates, package-hygiene, type-check, python-static (ruff + custom lints + xenon + interrogate + bandit + pip-audit, each step `continue-on-error` behind an aggregating verdict), python-mypy, observability, wide-event-conformance, dead-code, alert-rules, suppression-ratchet, gitleaks, semgrep, `test-mutation`). `test-mutation-plan` is the planner; `test-mutation` (sharded, `max-parallel: 12`, per-module `timeout-minutes: 20`) is the gated lane.
+- **`build.yml: docker-grafana` is not a quality gate gate** — it publishes `gaia-grafana:latest` unconditionally; the Swarm deploy pins `grafana_image_tag` only when that lane succeeded. Do not add it to `main.yml:quality-gate`.
+- **`main.yml: trigger-build` is `always() && quality-gate == success && github.ref == refs/heads/master`** — `always()` suppresses the implicit `success()` that would false-negative on skipped ancestors (e.g. `build` skips on Python-only changes but `quality-gate` is still success). `build.yml` uses `cancel-in-progress: false` (deploys must queue, never cancel); `main.yml`/`code-quality.yml` use `cancel-in-progress: true` on `refs/heads/master` (5 rapid merges coalesce to 1 final verification via `nrwl/nx-set-shas` base = last successful master).
+
+### 9. How To Bump Packages Safely — The `chore/pip-audit-aiohttp` Pattern
+
+- **Python and JS bumps ship in separate PRs.** `chore/pip-audit-aiohttp` (`db481e245` → merged as `a97cfd731` into both `master` and `fix/ci-improve-all-14`) bumped `aiohttp 3.14.1→3.14.3`, `cryptography 49→50`, `pyasn1 0.6.3→0.6.4`, plus transitive `pyopenssl 26.3→26.4` and `pillow 12.2→12.3` / `click 8.3.3→8.4.2` / `json-repair 0.60.1` via `da968e1ca`. Do not re-bump Python in a JS fix PR and vice versa — mixed bumps hide the real blame and break `uv.lock` vs `pnpm-lock.yaml` bisect.
+- **Python:** bump `constraint-dependencies` in root `pyproject.toml` (`aiohttp>=3.14.3`, `cryptography>=50.0.0`, `pyasn1>=0.6.4`, `pillow>=12.3.0`, etc.) **and** `apps/api/pyproject.toml` / `apps/voice-agent/pyproject.toml` in the same commit, then `uv lock` (or `uv sync`) to regenerate `uv.lock`. Verify with `uv run --frozen pytest` and `pip-audit` locally; trivy `fs` on `uv.lock` should be clean. `ecdsa` `GHSA-wj6h-64fc/PYSEC-2026-1325` has no upstream fix (side-channel out of scope) — it is allowlisted via `pip-audit --ignore-vuln` with a comment, not by raising `ignore-unfixed`.
+- **JS (npm):** fix via `pnpm.overrides` in root `package.json` (e.g. `axios@<1.19.0: 1.19.0`, `undici@>=6<6.28: 6.28.0` + `>=7<7.29: 7.29.0`, `tar@<7.5.22: 7.5.22`, `adm-zip@<0.5.18: 0.5.18`, `brace-expansion@<5.0.9: 5.0.9`), then `pnpm install --frozen-lockfile` to update `pnpm-lock.yaml`. Prefer same-major patches (`axios 1.16→1.19` is still `1.x`, `undici` 6.27→6.28 / 7.24→7.29 are within-major, `adm-zip 0.5.10→0.5.18` is within `0.5` — do not jump `adm-zip 0.5→0.6` or `undici 7→8` in a CVE fix PR). Verify with `pnpm audit` / `trivy fs .` locally; CI `trivy-scan` must be green before merge. Open as `chore/trivy-npm-audit`, not mixed with Python.
+- **After bumping:** trigger `gh workflow run main.yml --ref <branch>` and `gh workflow run deploy-web.yml --ref <branch>`, collect `gh run list` timings, and publish before/after in the PR. Never claim "CI is faster / fixed" without measured runs.
+
 ## Common Issues
 
 - Python deps not resolving → `nx run api:sync` or `nx run voice-agent:sync`

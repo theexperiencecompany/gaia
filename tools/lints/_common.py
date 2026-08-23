@@ -64,3 +64,8 @@ def report_rule(rule: str, why: str, doc: str, violations: list[Violation]) -> N
     for v in violations:
         print(f"  {display(v.path)}:{v.line}  {v.detail}", file=sys.stderr)
         print(f"      fix: {v.fix}", file=sys.stderr)
+        # GitHub annotation — surfaces as inline file,line error in the PR diff.
+        print(
+            f"::error file={display(v.path)},line={v.line}::{rule}: {v.detail} — fix: {v.fix}",
+            file=sys.stderr,
+        )

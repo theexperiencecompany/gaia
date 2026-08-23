@@ -12,12 +12,15 @@ routing, request validation, and response contract (the response keys
 covered hermetically.
 """
 
+import asyncio
 from collections.abc import AsyncGenerator
 from unittest.mock import MagicMock, patch
 
+import httpx
 from httpx import ASGITransport, AsyncClient
 import pytest
 
+from app.memory import embeddings
 from app.services.embedding_sidecar import server
 
 TEXTS = ["first passage", "second passage"]
@@ -172,3 +175,193 @@ class TestLifespan:
                 pass
 
         mock_rerank.assert_not_called()
+
+
+class TestRequestBounds:
+    @patch.object(server, "_embed_sync", return_value=VECTORS)
+    async def test_oversized_single_text_rejected_with_413(
+        self, mock_embed: MagicMock, sidecar_client: AsyncClient
+    ) -> None:
+        oversized = "x" * (server.EMBEDDING_SIDECAR_MAX_TEXT_CHARS + 1)
+        response = await sidecar_client.post("/embed", json={"texts": [oversized]})
+
+        assert response.status_code == 413
+        assert "MAX_TEXT_CHARS" in response.json()["detail"]
+        mock_embed.assert_not_called()
+
+    @patch.object(server, "_embed_query_sync", return_value=QUERY_VECTOR)
+    async def test_oversized_single_query_rejected_with_413(
+        self, mock_embed_query: MagicMock, sidecar_client: AsyncClient
+    ) -> None:
+        response = await sidecar_client.post(
+            "/embed_query", json={"text": "x" * (server.EMBEDDING_SIDECAR_MAX_TEXT_CHARS + 1)}
+        )
+
+        assert response.status_code == 413
+        mock_embed_query.assert_not_called()
+
+    @patch.object(server, "_rerank_sync", return_value=SCORES)
+    async def test_oversized_rerank_query_rejected_with_413(
+        self, mock_rerank: MagicMock, sidecar_client: AsyncClient
+    ) -> None:
+        # The query is model input too — an uncapped one must not reach it.
+        response = await sidecar_client.post(
+            "/rerank",
+            json={
+                "query": "x" * (server.EMBEDDING_SIDECAR_MAX_TEXT_CHARS + 1),
+                "documents": DOCUMENTS,
+            },
+        )
+
+        assert response.status_code == 413
+        mock_rerank.assert_not_called()
+
+    @patch.object(server, "_embed_sync", return_value=VECTORS)
+    async def test_text_exactly_at_cap_is_accepted(
+        self, mock_embed: MagicMock, sidecar_client: AsyncClient
+    ) -> None:
+        # The cap is exclusive (>), not inclusive (>=): a text at exactly the
+        # limit is legitimate input.
+        text = "x" * server.EMBEDDING_SIDECAR_MAX_TEXT_CHARS
+        response = await sidecar_client.post("/embed", json={"texts": [text]})
+
+        assert response.status_code == 200
+
+    @patch.object(server, "_embed_sync", return_value=VECTORS)
+    async def test_large_batch_passes_through_in_one_call(
+        self, mock_embed: MagicMock, sidecar_client: AsyncClient
+    ) -> None:
+        # Memory bounding happens inside _embed_sync's explicit fastembed
+        # batch_size; the endpoint forwards the full list unchanged.
+        texts = [f"t{i}" * 10 for i in range(100)]
+        response = await sidecar_client.post("/embed", json={"texts": texts})
+
+        assert response.status_code == 200
+        mock_embed.assert_called_once_with(texts)
+
+
+class TestSaturationBackpressure:
+    async def test_full_slots_return_503_after_bounded_wait(
+        self, sidecar_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # One-slot pool so holding it truly saturates the sidecar.
+        monkeypatch.setattr(server, "_slot_wait_seconds", 0.05)
+        monkeypatch.setattr(server, "_inference_slots", asyncio.Semaphore(1))
+
+        async with server._inference_slots:
+            response = await sidecar_client.post("/embed", json={"texts": TEXTS})
+
+        assert response.status_code == 503
+        assert response.json()["detail"] == "embedding sidecar busy; retry shortly"
+
+    async def test_503_exception_carries_exact_backoff_contract(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The 503's shape is a contract clients rely on: exact status, detail
+        text, and Retry-After header name/value."""
+        monkeypatch.setattr(server, "_slot_wait_seconds", 0.0)
+        monkeypatch.setattr(server, "_inference_slots", asyncio.Semaphore(1))
+        async with server._inference_slots:
+            with pytest.raises(server.HTTPException) as exc_info:
+                await server.embed(server.EmbedRequest(texts=TEXTS))
+
+        exc = exc_info.value
+        assert exc.status_code == 503
+        assert exc.detail == "embedding sidecar busy; retry shortly"
+        assert exc.headers == {"Retry-After": "5"}
+
+    @patch.object(server, "_embed_sync", return_value=VECTORS)
+    async def test_slot_released_after_success(
+        self, _mock_embed: MagicMock, sidecar_client: AsyncClient
+    ) -> None:
+        for _ in range(3):
+            response = await sidecar_client.post("/embed", json={"texts": TEXTS})
+            assert response.status_code == 200
+
+
+class TestClientRetryContract:
+    """Pinned here as well as in tests/unit/memory/test_embeddings.py: the
+    retry budget is what keeps memory saves alive through a sidecar blip."""
+
+    async def test_rerank_splits_and_preserves_scores(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Second home for the chunked-rerank contract so the mutation lane
+        attributes it from both covering files."""
+        calls: list[dict] = []
+
+        async def fake_post(path: str, payload: dict) -> dict:
+            assert path == "/rerank"
+            assert set(payload) == {"query", "documents"}
+            calls.append({"q": payload["query"], "n": len(payload["documents"])})
+            return {"scores": [float(len(calls))] * len(payload["documents"])}
+
+        observed: list[tuple[str, str, int]] = []
+
+        async def fake_observed(operation: str, backend: str, count: int, awaitable):
+            observed.append((operation, backend, count))
+            return await awaitable
+
+        monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar.test")
+        monkeypatch.setattr(embeddings, "_sidecar_post", fake_post)
+        monkeypatch.setattr(embeddings, "_observed", fake_observed)
+        monkeypatch.setattr(embeddings, "EMBEDDING_SIDECAR_MAX_BATCH_TEXTS", 30)
+
+        scores = await embeddings.rerank("the query", [f"doc {i}" for i in range(45)])
+
+        assert calls == [
+            {"q": "the query", "n": 30},
+            {"q": "the query", "n": 15},
+        ]
+        assert observed == [("rerank", "sidecar", 30), ("rerank", "sidecar", 15)]
+        assert scores == [1.0] * 30 + [2.0] * 15
+
+    async def test_exhausted_budget_raises_after_exact_attempts(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        attempts: list[httpx.Request] = []
+        sleeps: list[float] = []
+
+        async def fake_sleep(delay: float) -> None:
+            sleeps.append(delay)
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            attempts.append(request)
+            return httpx.Response(503)
+
+        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        monkeypatch.setattr(embeddings, "EMBEDDING_SIDECAR_RETRIES", 2)
+        max_wait = embeddings.EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS
+
+        # Exhausted budget hands back the last response; _sidecar_post turns
+        # it into a loud failure via raise_for_status.
+        response = await embeddings._post_with_retry(
+            client, "http://sidecar.test/embed", {"texts": ["a"]}
+        )
+
+        assert response.status_code == 503
+        assert len(attempts) == 3
+        assert sleeps == [max_wait, max_wait]
+
+    async def test_retry_succeeds_within_budget(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        attempts: list[httpx.Request] = []
+
+        async def fake_sleep(delay: float) -> None:
+            pass
+
+        responses = [httpx.Response(503), httpx.Response(200, json={"ok": True})]
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            attempts.append(request)
+            return responses.pop(0)
+
+        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+        response = await embeddings._post_with_retry(
+            client, "http://sidecar.test/embed", {"texts": ["a"]}
+        )
+
+        assert response.status_code == 200
+        assert len(attempts) == 2
