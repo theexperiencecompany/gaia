@@ -103,6 +103,16 @@ def _budget_key(user_id: str, period: RateLimitPeriod) -> str:
     )
 
 
+def _billable_request_tokens(input_tokens: int, cached_tokens: int, output_tokens: int) -> int:
+    """Tokens a request tree is charged for: cache hits ride free, output counts."""
+    return max(input_tokens - cached_tokens, 0) + output_tokens
+
+
+def _is_charged_spend(user_id: str | None, cost_usd: float) -> bool:
+    """Spend charges an allowance only when it belongs to a user and cost money."""
+    return user_id is not None and cost_usd > 0
+
+
 async def record_model_call_usage(
     user_id: str | None,
     cost_usd: float,
@@ -134,9 +144,12 @@ async def record_model_call_usage(
     tokens (see ``llm_metering.record_llm_call``); the tokens must survive
     that so the call can be re-priced after the fact.
     """
-    tokens = input_tokens + output_tokens
-    record_spend = user_id is not None and cost_usd > 0
-    record_tokens = root_request_id is not None and tokens > 0
+    # The request ceiling bounds runaway loops, not cache economics: a cached
+    # prefix rides nearly every call in a turn, so counting it trips the wall
+    # on ordinary multi-call turns. The durable rollup below still books raw.
+    billable_tokens = _billable_request_tokens(input_tokens, cached_tokens, output_tokens)
+    record_spend = _is_charged_spend(user_id, cost_usd)
+    record_tokens = root_request_id is not None and billable_tokens > 0
     has_token_data = bool(input_tokens or output_tokens or cached_tokens or reasoning_tokens)
     # The id itself, not a flag: the durable write below takes a non-optional
     # user_id, and carrying the narrowed value is what lets it type-check
@@ -177,9 +190,12 @@ async def record_model_call_usage(
                 key = _budget_key(user_id, period)
                 pipe.incrbyfloat(key, cost_usd)
                 pipe.expire(key, ttl)
-        if record_tokens and root_request_id is not None:
+        if record_tokens:
+            # The flag already encodes "root_request_id present and something
+            # billable" — re-checking it here would create a second copy of
+            # the condition that tests cannot distinguish.
             key = _REQUEST_TOKENS_KEY.format(root_request_id=root_request_id)
-            pipe.incrby(key, tokens)
+            pipe.incrby(key, billable_tokens)
             pipe.expire(key, REQUEST_TOKEN_COUNTER_TTL_SECONDS)
         if pipe.command_stack:
             labeled.append(("redis_usage_pipeline", pipe.execute()))

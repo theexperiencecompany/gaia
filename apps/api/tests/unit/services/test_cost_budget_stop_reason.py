@@ -154,6 +154,29 @@ class TestRequestCeiling:
 
         assert (await get_budget_stop_reason(USER, PlanType.PRO, REQUEST)).stop_reason is None
 
+    @pytest.mark.regression
+    async def test_a_cache_heavy_turn_does_not_bind_the_ceiling_on_raw_tokens(self) -> None:
+        """The production bug this pins: an ordinary retrieve→bind→act turn made
+        ~10 model calls re-sending a ~30k prompt that is mostly cached prefix —
+        316k RAW tokens, 259k of them cache reads, and the ceiling stopped the
+        turn right after `create_upgrade_link` returned, so the minted checkout
+        link never reached the user. The wall bounds fresh work, not cache
+        economics: raw over 300k with billable well under must not bind."""
+        for _ in range(10):
+            await record_model_call_usage(
+                USER,
+                0.003,
+                REQUEST,
+                input_tokens=32_000,
+                output_tokens=800,
+                cached_tokens=27_000,
+                charge_to_budget=True,
+            )
+
+        check = await get_budget_stop_reason(USER, PlanType.FREE, REQUEST)
+
+        assert check.stop_reason is None
+
 
 @pytest.mark.unit
 class TestThreadingGaps:
