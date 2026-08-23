@@ -281,6 +281,16 @@ def _hermetic_environment() -> Iterator[None]:
         os.environ["LANG"] = "C.UTF-8"
         os.environ["LC_ALL"] = "C.UTF-8"
         os.environ["PYTHONHASHSEED"] = "0"
+        # Process identity the worker stamps at import (app/workers/lifecycle/
+        # startup.py setdefaults GAIA_SERVICE_NAME=arq_worker before its app
+        # imports, so the first emitted log line already carries the Promtail
+        # label). Any test importing that chain would otherwise leak the var and
+        # trip the pollution guard below — e.g. test_worker_smoke, or any
+        # single-file selection that is the only importer of app.worker. Pinning
+        # it here keeps the guard's baseline complete: under tests the process
+        # is not the worker, and env_context() falls through "" to the default
+        # service name.
+        os.environ.setdefault("GAIA_SERVICE_NAME", "")
         yield
     finally:
         os.environ.clear()
