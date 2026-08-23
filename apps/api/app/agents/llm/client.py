@@ -37,7 +37,6 @@ from app.constants.llm import (
     DEFAULT_MODEL_NAME,
     DEV_LLM_MAX_OUTPUT_TOKENS,
     HELPER_MAX_OUTPUT_TOKENS,
-    HELPER_REASONING,
     LLM_INVOKE_TIMEOUT_SECONDS,
     LLM_RETRY_MAX_ATTEMPTS,
     MEMORY_MODEL_NAME,
@@ -46,6 +45,7 @@ from app.constants.llm import (
     OPENROUTER_APP_CATEGORIES,
     OPENROUTER_APP_TITLE,
     OPENROUTER_MAX_OUTPUT_TOKENS,
+    OPENROUTER_REASONING,
     REASONING_FIELD_ID,
     SIM_STUB_API_KEY,
     SIM_STUB_BASE_URL,
@@ -218,9 +218,7 @@ def init_openrouter_llm() -> LanguageModelLike:
             app_url=settings.FRONTEND_URL,
             app_title=OPENROUTER_APP_TITLE,
             app_categories=OPENROUTER_APP_CATEGORIES,
-            # Helper-tier default; every agent-graph run overrides it with the
-            # lane's per-role effort (lane._reasoning_for) via the configurable.
-            reasoning=HELPER_REASONING,
+            reasoning=OPENROUTER_REASONING,
         )
     )
     # Every chat LLM must carry the context-window profile — fractional-token

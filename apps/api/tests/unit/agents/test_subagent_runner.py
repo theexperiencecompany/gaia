@@ -21,7 +21,6 @@ from app.agents.core.subagents.subagent_runner import (
     execute_subagent_stream,
     prepare_executor_execution,
 )
-from app.agents.llm.lane import AgentRole
 from app.constants.llm import DEV_MODEL_OPTIONS, EXECUTOR_RECURSION_LIMIT
 from app.models.mcp_config import SubAgentConfig
 from app.models.subagent_models import Subagent
@@ -618,7 +617,6 @@ class TestPrepareExecutorExecution:
             "thread_id": "executor_t1",
             "base_configurable": configurable,
             "agent_name": "executor_agent",
-            "role": AgentRole.EXECUTOR,
             "dev_option": None,
             "subagent_id": "executor_agent",
             "vfs_session_id": "t1",

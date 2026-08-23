@@ -203,10 +203,10 @@ def test_init_openrouter_llm_pins_context_window_profile(monkeypatch):
     from app.constants.llm import (
         DEFAULT_LLM_TEMPERATURE,
         DEFAULT_MAX_TOKENS,
-        HELPER_REASONING,
         OPENROUTER_APP_CATEGORIES,
         OPENROUTER_APP_TITLE,
         OPENROUTER_MAX_OUTPUT_TOKENS,
+        OPENROUTER_REASONING,
     )
 
     captured: dict[str, object] = {}
@@ -223,10 +223,7 @@ def test_init_openrouter_llm_pins_context_window_profile(monkeypatch):
     assert captured["app_url"] == client.settings.FRONTEND_URL
     assert captured["app_title"] == OPENROUTER_APP_TITLE
     assert captured["app_categories"] == OPENROUTER_APP_CATEGORIES
-    # The construction default is the HELPER effort, not the worker tier's: only
-    # lane-less callers (one-shot helpers, aux calls) ever see it — a graph run
-    # overrides it per role via the lane's configurable.
-    assert captured["reasoning"] == HELPER_REASONING
+    assert captured["reasoning"] == OPENROUTER_REASONING
     assert captured["streaming"] is True
     assert captured["stream_usage"] is True
     assert llm.profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}

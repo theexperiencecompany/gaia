@@ -30,7 +30,7 @@ from app.agents.core.graph_manager import (
     GraphUnavailableError,
 )
 from app.agents.core.subagents.registry import get_subagent_by_id
-from app.agents.llm.lane import AgentRole, dev_option
+from app.agents.llm.lane import dev_option
 from app.agents.prompts.workflow_prompts import (
     WORKFLOW_AUTO_NOTIFY_SECTION,
     WORKFLOW_SILENT_NOTIFY_SECTION,
@@ -709,7 +709,6 @@ async def prepare_executor_execution(
         thread_id=executor_thread_id,
         base_configurable=configurable,
         agent_name="executor_agent",
-        role=AgentRole.EXECUTOR,
         # DEV-ONLY: the switcher's executor pick, stashed by comms. Present only
         # in development; otherwise the executor inherits comms's lane.
         dev_option=dev_option(configurable.get("dev_executor_model")),

@@ -15,7 +15,6 @@ unreadable and its bugs invisible.
 
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from enum import StrEnum
 from typing import Any
 
 from app.agents.llm.client import PROVIDER_MODELS, next_fallback_provider
@@ -24,7 +23,6 @@ from app.config.rate_limits import RateLimitPeriod, get_reset_time, get_time_win
 from app.config.settings import settings
 from app.constants.cache import COST_BUDGET_NOTIFIED_KEY
 from app.constants.llm import (
-    COMMS_REASONING,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
@@ -61,19 +59,6 @@ from shared.py.wide_events import log
 BINDING_FIELD_IDS: frozenset[str] = frozenset(
     {PROVIDER_FIELD_ID, MODEL_FIELD_ID, REASONING_FIELD_ID, MODEL_KWARGS_FIELD_ID}
 )
-
-
-class AgentRole(StrEnum):
-    """Which tier is asking for a lane.
-
-    Only the reasoning budget differs by role today: comms is mostly routing and
-    acknowledgement work, so a paid turn spends its thinking budget on the
-    executor's tool selection instead.
-    """
-
-    COMMS = "comms"
-    EXECUTOR = "executor"
-    SUBAGENT = "subagent"
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,30 +161,17 @@ class ModelLane:
         return replace(self, provider=provider, model=model, provider_pin=None, reasoning=None)
 
 
-def _reasoning_for(role: AgentRole) -> dict[str, Any]:
-    """Effort per role, identical on every tier: comms medium, workers high.
-
-    This closed the old open non-decision where a FREE comms turn inherited the
-    client default while a PAID one was pinned lower, so free out-thought pro.
-    The role now decides and the tier does not — the worker tier gets the deep
-    budget because that is where tool selection happens.
-    """
-    if role is AgentRole.COMMS:
-        return COMMS_REASONING
-    return OPENROUTER_REASONING
-
-
-def _default_lane(role: AgentRole) -> ModelLane:
+def _default_lane() -> ModelLane:
     return ModelLane(
         provider=LLMProviderName(DEFAULT_LLM_PROVIDER),
         model=DEFAULT_MODEL_NAME,
-        reasoning=_reasoning_for(role),
+        reasoning=OPENROUTER_REASONING,
         provider_pin=None,
         max_input_tokens=DEFAULT_MAX_TOKENS,
     )
 
 
-def _dev_lane(option: DevModelOption, role: AgentRole) -> ModelLane:
+def _dev_lane(option: DevModelOption) -> ModelLane:
     """A lane pinned from the DEV-ONLY model menu.
 
     An entry may carry no model (the env-defined "custom" endpoint), in which
@@ -217,7 +189,7 @@ def _dev_lane(option: DevModelOption, role: AgentRole) -> ModelLane:
     return ModelLane(
         provider=provider,
         model=option["model"] or PROVIDER_MODELS.get(provider) or None,
-        reasoning=_reasoning_for(role) if option["reasoning"] else None,
+        reasoning=OPENROUTER_REASONING if option["reasoning"] else None,
         provider_pin=option["model_kwargs"],
         max_input_tokens=DEFAULT_MAX_TOKENS,
     )
@@ -261,7 +233,6 @@ def dev_option_for(model_id: str | None, use_defaults: bool) -> DevModelOption |
 
 async def resolve_lane(
     user_id: str | None,
-    role: AgentRole,
     dev_option: DevModelOption | None = None,
 ) -> tuple[ModelLane, PlanType | None]:
     """The single place a model is chosen. Returns the lane and the plan tier it
@@ -276,20 +247,20 @@ async def resolve_lane(
     ``dev_option`` (development only) wins over all of it.
     """
     if dev_option is not None:
-        return _dev_lane(dev_option, role), None
+        return _dev_lane(dev_option), None
 
     if not user_id:
-        return _default_lane(role), None
+        return _default_lane(), None
 
     try:
         plan = await payment_service.get_cached_plan_type(user_id)
     except Exception as e:
         # A transient lookup failure must not fail the turn — keep the default.
         log.warning(f"{LogTag.AGENT} plan lookup failed; keeping the default lane", error=str(e))
-        return _default_lane(role), None
+        return _default_lane(), None
 
     if plan == PlanType.FREE:
-        return _default_lane(role), plan
+        return _default_lane(), plan
 
     if await _pro_monthly_budget_exhausted(user_id):
         log.warning(
@@ -299,13 +270,13 @@ async def resolve_lane(
             plan=plan.value,
         )
         spawn_background_task(_notify_degrade_once(user_id))
-        return _default_lane(role), plan
+        return _default_lane(), plan
 
     return (
         ModelLane(
             provider=LLMProviderName(PAID_MODEL_PROVIDER),
             model=PAID_MODEL_NAME,
-            reasoning=_reasoning_for(role),
+            reasoning=OPENROUTER_REASONING,
             # No routing pin, deliberately. The session_id key on every request
             # forces OpenRouter's sticky routing, which keeps a conversation on
             # the provider holding its warm prompt cache; an explicit `only`
@@ -373,7 +344,6 @@ async def _notify_degrade_once(user_id: str) -> None:
 
 
 __all__ = [
-    "AgentRole",
     "LLMProviderName",
     "ModelLane",
     "dev_model_id",

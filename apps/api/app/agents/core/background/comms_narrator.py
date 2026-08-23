@@ -9,7 +9,6 @@ persona. This module owns that single invocation.
 from langchain_core.messages import HumanMessage
 
 from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
-from app.agents.llm.lane import AgentRole
 from app.agents.prompts.comms_prompts import INTERACTIVE_DELIVERY_NOTE, PLATFORM_DELIVERY_NOTE
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.log_tags import LogTag
@@ -70,7 +69,6 @@ async def narrate_executor_result(
             conversation_id=conversation_id,
             user=user,
             agent_name="comms_agent",
-            role=AgentRole.COMMS,
             user_preferences=user_preferences,
             writing_style=writing_style,
         )

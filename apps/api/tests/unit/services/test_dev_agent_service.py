@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.agents.core.subagents.subagent_runner import SubagentOutcome
-from app.agents.llm.lane import AgentRole
 from app.services.dev_agent_service import _dev_base_configurable, _reject_pause
 from app.utils.errors import AppError
 
@@ -69,7 +68,6 @@ class TestTheParentConfigurableADirectRunBuilds:
             "conversation_id": cid,
             "user": {"user_id": "u1", "email": "dev@gaia.local", "name": "Dev"},
             "agent_name": "executor_agent",
-            "role": AgentRole.EXECUTOR,
             "user_preferences": None,
             "writing_style": None,
         }

@@ -16,7 +16,6 @@ from redis.exceptions import DataError
 from app.agents.llm import lane as lane_module
 from app.agents.llm.client import PROVIDER_MODELS
 from app.agents.llm.lane import (
-    AgentRole,
     ModelLane,
     _notify_degrade_once,
     _pro_monthly_budget_exhausted,
@@ -28,7 +27,6 @@ from app.agents.llm.types import LLMProviderName
 from app.config.rate_limits import RateLimitPeriod
 from app.constants.cache import COST_BUDGET_NOTIFIED_KEY
 from app.constants.llm import (
-    COMMS_REASONING,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
@@ -74,12 +72,10 @@ def _plan(plan: PlanType, *, over_budget: bool = False) -> Any:
     )
 
 
-async def _resolve(
-    plan: PlanType, role: AgentRole = AgentRole.COMMS, *, over_budget: bool = False
-) -> ModelLane:
+async def _resolve(plan: PlanType, *, over_budget: bool = False) -> ModelLane:
     a, b, c = _plan(plan, over_budget=over_budget)
     with a, b, c:
-        resolved, _ = await resolve_lane(USER, role)
+        resolved, _ = await resolve_lane(USER)
     return resolved
 
 
@@ -110,7 +106,7 @@ class TestPlanRouting:
             assert (await _resolve(plan)).max_input_tokens == DEFAULT_MAX_TOKENS
 
     async def test_no_user_id_resolves_the_default_lane_and_no_plan(self) -> None:
-        resolved, plan = await resolve_lane(None, AgentRole.COMMS)
+        resolved, plan = await resolve_lane(None)
 
         assert resolved.model == DEFAULT_MODEL_NAME
         assert resolved.max_input_tokens == DEFAULT_MAX_TOKENS
@@ -123,7 +119,7 @@ class TestPlanRouting:
             "get_cached_plan_type",
             AsyncMock(side_effect=ConnectionError("redis down")),
         ):
-            resolved, plan = await resolve_lane(USER, AgentRole.COMMS)
+            resolved, plan = await resolve_lane(USER)
 
         assert resolved.model == DEFAULT_MODEL_NAME
         assert plan is None
@@ -139,7 +135,7 @@ class TestPlanRouting:
             ),
             patch.object(lane_module, "log") as log,
         ):
-            await resolve_lane(USER, AgentRole.COMMS)
+            await resolve_lane(USER)
 
         assert log.warning.call_args.args == (
             f"{LogTag.AGENT} plan lookup failed; keeping the default lane",
@@ -149,7 +145,7 @@ class TestPlanRouting:
     async def test_the_resolved_plan_is_returned_for_the_budget_wall(self) -> None:
         a, b, c = _plan(PlanType.PRO)
         with a, b, c:
-            _, plan = await resolve_lane(USER, AgentRole.COMMS)
+            _, plan = await resolve_lane(USER)
 
         assert plan == PlanType.PRO
 
@@ -166,7 +162,7 @@ class TestMonthlyEconomicGuard:
         the budget wall must still see PRO."""
         a, b, c = _plan(PlanType.PRO, over_budget=True)
         with a, b, c:
-            _, plan = await resolve_lane(USER, AgentRole.COMMS)
+            _, plan = await resolve_lane(USER)
 
         assert plan == PlanType.PRO
 
@@ -175,7 +171,7 @@ class TestMonthlyEconomicGuard:
         fired. Without the user and tier on it, nobody can tell who it hit."""
         a, b, c = _plan(PlanType.PRO, over_budget=True)
         with a, b, c, patch.object(lane_module, "log") as log:
-            await resolve_lane(USER, AgentRole.COMMS)
+            await resolve_lane(USER)
 
         assert log.warning.call_args.args == ("pro_model_degraded",)
         assert log.warning.call_args.kwargs == {
@@ -410,7 +406,7 @@ class TestDegradeNotice:
             patch.object(lane_module, "spawn_background_task", spawned.append),
             _Notice() as notice,
         ):
-            await resolve_lane(USER, AgentRole.COMMS)
+            await resolve_lane(USER)
             assert len(spawned) == 1
             await spawned[0]
 
@@ -418,36 +414,31 @@ class TestDegradeNotice:
 
 
 class TestReasoningPerRole:
-    """The role decides the effort and the tier does not: comms runs the comms
-    effort and the worker tier (executor + subagents) runs the deep effort, on
-    free and paid alike.
+    """One effort for every tier and caller: the measured ceiling.
 
     This deliberately closed the old open non-decision in which a free comms
-    turn inherited the client default while a paid one was pinned lower, so
-    free out-thought pro. Asserted per (tier, role) so a refactor cannot
-    reintroduce a tier split by accident.
+    turn inherited the client default while a paid one was pinned to "low" —
+    the budget the brief-garbling incident (#1085) showed failing while comms
+    transcribed identifiers into the executor task.
     """
 
     @pytest.mark.parametrize("plan", [PlanType.FREE, PlanType.PRO])
-    async def test_comms_runs_the_comms_effort_on_every_tier(self, plan: PlanType) -> None:
-        assert (await _resolve(plan, AgentRole.COMMS)).reasoning == COMMS_REASONING
+    async def test_every_tier_runs_the_single_effort(self, plan: PlanType) -> None:
+        assert (await _resolve(plan)).reasoning == OPENROUTER_REASONING
 
-    @pytest.mark.parametrize("plan", [PlanType.FREE, PlanType.PRO])
-    @pytest.mark.parametrize("role", [AgentRole.EXECUTOR, AgentRole.SUBAGENT])
-    async def test_the_worker_tier_runs_the_deep_effort_on_every_tier(
-        self, plan: PlanType, role: AgentRole
-    ) -> None:
-        assert (await _resolve(plan, role)).reasoning == OPENROUTER_REASONING
-
-    async def test_no_effort_exceeds_the_measured_ceiling_for_the_default_model(self) -> None:
+    async def test_the_effort_never_exceeds_the_measured_ceiling(self) -> None:
         """ "high"/"xhigh" COLLAPSE reasoning on deepseek-v4-flash-0731 as served
         today (measured 2026-08-23: high≈402-678 and xhigh≈606 mean reasoning
         tokens vs medium≈1401-1716 — below even the no-effort baseline ≈662).
-        Fails if either constant is raised past "medium" without re-measuring."""
+        Fails if the effort is raised past "medium" without re-measuring."""
         order = ["low", "medium", "high", "xhigh"]
-        ceiling = order.index("medium")
-        assert order.index(OPENROUTER_REASONING["effort"]) <= ceiling
-        assert order.index(COMMS_REASONING["effort"]) <= ceiling
+        assert order.index(OPENROUTER_REASONING["effort"]) <= order.index("medium")
+
+    async def test_the_effort_is_not_dropped_back_to_low(self) -> None:
+        """The regression that motivated the change: paid comms at "low" is the
+        budget that garbled the executor brief."""
+        order = ["low", "medium", "high", "xhigh"]
+        assert order.index(OPENROUTER_REASONING["effort"]) >= order.index("medium")
 
 
 class TestDevOverride:
@@ -455,7 +446,7 @@ class TestDevOverride:
         option = dev_option_for("gemini-3.1-flash-lite", use_defaults=False)
         assert option is not None
 
-        resolved, plan = await resolve_lane("u1", AgentRole.COMMS, dev_option=option)
+        resolved, plan = await resolve_lane("u1", dev_option=option)
 
         assert resolved.provider == LLMProviderName.GEMINI
         assert resolved.model == "gemini-3.1-flash-lite"
@@ -466,28 +457,23 @@ class TestDevOverride:
         option = dev_option_for("gemini-3.1-flash-lite", use_defaults=False)
         assert option is not None
 
-        resolved, _ = await resolve_lane(USER, AgentRole.COMMS, dev_option=option)
+        resolved, _ = await resolve_lane(USER, dev_option=option)
 
         assert resolved.reasoning is None
 
-    async def test_a_reasoning_dev_model_gets_the_asking_roles_effort(self) -> None:
-        """A dev pick is a PAID lane by definition — it is an explicit choice, not
-        plan routing — so comms gets the lower comms effort and the executor the
-        client default, exactly as a paid turn does."""
+    async def test_a_reasoning_dev_model_gets_the_single_effort(self) -> None:
         option = dev_option_for("minimax-m3", use_defaults=False)
         assert option is not None
 
-        comms, _ = await resolve_lane(USER, AgentRole.COMMS, dev_option=option)
-        executor, _ = await resolve_lane(USER, AgentRole.EXECUTOR, dev_option=option)
+        resolved, _ = await resolve_lane(USER, dev_option=option)
 
-        assert comms.reasoning == COMMS_REASONING
-        assert executor.reasoning == OPENROUTER_REASONING
+        assert resolved.reasoning == OPENROUTER_REASONING
 
     async def test_a_dev_model_keeps_its_own_provider_routing_pin(self) -> None:
         option = dev_option_for("minimax-m3", use_defaults=False)
         assert option is not None
 
-        resolved, _ = await resolve_lane(USER, AgentRole.COMMS, dev_option=option)
+        resolved, _ = await resolve_lane(USER, dev_option=option)
 
         assert resolved.provider_pin == option["model_kwargs"]
         assert resolved.max_input_tokens == DEFAULT_MAX_TOKENS
@@ -506,7 +492,7 @@ class TestDevOverride:
         option = dev_option_for("custom", use_defaults=False)
         assert option is not None
 
-        resolved, _ = await resolve_lane(USER, AgentRole.COMMS, dev_option=option)
+        resolved, _ = await resolve_lane(USER, dev_option=option)
 
         assert resolved.provider == LLMProviderName.CUSTOM
         assert resolved.model == "nous/deepseek-v4-flash-cheap"
@@ -521,7 +507,7 @@ class TestDevOverride:
         option = dev_option_for("custom", use_defaults=False)
         assert option is not None
 
-        resolved, _ = await resolve_lane(USER, AgentRole.COMMS, dev_option=option)
+        resolved, _ = await resolve_lane(USER, dev_option=option)
 
         assert resolved.provider == LLMProviderName.CUSTOM
         assert resolved.model is None
@@ -537,7 +523,7 @@ class TestDevOverride:
         option = dev_option_for("custom", use_defaults=False)
         assert option is not None
 
-        resolved, _ = await resolve_lane(USER, AgentRole.COMMS, dev_option=option)
+        resolved, _ = await resolve_lane(USER, dev_option=option)
 
         assert resolved.provider == LLMProviderName.CUSTOM
         assert resolved.model is None
@@ -632,7 +618,7 @@ class TestFallback:
         paid = ModelLane(
             provider="openrouter",
             model=PAID_MODEL_NAME,
-            reasoning=COMMS_REASONING,
+            reasoning=OPENROUTER_REASONING,
             provider_pin=_A_ROUTING_PIN,
             max_input_tokens=DEFAULT_MAX_TOKENS,
         )
@@ -678,7 +664,7 @@ class TestRebindOntoAFallbackLane:
         return ModelLane(
             provider=LLMProviderName.OPENROUTER,
             model=PAID_MODEL_NAME,
-            reasoning=COMMS_REASONING,
+            reasoning=OPENROUTER_REASONING,
             provider_pin=_A_ROUTING_PIN,
             max_input_tokens=DEFAULT_MAX_TOKENS,
         )

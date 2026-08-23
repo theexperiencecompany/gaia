@@ -22,7 +22,7 @@ from app.agents.core.background.executor_capture import (
 )
 from app.agents.core.graph_manager import CompiledAgentGraph, GraphManager
 from app.agents.core.messages import construct_langchain_messages
-from app.agents.llm.lane import AgentRole, dev_model_id, dev_option_for
+from app.agents.llm.lane import dev_model_id, dev_option_for
 from app.config.langfuse import trace_id_for_message
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
@@ -135,7 +135,6 @@ async def _core_agent_logic(
     config = await build_agent_config(
         conversation_id=conversation_id,
         user=user,
-        role=AgentRole.COMMS,
         dev_option=dev_option,
         usage_metadata_callback=usage_metadata_callback,
         agent_name="comms_agent",

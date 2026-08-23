@@ -14,7 +14,6 @@ from app.agents.core.agent import (
     call_agent_silent,
 )
 from app.agents.llm import lane as lane_module
-from app.agents.llm.lane import AgentRole
 from app.constants.llm import DEV_MODEL_OPTIONS
 from app.helpers.agent_helpers import recent_user_messages
 from app.models.message_models import MessageRequestWithHistory
@@ -1054,7 +1053,6 @@ class TestTheLaneTheRunResolves:
         assert build_config.call_args.kwargs == {
             "conversation_id": "conv-1",
             "user": user,
-            "role": AgentRole.COMMS,
             "dev_option": None,
             "usage_metadata_callback": callback,
             "agent_name": "comms_agent",

@@ -284,24 +284,19 @@ OPENROUTER_MAX_OUTPUT_TOKENS = 64_000
 # reservation 8x.
 HELPER_MAX_OUTPUT_TOKENS = 8_000
 
-# Reasoning effort for OpenRouter thinking models on the worker tier (executor +
-# subagents), passed to ChatOpenRouter's native `reasoning` field. "medium" is the
-# effective CEILING for deepseek-v4-flash-0731 as served today (via Reka): measured
-# 2026-08-23 over 8 samples per level on one prompt, mean reasoning tokens were
-# none≈662 / low≈1081 / medium≈1401-1716, while "high"≈402-678 and "xhigh"≈606 —
+# Reasoning effort for every OpenRouter thinking-model call — comms, executor,
+# subagents, and the lane-less one-shot helpers alike — passed to ChatOpenRouter's
+# native `reasoning` field. One constant on purpose: "medium" is the effective
+# CEILING for deepseek-v4-flash-0731 as served today (via Reka), measured
+# 2026-08-23 over 8 samples per level on one prompt — mean reasoning tokens were
+# none≈662 / low≈1081 / medium≈1401-1716, while "high"≈402-678 and "xhigh"≈606
 # both COLLAPSE reasoning to at-or-below the no-effort baseline instead of raising
-# it. Do not "raise" this to high without re-measuring against the live model.
+# it. With every role at the ceiling there is nothing left for a per-role split to
+# express; comms was previously pinned to "low" on paid, which is the budget the
+# brief-garbling incident (#1085) showed failing while transcribing identifiers
+# into the executor task. Do not raise this past "medium" without re-measuring
+# against the live model.
 OPENROUTER_REASONING: dict[str, Any] = {"effort": "medium"}
-# Comms-specific reasoning, applied per ROLE on every tier (see lane._reasoning_for)
-# so free and paid comms think equally hard. Raised from "low" to "medium": comms
-# writes the executor brief, and the brief-garbling incident (#1085) showed the low
-# budget failing exactly there — transcribing identifiers into the task.
-COMMS_REASONING: dict[str, Any] = {"effort": "medium"}
-# Client-construction default (client.py), reached only by callers that never set a
-# lane: the one-shot helpers and aux calls (titles, classifications, structured
-# blobs) plus the graph's model fallback. Pinned separately so raising the worker
-# tier's effort does not silently raise every helper one-shot with it.
-HELPER_REASONING: dict[str, Any] = {"effort": "medium"}
 
 # Output cap for the env-defined custom dev provider (the "custom" entry below;
 # endpoint/key/model all come from the DEV_LLM_* settings). 64k fits under the

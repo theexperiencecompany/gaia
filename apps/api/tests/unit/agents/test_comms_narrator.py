@@ -17,7 +17,6 @@ from app.agents.core.background.comms_narrator import (
     record_executor_cancellation,
 )
 from app.agents.core.graph_manager import GraphUnavailableError
-from app.agents.llm.lane import AgentRole
 from app.agents.prompts.comms_prompts import (
     INTERACTIVE_DELIVERY_NOTE,
     PLATFORM_DELIVERY_NOTE,
@@ -238,7 +237,6 @@ class TestNarrationResolvesItsOwnCommsLane:
             )
 
         kwargs = built.await_args.kwargs
-        assert kwargs["role"] is AgentRole.COMMS
         assert kwargs["agent_name"] == "comms_agent"
         assert kwargs["conversation_id"] == CONVERSATION_ID
         # No base_configurable: inheriting one would carry a stale lane from

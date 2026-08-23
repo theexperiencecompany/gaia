@@ -15,7 +15,7 @@ from app.agents.core.background.session import claim_tool_output
 from app.agents.core.graph_manager import CompiledAgentGraph
 from app.agents.core.interruption import record_interruption
 from app.agents.core.subagents.registry import get_subagent_by_id
-from app.agents.llm.lane import AgentRole, ModelLane, resolve_lane
+from app.agents.llm.lane import ModelLane, resolve_lane
 from app.config.langfuse import build_langfuse_callback
 from app.constants.cache import (
     CUSTOM_INT_METADATA_TTL,
@@ -245,7 +245,6 @@ async def build_agent_config(
     conversation_id: str,
     user: AgentUserContext,
     agent_name: str,
-    role: AgentRole = AgentRole.SUBAGENT,
     dev_option: DevModelOption | None = None,
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
     thread_id: str | None = None,
@@ -284,9 +283,9 @@ async def build_agent_config(
         recursion_limit: Max LangGraph steps before GraphRecursionError. Defaults to the
             comms/subagent cap; the executor passes EXECUTOR_RECURSION_LIMIT for its
             longer tool loops.
-        role / dev_option: Only consulted for a TOP-LEVEL run (no base_configurable),
+        dev_option: Only consulted for a TOP-LEVEL run (no base_configurable),
             which is the one that resolves a lane; a child inherits its parent's lane
-            whole and ignores both.
+            whole and ignores it.
     """
     callbacks = _build_agent_callbacks(conversation_id, user, agent_name, usage_metadata_callback)
 
@@ -302,7 +301,7 @@ async def build_agent_config(
     if dev_option is None and inherited_lane is not None:
         lane = inherited_lane
     else:
-        lane, resolved_plan = await resolve_lane(user.get("user_id"), role, dev_option)
+        lane, resolved_plan = await resolve_lane(user.get("user_id"), dev_option)
 
     current: AgentConfigurable = {
         "conversation_id": conversation_id,
