@@ -1,5 +1,6 @@
 "use client";
 
+import { useReducedMotion } from "motion/react";
 import { useEffect, useReducer } from "react";
 import type { ReceiptPrinterStage } from "@/features/pricing/components/receipt-printer.types";
 
@@ -42,6 +43,8 @@ export function receiptStageReducer(
 export function useReceiptPrinterStage(
   paymentConfirmed: boolean,
 ): ReceiptPrinterStage {
+  // Under reduced motion there is no feed animation to wait for.
+  const shouldReduceMotion = useReducedMotion();
   const [state, dispatch] = useReducer(
     receiptStageReducer,
     initialReceiptStageState,
@@ -60,10 +63,10 @@ export function useReceiptPrinterStage(
 
     const timer = setTimeout(
       () => dispatch("print-finished"),
-      PRINT_FEED_DURATION_MS,
+      shouldReduceMotion ? 0 : PRINT_FEED_DURATION_MS,
     );
     return () => clearTimeout(timer);
-  }, [state.stage]);
+  }, [state.stage, shouldReduceMotion]);
 
   return state.stage;
 }

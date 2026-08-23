@@ -79,13 +79,13 @@ const statusLabels: Record<ReceiptPrinterStage, string> = {
   complete: "Subscription active",
 };
 
-/* The machine body mixes two zinc tones per theme. Tailwind only emits the CSS
-   variables a utility actually references, and these live inside arbitrary
-   color-mix() values — so the hex values are inlined to stay build-safe. */
-const zinc950 = "#09090b";
-const zinc900 = "#18181b";
+/* The machine body mixes two zinc tones per theme. Tailwind scans source text
+   and cannot see template-literal interpolation inside arbitrary values, so
+   the hex tones are inlined below rather than referenced via constants.
+ */
 
-const machineClassName = `relative isolate w-full overflow-hidden rounded-[var(--printer-radius)] border border-zinc-950 bg-[color-mix(in_oklab,${zinc900}_30%,${zinc950})] p-[var(--printer-inset)] pb-8 shadow-[0_20px_36px_-20px_color-mix(in_oklab,${zinc950}_55%,transparent),0_6px_14px_-8px_color-mix(in_oklab,${zinc950}_24%,transparent),inset_0_1px_0_color-mix(in_oklab,#fafafa_14%,transparent),inset_0_-1px_0_color-mix(in_oklab,${zinc950}_55%,transparent)] [--printer-inner-radius:calc(var(--printer-radius)_-_var(--printer-inset))] [--printer-inset:0.75rem] [--printer-radius:1.5rem] before:pointer-events-none before:absolute before:inset-0 before:z-0 before:rounded-[inherit] before:bg-[url('/textures/plastic-noise.svg')] before:bg-[length:180px_180px] before:bg-repeat before:opacity-30 before:mix-blend-multiply before:content-[''] dark:border-zinc-200 dark:bg-zinc-300 dark:shadow-[0_20px_36px_-20px_color-mix(in_oklab,#d4d4d8_55%,transparent),0_6px_14px_-8px_color-mix(in_oklab,#d4d4d8_24%,transparent),inset_0_1px_0_color-mix(in_oklab,${zinc950}_14%,transparent),inset_0_-1px_0_color-mix(in_oklab,#d4d4d8_55%,transparent)]`;
+const machineClassName =
+  "relative isolate w-full overflow-hidden rounded-[var(--printer-radius)] border border-zinc-950 bg-[color-mix(in_oklab,#18181b_30%,#09090b)] p-[var(--printer-inset)] pb-8 shadow-[0_20px_36px_-20px_color-mix(in_oklab,#09090b_55%,transparent),0_6px_14px_-8px_color-mix(in_oklab,#09090b_24%,transparent),inset_0_1px_0_color-mix(in_oklab,#fafafa_14%,transparent),inset_0_-1px_0_color-mix(in_oklab,#09090b_55%,transparent)] [--printer-inner-radius:calc(var(--printer-radius)_-_var(--printer-inset))] [--printer-inset:0.75rem] [--printer-radius:1.5rem] before:pointer-events-none before:absolute before:inset-0 before:z-0 before:rounded-[inherit] before:bg-[url('/textures/plastic-noise.svg')] before:bg-[length:180px_180px] before:bg-repeat before:opacity-30 before:mix-blend-multiply before:content-[''] dark:border-zinc-200 dark:bg-zinc-300 dark:shadow-[0_20px_36px_-20px_color-mix(in_oklab,#d4d4d8_55%,transparent),0_6px_14px_-8px_color-mix(in_oklab,#d4d4d8_24%,transparent),inset_0_1px_0_color-mix(in_oklab,#09090b_14%,transparent),inset_0_-1px_0_color-mix(in_oklab,#d4d4d8_55%,transparent)]";
 
 function useReceiptPrinter(component: string) {
   const context = useContext(ReceiptPrinterContext);
@@ -292,7 +292,7 @@ function ReceiptPrinterPaper({
   return (
     <article
       className={cn(
-        "relative z-10 min-h-80 bg-zinc-50 bg-[url('/textures/receipt-paper.svg')] bg-cover px-6 pt-7 pb-8 font-mono text-zinc-950 bg-blend-soft-light dark:bg-zinc-950 dark:text-zinc-50",
+        "relative z-10 min-h-80 bg-zinc-50 bg-[url('/textures/receipt-paper.svg')] bg-cover px-6 pt-7 pb-8 font-mono text-zinc-950 bg-blend-soft-light",
         className,
       )}
       style={{ clipPath: receiptClipPath, ...style }}

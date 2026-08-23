@@ -32,9 +32,6 @@ export default function PaymentSuccessPage() {
 
   const [status, setStatus] = useState<PaymentStatus>("verifying");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [verifiedSubscriptionId, setVerifiedSubscriptionId] = useState<
-    string | null
-  >(null);
   const [lastProductId, setLastProductId] = useState<string | null>(null);
   const hasVerified = useRef(false);
 
@@ -55,7 +52,6 @@ export default function PaymentSuccessPage() {
         const result = await verifyPayment();
         if (result.payment_completed) {
           trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_COMPLETED);
-          setVerifiedSubscriptionId(result.subscription_id ?? null);
           setStatus("success");
         } else {
           setStatus("error");
@@ -88,8 +84,9 @@ export default function PaymentSuccessPage() {
   };
 
   // Receipt details: the webhook-verified subscription record is the source of
-  // truth; while verifying we preview the plan the user just checked out with
-  // (remembered by the checkout click).
+  // truth — every printed row comes from this one endpoint, so the reference
+  // can never describe a different subscription than the plan/amount next to
+  // it. While verifying we preview the plan from the remembered checkout click.
   const previewPlan =
     plans.find((plan) => plan.dodo_product_id === lastProductId) ?? undefined;
   const activePlan = subscriptionStatus?.current_plan;
@@ -113,7 +110,9 @@ export default function PaymentSuccessPage() {
     nextBillingDate: isSubscribed
       ? (subscription?.next_billing_date ?? null)
       : null,
-    subscriptionRef: verifiedSubscriptionId ?? null,
+    subscriptionRef: isSubscribed
+      ? (subscription?.dodo_subscription_id ?? null)
+      : null,
   };
 
   return (

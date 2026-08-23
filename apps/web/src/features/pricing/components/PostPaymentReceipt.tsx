@@ -24,7 +24,7 @@ type PostPaymentReceiptProps = {
   billingPeriod?: string;
   /** ISO date of the next charge, straight from the subscription record. */
   nextBillingDate?: string | null;
-  /** Dodo subscription id printed as the receipt reference. */
+  /** Dodo subscription id printed under the barcode. */
   subscriptionRef?: string | null;
   onContinue: () => void;
 };
@@ -56,6 +56,18 @@ function billingPeriodLabel(billingPeriod?: string): string {
 }
 
 /**
+ * Deterministic pseudo-barcode bar widths (1-3px) derived from the
+ * subscription reference, so every checkout prints a distinct pattern.
+ */
+function barcodeBars(seed: string): Array<{ width: number; barKey: string }> {
+  const chars = seed.replace(/[^a-zA-Z0-9]/g, "") || "GAIA";
+  return Array.from(chars, (ch, index) => ({
+    width: ((ch.charCodeAt(0) * 7) % 3) + 1,
+    barKey: `${index}-${ch}`,
+  }));
+}
+
+/**
  * The GAIA-branded receipt printer shown after checkout: the machine screen
  * carries the plan summary and live status while the paper prints the
  * itemized receipt once the payment webhook has been verified.
@@ -72,18 +84,8 @@ export function PostPaymentReceipt({
 }: PostPaymentReceiptProps) {
   const displayName = planName ?? "GAIA Pro";
   const nextBilling = formatDate(nextBillingDate);
-
-  const receiptRows: Array<{ term: string; detail: string }> = [
-    { term: "Plan", detail: displayName },
-    { term: "Billing", detail: billingPeriodLabel(billingPeriod) },
-    ...(amount != null
-      ? [{ term: "Amount paid", detail: formatMoney(amount, currency) }]
-      : []),
-    ...(nextBilling ? [{ term: "Next billing", detail: nextBilling }] : []),
-    ...(subscriptionRef
-      ? [{ term: "Reference", detail: subscriptionRef }]
-      : []),
-  ];
+  const price = amount != null ? formatMoney(amount, currency) : null;
+  const bars = barcodeBars(subscriptionRef ?? displayName);
 
   return (
     <div className="flex w-full flex-col items-center">
@@ -116,18 +118,17 @@ export function PostPaymentReceipt({
 
           <ReceiptPrinter.Screen>
             <div className="space-y-4">
-              <div className="flex justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold">{displayName}</p>
-                  <p className="text-xs opacity-60">
-                    {billingPeriodLabel(billingPeriod)}
-                  </p>
-                </div>
-                {amount != null && (
-                  <strong className="text-sm">
-                    {formatMoney(amount, currency)}
-                  </strong>
-                )}
+              <div>
+                <p className="font-semibold text-sm leading-snug">
+                  {displayName}
+                </p>
+                <p className="text-xs opacity-60">
+                  {billingPeriodLabel(billingPeriod)}
+                </p>
+              </div>
+              <div className="flex justify-between">
+                <span>Total</span>
+                {price && <strong>{price}</strong>}
               </div>
               <ReceiptPrinter.Status />
             </div>
@@ -136,23 +137,50 @@ export function PostPaymentReceipt({
 
         <ReceiptPrinter.Output>
           <ReceiptPrinter.Paper>
-            <h2 className="font-serif text-lg font-bold tracking-wide uppercase">
-              Receipt
-            </h2>
-            <hr className="my-4 border-zinc-950/15 dark:border-zinc-50/20" />
-            <dl className="space-y-2.5 text-xs leading-none">
-              {receiptRows.map((row) => (
-                <div className="flex justify-between gap-4" key={row.term}>
-                  <dt className="opacity-60">{row.term}</dt>
-                  <dd className="text-right font-medium">{row.detail}</dd>
+            <dl className="space-y-2.5">
+              <div className="flex justify-between gap-4">
+                <dt className="pt-0.5 text-sm">Total</dt>
+                <dd className="text-right font-bold text-xl tracking-tight">
+                  {price}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-4 text-xs">
+                <dt className="opacity-60">{displayName}</dt>
+                <dd className="text-right font-medium">
+                  {billingPeriodLabel(billingPeriod)}
+                </dd>
+              </div>
+              {nextBilling && (
+                <div className="flex justify-between gap-4 text-xs">
+                  <dt className="opacity-60">Next billing</dt>
+                  <dd className="text-right font-medium">{nextBilling}</dd>
                 </div>
-              ))}
+              )}
             </dl>
-            <hr className="my-4 border-zinc-950/15 dark:border-zinc-50/20" />
+            <hr />
             <p className="text-xs leading-relaxed opacity-70">
-              Thanks for subscribing to GAIA Pro. Every Pro feature is now
+              Thanks for subscribing to {displayName}. Every Pro feature is now
               unlocked — welcome aboard.
             </p>
+            {subscriptionRef && (
+              <>
+                <div
+                  aria-hidden="true"
+                  className="mt-5 flex h-12 items-stretch justify-center gap-[2px]"
+                >
+                  {bars.map((bar) => (
+                    <span
+                      className="bg-zinc-950"
+                      key={bar.barKey}
+                      style={{ width: bar.width }}
+                    />
+                  ))}
+                </div>
+                <p className="mt-1.5 text-center text-[10px] tracking-[0.25em] opacity-60">
+                  {subscriptionRef}
+                </p>
+              </>
+            )}
           </ReceiptPrinter.Paper>
         </ReceiptPrinter.Output>
       </ReceiptPrinter.Root>
