@@ -988,6 +988,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+          # A diff touching repo history can surface thousands of findings, and
+          # the default per-finding summary blows GitHub's 1024k step-summary
+          # cap — the upload then errors out and fails the step on size, not on
+          # leaks. Full results remain in the uploaded sarif artifact.
+          GITLEAKS_ENABLE_SUMMARY: false
 
 
   # --- Python semgrep (SSRF / path traversal / injection) ------------------
