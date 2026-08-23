@@ -108,12 +108,6 @@ async def call_executor(
         "executor a concrete target so it doesn't stop after one step. NEVER "
         "omit — even a single-step ask needs a concrete done state.",
     ],
-    verbatim_request: Annotated[
-        str | None,
-        "The user's exact original request, word for word, as they typed it "
-        "(not your rewritten task). Pass it through so the executor sees the "
-        "verbatim ask alongside your composed task.",
-    ] = None,
     active_todo_id: Annotated[
         str | None,
         "Optional tracked-todo ID to BIND this executor run to. When set, "
@@ -147,10 +141,15 @@ async def call_executor(
         return "Internal error: conversation context unavailable. Please try again."
 
     task_id = str(uuid4())
+    # Read off the configurable, never taken as a tool argument. Asking the comms
+    # model to re-transcribe the request made the backstop a model output, so it
+    # failed exactly when it was needed: on a pasted billing table it corrupted 3 of
+    # 4 recipient addresses AND omitted the verbatim copy entirely, leaving the
+    # executor to hunt Gmail for addresses the server had all along.
     composed_task = compose_executor_brief(
         task,
         acceptance_criteria,
-        verbatim_request=verbatim_request,
+        verbatim_request=base_configurable.get("user_request"),
     )
 
     try:

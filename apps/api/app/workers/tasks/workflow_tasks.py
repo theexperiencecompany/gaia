@@ -48,6 +48,11 @@ from app.models.workflow_models import (
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
 from app.services.notification_service import notification_service
+from app.services.triggers.batching import (
+    coalesce_window_seconds,
+    drain_trigger_batch,
+    reschedule_if_refilled,
+)
 from app.services.user_service import get_user_by_id
 from app.services.workflow.conversation_service import (
     add_workflow_execution_messages,
@@ -488,12 +493,21 @@ async def execute_workflow_by_id(
     scheduler = workflow_scheduler
     workflow = None
     execution_id = None
+    # Resolved before the try so the finally's refill check can see it on
+    # every exit path.
+    batch_key = (context or {}).get("trigger_batch_key")
 
     try:
         workflow = await scheduler.get_task(workflow_id)
 
         if not workflow:
             return f"Workflow {workflow_id} not found"
+
+        # A coalesced trigger run carries its events (keyed by batch_key) in
+        # Redis rather than in the job payload, so that concurrent enqueues
+        # could dedup down to this one job. Drained only AFTER the gates below
+        # — a run the onboarding or budget gate rejects must leave the buffer
+        # intact for a later run, not consume the events and discard them.
 
         # Determine trigger type from context. An explicit trigger_type always
         # wins; only an ABSENT one falls back — to "integration" when the
@@ -596,6 +610,22 @@ async def execute_workflow_by_id(
             feature_key="trigger_workflow_executions",
         )
 
+        # Both gates passed — take the batch. An empty one means another run
+        # already drained these events and there is nothing left to do.
+        if batch_key:
+            events = await drain_trigger_batch(str(batch_key))
+            if events is None:
+                # Redis unreachable: the buffer may hold events — exit WITHOUT
+                # claiming they were drained; the finally's refill check (or the
+                # next inbound event) schedules a fresh run once Redis returns.
+                log.set_ns("workflow", outcome="trigger_batch_unavailable")
+                return f"Workflow {workflow_id} skipped — trigger batch unavailable"
+            log.set_ns("workflow", trigger_batch_size=len(events))
+            if not events:
+                log.set_ns("workflow", outcome="trigger_batch_empty")
+                return f"Workflow {workflow_id} skipped — trigger batch empty"
+            context = {**(context or {}), "trigger_data": {"events": events, "count": len(events)}}
+
         # Create execution record at start
         execution = await create_execution(
             workflow_id=workflow_id,
@@ -671,6 +701,26 @@ async def execute_workflow_by_id(
         await _rearm_quietly(scheduler, workflow, context, workflow_id)
 
         return "Error executing workflow %s: %s" % (workflow_id, str(e))
+    finally:
+        # Events that landed while this run held the batch could not schedule
+        # their own run (the job id was occupied). Every exit owes them a
+        # follow-up — a failed or gate-skipped run must strand them no more
+        # than a successful one. Best-effort: a scheduling error only warns.
+        if batch_key is not None and workflow is not None:
+            try:
+                await reschedule_if_refilled(
+                    workflow_id,
+                    str(batch_key),
+                    coalesce_window_seconds(workflow.trigger_config),
+                    context or {},
+                )
+            except Exception as refill_error:
+                log.warning(
+                    f"{LogTag.WORKER} Trigger batch refill check failed",
+                    workflow_id=workflow_id,
+                    error=str(refill_error),
+                    error_type=type(refill_error).__name__,
+                )
 
 
 # No static origin: this decorator is evaluated at import, long before the
