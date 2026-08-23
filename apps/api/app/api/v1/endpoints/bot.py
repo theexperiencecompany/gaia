@@ -118,11 +118,14 @@ async def _bot_upgrade_url(user_id: str) -> str:
     except Exception as e:
         # A marketing link must never cost the user their reply — degrade to the
         # pricing page, loudly.
+        # Bounded fields, not provider error text: the event stays queryable
+        # without leaking upstream payloads into telemetry.
         log.warning(
             f"{LogTag.PAYMENT} Could not mint bot upgrade link, falling back to pricing page",
             user={"id": user_id},
+            payment={"operation": "bot_upgrade_link"},
+            failure_reason="checkout_unavailable",
             error_type=type(e).__name__,
-            error=str(e),
         )
         return f"{settings.FRONTEND_URL}/pricing"
     return pro.checkout.payment_link or f"{settings.FRONTEND_URL}/pricing"

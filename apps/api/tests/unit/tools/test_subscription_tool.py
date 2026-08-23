@@ -10,7 +10,6 @@ surviving string mutant as a fact the suite never checked.
 """
 
 from datetime import UTC, datetime
-from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -40,7 +39,7 @@ def _clean_wide_event() -> None:
     log.reset()
 
 
-def _cfg(user_id: str | None = FAKE_USER_ID) -> dict[str, Any]:
+def _cfg(user_id: str | None = FAKE_USER_ID) -> dict[str, dict[str, str | None]]:
     return {"configurable": {"user_id": user_id}}
 
 
@@ -273,9 +272,9 @@ class TestCreateUpgradeLink:
         }
         assert log.get()["audit"] == [
             {
-                "msg": "upgrade checkout link issued to agent",
+                "msg": "upgrade checkout link issued",
                 "actor": FAKE_USER_ID,
-                "provider": "dodo",
+                "payment": {"operation": "agent_upgrade_link"},
             }
         ]
 

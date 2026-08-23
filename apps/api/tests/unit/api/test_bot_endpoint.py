@@ -1238,14 +1238,15 @@ class TestBotRateLimitNotice:
 
         assert notice is not None
         assert "/pricing)" in notice
-        # The fallback is loud: the wide event carries the full warning, not a
-        # silent degrade.
+        # The fallback is loud: the wide event carries a bounded operation and
+        # failure reason (never provider error text), not a silent degrade.
         assert log.get()["warnings"] == [
             {
                 "msg": "[PAYMENT] Could not mint bot upgrade link, falling back to pricing page",
                 "user": {"id": "user_1"},
+                "payment": {"operation": "bot_upgrade_link"},
+                "failure_reason": "checkout_unavailable",
                 "error_type": "RuntimeError",
-                "error": "dodo down",
             }
         ]
 

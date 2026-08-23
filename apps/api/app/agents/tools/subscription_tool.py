@@ -116,7 +116,11 @@ async def create_upgrade_link(
 
     # Issued, not attempted: the event only fires once a link actually exists.
     log.set(payment={"operation": "agent_upgrade_link", "billing_cycle": billing_cycle})
-    log.audit("upgrade checkout link issued to agent", actor=user_id, provider="dodo")
+    log.audit(
+        "upgrade checkout link issued",
+        actor=user_id,
+        payment={"operation": "agent_upgrade_link"},
+    )
     log.info(f"{LogTag.TOOL} Upgrade link created", billing_cycle=billing_cycle)
 
     period = billing_cycle.value.removesuffix("ly")
