@@ -34,7 +34,13 @@ export default async function LoginPage({
 
   // Self-host instances run local email/password auth; everything else keeps
   // the classic WorkOS OAuth redirect.
-  const setupStatus = await getSetupStatusServer();
+  // Self-host sets AUTH_MODE on the container — env-first avoids any
+  // dependency on a runtime cross-container fetch for a value that is
+  // static per instance. Hosted (no env) falls back to the live probe.
+  const envAuthMode = process.env.AUTH_MODE as "workos" | "local" | undefined;
+  const setupStatus = envAuthMode
+    ? { auth_mode: envAuthMode }
+    : await getSetupStatusServer();
   if (setupStatus?.auth_mode === "local") {
     return (
       <AuthShell

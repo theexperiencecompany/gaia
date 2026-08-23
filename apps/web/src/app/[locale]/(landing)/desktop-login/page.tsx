@@ -17,7 +17,13 @@ export const dynamic = "force-dynamic";
  * the classic WorkOS flow renders unchanged.
  */
 export default async function DesktopLoginPage() {
-  const setupStatus = await getSetupStatusServer();
+  // Self-host sets AUTH_MODE on the container — env-first avoids any
+  // dependency on a runtime cross-container fetch for a value that is
+  // static per instance. Hosted (no env) falls back to the live probe.
+  const envAuthMode = process.env.AUTH_MODE as "workos" | "local" | undefined;
+  const setupStatus = envAuthMode
+    ? { auth_mode: envAuthMode }
+    : await getSetupStatusServer();
   return (
     <DesktopLoginClient isSelfHosted={setupStatus?.auth_mode === "local"} />
   );
