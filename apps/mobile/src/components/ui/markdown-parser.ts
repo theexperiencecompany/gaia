@@ -471,9 +471,11 @@ function parseBlocks(lines: string[]): Block[] {
     if (result.block) {
       blocks.push(result.block);
     }
-    // Guard against any parser ever returning zero progress — a stalled
-    // index here would hang the render thread.
-    i = Math.max(result.next, i + 1);
+    // Termination contract: every parser either consumes ≥1 line or returns
+    // null with next ≥ start+1 (parseParagraphLines handles the
+    // boundary-nobody-accepts case). If this invariant breaks, the loop
+    // stalls — the regression tests pin it.
+    i = result.next;
   }
 
   return blocks;
