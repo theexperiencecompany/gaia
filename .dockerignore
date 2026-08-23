@@ -13,7 +13,7 @@ __pycache__
 .pnpm-store
 
 # Build outputs
-**/.next
+**/.next/*
 **/dist
 **/build
 **/out

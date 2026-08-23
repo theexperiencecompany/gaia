@@ -64,7 +64,7 @@
     "docker:build": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "docker build --platform linux/amd64 -f apps/bots/Dockerfile --build-arg BOT_NAME=slack -t apps-bots-slack:latest -t bot-slack:latest -t ghcr.io/theexperiencecompany/gaia-bot-slack:latest .",
+        "command": "docker buildx build --platform linux/amd64 --cache-from type=registry,ref=ghcr.io/theexperiencecompany/gaia-bot-slack:buildcache --cache-to type=registry,ref=ghcr.io/theexperiencecompany/gaia-bot-slack:buildcache,mode=max,image-manifest=true,oci-mediatypes=true,compression=zstd --build-arg BOT_NAME=slack -f apps/bots/Dockerfile -t apps-bots-slack:latest -t bot-slack:latest -t ghcr.io/theexperiencecompany/gaia-bot-slack:latest --load .",
         "cwd": "."
       },
       "cache": true,

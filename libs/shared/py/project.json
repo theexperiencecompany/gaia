@@ -12,7 +12,12 @@
         "command": "uvx ruff check .",
         "cwd": "{projectRoot}"
       },
-      "cache": true
+      "cache": true,
+      "inputs": [
+        "default",
+        "{workspaceRoot}/libs/shared/py/pyproject.toml",
+        "{workspaceRoot}/apps/api/pyproject.toml"
+      ]
     },
     "format": {
       "executor": "nx:run-commands",
