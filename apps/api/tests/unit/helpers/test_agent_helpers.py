@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.agents.llm.lane import ModelLane
+from app.agents.llm.lane import LLMProviderName, ModelLane, dev_option_for
 from app.helpers.agent_helpers import (
     build_agent_config,
     build_initial_state,
@@ -381,6 +381,63 @@ class TestBuildAgentConfig:
         )["configurable"]
 
         assert configurable["user_request"] == "delete the repo"
+
+    @patch("app.helpers.agent_helpers.resolve_lane")
+    @patch("app.helpers.agent_helpers.providers")
+    async def test_a_top_level_run_resolves_its_lane_from_the_callers_identity(
+        self, mock_providers, mock_resolve
+    ):
+        """The lane must be chosen for THIS user and THIS dev choice: the resolver
+        gets the caller's user_id and dev_option verbatim, and the lane it returns
+        is the one stamped on the configurable for every child to inherit."""
+        mock_providers.get.return_value = None
+        fake_lane = ModelLane(
+            provider=LLMProviderName("openrouter"),
+            model="a-model-the-resolver-chose",
+            reasoning=None,
+            provider_pin=None,
+            max_input_tokens=1000,
+        )
+        mock_resolve.return_value = (fake_lane, None)
+
+        configurable = (
+            await build_agent_config(
+                conversation_id="conv-1",
+                user=FAKE_USER,
+                agent_name="comms_agent",
+            )
+        )["configurable"]
+
+        mock_resolve.assert_awaited_once_with(FAKE_USER["user_id"], None)
+        assert configurable["lane"] == fake_lane.to_configurable()
+
+    @patch("app.helpers.agent_helpers.resolve_lane")
+    @patch("app.helpers.agent_helpers.providers")
+    async def test_an_explicit_dev_option_reaches_the_lane_resolver(
+        self, mock_providers, mock_resolve
+    ):
+        """The dev switcher's whole purpose: its choice must reach resolve_lane,
+        not be dropped on the way (which would silently serve the plan lane)."""
+        mock_providers.get.return_value = None
+        fake_lane = ModelLane(
+            provider=LLMProviderName("openrouter"),
+            model="the-dev-pick",
+            reasoning=None,
+            provider_pin=None,
+            max_input_tokens=1000,
+        )
+        mock_resolve.return_value = (fake_lane, None)
+        option = dev_option_for("minimax-m3", use_defaults=False)
+        assert option is not None
+
+        await build_agent_config(
+            conversation_id="conv-1",
+            user=FAKE_USER,
+            agent_name="comms_agent",
+            dev_option=option,
+        )
+
+        mock_resolve.assert_awaited_once_with(FAKE_USER["user_id"], option)
 
     @patch("app.helpers.agent_helpers.providers")
     async def test_a_root_run_carries_its_own_verbatim_request(self, mock_providers):
