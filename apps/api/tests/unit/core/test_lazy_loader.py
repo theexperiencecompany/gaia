@@ -522,8 +522,18 @@ class TestLazyLoaderReset:
         async def scenario():
             ll = LazyLoader(loader, strategy=MissingKeyStrategy.SILENT)
             ll._instance = "cached"
-            with pytest.raises(RuntimeError, match=r"areset\(\)"):
+            ll._is_configured = True
+            with pytest.raises(RuntimeError) as exc_info:
                 ll.reset()
+            # Exact message: it is the migration instruction for callers.
+            assert str(exc_info.value) == (
+                f"reset() for async provider '{ll.provider_name}' called inside a "
+                "running event loop, where it could be overwritten by an in-flight "
+                "initialization — await areset() instead, which takes the async lock"
+            )
+            # Fail loud must not half-reset behind the caller's back.
+            assert ll._instance == "cached"
+            assert ll._is_configured is True
 
         asyncio.run(scenario())
 
@@ -552,6 +562,7 @@ class TestLazyLoaderReset:
         # The initializer ran to completion, but the reset happened AFTER it:
         # nothing survived.
         assert ll._instance is None
+        assert ll._is_configured is False
         assert not ll.is_initialized()
 
     def test_reset_async_loader_without_a_loop_takes_the_async_lock(self):

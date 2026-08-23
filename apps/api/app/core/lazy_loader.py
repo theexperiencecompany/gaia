@@ -718,9 +718,16 @@ class ProviderRegistry:
         For testing only: a process-lifetime resource (e.g. an asyncpg engine)
         that gets disposed but not reset here would otherwise be handed back,
         already-closed, to a later test running under a different event loop.
+        Inside a running event loop use :meth:`areset` instead — a sync reset
+        of an async provider there could be overwritten by an in-flight init.
         """
         if name in self._providers:
             self._providers[name].reset()
+
+    async def areset(self, name: str) -> None:
+        """Awaited variant of :meth:`reset` — safe inside a running event loop."""
+        if name in self._providers:
+            await self._providers[name].areset()
 
 
 # Global registry instance
