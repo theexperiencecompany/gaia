@@ -377,6 +377,7 @@ async def build_agent_config(
         # The user's own verbatim turns (see build_agent_config). The HIL intent judge
         # reads these; child agents inherit them unchanged.
         "user_messages": resolved["user_messages"],
+        "user_request": resolved["user_request"],
         "user_preferences": resolved["user_preferences"],
         "writing_style": resolved["writing_style"],
         "user_id": user.get("user_id"),
