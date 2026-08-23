@@ -2,6 +2,10 @@ import { getSetupStatusServer } from "@/features/auth/api/serverSetupStatusApi";
 
 import { DesktopLoginClient } from "./desktop-login-client";
 
+// Mode-switching depends on live instance state (setup/status):
+// this page can never be prerendered at build time.
+export const dynamic = "force-dynamic";
+
 /**
  * Desktop Login Page
  *
