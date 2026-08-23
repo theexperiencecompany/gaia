@@ -406,3 +406,13 @@ class TestRacingDecisions:
         resolver["resolve"].side_effect = ApprovalRequestNotFoundError()
         with pending("Send email"):
             assert await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes") == "approve"
+
+    async def test_a_forbidden_approval_is_swallowed_the_same_way(self, resolver: dict) -> None:
+        """A decision that lost an ownership race (approval belongs to another
+        user) must read as "already handled", not blow up the chat turn."""
+        from app.services.hil.resolution import ApprovalRequestForbiddenError
+
+        resolver["llm"].return_value = DecisionResult(action="approve")
+        resolver["resolve"].side_effect = ApprovalRequestForbiddenError()
+        with pending("Send email"):
+            assert await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes") == "approve"

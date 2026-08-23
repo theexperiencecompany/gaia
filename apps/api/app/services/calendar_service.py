@@ -409,9 +409,9 @@ def _all_day_bounds(
         # arithmetic on the parsed wall date — no tz attachment needed (and a
         # tz here would be invisible to the output, which is exactly the kind
         # of dead surface mutation-equivalent mutants survive on).
-        end_date = (
-            datetime.strptime(start_date, _DATE_FORMAT) + timedelta(days=1)
-        ).strftime(_DATE_FORMAT)
+        end_date = (datetime.strptime(start_date, _DATE_FORMAT) + timedelta(days=1)).strftime(
+            _DATE_FORMAT
+        )
     else:
         today = datetime.now(UTC)
         start_date = today.strftime(_DATE_FORMAT)

@@ -234,14 +234,28 @@ class TestSearchEventsInCalendar:
 # ---------------------------------------------------------------------------
 
 
+class _UTCOnlyDateTime(datetime):
+    """datetime stand-in whose local-time read lands on the previous day, so a
+    non-UTC clock in production code shows up as a wrong date, not a flake."""
+
+    @classmethod
+    def now(cls, tz: datetime | None = None) -> datetime:  # type: ignore[override]  # mirrors datetime.now's optional-tz signature deliberately
+        if tz is None:
+            return cls(2026, 6, 14, 20, 0)  # naive local read: previous day
+        return cls(2026, 6, 15, 2, 0, tzinfo=UTC)
+
+
 class TestAllDayBounds:
     """The all-day defaulting rules: explicit bounds pass through, a missing end
     becomes the next day, and a missing start defaults to today (UTC)."""
 
     def test_a_start_with_no_end_ends_the_next_day(self) -> None:
+        # The Pydantic model requires both fields; the service still defends the
+        # partial shapes, so mutate after construction like the timed-event test.
         event = EventCreateRequest(
-            summary="Trip", description="", is_all_day=True, start="2026-06-15"
+            summary="Trip", description="", start="2026-06-15", end="2026-06-20"
         )
+        event.end = ""
 
         start, end = _all_day_bounds(event)
 
@@ -252,23 +266,19 @@ class TestAllDayBounds:
     def test_a_missing_start_defaults_to_today_on_the_utc_calendar(self) -> None:
         """Google's end date is exclusive; the default must follow the UTC
         calendar — the fake clock's local read is the previous day."""
-        event = EventCreateRequest(summary="Today", description="", is_all_day=True)
+        event = EventCreateRequest(
+            summary="Today",
+            description="",
+            start="2026-06-15",
+            end="2026-06-16",
+        )
+        event.start = None
+        event.end = None
 
         start, end = _all_day_bounds(event)
 
         assert start == GoogleCalendarEventDateTime(date="2026-06-15")
         assert end == GoogleCalendarEventDateTime(date="2026-06-16")
-
-
-class _UTCOnlyDateTime(datetime):
-    """datetime stand-in whose local-time read lands on the previous day, so a
-    non-UTC clock in production code shows up as a wrong date, not a flake."""
-
-    @classmethod
-    def now(cls, tz: datetime | None = None) -> datetime:  # type: ignore[override]  # mirrors datetime.now's optional-tz signature deliberately
-        if tz is None:
-            return cls(2026, 6, 14, 20, 0)  # naive local read: previous day
-        return cls(2026, 6, 15, 2, 0, tzinfo=UTC)
 
 
 class TestCreateCalendarEvent:

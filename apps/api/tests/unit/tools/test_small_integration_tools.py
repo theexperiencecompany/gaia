@@ -18,6 +18,7 @@ then invoke them directly with mock auth_credentials and request objects.
 """
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -51,6 +52,18 @@ def _make_capturing_composio() -> tuple[MagicMock, dict[str, Callable[..., Any]]
 
     composio.tools.custom_tool = _custom_tool
     return composio, captured
+
+
+class _UTCOnlyDateTime(datetime):
+    """datetime stand-in whose local-time ``now(None)`` reads the previous day,
+    so an overdue check that computes "today" off a non-UTC clock fails these
+    boundary assertions deterministically instead of depending on machine TZ."""
+
+    @classmethod
+    def now(cls, tz: datetime | None = None) -> datetime:  # type: ignore[override]  # mirrors datetime.now's optional-tz signature deliberately
+        if tz is None:
+            return cls(2026, 6, 14, 20, 0)  # naive local read: previous day
+        return cls(2026, 6, 15, 2, 0, tzinfo=UTC)
 
 
 # =============================================================================

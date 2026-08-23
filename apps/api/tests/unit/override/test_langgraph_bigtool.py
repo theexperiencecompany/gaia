@@ -3,7 +3,7 @@
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 import pytest
@@ -308,6 +308,7 @@ class TestCallModel:
             llm,
             registry,
             disable_retrieve_tools=True,
+            initial_tool_ids=["dummy_tool_a"],
         )
 
         agent_node = builder.nodes["agent"]
@@ -317,6 +318,54 @@ class TestCallModel:
 
         result = agent_node.runnable.func(state, config, store=store)  # type: ignore[union-attr]  # langgraph Runnable union exposes .func/.afunc only at runtime
         assert "messages" in result
+        # The model must be bound to exactly the initial tool set — binding None
+        # or a wrong list silently produces an agent that cannot call anything.
+        llm.with_config.return_value.bind_tools.assert_called_once_with([dummy_tool_a])
+
+    @pytest.mark.asyncio
+    async def test_after_model_keys_flow_back_but_base_state_does_not(self) -> None:
+        """Keys added by after_model hooks flow back to the graph, but the base
+        state's own keys do not — messages use an append reducer, so echoing the
+        full history would duplicate every earlier turn in the checkpoint."""
+        from app.override.langgraph_bigtool.create_agent import create_agent
+
+        llm = _make_llm()
+        registry = _make_tool_registry()
+
+        mw = MagicMock()
+        mw.tools = []
+        history = [HumanMessage("hi")]
+        after_state = {
+            "messages": [*history, AIMessage(content="hello")],
+            "selected_tool_ids": ["tool-a"],
+            "todos": [{"id": "t1"}],
+            "enriched": {"by": "after_model_hook"},
+        }
+
+        with patch("app.override.langgraph_bigtool.create_agent.MiddlewareExecutor") as mock_me_cls:
+            mock_me = MagicMock()
+            mock_me.execute_before_model = AsyncMock(return_value=_make_state(history))
+            mock_me.has_wrap_model_call = MagicMock(return_value=False)
+            mock_me.execute_after_model = AsyncMock(return_value=after_state)
+            mock_me_cls.return_value = mock_me
+
+            builder = create_agent(
+                llm,
+                registry,
+                disable_retrieve_tools=True,
+                middleware=[mw],
+            )
+            agent_node = builder.nodes["agent"]
+            result = await agent_node.runnable.afunc(  # type: ignore[union-attr]  # langgraph Runnable union exposes .func/.afunc only at runtime
+                _make_state(), _make_config(), store=MagicMock()
+            )
+
+        # Only the new response rides the append reducer — not the full list.
+        assert [m.content for m in result["messages"]] == ["hello"]
+        # Hook-added keys flow back; the base state's own keys do not.
+        assert result["todos"] == [{"id": "t1"}]
+        assert result["enriched"] == {"by": "after_model_hook"}
+        assert "selected_tool_ids" not in result
 
     def test_sync_call_model_empty_response_gets_default(self) -> None:
         """Empty model response should get default content."""
@@ -563,6 +612,51 @@ class TestShouldContinue:
 # ---------------------------------------------------------------------------
 # reject_unbound_tools
 # ---------------------------------------------------------------------------
+
+
+class TestFinishTaskNode:
+    """The finish_task node turns each finished tool call into a ToolMessage the
+    model can read — under its own name, keyed as messages for the reducer."""
+
+    @staticmethod
+    def _builder():
+        from app.override.langgraph_bigtool.create_agent import create_agent
+
+        return create_agent(_make_llm(), _make_tool_registry(), disable_retrieve_tools=True)
+
+    def test_reports_the_result_the_task_returned(self) -> None:
+        from app.constants.general import FINISH_TASK_NAME
+
+        node = self._builder().nodes[FINISH_TASK_NAME].runnable
+        tool_calls = [{"id": "tc1", "name": FINISH_TASK_NAME, "args": {"result": "done"}}]
+
+        result = node.func(tool_calls, store=MagicMock())
+
+        assert [m.content for m in result["messages"]] == ["done"]
+        assert result["messages"][0].tool_call_id == "tc1"
+        assert result["messages"][0].name == FINISH_TASK_NAME
+
+    def test_a_missing_result_still_closes_the_call(self) -> None:
+        from app.constants.general import FINISH_TASK_NAME
+
+        node = self._builder().nodes[FINISH_TASK_NAME].runnable
+        tool_calls = [{"id": "tc2", "name": FINISH_TASK_NAME, "args": {}}]
+
+        result = node.func(tool_calls, store=MagicMock())
+
+        assert [m.content for m in result["messages"]] == ["Task completed."]
+        assert result["messages"][0].tool_call_id == "tc2"
+
+    @pytest.mark.asyncio
+    async def test_async_twin_matches(self) -> None:
+        from app.constants.general import FINISH_TASK_NAME
+
+        node = self._builder().nodes[FINISH_TASK_NAME].runnable
+        tool_calls = [{"id": "tc3", "name": FINISH_TASK_NAME, "args": {"result": "async done"}}]
+
+        result = await node.afunc(tool_calls, store=MagicMock())
+
+        assert [m.content for m in result["messages"]] == ["async done"]
 
 
 class TestRejectUnboundTools:
