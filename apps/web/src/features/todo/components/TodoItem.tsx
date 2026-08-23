@@ -186,8 +186,8 @@ export default memo(function TodoItem({
         className="absolute inset-0 z-10 rounded-xl"
         onClick={() => onClick?.(todo)}
       />
-      <div className="relative z-20 flex h-full items-start gap-2">
-        <div>
+      <div className="pointer-events-none relative z-20 flex h-full items-start gap-2">
+        <div className="pointer-events-auto">
           <Checkbox
             isSelected={todo.completed}
             onChange={handleToggleComplete}
