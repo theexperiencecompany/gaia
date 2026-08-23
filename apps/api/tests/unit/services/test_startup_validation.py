@@ -51,6 +51,12 @@ class TestValidateStartupRequirements:
         ):
             await validate_startup_requirements()
 
+        # Exact, not substring: the message is the remedy, and a mangled frame
+        # around it is a mangled operator experience.
+        assert str(excinfo.value) == (
+            "Startup requirements not met. "
+            f"Payment plans not set up — run: {startup_validation.SEED_PLANS_COMMAND}"
+        )
         referenced = re.findall(r"scripts/[\w./-]+", str(excinfo.value))
         assert referenced, f"error names no runnable script: {excinfo.value}"
         for script in referenced:

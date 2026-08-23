@@ -23,6 +23,7 @@ from app.constants.llm import (
     AUX_MODEL_NAME,
     DEFAULT_MODEL_NAME,
     MEMORY_MODEL_NAME,
+    OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT,
     PAID_MODEL_NAME,
     VISION_MODEL_NAME,
 )
@@ -91,16 +92,30 @@ class TestEveryRuntimeModelIsPriced:
 
     def test_the_fallback_logs_the_mispricing(self) -> None:
         """DEFAULT_PRICING is not the model's real rate, so serving it must
-        never pass quietly — the error line is what surfaced the prod bug."""
-        get_model_pricing("some-model-nobody-registered")
+        never pass quietly — the error line is what surfaced the prod bug.
+        Asserted exactly: the message is what an operator greps for, and the
+        model_name field is what tells them WHICH model is mispriced."""
+        with patch("app.config.model_pricing.log") as mock_log:
+            get_model_pricing("some-model-nobody-registered")
 
-        errors = log.get().get("errors", [])
-        assert any("pricing table" in str(e) for e in errors)
+        mock_log.error.assert_called_once()
+        args, kwargs = mock_log.error.call_args
+        assert args[0].endswith("model missing from pricing table — priced at DEFAULT_PRICING")
+        assert kwargs == {"model_name": "some-model-nobody-registered"}
 
     def test_a_known_model_does_not_log(self) -> None:
         get_model_pricing(DEFAULT_MODEL_NAME)
 
         assert not log.get().get("errors", [])
+
+    def test_the_onboarding_declaration_matches_the_rate_card(self) -> None:
+        """OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT is the model-onboarding gate's one
+        place of declaration; every id in it must also carry a rate, and the
+        default model stays declared text-only (its tool media routes through
+        the caption fallback — flipping this to True without the live gate run
+        would 400 real turns mid-stream)."""
+        assert OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT == {DEFAULT_MODEL_NAME: False}
+        assert set(OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT) <= set(MODEL_PRICING)
 
     def test_no_table_entry_accidentally_equals_the_fallback(self) -> None:
         """An entry equal to DEFAULT_PRICING is indistinguishable from a missing
