@@ -2,10 +2,15 @@
   "name": "voice-agent",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
-  "tags": ["scope:python"],
+  "tags": [
+    "scope:python"
+  ],
   "root": "apps/voice-agent",
   "sourceRoot": "apps/voice-agent/src",
-  "implicitDependencies": ["shared-python", "docker"],
+  "implicitDependencies": [
+    "shared-python",
+    "docker"
+  ],
   "release": {
     "docker": {
       "repositoryName": "theexperiencecompany/gaia-voice-agent"
@@ -15,21 +20,29 @@
     "docker:build": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "docker build --build-arg GIT_COMMIT_SHA=$(git rev-parse HEAD) -f apps/voice-agent/Dockerfile -t apps-voice-agent -t ghcr.io/theexperiencecompany/gaia-voice-agent:latest . && docker push ghcr.io/theexperiencecompany/gaia-voice-agent:latest",
+        "command": "docker buildx build --cache-from type=registry,ref=ghcr.io/theexperiencecompany/gaia-voice-agent:buildcache --cache-to type=registry,ref=ghcr.io/theexperiencecompany/gaia-voice-agent:buildcache,mode=max,image-manifest=true,oci-mediatypes=true,compression=zstd --build-arg GIT_COMMIT_SHA=$(git rev-parse HEAD) -f apps/voice-agent/Dockerfile -t apps-voice-agent -t ghcr.io/theexperiencecompany/gaia-voice-agent:latest --load .",
         "cwd": "."
       },
       "cache": false,
-      "inputs": ["production", "^production"]
+      "inputs": [
+        "production",
+        "^production"
+      ]
     },
     "sync": {
-      "dependsOn": ["shared-python:sync"],
+      "dependsOn": [
+        "shared-python:sync"
+      ],
       "executor": "nx:run-commands",
       "options": {
         "command": "uv sync --frozen",
         "cwd": "{projectRoot}"
       },
       "cache": true,
-      "inputs": ["{projectRoot}/pyproject.toml", "{projectRoot}/uv.lock"]
+      "inputs": [
+        "{projectRoot}/pyproject.toml",
+        "{projectRoot}/uv.lock"
+      ]
     },
     "dev": {
       "executor": "nx:run-commands",
@@ -51,7 +64,14 @@
         "command": "uv run --group dev ruff check src/",
         "cwd": "{projectRoot}"
       },
-      "cache": true
+      "cache": true,
+      "inputs": [
+        "default",
+        "{workspaceRoot}/apps/voice-agent/pyproject.toml",
+        "{workspaceRoot}/apps/voice-agent/uv.lock",
+        "{workspaceRoot}/libs/shared/py/**/*",
+        "^production"
+      ]
     },
     "format": {
       "executor": "nx:run-commands",
