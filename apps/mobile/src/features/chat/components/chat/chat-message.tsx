@@ -8,7 +8,12 @@ import { PressableFeedback } from "heroui-native";
 import { useCallback, useMemo } from "react";
 import { Pressable, View } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
-import { AppIcon, Brain02Icon } from "@/components/icons";
+import {
+  Alert01Icon,
+  AppIcon,
+  Brain02Icon,
+  RepeatIcon,
+} from "@/components/icons";
 import { MessageBubble } from "@/components/ui/message-bubble";
 import { Text } from "@/components/ui/text";
 import { ThinkingCard } from "@/features/chat/components/streaming/ThinkingCard";
@@ -42,12 +47,13 @@ interface FollowUpActionsProps {
 }
 
 function FollowUpActions({ actions, onActionPress }: FollowUpActionsProps) {
+  const { spacing } = useResponsive();
   if (!actions.length) return null;
 
   return (
     <View
       className="flex-row flex-wrap gap-2 mt-2"
-      style={{ paddingLeft: 46, paddingRight: 16 }}
+      style={{ paddingLeft: spacing.md, paddingRight: spacing.md }}
     >
       {actions.map((action, i) => (
         <Animated.View
@@ -152,6 +158,110 @@ function MemoryIndicator({ memoryData }: { memoryData: MemoryDataShape }) {
   );
 }
 
+// -- Failed response ----------------------------------------------------------
+
+/**
+ * Failure surface for an errored turn — mobile counterpart of web's
+ * FailedResponse. The streamed text (if any) stays visible above; this strip
+ * marks the answer as cut short and offers a retry.
+ */
+function FailedResponse({
+  error,
+  hasPartialText,
+  onRetry,
+}: {
+  error: string;
+  hasPartialText: boolean;
+  onRetry?: () => void;
+}) {
+  const { spacing, fontSize, moderateScale } = useResponsive();
+
+  if (hasPartialText) {
+    // Compact strip under the partial bubble — the answer was truncated.
+    return (
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: spacing.sm,
+          marginTop: spacing.xs + 2,
+          paddingHorizontal: spacing.md,
+        }}
+      >
+        <AppIcon icon={Alert01Icon} size={14} color="#a1a1aa" />
+        <Text
+          style={{ color: "#a1a1aa", fontSize: fontSize.xs, flexShrink: 1 }}
+        >
+          Response was cut short
+        </Text>
+        {onRetry ? <RetryButton onRetry={onRetry} /> : null}
+      </View>
+    );
+  }
+
+  // Full bubble — nothing streamed, so this IS the message.
+  return (
+    <View style={{ paddingHorizontal: spacing.md, width: "100%" }}>
+      <View
+        style={{
+          alignSelf: "flex-start",
+          maxWidth: "85%",
+          backgroundColor: "#27272a",
+          borderRadius: moderateScale(20, 0.5),
+          padding: spacing.md,
+          flexDirection: "row",
+          alignItems: "flex-start",
+          gap: spacing.sm,
+        }}
+      >
+        <AppIcon
+          icon={Alert01Icon}
+          size={17}
+          color="#a1a1aa"
+          style={{ marginTop: 1 }}
+        />
+        <View style={{ flexShrink: 1, gap: spacing.xs }}>
+          <Text style={{ color: "#e4e4e7", fontSize: fontSize.base }}>
+            This response failed
+          </Text>
+          <Text
+            style={{ color: "#a1a1aa", fontSize: fontSize.sm }}
+            numberOfLines={2}
+          >
+            {error}
+          </Text>
+          {onRetry ? <RetryButton onRetry={onRetry} /> : null}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function RetryButton({ onRetry }: { onRetry: () => void }) {
+  const { moderateScale } = useResponsive();
+  return (
+    <Pressable
+      onPress={onRetry}
+      style={({ pressed }) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 4,
+        opacity: pressed ? 0.7 : 1,
+        borderRadius: moderateScale(12, 0.5),
+        borderWidth: 0,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        alignSelf: "flex-start",
+      })}
+    >
+      <AppIcon icon={RepeatIcon} size={13} color="#00bbff" />
+      <Text style={{ color: "#00bbff", fontSize: 12, fontWeight: "600" }}>
+        Retry
+      </Text>
+    </Pressable>
+  );
+}
+
 // -- ChatMessage --------------------------------------------------------------
 
 interface ChatMessageProps {
@@ -159,6 +269,8 @@ interface ChatMessageProps {
   onFollowUpAction?: (action: string) => void;
   onReply?: (message: Message) => void;
   onLongPress?: (config: MessageActionConfig) => void;
+  /** Re-run this failed turn (wired to useChat.retryLastMessage). */
+  onRetry?: () => void;
   isLoading?: boolean;
   isLastMessage?: boolean;
   loadingMessage?: string;
@@ -451,6 +563,7 @@ function AIChatMessage({
   progressToolName,
   progressMessage,
   onFollowUpAction,
+  onRetry,
 }: ChatMessageLayoutProps & {
   parsedContent: ReturnType<typeof parseThinkingFromText>;
   messageParts: MessagePart[];
@@ -460,6 +573,8 @@ function AIChatMessage({
   progressToolName: string | null;
   progressMessage: string | null;
   onFollowUpAction?: (action: string) => void;
+  /** Re-run the failed turn (only meaningful when message.error is set). */
+  onRetry?: () => void;
 }) {
   const { spacing } = useResponsive();
 
@@ -484,7 +599,8 @@ function AIChatMessage({
     !!parsedContent.thinking ||
     !!message.toolData?.length ||
     !!message.memoryData ||
-    !!message.followUpActions?.length;
+    !!message.followUpActions?.length ||
+    !!message.error;
 
   if (!hasAnyContent) return null;
 
@@ -564,6 +680,15 @@ function AIChatMessage({
             onActionPress={onFollowUpAction}
           />
         ) : null}
+
+        {/* Errored turn: keep the streamed text above and mark the failure */}
+        {message.error && !isLoading ? (
+          <FailedResponse
+            error={message.error}
+            hasPartialText={hasContent}
+            onRetry={onRetry}
+          />
+        ) : null}
       </PressableFeedback>
     </Animated.View>
   );
@@ -574,6 +699,7 @@ export function ChatMessage({
   onFollowUpAction,
   onReply,
   onLongPress,
+  onRetry,
   isLoading = false,
   isLastMessage = false,
   loadingMessage = "Thinking...",
@@ -605,6 +731,7 @@ export function ChatMessage({
       progressToolName={progressToolName}
       progressMessage={progressMessage}
       onFollowUpAction={onFollowUpAction}
+      onRetry={onRetry}
     />
   );
 }

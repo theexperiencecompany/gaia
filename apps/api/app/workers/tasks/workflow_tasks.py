@@ -484,8 +484,7 @@ def _parse_scheduled_for(context: dict[str, Any] | None, workflow_id: str) -> "d
         return datetime.fromtimestamp(scheduled_for, tz=UTC)
     except (ValueError, OverflowError, OSError):
         log.warning(
-            f"{LogTag.WORKER} Unparseable scheduled_for on scheduled fire; "
-            "treating as unstamped",
+            f"{LogTag.WORKER} Unparseable scheduled_for on scheduled fire; treating as unstamped",
             workflow_id=workflow_id,
             scheduled_for=str(scheduled_for)[:32],
         )

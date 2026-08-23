@@ -91,6 +91,8 @@ apps/api/app/memory/ingestion.py	PLR0913
 apps/api/app/memory/ingestion.py	PLR0915
 apps/api/app/memory/pg_store/graph.py	PLR0912
 apps/api/app/patches/langchain_merge_dicts_model_name_patch.py	PLR0912
+apps/api/app/scripts/delete_user_account.py	PLR0912
+apps/api/app/scripts/delete_user_account.py	PLR0915
 apps/api/app/services/_vfs_scheduler.py	PLR0913
 apps/api/app/services/analytics_service.py	PLR0913
 apps/api/app/services/chat/chunks.py	PLR0913

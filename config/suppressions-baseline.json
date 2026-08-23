@@ -10,13 +10,13 @@
       "path": "apps/api/app/agents/core/subagents/provider_subagents.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "85e6612479e767a1801652051be7829f225ed05c482f98b611df87821a33c519"
+      "hash": "26309d631a339e67d81f752ef2c778ad7dc662b10f0992a54046ad33cc403af9"
     },
     {
       "path": "apps/api/app/agents/llm/client.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "9b7a79f23e8bb4e5913df8133844f004804785a631b7579aad2f2f968092eacf"
+      "hash": "b60c7b831574e0b7a72ceb3226450f628ac625f8099ce210d32b0c733cd7422c"
     },
     {
       "path": "apps/api/app/agents/middleware/runtime_adapter.py",
@@ -28,7 +28,7 @@
       "path": "apps/api/app/agents/prompts/comms_prompts.py",
       "kind": "noqa",
       "count": 1,
-      "hash": "0b8706d3a88582eff980c1547cb76f61705ee69365861d8bd53e96cfde172959"
+      "hash": "33587091a32b9a6389b451983603f0b464043571f5c954ab83b1443a1fb26296"
     },
     {
       "path": "apps/api/app/agents/tools/coding/bash_tool.py",
@@ -94,7 +94,7 @@
       "path": "apps/api/app/override/langgraph_bigtool/create_agent.py",
       "kind": "type-ignore",
       "count": 14,
-      "hash": "1d1caea539297aa4541a56e26a84c746dc0efd9127837e6693cd10452f9afeea"
+      "hash": "b2e6f1bf8fbf71f0c2818dd0e463e7b0ba96a73c4a8eacc53a4e07fcb1b47b02"
     },
     {
       "path": "apps/api/app/override/langgraph_bigtool/hooks.py",
@@ -115,16 +115,22 @@
       "hash": "184a7529fba64d3dd7388798a7564ded3b8a8bfe0825c79cf3b8df9fe6df7cf9"
     },
     {
+      "path": "apps/api/app/scripts/delete_user_account.py",
+      "kind": "noqa",
+      "count": 3,
+      "hash": "717d65076d171bae89ddf782b13686fb68718891cddce2e78ef79d7cc6db54de"
+    },
+    {
       "path": "apps/api/app/services/composio/composio_service.py",
       "kind": "noqa",
       "count": 1,
-      "hash": "2da071f58ab06182900fb966c37de4925dff5b35836fa0602853fcc689d90f1d"
+      "hash": "8d64b17bd21aed4d15188d1fa9ee4355e50da6106093c05d990165d04d013201"
     },
     {
       "path": "apps/api/app/services/composio/langchain_composio_service.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "6fe587ff8fa5f7f517ca6af632f86abb2897608933f0498af6d501d8f8b7eb85"
+      "hash": "94317e2ab76f13185d16d2b61626e90ca009307a3101172ba9368cc08923546d"
     },
     {
       "path": "apps/api/app/services/notes_service.py",
@@ -189,14 +195,14 @@
     {
       "path": "apps/api/tests/helpers.py",
       "kind": "type-ignore",
-      "count": 2,
-      "hash": "9cec3b81b3c22fcde68971da48ef5b088382f763b2cde2bb68ccb4708ae3e50a"
+      "count": 1,
+      "hash": "b80ad8d9a7657488604052fbfb6d46d79f96c26e22913ab65318ec61df9e8dff"
     },
     {
       "path": "apps/api/tests/integration/agents/test_real_comms_agent.py",
       "kind": "noqa",
-      "count": 1,
-      "hash": "2b9da7c25115ca9c3e08e5a6e8f75862c8a40c15203ae3493aaa2e4f68fe140d"
+      "count": 2,
+      "hash": "f2ba6674bb4b22156ca12a8e030c42713efd766e4fe00704eeec3709d19e31b8"
     },
     {
       "path": "apps/api/tests/integration/conftest.py",
@@ -238,7 +244,7 @@
       "path": "apps/api/tests/unit/agents/test_handoff_tools.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "536e7bcec2c103842673bd4544dece621f575ab951de4a799db03f8af30de11a"
+      "hash": "25ffe2901ee06b9dd2b577e601ed55459cd12564f444476149393a83dddf5226"
     },
     {
       "path": "apps/api/tests/unit/agents/test_llm_client.py",
@@ -334,7 +340,7 @@
       "path": "apps/api/tests/unit/middleware/test_compaction_offload_bind.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "9052cbfabaf80d429c8114b5d696a61d32ac6ea303c97837562f97fa8158b3cc"
+      "hash": "90ee193add8f97ff888a66f95ac42a13b0f35539c806ba63d5ecfc12d64ea4a5"
     },
     {
       "path": "apps/api/tests/unit/models/test_reminder_models.py",
@@ -370,7 +376,7 @@
       "path": "apps/api/tests/unit/services/test_mcp_client.py",
       "kind": "type-ignore",
       "count": 5,
-      "hash": "4c39c0516c46facf193d6a7d42b5ffe2c9f655279dc077d6af89580769bc10e3"
+      "hash": "8621ce3a3c23c1c5372a98591684ce51bfba6c0ae63eccf34874bdff2115e0a4"
     },
     {
       "path": "apps/api/tests/unit/services/test_trigger_handlers.py",
@@ -388,7 +394,7 @@
       "path": "apps/api/tests/unit/tools/test_integration_tool_standalone.py",
       "kind": "type-ignore",
       "count": 19,
-      "hash": "66b65bad43baa40516bd4f5b2e0b022e8d60cdf682b4659f149f2874b4bac035"
+      "hash": "9646f6c459a44bc59b118bddfbd8bbc4ef44b09389995c28f728dadc6e98e174"
     },
     {
       "path": "apps/api/tests/unit/tools/test_integration_tools_proxy.py",
@@ -412,19 +418,19 @@
       "path": "apps/api/tests/unit/tools/test_workflow_tool.py",
       "kind": "noqa",
       "count": 1,
-      "hash": "466048dfefdae4deb652199440ee115ad301367d5a7cbba90f9e51d3310c8481"
+      "hash": "f931b5c67e59e51b1e5abfd72c37ff098cea3d4e33a14f85197c4ae83e9d67d5"
     },
     {
       "path": "apps/api/tests/unit/tools/test_workflow_tool.py",
       "kind": "type-ignore",
       "count": 16,
-      "hash": "466048dfefdae4deb652199440ee115ad301367d5a7cbba90f9e51d3310c8481"
+      "hash": "f931b5c67e59e51b1e5abfd72c37ff098cea3d4e33a14f85197c4ae83e9d67d5"
     },
     {
       "path": "apps/api/tests/unit/utils/test_agent_utils.py",
       "kind": "type-ignore",
       "count": 13,
-      "hash": "128979a3d184fa7ba06376cc93c505c77970c2676ee91471f5955e590bf3f867"
+      "hash": "f992b147a6d82ef1aa718fdb401516a09bc5b544a3d14f0a5831a1924c239ca7"
     },
     {
       "path": "apps/api/tests/unit/utils/test_auth_utils.py",
@@ -568,7 +574,7 @@
       "path": "apps/mobile/src/features/chat/components/sidebar/chat-history.tsx",
       "kind": "biome-ignore",
       "count": 2,
-      "hash": "d6fc270a440f7d83046e0042dbf883103da461a3c7f92fcd46dc3c78079acbde"
+      "hash": "945f05101502c95b00d7feabb974407d3d5b1184d8e1b24e418241a90a894244"
     },
     {
       "path": "apps/mobile/src/features/integrations/components/CommunityIntegrationsTab.tsx",

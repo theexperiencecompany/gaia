@@ -33,7 +33,7 @@ from app.override.langgraph_bigtool.create_agent import (
     ToolRetrievalConfig,
     create_agent,
 )
-from tests.helpers import PassthroughFakeLLM
+from tests.helpers import BindableToolsFakeModel, PassthroughFakeLLM
 
 
 @tool
@@ -242,7 +242,9 @@ async def _run_provider_subagent_factory(
         await SubAgentFactory.create_provider_subagent(
             provider="provider",
             name="provider_agent",
-            llm=MagicMock(),
+            # A real chat LLM always carries a context-window profile
+            # (init_*_llm pin it); fractional-token middleware requires it.
+            llm=BindableToolsFakeModel(responses=[], profile={"max_input_tokens": 1_000_000}),
             config=SubAgentToolConfig(
                 tool_space="provider_space",
                 use_direct_tools=use_direct_tools,
@@ -612,7 +614,9 @@ async def test_base_subagent_wiring_uses_shared_tool_runtime_helpers():
         await SubAgentFactory.create_provider_subagent(
             provider="provider",
             name="provider_agent",
-            llm=MagicMock(),
+            # A real chat LLM always carries a context-window profile
+            # (init_*_llm pin it); fractional-token middleware requires it.
+            llm=BindableToolsFakeModel(responses=[], profile={"max_input_tokens": 1_000_000}),
             config=SubAgentToolConfig(
                 tool_space="provider_space",
                 use_direct_tools=True,
