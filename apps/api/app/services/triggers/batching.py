@@ -165,17 +165,19 @@ async def buffer_trigger_event(
     return True
 
 
-async def drain_trigger_batch(batch_key: str) -> list[dict[str, Any]]:
+async def drain_trigger_batch(batch_key: str) -> list[dict[str, Any]] | None:
     """Take every buffered event for this batch, leaving the key empty.
 
     Read-and-delete in one transaction so events arriving mid-drain open the
     next window instead of being consumed by a run that already built its
-    prompt without them.
+    prompt without them. Returns ``None`` when Redis is unavailable — the
+    buffer may well be non-empty, and reporting it as drained-empty would let
+    the run exit "cleanly" while the events sit unread.
     """
     client = redis_cache.redis
     if client is None:
         log.warning(f"{LogTag.TRIGGER} Redis unavailable — trigger batch cannot be drained")
-        return []
+        return None
 
     async with client.pipeline(transaction=True) as pipe:
         pipe.lrange(batch_key, 0, -1)
@@ -209,6 +211,15 @@ async def reschedule_if_refilled(
     client = redis_cache.redis
     if client is None or await client.llen(batch_key) == 0:
         return False
+
+    # Renew the buffer's TTL alongside the new job: a workflow that keeps being
+    # gate-rejected (budget wall all day on a short window) reschedules over and
+    # over, and without renewal the buffer set at first-write time would expire
+    # under it mid-cycle, silently dropping the events the job exists to drain.
+    await client.expire(
+        batch_key,
+        max(window_seconds * TRIGGER_BATCH_TTL_MULTIPLIER, TRIGGER_BATCH_TTL_FLOOR_SECONDS),
+    )
 
     pool = await RedisPoolManager.get_pool()
     await enqueue_worker_job(

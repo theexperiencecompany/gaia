@@ -14,7 +14,8 @@ import pytest
 sys.modules.setdefault("app.services.workflow.queue_service", MagicMock())
 sys.modules.setdefault("app.services.workflow.trigger_service", MagicMock())
 
-from app.models.workflow_models import Workflow
+from app.models.trigger_configs import GmailPollInboxConfig
+from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep
 from app.services.triggers.base import TriggerHandler
 
 
@@ -128,8 +129,6 @@ class TestQueueOneWorkflowDispatch:
 
     @staticmethod
     def _workflow(trigger_name: str, trigger_data: object) -> Workflow:
-        from app.models.workflow_models import TriggerConfig, TriggerType, WorkflowStep
-
         return Workflow(
             id="wf_disp",
             user_id="user_disp",
@@ -150,8 +149,6 @@ class TestQueueOneWorkflowDispatch:
         return _StubHandler()
 
     async def test_a_poll_trigger_event_is_buffered_with_its_own_window(self) -> None:
-        from app.models.trigger_configs import GmailPollInboxConfig
-
         workflow = self._workflow("gmail_poll_inbox", GmailPollInboxConfig(interval=15))
         buffer = AsyncMock(return_value=True)
         queue = AsyncMock()
@@ -181,8 +178,6 @@ class TestQueueOneWorkflowDispatch:
 
     async def test_a_failed_buffer_falls_back_to_immediate_dispatch(self) -> None:
         """Redis down must degrade to the old per-event path, never drop the event."""
-        from app.models.trigger_configs import GmailPollInboxConfig
-
         workflow = self._workflow("gmail_poll_inbox", GmailPollInboxConfig(interval=15))
         queue = AsyncMock()
         with (

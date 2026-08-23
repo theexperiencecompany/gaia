@@ -204,3 +204,18 @@ class TestRefillOnEveryExit:
         drain.assert_not_awaited()
         refill.assert_not_awaited()
         coalesce.assert_not_called()
+
+
+class TestDrainUnavailable:
+    async def test_redis_down_at_drain_never_claims_the_batch_was_empty(self) -> None:
+        """None from the drain means "could not look" — the run must exit
+        without consuming, and the finally still schedules the follow-up."""
+        result, drain, run_chat, refill, log_mock, _coalesce, _wf = await _run_task(
+            {"trigger_type": "integration", "trigger_batch_key": "trigger_batch:wf-1"},
+            None,  # drain_trigger_batch returns None
+        )
+
+        assert result == "Workflow wf-1 skipped — trigger batch unavailable"
+        log_mock.set_ns.assert_any_call("workflow", outcome="trigger_batch_unavailable")
+        run_chat.assert_not_awaited()
+        refill.assert_awaited_once()

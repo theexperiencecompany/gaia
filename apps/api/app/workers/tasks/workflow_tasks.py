@@ -614,6 +614,12 @@ async def execute_workflow_by_id(
         # already drained these events and there is nothing left to do.
         if batch_key:
             events = await drain_trigger_batch(str(batch_key))
+            if events is None:
+                # Redis unreachable: the buffer may hold events — exit WITHOUT
+                # claiming they were drained; the finally's refill check (or the
+                # next inbound event) schedules a fresh run once Redis returns.
+                log.set_ns("workflow", outcome="trigger_batch_unavailable")
+                return f"Workflow {workflow_id} skipped — trigger batch unavailable"
             log.set_ns("workflow", trigger_batch_size=len(events))
             if not events:
                 log.set_ns("workflow", outcome="trigger_batch_empty")

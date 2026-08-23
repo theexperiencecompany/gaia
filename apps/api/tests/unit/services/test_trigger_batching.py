@@ -5,16 +5,13 @@ agent run per inbound email — 56 runs in three minutes, which spent a paying
 user's whole daily budget before he had sent a single message.
 """
 
+from datetime import UTC, datetime
 import json
-import sys
+import re
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-# Same circular-import guard the sibling base-handler tests use.
-sys.modules.setdefault("app.services.workflow.queue_service", MagicMock())
-sys.modules.setdefault("app.services.workflow.trigger_service", MagicMock())
 
 from app.models.trigger_configs import GmailNewMessageConfig, GmailPollInboxConfig
 from app.models.workflow_models import TriggerConfig, TriggerType
@@ -261,10 +258,12 @@ class TestRedisUnavailable:
             assert await buffer_trigger_event("wf_1", "user_1", {"id": 1}, 900, {}) is False
         enqueue_mock.assert_not_awaited()
 
-    async def test_drain_returns_nothing_rather_than_raising(self) -> None:
+    async def test_drain_reports_unavailability_as_none_not_empty(self) -> None:
+        """None and [] mean different things: [] lets the worker exit "cleanly",
+        None tells it the buffer may still hold events it must not claim drained."""
         with patch(f"{MODULE}.redis_cache") as cache:
             cache.redis = None
-            assert await drain_trigger_batch("trigger_batch:wf_1") == []
+            assert await drain_trigger_batch("trigger_batch:wf_1") is None
 
 
 @pytest.mark.unit
@@ -339,8 +338,6 @@ class TestObservableBehaviour:
     ) -> None:
         """Webhook payloads carry datetimes after model parsing; default=str is
         what keeps the buffer write from raising on them."""
-        from datetime import UTC, datetime
-
         await buffer_trigger_event(
             "wf_1", "user_1", {"at": datetime(2026, 8, 23, tzinfo=UTC)}, 900, {}
         )
@@ -424,8 +421,6 @@ class TestObservableBehaviour:
         )
 
     async def test_refill_job_id_shape_is_exact(self, fake_redis: _FakeRedis, enqueue: Any) -> None:
-        import re
-
         key = TRIGGER_BATCH_KEY.format(workflow_id="wf_1")
         fake_redis.store[key] = [json.dumps({"id": 1})]
 
@@ -470,7 +465,7 @@ class TestRedisCommandFailure:
             patch(f"{MODULE}.log") as log_mock,
         ):
             cache.redis = None
-            assert await drain_trigger_batch("trigger_batch:wf_1") == []
+            assert await drain_trigger_batch("trigger_batch:wf_1") is None
 
         log_mock.warning.assert_called_once_with(
             "[TRIGGER] Redis unavailable — trigger batch cannot be drained"
@@ -522,3 +517,28 @@ class TestEnqueuePool:
             error="arq down",
             error_type="ConnectionError",
         )
+
+
+@pytest.mark.unit
+class TestRefillTtlRenewal:
+    async def test_refill_renews_the_buffer_ttl(self, fake_redis: _FakeRedis, enqueue: Any) -> None:
+        """A workflow gate-rejected all day reschedules repeatedly; without TTL
+        renewal the buffer set at first-write time expires under the cycle and
+        the events the follow-up job exists to drain silently vanish."""
+        key = TRIGGER_BATCH_KEY.format(workflow_id="wf_1")
+        fake_redis.store[key] = [json.dumps({"id": 1})]
+
+        assert await reschedule_if_refilled("wf_1", key, 900, {})
+
+        assert fake_redis.expires[key] == TRIGGER_BATCH_TTL_FLOOR_SECONDS
+
+    async def test_refill_ttl_scales_with_long_windows(
+        self, fake_redis: _FakeRedis, enqueue: Any
+    ) -> None:
+        day = 24 * 60 * 60
+        key = TRIGGER_BATCH_KEY.format(workflow_id="wf_1")
+        fake_redis.store[key] = [json.dumps({"id": 1})]
+
+        await reschedule_if_refilled("wf_1", key, day, {})
+
+        assert fake_redis.expires[key] == day * 4
