@@ -89,9 +89,6 @@ export function ChatHeader({ onNewChatPress }: ChatHeaderProps) {
         );
       },
     );
-    useChatStore
-      .getState()
-      .updateConversationTitle(activeConversation.id, trimmed);
 
     const success = await chatApi.renameConversation(
       activeConversation.id,
@@ -109,12 +106,6 @@ export function ChatHeader({ onNewChatPress }: ChatHeaderProps) {
           );
         },
       );
-      useChatStore
-        .getState()
-        .updateConversationTitle(
-          activeConversation.id,
-          activeConversation.title,
-        );
     }
   }, [activeConversation, editTitle, cancelEditing, queryClient]);
 

@@ -359,6 +359,47 @@ class TestBuildAgentConfig:
         assert configurable["thread_id"] == "github_executor_conv-1"
 
     @patch("app.helpers.agent_helpers.providers")
+    async def test_parent_overrides_child_for_the_verbatim_user_request(self, mock_providers):
+        """Same rule as ``user_messages``, and for the same reason: comms establishes
+        the user's raw words once, and a child agent only ever has its parent's
+        paraphrase to offer. ``call_executor`` reads this to build the executor brief,
+        so a child winning here would put the paraphrase back where the verbatim copy
+        belongs — the exact failure this key exists to prevent."""
+        mock_providers.get.return_value = None
+
+        configurable = (
+            await build_agent_config(
+                conversation_id="github_executor_conv-1",
+                user=FAKE_USER,
+                agent_name="executor",
+                base_configurable={
+                    "conversation_id": "conv-1",
+                    "user_request": "delete the repo",
+                },
+                user_request="the agent's paraphrase",
+            )
+        )["configurable"]
+
+        assert configurable["user_request"] == "delete the repo"
+
+    @patch("app.helpers.agent_helpers.providers")
+    async def test_a_root_run_carries_its_own_verbatim_request(self, mock_providers):
+        """With no parent there is nothing to inherit, so the value passed in is the
+        one that lands — this is the comms root, where the raw message enters."""
+        mock_providers.get.return_value = None
+
+        configurable = (
+            await build_agent_config(
+                conversation_id="conv-1",
+                user=FAKE_USER,
+                agent_name="comms_agent",
+                user_request="pls archive the junk mail",
+            )
+        )["configurable"]
+
+        assert configurable["user_request"] == "pls archive the junk mail"
+
+    @patch("app.helpers.agent_helpers.providers")
     async def test_a_handoff_subagent_inherits_preferences_established_by_comms(
         self, mock_providers
     ) -> None:

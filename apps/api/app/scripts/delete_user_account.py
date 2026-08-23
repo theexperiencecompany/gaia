@@ -134,7 +134,7 @@ def _pg_inventory(conn: psycopg.Connection[Any], uid: str) -> dict[str, int]:
 def _chroma_inventory(client: chromadb.api.ClientAPI, uid: str) -> dict[str, int]:
     counts: dict[str, int] = {}
     for col in client.list_collections():
-        name = getattr(col, "name", None) or str(col)
+        name = col.name
         got = client.get_collection(name).get(where={"user_id": uid}, limit=200_000, include=[])
         n = len(got.get("ids") or [])
         if n:

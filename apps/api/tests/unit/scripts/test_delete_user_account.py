@@ -1,26 +1,96 @@
-"""The id-codec and inventory seams of the account-deletion script.
+"""Inventory helpers for the operational account-deletion script.
 
-Covers the lines this PR changed while unbreaking the quality gate: the
-``object_id_filter`` codec (bson stays inside app/db per the
-repository-boundaries lint) and the chroma collection-name fallback that
-handles both client shapes without a branch mypy can prove dead.
+The script is the GDPR/erasure path, so its inventory is what tells an operator
+whether anything of the user's survived. A collection silently skipped here reads
+as "nothing left to delete" — the one failure this file exists to catch.
 """
 
+from __future__ import annotations
+
+from typing import Any
 from unittest.mock import MagicMock
 
 from bson import ObjectId
+import pytest
 
 from app.db.mongodb.mongodb import object_id_filter
 from app.scripts.delete_user_account import _chroma_inventory, _mongo_inventory
 
-UID = "6a857e12040c9ae55b0b805d"
+UID = "67689b80006f6eec3f6f6df8"
 
 
+class FakeCollection:
+    """A chroma collection whose `.get()` records the filter it was called with."""
+
+    def __init__(self, name: str, ids: list[str]) -> None:
+        self.name = name
+        self._ids = ids
+        self.calls: list[dict[str, Any]] = []
+
+    def get(self, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(kwargs)
+        return {"ids": list(self._ids)}
+
+
+class FakeClient:
+    def __init__(self, collections: list[FakeCollection]) -> None:
+        self._collections = {c.name: c for c in collections}
+
+    def list_collections(self) -> list[FakeCollection]:
+        return list(self._collections.values())
+
+    def get_collection(self, name: str) -> FakeCollection:
+        return self._collections[name]
+
+
+@pytest.mark.unit
+class TestChromaInventory:
+    def test_counts_each_collections_matching_vectors(self) -> None:
+        client = FakeClient(
+            [
+                FakeCollection("memories", ["a", "b", "c"]),
+                FakeCollection("conversations", ["d"]),
+            ]
+        )
+
+        assert _chroma_inventory(client, UID) == {"memories": 3, "conversations": 1}
+
+    def test_collections_holding_nothing_are_left_out(self) -> None:
+        """The inventory is a remnant report: a zero would read as a surviving
+        collection an operator then goes looking for."""
+        client = FakeClient([FakeCollection("memories", ["a"]), FakeCollection("empty", [])])
+
+        assert _chroma_inventory(client, UID) == {"memories": 1}
+
+    def test_every_collection_is_filtered_to_this_user(self) -> None:
+        """The filter is the whole safety story — an unfiltered read would report
+        (and the delete pass would then act on) other people's vectors."""
+        memories = FakeCollection("memories", ["a"])
+        client = FakeClient([memories])
+
+        _chroma_inventory(client, UID)
+
+        assert memories.calls[0]["where"] == {"user_id": UID}
+
+    def test_a_collection_with_no_ids_key_counts_as_empty(self) -> None:
+        """chroma omits `ids` rather than returning an empty list on some backends."""
+
+        class NoIds(FakeCollection):
+            def get(self, **kwargs: Any) -> dict[str, Any]:
+                return {}
+
+        assert _chroma_inventory(FakeClient([NoIds("memories", [])]), UID) == {}
+
+
+@pytest.mark.unit
 class TestObjectIdFilter:
     def test_builds_the_id_filter_from_the_hex_string(self) -> None:
+        """The id-codec lives in app/db (repository-boundaries lint), so the
+        raw-connection script never imports bson itself."""
         assert object_id_filter(UID) == {"_id": ObjectId(UID)}
 
 
+@pytest.mark.unit
 class TestMongoInventory:
     def test_users_are_counted_by_object_id_on_top_of_the_string_scan(self) -> None:
         """The users row is keyed by ObjectId while every other collection keys
@@ -77,18 +147,3 @@ class TestMongoInventory:
         per_collection["fs.files"].count_documents.assert_called_once_with(
             {"metadata.user_id": UID}
         )
-
-
-class TestChromaInventory:
-    def test_handles_both_collection_shapes(self) -> None:
-        """Older chroma clients list plain name strings, newer ones objects with
-        .name — the fallback must inventory both without an isinstance branch."""
-        client = MagicMock()
-        named = MagicMock()
-        named.name = "memories"
-        client.list_collections.return_value = [named, "documents"]
-        client.get_collection.return_value.get.return_value = {"ids": ["a", "b"]}
-
-        counts = _chroma_inventory(client, UID)
-
-        assert counts == {"memories": 2, "documents": 2}
