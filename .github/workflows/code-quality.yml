@@ -906,6 +906,14 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      # check_ignore_staleness re-runs rules through `uvx ruff` (repo-pinned),
+      # so this lane needs uv on PATH even though the other two steps are
+      # stdlib-only scripts.
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.8.17"
+          enable-cache: true
+          prune-cache: true
       - name: Fail on any inline suppression without a same-line reason
         run: |
           trap 'echo "::error::repro: python3 tools/lints/check_suppressions.py"' ERR
