@@ -35,11 +35,6 @@ import {
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import { useChatStore } from "@/stores/chat-store";
-import {
-  deleteConversation,
-  renameConversation,
-  toggleStarConversation,
-} from "../../api/chat-api";
 import { useChatQueryClient } from "../../api/queries";
 import { useChatContext } from "../../hooks/use-chat-context";
 import {
@@ -712,18 +707,20 @@ function ChatHistorySkeleton() {
 export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
   const router = useRouter();
   const { activeChatId } = useChatContext();
-  const { conversations, isLoading, error, refetch } = useConversations();
+  const {
+    conversations,
+    isLoading,
+    error,
+    refetch,
+    deleteConversation,
+    renameConversation,
+    starConversation,
+    unstarConversation,
+  } = useConversations();
   const { spacing, fontSize } = useResponsive();
   const { invalidateConversations } = useChatQueryClient();
   const streamingConversationId = useChatStore(
     (state) => state.streamingState.conversationId,
-  );
-  const removeConversation = useChatStore((state) => state.removeConversation);
-  const updateConversationTitle = useChatStore(
-    (state) => state.updateConversationTitle,
-  );
-  const updateConversationStarred = useChatStore(
-    (state) => state.updateConversationStarred,
   );
 
   const [expandedSections, setExpandedSections] = useState<
@@ -771,12 +768,13 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
               onPress: async (newName?: string) => {
                 if (!newName || newName.trim() === "") return;
                 const trimmedName = newName.trim();
-                updateConversationTitle(conversationId, trimmedName);
-                try {
-                  await renameConversation(conversationId, trimmedName);
+                // Hook updates the cache only when the API succeeds.
+                const ok = await renameConversation(
+                  conversationId,
+                  trimmedName,
+                );
+                if (ok) {
                   invalidateConversations();
-                } catch {
-                  updateConversationTitle(conversationId, currentTitle);
                 }
               },
             },
@@ -788,22 +786,20 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
         setRenameModal({ visible: true, conversationId, currentTitle });
       }
     },
-    [updateConversationTitle, invalidateConversations],
+    [renameConversation, invalidateConversations],
   );
 
   const handleRenameConfirm = useCallback(
     async (newTitle: string) => {
-      const { conversationId, currentTitle } = renameModal;
+      const { conversationId } = renameModal;
       setRenameModal((prev) => ({ ...prev, visible: false }));
-      updateConversationTitle(conversationId, newTitle);
-      try {
-        await renameConversation(conversationId, newTitle);
+      // Hook updates the cache only when the API succeeds.
+      const ok = await renameConversation(conversationId, newTitle);
+      if (ok) {
         invalidateConversations();
-      } catch {
-        updateConversationTitle(conversationId, currentTitle);
       }
     },
-    [renameModal, updateConversationTitle, invalidateConversations],
+    [renameModal, renameConversation, invalidateConversations],
   );
 
   const handleRenameCancel = useCallback(() => {
@@ -821,11 +817,11 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
             text: "Delete",
             style: "destructive",
             onPress: async () => {
-              removeConversation(conversationId);
-              try {
-                await deleteConversation(conversationId);
+              // Hook removes from the cache only when the API succeeds.
+              const ok = await deleteConversation(conversationId);
+              if (ok) {
                 invalidateConversations();
-              } catch {
+              } else {
                 refetch();
               }
             },
@@ -833,21 +829,20 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
         ],
       );
     },
-    [removeConversation, invalidateConversations, refetch],
+    [deleteConversation, invalidateConversations, refetch],
   );
 
   const handleToggleStar = useCallback(
     async (conversationId: string, currentStarred: boolean) => {
-      const newStarred = !currentStarred;
-      updateConversationStarred(conversationId, newStarred);
-      try {
-        await toggleStarConversation(conversationId, newStarred);
+      // Hook updates the cache only when the API succeeds.
+      const ok = currentStarred
+        ? await unstarConversation(conversationId)
+        : await starConversation(conversationId);
+      if (ok) {
         invalidateConversations();
-      } catch {
-        updateConversationStarred(conversationId, currentStarred);
       }
     },
-    [updateConversationStarred, invalidateConversations],
+    [starConversation, unstarConversation, invalidateConversations],
   );
 
   const isSearching = searchQuery.trim().length > 0;
