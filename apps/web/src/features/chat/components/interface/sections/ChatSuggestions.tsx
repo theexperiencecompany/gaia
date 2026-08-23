@@ -1,7 +1,7 @@
 import { Button } from "@heroui/button";
 import * as m from "motion/react-m";
 import type React from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   pickStarterPrompts,
   type StarterPrompt,
@@ -12,9 +12,13 @@ import { useUserStore } from "@/stores/userStore";
 export const ChatSuggestions: React.FC = () => {
   const profession = useUserStore((s) => s.onboarding?.preferences?.profession);
   const appendToInput = useAppendToInput();
-  const [prompts] = useState<StarterPrompt[]>(() =>
-    pickStarterPrompts(profession),
-  );
+  // Picked post-mount: Math.random during render made server and client
+  // disagree on every load (hydration mismatch → discarded server tree).
+  const [prompts, setPrompts] = useState<StarterPrompt[]>([]);
+
+  useEffect(() => {
+    setPrompts(pickStarterPrompts(profession));
+  }, [profession]);
 
   if (prompts.length === 0) return null;
 

@@ -252,7 +252,12 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
             {workflow?.is_system_workflow && <SystemWorkflowChip />}
 
             {resolvedAction !== "none" && (
-              <span className="relative z-[2]">
+              <span
+                className="relative z-[2]"
+                // Keep Run/Create presses from also triggering the card-level
+                // open/select handler via click bubbling.
+                onClick={(e) => e.stopPropagation()}
+              >
                 <WorkflowActionButton
                   label={buttonConfig.label}
                   isLoading={isLoading}

@@ -13,7 +13,7 @@ import {
   Timer02Icon,
 } from "@icons";
 import dynamic from "next/dynamic";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   FixedSizeList as List,
   type ListChildComponentProps,
@@ -248,6 +248,16 @@ function EmailRowActions({
 
 export default function MailsPage() {
   const isMobileScreen: boolean = useMediaQuery("(max-width: 600px)");
+  // react-window needs a numeric pixel height; measure post-mount instead of
+  // touching `window` during server render (which crashed SSR into a full
+  // client-side fallback on every visit).
+  const [listHeight, setListHeight] = useState(600);
+  useEffect(() => {
+    const update = () => setListHeight(Math.max(300, window.innerHeight - 50));
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
   const { toggleReadStatus: hookToggleReadStatus } = useEmailReadStatus();
   const { toggleStarStatus, archiveEmail, trashEmail } = useEmailActions();
 
@@ -481,7 +491,7 @@ export default function MailsPage() {
       >
         {({ onItemsRendered, ref }) => (
           <List
-            height={window.innerHeight - 50}
+            height={listHeight}
             itemCount={itemCount}
             itemSize={isMobileScreen ? 70 : 55}
             onItemsRendered={onItemsRendered}
