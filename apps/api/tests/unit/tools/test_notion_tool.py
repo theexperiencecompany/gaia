@@ -42,7 +42,11 @@ EXPECTED_TOOL_NAMES = [
 
 def _capture_tools(
     register_fn: Callable[..., list[str]],
-) -> tuple[list[str], dict[str, tuple[Callable[..., Any], dict[str, Any]]]]:
+) -> tuple[
+    list[str],
+    dict[str, tuple[Callable[..., Any], dict[str, Any]]],
+    MagicMock,
+]:
     captured: dict[str, tuple[Callable[..., Any], dict[str, Any]]] = {}
     composio = MagicMock()
 
@@ -57,19 +61,25 @@ def _capture_tools(
 
     composio.tools.custom_tool = custom_tool
     registered = register_fn(composio)
-    return registered, captured
+    return registered, captured, composio
 
 
 def test_register_returns_exact_tool_names_and_toolkits() -> None:
-    registered, captured = _capture_tools(register_notion_custom_tools)
+    registered, captured, _ = _capture_tools(register_notion_custom_tools)
 
     assert registered == EXPECTED_TOOL_NAMES
     assert sorted(captured) == sorted(EXPECTED_TOOL_NAMES)
     assert all(kwargs == {"toolkit": "NOTION"} for _, kwargs in captured.values())
 
 
+def test_register_docstring_pins_tool_description() -> None:
+    assert register_notion_custom_tools.__doc__ == (
+        "Register Notion tools as Composio custom tools."
+    )
+
+
 def test_fetch_data_app_error_raises_runtime_error_with_message() -> None:
-    _, tools = _capture_tools(register_notion_custom_tools)
+    _, tools, _ = _capture_tools(register_notion_custom_tools)
     fetch_data, _ = tools["NOTION_FETCH_DATA"]
     error = AppError(message="Notion API error (500)", status_code=500)
 
@@ -82,7 +92,7 @@ def test_fetch_data_app_error_raises_runtime_error_with_message() -> None:
 
 
 def test_fetch_data_unexpected_error_raises_runtime_error_with_str() -> None:
-    _, tools = _capture_tools(register_notion_custom_tools)
+    _, tools, _ = _capture_tools(register_notion_custom_tools)
     fetch_data, _ = tools["NOTION_FETCH_DATA"]
     error = ValueError("connection reset")
 
@@ -259,7 +269,7 @@ def test_fetch_data_unexpected_error_logs_fetch_type_and_raises_runtime_error() 
 
 
 def test_move_page_wrapper_logs_action_and_delegates() -> None:
-    _, tools = _capture_tools(register_notion_custom_tools)
+    _, tools, _ = _capture_tools(register_notion_custom_tools)
     move_page, _ = tools["NOTION_MOVE_PAGE"]
     execute_request = MagicMock(
         return_value=_ProxyResponse({"id": "moved-1", "url": "https://notion.so/moved-1"})
@@ -282,62 +292,65 @@ def test_move_page_wrapper_logs_action_and_delegates() -> None:
     }
 
 
-def test_fetch_page_as_markdown_wrapper_logs_action_and_returns_delegate_result() -> None:
-    _, tools = _capture_tools(register_notion_custom_tools)
+def test_fetch_page_as_markdown_wrapper_logs_action_and_delegates() -> None:
+    _, tools, composio = _capture_tools(register_notion_custom_tools)
     fetch_page_as_markdown, _ = tools["NOTION_FETCH_PAGE_AS_MARKDOWN"]
+    request = FetchPageAsMarkdownInput(page_id="pg-11")
     delegate_result = {"page_id": "pg-11", "title": "Hello", "markdown": "# Hello"}
 
     with (
         patch(f"{MODULE}.log") as log_mock,
-        patch(f"{MODULE}._fetch_page_as_markdown", return_value=delegate_result),
+        patch(f"{MODULE}._fetch_page_as_markdown", return_value=delegate_result) as delegate,
     ):
-        result = fetch_page_as_markdown(
-            FetchPageAsMarkdownInput(page_id="pg-11"), MagicMock(), AUTH_CREDS
-        )
+        result = fetch_page_as_markdown(request, MagicMock(), AUTH_CREDS)
 
     assert log_mock.set.call_args_list == [
         call(tool={"integration": "notion", "action": "fetch_page_as_markdown"})
     ]
+    delegate.assert_called_once_with(composio, request, AUTH_CREDS)
     assert result == delegate_result
 
 
-def test_insert_markdown_wrapper_logs_action_and_returns_delegate_result() -> None:
-    _, tools = _capture_tools(register_notion_custom_tools)
+def test_insert_markdown_wrapper_logs_action_and_delegates() -> None:
+    _, tools, composio = _capture_tools(register_notion_custom_tools)
     insert_markdown, _ = tools["NOTION_INSERT_MARKDOWN"]
     request = InsertMarkdownInput(parent_block_id="blk-1", markdown="# Hello")
     delegate_result = {"parent_block_id": "blk-1", "blocks_added": 1, "tables_added": 0}
 
     with (
         patch(f"{MODULE}.log") as log_mock,
-        patch(f"{MODULE}._insert_markdown", return_value=delegate_result),
+        patch(f"{MODULE}._insert_markdown", return_value=delegate_result) as delegate,
     ):
         result = insert_markdown(request, MagicMock(), AUTH_CREDS)
 
     assert log_mock.set.call_args_list == [
         call(tool={"integration": "notion", "action": "insert_markdown"})
     ]
+    delegate.assert_called_once_with(composio, request, AUTH_CREDS)
     assert result == delegate_result
 
 
-def test_fetch_data_wrapper_logs_action_and_returns_delegate_result() -> None:
-    _, tools = _capture_tools(register_notion_custom_tools)
+def test_fetch_data_wrapper_logs_action_and_delegates() -> None:
+    _, tools, _ = _capture_tools(register_notion_custom_tools)
     fetch_data, _ = tools["NOTION_FETCH_DATA"]
+    request = FetchDataInput(fetch_type="pages")
     delegate_result = {"values": [], "count": 0, "has_more": False}
 
     with (
         patch(f"{MODULE}.log") as log_mock,
-        patch(f"{MODULE}._fetch_data", return_value=delegate_result),
+        patch(f"{MODULE}._fetch_data", return_value=delegate_result) as delegate,
     ):
-        result = fetch_data(FetchDataInput(fetch_type="pages"), MagicMock(), AUTH_CREDS)
+        result = fetch_data(request, MagicMock(), AUTH_CREDS)
 
     assert log_mock.set.call_args_list == [
         call(tool={"integration": "notion", "action": "fetch_data"})
     ]
+    delegate.assert_called_once_with(request, AUTH_CREDS)
     assert result == delegate_result
 
 
 def test_custom_gather_context_wrapper_logs_action_and_queries_recent_pages() -> None:
-    _, tools = _capture_tools(register_notion_custom_tools)
+    _, tools, _ = _capture_tools(register_notion_custom_tools)
     gather_context, _ = tools["NOTION_CUSTOM_GATHER_CONTEXT"]
     execute_tool_mock = MagicMock(return_value={"results": [{"id": "p1"}]})
 
@@ -352,3 +365,50 @@ def test_custom_gather_context_wrapper_logs_action_and_queries_recent_pages() ->
         "NOTION_SEARCH_NOTION_PAGE", {"query": "", "page_size": 10}, "user_test_123"
     )
     assert result == {"relevant_pages": [{"id": "p1"}]}
+
+
+def test_custom_gather_context_falls_back_to_pages_key() -> None:
+    _, tools, _ = _capture_tools(register_notion_custom_tools)
+    gather_context, _ = tools["NOTION_CUSTOM_GATHER_CONTEXT"]
+    execute_tool_mock = MagicMock(return_value={"pages": [{"id": "p9"}]})
+
+    with patch(f"{MODULE}.log"), patch(f"{MODULE}.execute_tool", execute_tool_mock):
+        result = gather_context(GatherContextInput(), MagicMock(), AUTH_CREDS)
+
+    assert result == {"relevant_pages": [{"id": "p9"}]}
+
+
+def test_custom_gather_context_defaults_to_empty_list_when_neither_key_present() -> None:
+    _, tools, _ = _capture_tools(register_notion_custom_tools)
+    gather_context, _ = tools["NOTION_CUSTOM_GATHER_CONTEXT"]
+    execute_tool_mock = MagicMock(return_value={})
+
+    with patch(f"{MODULE}.log"), patch(f"{MODULE}.execute_tool", execute_tool_mock):
+        result = gather_context(GatherContextInput(), MagicMock(), AUTH_CREDS)
+
+    assert result == {"relevant_pages": []}
+
+
+def test_wrapper_docstrings_are_pinned() -> None:
+    _, captured, _ = _capture_tools(register_notion_custom_tools)
+
+    # The other wrappers get their docstrings from @with_doc templates; this
+    # one carries its own source docstring through to Composio registration.
+    gather_fn, _ = captured["NOTION_CUSTOM_GATHER_CONTEXT"]
+    assert gather_fn.__doc__ == (
+        "Get Notion workspace context: recently edited pages and databases.\n"
+        "\n"
+        "        Zero required parameters. Returns recently modified content for situational awareness.\n"
+        "        "
+    )
+
+
+def test_fetch_data_empty_string_query_is_omitted_from_search_body() -> None:
+    request = FetchDataInput(fetch_type="pages", query="")
+    proxy = MagicMock(return_value={"results": []})
+
+    with patch(f"{MODULE}.proxy_request_sync", proxy):
+        result = _fetch_data(request, AUTH_CREDS)
+
+    assert "query" not in proxy.call_args.kwargs["body"]
+    assert result == {"values": [], "count": 0, "has_more": False}

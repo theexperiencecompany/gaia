@@ -470,6 +470,28 @@ def _origin_for(trigger_type: str) -> LimitHitOrigin:
     )
 
 
+def _parse_scheduled_for(context: dict[str, Any] | None, workflow_id: str) -> "datetime | None":
+    """The occurrence stamp the fire was armed for, or None when unstamped.
+
+    Only a numeric stamp is scheduler provenance: manual "run now" callers
+    control their own context dict, so a hand-typed trigger_type/scheduled_for
+    must be ignored (ungated), not crash fromtimestamp mid-run.
+    """
+    scheduled_for = context.get("scheduled_for") if context else None
+    if isinstance(scheduled_for, bool) or not isinstance(scheduled_for, (int, float)):
+        return None
+    try:
+        return datetime.fromtimestamp(scheduled_for, tz=UTC)
+    except (ValueError, OverflowError, OSError):
+        log.warning(
+            f"{LogTag.WORKER} Unparseable scheduled_for on scheduled fire; "
+            "treating as unstamped",
+            workflow_id=workflow_id,
+            scheduled_for=str(scheduled_for)[:32],
+        )
+        return None
+
+
 async def execute_workflow_by_id(
     ctx: dict[str, Any], workflow_id: str, context: dict[str, Any] | None = None
 ) -> str:
@@ -530,30 +552,7 @@ async def execute_workflow_by_id(
         # stamp existed carry no key and are ungated, so a deploy never strands a
         # schedule.
         if trigger_type == TriggerType.SCHEDULE.value:
-            # Only a numeric stamp is scheduler provenance. Manual "run now"
-            # callers control their own context dict, so a hand-typed
-            # trigger_type/scheduled_for must be ignored (ungated), not crash
-            # fromtimestamp with a TypeError/OverflowError mid-run.
-            scheduled_for = context.get("scheduled_for") if context else None
-            if isinstance(scheduled_for, bool) or not isinstance(scheduled_for, (int, float)):
-                log.warning(
-                    f"{LogTag.WORKER} Unparseable scheduled_for on scheduled fire; "
-                    "treating as unstamped",
-                    workflow_id=workflow_id,
-                    scheduled_for=str(scheduled_for)[:32],
-                )
-                expected_next_run = None
-            else:
-                try:
-                    expected_next_run = datetime.fromtimestamp(scheduled_for, tz=UTC)
-                except (ValueError, OverflowError, OSError):
-                    log.warning(
-                        f"{LogTag.WORKER} Unparseable scheduled_for on scheduled fire; "
-                        "treating as unstamped",
-                        workflow_id=workflow_id,
-                        scheduled_for=str(scheduled_for)[:32],
-                    )
-                    expected_next_run = None
+            expected_next_run = _parse_scheduled_for(context, workflow_id)
             if not (
                 await scheduler.claim_scheduled_for_execution(
                     workflow_id, expected_next_run=expected_next_run
@@ -564,7 +563,6 @@ async def execute_workflow_by_id(
                     "(already claimed, running, deactivated, or rescheduled away); "
                     "skipping stale scheduled fire",
                     workflow_id=workflow_id,
-                    scheduled_for=scheduled_for,
                 )
                 return f"Workflow {workflow_id} already claimed; skipped duplicate scheduled fire"
 
