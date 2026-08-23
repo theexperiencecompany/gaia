@@ -181,15 +181,11 @@ class TestWorkflowResultReachesThePlatformDelivery:
             ),
             patch.object(rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[]),
             patch.object(rd, "update_messages", new_callable=AsyncMock),
-            patch.object(
-                rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None
-            ),
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
             patch.object(
                 rd, "deliver_workflow_result_to_platforms", new_callable=AsyncMock
             ) as deliver,
-            patch.object(
-                rd, "_dispatch_workflow_notification", new_callable=AsyncMock
-            ) as notify,
+            patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock) as notify,
         ):
             await rd.deliver_result(_run(workflow=True), result_text="done", result_type="final")
 
@@ -197,9 +193,7 @@ class TestWorkflowResultReachesThePlatformDelivery:
         kwargs = deliver.await_args.kwargs
         assert kwargs["user"] == {"user_id": "user-1"}
         assert kwargs["user_id"] == "user-1"
-        assert kwargs["origin"] == (
-            'workflow "Morning digest" (id wf-1), tracked todo (id todo-9)'
-        )
+        assert kwargs["origin"] == ('workflow "Morning digest" (id wf-1), tracked todo (id todo-9)')
         notify.assert_awaited_once()  # the in-app badge still fires alongside
 
 
