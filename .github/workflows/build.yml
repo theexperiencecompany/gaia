@@ -560,7 +560,14 @@ jobs:
   # Trigger backend production deploy only when deploy plan allows it.
   trigger-deploy:
     needs: [deployment-plan]
-    if: inputs.phase != 'build' && needs.deployment-plan.outputs.backend_deploy == 'true'
+    # `!cancelled()` for the same reason deployment-plan carries `always()`:
+    # in phase=deploy the docker lanes are skipped BY DESIGN, and a job whose
+    # `if` has no status function gets an implicit success() that fails on any
+    # skipped ancestor in the transitive needs chain — so the deploy silently
+    # skipped on every master push while the plan said backend_deploy=true
+    # (observed: prod stranded three merges behind with green pipelines). The
+    # explicit result check restores the only gating success() provided here.
+    if: ${{ !cancelled() && inputs.phase != 'build' && needs.deployment-plan.result == 'success' && needs.deployment-plan.outputs.backend_deploy == 'true' }}
     uses: ./.github/workflows/deploy-swarm-prod.yml
     with:
       action: deploy
