@@ -284,14 +284,22 @@ OPENROUTER_MAX_OUTPUT_TOKENS = 64_000
 # reservation 8x.
 HELPER_MAX_OUTPUT_TOKENS = 8_000
 
-# Default reasoning effort for OpenRouter thinking models (executor + subagents),
-# passed to ChatOpenRouter's native `reasoning` field.
-OPENROUTER_REASONING: dict[str, Any] = {"effort": "medium"}
-# Comms-specific reasoning: "low" instead of the executor's "medium". Comms is
-# mostly routing/ack work, so the reasoning budget is most useful for the executor's
-# tool selection. GLM 5.2 also documents "high"/"xhigh" efforts — revisit these
-# levels if comms routing or executor tool-selection quality needs more headroom.
-COMMS_REASONING: dict[str, Any] = {"effort": "low"}
+# Reasoning effort for OpenRouter thinking models on the worker tier (executor +
+# subagents), passed to ChatOpenRouter's native `reasoning` field. "high" because
+# the worker tier is where the budget pays off — tool selection and multi-step
+# execution — and where a wrong pick costs a whole background run.
+OPENROUTER_REASONING: dict[str, Any] = {"effort": "high"}
+# Comms-specific reasoning: comms is mostly routing/ack work plus composing the
+# executor brief, so it gets "medium" — enough to transcribe identifiers and route
+# correctly, without spending the worker tier's budget on acknowledgements.
+# Applied per ROLE on every tier (see lane._reasoning_for), so free and paid comms
+# think equally hard.
+COMMS_REASONING: dict[str, Any] = {"effort": "medium"}
+# Client-construction default (client.py), reached only by callers that never set a
+# lane: the one-shot helpers and aux calls (titles, classifications, structured
+# blobs) plus the graph's model fallback. Pinned separately so raising the worker
+# tier's effort does not silently raise every helper one-shot with it.
+HELPER_REASONING: dict[str, Any] = {"effort": "medium"}
 
 # Output cap for the env-defined custom dev provider (the "custom" entry below;
 # endpoint/key/model all come from the DEV_LLM_* settings). 64k fits under the

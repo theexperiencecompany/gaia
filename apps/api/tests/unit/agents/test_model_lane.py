@@ -418,26 +418,32 @@ class TestDegradeNotice:
 
 
 class TestReasoningPerRole:
-    """Characterization of today's effort split, NOT an endorsement.
+    """The role decides the effort and the tier does not: comms runs the comms
+    effort and the worker tier (executor + subagents) runs the deep effort, on
+    free and paid alike.
 
-    A free comms turn resolves ``medium`` because it never set the key and
-    inherited the client default; a paid comms turn explicitly set ``low``. Free
-    therefore out-thinks pro. That is a deliberate open non-decision — these
-    tests exist so the refactor cannot change it by accident. If tier policy is
-    revisited, change them consciously.
+    This deliberately closed the old open non-decision in which a free comms
+    turn inherited the client default while a paid one was pinned lower, so
+    free out-thought pro. Asserted per (tier, role) so a refactor cannot
+    reintroduce a tier split by accident.
     """
 
-    async def test_paid_comms_uses_the_lower_comms_effort(self) -> None:
-        assert (await _resolve(PlanType.PRO, AgentRole.COMMS)).reasoning == COMMS_REASONING
+    @pytest.mark.parametrize("plan", [PlanType.FREE, PlanType.PRO])
+    async def test_comms_runs_the_comms_effort_on_every_tier(self, plan: PlanType) -> None:
+        assert (await _resolve(plan, AgentRole.COMMS)).reasoning == COMMS_REASONING
 
-    async def test_paid_executor_keeps_the_client_default_effort(self) -> None:
-        assert (await _resolve(PlanType.PRO, AgentRole.EXECUTOR)).reasoning == OPENROUTER_REASONING
-
-    @pytest.mark.parametrize("role", list(AgentRole))
-    async def test_free_keeps_the_client_default_effort_on_every_role(
-        self, role: AgentRole
+    @pytest.mark.parametrize("plan", [PlanType.FREE, PlanType.PRO])
+    @pytest.mark.parametrize("role", [AgentRole.EXECUTOR, AgentRole.SUBAGENT])
+    async def test_the_worker_tier_runs_the_deep_effort_on_every_tier(
+        self, plan: PlanType, role: AgentRole
     ) -> None:
-        assert (await _resolve(PlanType.FREE, role)).reasoning == OPENROUTER_REASONING
+        assert (await _resolve(plan, role)).reasoning == OPENROUTER_REASONING
+
+    async def test_the_worker_effort_is_deeper_than_comms(self) -> None:
+        """The split's whole point: the thinking budget lands on tool selection.
+        Fails if the two constants are ever set equal or inverted."""
+        order = ["low", "medium", "high", "xhigh"]
+        assert order.index(OPENROUTER_REASONING["effort"]) > order.index(COMMS_REASONING["effort"])
 
 
 class TestDevOverride:
