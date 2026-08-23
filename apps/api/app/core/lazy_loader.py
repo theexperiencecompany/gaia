@@ -404,32 +404,38 @@ class LazyLoader(Generic[T]):
             return self._is_configured
         return self._instance is not None
 
+    async def areset(self) -> None:
+        """Awaitable reset that takes the async lock, so it cannot race ``aget()``.
+
+        The async initializer holds ``_async_lock`` while ``loader_func`` runs;
+        clearing the fields without that lock lets an in-flight initialization
+        repopulate the instance after the reset, silently undoing it. Await this
+        whenever a loop is already running.
+        """
+        if self._async_lock is None:
+            raise RuntimeError(f"Async lock not initialized for provider '{self.provider_name}'")
+        async with self._async_lock:
+            self._instance = None
+            self._is_configured = False
+
     def reset(self) -> None:
         """Reset the loader (useful for testing)."""
         if self.is_async:
-            # For async loaders, we need to handle the async lock
-            async def _async_reset() -> None:
-                if self._async_lock is None:
-                    raise RuntimeError(
-                        f"Async lock not initialized for provider '{self.provider_name}'"
-                    )
-                async with self._async_lock:
-                    self._instance = None
-                    self._is_configured = False
-
-            # get_running_loop() succeeds only INSIDE a running loop, where
-            # awaiting or run_until_complete are both impossible — reset
-            # synchronously and hope for the best. Anywhere else (no loop at
-            # all) take the async lock properly on a throwaway loop. Unlike
-            # the old get_event_loop() probe this never warns and never
-            # fabricates a loop.
+            # get_running_loop() succeeds only INSIDE a running loop. There,
+            # a plain synchronous clear races any in-flight aget(): the
+            # initializer holds _async_lock and would write _instance right
+            # back after this reset — the reset would silently not happen.
+            # Fail loud and require the awaited API instead.
             try:
                 asyncio.get_running_loop()
             except RuntimeError:
-                asyncio.run(_async_reset())
+                asyncio.run(self.areset())
             else:
-                self._instance = None
-                self._is_configured = False
+                raise RuntimeError(
+                    f"reset() for async provider '{self.provider_name}' called inside a "
+                    "running event loop, where it could be overwritten by an in-flight "
+                    "initialization — await areset() instead, which takes the async lock"
+                )
         else:
             with self._lock:
                 self._instance = None

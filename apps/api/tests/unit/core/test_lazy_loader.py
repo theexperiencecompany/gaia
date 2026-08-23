@@ -512,9 +512,9 @@ class TestLazyLoaderReset:
         ll.reset()
         assert ll._instance is None
 
-    def test_reset_async_loader_from_running_loop_resets_synchronously(self):
-        """Inside a running loop neither await nor run_until_complete is
-        possible, so the reset degrades to a synchronous clear."""
+    def test_reset_async_loader_inside_a_running_loop_fails_loud(self):
+        """Inside a running loop a sync clear races any in-flight aget() —
+        fail loud instead of resetting something the initializer overwrites."""
 
         async def loader():
             return 1
@@ -522,14 +522,41 @@ class TestLazyLoaderReset:
         async def scenario():
             ll = LazyLoader(loader, strategy=MissingKeyStrategy.SILENT)
             ll._instance = "cached"
-            ll.reset()
-            assert ll._instance is None
+            with pytest.raises(RuntimeError, match=r"areset\(\)"):
+                ll.reset()
 
         asyncio.run(scenario())
 
+    async def test_areset_cannot_be_overwritten_by_an_in_flight_initialization(self):
+        """The awaited reset takes the async lock, so an initialization that is
+        still inside loader_func cannot repopulate the instance after it."""
+        gate = asyncio.Event()
+        release = asyncio.Event()
+
+        async def loader():
+            gate.set()
+            await release.wait()
+            return 1
+
+        ll = LazyLoader(loader, strategy=MissingKeyStrategy.SILENT)
+        init_task = asyncio.create_task(ll.aget())
+        await gate.wait()  # loader_func running, holding _async_lock
+
+        reset_task = asyncio.create_task(ll.areset())
+        await asyncio.sleep(0)  # let areset block on the held lock
+        assert not reset_task.done()  # it did NOT barge in and clear early
+
+        release.set()
+        await asyncio.gather(init_task, reset_task)
+
+        # The initializer ran to completion, but the reset happened AFTER it:
+        # nothing survived.
+        assert ll._instance is None
+        assert not ll.is_initialized()
+
     def test_reset_async_loader_without_a_loop_takes_the_async_lock(self):
-        """No running loop: the reset goes through _async_reset, which demands
-        the provider's async lock."""
+        """No running loop: the reset goes through areset(), which demands the
+        provider's async lock."""
 
         async def loader():
             return 1

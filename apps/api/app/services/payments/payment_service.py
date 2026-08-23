@@ -342,11 +342,13 @@ class DodoPaymentService:
         try:
             plans = await self.get_plans(active_only=False)
         except Exception as e:
+            # Bounded fields, not provider error text: the warning stays
+            # queryable without persisting unbounded upstream payloads.
             log.warning(
                 f"{LogTag.PAYMENT} Could not resolve the plan behind a subscription",
                 dodo_subscription_id=subscription.dodo_subscription_id,
+                failure_reason="plan_resolution_failed",
                 error_type=type(e).__name__,
-                error=str(e),
             )
             return None
         return next((p for p in plans if p.dodo_product_id == subscription.product_id), None)

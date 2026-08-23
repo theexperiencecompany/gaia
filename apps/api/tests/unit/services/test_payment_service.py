@@ -16,6 +16,8 @@ from bson import ObjectId
 from fastapi import HTTPException
 import pytest
 
+from app.constants.cache import UPGRADE_LINK_CACHE_TTL
+from app.constants.payments import PAYMENT_HISTORY_LIMIT
 from app.models.payment_models import (
     CreateSubscriptionResponse,
     PlanDocument,
@@ -1108,8 +1110,8 @@ class TestPlanForSubscription:
             {
                 "msg": "[PAYMENT] Could not resolve the plan behind a subscription",
                 "dodo_subscription_id": "sub_x",
+                "failure_reason": "plan_resolution_failed",
                 "error_type": "RuntimeError",
-                "error": "dodo down",
             }
         ]
 
@@ -1246,8 +1248,6 @@ class TestCreateProCheckout:
         mock_redis_cache,
         mock_dodo_client,
     ):
-        from app.constants.cache import UPGRADE_LINK_CACHE_TTL
-
         mock_plan_repository.list_plans = AsyncMock(return_value=CATALOGUE)
         session = MagicMock()
         session.session_id = "cs_2"
@@ -1480,8 +1480,6 @@ class TestGetSubscriptionDetails:
         mock_dodo_client.payments.list = MagicMock(return_value=_payment_page())
 
         await payment_service.get_subscription_details(FAKE_USER_ID, history_limit=3)
-
-        from app.constants.payments import PAYMENT_HISTORY_LIMIT
 
         list_call = mock_dodo_client.payments.list.call_args
         assert list_call.kwargs["page_size"] == 3
