@@ -222,27 +222,6 @@ services:
     networks:
       - gaia_network
 
-  seed-models:
-    container_name: seed-models
-    build:
-      context: ../..
-      dockerfile: apps/api/Dockerfile
-    env_file:
-      - ../../apps/api/.env
-    environment:
-      PYTHONPATH: /app/apps/api
-    # Same reason as arq_worker: drop the `uv run` wrapper so we don't hit
-    # the Permission denied on /app/uv.lock as appuser.
-    command: ["python", "scripts/seed_models.py", "--force"]
-    depends_on:
-      mongo:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    restart: "no"
-    networks:
-      - gaia_network
-
 volumes:
   chroma_data:
   pgdata:

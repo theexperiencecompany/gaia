@@ -1,13 +1,17 @@
-"""
-Model pricing configuration for token cost calculation.
-Uses model_service to fetch models with caching support.
+"""Model pricing for token cost calculation — the rate card ships in code.
+
+Pricing previously lived in the ``ai_models`` Mongo collection, synced by hand
+via ``scripts/seed_models.py``. Nothing enforced the sync, so prod drifted: the
+vision/memory model's row went missing and every one of its calls was priced at
+DEFAULT_PRICING (~10x its real input rate) with only an error log to show for
+it. Models are constants in ``constants/llm.py``; their prices now live beside
+them, so a rate changes in the same reviewed deploy as the model id, and the
+unit suite fails if a runtime-referenced model has no rate.
 """
 
 from typing import NamedTuple
 
-from app.constants.llm import AUX_MODEL_NAME
 from app.constants.log_tags import LogTag
-from app.services.model_service import get_model_by_id
 from shared.py.wide_events import log
 
 # Default cached-input price as a fraction of full input price when the
@@ -29,82 +33,56 @@ DEFAULT_PRICING = ModelPricing(
     cached_input_cost_per_1k=0.001 * DEFAULT_CACHED_INPUT_FRACTION,
 )
 
-# The aux lane (AUX_MODEL_NAME) is a DIFFERENT model id — "DeepSeek V4 Flash
-# 0423" (Apr 2026), not the "0731" revision (Jul 2026) the graph runs — so its
-# calls get a separate prompt-cache namespace. Two ids, two rate cards: 0423 is
-# roughly 0.46x 0731's input rate, so pricing the aux lane at the default's
-# rate would OVER-count aux COGS by ~2.2x. Values below are OpenRouter's
-# published per-1k rates for `deepseek/deepseek-v4-flash`, read from
-# https://openrouter.ai/api/v1/models.
-#
-# Kept as a constant rather than a seed entry because the id is an internal
-# routing choice, not a model users can select — which also means nothing
-# reconciles it against the live listing. The unit test pins these values, NOT
-# that they still match upstream; re-check them by hand whenever either model
-# id is re-pointed.
-AUX_MODEL_PRICING = ModelPricing(
-    input_cost_per_1k=0.00006426,
-    output_cost_per_1k=0.00012852,
-    cached_input_cost_per_1k=0.000012852,  # 20% of input, matching OpenRouter's listing
-)
+# Per-1k USD rates by model id, from each provider's published listing
+# (https://openrouter.ai/api/v1/models for the OpenRouter-served ids). Keys are
+# the ids the runtime actually passes to get_model_pricing — the constants in
+# constants/llm.py plus the aux routing alias. Nothing reconciles these against
+# the live listings: re-check the rates by hand whenever a model id here is
+# added or re-pointed, and keep tests/unit/config/test_model_pricing.py's
+# runtime-coverage test green so a referenced-but-unpriced model cannot ship.
+MODEL_PRICING: dict[str, ModelPricing] = {
+    # DEFAULT_MODEL_NAME / PAID_MODEL_NAME — the graph lane on every tier.
+    "deepseek/deepseek-v4-flash-0731": ModelPricing(
+        input_cost_per_1k=0.00014,
+        output_cost_per_1k=0.00028,
+        cached_input_cost_per_1k=0.000028,
+    ),
+    # MEMORY_MODEL_NAME / VISION_MODEL_NAME — deliberately a different provider
+    # than the graph lane (see constants/llm.py for the cache-collision reason).
+    "gemini-3.1-flash-lite": ModelPricing(
+        input_cost_per_1k=0.0001,
+        output_cost_per_1k=0.0004,
+        cached_input_cost_per_1k=0.000025,
+    ),
+    # AUX_MODEL_NAME — "DeepSeek V4 Flash 0423" (Apr 2026), not the "0731"
+    # revision the graph runs, so aux calls get a separate prompt-cache
+    # namespace. Two ids, two rate cards: 0423 is roughly 0.46x 0731's input
+    # rate, so pricing the aux lane at 0731's rate would OVER-count aux COGS by
+    # ~2.2x. 20% cached-input fraction, matching OpenRouter's listing.
+    "deepseek/deepseek-v4-flash": ModelPricing(
+        input_cost_per_1k=0.00006426,
+        output_cost_per_1k=0.00012852,
+        cached_input_cost_per_1k=0.000012852,
+    ),
+}
 
 
-async def get_model_pricing(model_name: str) -> ModelPricing:
-    """
-    Get pricing info for a specific model from the model service with caching.
-    Handles model name variants (e.g., gpt-4o-mini-2024-07-18 -> gpt-4o-mini).
-
-    Args:
-        model_name: Name of the model (may include version suffix)
-
-    Returns:
-        ModelPricing with cost per 1k tokens
-    """
-    # The aux calls run a separate model id under AUX_MODEL_NAME so their
-    # prompt-cache namespace is separate from the conversation's; price them at
-    # that release's own published rate (see
-    # AUX_MODEL_PRICING) instead of the catalog lookup (the alias is an
-    # internal routing id, not seeded in ai_models) or the ~12.5x
-    # DEFAULT_PRICING.
-    if model_name == AUX_MODEL_NAME:
-        return AUX_MODEL_PRICING
-    try:
-        # Try exact match first using model_service (uses caching)
-        model = await get_model_by_id(model_name)
-
-        if model:
-            input_cost = getattr(model, "pricing_per_1k_input_tokens", None)
-            output_cost = getattr(model, "pricing_per_1k_output_tokens", None)
-            cached_input_cost = getattr(model, "pricing_per_1k_cached_input_tokens", None)
-
-            if input_cost is not None and output_cost is not None:
-                if cached_input_cost is None:
-                    cached_input_cost = float(input_cost) * DEFAULT_CACHED_INPUT_FRACTION
-                return ModelPricing(
-                    input_cost_per_1k=float(input_cost),
-                    output_cost_per_1k=float(output_cost),
-                    cached_input_cost_per_1k=float(cached_input_cost),
-                )
-
-        # A model id missing from the catalog is priced at DEFAULT_PRICING, which
-        # is not its real rate — so it must never pass quietly.
-        log.error(
-            f"{LogTag.AGENT} model missing from pricing catalog — priced at DEFAULT_PRICING",
-            model_name=model_name,
-        )
-        return DEFAULT_PRICING
-
-    except Exception as e:
-        log.error(
-            f"{LogTag.STARTUP} Error fetching pricing for model",
-            model_name=model_name,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return DEFAULT_PRICING
+def get_model_pricing(model_name: str) -> ModelPricing:
+    """The rate card for ``model_name``, or DEFAULT_PRICING — loudly — when the
+    id was never registered above."""
+    pricing = MODEL_PRICING.get(model_name)
+    if pricing is not None:
+        return pricing
+    # A model id missing from the table is priced at DEFAULT_PRICING, which is
+    # not its real rate — so it must never pass quietly.
+    log.error(
+        f"{LogTag.AGENT} model missing from pricing table — priced at DEFAULT_PRICING",
+        model_name=model_name,
+    )
+    return DEFAULT_PRICING
 
 
-async def calculate_token_cost(
+def calculate_token_cost(
     model_name: str,
     input_tokens: int,
     output_tokens: int,
@@ -117,7 +95,7 @@ async def calculate_token_cost(
     rate). Returns ``input_cost`` (uncached portion only),
     ``cached_input_cost``, ``output_cost`` and ``total_cost``.
     """
-    pricing = await get_model_pricing(model_name)
+    pricing = get_model_pricing(model_name)
 
     cached = max(int(cached_tokens or 0), 0)
     cached = min(cached, max(int(input_tokens), 0))

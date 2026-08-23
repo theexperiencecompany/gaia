@@ -68,7 +68,7 @@ async def record_llm_call(
     already succeeded.
     """
     try:
-        cost = await calculate_token_cost(
+        cost = calculate_token_cost(
             model_name=model_name,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
