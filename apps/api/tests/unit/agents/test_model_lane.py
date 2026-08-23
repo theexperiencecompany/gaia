@@ -439,11 +439,15 @@ class TestReasoningPerRole:
     ) -> None:
         assert (await _resolve(plan, role)).reasoning == OPENROUTER_REASONING
 
-    async def test_the_worker_effort_is_deeper_than_comms(self) -> None:
-        """The split's whole point: the thinking budget lands on tool selection.
-        Fails if the two constants are ever set equal or inverted."""
+    async def test_no_effort_exceeds_the_measured_ceiling_for_the_default_model(self) -> None:
+        """ "high"/"xhigh" COLLAPSE reasoning on deepseek-v4-flash-0731 as served
+        today (measured 2026-08-23: high≈402-678 and xhigh≈606 mean reasoning
+        tokens vs medium≈1401-1716 — below even the no-effort baseline ≈662).
+        Fails if either constant is raised past "medium" without re-measuring."""
         order = ["low", "medium", "high", "xhigh"]
-        assert order.index(OPENROUTER_REASONING["effort"]) > order.index(COMMS_REASONING["effort"])
+        ceiling = order.index("medium")
+        assert order.index(OPENROUTER_REASONING["effort"]) <= ceiling
+        assert order.index(COMMS_REASONING["effort"]) <= ceiling
 
 
 class TestDevOverride:

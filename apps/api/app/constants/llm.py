@@ -285,15 +285,17 @@ OPENROUTER_MAX_OUTPUT_TOKENS = 64_000
 HELPER_MAX_OUTPUT_TOKENS = 8_000
 
 # Reasoning effort for OpenRouter thinking models on the worker tier (executor +
-# subagents), passed to ChatOpenRouter's native `reasoning` field. "high" because
-# the worker tier is where the budget pays off — tool selection and multi-step
-# execution — and where a wrong pick costs a whole background run.
-OPENROUTER_REASONING: dict[str, Any] = {"effort": "high"}
-# Comms-specific reasoning: comms is mostly routing/ack work plus composing the
-# executor brief, so it gets "medium" — enough to transcribe identifiers and route
-# correctly, without spending the worker tier's budget on acknowledgements.
-# Applied per ROLE on every tier (see lane._reasoning_for), so free and paid comms
-# think equally hard.
+# subagents), passed to ChatOpenRouter's native `reasoning` field. "medium" is the
+# effective CEILING for deepseek-v4-flash-0731 as served today (via Reka): measured
+# 2026-08-23 over 8 samples per level on one prompt, mean reasoning tokens were
+# none≈662 / low≈1081 / medium≈1401-1716, while "high"≈402-678 and "xhigh"≈606 —
+# both COLLAPSE reasoning to at-or-below the no-effort baseline instead of raising
+# it. Do not "raise" this to high without re-measuring against the live model.
+OPENROUTER_REASONING: dict[str, Any] = {"effort": "medium"}
+# Comms-specific reasoning, applied per ROLE on every tier (see lane._reasoning_for)
+# so free and paid comms think equally hard. Raised from "low" to "medium": comms
+# writes the executor brief, and the brief-garbling incident (#1085) showed the low
+# budget failing exactly there — transcribing identifiers into the task.
 COMMS_REASONING: dict[str, Any] = {"effort": "medium"}
 # Client-construction default (client.py), reached only by callers that never set a
 # lane: the one-shot helpers and aux calls (titles, classifications, structured
