@@ -240,11 +240,78 @@ class TestDeliveredResultsReachTheSessionThread:
     async def test_published_result_is_recorded_in_each_session_thread(self) -> None:
         record = await self._deliver(OutboundResult.PUBLISHED)
 
+        # The checkpoint stores what the user actually saw — the outbound
+        # bubbles joined with blank control tokens removed, not the raw
+        # response containing <NEW_MESSAGE_BREAK>.
+        delivered = "Report is ready.\n\nIt has 3 pages."
         recorded = {call.args for call in record.await_args_list}
         assert recorded == {
-            ("tg-conv", f"[Delivered to the user on Telegram — result of {self.ORIGIN}]: {TEXT}"),
-            ("sl-conv", f"[Delivered to the user on Slack — result of {self.ORIGIN}]: {TEXT}"),
+            (
+                "tg-conv",
+                f"[Delivered to the user on Telegram — result of {self.ORIGIN}]: {delivered}",
+            ),
+            ("sl-conv", f"[Delivered to the user on Slack — result of {self.ORIGIN}]: {delivered}"),
         }
+
+    async def test_recorded_text_excludes_break_sentinel(self) -> None:
+        """The sentinel is stripped before the checkpoint write — it never
+        reaches the next turn's history as literal text."""
+        record = await self._deliver(OutboundResult.PUBLISHED)
+        for _, text in record.await_args_list:
+            assert NEW_MESSAGE_BREAKER not in text
+            assert "<NEW" not in text
+
+    async def test_whatsapp_display_name_preserves_casing(self) -> None:
+        """WhatsApp's display name is ``WhatsApp``, not ``Whatsapp`` — a
+        ``.capitalize()`` fallback would be observable here."""
+        recorder = AsyncMock()
+        with (
+            patch(
+                f"{MODULE}.PlatformLinkService.get_linked_platforms",
+                AsyncMock(return_value={"whatsapp": {"platformUserId": "wa-1"}}),
+            ),
+            patch(f"{MODULE}.fetch_channel_preferences", AsyncMock(return_value={})),
+            patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="wa-conv")),
+            patch(f"{MODULE}.update_messages", AsyncMock()),
+            patch(
+                f"{MODULE}.publish_outbound_message",
+                AsyncMock(return_value=OutboundResult.PUBLISHED),
+            ),
+            patch(f"{MODULE}.record_platform_delivery", recorder),
+        ):
+            await deliver_workflow_result_to_platforms(
+                user=USER,
+                user_id=USER_ID,
+                notification_text="hello",
+                origin=self.ORIGIN,
+            )
+        assert recorder.await_args.args[1].startswith("[Delivered to the user on WhatsApp —")
+
+    async def test_imessage_uses_capitalized_fallback(self) -> None:
+        """iMessage has no entry in PLATFORM_DISPLAY_NAMES — the fallback
+        ``source.value.capitalize()`` must be used rather than ``None``."""
+        recorder = AsyncMock()
+        with (
+            patch(
+                f"{MODULE}.PlatformLinkService.get_linked_platforms",
+                AsyncMock(return_value={"imessage": {"platformUserId": "im-1"}}),
+            ),
+            patch(f"{MODULE}.fetch_channel_preferences", AsyncMock(return_value={})),
+            patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="im-conv")),
+            patch(f"{MODULE}.update_messages", AsyncMock()),
+            patch(
+                f"{MODULE}.publish_outbound_message",
+                AsyncMock(return_value=OutboundResult.PUBLISHED),
+            ),
+            patch(f"{MODULE}.record_platform_delivery", recorder),
+        ):
+            await deliver_workflow_result_to_platforms(
+                user=USER,
+                user_id=USER_ID,
+                notification_text="hello",
+                origin=self.ORIGIN,
+            )
+        assert recorder.await_args.args[1].startswith("[Delivered to the user on Imessage —")
 
     @pytest.mark.regression
     async def test_a_result_that_was_not_delivered_is_not_recorded(self) -> None:

@@ -146,12 +146,15 @@ async def _post_workflow_message(
             return
         if result is OutboundResult.PUBLISHED:
             # The Mongo save above never reaches the langgraph thread this
-            # session's next turn reads its history from. Record what was sent
-            # so GAIA remembers delivering it and can trace where it came from.
+            # session's next turn reads its history from. Record what was
+            # actually delivered — the outbound path strips the sentinel and
+            # blank bubbles, so join the nonblank bubbles rather than the raw
+            # response (which still contains control tokens).
+            delivered_text = "\n\n".join(b.strip() for b in bubbles if b.strip())
             display = PLATFORM_DISPLAY_NAMES.get(source, source.value.capitalize())
             await record_platform_delivery(
                 conversation_id,
-                f"[Delivered to the user on {display} — result of {origin}]: {response}",
+                f"[Delivered to the user on {display} — result of {origin}]: {delivered_text}",
             )
         log.info(
             f"{LogTag.AGENT} workflow result delivered to platform",
