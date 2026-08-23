@@ -16,6 +16,7 @@ from app.agents.core.graph_manager import CompiledAgentGraph
 from app.agents.core.interruption import record_interruption
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.llm.lane import AgentRole, ModelLane, resolve_lane
+from app.agents.llm.types import DevModelOption
 from app.config.langfuse import build_langfuse_callback
 from app.constants.cache import (
     CUSTOM_INT_METADATA_TTL,
@@ -39,7 +40,6 @@ from app.models.agent_models import (
 )
 from app.models.chat_models import ConversationSource, SourceCategory
 from app.models.message_models import MessageDict, MessageRequestWithHistory
-from app.models.models_models import DevModelOption
 from app.models.payment_models import PlanType
 from app.models.stream_events import ModelFallbackFrame, ToolOutputPayload
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource

@@ -1,7 +1,6 @@
 from typing import Any
 
-from app.agents.llm.types import LLMProviderName
-from app.models.models_models import DevModelOption
+from app.agents.llm.types import DevModelOption, LLMProviderName
 
 # The ``configurable`` keys LangChain's own field resolution reads. Written at
 # TWO definition sites (the Gemini lane's ConfigurableField and the OpenRouter
