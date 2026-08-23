@@ -160,3 +160,38 @@ export const PortConflictStep: React.FC<{
     </Box>
   );
 };
+
+/**
+ * Confirmation shown when Docker is missing on an apt-based Linux host.
+ * Enter accepts the guided install; Escape declines and the flow aborts
+ * with remediation copy.
+ */
+export const DockerInstallConfirmStep: React.FC<{
+  onConfirm: () => void;
+  onDecline: () => void;
+}> = ({ onConfirm, onDecline }) => {
+  useInput((_input, key) => {
+    if (key.return) onConfirm();
+    if (key.escape) onDecline();
+  });
+
+  return (
+    <Box
+      flexDirection="column"
+      marginTop={1}
+      paddingX={1}
+      borderStyle="round"
+      borderColor="yellow"
+    >
+      <Text bold color="yellow">
+        Install Docker Engine now? (recommended)
+      </Text>
+      <Box marginTop={1} flexDirection="column">
+        <Text>Runs the official Docker install script — needs sudo/apt.</Text>
+        <Text color="gray" dimColor>
+          Enter to install · Esc to cancel
+        </Text>
+      </Box>
+    </Box>
+  );
+};
