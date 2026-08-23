@@ -179,7 +179,15 @@ jobs:
           COVERAGE_FILE: .coverage.${{ matrix.shard }}
         run: |
           trap 'echo "::error::repro: bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest"' ERR
-          bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest -n auto -m 'not composio and not model_onboarding and not schemathesis' \
+          # -p no:randomly: pytest-split slices the COLLECTED ORDER into 6
+          # chunks, and pytest-randomly shuffles that order with a fresh seed
+          # per runner — six differently-shuffled lists sliced positionally
+          # neither cover the suite nor stay disjoint. Measured on one PR run:
+          # 9,817 distinct tests executed of ~14,100 collected, 3,540 ran in
+          # more than one shard, and ~4,300 ran in NO shard — silently, with
+          # every shard green. Random ordering still applies inside the
+          # unsharded lanes; the split itself must be deterministic.
+          bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest -n auto -p no:randomly -m 'not composio and not model_onboarding and not schemathesis' \
             --splits 6 --group ${{ matrix.shard }} \
             --ignore=tests/integration/real/test_device_bridge_e2e.py \
             --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
