@@ -61,10 +61,14 @@ class DodoPaymentData(BaseModel):
     total_amount: int
     settlement_amount: int
     settlement_currency: str
-    tax: int
-    settlement_tax: int
+    # Null whenever the payment never settled or no method was captured — a declined
+    # authorization or an abandoned checkout arrives with all three unset. Modelling
+    # them as required rejected those payloads, and since the endpoint answers 200 by
+    # design the event was acked and lost rather than retried.
+    tax: int | None = None
+    settlement_tax: int | None = None
     status: str
-    payment_method: str
+    payment_method: str | None = None
     card_network: str | None = None
     card_type: str | None = None
     card_last_four: str | None = None

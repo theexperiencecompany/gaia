@@ -1313,6 +1313,33 @@ class TestHandlePaymentSucceeded:
 class TestHandlePaymentFailed:
     """Tests for _handle_payment_failed."""
 
+    async def test_processes_a_failure_whose_tax_and_method_are_null(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_users_collection,
+        mock_track_payment,
+    ):
+        """Regression: Dodo sends null tax/settlement_tax/payment_method when a payment
+        fails before anything settles or a method is captured. Modelling them as
+        required int/str rejected the payload, and because the endpoint answers 200 the
+        event was acked and dropped with no retry — the failed payment was never
+        tracked."""
+        payload = {
+            **PAYMENT_DATA_PAYLOAD,
+            "status": "failed",
+            "tax": None,
+            "settlement_tax": None,
+            "payment_method": None,
+        }
+        event_data = _make_webhook_event("payment.failed", payload)
+
+        result = await webhook_service.process_webhook(event_data, "wh_fail_null")
+
+        assert result.status == "processed"
+        assert result.payment_id == "pay_001"
+        mock_track_payment.assert_called_once()
+
     async def test_processes_payment_failure(
         self,
         webhook_service,
