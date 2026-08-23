@@ -92,25 +92,14 @@ export function PostPaymentReceipt({
       <ReceiptPrinter.Root stage={stage}>
         <ReceiptPrinter.Machine>
           <ReceiptPrinter.Header>
-            {/* The wordmark sits on the machine body: dark plastic in light
-                mode takes the white lockup, the light body of dark mode takes
-                the black one. */}
+            {/* The machine is always the dark charcoal unit, so the white
+                lockup sits top-left in both themes. */}
             <Image
               alt="GAIA"
-              className="block dark:hidden"
+              className="block"
               height={30}
               priority
               src="/images/logos/text_w_logo_white.webp"
-              style={{ height: 20, width: "auto" }}
-              width={100}
-            />
-            <Image
-              alt=""
-              aria-hidden="true"
-              className="hidden dark:block"
-              height={30}
-              priority
-              src="/images/logos/text_w_logo_black.webp"
               style={{ height: 20, width: "auto" }}
               width={100}
             />
@@ -163,23 +152,18 @@ export function PostPaymentReceipt({
               unlocked — welcome aboard.
             </p>
             {subscriptionRef && (
-              <>
-                <div
-                  aria-hidden="true"
-                  className="mt-5 flex h-12 items-stretch justify-center gap-[2px]"
-                >
-                  {bars.map((bar) => (
-                    <span
-                      className="bg-zinc-950"
-                      key={bar.barKey}
-                      style={{ width: bar.width }}
-                    />
-                  ))}
-                </div>
-                <p className="mt-1.5 text-center text-[10px] tracking-[0.25em] opacity-60">
-                  {subscriptionRef}
-                </p>
-              </>
+              <div
+                aria-hidden="true"
+                className="mt-5 flex h-12 items-stretch justify-center gap-[2px]"
+              >
+                {bars.map((bar) => (
+                  <span
+                    className="bg-zinc-950"
+                    key={bar.barKey}
+                    style={{ width: bar.width }}
+                  />
+                ))}
+              </div>
             )}
           </ReceiptPrinter.Paper>
         </ReceiptPrinter.Output>
