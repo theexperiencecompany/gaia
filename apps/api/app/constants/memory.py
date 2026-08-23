@@ -51,6 +51,36 @@ try:
 except ValueError:
     EMBEDDING_SIDECAR_MAX_CONCURRENCY = _default_sidecar_concurrency
 
+# Request bounds (#918). ONNX activation memory scales with batch x tokens:
+# fastembed's default internal batch of 256 texts materializes multi-GB peaks
+# (measured: one 32-text request of ~1600-char passages pushed peak RSS past
+# the prod container limit), so every fastembed forward pass is capped to
+# MAX_BATCH_TEXTS and oversized HTTP calls are split into chunks of at most
+# MAX_BATCH_TEXTS / MAX_BATCH_CHARS before leaving the client. Single texts
+# beyond MAX_TEXT_CHARS are rejected outright - they tokenize far beyond the
+# model's 512-token window and are always a caller bug. Vectors are unchanged
+# by either split (mean pooling is per sequence; measured cosine delta < 1e-7).
+EMBEDDING_SIDECAR_MAX_BATCH_TEXTS = int(os.getenv("MEMORY_SIDECAR_MAX_BATCH_TEXTS", "16"))
+EMBEDDING_SIDECAR_MAX_BATCH_CHARS = int(os.getenv("MEMORY_SIDECAR_MAX_BATCH_CHARS", "64_000"))
+EMBEDDING_SIDECAR_MAX_TEXT_CHARS = int(os.getenv("MEMORY_SIDECAR_MAX_TEXT_CHARS", "65_000"))
+
+# How many times a transiently-failing sidecar call (503/429/connection reset)
+# is retried before giving up — memory saves must survive a brief overload
+# window instead of being dropped, while persistent failures still fail loud.
+# Clamped at the floor: a negative budget would retry forever, which no
+# misconfiguration should be able to cause.
+EMBEDDING_SIDECAR_RETRIES = max(0, int(os.getenv("MEMORY_SIDECAR_RETRIES", "2")))
+# Fixed backoff between retry attempts.
+EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS = max(
+    0.0, float(os.getenv("MEMORY_SIDECAR_RETRY_MAX_WAIT_SECONDS", "5"))
+)
+
+# How long a sidecar request may wait for a free inference slot before failing
+# with 503 instead of queueing invisibly until the client's own timeout.
+EMBEDDING_SIDECAR_SLOT_WAIT_SECONDS = max(
+    0.0, float(os.getenv("MEMORY_SIDECAR_SLOT_WAIT_SECONDS", "20"))
+)
+
 # Persistent on-disk cache for the fastembed model weights. Set in prod (on the
 # embedding sidecar) to a mounted volume so the ~1.85GB download happens ONCE
 # rather than on every restart/redeploy (measured ~148s cold-load). Unset falls

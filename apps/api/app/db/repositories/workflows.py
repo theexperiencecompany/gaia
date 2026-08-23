@@ -38,6 +38,11 @@ from app.models.workflow_models import (
 )
 from app.utils.creator import creator_lookup_stage
 
+# The scheduler's occurrence field, written by every arm/re-arm path and pinned
+# by the stale-fire claim gate. One constant keeps the dotted key from drifting
+# between the writers and the gate.
+NEXT_RUN_FIELD = "trigger_config.next_run"
+
 # Cron-driven workflows only carry a non-empty ``repeat``; manual / integration /
 # todo workflows default to status="scheduled" with ``scheduled_at=now``, so the
 # pending scan must exclude them or it would re-run the agent every pass.
@@ -451,7 +456,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
                     "trigger_config.composio_trigger_ids": trigger_ids,
                     "status": ScheduledTaskStatus.SCHEDULED.value,
                     "scheduled_at": next_run,
-                    "trigger_config.next_run": next_run,
+                    NEXT_RUN_FIELD: next_run,
                     "deactivated_reason": None,
                 }
             },
@@ -492,19 +497,30 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             {"_id": workflow_id}, {"$set": set_fields}, scope=REPO_GLOBAL_SCOPE
         )
 
-    async def claim_for_execution(self, workflow_id: str) -> bool:
+    async def claim_for_execution(
+        self, workflow_id: str, *, expected_next_run: datetime | None = None
+    ) -> bool:
         """Atomically claim a live, idle workflow for a fire (SCHEDULED -> EXECUTING).
 
         Returns ``False`` — and the caller skips the fire — when the workflow is not
         both ``activated`` and ``status="scheduled"`` (a concurrent recovery scan
         already claimed it, or it was deactivated but a deferred job fired anyway).
+
+        ``expected_next_run`` pins the occurrence the fire was armed for: ARQ has
+        no job cancellation, so after a reschedule the old deferred job still
+        fires — but ``trigger_config.next_run`` has moved on, and the mismatch
+        rejects it. Jobs enqueued before this stamp existed pass ``None`` and
+        claim exactly as before.
         """
+        filter_: dict[str, Any] = {
+            "_id": workflow_id,
+            "activated": True,
+            "status": ScheduledTaskStatus.SCHEDULED.value,
+        }
+        if expected_next_run is not None:
+            filter_[NEXT_RUN_FIELD] = expected_next_run
         result = await self._apply_raw_update(
-            {
-                "_id": workflow_id,
-                "activated": True,
-                "status": ScheduledTaskStatus.SCHEDULED.value,
-            },
+            filter_,
             {"$set": {"status": ScheduledTaskStatus.EXECUTING.value}},
             scope=REPO_GLOBAL_SCOPE,
         )
@@ -541,7 +557,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         if repeat is not None:
             set_fields["repeat"] = repeat
         if not isinstance(next_run, _Unset):
-            set_fields["trigger_config.next_run"] = next_run
+            set_fields[NEXT_RUN_FIELD] = next_run
         result = await self._apply_raw_update(
             filter_, {"$set": set_fields}, scope=REPO_GLOBAL_SCOPE
         )

@@ -26,50 +26,78 @@ concurrency:
   group: code-quality-${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   # --- Change detection (no toolchain install) -----------------------------
-  # Skips whole language lanes a PR doesn't touch; lanes still self-scope to
-  # exact changed files. Push/dispatch → __FULL__ → everything runs.
+  # Unified with main.yml detect: uses nx-set-shas + nx show projects --affected
+  # with same base (origin/master via NX_BASE/NX_HEAD) so both workflows
+  # agree on what "affected" means. Push/dispatch → __FULL__ semantics via
+  # workflow_dispatch branch; PRs use --affected. No changed-files.sh grep.
   changes:
     name: Detect changed languages
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
     outputs:
       has_python: ${{ steps.detect.outputs.has_python }}
       has_typescript: ${{ steps.detect.outputs.has_typescript }}
       has_alert_rules: ${{ steps.detect.outputs.has_alert_rules }}
+      python_projects: ${{ steps.detect.outputs.python_projects }}
+      typescript_projects: ${{ steps.detect.outputs.typescript_projects }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - name: Detect changed languages
+          persist-credentials: false
+
+      - uses: nrwl/nx-set-shas@afb73a62d26e41464e9254689e1fd6122ee683c1 # v5.0.1
+        with:
+          main-branch-name: master
+
+      - uses: ./.github/actions/setup-node-pnpm
+
+      - name: Detect affected projects
         id: detect
         run: |
           set -euo pipefail
-          # Deliberate superset (toml/lock/json/yaml include dep manifests):
-          # lanes still self-skip when nothing relevant changed.
-          # No `| head` — closing the pipe early SIGPIPEs the script (exit 141).
-          py_files=$(scripts/ci/changed-files.sh py toml lock)
-          ts_files=$(scripts/ci/changed-files.sh ts tsx js jsx mjs cjs json jsonc css yaml)
-          py=${py_files%%$'\n'*}
-          ts=${ts_files%%$'\n'*}
-          # The alert-rules lane is path-scoped, not language-scoped: the rules,
-          # the extractor, the test fixtures, and the pint config.
-          alert_files=$(scripts/ci/changed-files.sh yaml hcl py sh)
-          if [ "$alert_files" = "__FULL__" ]; then
-            alerts=true
-          else
-            # Here-string, not a pipe: `grep -q` exits on the first match and
-            # SIGPIPEs `printf`, which pipefail turns into exit 141 -> a false
-            # `alerts=false` that silently skips the lane (the bug at line 53).
-            alerts=$(grep -qE '^(infra/docker/observability/grafana/provisioning/alerting/|tools/alert-rules/|config/pint\.hcl$)' <<< "$alert_files" \
-              && echo true || echo false)
-          fi
-          echo "has_python=$([[ -n "$py" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-          echo "has_typescript=$([[ -n "$ts" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-          echo "has_alert_rules=$alerts" >> "$GITHUB_OUTPUT"
-          echo "python: ${py:-none} | typescript: ${ts:-none} | alert-rules: $alerts"
+          normalize() { tr -d '[]"' | tr -s ' \n' ',' | sed 's/^,//; s/,$//'; }
 
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            PY=$(pnpm exec nx show projects --projects 'tag:scope:python' | normalize)
+            TS=$(pnpm exec nx show projects --projects 'tag:scope:typescript' | normalize)
+            ALERTS=true
+          else
+            PY=$(pnpm exec nx show projects --affected --projects 'tag:scope:python' | normalize)
+            TS=$(pnpm exec nx show projects --affected --projects 'tag:scope:typescript' | normalize)
+            # Alert rules are path-scoped, not tag-scoped: derive from affected files
+            # using the same base nx uses (NX_BASE). Falls back to origin/master.
+            BASE="${NX_BASE:-origin/master}"
+            HEAD="${NX_HEAD:-HEAD}"
+            # No fetch needed: the checkout above is fetch-depth: 0, so every
+            # remote branch (and nx-set-shas' base SHA) is already local.
+            AFFECTED_FILES=$(git diff --name-only "$BASE...$HEAD" 2>/dev/null || git diff --name-only "origin/master...HEAD" 2>/dev/null || echo "__FULL__")
+            if [[ "$AFFECTED_FILES" == "__FULL__" ]]; then
+              ALERTS=true
+            elif echo "$AFFECTED_FILES" | grep -qE '^(infra/docker/observability/grafana/provisioning/alerting/|tools/alert-rules/|config/pint\.hcl$)'; then
+              ALERTS=true
+            else
+              ALERTS=false
+            fi
+          fi
+
+          echo "python_projects=$PY" >> "$GITHUB_OUTPUT"
+          echo "typescript_projects=$TS" >> "$GITHUB_OUTPUT"
+          echo "has_python=$([[ -n "$PY" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "has_typescript=$([[ -n "$TS" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "has_alert_rules=$ALERTS" >> "$GITHUB_OUTPUT"
+          echo "python: ${PY:-none} | typescript: ${TS:-none} | alert-rules: $ALERTS"
+          echo "Affected Python: $PY"
+          echo "Affected TypeScript: $TS"
   # --- Biome lint + format -------------------------------------------------
   biome:
     name: Biome lint + format
@@ -78,9 +106,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - name: Lint and format check across all TS/JS/JSON/CSS files
         run: |
@@ -111,25 +140,33 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - name: All workspace packages agree on dep versions (syncpack)
         run: |
+          trap 'echo "::error::repro: pnpm exec syncpack lint --config config/.syncpackrc.json"' ERR
           echo "::group::syncpack lint"
           pnpm exec syncpack lint --config config/.syncpackrc.json
           echo "::endgroup::"
+          echo "### Deps (syncpack) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "syncpack: OK (dep versions and semver ranges consistent)"
       - name: Workspace topology is valid (manypkg)
         run: |
+          trap 'echo "::error::repro: pnpm exec manypkg check"' ERR
           echo "::group::manypkg check"
           pnpm exec manypkg check
           echo "::endgroup::"
+          echo "### Deps (manypkg) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "manypkg: OK (workspace structure valid)"
       - name: package.json shape conforms (npm-package-json-lint)
         run: |
+          trap 'echo "::error::repro: pnpm run quality:pkg-json"' ERR
           echo "::group::package.json lint"
           pnpm run quality:pkg-json
           echo "::endgroup::"
+          echo "### Deps (pkg-json) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "pkg-json: OK (all package.json files conform to schema)"
 
   # --- Circular dependency check ------------------------------------------
@@ -140,13 +177,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - name: Circular dependency scan (Biome)
         run: |
+          trap 'echo "::error::repro: pnpm run quality:circular"' ERR
           echo "::group::biome lint --only=suspicious/noImportCycles"
           pnpm run quality:circular
           echo "::endgroup::"
+          echo "### Circular deps — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "Circular deps: OK (no cycles found)"
 
   # --- File size limit (per-extension + allowlist + hard cap) -------------
@@ -157,9 +198,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - name: Per-file line count (default 400, relaxed 700, hard cap 1200)
         run: |
@@ -174,6 +216,7 @@ jobs:
             CHANGED_FILES="$FILES" node scripts/ci/check-file-sizes.mjs
           fi
           echo "::endgroup::"
+          echo "### File size — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "File size: OK (no hard-cap violations)"
 
   # --- Types must live in dedicated type files ----------------------------
@@ -184,9 +227,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - name: Type / interface / enum location enforcer
         run: |
@@ -201,6 +245,7 @@ jobs:
             CHANGED_FILES="$FILES" node scripts/ci/check-types-location.mjs --enforce
           fi
           echo "::endgroup::"
+          echo "### Types location — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "Type colocation: OK (no file exports > 3 types unless in *.types.ts)"
 
   # --- Components-per-file ------------------------------------------------
@@ -211,9 +256,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - name: Components-per-file enforcer
         run: |
@@ -228,6 +274,7 @@ jobs:
             CHANGED_FILES="$FILES" node scripts/ci/check-components-per-file.mjs
           fi
           echo "::endgroup::"
+          echo "### Components per file — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "Components: OK (no file declares > 2 React components)"
 
   # --- Copy-paste detection -----------------------------------------------
@@ -238,22 +285,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - name: Copy-paste detection (jscpd, fails over 3% on changed lines)
         run: |
           trap 'echo "::error::repro: pnpm run quality:dupe"' ERR
           echo "::group::jscpd"
-          # Timeout + low-speed guard: a stalled HTTPS fetch dies in <=60s rather
-          # than hanging until the job's timeout-minutes cap (a `cancelled` lane
-          # that fails the quality gate). Not `|| true` — jscpd needs the base ref,
-          # so a genuine fetch failure must still fail the lane.
-          timeout 60 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 \
-            fetch --no-tags origin "$GITHUB_BASE_REF"
+          # No fetch: the checkout above is fetch-depth: 0, so
+          # origin/$GITHUB_BASE_REF — the ref check-duplication.mjs diffs
+          # against — is already local.
           pnpm run quality:dupe
           echo "::endgroup::"
+          echo "### Duplicates (jscpd) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "Duplicates: OK (<= 3% on changed lines)"
 
   # --- Published package hygiene ------------------------------------------
@@ -264,16 +310,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - name: publint — validate packages/cli npm metadata
         run: |
+          trap 'echo "::error::repro: pnpm run quality:publint"' ERR
           echo "::group::publint packages/cli"
           pnpm run quality:publint
           echo "::endgroup::"
+          echo "### Package hygiene (publint) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "publint: OK (packages/cli npm metadata is valid)"
       - name: are-the-types-wrong — validate type exports
         run: |
+          trap 'echo "::error::repro: pnpm run quality:attw"' ERR
           echo "::group::attw packages/cli"
           OUTPUT=$(pnpm run quality:attw 2>&1)
           echo "$OUTPUT"
@@ -282,6 +333,7 @@ jobs:
             echo "attw: OK (packages/cli is a CLI binary — no exported types is expected)"
           else
             echo "::endgroup::"
+          echo "### Package hygiene (attw) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
             echo "attw: OK (type exports resolve across CJS/ESM/node16/bundler)"
           fi
 
@@ -293,20 +345,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - name: tsc --noEmit across web, desktop, mobile, cli, bots
         run: |
           echo "::group::nx type-check"
           if [ -n "${GITHUB_BASE_REF:-}" ]; then
-            # Timeout + low-speed guard so a stalled HTTPS fetch fails fast instead
-            # of hanging until the job's timeout-minutes cap (which surfaces as a
-            # `cancelled` lane and fails the quality gate). nx affected falls back
-            # to whatever base ref is already local if the fetch is skipped.
-            timeout 60 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 \
-              fetch --no-tags --depth=1 origin "$GITHUB_BASE_REF" 2>/dev/null || true
+            # No fetch: the checkout above is fetch-depth: 0, so
+            # origin/$GITHUB_BASE_REF is already local for nx affected.
             # Exclude Python projects (api, voice-agent): their type-check
             # runs mypy via uv, which isn't installed in this Node-only job, and
             # Python typing is already enforced by the dedicated python-mypy lane.
@@ -317,23 +366,39 @@ jobs:
           echo "::endgroup::"
           echo "TypeScript: OK (all affected workspaces pass strict tsc)"
 
-  # --- Python ruff --------------------------------------------------------
-  python-ruff:
-    name: Python ruff (strict rule set)
+  # --- Python static analysis (ruff + xenon + interrogate + security) ------
+  # One job, not four: each of these tools is seconds of work behind ~40s of
+  # runner boot + checkout + uv install, so four separate lanes spent most of
+  # their wall-clock on setup and burned four runners to do it. They share the
+  # exact same environment (uv 0.8.17, no dependency install), so they share
+  # one job.
+  #
+  # Failure isolation is preserved by `continue-on-error` on every tool step
+  # plus the aggregating verdict at the end: one red tool no longer hides the
+  # other five, which is the only thing separate jobs bought us here.
+  python-static:
+    name: Python static (ruff + custom lints + xenon + interrogate + bandit + pip-audit)
     needs: [changes]
     if: needs.changes.outputs.has_python == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # The six tools now run serially in one job, so the cap is the sum of what
+    # the four old lanes allowed themselves in parallel (10 + 5 + 5 + 10),
+    # halved for headroom. A too-tight cap surfaces as a `cancelled` lane,
+    # which fails the quality gate for a reason nobody can read.
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           version: "0.8.17"
           enable-cache: true
           prune-cache: true
       - name: ruff check + format (PL, RUF, FAST, S, B, A, COM, C4, DTZ, ISC, RET, SIM, ARG, PTH, TRY, PERF, UP, FURB, LOG, G + more)
+        id: ruff
+        continue-on-error: true
         # Pinned to the uv.lock ruff version — bump both together. Unpinned,
         # a ruff release can flip this lane red with zero code changes
         # (0.16.0 shipped ISC004/RUF036 four minutes before a run here).
@@ -360,12 +425,16 @@ jobs:
           echo "::endgroup::"
           echo "ruff: OK (strict rule set passes; every file is already formatted)"
       - name: Custom Python AST lints (route contract, no service classes, wide events, repository boundaries)
+        id: custom-lints
+        continue-on-error: true
         run: |
           echo "::group::custom lints"
           python3 tools/lints/run.py apps/api/app
           echo "::endgroup::"
           echo "Custom lints: OK (4 rules pass)"
       - name: Ruff ignore-list ratchet (ignore / per-file-ignores may only shrink)
+        id: ignore-ratchet
+        continue-on-error: true
         # Also a pre-commit hook, but that one is bypassable with --no-verify and
         # the lists it guards are exactly what a red build tempts you to edit.
         run: |
@@ -373,6 +442,103 @@ jobs:
           python3 tools/lints/check_ignore_ratchet.py
           echo "::endgroup::"
           echo "ignore-ratchet: OK (no ruff rule was switched off)"
+      - name: Complexity scan (max-absolute F, max-modules E, max-average B)
+        id: xenon
+        continue-on-error: true
+        run: |
+          trap 'echo "::error::repro: uvx xenon --max-absolute F --max-modules E --max-average B"' ERR
+          echo "::group::xenon"
+          FILES=$(scripts/ci/changed-py-source.sh)
+          if [ "$FILES" = "__FULL__" ]; then
+            uvx xenon \
+              --max-absolute F \
+              --max-modules E \
+              --max-average B \
+              apps/api apps/voice-agent libs/shared/py \
+              -e 'apps/api/tests/**' \
+              -e 'apps/api/scripts/**' \
+              -e 'libs/shared/py/tests/**'
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            uvx xenon \
+              --max-absolute F \
+              --max-modules E \
+              --max-average B \
+              $FILES
+          fi
+          echo "::endgroup::"
+          echo "### Complexity (xenon) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Complexity: OK (no module exceeds rank D, codebase average ≤ B)"
+      - name: Docstring coverage on public API surface
+        id: interrogate
+        continue-on-error: true
+        run: |
+          trap 'echo "::error::repro: uvx interrogate -c pyproject.toml"' ERR
+          echo "::group::interrogate"
+          FILES=$(scripts/ci/changed-py-source.sh)
+          if [ "$FILES" = "__FULL__" ]; then
+            uvx interrogate -c pyproject.toml apps/api apps/voice-agent libs/shared/py
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            uvx interrogate -c pyproject.toml $FILES
+          fi
+          echo "::endgroup::"
+          echo "### Docstring coverage — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Docstrings: OK (coverage ≥ 80%)"
+      # Both security scans are blocking: PRs go red on HIGH/CRITICAL.
+      # Previously advisory due to pre-existing findings; those must be fixed
+      # or explicitly ignored per finding.
+      - name: Bandit security scan (zero-warning policy)
+        id: bandit
+        continue-on-error: true
+        run: |
+          trap 'echo "::error::repro: uvx bandit -c pyproject.toml"' ERR
+          echo "::group::bandit (low severity, low confidence — no exclusions)"
+          FILES=$(scripts/ci/changed-py-source.sh)
+          if [ "$FILES" = "__FULL__" ]; then
+            uvx bandit -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low 2>&1 | tee /tmp/bandit.out; _rc=${PIPESTATUS[0]}; cat /tmp/bandit.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            uvx bandit -c pyproject.toml $FILES --severity-level low --confidence-level low 2>&1 | tee /tmp/bandit.out; _rc=${PIPESTATUS[0]}; cat /tmp/bandit.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
+          fi
+          echo "::endgroup::"
+          echo "### Bandit — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Security: OK (0 issues across all severity levels)"
+      - name: pip-audit (dependency CVEs — blocking)
+        id: pip-audit
+        continue-on-error: true
+        run: |
+          trap 'echo "::error::repro: uv export + pip-audit"' ERR
+          echo "::group::pip-audit dependency scan"
+          uv export --frozen --no-emit-workspace -o /tmp/gaia-requirements.txt
+          uvx --no-build pip-audit==2.10.1 --strict --skip-editable --disable-pip --ignore-vuln GHSA-wj6h-64fc-37mp --ignore-vuln PYSEC-2026-1325 -r /tmp/gaia-requirements.txt
+          echo "::endgroup::"
+          echo "### pip-audit — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "pip-audit: OK (no CVEs)"
+      - name: Verdict (every tool above ran; this fails if any of them did not pass)
+        if: always()
+        env:
+          # Step outcomes passed through env to match the quality gate's
+          # no-inline-expansion convention.
+          RUFF: ${{ steps.ruff.outcome }}
+          CUSTOM_LINTS: ${{ steps.custom-lints.outcome }}
+          IGNORE_RATCHET: ${{ steps.ignore-ratchet.outcome }}
+          XENON: ${{ steps.xenon.outcome }}
+          INTERROGATE: ${{ steps.interrogate.outcome }}
+          BANDIT: ${{ steps.bandit.outcome }}
+          PIP_AUDIT: ${{ steps.pip-audit.outcome }}
+        run: |
+          bash scripts/ci/check-step-outcomes.sh \
+            "ruff=$RUFF" \
+            "custom-lints=$CUSTOM_LINTS" \
+            "ignore-ratchet=$IGNORE_RATCHET" \
+            "xenon=$XENON" \
+            "interrogate=$INTERROGATE" \
+            "bandit=$BANDIT" \
+            "pip-audit=$PIP_AUDIT"
 
   # --- Python mypy --------------------------------------------------------
   python-mypy:
@@ -382,10 +548,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           version: "0.8.17"
           enable-cache: true
@@ -447,131 +614,6 @@ jobs:
           echo "::endgroup::"
           echo "mypy: OK (no type errors)"
 
-  # --- Python docstring coverage ------------------------------------------
-  python-interrogate:
-    name: Python docstring coverage (interrogate ≥ 80%)
-    needs: [changes]
-    if: needs.changes.outputs.has_python == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
-        with:
-          version: "0.8.17"
-          enable-cache: true
-          prune-cache: true
-      - name: Docstring coverage on public API surface
-        run: |
-          echo "::group::interrogate"
-          FILES=$(scripts/ci/changed-py-source.sh)
-          if [ "$FILES" = "__FULL__" ]; then
-            uvx interrogate -c pyproject.toml apps/api apps/voice-agent libs/shared/py
-          elif [ -z "$FILES" ]; then
-            echo "No matching changed files — skipping."
-          else
-            uvx interrogate -c pyproject.toml $FILES
-          fi
-          echo "::endgroup::"
-          echo "Docstrings: OK (coverage ≥ 80%)"
-
-  # --- Python cyclomatic complexity ---------------------------------------
-  python-xenon:
-    name: Python cyclomatic complexity (xenon)
-    needs: [changes]
-    if: needs.changes.outputs.has_python == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
-        with:
-          version: "0.8.17"
-          enable-cache: true
-          prune-cache: true
-      - name: Complexity scan (max-absolute F, max-modules E, max-average B)
-        run: |
-          echo "::group::xenon"
-          FILES=$(scripts/ci/changed-py-source.sh)
-          if [ "$FILES" = "__FULL__" ]; then
-            uvx xenon \
-              --max-absolute F \
-              --max-modules E \
-              --max-average B \
-              apps/api apps/voice-agent libs/shared/py \
-              -e 'apps/api/tests/**' \
-              -e 'apps/api/scripts/**' \
-              -e 'libs/shared/py/tests/**'
-          elif [ -z "$FILES" ]; then
-            echo "No matching changed files — skipping."
-          else
-            uvx xenon \
-              --max-absolute F \
-              --max-modules E \
-              --max-average B \
-              $FILES
-          fi
-          echo "::endgroup::"
-          echo "Complexity: OK (no module exceeds rank D, codebase average ≤ B)"
-
-  # --- Python security (bandit gates; pip-audit advisory) -----------------
-  python-security:
-    name: Python security (bandit; pip-audit advisory)
-    needs: [changes]
-    if: needs.changes.outputs.has_python == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
-        with:
-          version: "0.8.17"
-          enable-cache: true
-          prune-cache: true
-      - name: Bandit security scan (zero-warning policy)
-        run: |
-          echo "::group::bandit (low severity, low confidence — no exclusions)"
-          FILES=$(scripts/ci/changed-py-source.sh)
-          if [ "$FILES" = "__FULL__" ]; then
-            uvx bandit -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low
-          elif [ -z "$FILES" ]; then
-            echo "No matching changed files — skipping."
-          else
-            uvx bandit -c pyproject.toml $FILES --severity-level low --confidence-level low
-          fi
-          echo "::endgroup::"
-          echo "Security: OK (0 issues across all severity levels)"
-      - name: pip-audit (dependency CVEs)
-        # Kept advisory (not blocking) because the resolved dependency set has
-        # real, currently-unresolved CVEs as of this lane's introduction (see
-        # PR description) — flipping this to blocking today would red every
-        # PR for pre-existing findings, not new ones this PR caused. Re-audit
-        # after the flagged packages are upgraded, then remove
-        # continue-on-error the same way the other lanes' markers were added.
-        continue-on-error: true
-        run: |
-          echo "::group::pip-audit dependency scan"
-          # pip-audit has no native uv.lock reader, so export the uv workspace's
-          # fully resolved + hashed dependency set (apps/api, apps/voice-agent,
-          # libs/shared/py) and audit that snapshot. --disable-pip means no venv
-          # or network installs are needed — hashed, pinned requirements are
-          # enough for pip-audit to identify each exact release. (Auditing the
-          # bare `uvx pip-audit` tool environment, as a prior version of this
-          # step did, silently audited pip-audit's own deps instead of GAIA's.)
-          uv export --frozen --no-emit-workspace -o /tmp/gaia-requirements.txt
-          # Pinned + wheels-only: an unpinned `uvx` resolves the newest release at
-          # run time and builds sdists, so the audit tool itself is unreviewed code
-          # executing setup scripts in CI. Bump deliberately, like the ruff lane.
-          uvx --no-build pip-audit==2.10.1 --strict --skip-editable --disable-pip -r /tmp/gaia-requirements.txt
-          echo "::endgroup::"
-          echo "pip-audit: informational — review CVEs above (does not fail CI)"
-
   # --- Observability score (evlog map) ------------------------------------
   # Python port of evlog's `map` (tools/evlog_map): scores every FastAPI/ARQ
   # entry point on wide-event instrumentation, weighted so money/auth routes
@@ -587,13 +629,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       # Node toolchain only for the bots scanner (TS compiler API needs
       # node_modules); the Python scanner stays stdlib-only.
       - uses: ./.github/actions/setup-node-pnpm
-      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           version: "0.8.17"
           enable-cache: true
@@ -607,6 +650,7 @@ jobs:
       - name: Scanner self-tests
         run: |
           set -euo pipefail
+          trap 'echo "::error::repro: uvx pytest tools/evlog_map tools/logcheck -q"' ERR
           uvx --no-build pytest@9.1.1 tools/evlog_map tools/logcheck -q
           echo "scanner self-tests: OK (evlog map rules + log-contract invariants)"
       # --min-score 100 gates BOTH quality and discovery: an empty map scores
@@ -622,6 +666,7 @@ jobs:
           echo "evlog map — bots surface (apps/bots + libs/shared/ts)"
           node scripts/ci/evlog-map-bots.mjs --min-score 100
           echo "observability: full scores above; per-entry detail in the job summary only"
+          echo "### Observability — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
       - name: Changed-files regression gate (per-file, score must not drop)
         if: github.event_name == 'pull_request'
         run: |
@@ -674,18 +719,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
-      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           version: "0.8.17"
           enable-cache: true
           prune-cache: true
       - name: Emit real events from both runtimes and diff their shapes
         run: |
+          trap 'echo "::error::repro: python3 scripts/ci/wide-event-conformance/run.py --show-capture"' ERR
           echo "::group::wide-event conformance"
           python3 scripts/ci/wide-event-conformance/run.py --show-capture
           echo "::endgroup::"
+          echo "### Wide-event conformance — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "wide events: OK (Python and TypeScript emit one shape)"
 
   # --- Dead code detection (knip + vulture) — enforced ---------------------
@@ -700,9 +749,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
-      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           version: "0.8.17"
           enable-cache: true
@@ -714,9 +765,11 @@ jobs:
           echo "::endgroup::"
       - name: knip (TypeScript) + vulture (Python) dead-code scan (strict)
         run: |
+          trap 'echo "::error::repro: bash scripts/dead-code-check.sh --strict"' ERR
           echo "::group::dead-code scan"
           bash scripts/dead-code-check.sh --strict --verbose
           echo "::endgroup::"
+          echo "### Dead code — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "Dead code: OK (no unused TS or Python code)"
 
   # --- Grafana alert rules (pint + promtool) ------------------------------
@@ -744,8 +797,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           version: "0.8.17"
           enable-cache: true
@@ -770,30 +825,38 @@ jobs:
           echo "pint v0.87.0 + promtool v3.1.0 installed"
       - name: Extract rules and enforce test coverage (no silent skips)
         run: |
+          trap 'echo "::error::repro: uv run --no-build tools/alert-rules/extract_promql.py"' ERR
           echo "::group::extract"
           # --no-build forbids building sdist deps from source; the pinned
           # pyyaml wheel is all this script needs.
           uv run --no-build tools/alert-rules/extract_promql.py -o tools/alert-rules/gaia-rules.yaml \
             --test-dir tools/alert-rules/tests
           echo "::endgroup::"
+          echo "### Alert rules (extract) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "Extraction: OK (every rule matched the A/B/C shape and has a test)"
       - name: pint lint (PromQL validity, impossible queries, fragile alerts)
         run: |
+          trap 'echo "::error::repro: pint --offline lint tools/alert-rules/gaia-rules.yaml"' ERR
           echo "::group::pint lint --offline"
           pint --no-color --offline --config config/pint.hcl lint tools/alert-rules/gaia-rules.yaml
           echo "::endgroup::"
+          echo "### Alert rules (pint) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "pint: OK (offline checks pass — promql/series still needs a run against a local Prometheus)"
       - name: promtool check rules (independent rule-file validation)
         run: |
+          trap 'echo "::error::repro: promtool check rules tools/alert-rules/gaia-rules.yaml"' ERR
           echo "::group::promtool check rules"
           promtool check rules tools/alert-rules/gaia-rules.yaml
           echo "::endgroup::"
+          echo "### Alert rules (promtool check) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "promtool: OK (rule file is valid)"
       - name: promtool test rules (every rule fires and stays quiet)
         run: |
+          trap 'echo "::error::repro: promtool test rules tools/alert-rules/tests/*.yaml"' ERR
           echo "::group::promtool test rules"
           promtool test rules tools/alert-rules/tests/*.yaml
           echo "::endgroup::"
+          echo "### Alert rules (promtool test) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "promtool: OK (all per-rule firing + quiet tests pass)"
 
   # --- Suppression baseline (no NEW inline lint-suppression comments) -----
@@ -808,12 +871,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Scan the tree for suppressions not covered by the checked-in baseline
         run: |
+          trap 'echo "::error::repro: python3 tools/lints/check_suppressions.py"' ERR
           echo "::group::suppression baseline"
           python3 tools/lints/check_suppressions.py
           echo "::endgroup::"
+          echo "### Suppression baseline — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "Suppression baseline: OK (no new inline suppression comments; baseline is tight)"
 
   # --- Secret scanning (gitleaks, diff-scoped) -----------------------------
@@ -833,11 +900,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Scan the PR diff for committed secrets
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
@@ -867,7 +935,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: semgrep scan (p/python over apps/api/app)
         # docker form: returntocorp/semgrep-action is deprecated upstream; the
         # image has no ENTRYPOINT, so the command must spell `semgrep`.
@@ -913,9 +983,10 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
       count: ${{ steps.plan.outputs.count }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Compute the mutation matrix
         id: plan
         run: bash scripts/ci/mutation-plan.sh
@@ -948,10 +1019,11 @@ jobs:
       matrix:
         include: ${{ fromJson(needs.test-mutation-plan.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           version: "0.8.17"
           enable-cache: true
@@ -973,7 +1045,7 @@ jobs:
         # above fails or the job is cancelled, so the evidence survives the
         # one scenario that has destroyed it five times.
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: mutation-log-${{ strategy.job-index }}
           path: shard.log
@@ -994,11 +1066,8 @@ jobs:
       - duplicates
       - package-hygiene
       - type-check
-      - python-ruff
+      - python-static
       - python-mypy
-      - python-interrogate
-      - python-xenon
-      - python-security
       - observability
       - wide-event-conformance
       - dead-code
@@ -1011,7 +1080,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Verdict
         env:
           # Lane results passed through env to avoid inline-expansion injection.
@@ -1025,11 +1096,8 @@ jobs:
           DUPLICATES: ${{ needs.duplicates.result }}
           PACKAGE_HYGIENE: ${{ needs.package-hygiene.result }}
           TYPE_CHECK: ${{ needs.type-check.result }}
-          PYTHON_RUFF: ${{ needs.python-ruff.result }}
+          PYTHON_STATIC: ${{ needs.python-static.result }}
           PYTHON_MYPY: ${{ needs.python-mypy.result }}
-          PYTHON_INTERROGATE: ${{ needs.python-interrogate.result }}
-          PYTHON_XENON: ${{ needs.python-xenon.result }}
-          PYTHON_SECURITY: ${{ needs.python-security.result }}
           OBSERVABILITY: ${{ needs.observability.result }}
           WIDE_EVENT_CONFORMANCE: ${{ needs.wide-event-conformance.result }}
           DEAD_CODE: ${{ needs.dead-code.result }}
@@ -1056,11 +1124,8 @@ jobs:
             [duplicates]="$DUPLICATES"
             [package-hygiene]="$PACKAGE_HYGIENE"
             [type-check]="$TYPE_CHECK"
-            [python-ruff]="$PYTHON_RUFF"
+            [python-static]="$PYTHON_STATIC"
             [python-mypy]="$PYTHON_MYPY"
-            [python-interrogate]="$PYTHON_INTERROGATE"
-            [python-xenon]="$PYTHON_XENON"
-            [python-security]="$PYTHON_SECURITY"
             [observability]="$OBSERVABILITY"
             [wide-event-conformance]="$WIDE_EVENT_CONFORMANCE"
             [dead-code]="$DEAD_CODE"
@@ -1073,10 +1138,9 @@ jobs:
           )
           LANES=(biome deps circular file-size types-location components-per-file \
                  duplicates package-hygiene type-check \
-                 python-ruff python-mypy python-interrogate python-xenon python-security \
+                 python-static python-mypy \
                  observability wide-event-conformance \
-                 dead-code alert-rules suppression-ratchet gitleaks semgrep \
-                 test-mutation-plan test-mutation)
+                 dead-code alert-rules suppression-ratchet gitleaks semgrep test-mutation-plan test-mutation)
 
           echo "::group::Per-lane results"
           for lane in "${LANES[@]}"; do

@@ -261,6 +261,10 @@ services:
       MEMORY_MODEL_CACHE_DIR: /models
       # Cap glibc malloc arenas (complements the ONNX arena being off).
       MALLOC_ARENA_MAX: "2"
+      # Measured (scripts/sidecar_benchmark/): 2 ORT threads per inference
+      # matches 4-thread throughput at high concurrency while using less peak
+      # RSS. Concurrency stays adaptive (cores / threads).
+      MEMORY_ONNX_THREADS: "2"
       # MEMORY_EMBEDDING_SIDECAR_URL MUST stay unset here so the sidecar serves
       # from its own local models rather than calling itself.
     secrets:
@@ -297,11 +301,11 @@ services:
         # for `embedding-sidecar` then drops, so every embed call fails).
       resources:
         limits:
-          # Working set under production load is ~3.0-3.1 GiB (two ONNX models
-          # — mxbai embedder + jina reranker — plus per-batch arenas that grow
-          # with batch_size, up to 40). The old 2560M cap sat below that, so
-          # the kernel OOM-killed it (exit 137) on first real traffic. 5G gives
-          # headroom; host has 15 GiB total / ~10 GiB free.
+          # Measured (#918 fix): floor ~1.9-2.1GB once both ONNX models are
+          # warm, peak ~2.4-2.5GB under sustained mixed load — batches are
+          # bounded server-side, so RSS no longer grows with request size
+          # (pre-fix soak peaked at 5.2GB and OOM-killed the old 2560M cap).
+          # 3072M keeps ~25% headroom over the measured peak.
           memory: 3072M
         reservations:
           memory: 2G

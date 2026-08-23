@@ -229,6 +229,14 @@ def test_bson_import_inside_db_is_clean(tmp_path: Path) -> None:
     assert repository_boundaries.check([path]) == []
 
 
+def test_bson_import_in_scripts_is_exempt(tmp_path: Path) -> None:
+    # Operational one-shot scripts work on raw documents across every store by
+    # design (run manually, never on a request path) — the boundary is exempt.
+    src = "from bson import ObjectId\n"
+    path = _write(tmp_path, "app/scripts/delete_user_account.py", src)
+    assert repository_boundaries.check([path]) == []
+
+
 def test_repository_public_method_returning_any_is_flagged(tmp_path: Path) -> None:
     src = (
         "from typing import Any\n"

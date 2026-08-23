@@ -99,7 +99,7 @@ Default to **less**. The code is the documentation — docstrings and comments e
 
 ### Tooling and the autofix hook
 
-After every `.py` edit, a PostToolUse hook runs `uvx ruff format` then `uvx ruff check --fix` on the file. Formatting, import order/grouping, `Optional[X]` → `X | None`, `Union[X, Y]` → `X | Y`, lowercase generics, unused imports, mutable default args, bare `except`, and `print` are corrected automatically — do not hand-fix them.
+After every `.py` edit, a PostToolUse hook runs `uv run --project apps/api --group dev ruff format` then `... ruff check --fix` on the file. Formatting, import order/grouping, `Optional[X]` → `X | None`, `Union[X, Y]` → `X | Y`, lowercase generics, unused imports, mutable default args, bare `except`, and `print` are corrected automatically — do not hand-fix them.
 
 What the hook does NOT fix, you handle:
 
