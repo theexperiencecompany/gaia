@@ -8,6 +8,7 @@ runtime-referenced model without a rate fails this suite instead of silently
 distorting COGS in prod.
 """
 
+from contextlib import AbstractContextManager
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -159,7 +160,7 @@ class TestAuxModelPricing:
         assert result["total_cost"] == pytest.approx(0.00257)
 
 
-def _with_rate(pricing: ModelPricing):
+def _with_rate(pricing: ModelPricing) -> AbstractContextManager[MagicMock]:
     """Patch the table lookup so arithmetic is asserted against a known rate."""
     return patch("app.config.model_pricing.get_model_pricing", MagicMock(return_value=pricing))
 
