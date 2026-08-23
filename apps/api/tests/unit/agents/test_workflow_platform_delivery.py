@@ -16,8 +16,10 @@ from app.agents.core.background.workflow_platform_delivery import (
     deliver_workflow_result_to_platforms,
 )
 from app.constants.general import NEW_MESSAGE_BREAKER
+from app.constants.log_tags import LogTag
 from app.models.chat_models import ConversationSource
 from app.services.outbound_delivery import OutboundResult
+from tests.helpers import captured_wide_event
 
 MODULE = "app.agents.core.background.workflow_platform_delivery"
 
@@ -131,6 +133,12 @@ class TestDeliverWorkflowResultToPlatforms:
             )
 
         assert session.await_count == 2
+        # The session must be resolved for THIS platform user and owner — a
+        # wrong id here delivers someone else's conversation GAIA's message.
+        first_session = session.await_args_list[0].kwargs
+        assert first_session["platform"] == "telegram"
+        assert first_session["platform_user_id"] == "tg-123"
+        assert first_session["user"] == USER
         assert update.await_count == 2
         # The full text is persisted as the bot message, split into ordered bubbles.
         for call in update.await_args_list:
@@ -144,6 +152,8 @@ class TestDeliverWorkflowResultToPlatforms:
         assert first_publish[2] == ["Report is ready.", "It has 3 pages."]
 
     async def test_failed_publish_is_logged_not_raised(self) -> None:
+        """A failed publish is swallowed — but observable: log.error lands in
+        the wide event's errors[], naming the platform and conversation."""
         with (
             patch(
                 f"{MODULE}.PlatformLinkService.get_linked_platforms", AsyncMock(return_value=LINKED)
@@ -156,9 +166,18 @@ class TestDeliverWorkflowResultToPlatforms:
                 AsyncMock(return_value=OutboundResult.FAILED),
             ),
         ):
-            await deliver_workflow_result_to_platforms(
-                user=USER, user_id=USER_ID, notification_text=TEXT, origin=self.ORIGIN
-            )
+            async with captured_wide_event() as event:
+                await deliver_workflow_result_to_platforms(
+                    user=USER, user_id=USER_ID, notification_text=TEXT, origin=self.ORIGIN
+                )
+
+        errors = [
+            e
+            for e in event["errors"]
+            if e["msg"] == f"{LogTag.AGENT} workflow platform publish failed"
+        ]
+        assert {e["platform"] for e in errors} == {"telegram", "slack"}
+        assert errors[0]["conversation_id"] == "tg-conv"
 
     async def test_a_failing_platform_does_not_block_the_other(self) -> None:
         with (

@@ -96,8 +96,6 @@ class ExecutorRun:
     workflow_id: str | None = None
     workflow_title: str = ""
     workflow_notify_on_completion: bool = True
-    #: The tracked todo this run is bound to (a scheduled-todo trigger fired it),
-    #: so a delivered result can name its origin for later backtracking.
     active_todo_id: str | None = None
 
     @classmethod

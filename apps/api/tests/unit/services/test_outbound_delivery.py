@@ -271,3 +271,34 @@ class TestPublishOutboundFile:
             "content_type": "application/pdf",
             "caption": "here you go",
         }
+
+
+class TestNotifyAccountLinked:
+    async def test_a_linked_bot_platform_gets_the_confirmation_with_its_display_name(self) -> None:
+        publisher = AsyncMock()
+        with (
+            patch.object(
+                od.PlatformLinkService,
+                "get_linked_platforms",
+                new_callable=AsyncMock,
+                return_value={"telegram": {"platformUserId": "tg-123"}},
+            ),
+            patch.object(
+                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
+            ),
+        ):
+            result = await od.notify_account_linked("telegram", "user-1")
+
+        assert result is od.OutboundResult.PUBLISHED
+        envelope = json.loads(publisher.publish_outbound.await_args.args[1])
+        assert envelope["destination_id"] == "tg-123"
+        # The friendly display name, not the raw enum value.
+        assert "Your Telegram account is now linked to GAIA." in envelope["text"]
+
+    async def test_a_non_bot_platform_is_skipped(self) -> None:
+        with patch.object(
+            od.PlatformLinkService, "get_linked_platforms", new_callable=AsyncMock
+        ) as linked:
+            result = await od.notify_account_linked("web", "user-1")
+        assert result is od.OutboundResult.SKIPPED
+        linked.assert_not_awaited()

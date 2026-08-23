@@ -25,6 +25,8 @@ from app.agents.prompts.comms_prompts import (
 )
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.general import NEW_MESSAGE_BREAKER
+from app.constants.log_tags import LogTag
+from tests.helpers import captured_wide_event
 
 MODULE = "app.agents.core.background.comms_narrator"
 
@@ -218,9 +220,13 @@ class TestRecordExecutorCancellation:
 class TestRecordPlatformDelivery:
     async def test_delivered_message_is_appended_to_the_checkpoint(self) -> None:
         graph = _fake_comms_graph()
-        with _patch_graph(graph):
+        get_graph = AsyncMock(return_value=graph)
+        with patch(f"{MODULE}.GraphManager.get_graph", get_graph):
             await record_platform_delivery(CONVERSATION_ID, "Report is ready. It has 3 pages.")
 
+        # The comms graph specifically — a wrong graph writes into a thread
+        # whose next turn would read a message it never sent.
+        get_graph.assert_awaited_once_with("comms_agent")
         graph.aupdate_state.assert_awaited_once()
         call = graph.aupdate_state.await_args
         assert call.args[0] == {"configurable": {"thread_id": CONVERSATION_ID}}
@@ -239,11 +245,22 @@ class TestRecordPlatformDelivery:
 
         graph.aupdate_state.assert_not_called()
 
-    async def test_failure_to_record_is_swallowed(self) -> None:
+    async def test_failure_to_record_is_swallowed_and_reported_on_the_wide_event(self) -> None:
+        """The message is already sent, so a checkpoint failure must not break
+        the caller — but it must be observable: log.error lands in the wide
+        event's errors[], and that entry is all an operator gets."""
         graph = _fake_comms_graph()
         graph.aupdate_state = AsyncMock(side_effect=RuntimeError("checkpoint down"))
         with _patch_graph(graph):
-            await record_platform_delivery(CONVERSATION_ID, "hello")
+            async with captured_wide_event() as event:
+                await record_platform_delivery(CONVERSATION_ID, "hello")
+
+        (error,) = [e for e in event["errors"] if "platform delivery" in e["msg"]]
+        assert error["msg"] == (
+            f"{LogTag.AGENT} Failed to record platform delivery in conversation thread"
+        )
+        assert error["conversation_id"] == CONVERSATION_ID
+        assert error["error"] == "checkpoint down"
 
 
 class TestNarrationResolvesItsOwnCommsLane:
