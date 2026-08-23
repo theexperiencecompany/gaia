@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from app.scripts.delete_user_account import _chroma_inventory, _pg_inventory
+from app.scripts.delete_user_account import PG_USER_TABLES, _chroma_inventory, _pg_inventory
 
 
 class _FakeChromaCollection:
@@ -44,8 +44,6 @@ class TestChromaInventory:
 
 class TestPgInventory:
     def test_counts_per_table_and_drops_zero_rows(self) -> None:
-        from app.scripts.delete_user_account import PG_USER_TABLES
-
         rows = iter([(3,)] + [(0,)] * (len(PG_USER_TABLES) - 1))
         cursor = MagicMock()
         cursor.fetchone.side_effect = lambda: next(rows)
