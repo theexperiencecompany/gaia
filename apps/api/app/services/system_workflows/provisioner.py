@@ -303,17 +303,26 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
     )
 
     # Reset preserves liveness — an activated schedule workflow needs a queued
-    # fire for the recomputed next_run or it never runs again.
+    # fire for the recomputed next_run or it never runs again. A failed re-arm
+    # must fail the reset: reporting success here would leave a workflow that
+    # looks reset but never fires (retrying the reset re-arms it).
     if (
         existing.activated
         and trigger_config.type == TriggerType.SCHEDULE
         and trigger_config.next_run
     ):
-        await workflow_scheduler.schedule_workflow_execution(
+        armed = await workflow_scheduler.schedule_workflow_execution(
             workflow_id,
             trigger_config.next_run,
             repeat=trigger_config.cron_expression,
         )
+        if not armed:
+            log.error(
+                f"{LogTag.WORKFLOW} Reset applied but re-arming the schedule failed",
+                workflow_id=workflow_id,
+                user_id=user_id,
+            )
+            return False
 
     log.info(
         f"{LogTag.WORKFLOW} Reset system workflow to default for user",

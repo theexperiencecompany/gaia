@@ -53,8 +53,8 @@ def _existing_wf(
 
 @pytest.fixture(autouse=True)
 def _patch_log():
-    with patch(f"{MODULE}.log"):
-        yield
+    with patch(f"{MODULE}.log") as mock_log:
+        yield mock_log
 
 
 class TestProvisionSystemWorkflows:
@@ -623,6 +623,48 @@ class TestResetSystemWorkflowToDefault:
             "wf-1",
             trigger_config.next_run,
             repeat="0 8 * * *",
+        )
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.get_user_by_id")
+    @patch(f"{MODULE}.workflow_scheduler")
+    @patch(f"{MODULE}.workflow_repository")
+    @patch(f"{MODULE}.ensure_trigger_config_object")
+    async def test_reset_reports_failure_when_rearm_fails(
+        self,
+        mock_ensure: MagicMock,
+        mock_repo: MagicMock,
+        mock_scheduler: MagicMock,
+        mock_get_user: MagicMock,
+        _patch_log: MagicMock,
+    ) -> None:
+        """A reset whose re-arm could not queue a fire must not report success —
+        the workflow would look reset but never run again."""
+        existing = _existing_wf(key="sched_wf", composio_trigger_ids=None, trigger_name=None)
+        existing.activated = True
+        mock_repo.get_system_workflow_for_user = AsyncMock(return_value=existing)
+        mock_repo.reset_system_workflow = AsyncMock()
+        mock_get_user.return_value = {"timezone": "UTC"}
+        mock_scheduler.schedule_workflow_execution = AsyncMock(return_value=False)
+
+        trigger_config = self._schedule_trigger_config()
+        mock_ensure.return_value = trigger_config
+
+        factory = MagicMock(return_value=_make_workflow_request())
+
+        with patch.dict(f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"sched_wf": factory}):
+            from app.constants.log_tags import LogTag
+            from app.services.system_workflows.provisioner import (
+                reset_system_workflow_to_default,
+            )
+
+            result = await reset_system_workflow_to_default("wf-1", "user-1")
+
+        assert result is False
+        _patch_log.error.assert_called_once_with(
+            f"{LogTag.WORKFLOW} Reset applied but re-arming the schedule failed",
+            workflow_id="wf-1",
+            user_id="user-1",
         )
 
     @pytest.mark.asyncio
