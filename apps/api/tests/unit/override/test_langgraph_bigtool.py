@@ -1,6 +1,6 @@
 """Tests for app.override.langgraph_bigtool.create_agent."""
 
-from typing import Any, cast
+from typing import Any, Protocol, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage
@@ -12,6 +12,7 @@ from app.agents.llm import lane as lane_module
 from app.agents.llm.lane import ModelLane
 from app.agents.llm.types import LLMProviderName
 from app.constants.llm import DEFAULT_MAX_TOKENS, LANE_FIELD_ID
+from app.models.agent_models import AgentConfigurable
 from app.override.langgraph_bigtool.create_agent import _fallback_config, _prepare_fallback
 
 # ---------------------------------------------------------------------------
@@ -50,6 +51,24 @@ def _make_llm() -> MagicMock:
 
 def _make_config(**configurable: Any) -> dict:
     return {"configurable": configurable}
+
+
+class _ModelNode(Protocol):
+    """The two entry points the agent node exposes, named locally.
+
+    LangGraph types ``node.runnable`` as a union that does not statically carry
+    ``func`` / ``afunc``, and ``RunnableCallable`` is not an explicitly exported
+    symbol. Naming only what is used here keeps the tests off a private import.
+    """
+
+    def func(self, state: dict, config: dict, *, store: Any) -> Any: ...
+
+    async def afunc(self, state: dict, config: dict, *, store: Any) -> Any: ...
+
+
+def _agent_runnable(builder: Any) -> _ModelNode:
+    """The agent node's runnable — what actually calls the model."""
+    return cast(_ModelNode, builder.nodes["agent"].runnable)
 
 
 def _make_state(
@@ -777,7 +796,7 @@ class TestBindSessionId:
             llm, _make_tool_registry(dummy_tool_a), disable_retrieve_tools=True, agent_name=agent
         )
 
-        await builder.nodes["agent"].runnable.afunc(  # type: ignore[union-attr]
+        await _agent_runnable(builder).afunc(
             _make_state(messages=[HumanMessage(content="hi")]),
             _make_config(provider=LLMProviderName.OPENROUTER, session_id="conv-1"),
             store=MagicMock(),
@@ -802,7 +821,7 @@ class TestBindSessionId:
             agent_name="comms_agent",
         )
 
-        builder.nodes["agent"].runnable.func(  # type: ignore[union-attr]
+        _agent_runnable(builder).func(
             _make_state(messages=[HumanMessage(content="hi")]),
             _make_config(provider=LLMProviderName.OPENROUTER, session_id="conv-1"),
             store=MagicMock(),
@@ -860,7 +879,7 @@ class TestBindSessionId:
         from app.override.langgraph_bigtool.create_agent import _bind_session_id
 
         llm = MagicMock()
-        bound = _bind_session_id(llm, {"thread_id": "conv-1", "model_name": "m"})
+        bound = _bind_session_id(llm, cast(AgentConfigurable, {"thread_id": "conv-1"}))
 
         llm.bind.assert_not_called()
         assert bound is llm
@@ -910,7 +929,9 @@ class TestFallbackPreparation:
         assert _prepare_fallback(_make_llm(), [dummy_tool_a], {}) is None
 
     def test_no_other_configured_provider_means_no_fallback(self) -> None:
-        configurable = {LANE_FIELD_ID: self._openrouter_lane().to_configurable()}
+        configurable = cast(
+            AgentConfigurable, {LANE_FIELD_ID: self._openrouter_lane().to_configurable()}
+        )
 
         with patch.object(lane_module, "next_fallback_provider", lambda _current: None):
             assert _prepare_fallback(_make_llm(), [dummy_tool_a], configurable) is None
@@ -919,7 +940,9 @@ class TestFallbackPreparation:
         llm = MagicMock()
         bound = MagicMock()
         llm.bind_tools.return_value = bound
-        configurable = {LANE_FIELD_ID: self._openrouter_lane().to_configurable()}
+        configurable = cast(
+            AgentConfigurable, {LANE_FIELD_ID: self._openrouter_lane().to_configurable()}
+        )
 
         with self._next_is_gemini():
             prepared = _prepare_fallback(llm, [dummy_tool_a], configurable)
