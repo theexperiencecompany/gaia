@@ -298,6 +298,7 @@ def create_comms_middleware(chat_llm: LanguageModelLike | None = None) -> AgentM
 
 def create_subagent_middleware(
     *,
+    agent_name: str = "provider_subagent",
     subagent_llm: LanguageModelLike | None = None,
     subagent_tools: list[BaseTool] | None = None,
     subagent_registry: Mapping[str, BaseTool] | None = None,
@@ -323,6 +324,10 @@ def create_subagent_middleware(
     SubagentMiddleware itself which excludes spawn_subagent from child tools).
 
     Args:
+        agent_name: The subagent's own name, used to attribute its ``llm_call``
+            events. Without it every one of the ~35 integration subagents meters
+            under a single ``provider_subagent`` bucket, so per-subagent cost and
+            cache behaviour cannot be told apart.
         subagent_llm: LLM for spawned sub-subagent execution
         subagent_tools: Tools available to spawned sub-subagents
         subagent_registry: Alternative tool registry for spawned sub-subagents
@@ -335,7 +340,7 @@ def create_subagent_middleware(
         List of middleware for provider subagents
     """
     return create_middleware_stack(
-        agent_name="provider_subagent",
+        agent_name=agent_name,
         chat_llm=subagent_llm,
         enable_subagent=enable_subagent,
         enable_summarization=True,

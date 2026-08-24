@@ -217,6 +217,28 @@ class TestStackConfigurationPropagation:
         assert accounting.agent_name == "executor_agent"
         assert accounting.recursion_limit == EXECUTOR_RECURSION_LIMIT
 
+    def test_a_subagent_meters_under_its_own_name(self) -> None:
+        """Every integration subagent shares one middleware factory. Without its
+        own name they all meter as ``provider_subagent``, so ~35 subagents
+        collapse into one bucket and per-subagent cost and cache behaviour cannot
+        be told apart."""
+        from app.agents.middleware.accounting import LLMAccountingMiddleware
+
+        stack = create_subagent_middleware(
+            agent_name="gmail_agent", subagent_llm=_fake_llm(), enable_subagent=False
+        )
+        accounting = next(mw for mw in stack if isinstance(mw, LLMAccountingMiddleware))
+        assert accounting.agent_name == "gmail_agent"
+
+    def test_an_unnamed_subagent_still_meters_as_the_generic_bucket(self) -> None:
+        """The spawn factory builds sub-subagent stacks with no name of their own;
+        they keep the generic bucket rather than crashing or going unattributed."""
+        from app.agents.middleware.accounting import LLMAccountingMiddleware
+
+        stack = create_subagent_middleware(subagent_llm=_fake_llm(), enable_subagent=False)
+        accounting = next(mw for mw in stack if isinstance(mw, LLMAccountingMiddleware))
+        assert accounting.agent_name == "provider_subagent"
+
     def test_subagent_exclusions_are_the_union(self) -> None:
         from app.agents.middleware.factory import (
             CODING_TOOL_NAMES,
