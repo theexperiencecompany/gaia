@@ -2,10 +2,14 @@
 
 Drives the real router over ASGITransport with the parallel-agent seams
 (provider credentials service, instance/local repositories) bound to the
-contract fakes from conftest.py, and provider probes mocked via respx.
+contract fakes from conftest.py, provider probes mocked via respx, and DNS
+resolution stubbed to public answers (the SSRF guard resolves hostnames itself,
+outside respx's transport mock).
 """
 
 from collections.abc import Callable, Iterator
+import ipaddress
+import socket
 from typing import Any
 
 from fastapi.dependencies.models import Dependant
@@ -20,6 +24,7 @@ from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.endpoints.setup import router as setup_router
 from app.config.settings import settings
 from app.constants.llm import OPENROUTER_MODELS_URL
+from shared.py.wide_events import log
 from tests.integration.endpoints.conftest import (
     API,
     FAKE_USER_ID,
@@ -33,9 +38,48 @@ SECRET_KEY = "sk-live-supersecret-9876"
 STORED_KEY = "sk-stored"
 EVIL_BASE_URL = "https://evil.example"
 
+# Public IP the DNS stub answers with for every hostname (the guard's
+# ``is_global`` check must pass it).
+STUB_PUBLIC_IP = "8.8.8.8"
+
+# One ``socket.getaddrinfo`` record: (family, type, proto, canonname, sockaddr).
+GetAddrInfoResult = list[tuple[int, int, int, str, tuple[str, int]]]
+
+
+def _resolver_returning(*addresses: str) -> Callable[..., GetAddrInfoResult]:
+    """Build a ``socket.getaddrinfo`` stand-in answering every host with ``addresses``."""
+
+    def fake_getaddrinfo(
+        host: str, port: int | None, *args: int, **kwargs: int
+    ) -> GetAddrInfoResult:
+        # A literal IP resolves to itself, as real getaddrinfo does; only
+        # names are answered with the configured addresses.
+        try:
+            resolved = [str(ipaddress.ip_address(host))]
+        except ValueError:
+            resolved = list(addresses)
+        return [
+            (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (address, port or 0))
+            for address in resolved
+        ]
+
+    return fake_getaddrinfo
+
+
+@pytest.fixture(autouse=True)
+def _stub_dns_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Answer every hostname with a public IP so no test touches real DNS.
+
+    The SSRF guard resolves hostnames itself — outside respx, which only mocks
+    the httpx transport — so without this stub every probe test would depend on
+    live resolver behavior. Guard tests override per-test with their own
+    resolver answers.
+    """
+    monkeypatch.setattr(socket, "getaddrinfo", _resolver_returning(STUB_PUBLIC_IP))
+
 
 def _routes(path: str) -> list[APIRoute]:
-    routes = [r for r in setup_router.routes if isinstance(r, APIRoute) and r.path == path]  # type: ignore[arg-type]
+    routes = [r for r in setup_router.routes if isinstance(r, APIRoute) and r.path == path]
     assert routes, f"no route mounted for {path}"
     return routes
 
@@ -80,6 +124,19 @@ class TestStatus:
 
     async def test_status_is_not_admin_gated(self) -> None:
         assert not _requires("/status", require_instance_admin)
+
+    async def test_status_stamps_the_request_wide_event(self, anon_client: AsyncClient) -> None:
+        """Route-contract step 1: the public status probe opens its wide event
+        with an operation tag (it has no user to stamp)."""
+        log.reset()
+        try:
+            resp = await anon_client.get(f"{API}/status")
+            assert resp.status_code == 200
+            event = log.get()
+            assert event["operation"] == "setup_status"
+            assert event["auth_mode"] == settings.AUTH_MODE
+        finally:
+            log.reset()
 
     async def test_billing_disabled_under_selfhost(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
@@ -409,6 +466,119 @@ class TestProviderProbe:
                 f"{API}/providers/custom/test", json={"base_url": "https://gw.test/v1"}
             )
         assert SECRET_KEY not in resp.text
+
+
+class TestSsrfGuard:
+    """F3 regression locks: string-level checks alone missed decimal IP
+    shorthands and DNS names resolving into private ranges. The guard now
+    resolves every hostname (via ``app.utils.url_safety``) and validates EVERY
+    answer before any request is sent — on the probe path and at save time.
+    Resolution is stubbed per-test; no test touches real DNS."""
+
+    async def test_decimal_ip_shorthand_resolving_private_is_rejected(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``http://2130706433/`` parses as a plain hostname string — only
+        resolution exposes it as 127.0.0.1."""
+        monkeypatch.setattr(socket, "getaddrinfo", _resolver_returning("127.0.0.1"))
+        resp = await client.post(
+            f"{API}/providers/custom/test", json={"base_url": "http://2130706433/"}
+        )
+        assert resp.status_code == 422
+
+    async def test_name_resolving_loopback_is_rejected_on_probe(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """nip.io-style bypass: public-looking name, private answer."""
+        monkeypatch.setattr(socket, "getaddrinfo", _resolver_returning("127.0.0.1"))
+        resp = await client.post(
+            f"{API}/providers/custom/test",
+            json={"base_url": "https://metadata.example.nip.io/v1"},
+        )
+        assert resp.status_code == 422
+
+    async def test_one_private_answer_among_several_is_rejected(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """EVERY resolved address must be public — a public record mixed with an
+        internal one must not slip through."""
+        monkeypatch.setattr(socket, "getaddrinfo", _resolver_returning(STUB_PUBLIC_IP, "10.0.0.5"))
+        resp = await client.post(
+            f"{API}/providers/custom/test", json={"base_url": "https://mixed.test/v1"}
+        )
+        assert resp.status_code == 422
+
+    async def test_unresolvable_host_fails_closed(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def unresolvable(
+            _host: str, _port: int | None, *args: int, **kwargs: int
+        ) -> GetAddrInfoResult:
+            raise socket.gaierror("nodename nor servname provided")
+
+        monkeypatch.setattr(socket, "getaddrinfo", unresolvable)
+        resp = await client.post(
+            f"{API}/providers/custom/test", json={"base_url": "https://blackhole.test/v1"}
+        )
+        assert resp.status_code == 422
+
+    async def test_literal_private_ip_is_fast_failed_without_resolving(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def explode(_host: str, _port: int | None, *args: int, **kwargs: int) -> GetAddrInfoResult:
+            raise AssertionError("resolver must not be reached for literal private IPs")
+
+        monkeypatch.setattr(socket, "getaddrinfo", explode)
+        resp = await client.post(
+            f"{API}/providers/custom/test", json={"base_url": "http://127.0.0.1:9200"}
+        )
+        assert resp.status_code == 422
+
+    async def test_put_rejects_private_base_url_and_stores_nothing(
+        self, client: AsyncClient
+    ) -> None:
+        resp = await client.put(
+            f"{API}/providers/custom",
+            json={"api_key": SECRET_KEY, "base_url": "http://192.168.1.10/v1"},
+        )
+        assert resp.status_code == 422
+        assert provider_service.configs == {}
+
+    async def test_put_rejects_local_ollama_endpoint(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No local-endpoint allow-list: LAN Ollama belongs in ``OLLAMA_BASE_URL``
+        env config, which never passes through this API-side guard."""
+        monkeypatch.setattr(socket, "getaddrinfo", _resolver_returning("127.0.0.1"))
+        resp = await client.put(
+            f"{API}/providers/ollama", json={"base_url": "http://localhost:11434"}
+        )
+        assert resp.status_code == 422
+        assert provider_service.configs == {}
+
+    async def test_put_rejects_name_resolving_private(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(socket, "getaddrinfo", _resolver_returning("192.168.0.2"))
+        resp = await client.put(
+            f"{API}/providers/custom",
+            json={"api_key": SECRET_KEY, "base_url": "https://lan.example.nip.io/v1"},
+        )
+        assert resp.status_code == 422
+
+    async def test_probe_refuses_legacy_stored_private_endpoint(self, client: AsyncClient) -> None:
+        """Defense in depth: configs saved before save-time validation existed
+        are refused at probe time too — the guard is the last word before dialing."""
+        await provider_service.upsert(
+            "custom", api_key=STORED_KEY, base_url="http://169.254.169.254/latest"
+        )
+        with respx.mock(assert_all_called=False) as mock:
+            metadata = mock.route(host="169.254.169.254").mock(
+                return_value=httpx.Response(200, json={})
+            )
+            resp = await client.post(f"{API}/providers/custom/test", json={})
+        assert resp.status_code == 422
+        assert metadata.called is False
 
 
 class TestInstanceAdminGuard:

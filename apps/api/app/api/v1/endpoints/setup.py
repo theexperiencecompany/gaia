@@ -7,9 +7,13 @@ connectivity test, and setup-step completion tracking in instance settings.
 Every route except ``GET /status`` requires the instance administrator (see
 ``require_instance_admin``). Credentials themselves live behind
 ``provider_credentials_service``; this module never stores or logs raw keys.
+
+Caller-supplied and stored base_urls are SSRF-guarded at both save and probe
+time: a URL is accepted only when every address its hostname resolves to is
+public. LAN-local endpoints (e.g. a laptop running Ollama) are therefore
+configured via ``OLLAMA_BASE_URL`` server-side, not through this API.
 """
 
-import ipaddress
 import os
 from typing import Annotated, Any, Literal
 from urllib.parse import urlparse
@@ -34,6 +38,7 @@ from app.services.providers.provider_credentials_service import (
     upsert as upsert_provider_config,
 )
 from app.services.startup_validation import are_models_seeded, is_payment_setup
+from app.utils.url_safety import assert_public_http_url, assert_safe_url_shape
 from shared.py.wide_events import log
 
 router = APIRouter(tags=["Setup"])
@@ -44,6 +49,11 @@ SETUP_DOC_KEY = "setup"
 # Providers that constitute a working LLM lane for ``needs_setup`` — every
 # credential provider except Tavily (a tool key, not an LLM).
 _LLM_PROVIDER_KEYS = ("openrouter", "gemini", "ollama", "custom")
+
+# Providers whose outbound traffic targets a caller-configurable base_url — the
+# only stored base_urls the SSRF guard applies to (openrouter/gemini dial
+# canonical endpoints; tavily is a tool key).
+_BASE_URL_PROVIDERS = frozenset({"custom", "ollama"})
 
 _PRESET_NAMES = Literal["opencode", "nous"]
 
@@ -71,6 +81,7 @@ class SetupCompleteBody(BaseModel):
 @router.get("/status")
 async def get_setup_status() -> dict[str, Any]:
     """PUBLIC first-run status for the web setup wizard and desktop CLI."""
+    log.set(operation="setup_status", auth_mode=settings.AUTH_MODE)
     has_admin_account = await local_credentials_repository.any_exists()
     configured = {p: await _is_usably_configured(p) for p in CREDENTIAL_PROVIDERS}
     return {
@@ -153,11 +164,16 @@ async def put_provider(
     """Store (or replace) one provider's credential. Presets prefill server-side.
 
     Admin-only: rewriting a provider's endpoint redirects every LLM call the
-    instance makes.
+    instance makes. Stored base_urls must be public (see ``_assert_url_safe``) —
+    LAN-local Ollama belongs in ``OLLAMA_BASE_URL``, not in a stored credential.
     """
     log.set(user={"id": user["user_id"]})
     _ensure_known_provider(provider)
     base_url, model = _apply_preset(body.preset, body.base_url, body.model)
+    if provider in _BASE_URL_PROVIDERS:
+        # Only these providers' endpoints drive outbound traffic; openrouter and
+        # gemini dial canonical URLs and ignore whatever is stored.
+        await _assert_url_safe(base_url)
     await upsert_provider_config(
         provider,
         api_key=body.api_key,
@@ -195,7 +211,8 @@ async def test_provider(
     api_key exclusively; body values are ignored, so a caller-supplied URL can
     never be paired with a server-held key. Body values (preset / base_url /
     api_key / model) are honored only for first-time validation before
-    anything has been saved.
+    anything has been saved. Non-public endpoints are refused outright with a
+    422 by the SSRF guard inside ``_probe``.
     """
     log.set(user={"id": user["user_id"]})
     if provider == "tavily":
@@ -207,7 +224,6 @@ async def test_provider(
         config = stored
     else:
         base_url, model = _apply_preset(body.preset, body.base_url, body.model)
-        _assert_url_safe(base_url)
         config = ProviderConfig(
             api_key=body.api_key,
             base_url=base_url,
@@ -219,14 +235,26 @@ async def test_provider(
     return {"ok": ok, "detail": detail, "models": models}
 
 
-def _assert_url_safe(base_url: str | None) -> None:
-    """Block caller-supplied probe URLs that are not plain public http(s).
+async def _assert_url_safe(base_url: str | None) -> None:
+    """Refuse ``base_url`` values this router must not send requests to (SSRF).
 
-    First-time tests forward an administrator-supplied base URL to the
-    backend's HTTP client — without this guard that is an internal-network
-    probing primitive (cloud metadata IP, sibling containers, etc.). Stored
-    credentials bypass the check by construction: they were accepted at save
-    time and belong to the instance, not to a single request.
+    Applied wherever an outbound provider URL enters the system: at save time
+    (only public endpoints get stored) and again in ``_probe`` right before
+    anything is dialed — which also covers credentials saved before save-time
+    validation existed, and env-fallback configs. The string checks below are
+    the cheap fast-fails; the actual allow/deny policy delegates to
+    ``app.utils.url_safety`` (``assert_safe_url_shape`` then
+    ``assert_public_http_url``), the repo's single SSRF source of truth: it
+    rejects literal private-IP hosts without a lookup, resolves DNS off the
+    event loop, and validates EVERY resolved address, so decimal IP shorthands
+    (``http://2130706433/``, ``http://127.1/``) that no string check sees as
+    private, and public-looking names answering with private addresses
+    (``127.0.0.1.nip.io``), are all rejected. Unresolvable hosts fail closed.
+
+    Consequence: LAN-local endpoints (a laptop running Ollama) cannot be
+    configured through this API — expose Ollama behind a public URL or set
+    ``OLLAMA_BASE_URL`` server-side (trusted env config never passes through
+    this guard).
     """
     if not base_url:
         return
@@ -235,24 +263,28 @@ def _assert_url_safe(base_url: str | None) -> None:
         raise HTTPException(status_code=422, detail="base_url must be an http(s) URL")
     if parsed.username or parsed.password or (parsed.port and parsed.port in (0, 1)):
         raise HTTPException(status_code=422, detail="base_url must not embed credentials")
-
-    try:
-        addr = ipaddress.ip_address(parsed.hostname)
-    except ValueError:
-        addr = None
-    if addr is not None and (
-        addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved
-    ):
-        raise HTTPException(status_code=422, detail="base_url must be a public address")
     if parsed.hostname in ("169.254.169.254", "metadata.google.internal"):
         raise HTTPException(status_code=422, detail="base_url must be a public address")
+
+    try:
+        # Literal private IPs are rejected here without a DNS round-trip;
+        # hostnames are resolved and every answer validated off the event loop.
+        assert_safe_url_shape(base_url)
+        await assert_public_http_url(base_url)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 async def _probe(provider: str, config: ProviderConfig) -> tuple[bool, str, list[str]]:
     """Probe one provider endpoint and return (ok, human detail, sorted models).
 
     Never includes credentials in ``detail`` — only URLs without query strings.
+    Refuses with a 422 rather than a soft failure when the configured endpoint
+    of a base-url-driven provider is not public (SSRF guard; also catches
+    stored configs from before save-time validation existed).
     """
+    if provider in _BASE_URL_PROVIDERS:
+        await _assert_url_safe(config["base_url"])
     try:
         async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT_SECONDS) as client:
             if provider == "gemini":
