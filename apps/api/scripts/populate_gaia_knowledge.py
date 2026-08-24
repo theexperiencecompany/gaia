@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Create actual embedding instance and register it (not lazy)
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
-from app.config.settings import settings  # noqa: F401
+from app.config.settings import settings  # noqa: F401 -- settings init side effects
 
 # Import chromadb module so @lazy_provider decorators register all providers
 from app.db.chroma.chromadb import init_chromadb_constructor

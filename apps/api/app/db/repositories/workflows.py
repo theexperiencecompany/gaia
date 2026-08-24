@@ -610,12 +610,13 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         *,
         title: str,
         description: str,
+        prompt: str,
         steps: list[WorkflowStep],
         trigger_config: TriggerConfig,
         composio_trigger_ids: list[str],
     ) -> WorkflowDocument | None:
-        """Re-apply a system workflow's original definition (title/description/steps/
-        trigger_config), preserving liveness, stats and ``created_at``. ``next_run``
+        """Re-apply a system workflow's original definition (title/description/prompt/
+        steps/trigger_config), preserving liveness, stats and ``created_at``. ``next_run``
         stays a native datetime (python-mode dump), consistent with create/re-arm."""
         trigger_doc = trigger_config.model_dump()
         trigger_doc["composio_trigger_ids"] = composio_trigger_ids
@@ -625,6 +626,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
                 "$set": {
                     "title": title,
                     "description": description,
+                    "prompt": prompt,
                     "steps": [s.model_dump() for s in steps],
                     "trigger_config": trigger_doc,
                 }

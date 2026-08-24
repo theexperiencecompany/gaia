@@ -70,7 +70,7 @@ class TestFormatProfessionForDisplay:
 
     def test_none_returns_empty(self) -> None:
         # None is falsy, so the `if not profession` guard catches it
-        assert format_profession_for_display(None) == ""  # type: ignore[arg-type]
+        assert format_profession_for_display(None) == ""
 
     def test_whitespace_only_returns_empty(self) -> None:
         # strip() produces "", which is then title-cased to "" (empty)
@@ -190,7 +190,7 @@ class TestBuildUserContextParts:
 class TestFormatUserPreferencesForAgent:
     @patch("app.utils.user_preferences_utils.log")
     def test_none_returns_none(self, mock_log: Any) -> None:
-        assert format_user_preferences_for_agent(None) is None  # type: ignore[arg-type]
+        assert format_user_preferences_for_agent(None) is None
 
     @patch("app.utils.user_preferences_utils.log")
     def test_empty_dict_returns_none(self, mock_log: Any) -> None:

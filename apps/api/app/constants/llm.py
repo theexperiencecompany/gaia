@@ -1,7 +1,6 @@
 from typing import Any
 
-from app.agents.llm.types import LLMProviderName
-from app.models.models_models import DevModelOption
+from app.agents.llm.types import DevModelOption, LLMProviderName
 
 # The ``configurable`` keys LangChain's own field resolution reads. Written at
 # TWO definition sites (the Gemini lane's ConfigurableField and the OpenRouter
@@ -176,9 +175,9 @@ DEFAULT_MAX_TOKENS = 1_000_000
 # you do, confirm for the new model:
 #   - context window  -> update DEFAULT_MAX_TOKENS above (else fractional-token
 #     middleware fails to build and the whole agent graph dies; see get_default_llm)
-#   - pricing entry    -> the `ai_models` collection (scripts/seed_models.py);
-#     without one, calculate_token_cost falls back to DEFAULT_PRICING and the
-#     cost budgets meter at the wrong rate
+#   - pricing entry    -> MODEL_PRICING in app/config/model_pricing.py; without
+#     one, calculate_token_cost falls back to DEFAULT_PRICING and the cost
+#     budgets meter at the wrong rate (the pricing unit test enforces this)
 #   - it's multimodal if vision/file tools rely on it
 # Default model for every tier and every auxiliary call, served over OpenRouter.
 # Text-only: tool results carrying images are captioned for it rather than shown
@@ -208,11 +207,21 @@ UNKNOWN_MODEL_NAME = "unknown"
 # turns (measured: real-graph hit rate capped at ~63% while the intra-turn
 # steady state is 87–91%). A separate id lets the aux calls chain with each
 # other and stops the eviction. This id is priced SEPARATELY from the default
-# — see AUX_MODEL_PRICING, which is what meters it, and which is hand-written
-# here rather than seeded because the id is an internal routing choice, not a
-# model users can select. Nothing reconciles it against OpenRouter's live
-# listing, so it has to be re-checked by hand whenever either id is re-pointed.
+# — see its MODEL_PRICING entry (app/config/model_pricing.py), which is what
+# meters it. Nothing reconciles that rate against OpenRouter's live listing, so
+# it has to be re-checked by hand whenever either id is re-pointed.
 AUX_MODEL_NAME = "deepseek/deepseek-v4-flash"
+
+# The OpenRouter-served chat models GAIA runs, mapped to whether images survive
+# in their TOOL results (the onboarding gate in tests/model_onboarding vets the
+# flag with a live call — see its module docstring for why no listing can answer
+# this). This is the single declaration the gate parameterises off, so a model
+# is added here (with its MODEL_PRICING entry in app/config/model_pricing.py)
+# and nowhere else. False routes tool media through the caption fallback
+# (agents/llm/vision/) instead of asserting the model sees pixels.
+OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT: dict[str, bool] = {
+    DEFAULT_MODEL_NAME: False,
+}
 # Retained for the direct-Gemini lane, which is still selectable as a provider
 # alternative and in the dev model menu — it is no longer the default.
 DEFAULT_GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"

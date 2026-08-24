@@ -58,3 +58,31 @@ repos:
         language: system
         files: \.(js|jsx|ts|tsx|json|css|html)$
         exclude: ^(apps/api/|apps/voice-agent/|infra/|docs/)
+
+      - id: tool-pins
+        name: Tool version pin skew guard
+        language: system
+        entry: python3 tools/lints/check_tool_pins.py
+        files: ^(apps/api/\.pre-commit-config\.yaml|\.github/workflows/(code-quality|main)\.yml|tools/lints/check_tool_pins\.py)$
+        pass_filenames: false
+
+      - id: gaia-ignore-whys
+        name: Ruff/mypy escape hatches must carry a why-comment
+        language: system
+        entry: python3 tools/lints/check_ignore_whys.py
+        files: ^pyproject\.toml$
+        pass_filenames: false
+
+      - id: suppression-hygiene
+        name: Every inline lint suppression carries a why
+        language: system
+        entry: python3 tools/lints/check_suppressions.py
+        files: \.(py|ts|tsx|js|jsx|mjs|cjs)$
+        pass_filenames: false
+
+      - id: gaia-ignore-staleness
+        name: Ruff per-file escape hatches must still mask a finding
+        language: system
+        entry: python3 tools/lints/check_ignore_staleness.py
+        files: ^pyproject\.toml$
+        pass_filenames: false

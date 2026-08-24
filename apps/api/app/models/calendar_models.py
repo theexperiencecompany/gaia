@@ -723,7 +723,11 @@ class EventCreateRequest(BaseCalendarEvent):
             # Try to parse as ISO datetime
             datetime.fromisoformat(v)
         except ValueError:
-            # If not ISO datetime, check if it's a valid date (YYYY-MM-DD)
+            # If not ISO datetime, check if it's a valid date (YYYY-MM-DD).
+            # strptime leniently accepts unpadded dates that fromisoformat
+            # rejects; the parsed value is a validity probe and is discarded
+            # after this check. Keep it UTC-anchored: a naive parse must not
+            # count as a valid all-day date.
             try:
                 datetime.strptime(v, "%Y-%m-%d")
             except ValueError as e:
@@ -745,7 +749,7 @@ class EventCreateRequest(BaseCalendarEvent):
                     raise ValueError("Start time must be before end time")
             except ValueError as e:
                 if "fromisoformat" not in str(e):
-                    raise e
+                    raise
                 # This means the format validation failed, which is handled by the field validator
 
         return self

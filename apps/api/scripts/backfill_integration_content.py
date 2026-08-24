@@ -28,6 +28,7 @@ import argparse
 import asyncio
 from datetime import UTC, datetime
 import json
+from pathlib import Path
 import sys
 from typing import Any
 
@@ -78,7 +79,7 @@ def create_backup(docs: list[dict[str, Any]]) -> str:
         }
         for d in docs
     ]
-    with open(backup_file, "w") as f:
+    with Path(backup_file).open("w") as f:
         json.dump(snapshot, f, indent=2, default=str)
     print(f"✅ Backup created: {backup_file}")
     return backup_file

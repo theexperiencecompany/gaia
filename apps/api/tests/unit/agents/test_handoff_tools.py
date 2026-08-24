@@ -59,7 +59,7 @@ def _make_subagent(
         id=subagent_id,
         name=name,
         provider=subagent_id,
-        managed_by=managed_by,  # type: ignore[arg-type]
+        managed_by=managed_by,  # type: ignore[arg-type]  # fixture uses a plain string for the managed_by Literal
         config=_make_subagent_config(agent_name=agent_name),
         short_name=short_name,
         mcp_config=mcp_config,

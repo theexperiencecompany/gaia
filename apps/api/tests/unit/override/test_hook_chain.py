@@ -21,6 +21,7 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.override.langgraph_bigtool.agent_config import HookConfig
 from app.override.langgraph_bigtool.hooks import execute_hooks
 
 
@@ -93,7 +94,7 @@ class TestDeclaredChains:
 
         captured: dict[str, Any] = {}
 
-        def _capture(**kwargs: Any) -> Any:
+        def _capture(*args: Any, **kwargs: Any) -> Any:
             captured.update(kwargs)
             return MagicMock(compile=MagicMock(return_value=MagicMock()))
 
@@ -118,7 +119,9 @@ class TestDeclaredChains:
 
     @classmethod
     async def _hooks_for(cls, builder: str) -> list[Any]:
-        return list((await cls._captured(builder))["pre_model_hooks"])
+        captured = await cls._captured(builder)
+        hooks = captured.get("hooks_config") or HookConfig()
+        return list(hooks.pre_model_hooks or [])
 
     async def test_the_executor_filters_before_it_manages_prompts(self):
         """``filter_messages_node`` must run first. After the prompt manager, a
@@ -188,7 +191,8 @@ class TestEndGraphHooks:
 
         captured = await TestDeclaredChains._captured("build_comms_graph")
 
-        assert list(captured["end_graph_hooks"]) == [follow_up_actions_node, memory_node]
+        hooks = captured.get("hooks_config") or HookConfig()
+        assert list(hooks.end_graph_hooks or []) == [follow_up_actions_node, memory_node]
 
     async def test_the_executor_has_no_end_graph_hooks(self):
         """The executor's output is not user-facing, so follow-up chips and
@@ -196,4 +200,5 @@ class TestEndGraphHooks:
         long, so the cost would be paid on every delegation."""
         captured = await TestDeclaredChains._captured("build_executor_graph")
 
-        assert not captured.get("end_graph_hooks")
+        hooks = captured.get("hooks_config") or HookConfig()
+        assert not hooks.end_graph_hooks

@@ -647,6 +647,35 @@ class TestListWorkflows:
         # Unpaginated: total is derived from the rows, no separate count query.
         assert total == 1
 
+    @patch(f"{_REPO}.list_for_user", new_callable=AsyncMock)
+    async def test_list_workflows_enriches_integration_requirements(self, mock_list):
+        # A step category mapped to the OAUTH catalog makes the workflow require
+        # that integration. The connection status is resolved in a single call
+        # keyed on the user id (not a broadened default) — pin both the enriched
+        # fields and the exact status-call argument.
+        workflow = _make_workflow(
+            steps=[
+                WorkflowStep(
+                    id="step_0",
+                    title="Send the email",
+                    category="gmail",
+                    description="Draft and send the email",
+                )
+            ]
+        )
+        mock_list.return_value = [_make_workflow_doc(workflow)]
+
+        with patch(
+            "app.services.oauth.oauth_service.get_all_integrations_status",
+            new_callable=AsyncMock,
+        ) as mock_status:
+            mock_status.return_value = {"gmail": True}
+            result, _total = await WorkflowService.list_workflows(USER_ID)
+
+        mock_status.assert_awaited_once_with(USER_ID)
+        assert result[0].required_integrations == [IntegrationRef(id="gmail", name="Gmail")]
+        assert result[0].missing_integrations == []
+
     @patch(f"{_REPO}.list_for_user", new_callable=AsyncMock, return_value=[])
     async def test_list_workflows_empty(self, _mock_list):
         result, total = await WorkflowService.list_workflows(USER_ID)

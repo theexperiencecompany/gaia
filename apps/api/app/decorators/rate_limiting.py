@@ -104,7 +104,7 @@ def _limit_hit_exception(
     actual_feature_key: str,
     user_plan: PlanType,
     e: RateLimitExceededException,
-) -> "LangChainRateLimitException":
+) -> "LangChainRateLimitError":
     """Convert a limiter exception into the agent-friendly one, with side effects."""
     log.warning(
         f"{LogTag.API} Rate limit exceeded",
@@ -130,12 +130,16 @@ def _limit_hit_exception(
     # Any so the isinstance checks below aren't (incorrectly) treated as
     # statically unreachable.
     detail_value = cast(Any, e.detail) if hasattr(e, "detail") else None
-    if detail_value is not None:
-        if isinstance(detail_value, dict):
-            detail_dict = detail_value
-            reset_time = detail_value.get("reset_time")
-        elif isinstance(detail_value, str):
-            detail_dict = {"message": detail_value}
+    if isinstance(detail_value, dict):
+        detail_dict = dict(detail_value)
+    elif isinstance(detail_value, str):
+        detail_dict = {"message": detail_value}
+    # The exception's own plan gate / reset time are authoritative when the
+    # detail dict doesn't carry them. The exception keeps the datetime; the
+    # streamed card gets an ISO string so it renders the same shape every
+    # caller produces.
+    reset_time = detail_dict.get("reset_time") or getattr(e, "reset_time", None)
+    plan_required = detail_dict.get("plan_required") or getattr(e, "plan_required", None)
 
     # Emit inline rate limit card via LangGraph stream writer (only available
     # when executing inside a LangGraph graph).
@@ -153,16 +157,17 @@ def _limit_hit_exception(
             error_type=type(stream_error).__name__,
         )
     else:
+        card_reset_time = reset_time.isoformat() if isinstance(reset_time, datetime) else reset_time
         writer(
             build_rate_limit_card(
                 feature=actual_feature_key,
-                plan_required=detail_dict.get("plan_required"),
-                reset_time=reset_time,
+                plan_required=plan_required,
+                reset_time=card_reset_time,
                 current_plan=plan_label(user_plan),
             )
         )
 
-    return LangChainRateLimitException(
+    return LangChainRateLimitError(
         feature=actual_feature_key,
         detail=detail_dict,
         reset_time=reset_time,
@@ -245,7 +250,7 @@ def with_rate_limiting(
         count_tokens: Whether to validate token usage after execution.
         bypass_for_system: Skip rate limiting for system/background operations.
 
-    Raises LangChainRateLimitException (agent-friendly) when limits are exceeded.
+    Raises LangChainRateLimitError (agent-friendly) when limits are exceeded.
     """
 
     def rate_limit_decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
@@ -380,7 +385,7 @@ def tiered_rate_limit(
     return decorator
 
 
-class LangChainRateLimitException(Exception):
+class LangChainRateLimitError(Exception):
     """Agent-friendly rate limit exception with structured data."""
 
     def __init__(

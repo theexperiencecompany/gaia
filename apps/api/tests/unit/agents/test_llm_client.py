@@ -315,7 +315,7 @@ class TestGetOrderedProviders:
 class TestCreateConfigurableLlm:
     def test_no_alternatives_returns_primary_instance(self) -> None:
         primary = _make_llm_provider("gemini")
-        result = _create_configurable_llm(primary, [])  # type: ignore[arg-type]
+        result = _create_configurable_llm(primary, [])  # type: ignore[arg-type]  # stub provider dict stands in for an LLMProvider
 
         assert result is primary["instance"]
 
@@ -324,7 +324,7 @@ class TestCreateConfigurableLlm:
         alt1 = _make_llm_provider("openai")
         alt2 = _make_llm_provider("openrouter")
 
-        _create_configurable_llm(primary, [alt1, alt2])  # type: ignore[arg-type, list-item]
+        _create_configurable_llm(primary, [alt1, alt2])  # type: ignore[arg-type, list-item]  # stub provider dicts stand in for LLMProvider entries
 
         primary["instance"].configurable_alternatives.assert_called_once()
         call_args = primary["instance"].configurable_alternatives.call_args

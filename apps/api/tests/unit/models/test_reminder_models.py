@@ -99,7 +99,7 @@ class TestReminderModel:
 
     def test_payload_as_static_reminder(self):
         m = ReminderModel(**self._base_data())
-        assert m.payload.title == "Test"  # type: ignore[union-attr]
+        assert m.payload.title == "Test"
 
     def test_payload_as_dict(self):
         m = ReminderModel(**self._base_data(payload={"custom_key": "custom_value"}))
@@ -160,7 +160,7 @@ class TestCreateReminderRequest:
             payload=StaticReminderPayload(title="T", body="B"),
             scheduled_at=future_naive,
         )
-        assert m.scheduled_at.tzinfo is not None  # type: ignore[union-attr]
+        assert m.scheduled_at.tzinfo is not None
 
     def test_valid_cron_repeat(self):
         m = CreateReminderRequest(
@@ -316,11 +316,9 @@ class TestCreateReminderToolRequestConversion:
         m = CreateReminderToolRequest(**self._base_data(scheduled_at="2030-06-15 09:00:00"))
         result = m.to_create_reminder_request()
         assert result.scheduled_at is not None
-        assert result.scheduled_at.tzinfo is not None  # type: ignore[union-attr]
+        assert result.scheduled_at.tzinfo is not None
         # No explicit offset -> interpreted in the home zone (Asia/Kolkata, +05:30).
-        assert result.scheduled_at.utcoffset() == timedelta(  # type: ignore[union-attr]
-            hours=5, minutes=30
-        )
+        assert result.scheduled_at.utcoffset() == timedelta(hours=5, minutes=30)
 
     def test_conversion_with_explicit_tz_offset(self):
         m = CreateReminderToolRequest(
@@ -331,18 +329,16 @@ class TestCreateReminderToolRequestConversion:
         )
         result = m.to_create_reminder_request()
         assert result.scheduled_at is not None
-        offset = result.scheduled_at.utcoffset()  # type: ignore[union-attr]
+        offset = result.scheduled_at.utcoffset()
         assert offset == timedelta(hours=-8)
 
     def test_conversion_with_stop_after_home_tz(self):
         m = CreateReminderToolRequest(**self._base_data(stop_after="2030-12-31 23:59:59"))
         result = m.to_create_reminder_request()
         assert result.stop_after is not None
-        assert result.stop_after.tzinfo is not None  # type: ignore[union-attr]
+        assert result.stop_after.tzinfo is not None
         # No explicit offset -> interpreted in the home zone (Asia/Kolkata, +05:30).
-        assert result.stop_after.utcoffset() == timedelta(  # type: ignore[union-attr]
-            hours=5, minutes=30
-        )
+        assert result.stop_after.utcoffset() == timedelta(hours=5, minutes=30)
 
     def test_conversion_with_stop_after_explicit_tz(self):
         m = CreateReminderToolRequest(
@@ -352,7 +348,7 @@ class TestCreateReminderToolRequestConversion:
             )
         )
         result = m.to_create_reminder_request()
-        offset = result.stop_after.utcoffset()  # type: ignore[union-attr]
+        offset = result.stop_after.utcoffset()
         assert offset == timedelta(hours=3)
 
     def test_conversion_preserves_all_fields(self):
@@ -386,7 +382,7 @@ class TestCreateReminderToolRequestConversion:
         )
         result = m.to_create_reminder_request()
         assert result.scheduled_at is not None
-        assert result.scheduled_at.tzinfo == UTC  # type: ignore[union-attr]
+        assert result.scheduled_at.tzinfo == UTC
 
     def test_conversion_delay_seconds_uses_server_now(self):
         """A relative delay computes now (server) + delay_seconds, tz-aware in the future."""
@@ -396,7 +392,7 @@ class TestCreateReminderToolRequestConversion:
         after = datetime.now(UTC)
 
         assert result.scheduled_at is not None
-        assert result.scheduled_at.tzinfo is not None  # type: ignore[union-attr]
+        assert result.scheduled_at.tzinfo is not None
         # ~now + 60s, allowing for the elapsed wall-clock during the call.
         assert (
             before + timedelta(seconds=60) <= result.scheduled_at <= after + timedelta(seconds=60)
@@ -446,12 +442,12 @@ class TestUpdateReminderRequest:
     def test_naive_scheduled_at_becomes_utc(self):
         future_naive = datetime(2030, 6, 15, 12, 0, 0)
         m = UpdateReminderRequest(scheduled_at=future_naive)
-        assert m.scheduled_at.tzinfo is not None  # type: ignore[union-attr]
+        assert m.scheduled_at.tzinfo is not None
 
     def test_naive_stop_after_becomes_utc(self):
         future_naive = datetime(2030, 6, 15, 12, 0, 0)
         m = UpdateReminderRequest(stop_after=future_naive)
-        assert m.stop_after.tzinfo is not None  # type: ignore[union-attr]
+        assert m.stop_after.tzinfo is not None
 
     def test_serializer_datetime_to_iso(self):
         future = datetime.now(UTC) + timedelta(days=30)
@@ -515,7 +511,7 @@ class TestReminderResponse:
 
     def test_payload_as_static(self):
         m = ReminderResponse(**self._base_data())
-        assert m.payload.title == "T"  # type: ignore[union-attr]
+        assert m.payload.title == "T"
 
     def test_payload_as_dict(self):
         m = ReminderResponse(**self._base_data(payload={"custom": "value"}))

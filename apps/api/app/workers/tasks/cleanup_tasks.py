@@ -76,7 +76,7 @@ async def _requeue_stuck_user(user: UserDocument) -> _RequeueOutcome:
     return _RequeueOutcome.QUEUED
 
 
-async def cleanup_stuck_personalization(ctx: dict[str, Any], max_age_minutes: int = 30) -> str:
+async def cleanup_stuck_personalization(ctx: dict[str, Any], max_age_minutes: int = 30) -> str:  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
     """Re-queue users stuck at personalization_pending past max_age_minutes.
 
     Skips users whose ARQ job is still live so a slow-but-healthy pipeline is

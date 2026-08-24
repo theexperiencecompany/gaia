@@ -25,7 +25,7 @@ class BaseAppSettings(BaseSettings):
     )
 
     @classmethod
-    def from_env(cls, **kwargs: Any) -> Self:
+    def from_env(cls, **kwargs: Any) -> Self:  # noqa: ANN401 -- framework contract
         """Create settings from environment variables with fallback handling."""
         try:
             return cls(**kwargs)

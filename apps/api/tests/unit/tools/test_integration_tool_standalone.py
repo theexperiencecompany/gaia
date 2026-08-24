@@ -119,7 +119,7 @@ class TestListIntegrations:
 
         from app.agents.tools.integration_tool import list_integrations
 
-        result = await list_integrations.coroutine(config=_cfg())  # type: ignore[attr-defined]
+        result = await list_integrations.coroutine(config=_cfg())  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
         assert result["connected"] == []
         assert result["available"] == []
 
@@ -145,7 +145,7 @@ class TestListIntegrations:
 
         from app.agents.tools.integration_tool import list_integrations
 
-        result = await list_integrations.coroutine(config=_cfg())  # type: ignore[attr-defined]
+        result = await list_integrations.coroutine(config=_cfg())  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
         assert len(result["connected"]) == 1
         assert result["connected"][0]["id"] == "gmail"
         assert len(result["available"]) == 1
@@ -156,7 +156,7 @@ class TestListIntegrations:
     async def test_no_user_id(self, mock_gsw: MagicMock) -> None:
         from app.agents.tools.integration_tool import list_integrations
 
-        result = await list_integrations.coroutine(config=_cfg_no_user())  # type: ignore[attr-defined]
+        result = await list_integrations.coroutine(config=_cfg_no_user())  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
         assert "Error" in result
 
     @patch(f"{MODULE}.get_stream_writer")
@@ -171,7 +171,7 @@ class TestListIntegrations:
 
         from app.agents.tools.integration_tool import list_integrations
 
-        result = await list_integrations.coroutine(config=_cfg())  # type: ignore[attr-defined]
+        result = await list_integrations.coroutine(config=_cfg())  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
         assert "Error" in result
 
     @patch(f"{MODULE}.integration_repository")
@@ -193,7 +193,7 @@ class TestListIntegrations:
 
         from app.agents.tools.integration_tool import list_integrations
 
-        result = await list_integrations.coroutine(config=_cfg())  # type: ignore[attr-defined]
+        result = await list_integrations.coroutine(config=_cfg())  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
         assert result["connected"] == []
         assert result["available"] == []
 
@@ -238,7 +238,7 @@ class TestConnectIntegration:
                 return_value={"configurable": {"source_category": "ui"}},
             ),
         ):
-            result = await connect_integration.coroutine(  # type: ignore[attr-defined]
+            result = await connect_integration.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
                 config=_cfg(), integration_ids=["gmail"]
             )
         assert "needs to be connected" in result
@@ -276,7 +276,7 @@ class TestConnectIntegration:
                 new=AsyncMock(return_value="https://app.example.com/connect/test-token"),
             ),
         ):
-            result = await connect_integration.coroutine(  # type: ignore[attr-defined]
+            result = await connect_integration.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
                 config=_cfg(), integration_ids=["gmail"]
             )
 
@@ -352,7 +352,7 @@ class TestConnectIntegration:
             ),
             patch("app.utils.integration_checker.get_stream_writer", return_value=_writer()),
         ):
-            result = await connect_integration.coroutine(  # type: ignore[attr-defined]
+            result = await connect_integration.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
                 config=_cfg(), integration_ids=["gmail"]
             )
 
@@ -374,7 +374,7 @@ class TestConnectIntegration:
 
         from app.agents.tools.integration_tool import connect_integration
 
-        result = await connect_integration.coroutine(  # type: ignore[attr-defined]
+        result = await connect_integration.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
             config=_cfg(), integration_ids=["gmail"]
         )
         assert "already connected" in result
@@ -386,7 +386,7 @@ class TestConnectIntegration:
 
         from app.agents.tools.integration_tool import connect_integration
 
-        result = await connect_integration.coroutine(  # type: ignore[attr-defined]
+        result = await connect_integration.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
             config=_cfg(), integration_ids=["nonexistent"]
         )
         assert "not found" in result
@@ -401,7 +401,7 @@ class TestConnectIntegration:
 
         from app.agents.tools.integration_tool import connect_integration
 
-        result = await connect_integration.coroutine(  # type: ignore[attr-defined]
+        result = await connect_integration.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
             config=_cfg(), integration_ids=["gmail"]
         )
         assert "not available yet" in result
@@ -409,7 +409,7 @@ class TestConnectIntegration:
     async def test_no_user_id(self) -> None:
         from app.agents.tools.integration_tool import connect_integration
 
-        result = await connect_integration.coroutine(  # type: ignore[attr-defined]
+        result = await connect_integration.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
             config=_cfg_no_user(), integration_ids=["gmail"]
         )
         assert "Error" in result
@@ -421,7 +421,7 @@ class TestConnectIntegration:
 
         from app.agents.tools.integration_tool import connect_integration
 
-        result = await connect_integration.coroutine(  # type: ignore[attr-defined]
+        result = await connect_integration.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
             config=_cfg(), integration_ids=[]
         )
         assert result == "No integrations to connect."
@@ -441,7 +441,7 @@ class TestConnectIntegration:
 
         from app.agents.tools.integration_tool import connect_integration
 
-        result = await connect_integration.coroutine(  # type: ignore[attr-defined]
+        result = await connect_integration.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
             config=_cfg(), integration_ids=["gmail"]
         )
         assert "Error connecting" in result
@@ -465,7 +465,7 @@ class TestCheckIntegrationsStatus:
     async def test_connected(self, mock_check: AsyncMock) -> None:
         from app.agents.tools.integration_tool import check_integrations_status
 
-        result = await check_integrations_status.coroutine(  # type: ignore[attr-defined]
+        result = await check_integrations_status.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
             config=_cfg(), integration_names=["gmail"]
         )
         assert "Connected" in result
@@ -482,7 +482,7 @@ class TestCheckIntegrationsStatus:
     async def test_not_connected(self, mock_check: AsyncMock) -> None:
         from app.agents.tools.integration_tool import check_integrations_status
 
-        result = await check_integrations_status.coroutine(  # type: ignore[attr-defined]
+        result = await check_integrations_status.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
             config=_cfg(), integration_names=["gmail"]
         )
         assert "Not Connected" in result
@@ -491,7 +491,7 @@ class TestCheckIntegrationsStatus:
     async def test_not_found(self) -> None:
         from app.agents.tools.integration_tool import check_integrations_status
 
-        result = await check_integrations_status.coroutine(  # type: ignore[attr-defined]
+        result = await check_integrations_status.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
             config=_cfg(), integration_names=["nonexistent"]
         )
         assert "Not found" in result
@@ -499,7 +499,7 @@ class TestCheckIntegrationsStatus:
     async def test_no_user_id(self) -> None:
         from app.agents.tools.integration_tool import check_integrations_status
 
-        result = await check_integrations_status.coroutine(  # type: ignore[attr-defined]
+        result = await check_integrations_status.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
             config=_cfg_no_user(), integration_names=["gmail"]
         )
         assert "Error" in result
@@ -516,7 +516,7 @@ class TestCheckIntegrationsStatus:
     async def test_service_error(self, mock_check: AsyncMock) -> None:
         from app.agents.tools.integration_tool import check_integrations_status
 
-        result = await check_integrations_status.coroutine(  # type: ignore[attr-defined]
+        result = await check_integrations_status.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
             config=_cfg(), integration_names=["gmail"]
         )
         assert "Error checking status" in result

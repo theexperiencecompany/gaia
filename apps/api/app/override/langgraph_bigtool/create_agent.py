@@ -294,9 +294,7 @@ def _after_model_result(
     # checkpointed thread stays bounded too.
     result: dict[str, object] = {"messages": [*tombstones, response]}
     base_keys = {"messages", "selected_tool_ids"}
-    for key, value in updated_state.items():
-        if key not in base_keys:
-            result[key] = value
+    result.update({key: value for key, value in updated_state.items() if key not in base_keys})
     return result
 
 
@@ -320,7 +318,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
         _llm = llm.with_config(configurable=config.get("configurable", {}))
         model_configurations = agent_configurable(config)
         tools_to_bind = _tools_to_bind(deps, state)
-        llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
+        llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]  # langchain model-lane stubs omit bind_tools for this lane type
         llm_with_tools = _bind_session_id(llm_with_tools, model_configurations)
         prepared = _prepare_fallback(llm, tools_to_bind, model_configurations)
         state = _maybe_inject_wrapup(state)
@@ -333,7 +331,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
             fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
         )
 
-        return {"messages": [*tombstones, _finalize_model_response(response, deps.agent_name)]}  # type: ignore[return-value]
+        return {"messages": [*tombstones, _finalize_model_response(response, deps.agent_name)]}  # type: ignore[return-value]  # helper's declared return is wider than the dict actually built
 
     async def acall_model(state: State, config: RunnableConfig, *, store: BaseStore) -> State:
         """Async model invocation with middleware support."""
@@ -351,7 +349,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
         model_configurations = agent_configurable(config)
 
         tools_to_bind = _tools_to_bind(deps, state)
-        llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
+        llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]  # langchain model-lane stubs omit bind_tools for this lane type
         llm_with_tools = _bind_session_id(llm_with_tools, model_configurations)
         prepared = _prepare_fallback(llm, tools_to_bind, model_configurations)
         # LLMAccountingMiddleware already charges this call; auxiliary metering
@@ -373,7 +371,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
                 tool for tool in tools_to_bind
             ]
             response = await middleware_executor.wrap_model_invocation(
-                model=_llm,  # type: ignore[arg-type]
+                model=_llm,  # type: ignore[arg-type]  # tool-registry element types are wider than the helper's narrowed params
                 state=state,
                 config=config,
                 store=store,
@@ -386,7 +384,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
         response = _finalize_model_response(response, deps.agent_name)
 
         # Build updated state with response for after_model hooks
-        updated_state: State = dict(state)  # type: ignore[assignment]
+        updated_state: State = dict(state)  # type: ignore[assignment]  # langgraph state schema fields are typed loosely upstream
         updated_state["messages"] = list(state.get("messages", [])) + [response]
 
         # Execute middleware after_model hooks
@@ -395,7 +393,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
                 updated_state, config, store
             )
 
-        return _after_model_result(tombstones, response, updated_state)  # type: ignore[return-value]
+        return _after_model_result(tombstones, response, updated_state)  # type: ignore[return-value]  # helper's declared return is wider than the dict actually built
 
     return RunnableCallable(call_model, acall_model)
 
@@ -464,9 +462,9 @@ def _select_tools_node(deps: _AgentDeps) -> RunnableCallable | Callable[..., Any
             selected_tools[tool_call["id"]] = dedupe_str_list(filtered_bind)
             response_tools[tool_call["id"]] = dedupe_str_list(response)
 
-        tool_messages, _ = format_selected_tools(response_tools, deps.tool_registry, response_texts)  # type: ignore[arg-type]
-        _, bind_ids = format_selected_tools(selected_tools, deps.tool_registry)  # type: ignore[arg-type]
-        return {"messages": tool_messages, "selected_tool_ids": bind_ids}  # type: ignore[return-value]
+        tool_messages, _ = format_selected_tools(response_tools, deps.tool_registry, response_texts)  # type: ignore[arg-type]  # tool-registry element types are wider than the helper's narrowed params
+        _, bind_ids = format_selected_tools(selected_tools, deps.tool_registry)  # type: ignore[arg-type]  # tool-registry element types are wider than the helper's narrowed params
+        return {"messages": tool_messages, "selected_tool_ids": bind_ids}  # type: ignore[return-value]  # helper's declared return is wider than the dict actually built
 
     async def aselect_tools(
         tool_calls: list[dict[str, Any]], config: RunnableConfig, *, store: BaseStore
@@ -487,17 +485,22 @@ def _select_tools_node(deps: _AgentDeps) -> RunnableCallable | Callable[..., Any
             selected_tools[tool_call["id"]] = dedupe_str_list(filtered_bind)
             response_tools[tool_call["id"]] = dedupe_str_list(response)
 
-        tool_messages, _ = format_selected_tools(response_tools, deps.tool_registry, response_texts)  # type: ignore[arg-type]
-        _, bind_ids = format_selected_tools(selected_tools, deps.tool_registry)  # type: ignore[arg-type]
-        return {"messages": tool_messages, "selected_tool_ids": bind_ids}  # type: ignore[return-value]
+        tool_messages, _ = format_selected_tools(response_tools, deps.tool_registry, response_texts)  # type: ignore[arg-type]  # tool-registry element types are wider than the helper's narrowed params
+        _, bind_ids = format_selected_tools(selected_tools, deps.tool_registry)  # type: ignore[arg-type]  # tool-registry element types are wider than the helper's narrowed params
+        return {"messages": tool_messages, "selected_tool_ids": bind_ids}  # type: ignore[return-value]  # helper's declared return is wider than the dict actually built
 
     select_tools_node: RunnableCallable | Callable[..., Any]
     if deps.retrieve_tools_function is not None and deps.retrieve_tools_coroutine is not None:
+        # Custom sync+async retrieval.
         select_tools_node = RunnableCallable(select_tools, aselect_tools)
     elif deps.retrieve_tools_function is not None and deps.retrieve_tools_coroutine is None:
         select_tools_node = select_tools
     elif deps.retrieve_tools_coroutine is not None and deps.retrieve_tools_function is None:
         select_tools_node = aselect_tools
+    elif deps.retrieve_tools is not None:
+        # Default semantic retrieval: get_default_retrieval_tool supplied BOTH
+        # the sync and async functions, so the node needs both paths too.
+        select_tools_node = RunnableCallable(select_tools, aselect_tools)
     else:
         raise ValueError(
             "One of retrieve_tools_function or retrieve_tools_coroutine must be provided."
@@ -520,7 +523,7 @@ def _end_graph_hooks_node(end_graph_hooks: list[HookType]) -> RunnableCallable:
     return RunnableCallable(execute_end_graph_hooks_node, aexecute_end_graph_hooks_node)
 
 
-def reject_unbound_tools(tool_calls: list[dict[str, Any]], *, store: BaseStore) -> State:
+def reject_unbound_tools(tool_calls: list[dict[str, Any]], *, store: BaseStore) -> State:  # noqa: ARG001 -- langgraph injects store positionally at graph-execution time
     """Return error ToolMessages for tool calls that were not bound."""
     messages = [
         ToolMessage(
@@ -534,7 +537,7 @@ def reject_unbound_tools(tool_calls: list[dict[str, Any]], *, store: BaseStore) 
         )
         for call in tool_calls
     ]
-    return {"messages": messages}  # type: ignore[return-value]
+    return {"messages": messages}  # type: ignore[return-value]  # helper's declared return is wider than the dict actually built
 
 
 async def areject_unbound_tools(tool_calls: list[dict[str, Any]], *, store: BaseStore) -> State:
@@ -542,7 +545,7 @@ async def areject_unbound_tools(tool_calls: list[dict[str, Any]], *, store: Base
     return reject_unbound_tools(tool_calls, store=store)
 
 
-def finish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State:
+def finish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State:  # noqa: ARG001 -- langgraph injects store positionally at graph-execution time
     messages = []
     for call in tool_calls:
         args = call.get("args", {}) if isinstance(call, dict) else {}
@@ -555,7 +558,7 @@ def finish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State:
                 name=FINISH_TASK_NAME,
             )
         )
-    return {"messages": messages}  # type: ignore[return-value]
+    return {"messages": messages}  # type: ignore[return-value]  # helper's declared return is wider than the dict actually built
 
 
 async def afinish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State:
@@ -648,7 +651,11 @@ def _dispatch_tools(deps: _AgentDeps, state: State) -> list[Send]:
 
 
 def _should_continue(deps: _AgentDeps) -> Callable[..., str | Send | list[Send]]:
-    def should_continue(state: State, *, store: BaseStore) -> str | Send | list[Send]:
+    def should_continue(
+        state: State,
+        *,
+        store: BaseStore,  # noqa: ARG001 -- langgraph injects store positionally at graph-execution time
+    ) -> str | Send | list[Send]:
         messages = state["messages"]
         last_message = messages[-1]
         if not isinstance(last_message, AIMessage) or not last_message.tool_calls:

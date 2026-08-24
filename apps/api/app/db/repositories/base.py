@@ -28,7 +28,7 @@ from app.db.repositories.cache import (
     query_arg_hash,
     read_generation,
 )
-from app.utils.errors import AppError, EmptyUpdateError, RepositoryMisconfigured
+from app.utils.errors import AppError, EmptyUpdateError, RepositoryMisconfiguredError
 from shared.py.wide_events import log
 
 
@@ -132,7 +132,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             return
         missing = [name for name in _REQUIRED_CLASSVARS if getattr(cls, name, None) is None]
         if missing:
-            raise RepositoryMisconfigured(
+            raise RepositoryMisconfiguredError(
                 message=f"{cls.__name__} is missing repository ClassVars: {', '.join(missing)}",
                 why="a concrete repository must declare its collection and its models",
                 fix=f"set {', '.join(missing)} on {cls.__name__}",
@@ -140,7 +140,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         for attr in ("document_model", "update_model"):
             model = getattr(cls, attr)
             if not (isinstance(model, type) and issubclass(model, BaseModel)):
-                raise RepositoryMisconfigured(
+                raise RepositoryMisconfiguredError(
                     message=f"{cls.__name__}.{attr} must be a pydantic BaseModel subclass"
                 )
 

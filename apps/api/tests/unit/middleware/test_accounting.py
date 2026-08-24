@@ -52,7 +52,7 @@ CONFIG: dict[str, Any] = {
 }
 
 
-async def _fixed_cost(
+def _fixed_cost(
     *, model_name: str, input_tokens: int, output_tokens: int, cached_tokens: int
 ) -> dict[str, float]:
     """Stand-in for the pricing-table lookup: $0.001 per token, cached at half."""
@@ -220,7 +220,7 @@ async def test_cost_is_taken_from_the_pricing_table_and_charged_as_credits() -> 
 async def test_cached_tokens_are_passed_to_the_pricing_call_not_discarded() -> None:
     seen: dict[str, Any] = {}
 
-    async def spy(**kwargs: Any) -> dict[str, float]:
+    def spy(**kwargs: Any) -> dict[str, float]:
         seen.update(kwargs)
         return {"total_cost": 1.0}
 
@@ -241,7 +241,7 @@ async def test_cached_tokens_are_passed_to_the_pricing_call_not_discarded() -> N
 
 
 async def test_a_pricing_failure_is_logged_and_charged_as_zero() -> None:
-    async def broken(**_kwargs: Any) -> dict[str, float]:
+    def broken(**_kwargs: Any) -> dict[str, float]:
         raise RuntimeError("pricing table unavailable")
 
     mw = LLMAccountingMiddleware(agent_name="a")

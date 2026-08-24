@@ -21,7 +21,7 @@ from app.constants.media import (
     TARGET_INLINE_IMAGE_BYTES,
     WEBP_MIME,
 )
-from app.utils.image_codec import ImageCodec, InlineImage, InvalidImage
+from app.utils.image_codec import ImageCodec, InlineImage, InvalidImageError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -95,7 +95,7 @@ class TestMimeIsSniffedNotDeclared:
 
 
 # ---------------------------------------------------------------------------
-# Late decode failures must arrive as InvalidImage, not a raw OSError.
+# Late decode failures must arrive as InvalidImageError, not a raw OSError.
 # ---------------------------------------------------------------------------
 
 
@@ -103,31 +103,31 @@ class TestDecodeFailuresAreTyped:
     async def test_truncated_image_on_the_transcode_path_raises_invalid_image(self) -> None:
         """verify() only reads the header; the full decode in _transcode is what fails.
 
-        Callers guard with `except InvalidImage`. A raw OSError escaping here
+        Callers guard with `except InvalidImageError`. A raw OSError escaping here
         propagates out of the `read` tool and fails the turn. The transcode path
         is the common one — every GIF, and every image over the size/edge budget.
         """
         full = _encode("JPEG", size=(3000, 3000), quality=95)  # oversized -> transcodes
         truncated = full[: len(full) // 2]
 
-        with pytest.raises(InvalidImage):
+        with pytest.raises(InvalidImageError, match="could not be re-encoded"):
             await ImageCodec.from_bytes(truncated)
 
     async def test_non_image_bytes_raise_invalid_image(self) -> None:
-        with pytest.raises(InvalidImage):
+        with pytest.raises(InvalidImageError, match="not a decodable image"):
             await ImageCodec.from_bytes(b"this is not an image, it is prose")
 
     async def test_empty_bytes_raise_invalid_image(self) -> None:
-        with pytest.raises(InvalidImage):
+        with pytest.raises(InvalidImageError):
             await ImageCodec.from_bytes(b"")
 
     async def test_malformed_base64_raises_invalid_image(self) -> None:
-        with pytest.raises(InvalidImage):
+        with pytest.raises(InvalidImageError, match="not valid base64"):
             await ImageCodec.from_base64("!!! not base64 !!!")
 
     def test_invalid_image_is_catchable_as_value_error(self) -> None:
         """Callers that catch ValueError (read_tool's size guard) must still work."""
-        assert issubclass(InvalidImage, ValueError)
+        assert issubclass(InvalidImageError, ValueError)
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +167,7 @@ class TestBudgets:
         assert inline.mime_type == JPEG_MIME
 
     async def test_bytes_over_the_hard_limit_are_refused_before_decoding(self) -> None:
-        with pytest.raises(InvalidImage, match="exceeds"):
+        with pytest.raises(InvalidImageError, match="exceeds"):
             await ImageCodec.from_bytes(b"\x89PNG" + b"\x00" * MAX_IMAGE_FILE_BYTES)
 
     async def test_oversized_base64_is_refused_without_materializing_the_payload(self) -> None:
@@ -175,7 +175,7 @@ class TestBudgets:
         make us allocate the decoded copy of a 200 MB payload."""
         huge_b64 = "A" * (int(MAX_IMAGE_FILE_BYTES * 4 / 3) + 8)
 
-        with pytest.raises(InvalidImage, match="exceeds"):
+        with pytest.raises(InvalidImageError, match="exceeds"):
             await ImageCodec.from_base64(huge_b64)
 
     async def test_oversized_bytes_transcode_even_when_the_dimensions_are_in_spec(self) -> None:

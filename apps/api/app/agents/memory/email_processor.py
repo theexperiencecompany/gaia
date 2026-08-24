@@ -1004,7 +1004,7 @@ async def _crawl_and_store_discovered(
 ) -> int:
     """Crawl discovered profile URLs and retain their content as memories."""
     crawl_tasks = []
-    for key, profile_info in discovered_profiles.items():
+    for profile_info in discovered_profiles.values():
         platform = profile_info["platform"]
         url = profile_info["url"]
         task = crawl_profile_url(url, platform, semaphore)

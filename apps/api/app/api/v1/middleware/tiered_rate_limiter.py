@@ -79,6 +79,11 @@ class RateLimitExceededException(HTTPException):
         if current_plan:
             detail["current_plan"] = current_plan
 
+        # Kept as attributes so consumers that rewrite ``detail`` (e.g. the
+        # agent-facing exception conversion) can still read the gate and reset.
+        self.plan_required = plan_required
+        self.reset_time = reset_time
+
         super().__init__(status_code=429, detail=detail)
 
 

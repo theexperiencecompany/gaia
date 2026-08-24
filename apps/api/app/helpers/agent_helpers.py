@@ -16,6 +16,7 @@ from app.agents.core.graph_manager import CompiledAgentGraph
 from app.agents.core.interruption import record_interruption
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.llm.lane import AgentRole, ModelLane, resolve_lane
+from app.agents.llm.types import DevModelOption
 from app.config.langfuse import build_langfuse_callback
 from app.constants.cache import (
     CUSTOM_INT_METADATA_TTL,
@@ -39,7 +40,6 @@ from app.models.agent_models import (
 )
 from app.models.chat_models import ConversationSource, SourceCategory
 from app.models.message_models import MessageDict, MessageRequestWithHistory
-from app.models.models_models import DevModelOption
 from app.models.payment_models import PlanType
 from app.models.stream_events import ModelFallbackFrame, ToolOutputPayload
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
@@ -520,7 +520,7 @@ async def execute_graph_silent(
         ),
     )
     async for event in silent_stream:
-        ns, stream_mode, payload = event
+        _ns, stream_mode, payload = event
 
         # Process "updates" events - same logic as execute_graph_streaming
         if stream_mode == "updates":
@@ -593,9 +593,9 @@ async def execute_graph_silent(
                     for entry in new_data["tool_data"]:
                         tool_data["tool_data"].append(entry)
                 # Always merge non-tool_data keys (follow_up_actions, etc.)
-                for key, value in new_data.items():
-                    if key != "tool_data":
-                        tool_data[key] = value
+                tool_data.update(
+                    {key: value for key, value in new_data.items() if key != "tool_data"}
+                )
 
     # Inject accumulated todo_progress as a single tool_data entry
     if todo_progress_accumulated:
@@ -610,7 +610,7 @@ async def execute_graph_silent(
     return complete_message, tool_data
 
 
-def _json_safe_tool_result(content: Any) -> Any:
+def _json_safe_tool_result(content: Any) -> Any:  # noqa: ANN401 -- framework contract
     """The raw tool result handed to an MCP-UI iframe, as JSON-serializable data.
 
     Inline media is text-extracted out: media blocks are plain dicts, so they
@@ -681,7 +681,7 @@ async def execute_graph_streaming(
 
         # Parse event tuple - handle both 2-tuple and 3-tuple (subgraphs=True)
         if len(event) == 3:
-            ns, stream_mode, payload = event
+            _ns, stream_mode, payload = event
         elif len(event) == 2:
             stream_mode, payload = event
         else:

@@ -34,7 +34,7 @@ from app.services.storage.juicefs import (
     user_owns_regular_file,
 )
 from app.templates.docstrings.coding_tools_docs import READ_TOOL
-from app.utils.image_codec import ImageCodec, InvalidImage
+from app.utils.image_codec import ImageCodec, InvalidImageError
 from app.utils.multimodal import text_content_block
 from shared.py.wide_events import log
 
@@ -151,7 +151,7 @@ async def _read_image(
     file_size = len(data)
     try:
         image = await ImageCodec.from_bytes(data)
-    except InvalidImage as e:
+    except InvalidImageError as e:
         return f"Error: cannot read {abs_path} as an image — {e}"
 
     # The file's own type and size, not the inline block's: `ImageCodec` may have

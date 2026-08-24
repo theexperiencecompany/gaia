@@ -415,7 +415,7 @@ class TestApprovalPause:
 
         The caller stamps re-dispatch context onto every id reported here. An approval
         left out gets no ``resume_item``, and deciding it later raises
-        ApprovalNotResumable — the user presses Approve and nothing can ever happen.
+        ApprovalNotResumableError — the user presses Approve and nothing can ever happen.
         """
         graph = ScriptedGraph(
             [

@@ -76,9 +76,9 @@ class TestInstallFromGithubSuccess:
 
         assert result is not None
         install_mock.assert_awaited_once()
-        call_kwargs = install_mock.await_args.kwargs
-        assert call_kwargs["name"] == "my-skill"
-        assert call_kwargs["target"] == "executor"
+        request = install_mock.await_args.args[0]
+        assert request.name == "my-skill"
+        assert request.target == "executor"
         # Body-only (frontmatter stripped) must reach VFS, not the raw SKILL.md.
         write_call = write_mock.await_args_list[0]
         assert write_call.args[2] == "SKILL.md"
@@ -122,7 +122,8 @@ class TestInstallFromGithubSuccess:
 
         assert result is not None
         install_mock.assert_awaited_once()
-        files = install_mock.await_args.kwargs["files"]
+        request = install_mock.await_args.args[0]
+        files = request.files
         assert "SKILL.md" in files
         assert "resources/reference.md" in files
         written_paths = [c.args[2] for c in write_mock.await_args_list]
@@ -186,7 +187,7 @@ class TestInstallFromGithubValidation:
                 allowed_targets={"gmail_agent"},
             )
 
-        assert install_mock.await_args.kwargs["target"] == "gmail_agent"
+        assert install_mock.await_args.args[0].target == "gmail_agent"
 
     async def test_no_skill_path_raises_value_error(self, storage_seams):
         with pytest.raises(ValueError, match="Provide a path"):

@@ -160,11 +160,11 @@ class _ClientBranding(TypedDict, total=False):
     policy_uri: AnyHttpUrl
 
 
-class DCRNotSupportedException(Exception):
+class DCRNotSupportedError(Exception):
     """Raised when Dynamic Client Registration is not supported by the server."""
 
 
-class StepUpAuthRequired(Exception):
+class StepUpAuthRequiredError(Exception):
     """Raised when additional scopes are required (403 insufficient_scope).
 
     Per MCP spec, this triggers re-authorization with additional scopes.
@@ -682,7 +682,10 @@ class MCPClient:
         # integrations out of this user's tool set, but this is the hard gate —
         # a mixed-up or leaked integration_id can't cross the user boundary,
         # and a revoked device can't be reached on a stale integration doc.
-        from app.services.device.device_service import get_active_device
+        # Deferred import: device-service stack deferred until a paired-device tunnel is actually built
+        from app.services.device.device_service import (  # noqa: PLC0415 -- deferred
+            get_active_device,
+        )
 
         device = await get_active_device(device_id)
         if device is None or device.user_id != self.user_id:
@@ -902,7 +905,7 @@ class MCPClient:
     ) -> list[BaseTool] | None:
         """Shared connect-failure handling.
 
-        Raises :class:`StepUpAuthRequired` for 403 insufficient_scope, retries
+        Raises :class:`StepUpAuthRequiredError` for 403 insufficient_scope, retries
         once via token refresh on auth-related failures (returning the retried
         connection's tools), and resets MongoDB status only on demonstrably dead
         credentials. Returns ``None`` when the caller should re-raise.
@@ -939,7 +942,7 @@ class MCPClient:
                 integration_id=integration_id,
                 required_scopes=required_scopes,
             )
-            raise StepUpAuthRequired(integration_id, required_scopes) from e
+            raise StepUpAuthRequiredError(integration_id, required_scopes) from e
 
         # Retry once on auth-related failures: 401 (expired token) or
         # 405 (mcp-use OAuth fallback hit a wrong endpoint because the
@@ -1076,7 +1079,9 @@ class MCPClient:
         corrupts retrieve_tools for the other integration via the
         chroma:indexed:{namespace} cache.
         """
-        from app.config.oauth_config import get_integration_by_id
+        from app.config.oauth_config import (  # noqa: PLC0415 -- oauth_config transitively imports the langchain tool subgraphs, far too heavy on this module's import path
+            get_integration_by_id,
+        )
 
         integration = get_integration_by_id(integration_id)
         namespace = (
@@ -1160,7 +1165,7 @@ class MCPClient:
 
                 if resolved_name:
                     # Local import to avoid circular dependency
-                    from app.agents.core.subagents.handoff_tools import (
+                    from app.agents.core.subagents.handoff_tools import (  # noqa: PLC0415 -- breaks circular dependency with the agent handoff tools module
                         index_custom_mcp_as_subagent,
                     )
 
@@ -1469,7 +1474,7 @@ class MCPClient:
         Perform Dynamic Client Registration (RFC 7591) on the authorization server.
 
         Raises:
-            DCRNotSupportedException: If server returns 403/404/405 (DCR not supported)
+            DCRNotSupportedError: If server returns 403/404/405 (DCR not supported)
             ValueError: For other registration failures
         """
         registration_endpoint = str(as_metadata.registration_endpoint)
@@ -1506,7 +1511,7 @@ class MCPClient:
                 # which would otherwise raise a generic OAuthRegistrationError and
                 # lose the "pre-registration required" signal the caller acts on.
                 if response.status_code in (403, 404, 405):
-                    raise DCRNotSupportedException(
+                    raise DCRNotSupportedError(
                         f"DCR not supported at {registration_endpoint} "
                         f"(status {response.status_code}). Pre-registration required."
                     )
@@ -1524,7 +1529,7 @@ class MCPClient:
                     registration_endpoint=registration_endpoint,
                 )
                 return client_info.client_id
-        except DCRNotSupportedException:
+        except DCRNotSupportedError:
             raise  # Re-raise without wrapping
         except Exception as e:
             log.error(

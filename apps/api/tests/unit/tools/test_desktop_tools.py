@@ -286,7 +286,7 @@ class TestTakeScreenshot:
         assert result == "Could not capture the screen: unknown error"
 
     async def test_invalid_image_data_returns_an_error_string(self) -> None:
-        from app.utils.image_codec import InvalidImage
+        from app.utils.image_codec import InvalidImageError
 
         with (
             patch(f"{MODULE}.get_stream_writer", MagicMock()),
@@ -294,7 +294,9 @@ class TestTakeScreenshot:
                 f"{MODULE}.request_desktop_action",
                 AsyncMock(return_value=DesktopToolOutcome(ok=True, data={"image_b64": "garbage"})),
             ),
-            patch(f"{MODULE}.ImageCodec.from_base64", AsyncMock(side_effect=InvalidImage("bad"))),
+            patch(
+                f"{MODULE}.ImageCodec.from_base64", AsyncMock(side_effect=InvalidImageError("bad"))
+            ),
         ):
             result = await take_screenshot.coroutine(config=_desktop_config(), query="look")
 
