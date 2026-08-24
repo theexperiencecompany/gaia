@@ -27,14 +27,18 @@ from app.constants.agents import AgentTag
 from app.constants.llm import LANE_FIELD_ID, UNKNOWN_MODEL_NAME
 from app.constants.log_tags import LogTag
 
-#: Every detector at once, in the register the production replies used.
+#: Every detector at once, in the register the production replies used. The
+#: closing hook is the reflexive shape (offer + justification clause) — a
+#: plain offer is a legitimate nudge and does not count as a violation.
 DIRTY_DRAFT = (
-    "it's not a feature, it's a switching cost — that's the whole point.\n\nwant me to draft that?"
+    "it's not a feature, it's a switching cost — that's the whole point.\n\n"
+    "want me to draft that? that's the only move that matters."
 )
 CLEAN_REWRITE = "that's a switching cost, and it's the whole point. i can draft it."
 WORSE_REWRITE = (
     "honestly, here's the thing — it's not a feature, it's a switching cost.\n\n"
-    "**One**: lock-in.\n**Two**: pricing.\n**Three**: support.\n\nshould i draft that?"
+    "**One**: lock-in.\n**Two**: pricing.\n**Three**: support.\n\n"
+    "should i draft that? that's the piece that actually matters."
 )
 #: Three em dashes: exactly as many tells as ``DIRTY_DRAFT``, so a rewrite that
 #: scores this one ties rather than regresses.
@@ -118,7 +122,7 @@ class TestStyleGuardRegeneration:
         assert AgentTag.STYLE_CORRECTION in note.text
         assert "em dashes" in note.text
         assert "a closing offer to do the next thing" in note.text
-        assert "want me to draft that?" in note.text
+        assert "want me to draft that? that's the only" in note.text
         assert "Keep every fact, id, link and number." in note.text
 
     async def test_the_draft_is_retracted_on_the_wire_before_the_rewrite_streams(
@@ -487,7 +491,7 @@ class TestCorrectionNoteRendering:
             "Your draft violated the voice rules:\n"
             '- the "not X, it\'s Y" antithesis ×1: "not a feature, it\'s"\n'
             "- em dashes ×1: \"eature, it's a switching cost — that's the whole point.\"\n"
-            '- a closing offer to do the next thing ×1: "want me to draft that?"\n'
+            '- a closing offer to do the next thing ×1: "want me to draft that? that\'s the only"\n'
             "Rewrite the same reply without them. Keep every fact, id, link and number. "
             "Keep the bubble breaks.\n"
             "</style_correction>\n"

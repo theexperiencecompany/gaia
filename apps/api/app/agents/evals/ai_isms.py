@@ -66,13 +66,27 @@ PREAMBLE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
 #: markers that delimit each one.
 BOLD_EMPHASIS_PATTERN = re.compile(r"\*\*[^*\n]+\*\*")
 
-#: The sales close: a reply that ends by offering to do the next thing, often
-#: with a justification clause bolted on. Measured in 44 of 72 generated replies
-#: on real production queries, at every temperature and reasoning effort tried,
-#: which is what marks it as prompt-driven rather than sampling noise.
+#: The offer half of the sales close: a question offering to do the next thing.
+#: On its own this is a legitimate nudge (plain "want me to draft it?" is fine)
+#: and must NOT count as a violation. It only becomes the closing-hook tell when
+#: paired with CLOSING_HOOK_JUSTIFICATION_PATTERN below (see has_closing_hook).
 CLOSING_HOOK_PATTERN = re.compile(
     r"\b(?:want me to|want (?:me |you )?to|do you want me to|should i|shall i|need me to)\b"
     r"[^?\n]{0,160}\?",
+    re.I,
+)
+
+#: The justification clause the model bolts onto the offer to argue the reader
+#: into saying yes, e.g. "...? that's the one move that actually starts this."
+#: This reflexive shape (offer + argument-for-yes), not the bare offer, was
+#: measured in 44 of 72 generated replies on real production queries at every
+#: temperature and reasoning effort tried, which is what marks it as
+#: prompt-driven rather than sampling noise or an ordinary clarifying question.
+CLOSING_HOOK_JUSTIFICATION_PATTERN = re.compile(
+    r"\b(?:that's|that is|it's|it is|this is|which is|because|since)\b"
+    r"[^.\n]*?\b(?:the one|the move|the piece|actually|highest|biggest|fastest|"
+    r"what matters|what actually|makes the rest|starts this|the real|"
+    r"the thing that|the only)\b",
     re.I,
 )
 
@@ -140,16 +154,28 @@ def count_bubbles(text: str) -> int:
 
 
 def has_closing_hook(text: str) -> bool:
-    """Whether the reply signs off by offering to do the next thing.
+    """Whether the reply signs off with the reflexive closing hook, not a plain offer.
 
-    Only the last non-empty line counts: the same question asked mid-reply is a
-    real clarification, and it is the closing position that makes it a stock
-    sign-off. The justification clause the model bolts on ("... ? that's the one
-    move that ...") lands on that same line, so widening the window to two lines
-    finds nothing extra and starts scoring genuine questions.
+    A plain offer ending in "?" ("want me to draft it?") is a legitimate nudge
+    and does not count. Only the reflexive shape counts: an offer question
+    followed by a justification clause arguing for saying yes, e.g. "want me to
+    draft the win-back email right now? that's the one move that actually
+    starts this." The justification clause may trail the "?" on the same line,
+    or sit on the next non-blank line. Only the last non-empty line (or the
+    pair of the last two) can be the closing position: the same offer asked
+    mid-reply is ordinary conversation, not a sign-off.
     """
     lines = [line for line in BUBBLE_SENTINEL_PATTERN.sub("\n", text).splitlines() if line.strip()]
-    return bool(lines) and bool(CLOSING_HOOK_PATTERN.search(lines[-1]))
+    if not lines:
+        return False
+    last_line = lines[-1]
+    match = CLOSING_HOOK_PATTERN.search(last_line)
+    if match and CLOSING_HOOK_JUSTIFICATION_PATTERN.search(last_line[match.end() :]):
+        return True
+    if len(lines) >= 2 and CLOSING_HOOK_PATTERN.search(lines[-2]):
+        if CLOSING_HOOK_JUSTIFICATION_PATTERN.search(last_line):
+            return True
+    return False
 
 
 def score_reply(text: str) -> AiIsmScore:
@@ -173,6 +199,25 @@ def _matches(patterns: tuple[re.Pattern[str], ...], text: str) -> list[str]:
     return [match.group(0).strip() for pattern in patterns for match in pattern.finditer(text)]
 
 
+def _closing_hook_snippets(non_blank_lines: list[str]) -> list[str]:
+    """The offer+justification span(s) that make the closing position a reflexive hook."""
+    if not non_blank_lines:
+        return []
+    last_line = non_blank_lines[-1]
+    match = CLOSING_HOOK_PATTERN.search(last_line)
+    if match:
+        trailing = last_line[match.end() :]
+        justification = CLOSING_HOOK_JUSTIFICATION_PATTERN.search(trailing)
+        if justification:
+            return [f"{match.group(0)}{trailing[: justification.end()]}".strip()]
+    if len(non_blank_lines) >= 2:
+        prev_match = CLOSING_HOOK_PATTERN.search(non_blank_lines[-2])
+        justification = CLOSING_HOOK_JUSTIFICATION_PATTERN.search(last_line)
+        if prev_match and justification:
+            return [prev_match.group(0).strip(), justification.group(0).strip()]
+    return []
+
+
 def violation_snippets(text: str) -> dict[str, list[str]]:
     """The offending fragments per detector, for a correction note that quotes them.
 
@@ -190,9 +235,9 @@ def violation_snippets(text: str) -> dict[str, list[str]]:
         + _matches((LET_ME_OPENER_PATTERN,), text),
         "bold_emphasis": _matches((BOLD_EMPHASIS_PATTERN,), text),
         "preamble": _matches(PREAMBLE_PATTERNS, text),
-        # Only the LAST non-blank line can be a closing hook: the same question
-        # earlier in a reply is ordinary conversation.
-        "closing_hook": _matches((CLOSING_HOOK_PATTERN,), non_blank[-1]) if non_blank else [],
+        # Only the reflexive shape (offer + justification clause) in the closing
+        # position counts; a plain offer is a legitimate nudge, not a tell.
+        "closing_hook": _closing_hook_snippets(non_blank),
         "template_shape": _matches((BOLD_LED_BLOCK_PATTERN,), text)
         if len(BOLD_LED_BLOCK_PATTERN.findall(text)) >= TEMPLATE_SHAPE_MIN_BLOCKS
         else [],

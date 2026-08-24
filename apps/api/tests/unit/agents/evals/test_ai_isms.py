@@ -75,7 +75,7 @@ EXPECTED_GENERATED_TOTALS = AiIsmScore(
     banned_phrases=0,
     bold_emphasis=10,
     preamble=0,
-    closing_hook=7,
+    closing_hook=0,
     template_shape=2,
     bubbles=15,
     chars=5075,
@@ -107,10 +107,14 @@ def test_generated_corpus_scores_exactly() -> None:
     assert totals_over(GENERATED_REPLIES) == EXPECTED_GENERATED_TOTALS
 
 
-def test_most_generated_replies_sign_off_with_a_sales_hook() -> None:
-    """7 of 12, and 29 of the 72 replies they were sampled from: the closing
-    offer is prompt-driven, not sampling noise."""
-    assert sum(score_reply(reply).closing_hook for reply in GENERATED_REPLIES) == 7
+def test_generated_replies_no_longer_count_a_plain_offer_as_a_closing_hook() -> None:
+    """None of these 12 pair the offer with a justification clause in the
+    closing position, so the reflexive-only detector scores all 12 at 0. They
+    used to score 7/12 back when any offer ending in '?' counted; a plain
+    offer ("want me to check where they landed?") is a legitimate nudge, not
+    the sales-close tell, and founder review confirmed only the offer +
+    justification shape (see CLOSING_HOOK_JUSTIFICATION_PATTERN) is the tell."""
+    assert sum(score_reply(reply).closing_hook for reply in GENERATED_REPLIES) == 0
 
 
 def test_not_one_production_reply_was_split_into_bubbles() -> None:
@@ -211,14 +215,39 @@ def test_counts_chars_and_paragraphs() -> None:
 @pytest.mark.parametrize(
     "text",
     [
+        "so the base is 50 paying.\n\nwant me to draft the win-back email right now? "
+        "that's the one move that actually starts this.",
+        "that's the shape. should i set up the daily digest now? "
+        "it's the piece that makes the rest work.",
+        "fixed it.\n\nwant me to start on the churned-user emails? "
+        "that's the highest-leverage thing on this list.",
+        "should i pull up the win-back drafts right now?\n\n"
+        "that's the thing that actually gets this moving.",
+    ],
+)
+def test_counts_the_reflexive_closing_hook(text: str) -> None:
+    """Only the offer paired with a justification clause counts: an offer
+    question followed, on the same line or the next non-blank line, by a
+    clause arguing for saying yes."""
+    assert score_reply(text).closing_hook == 1
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "that one didn't go out since you passed on it, want me to change it up?",
+        "want me to move them over to todoist instead?",
+        "send it as is, or tweak the subject first?",
         "so the base is 50 paying.\n\nwant me to draft the win-back email right now?",
         "that's the shape. should i make these recurring daily, or just for today?",
         "fixed it.\n\nwant me to pull up those drafts so you can send them tonight? that's step one.",
         "want to start with the win-back email right now? i'll pull up the drafts.",
     ],
 )
-def test_counts_the_closing_sales_hook(text: str) -> None:
-    assert score_reply(text).closing_hook == 1
+def test_a_plain_offer_is_not_a_closing_hook(text: str) -> None:
+    """A bare offer ending in '?' is a legitimate nudge, not the sales-close
+    tell. Only the reflexive shape (offer + justification) counts."""
+    assert score_reply(text).closing_hook == 0
 
 
 @pytest.mark.parametrize(
@@ -274,7 +303,7 @@ class TestViolationSnippets:
             "here's what i found:\n\n"
             "honestly, it's not a bug, it's a **feature** — trust me on this.\n\n"
             "1. **buy resend**\n2. **email churned users**\n3. **record the video**\n\n"
-            "want me to ship it now?"
+            "want me to ship it now? that's the one move that actually matters."
         )
         assert violation_snippets(text) == {
             "negation_antithesis": ["not a bug, it's"],
@@ -287,7 +316,7 @@ class TestViolationSnippets:
                 "**record the video**",
             ],
             "preamble": ["here's what i found"],
-            "closing_hook": ["want me to ship it now?"],
+            "closing_hook": ["want me to ship it now? that's the one"],
             "template_shape": [
                 "1. **buy resend**",
                 "2. **email churned users**",
@@ -300,8 +329,16 @@ class TestViolationSnippets:
         rejoined into a newline (not consumed) before the last-line search, or
         the trailing bubble's content gets glued onto the sentinel and its
         word-boundary match breaks."""
+        text = "the numbers are in<NEW_MESSAGE_BREAK>want me to draft that? that's the only real move here."
+        assert violation_snippets(text) == {
+            "closing_hook": ["want me to draft that? that's the only"]
+        }
+
+    def test_a_plain_offer_yields_no_closing_hook_snippet(self) -> None:
+        """A bare offer with no justification clause is not the tell; the
+        snippet dict must not include a closing_hook key at all."""
         text = "the numbers are in<NEW_MESSAGE_BREAK>want me to draft that?"
-        assert violation_snippets(text) == {"closing_hook": ["want me to draft that?"]}
+        assert "closing_hook" not in violation_snippets(text)
 
     def test_closing_hook_ignores_a_mid_reply_question(self) -> None:
         text = "want me to check first? no, i already did.\n\nthey're all set. go sleep."
