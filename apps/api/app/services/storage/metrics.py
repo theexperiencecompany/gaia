@@ -386,7 +386,9 @@ def record_fs_op(
     stats.count += 1
     stats.total_ms += duration_ms
     stats.max_ms = max(stats.max_ms, duration_ms)
-    if byte_count:
+    # Strictly positive: a negative count (a caller passing a signed delta by
+    # mistake) must not push the running total below zero.
+    if byte_count > 0:
         stats.bytes += byte_count
     if error is not None:
         stats.errors += 1

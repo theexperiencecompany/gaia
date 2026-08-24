@@ -505,9 +505,9 @@ class TestCreateWorkflowPins:
             config=_make_config(), user_request="   "
         )
         assert result["success"] is False
-        assert result["data"]["status"] == "missing_request"
+        assert result["error"] == "missing_request"
         assert (
-            result["data"]["message"]
+            result["message"]
             == "user_request is required. Pass the user's words describing what workflow they want."
         )
 
@@ -528,7 +528,8 @@ class TestCreateWorkflowPins:
 
         kwargs = mock_runner.execute.await_args.kwargs
         assert kwargs["user_id"] == "507f1f77bcf86cd799439011"
-        assert kwargs["task"] == "daily digest"
+        # The subagent receives the structured task prompt with the request embedded.
+        assert '"daily digest"' in kwargs["task"]
         ctx = kwargs["context"]
         assert ctx.stream_writer is writer
 

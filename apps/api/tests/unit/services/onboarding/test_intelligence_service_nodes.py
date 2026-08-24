@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.agents.memory.email_processor import OnboardingFetchOptions
 from app.constants.email import ONBOARDING_EMAIL_SCAN_LIMIT
 from app.constants.onboarding import TRIAGE_EARLY_THRESHOLD
 from app.models.onboarding_models import (
@@ -678,9 +679,10 @@ class TestRunSocialProfilesBackground:
         ):
             await _run_social_profiles_background(USER, "Ann", "a@x.com")
 
-        kwargs = fetch.await_args.kwargs
-        assert kwargs["fmt"] == "full"
-        assert kwargs["include_sent"] is True
+        opts = fetch.await_args.kwargs["options"]
+        assert isinstance(opts, OnboardingFetchOptions)
+        assert opts.fmt == "full"
+        assert opts.include_sent is True
 
     async def test_a_cached_body_fetch_is_reused(self, stages: Any, scan_cache: Any) -> None:
         scan_cache.get = AsyncMock(return_value=[{"id": "cached"}])

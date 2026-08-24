@@ -1,6 +1,6 @@
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query
+from fastapi import APIRouter, Depends, Form, HTTPException
 
 from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.prompts.mail_prompts import EMAIL_COMPOSER
@@ -194,7 +194,11 @@ def _build_gmail_query(filters: GmailSearchFilters) -> str:
 
 @router.get("/gmail/search", summary="Advanced search for Gmail messages")
 async def search_emails(
-    filters: Annotated[GmailSearchFilters, Query()],
+    # Bound as a dependency, not Query(): FastAPI 0.139 does not flatten
+    # query-models through include_router, so a Query()-bound model 422s every
+    # request expecting a JSON `filters=` param. Depends() binds each field
+    # as its own flattened query param.
+    filters: Annotated[GmailSearchFilters, Depends()],
     max_results: int = 20,
     page_token: str | None = None,
     user_id: str = Depends(require_integration_user_id("gmail")),

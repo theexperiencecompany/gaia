@@ -493,6 +493,14 @@ def _parse_scheduled_for(context: dict[str, Any] | None, workflow_id: str) -> "d
     """
     scheduled_for = context.get("scheduled_for") if context else None
     if isinstance(scheduled_for, bool) or not isinstance(scheduled_for, (int, float)):
+        if scheduled_for is not None:
+            # Present but not a number: a manual caller hand-typing its own
+            # context. Discard loudly — silence here would hide real bugs.
+            log.warning(
+                f"{LogTag.WORKER} Unparseable scheduled_for on scheduled fire; treating as unstamped",
+                workflow_id=workflow_id,
+                scheduled_for=str(scheduled_for)[:32],
+            )
         return None
     try:
         return datetime.fromtimestamp(scheduled_for, tz=UTC)
@@ -536,6 +544,9 @@ async def _claim_scheduled_fire(
             "(already claimed, running, deactivated, or rescheduled away); "
             "skipping stale scheduled fire",
             workflow_id=workflow_id,
+            # The raw stamp (epoch seconds) reads better in Loki than a datetime
+            # repr, and is exactly what the enqueue carried.
+            scheduled_for=(context or {}).get("scheduled_for"),
         )
     return claimed
 
@@ -619,26 +630,6 @@ async def _record_run_failure(
     execution_id: str | None,
     context: dict[str, Any] | None,
 ) -> str:
-    # The caught error must land on the wide event from this block — the
-    # bookkeeping helper below cannot vouch for it on its own.
-    if isinstance(e, RateLimitExceededException):
-        # User hit their plan's workflow-execution quota — an expected,
-        # by-design outcome, not a worker failure. WARNING keeps it off the
-        # ARQ failed-task alert.
-        log.warning(
-            f"{LogTag.WORKER} Workflow skipped — rate limit exceeded",
-            workflow_id=workflow_id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-    else:
-        log.exception(
-            f"{LogTag.WORKER} Error executing workflow",
-            workflow_id=workflow_id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-
     await _record_execution_failure(e, workflow, workflow_id, execution_id)
 
     # Still arm the next occurrence — a transient failure (rate limit, LLM
@@ -780,6 +771,25 @@ async def execute_workflow_by_id(
         )
 
     except Exception as e:
+        # The caught error must land on the wide event from this block — the
+        # bookkeeping helper below cannot vouch for it on its own.
+        if isinstance(e, RateLimitExceededException):
+            # User hit their plan's workflow-execution quota — an expected,
+            # by-design outcome, not a worker failure. WARNING keeps it off the
+            # ARQ failed-task alert.
+            log.warning(
+                f"{LogTag.WORKER} Workflow skipped — rate limit exceeded",
+                workflow_id=workflow_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+        else:
+            log.exception(
+                f"{LogTag.WORKER} Error executing workflow",
+                workflow_id=workflow_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
         return await _record_run_failure(e, workflow, workflow_id, execution_id, context)
     finally:
         await _reschedule_refill_safe(workflow, workflow_id, batch_key, context)

@@ -294,10 +294,11 @@ class TestApiGenerateImagePins:
         log.set.assert_called_once_with(
             component="image_service", operation="generate_image", improve_prompt=False
         )
-        kwargs = upload.await_args.kwargs
+        kwargs = upload.call_args.kwargs  # uploader.upload is synchronous
         assert kwargs["resource_type"] == "image"
         assert kwargs["overwrite"] is True
-        assert kwargs["public_id"] == generate_public_id("a cat")
+        # generate_public_id embeds a random suffix; pin only its stable part.
+        assert kwargs["public_id"].startswith("generated_image_a-cat_")
         log.info.assert_called_once_with(
             "Image uploaded successfully. URL", image_url="https://cdn.example.com/img.png"
         )

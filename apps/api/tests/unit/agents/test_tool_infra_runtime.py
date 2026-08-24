@@ -772,7 +772,8 @@ class TestDiscoveryAvailabilityBuckets:
         """The bug this argument exists for — without internal_subagents every
         built-in was listed as needing a connection it has none of."""
         payload = _render(
-            ["subagent:gaia_knowledge_guide (Guide)"], internal={"gaia_knowledge_guide"}
+            ["subagent:gaia_knowledge_guide (Guide)"],
+            options=_DiscoveryOptions(internal={"gaia_knowledge_guide"}),
         )
 
         assert payload["subagents_builtin"] == [{"id": "gaia_knowledge_guide", "name": "Guide"}]
@@ -799,7 +800,8 @@ class TestDiscoveryAvailabilityBuckets:
         """Built-in and connected are not mutually exclusive in the inputs; a
         built-in must not also be advertised as an integration."""
         payload = _render(
-            ["subagent:gmail (Gmail)"], connected={"gmail": "me@example.com"}, internal={"gmail"}
+            ["subagent:gmail (Gmail)"],
+            options=_DiscoveryOptions(connected={"gmail": "me@example.com"}, internal={"gmail"}),
         )
 
         assert payload["subagents_builtin"] == [{"id": "gmail", "name": "Gmail"}]
@@ -837,7 +839,10 @@ class TestDiscoveryToolEntries:
 
     def test_a_connected_integration_with_no_display_name_falls_back_to_the_category(self) -> None:
         payload = _render(
-            ["GMAIL_SEND"], categories={"GMAIL_SEND": "gmail"}, connected={"gmail": None}
+            ["GMAIL_SEND"],
+            options=_DiscoveryOptions(
+                categories={"GMAIL_SEND": "gmail"}, connected={"gmail": None}
+            ),
         )
 
         assert payload["tools_to_bind"] == [{"name": "GMAIL_SEND", "source": "gmail"}]
@@ -851,7 +856,10 @@ class TestDiscoveryToolEntries:
 
     def test_a_destructive_tool_is_flagged_for_approval(self) -> None:
         payload = _render(
-            ["GMAIL_SEND"], categories={"GMAIL_SEND": "gmail"}, destructive={"GMAIL_SEND"}
+            ["GMAIL_SEND"],
+            options=_DiscoveryOptions(
+                categories={"GMAIL_SEND": "gmail"}, destructive={"GMAIL_SEND"}
+            ),
         )
 
         assert payload["tools_to_bind"][0]["needs_approval"] is True
@@ -887,7 +895,8 @@ class TestDiscoveryZeroMatchSignal:
 
     def test_a_search_with_hits_carries_no_zero_match_flag(self) -> None:
         payload = _render(
-            ["web_search_tool"], categories={"web_search_tool": "search"}, total_candidates=1
+            ["web_search_tool"],
+            options=_DiscoveryOptions(categories={"web_search_tool": "search"}, total_candidates=1),
         )
 
         assert "search_matched_nothing" not in payload

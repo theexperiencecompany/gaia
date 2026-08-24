@@ -342,8 +342,8 @@ class TestBuildCommsGraph:
             async with build_comms_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
                 pass
 
-            kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
-            tool_registry = kwargs["tool_registry"]
+            call = deps["mocks"][f"{_MOD}.create_agent"].call_args
+            tool_registry = call.args[1]
             assert "call_executor" in tool_registry
             assert "add_memory" in tool_registry
             assert "search_memory" in tool_registry
@@ -477,8 +477,8 @@ class TestBuildExecutorGraph:
             async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
                 pass
 
-            kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
-            assert "handoff" in kwargs["tool_registry"]
+            call = deps["mocks"][f"{_MOD}.create_agent"].call_args
+            assert "handoff" in call.args[1]
 
     async def test_executor_pre_model_hooks_includes_todo_hook(self):
         with ExitStack() as stack:

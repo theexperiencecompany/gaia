@@ -755,7 +755,8 @@ class TestSearchCalendarEventsNativePins:
 class TestDeleteCalendarEventPins:
     async def test_missing_calendar_id_defaults_to_primary(self, mock_proxy):
         mock_proxy.return_value = {}
-        request = EventDeleteRequest(event_id="evt1", calendar_id=None)
+        # Omitted calendar id: the model defaults it to "primary".
+        request = EventDeleteRequest(event_id="evt1")
         result = await delete_calendar_event(request, USER_ID)
         assert result.success is True
         assert result.message == "Event deleted successfully"

@@ -81,8 +81,10 @@ async def update_user_profile(
 
         return UserUpdateResponse(
             user_id=updated_user.id,
-            name=updated_user.name,
-            email=updated_user.email,
+            name=updated_user.name or "",
+            # A legacy account can carry no email; the response schema wants a
+            # string, so degrade to empty rather than 500-ing the whole update.
+            email=updated_user.email or "",
             picture=updated_user.picture,
             updated_at=updated_user.updated_at,
         )

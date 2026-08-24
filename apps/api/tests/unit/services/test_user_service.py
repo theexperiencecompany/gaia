@@ -284,8 +284,11 @@ class TestUpdateUserProfile:
 
         with (
             patch("app.services.user_service.log") as mock_log,
-            patch("app.services.user_service.upload_user_picture", new_callable=AsyncMock),
+            patch(
+                "app.services.user_service.upload_user_picture", new_callable=AsyncMock
+            ) as mock_upload,
         ):
+            mock_upload.return_value = "https://res.cloudinary.com/pic.jpg"
             await update_user_profile(sample_user.id, picture_data=b"fake_image")
 
         assert mock_log.set.call_args.kwargs["has_picture"] is True

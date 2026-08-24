@@ -17,6 +17,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import ASGITransport, AsyncClient
 import pytest
 
+from app.services.integrations.integration_expiry import ExpiryOptions
+
 
 def _endpoint():
     """The webhook endpoint module, imported lazily.
@@ -411,11 +413,13 @@ class TestComposioConnectionEvents:
         expire.assert_awaited_once_with(
             "507f1f77bcf86cd799439011",
             "notion",
-            reason="refresh_token_revoked",
-            trigger="webhook",
-            notify=True,
-            connected_account_id="ca_xxxxxxxxxxxx",
-            paused_workflows=[],
+            ExpiryOptions(
+                reason="refresh_token_revoked",
+                trigger="webhook",
+                notify=True,
+                connected_account_id="ca_xxxxxxxxxxxx",
+                paused_workflows=[],
+            ),
         )
 
     async def test_it_pauses_the_dependent_workflows_and_hands_the_titles_to_the_expiry(
@@ -440,7 +444,7 @@ class TestComposioConnectionEvents:
                 await asyncio.sleep(0)
 
         pause.assert_awaited_once_with("507f1f77bcf86cd799439011", "notion")
-        assert expire.await_args.kwargs["paused_workflows"] == [
+        assert expire.await_args.args[2].paused_workflows == [
             "Morning digest",
             "Invoice filing",
         ]

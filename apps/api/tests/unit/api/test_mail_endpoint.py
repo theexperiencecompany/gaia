@@ -726,7 +726,7 @@ class TestCreateLabel:
 
 class TestUpdateLabel:
     @patch(
-        "app.api.v1.endpoints.mail.update_label",
+        "app.api.v1.endpoints.mail.update_label_service",
         new_callable=AsyncMock,
     )
     async def test_update_label_returns_200(self, mock_update: AsyncMock, client: AsyncClient):

@@ -45,7 +45,7 @@ router = APIRouter()
 @limiter.limit("5/hour")  # 5 support requests per hour per user
 @limiter.limit("10/day")  # 10 support requests per day per user
 async def submit_support_request(
-    request: Request,
+    request: Request,  # noqa: ARG001 -- slowapi's @limiter.limit requires this param in the signature
     request_data: SupportRequestCreate,
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> SupportRequestSubmissionResponse:
@@ -110,7 +110,7 @@ async def submit_support_request(
 @limiter.limit("5/hour")  # 5 support requests per hour per user
 @limiter.limit("10/day")  # 10 support requests per day per user
 async def submit_support_request_with_attachments(
-    request: Request,
+    request: Request,  # noqa: ARG001 -- slowapi's @limiter.limit requires this param in the signature
     # Renamed from the wire field `type` to avoid shadowing the builtin;
     # `alias="type"` keeps the multipart field name the frontend sends
     # (apps/web/src/features/support/api/supportApi.ts) unchanged.
@@ -200,7 +200,7 @@ async def submit_support_request_with_attachments(
 )
 @limiter.limit("30/minute")  # Rate limit: 30 requests per minute for fetching support requests
 async def get_my_support_requests(
-    request: Request,
+    request: Request,  # noqa: ARG001 -- slowapi's @limiter.limit requires this param in the signature
     page: int = Query(1, ge=1, le=MAX_PAGE_NUMBER, description="Page number"),
     per_page: int = Query(10, ge=1, le=50, description="Items per page"),
     status: SupportRequestStatus | None = Query(None, description="Filter by status"),
@@ -229,8 +229,8 @@ async def get_my_support_requests(
     description="Check current rate limit status for the authenticated user's support requests.",
 )
 async def get_support_rate_limit_status(
-    request: Request,
-    current_user: AuthenticatedUser = Depends(get_current_user),
+    request: Request,  # noqa: ARG001 -- slowapi's @limiter.limit requires this param in the signature
+    current_user: AuthenticatedUser = Depends(get_current_user),  # noqa: ARG001 -- injected for auth side-effect only
 ) -> SupportRateLimitStatusResponse:
     """
     Get the current rate limit status for support requests.

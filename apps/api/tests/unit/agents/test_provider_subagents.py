@@ -162,11 +162,12 @@ class TestCreateSubagent:
 
         call_kwargs = mock_factory.call_args.kwargs
         assert call_kwargs["provider"] == "internal_provider"
-        assert call_kwargs["tool_space"] == "internal_space"
         assert call_kwargs["name"] == "internal_agent"
-        assert call_kwargs["use_direct_tools"] is True
-        assert call_kwargs["disable_retrieve_tools"] is False
-        assert call_kwargs["source_label"] == subagent.name
+        cfg = call_kwargs["config"]
+        assert cfg.tool_space == "internal_space"
+        assert cfg.use_direct_tools is True
+        assert cfg.disable_retrieve_tools is False
+        assert cfg.source_label == subagent.name
 
     async def test_mcp_integration_no_auth(self):
         from app.agents.core.subagents.provider_subagents import create_subagent
@@ -635,9 +636,9 @@ class TestCreateCustomMcpSubagent:
             mock_repo.get = AsyncMock(return_value=custom_doc)
             await _create_custom_mcp_subagent("custom_abc", "user_123")
 
-        call_kwargs = mock_factory.call_args.kwargs
-        assert call_kwargs["use_direct_tools"] is True
-        assert call_kwargs["disable_retrieve_tools"] is True
+        cfg = mock_factory.call_args.kwargs["config"]
+        assert cfg.use_direct_tools is True
+        assert cfg.disable_retrieve_tools is True
 
     async def test_uses_retrieve_tools_for_large_toolset(self):
         from app.agents.core.subagents.provider_subagents import (
@@ -689,9 +690,9 @@ class TestCreateCustomMcpSubagent:
             mock_repo.get = AsyncMock(return_value=custom_doc)
             await _create_custom_mcp_subagent("custom_abc", "user_123")
 
-        call_kwargs = mock_factory.call_args.kwargs
-        assert call_kwargs["use_direct_tools"] is False
-        assert call_kwargs["disable_retrieve_tools"] is False
+        cfg = mock_factory.call_args.kwargs["config"]
+        assert cfg.use_direct_tools is False
+        assert cfg.disable_retrieve_tools is False
 
     async def test_connect_failure_returns_none(self):
         from app.agents.core.subagents.provider_subagents import (

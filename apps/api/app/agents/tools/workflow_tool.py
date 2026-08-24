@@ -89,6 +89,15 @@ async def create_workflow(
     change an existing workflow, use edit_workflow instead.
     """
     log.set(tool={"name": "create_workflow", "action": "create"})
+
+    # Validate the input BEFORE touching any run context: a blank request must
+    # return the clean error, not blow up on get_stream_writer outside a graph.
+    if not user_request or not user_request.strip():
+        return error_response(
+            "missing_request",
+            "user_request is required. Pass the user's words describing what workflow they want.",
+        )
+
     writer = get_stream_writer()
 
     try:
@@ -99,11 +108,6 @@ async def create_workflow(
         # default and the subagent's "now".
         user_timezone = home_timezone_from_config(config).value
 
-        if not user_request or not user_request.strip():
-            return error_response(
-                "missing_request",
-                "user_request is required. Pass the user's words describing what workflow they want.",
-            )
         task_description = build_new_workflow_task(user_request.strip())
 
         log.info(f"{LogTag.TOOL} create_workflow: Executing")

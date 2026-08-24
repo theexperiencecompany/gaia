@@ -583,7 +583,9 @@ async def _search_calendars(
 
     for cal in calendars:
         try:
-            result = await search_events_in_calendar(cal.id, query, user_id, time_min, time_max)
+            result = await search_events_in_calendar(
+                cal.id, query, user_id, time_min=time_min, time_max=time_max
+            )
             events = result.items
             log.info("Found events in calendar", event_count=len(events), calendar_id=cal.id)
 
@@ -632,9 +634,13 @@ async def search_calendar_events_native(
     )
 
     if not all_matching_events and selected_cal_objs != calendars:
-        log.info("No events found in selected calendars, searching all calendars...")
+        # Fallback covers only the calendars the selected pass did NOT already
+        # search — re-hitting them would double the API cost per empty result.
+        searched_ids = {cal.id for cal in selected_cal_objs}
+        remaining = [cal for cal in calendars if cal.id not in searched_ids]
+        log.info("No events found in selected calendars, searching remaining calendars...")
         all_matching_events, total_events_searched = await _search_calendars(
-            calendars, query, user_id, time_min, time_max
+            remaining, query, user_id, time_min, time_max
         )
 
     return CalendarSearchResult(

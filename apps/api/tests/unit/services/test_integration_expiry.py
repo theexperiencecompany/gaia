@@ -338,9 +338,7 @@ class TestTheBodySaysWhyTheConnectionDied:
             await expire_user_integration(
                 USER_ID,
                 INTEGRATION_ID,
-                reason="refresh_token_revoked",
-                trigger="webhook",
-                notify=True,
+                ExpiryOptions(reason="refresh_token_revoked", trigger="webhook", notify=True),
             )
 
         body = s.mocks["notify"].create_notification.await_args.args[0].content.body
@@ -366,11 +364,13 @@ class TestTheWideEvent:
             await expire_user_integration(
                 USER_ID,
                 INTEGRATION_ID,
-                reason="refresh_token_revoked",
-                trigger="webhook",
-                notify=True,
-                connected_account_id="ca_probe",
-                paused_workflows=("Morning digest", "Invoice filing"),
+                ExpiryOptions(
+                    reason="refresh_token_revoked",
+                    trigger="webhook",
+                    notify=True,
+                    connected_account_id="ca_probe",
+                    paused_workflows=("Morning digest", "Invoice filing"),
+                ),
             )
 
         assert _ns_fields(s.mocks["log"]) == {
@@ -391,10 +391,12 @@ class TestTheWideEvent:
             await expire_user_integration(
                 USER_ID,
                 INTEGRATION_ID,
-                reason="refresh_token_revoked",
-                trigger="tool_execution",
-                notify=False,
-                paused_workflows=("Morning digest",),
+                ExpiryOptions(
+                    reason="refresh_token_revoked",
+                    trigger="tool_execution",
+                    notify=False,
+                    paused_workflows=("Morning digest",),
+                ),
             )
 
         s.mocks["log"].warning.assert_called_once()

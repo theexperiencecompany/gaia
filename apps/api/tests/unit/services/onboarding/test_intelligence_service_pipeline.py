@@ -542,7 +542,9 @@ class TestProcessOnboardingIntelligence:
 
         assert pipeline_stack["style"].await_args.args == (USER, False, "lawyer")
         assert pipeline_stack["triage"].await_args.args[2:] == ("lawyer", "close Q3")
-        assert pipeline_stack["workflows"].await_args.args[8] == ["slack"]
+        wf_args = pipeline_stack["workflows"].await_args.args
+        assert wf_args[1] == ["slack"]
+        assert isinstance(wf_args[0], OnboardingContext)
 
     async def test_a_nameless_user_gets_a_friendly_default(self, pipeline_stack: Any) -> None:
         user = _user(name=None)
@@ -550,7 +552,7 @@ class TestProcessOnboardingIntelligence:
 
         await process_onboarding_intelligence(USER)
 
-        assert pipeline_stack["finalize"].await_args.kwargs["name"] == "there"
+        assert pipeline_stack["finalize"].await_args.args[0].name == "there"
 
     @pytest.mark.parametrize("stored", [None, "", "   "])
     async def test_a_blank_timezone_falls_back_to_utc(
@@ -561,7 +563,7 @@ class TestProcessOnboardingIntelligence:
 
         await process_onboarding_intelligence(USER)
 
-        assert pipeline_stack["workflows"].await_args.args[4] == "UTC"
+        assert pipeline_stack["workflows"].await_args.args[0].user_timezone == "UTC"
 
     async def test_a_stored_timezone_is_used(self, pipeline_stack: Any) -> None:
         user = _user(timezone="Europe/London")
@@ -569,7 +571,7 @@ class TestProcessOnboardingIntelligence:
 
         await process_onboarding_intelligence(USER)
 
-        assert pipeline_stack["workflows"].await_args.args[4] == "Europe/London"
+        assert pipeline_stack["workflows"].await_args.args[0].user_timezone == "Europe/London"
 
     async def test_a_missing_onboarding_subdoc_does_not_crash_the_pipeline(
         self, pipeline_stack: Any
@@ -647,16 +649,16 @@ class TestProcessOnboardingWorkflowsPhase:
 
         await process_onboarding_workflows_phase(USER)
 
-        triage = phase_stack["run"].await_args.args[5]
-        style = phase_stack["run"].await_args.args[6]
-        assert triage is not None and triage.total_scanned == 5
-        assert style is not None and style.summary == "Terse"
+        ctx = phase_stack["run"].await_args.args[0]
+        assert ctx.triage is not None and ctx.triage.total_scanned == 5
+        assert ctx.writing_style is not None and ctx.writing_style.summary == "Terse"
 
     async def test_absent_learnings_degrade_to_none(self, phase_stack: Any) -> None:
         await process_onboarding_workflows_phase(USER)
 
-        assert phase_stack["run"].await_args.args[5] is None
-        assert phase_stack["run"].await_args.args[6] is None
+        ctx = phase_stack["run"].await_args.args[0]
+        assert ctx.triage is None
+        assert ctx.writing_style is None
 
     async def test_a_retry_purges_the_previous_suggestions(self, phase_stack: Any) -> None:
         # Without this, a killed run that already created workflows doubles up.
@@ -701,8 +703,9 @@ class TestProcessOnboardingWorkflowsPhase:
         # The user may have connected or revoked Gmail while picking integrations.
         await process_onboarding_workflows_phase(USER)
 
-        assert phase_stack["run"].await_args.args[2] is True
-        assert phase_stack["finalize"].await_args.kwargs["has_gmail"] is True
+        ctx = phase_stack["run"].await_args.args[0]
+        assert ctx.has_gmail is True
+        assert phase_stack["finalize"].await_args.args[0].has_gmail is True
 
     @pytest.mark.parametrize("stored", [None, "", "   "])
     async def test_a_blank_timezone_falls_back_to_utc(
@@ -713,7 +716,7 @@ class TestProcessOnboardingWorkflowsPhase:
 
         await process_onboarding_workflows_phase(USER)
 
-        assert phase_stack["run"].await_args.args[4] == "UTC"
+        assert phase_stack["run"].await_args.args[0].user_timezone == "UTC"
 
     async def test_no_provision_task_is_handed_to_the_tail(self, phase_stack: Any) -> None:
         # Provisioning belongs to the first job; this one has nothing to keep alive.

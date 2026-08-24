@@ -112,23 +112,37 @@ class TestTheLaneItInherits:
 @pytest.mark.unit
 class TestExecuteLogPins:
     async def test_execution_log_is_exact(self) -> None:
-        with patch(f"{_MOD}.get_workflow_subagent", new_callable=AsyncMock):
-            with (
-                patch.object(
-                    WorkflowSubagentRunner,
-                    "_stream_turn",
-                    new_callable=AsyncMock,
-                    return_value=('{"title": "x"}', False),
-                ),
-                patch.object(
-                    WorkflowSubagentRunner,
-                    "_draft_correction_needed",
-                    new_callable=AsyncMock,
-                    return_value=None,
-                ),
-                patch("app.services.workflow.workflow_subagent.log") as log,
-            ):
-                await WorkflowSubagentRunner.execute(task="t", user_id="u1", thread_id="t1")
+        # Drive through the shared stub helper so every seam execute() awaits is
+        # mocked; this test only pins the log line.
+        with (
+            patch(
+                f"{_MOD}.get_workflow_subagent", new_callable=AsyncMock, return_value=MagicMock()
+            ),
+            patch(f"{_MOD}.build_agent_config", AsyncMock(return_value={"configurable": {}})),
+            patch(f"{_MOD}.assemble_context", new_callable=AsyncMock) as assemble,
+            patch(
+                f"{_MOD}.build_connected_integrations_hint",
+                new_callable=AsyncMock,
+                return_value="connected: none",
+            ),
+            patch.object(
+                WorkflowSubagentRunner,
+                "_stream_turn",
+                AsyncMock(return_value=('{"title": "x"}', False)),
+            ),
+            patch.object(
+                WorkflowSubagentRunner,
+                "_draft_correction_needed",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch("app.services.workflow.workflow_subagent.log") as log,
+        ):
+            assemble.return_value = AssembledContext(
+                stable=SystemMessage(content="ctx", additional_kwargs={"dynamic_context": True}),
+                volatile=None,
+            )
+            await WorkflowSubagentRunner.execute(task="t", user_id="u1", thread_id="t1")
 
         exec_logs = [
             c

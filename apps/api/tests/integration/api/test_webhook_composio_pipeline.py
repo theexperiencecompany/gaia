@@ -23,6 +23,7 @@ import pytest
 
 from app.config.settings import settings
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep
+from app.services.integrations.integration_expiry import ExpiryOptions
 from app.services.triggers.batching import PER_EMAIL_FALLBACK_WINDOW_SECONDS
 from app.services.workflow.queue_service import WorkflowQueueService
 from shared.py.wide_events import spawn_logged_task
@@ -315,11 +316,13 @@ class TestConnectionExpiryDelivery:
         expire.assert_awaited_once_with(
             USER_ID,
             "googlecalendar",
-            reason="refresh_token_revoked",
-            trigger="webhook",
-            notify=True,
-            connected_account_id="ca_xxxxxxxxxxxx",
-            paused_workflows=3,
+            ExpiryOptions(
+                reason="refresh_token_revoked",
+                trigger="webhook",
+                notify=True,
+                connected_account_id="ca_xxxxxxxxxxxx",
+                paused_workflows=3,
+            ),
         )
 
     async def test_an_unrecognised_toolkit_is_acked_without_touching_any_user(
