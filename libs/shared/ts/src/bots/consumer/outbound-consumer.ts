@@ -11,6 +11,7 @@
 
 import { type Channel, type ConsumeMessage, connect } from "amqplib";
 import type { PlatformName } from "../types";
+import { segmentIntoBubbles } from "../utils/bubbles";
 import { renderForPlatform } from "../utils/formatters";
 import { type BotLogger, createBotLogger } from "../utils/logger";
 import { chunkResponse } from "../utils/text";
@@ -327,6 +328,10 @@ export class OutboundConsumer {
     try {
       await this.deliverSources(destinationId, sources, progress);
       wideLog.set({ delivered_count: progress.delivered });
+      // `redelivered` only ever appeared on the error branches, so a duplicate
+      // that succeeded — the exact case the at-least-once queue produces — was
+      // indistinguishable from a first delivery in Loki.
+      wideLog.set({ redelivered: msg.fields.redelivered });
       // Non-empty source text that rendered to nothing on every chunk: don't
       // silently ack it away (the backend recorded it DELIVERED). Dead-letter
       // it so the dropped message is visible for inspection.
@@ -358,13 +363,20 @@ export class OutboundConsumer {
   }
 
   /**
-   * Chunk the raw markdown by the platform limit, then render each chunk so
-   * every sent message is valid platform markdown. The renderer is passed into
-   * chunkResponse so chunks are sized by their RENDERED length — otherwise
-   * markdown that expands when rendered (e.g. Telegram tables padded into
-   * <pre> blocks) can overflow the platform's message limit and be rejected.
-   * Increments `progress.delivered` for each non-empty message sent, so the
-   * caller sees the partial count even if a later send throws.
+   * Segment each source into bubbles, chunk them by the platform limit, then
+   * render each chunk so every sent message is valid platform markdown.
+   *
+   * Segmentation happens HERE and not only in the streamer because these
+   * messages never went through it: an executor reply, a reminder or a workflow
+   * result arrives as one blob of agent markdown, sentinels and all, and used
+   * to be sent as one wall with `<NEW_MESSAGE_BREAK>` visible in it.
+   *
+   * The renderer is passed into chunkResponse so chunks are sized by their
+   * RENDERED length — otherwise markdown that expands when rendered (e.g.
+   * Telegram tables padded into <pre> blocks) can overflow the platform's
+   * message limit and be rejected. Increments `progress.delivered` for each
+   * non-empty message sent, so the caller sees the partial count even if a
+   * later send throws.
    */
   private async deliverSources(
     destinationId: string,
@@ -375,8 +387,9 @@ export class OutboundConsumer {
       renderForPlatform(chunk, this.platform);
     // Await each send before the next so the bubbles arrive in the published
     // order — never fan these out concurrently.
-    for (const source of sources) {
-      for (const chunk of chunkResponse(source, this.platform, render)) {
+    const bubbles = sources.flatMap((source) => segmentIntoBubbles(source));
+    for (const bubble of bubbles) {
+      for (const chunk of chunkResponse(bubble, this.platform, render)) {
         const rendered = render(chunk);
         // A chunk made up solely of strippable markup (e.g. a lone horizontal
         // rule) renders to nothing; platform send APIs reject empty text, so

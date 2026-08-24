@@ -14,6 +14,7 @@
  * the string.
  */
 export const NEW_MESSAGE_BREAK_TOKEN = "<NEW_MESSAGE_BREAK>";
+export const NEW_MESSAGE_BREAK_TOKEN_LENGTH = NEW_MESSAGE_BREAK_TOKEN.length;
 
 /**
  * Words of each spelling the model actually emits, in order. Everything around

@@ -34,8 +34,13 @@ function body(word: string, sentences: number): string {
  * `chatStream` and `createLinkToken`, so implementing the whole client would be
  * noise, but the cast stays explicit instead of disabling the lint rule.
  */
-function streamingGaia(chunks: string[], approvalAfter?: number): GaiaClient {
-  const full = chunks.join("");
+/** A scripted stream step: text to emit, or a message boundary from the API. */
+type StreamStep = string | { discardAfter: true };
+
+function streamingGaia(
+  chunks: StreamStep[],
+  approvalAfter?: number,
+): GaiaClient {
   return {
     chatStream: async (
       _request: unknown,
@@ -46,9 +51,21 @@ function streamingGaia(chunks: string[], approvalAfter?: number): GaiaClient {
       ) => void | Promise<void>,
       _onError: unknown,
       onApproval?: (data: ApprovalRequestData) => void | Promise<void>,
+      onDiscard?: () => void | Promise<void>,
     ) => {
-      for (const [i, chunk] of chunks.entries()) {
-        await onChunk(chunk);
+      // Mirrors chat-stream.ts: streamed text only joins `fullText` once its
+      // message is confirmed kept, so a discarded preamble never reaches the
+      // platforms that render from `fullText` alone.
+      let full = "";
+      let pendingText = "";
+      for (const [i, step] of chunks.entries()) {
+        if (typeof step !== "string") {
+          pendingText = "";
+          await onDiscard?.();
+          continue;
+        }
+        pendingText += step;
+        await onChunk(step);
         if (approvalAfter === i && onApproval) {
           await onApproval({
             approval_id: "a1",
@@ -63,6 +80,7 @@ function streamingGaia(chunks: string[], approvalAfter?: number): GaiaClient {
           } as ApprovalRequestData);
         }
       }
+      full += pendingText;
       await onDone(full, "conv-test");
       return full;
     },
@@ -75,6 +93,8 @@ interface Delivered {
   bubbles: string[];
   /** Every distinct text the platform was ever asked to display. */
   writes: string[];
+  /** How many brand-new messages the platform was asked to post. */
+  newMessages: number;
 }
 
 /**
@@ -84,17 +104,34 @@ interface Delivered {
  */
 async function deliver(
   platform: PlatformName,
-  chunks: string[],
+  chunks: StreamStep[],
   {
     editable = true,
     approvalAfter,
-  }: { editable?: boolean; approvalAfter?: number } = {},
+    failEdit,
+  }: {
+    editable?: boolean;
+    approvalAfter?: number;
+    /** Throws on the Nth edit (0-based), emulating a platform rejection. */
+    failEdit?: { at: number; error: unknown };
+  } = {},
 ): Promise<Delivered> {
   const bubbles: string[] = [];
   const writes: string[] = [];
   let current = -1;
+  let editAttempts = 0;
+  let newMessages = 0;
+
+  const maybeFail = (): void => {
+    if (failEdit && editAttempts === failEdit.at) {
+      editAttempts += 1;
+      throw failEdit.error;
+    }
+    editAttempts += 1;
+  };
 
   const editMessage = async (text: string): Promise<void> => {
+    maybeFail();
     writes.push(text);
     if (current === -1 || !editable) {
       bubbles.push(text);
@@ -105,11 +142,13 @@ async function deliver(
   };
 
   const sendNewMessage = async (text: string) => {
+    newMessages += 1;
     writes.push(text);
     bubbles.push(text);
     const index = bubbles.length - 1;
     current = index;
     return async (updated: string): Promise<void> => {
+      maybeFail();
       writes.push(updated);
       if (editable) {
         bubbles[index] = updated;
@@ -138,7 +177,7 @@ async function deliver(
     STREAMING_DEFAULTS[platform],
   );
 
-  return { bubbles, writes };
+  return { bubbles, writes, newMessages };
 }
 
 /** Word count, so text is compared by content rather than exact whitespace. */
@@ -336,6 +375,111 @@ describe("handleStreamingChat delivery", () => {
 
     expect(bubbles.join(" ")).not.toContain("(truncated)");
     expect(words(bubbles.join(" "))).toBe(words(text));
+  });
+
+  it("delivers a reply whose last chunk is a half-received break token", async () => {
+    // Every partial-token case above is followed by more text, which hides the
+    // fragment. When the stream ENDS mid-token there is no later chunk to hide
+    // it: the fragment is the last thing the user reads.
+    const { bubbles, writes } = await deliver("telegram", [
+      "here are your numbers",
+      "<NEW_MESSAGE_B",
+    ]);
+
+    expect(bubbles.join("\n")).toBe(
+      renderForPlatform("here are your numbers", "telegram"),
+    );
+    for (const write of writes) {
+      expect(write).not.toContain("NEW_MESSAGE");
+      expect(write).not.toContain("<");
+    }
+  });
+
+  it.each([
+    ["bracketed", "[NEW_MESSAGE_BREAK]"],
+    ["closing-tag", "</NEW_MESSAGE_BREAK>"],
+    ["self-closing", "<NEW_MESSAGE_BREAK/>"],
+    ["spaced words", "<NEW MESSAGE BREAK>"],
+    ["hyphenated", "<NEW-MESSAGE-BREAK>"],
+  ])("splits on the %s sentinel variant", async (_name, token) => {
+    const { bubbles } = await deliver("telegram", [
+      "First message, long enough to stand on its own here.",
+      token,
+      "Second message, long enough to stand on its own here.",
+    ]);
+
+    expect(bubbles).toEqual([
+      renderForPlatform(
+        "First message, long enough to stand on its own here.",
+        "telegram",
+      ),
+      renderForPlatform(
+        "Second message, long enough to stand on its own here.",
+        "telegram",
+      ),
+    ]);
+  });
+
+  it("retries a rate-limited edit instead of re-sending the whole reply", async () => {
+    // Any edit failure used to fall into one branch that posted the full text
+    // as a NEW message — so a 429, with the original bubble still on screen,
+    // delivered the reply twice.
+    // Discord streams nothing mid-flight, so the only edit is the final
+    // delivery — the one that used to double-post.
+    const { bubbles, newMessages } = await deliver(
+      "discord",
+      ["Here is the answer you asked for, in full."],
+      {
+        failEdit: {
+          at: 0,
+          error: Object.assign(new Error("Too Many Requests: retry after 0"), {
+            error_code: 429,
+            parameters: { retry_after: 0 },
+          }),
+        },
+      },
+    );
+
+    expect(newMessages).toBe(0);
+    expect(bubbles).toEqual([
+      renderForPlatform(
+        "Here is the answer you asked for, in full.",
+        "discord",
+      ),
+    ]);
+  });
+
+  it("opens a new message only when the old one is gone", async () => {
+    const { bubbles, newMessages } = await deliver(
+      "discord",
+      ["Here is the answer you asked for, in full."],
+      {
+        failEdit: {
+          at: 0,
+          error: new Error("Bad Request: message to edit not found"),
+        },
+      },
+    );
+
+    expect(newMessages).toBe(1);
+    expect(bubbles.at(-1)).toContain("Here is the answer");
+  });
+
+  it("replaces a retracted handoff preamble in place", async () => {
+    // The comms agent narrates its own handoff ("let me get the tasks
+    // created…") and the backend retracts that message once the tool call shows
+    // up. The user must end up with ONE message holding the real reply, not the
+    // preamble followed by a second message repeating it.
+    const { bubbles, newMessages } = await deliver("telegram", [
+      "yeah, i can set all that up. let me get the tasks created",
+      { discardAfter: true },
+      "yeah, all of it's being set up now.",
+    ]);
+
+    expect(newMessages).toBe(0);
+    expect(bubbles).toEqual([
+      renderForPlatform("yeah, all of it's being set up now.", "telegram"),
+    ]);
   });
 
   it("never truncates, on any platform", async () => {
