@@ -316,10 +316,7 @@ class TestGetSignalMatchingContext:
 
         lines = context.split("\n")
         assert lines[0] == "ACTIVE TRACKED TODOS (check if incoming signal relates to any):"
-        assert (
-            lines[1]
-            == '- "Prepare Q3 report" [work] (ID: todo-1)'
-        )
+        assert lines[1] == '- "Prepare Q3 report" [work] (ID: todo-1)'
         assert USER_ID not in context
         assert "    thread: abc123" in lines[2]
         assert "    email: x@y.com" in lines[3]

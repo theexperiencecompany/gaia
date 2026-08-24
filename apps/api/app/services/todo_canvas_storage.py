@@ -23,6 +23,7 @@ def build_vfs_label(todo_id: str) -> str:
 
 
 async def read_canvas(todo_id: str, user_id: str) -> str | None:
+    """Return the todo's canvas body, or None when the todo does not exist."""
     doc = await todo_repository.get(todo_id, user_id=user_id)
     if not doc:
         return None
@@ -30,6 +31,7 @@ async def read_canvas(todo_id: str, user_id: str) -> str | None:
 
 
 async def write_canvas(todo_id: str, user_id: str, content: str) -> bool:
+    """Replace the canvas body; schedules the gaia-tasks VFS sync on success."""
     updated = await todo_repository.update(
         todo_id, user_id=user_id, update=TodoUpdate(canvas_content=content)
     )
@@ -40,6 +42,7 @@ async def write_canvas(todo_id: str, user_id: str, content: str) -> bool:
 
 
 async def append_canvas(todo_id: str, user_id: str, content: str) -> bool:
+    """Append to the canvas body, ensuring a leading newline separator."""
     current = await read_canvas(todo_id, user_id)
     if current is None:
         log.warning("todo_canvas.append_missing_todo", todo_id=todo_id)
@@ -49,6 +52,7 @@ async def append_canvas(todo_id: str, user_id: str, content: str) -> bool:
 
 
 async def read_log(todo_id: str, user_id: str) -> str | None:
+    """Return the todo's system-log body, or None when the todo does not exist."""
     doc = await todo_repository.get(todo_id, user_id=user_id)
     if not doc:
         return None
@@ -56,6 +60,7 @@ async def read_log(todo_id: str, user_id: str) -> str | None:
 
 
 async def write_log(todo_id: str, user_id: str, content: str) -> bool:
+    """Replace the system-log body; schedules the gaia-tasks VFS sync on success."""
     updated = await todo_repository.update(
         todo_id, user_id=user_id, update=TodoUpdate(log_content=content)
     )
@@ -66,6 +71,7 @@ async def write_log(todo_id: str, user_id: str, content: str) -> bool:
 
 
 async def append_log(todo_id: str, user_id: str, content: str) -> bool:
+    """Append to the system-log body, ensuring a leading newline separator."""
     current = await read_log(todo_id, user_id)
     if current is None:
         log.warning("todo_canvas.log_append_missing_todo", todo_id=todo_id)
