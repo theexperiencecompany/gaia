@@ -17,8 +17,10 @@ from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
 from shared.py.wide_events import log
 
 
-def build_vfs_label(todo_id: str) -> str:
+def build_vfs_label(todo_id: str, *, archived: bool = False) -> str:
     """Stable label used wherever the old VFS path was surfaced for display."""
+    if archived:
+        return f"/workspace/gaia-tasks/archive/{todo_id}"
     return f"/workspace/gaia-tasks/{todo_id}"
 
 

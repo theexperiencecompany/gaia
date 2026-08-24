@@ -210,7 +210,6 @@ class TrackedTodoService:
         if doc.completed:
             return True
 
-        vfs_path = doc.vfs_path or build_vfs_label(todo_id)
         now = datetime.now(UTC)
 
         await append_log(
@@ -219,8 +218,10 @@ class TrackedTodoService:
             f"\n## {now.isoformat()} [COMPLETED]\n- Summary: {summary}\n",
         )
 
-        # Switch the display label to the archived form (purely cosmetic).
-        archive_path = vfs_path.replace("/gaia-tasks/", "/gaia-tasks/archive/")
+        # Always derive the archived label — never persist a stored one back.
+        # Legacy docs still carry the host-side /users/<uid>/todos/<id> format;
+        # deriving here heals them on completion instead of re-saving the leak.
+        archive_path = build_vfs_label(todo_id, archived=True)
 
         # The repository refreshes the entity cache and bumps the generation, so
         # the frontend reflects completion immediately — no manual invalidation.

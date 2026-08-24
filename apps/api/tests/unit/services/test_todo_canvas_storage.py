@@ -58,8 +58,13 @@ class TestBuildVfsLabel:
     def test_label_format(self):
         assert build_vfs_label(TODO_ID) == f"/workspace/gaia-tasks/{TODO_ID}"
 
-    def test_label_never_contains_user_id(self):
+    def test_label_never_contains_user_id(self) -> None:
         assert USER_ID not in build_vfs_label(TODO_ID)
+
+    def test_archive_label_format(self) -> None:
+        assert build_vfs_label(TODO_ID, archived=True) == (
+            f"/workspace/gaia-tasks/archive/{TODO_ID}"
+        )
 
 
 class TestReadCanvas:

@@ -167,11 +167,24 @@ class TestCompleteTrackedTodo:
         mock_deps.sync.assert_called_once_with(USER_ID)
 
     async def test_missing_vfs_path_falls_back_to_derived_workspace_label(
-        self, mock_repo, mock_deps
-    ):
+        self, mock_repo: MagicMock, mock_deps: SimpleNamespace
+    ) -> None:
         """A doc with no stored label must get the derived /workspace-scoped one —
         never None, and never a label derived from the wrong id."""
         mock_repo.get.return_value = _todo_doc(vfs_path=None)
+
+        ok = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done")
+
+        assert ok is True
+        update = mock_repo.update.await_args.kwargs["update"]
+        assert update.vfs_path == f"/workspace/gaia-tasks/archive/{TODO_ID}"
+
+    async def test_legacy_user_scoped_label_is_healed_on_completion(
+        self, mock_repo: MagicMock, mock_deps: SimpleNamespace
+    ) -> None:
+        """A doc still storing the host-side /users/<uid> label must not have it
+        persisted back on completion — the derived archive label replaces it."""
+        mock_repo.get.return_value = _todo_doc(vfs_path=f"/users/{USER_ID}/todos/{TODO_ID}")
 
         ok = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done")
 
@@ -186,8 +199,8 @@ class TestGetActiveTrackedSummary:
 
     @pytest.mark.regression
     async def test_stored_user_scoped_vfs_path_never_leaks_into_agent_context(
-        self, mock_repo, mock_deps
-    ):
+        self, mock_repo: MagicMock, mock_deps: SimpleNamespace
+    ) -> None:
         """Old docs store vfs_path as /users/<uid>/todos/<id> — that host-side
         path must never reach the LLM, which only knows /workspace-scoped paths."""
         stale_doc = _todo_doc(vfs_path=f"/users/{USER_ID}/todos/{TODO_ID}")
