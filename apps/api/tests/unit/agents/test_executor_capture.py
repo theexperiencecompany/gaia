@@ -14,6 +14,7 @@ import pytest
 from app.agents.core.background import redis_writer as rw, session as sess
 from app.agents.core.background.executor_capture import (
     await_executor_done,
+    build_returned_to_frontend_note,
     drain_executor_tool_data,
     register_executor_capture,
     teardown_executor_capture,
@@ -127,6 +128,76 @@ class TestDrain:
         session.tool_events.append(_tool_call_event("tc-1"))
         teardown_executor_capture("s1")
         assert drain_executor_tool_data("s1") == []
+
+
+class TestReturnedToFrontendNote:
+    """The note is comms' only record of which cards the frontend already has.
+
+    Reduced to (name, count) it says a todo card exists but not which system
+    produced it, so comms had nothing to contradict an executor summary that
+    filed eight GAIA todos under "Todoist".
+    """
+
+    def test_cards_from_a_subagent_name_the_subagent_that_produced_them(self) -> None:
+        session = create_session("s1", RunKind.QUEUED)
+        session.tool_events.append(
+            {
+                "subagent_start": {
+                    "subagent_id": "sub-1",
+                    "subagent_name": "Todos",
+                    "agent_type": "handoff",
+                }
+            }
+        )
+        for _ in range(8):
+            session.tool_events.append(
+                {
+                    "tool_data": {
+                        "tool_name": "todo_data",
+                        "data": [{"id": "x"}],
+                        "subagent_id": "sub-1",
+                    }
+                }
+            )
+
+        note = build_returned_to_frontend_note("s1")
+
+        assert "  - todo_data (8 todo, via subagent:Todos)\n" in note
+
+    def test_a_card_the_executor_emitted_itself_carries_no_provenance(self) -> None:
+        session = create_session("s1", RunKind.QUEUED)
+        session.tool_events.append(
+            {"tool_data": {"tool_name": "weather_data", "data": {"temp": 20}}}
+        )
+
+        note = build_returned_to_frontend_note("s1")
+
+        assert "  - weather_data (1 weather)\n" in note
+
+    def test_two_subagents_emitting_the_same_card_stay_separate_rows(self) -> None:
+        session = create_session("s1", RunKind.QUEUED)
+        for sid, name in (("sub-1", "Todos"), ("sub-2", "Todoist")):
+            session.tool_events.append(
+                {
+                    "subagent_start": {
+                        "subagent_id": sid,
+                        "subagent_name": name,
+                        "agent_type": "handoff",
+                    }
+                }
+            )
+            session.tool_events.append(
+                {"tool_data": {"tool_name": "todo_data", "data": [{"id": sid}], "subagent_id": sid}}
+            )
+
+        note = build_returned_to_frontend_note("s1")
+
+        assert "  - todo_data (1 todo, via subagent:Todos)\n" in note
+        assert "  - todo_data (1 todo, via subagent:Todoist)\n" in note
+
+    def test_nothing_card_worthy_yields_no_note(self) -> None:
+        create_session("s1", RunKind.QUEUED)
+        assert build_returned_to_frontend_note("s1") == ""
 
 
 class TestRedisStreamWriter:

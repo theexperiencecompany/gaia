@@ -12,9 +12,13 @@ directly in ``sections.SECTIONS``; only a section that genuinely branches keeps
 a body of its own next to the table.
 """
 
+import re
+
 from app.agents.context.section_context import SectionContext
 from app.agents.context.text import (
     BACKGROUND_EXECUTION_BANNER,
+    BUILTIN_CAPABILITY_OVERLAPS,
+    BUILTIN_OVERLAP_LINE,
     CORE_MEMORY_HEADER,
     GAIA_KNOWLEDGE_HEADER,
     MEMORY_RECALL_HEADER,
@@ -241,6 +245,41 @@ async def build_active_todo_banner(ctx: SectionContext) -> str:
     return format_active_todo_banner(doc) if doc else ""
 
 
+def _dedupe_by_provider(items: list[dict[str, str]]) -> list[dict[str, str]]:
+    """One row per provider, keeping whichever row resolved to a display name.
+
+    A connected set can hold two ids for the same account — a legacy
+    ``google_calendar`` beside today's ``googlecalendar`` — and only the
+    registered one resolves to a name. Rendering both handed the agent two
+    handoff targets for one account, one of which resolves to no subagent at
+    all. Ids that share no provider are untouched, so nothing is ever dropped.
+    """
+    by_provider: dict[str, dict[str, str]] = {}
+    for item in items:
+        key = re.sub(r"[^a-z0-9]", "", item["id"].lower())
+        held = by_provider.get(key)
+        if held is None or (held["name"] == held["id"] and item["name"] != item["id"]):
+            by_provider[key] = item
+    return list(by_provider.values())
+
+
+def _builtin_overlap_lines(items: list[dict[str, str]]) -> list[str]:
+    """Rows spelling out the built-ins a connected provider would otherwise mask."""
+    names = {item["id"]: item["name"] for item in items}
+    lines: list[str] = []
+    for overlap in BUILTIN_CAPABILITY_OVERLAPS:
+        rivals = [names[pid] for pid in sorted(overlap.provider_ids) if pid in names]
+        if rivals:
+            lines.append(
+                BUILTIN_OVERLAP_LINE.format(
+                    description=overlap.description,
+                    providers=" or ".join(rivals),
+                    subagent_id=overlap.subagent_id,
+                )
+            )
+    return lines
+
+
 async def build_connected_integrations_manifest(user_id: str, header: str) -> str:
     """One line per connected integration, so the agent knows what it can reach.
 
@@ -249,6 +288,10 @@ async def build_connected_integrations_manifest(user_id: str, header: str) -> st
     ``subagent_id`` the executor passes to ``handoff``. A line collapses to
     ``- id`` when the name IS the id, so a custom integration never renders the
     same value twice.
+
+    A built-in whose job a connected provider is mistaken for gets its own row
+    above the accounts, because a capability the agent cannot see in this list
+    is one it attributes to whatever it can see.
     """
     try:
         items = await get_connected_integrations_named(user_id)
@@ -262,8 +305,9 @@ async def build_connected_integrations_manifest(user_id: str, header: str) -> st
         return ""
     if not items:
         return ""
-    lines = [header]
-    for item in items:
+    connected = _dedupe_by_provider(items)
+    lines = [header, *_builtin_overlap_lines(connected)]
+    for item in connected:
         iid, name = item["id"], item["name"]
         lines.append(f"- {name} ({iid})" if name and name != iid else f"- {iid}")
     return "\n".join(lines)

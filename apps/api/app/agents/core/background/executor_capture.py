@@ -110,22 +110,42 @@ def build_returned_to_frontend_note(stream_id: str) -> str:
     ``tool_fields`` source of truth as ``OPENUI_SUPPRESSED_TOOLS``), so it states
     what was RETURNED to the frontend — not a claim about DOM rendering.
 
+    Each row names the subagent that produced the card. Without that, the note
+    says a todo card exists but not which system holds those todos, so comms has
+    nothing to weigh against an executor summary that credits the wrong product
+    (eight GAIA todos reached a user as "8 tasks created (Todoist)").
+
     MUST be called before the session is torn down (and, for live streams,
     before ``done_event`` is set, since the chat stream drains + tears down in
     parallel). Returns "" when nothing card-worthy was emitted.
     """
     entries = drain_executor_tool_data(stream_id)
-    summary: list[str] = []
+    subagent_names: dict[str, str] = {}
+    for entry in entries:
+        group = entry.get("data")
+        if entry.get("tool_name") != "subagent_group" or not isinstance(group, dict):
+            continue
+        subagent_names[str(group.get("subagent_id"))] = str(group.get("subagent_name") or "")
+
+    # (field name, producer) -> item count. Eight separate one-item todo cards
+    # from one subagent are one fact, not eight lines of noise.
+    counts: dict[tuple[str, str], int] = {}
     for entry in entries:
         name = entry.get("tool_name")
         if name not in tool_fields:
             continue  # excludes tool_calls_data / subagent_group (loading rows)
         data = entry.get("data")
-        count = len(data) if isinstance(data, list) else 1
+        producer = subagent_names.get(str(entry.get("subagent_id")), "")
+        key = (str(name), producer)
+        counts[key] = counts.get(key, 0) + (len(data) if isinstance(data, list) else 1)
+
+    summary: list[str] = []
+    for (name, producer), count in counts.items():
         # Derive a readable label from the field name so it never drifts from
         # the tool_fields source of truth (e.g. "email_fetch_data" -> "email fetch").
         noun = name.removesuffix("_data").replace("_", " ") or "items"
-        summary.append(f"  - {name} ({count} {noun})")
+        via = f", via subagent:{producer}" if producer else ""
+        summary.append(f"  - {name} ({count} {noun}{via})")
 
     if not summary:
         return ""
