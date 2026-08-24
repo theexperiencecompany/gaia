@@ -26,7 +26,6 @@ export type {
   ApprovalUpdateHandler,
   ChatStreamClient,
   DiscardMessageHandler,
-  MessageBoundary,
   NoticeHandler,
 } from "./chat-stream.types";
 
