@@ -16,9 +16,16 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from itertools import pairwise
+import json
 from uuid import uuid4
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langgraph.graph.state import CompiledStateGraph
 import pytest
 
@@ -269,9 +276,9 @@ class TestAcrossTurns:
         assert "conversation one" not in shown
 
 
-#: One message as the cache sees it: its type, its text, and the ids of any tool
-#: calls it carries. Not a bare string — a message whose tool_calls change while
-#: its text does not is identical in a transcript and different on the wire.
+#: One message as the cache sees it: its type, its text, and its tool-call
+#: identity. Not a bare string — a message whose tool calls change while its
+#: text does not is identical in a transcript and different on the wire.
 _MessageFingerprint = tuple[str, str, str]
 
 
@@ -288,21 +295,42 @@ class TestTheConversationGrowsAppendOnly:
     """
 
     @staticmethod
-    def _conversation(prompt_messages: Sequence[BaseMessage]) -> list[_MessageFingerprint]:
+    def _tool_identity(message: BaseMessage) -> str:
+        """Everything about a message's tool calls that the wire carries.
+
+        An assistant turn is identified by every call it makes — ``name``,
+        ``args`` and ``id`` — because a request whose args change while the
+        text stays identical is a different byte sequence behind an unchanged
+        transcript. A tool result is identified by the call it answers, so a
+        re-correlated result is caught the same way. ``args`` is serialised
+        with sorted keys: the fingerprint has to move when the values move and
+        stay put when only dict ordering does.
+        """
+        if isinstance(message, ToolMessage):
+            return f"->{message.tool_call_id}"
+        return ";".join(
+            f"{call.get('name', '')}({json.dumps(call.get('args', {}), sort_keys=True)})"
+            f"#{call.get('id', '')}"
+            for call in (getattr(message, "tool_calls", None) or [])
+        )
+
+    @classmethod
+    def _conversation(cls, prompt_messages: Sequence[BaseMessage]) -> list[_MessageFingerprint]:
         """The conversation portion of one recorded request.
 
         System slots are handled separately and excluded here. Identity is
-        (type, text, tool-call ids): the ids are part of it because a message
-        whose ``tool_calls`` change while its text stays identical is invisible
-        in a transcript but is a different message on the wire.
+        (type, text, tool identity) — see :meth:`_tool_identity` for why the
+        text alone is not enough.
         """
-        out = []
-        for m in prompt_messages:
-            if isinstance(m, SystemMessage):
-                continue
-            calls = ",".join(str(c.get("id", "")) for c in (getattr(m, "tool_calls", None) or []))
-            out.append((type(m).__name__, extract_text_content(getattr(m, "content", "")), calls))
-        return out
+        return [
+            (
+                type(m).__name__,
+                extract_text_content(getattr(m, "content", "")),
+                cls._tool_identity(m),
+            )
+            for m in prompt_messages
+            if not isinstance(m, SystemMessage)
+        ]
 
     @classmethod
     async def _requests_across_turns(

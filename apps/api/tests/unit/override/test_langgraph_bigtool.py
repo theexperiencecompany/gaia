@@ -1,9 +1,10 @@
 """Tests for app.override.langgraph_bigtool.create_agent."""
 
+from collections.abc import Sequence
 from typing import Any, Protocol, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 from langgraph.graph import StateGraph
@@ -13,7 +14,11 @@ import pytest
 from app.agents.llm import lane as lane_module
 from app.agents.llm.lane import ModelLane
 from app.agents.llm.types import LLMProviderName
-from app.constants.llm import DEFAULT_MAX_TOKENS, LANE_FIELD_ID
+from app.constants.llm import (
+    DEFAULT_MAX_TOKENS,
+    LANE_FIELD_ID,
+    RECURSION_WRAPUP_THRESHOLD_STEPS,
+)
 from app.models.agent_models import AgentConfigurable
 from app.override.langgraph_bigtool.create_agent import (
     _agent_sticky_key,
@@ -22,6 +27,7 @@ from app.override.langgraph_bigtool.create_agent import (
     _prepare_fallback,
     create_agent,
 )
+from app.override.langgraph_bigtool.utils import State
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -57,7 +63,7 @@ def _make_llm() -> MagicMock:
     return llm
 
 
-def _make_config(**configurable: Any) -> dict:
+def _make_config(**configurable: Any) -> RunnableConfig:
     return {"configurable": configurable}
 
 
@@ -69,13 +75,9 @@ class _ModelNode(Protocol):
     symbol. Naming only what is used here keeps the tests off a private import.
     """
 
-    def func(
-        self, state: dict[str, Any], config: RunnableConfig, *, store: BaseStore
-    ) -> dict[str, Any]: ...
+    def func(self, state: State, config: RunnableConfig, *, store: BaseStore) -> State: ...
 
-    async def afunc(
-        self, state: dict[str, Any], config: RunnableConfig, *, store: BaseStore
-    ) -> dict[str, Any]: ...
+    async def afunc(self, state: State, config: RunnableConfig, *, store: BaseStore) -> State: ...
 
 
 def _agent_runnable(builder: StateGraph) -> _ModelNode:
@@ -84,15 +86,31 @@ def _agent_runnable(builder: StateGraph) -> _ModelNode:
 
 
 def _make_state(
-    messages: list | None = None,
-    selected_tool_ids: list | None = None,
-    todos: list | None = None,
-) -> dict:
-    return {
-        "messages": messages or [],
-        "selected_tool_ids": selected_tool_ids or [],
-        "todos": todos or [],
-    }
+    messages: Sequence[AnyMessage] | None = None,
+    selected_tool_ids: Sequence[str] | None = None,
+    todos: Sequence[dict[str, Any]] | None = None,
+    remaining_steps: int = RECURSION_WRAPUP_THRESHOLD_STEPS + 1,
+) -> State:
+    """A complete ``State`` — every channel the node's signature promises.
+
+    ``remaining_steps`` defaults just clear of the wrap-up threshold so the
+    recursion notice stays out of these tests; pass a lower value to exercise
+    it.
+    """
+    # cast, like _maybe_inject_wrapup in the module under test: langgraph_bigtool
+    # ships no py.typed, so its State base resolves to Any and mypy sees an
+    # ordinary class rather than a TypedDict a literal could satisfy.
+    return cast(
+        "State",
+        {
+            "messages": list(messages or []),
+            "selected_tool_ids": list(selected_tool_ids or []),
+            "todos": list(todos or []),
+            "intent": None,
+            "integration_usernames": {},
+            "remaining_steps": remaining_steps,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
