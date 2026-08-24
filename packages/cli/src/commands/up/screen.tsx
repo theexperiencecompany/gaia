@@ -69,23 +69,45 @@ const UpFinishedStep: React.FC<{
   webPort: number;
   apiPort: number;
   noStart: boolean;
+  stillStarting: boolean;
   customProviderNote: boolean;
-}> = ({ webPort, apiPort, noStart, customProviderNote }) => {
+}> = ({ webPort, apiPort, noStart, stillStarting, customProviderNote }) => {
+  const success = !noStart && !stillStarting;
   return (
     <Box
       flexDirection="column"
       marginTop={2}
       borderStyle="round"
-      borderColor={noStart ? THEME_COLOR : "green"}
+      borderColor={success ? "green" : THEME_COLOR}
       padding={1}
     >
-      <Text bold color={noStart ? THEME_COLOR : "green"}>
-        {noStart ? "Environment Ready" : "GAIA is Running!"}
+      <Text bold color={success ? "green" : THEME_COLOR}>
+        {noStart
+          ? "Environment Ready"
+          : stillStarting
+            ? "GAIA is Still Starting"
+            : "GAIA is Running!"}
       </Text>
 
-      {!noStart && (
+      {success && (
         <Box marginTop={1}>
           <Text color="green">✓ All services started</Text>
+        </Box>
+      )}
+
+      {stillStarting && (
+        <Box marginTop={1} flexDirection="column">
+          <Text>
+            Containers are up but not answering yet — they are still
+            initializing.
+          </Text>
+          <Text>
+            Run{" "}
+            <Text color="cyan" bold>
+              gaia status
+            </Text>{" "}
+            to check progress. Services keep running.
+          </Text>
         </Box>
       )}
 
@@ -220,6 +242,9 @@ export const UpScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
           webPort={state.data.upWebPort || 3000}
           apiPort={state.data.upApiPort || 8000}
           noStart={state.data.upNoStart === true}
+          stillStarting={
+            state.data.upNoStart !== true && state.data.upStillStarting === true
+          }
           customProviderNote={state.data.customProviderNote === true}
         />
       )}

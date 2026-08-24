@@ -12,7 +12,13 @@ function printPlainSummary(store: CLIStore): void {
   if (data.error || !data.finished) return;
   const webPort = (data.upWebPort as number) ?? 3000;
   const apiPort = (data.upApiPort as number) ?? 8000;
-  console.info("\nGAIA is ready!");
+  if (data.upNoStart !== true && data.upStillStarting === true) {
+    console.info("\nGAIA is still starting...");
+    console.info("  Containers are up but not answering yet.");
+    console.info("  Run 'gaia status' to check progress.");
+  } else {
+    console.info("\nGAIA is ready!");
+  }
   if (data.upNoStart !== true) {
     console.info(`  Web: http://localhost:${webPort}`);
     console.info(`  API: http://localhost:${apiPort}`);

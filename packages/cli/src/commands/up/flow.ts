@@ -27,6 +27,7 @@ import { startServices } from "../../lib/service-starter.js";
 import { CLI_VERSION } from "../../lib/version.js";
 import { LOG_BUFFER_LINES } from "../../ui/constants.js";
 import type { CLIStore } from "../../ui/store.js";
+import { waitForUpReadiness } from "./readiness.js";
 
 const ANSI_ESCAPE_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 
@@ -184,9 +185,16 @@ export async function runUpFlow(
     return;
   }
 
+  // Compose returning is not the stack answering requests — wait for the API
+  // health endpoint and the web app before pointing the user at a browser,
+  // otherwise the first click lands on "connection refused". On timeout the
+  // finish screen says so honestly and exit stays 0 (services keep running).
+  const readiness = await waitForUpReadiness(store, { apiPort, webPort });
+
   finishUp(store, targetPath, webPort, apiPort, {
     noStart: false,
     customProvider: options.llmProvider === "custom",
+    stillStarting: !readiness.ready,
   });
 }
 
@@ -295,7 +303,11 @@ function finishUp(
   repoPath: string,
   webPort: number,
   apiPort: number,
-  flags?: { noStart?: boolean; customProvider?: boolean },
+  flags?: {
+    noStart?: boolean;
+    customProvider?: boolean;
+    stillStarting?: boolean;
+  },
 ): void {
   writeConfig({
     version: CLI_VERSION,
@@ -311,6 +323,9 @@ function finishUp(
   store.updateData("upWebPort", webPort);
   store.updateData("upApiPort", apiPort);
   store.updateData("upNoStart", flags?.noStart === true);
+  // Services started but never answered within the readiness budget — the
+  // finished screen must say so instead of claiming GAIA is running.
+  store.updateData("upStillStarting", flags?.stillStarting === true);
   // Custom providers are runtime-configured; no key was written to .env —
   // the finished screen points at the web wizard instead.
   store.updateData("customProviderNote", flags?.customProvider === true);
