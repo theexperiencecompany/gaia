@@ -14,10 +14,12 @@ end-of-turn hooks, and how a turn carries into the next.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from itertools import pairwise
 from uuid import uuid4
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langgraph.graph.state import CompiledStateGraph
 import pytest
 
 from app.constants.general import NEW_MESSAGE_BREAKER
@@ -267,6 +269,12 @@ class TestAcrossTurns:
         assert "conversation one" not in shown
 
 
+#: One message as the cache sees it: its type, its text, and the ids of any tool
+#: calls it carries. Not a bare string — a message whose tool_calls change while
+#: its text does not is identical in a transcript and different on the wire.
+_MessageFingerprint = tuple[str, str, str]
+
+
 class TestTheConversationGrowsAppendOnly:
     """The provider caches a BYTE prefix of the request, so a turn only resumes
     from cache if it begins with the previous turn's history verbatim. Appending
@@ -280,7 +288,7 @@ class TestTheConversationGrowsAppendOnly:
     """
 
     @staticmethod
-    def _conversation(prompt_messages):
+    def _conversation(prompt_messages: Sequence[BaseMessage]) -> list[_MessageFingerprint]:
         """The conversation portion of one recorded request.
 
         System slots are handled separately and excluded here. Identity is
@@ -297,7 +305,9 @@ class TestTheConversationGrowsAppendOnly:
         return out
 
     @classmethod
-    async def _requests_across_turns(cls, graph, prompts, thread):
+    async def _requests_across_turns(
+        cls, graph: CompiledStateGraph, prompts: Sequence[str], thread: str
+    ) -> list[list[_MessageFingerprint]]:
         """Every model call the graph made, in order, across several turns.
 
         ``run.prompts`` is copied off the scripted model, which accumulates for
@@ -305,7 +315,7 @@ class TestTheConversationGrowsAppendOnly:
         as well. Taking it whole makes the second turn look like it rewound the
         conversation. Only the calls added since the previous turn are new.
         """
-        requests: list[list[tuple[str, str, str]]] = []
+        requests: list[list[_MessageFingerprint]] = []
         seen = 0
         for prompt in prompts:
             run = await run_graph(graph, prompt, thread_id=thread)
@@ -314,7 +324,7 @@ class TestTheConversationGrowsAppendOnly:
         assert len(requests) >= 2, f"need at least two model calls to compare, got {len(requests)}"
         return requests
 
-    async def test_each_request_begins_with_the_previous_requests_history(self):
+    async def test_each_request_begins_with_the_previous_requests_history(self) -> None:
         """Two turns on ONE thread, which is where the cache is supposed to pay:
         turn 2's request must open with turn 1's history byte for byte.
 
@@ -328,7 +338,7 @@ class TestTheConversationGrowsAppendOnly:
 
         self._assert_append_only(requests)
 
-    async def test_a_turn_that_called_a_tool_still_begins_with_its_own_history(self):
+    async def test_a_turn_that_called_a_tool_still_begins_with_its_own_history(self) -> None:
         """The case with something to break. Delegating through ``call_executor``
         leaves an AI message carrying ``tool_calls`` in the history, and
         ``filter_messages_node`` rebuilds that message on every later call,
@@ -349,7 +359,7 @@ class TestTheConversationGrowsAppendOnly:
         self._assert_append_only(requests)
 
     @staticmethod
-    def _assert_append_only(requests):
+    def _assert_append_only(requests: Sequence[Sequence[_MessageFingerprint]]) -> None:
         for index, (earlier, later) in enumerate(pairwise(requests)):
             shared = later[: len(earlier)]
             if shared == earlier:

@@ -7,11 +7,12 @@ shatter the implicit-cache prefix, so older ones are dropped. The legacy
 for back-compat with older persisted state.
 """
 
-from typing import Any, cast
+from typing import Any, TypedDict, cast
 from unittest.mock import MagicMock, patch
 
 from langchain_core.messages import (
     AIMessage,
+    AnyMessage,
     HumanMessage,
     SystemMessage,
     ToolMessage,
@@ -217,16 +218,35 @@ class TestManageSystemPrompts:
         )
 
 
+class _PromptPruning(TypedDict):
+    """The ``prompt_pruning`` wide-event payload these tests assert on.
+
+    Named rather than ``dict[str, Any]`` so a renamed or dropped field breaks
+    type-check here instead of silently making every assertion below vacuous —
+    the failure mode of a diagnostic nobody notices has stopped working.
+    """
+
+    slot_digests: dict[str, str]
+    slot_chars: dict[str, int]
+    messages_in: int
+    messages_out: int
+    dropped_system_prompts: int
+    dropped_time_context: int
+    tail_layout: bool
+
+
 class TestPromptPruningWideEvent:
     """``tail_layout`` is the field a cache-hit-rate drop is diagnosed with, so
     both its name and its polarity are part of the node's contract."""
 
-    def _pruning_for(self, msgs: list[Any], provider: str | None = "openrouter") -> dict[str, Any]:
+    def _pruning_for(
+        self, msgs: list[AnyMessage], provider: str | None = "openrouter"
+    ) -> _PromptPruning:
         with patch("app.agents.core.nodes.manage_system_prompts.log") as mock_log:
             manage_system_prompts_node(cast(State, {"messages": msgs}), _config(provider), _store())
-        return cast(dict[str, Any], mock_log.set.call_args.kwargs["prompt_pruning"])
+        return cast(_PromptPruning, mock_log.set.call_args.kwargs["prompt_pruning"])
 
-    def _prompt_pruning(self, provider: str | None) -> dict[str, Any]:
+    def _prompt_pruning(self, provider: str | None) -> _PromptPruning:
         return self._pruning_for(
             [_static("prompt"), _dynamic("ctx"), HumanMessage(content="hello")], provider
         )

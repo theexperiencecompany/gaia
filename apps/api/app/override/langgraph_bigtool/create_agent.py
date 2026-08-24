@@ -153,13 +153,31 @@ def _bind_session_id(
     # Gated on the provider the same way ainvoke_llm gates it: session_id is an
     # OpenRouter routing hint, and Gemini has no stickiness to pin, so sending
     # it there is an unsupported argument on every graph call.
+    key = _agent_sticky_key(model_configurations, agent_name)
+    return llm_with_tools.bind(session_id=key) if key else llm_with_tools
+
+
+def _agent_sticky_key(
+    model_configurations: AgentConfigurable, agent_name: str | None
+) -> str | None:
+    """This agent's sticky-routing key for this run, or ``None``.
+
+    One computation, used by the primary's bind AND handed to ``invoke_llm``
+    for the fallback. They used to derive it separately — the fallback from
+    config, which yields the BARE session id — so a provider hiccup dropped
+    every agent back into one shared chain and they resumed evicting each
+    other, the exact failure the per-agent key exists to prevent.
+
+    Gated on the provider the same way ainvoke_llm gates it: session_id is an
+    OpenRouter routing hint, and Gemini has no stickiness to pin, so sending
+    it there is an unsupported argument on every graph call.
+    """
     if model_configurations.get("provider") not in STICKY_ROUTING_PROVIDERS:
-        return llm_with_tools
+        return None
     session_id = model_configurations.get("session_id")
-    if session_id:
-        key = f"{session_id}-{agent_name}" if agent_name else str(session_id)
-        return llm_with_tools.bind(session_id=key)
-    return llm_with_tools
+    if not session_id:
+        return None
+    return f"{session_id}-{agent_name}" if agent_name else str(session_id)
 
 
 def create_agent(
@@ -293,6 +311,7 @@ def create_agent(
             config=config,
             label=agent_name,
             fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
+            sticky_session_id=_agent_sticky_key(model_configurations, agent_name),
         )
 
         if not response.tool_calls and not response.content:
@@ -352,6 +371,7 @@ def create_agent(
             label=agent_name,
             meter_auxiliary=False,
             fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
+            sticky_session_id=_agent_sticky_key(model_configurations, agent_name),
         )
 
         try:

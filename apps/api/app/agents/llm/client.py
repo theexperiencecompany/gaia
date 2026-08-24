@@ -738,6 +738,7 @@ async def ainvoke_llm(
     timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS,
     meter_auxiliary: bool = True,
     fallback_config: RunnableConfig | None = None,
+    sticky_session_id: str | None = None,
 ) -> Any:
     """Invoke a runnable: retry transient errors, then fall back to ``fallback`` (if
     given) on a provider failure. Bugs and CancelledError propagate.
@@ -849,7 +850,8 @@ async def ainvoke_llm(
                         fallback,
                         label,
                         primary_error,
-                        session_id=_sticky_session_id(config, auxiliary=meter_auxiliary),
+                        session_id=sticky_session_id
+                        or _sticky_session_id(config, auxiliary=meter_auxiliary),
                     ).ainvoke(
                         messages,
                         config=_with_usage_handler(
@@ -879,15 +881,23 @@ def invoke_llm(
     label: str = "model",
     max_attempts: int = LLM_RETRY_MAX_ATTEMPTS,
     fallback_config: RunnableConfig | None = None,
+    sticky_session_id: str | None = None,
 ) -> Any:
     """Sync counterpart of :func:`ainvoke_llm`."""
     try:
         return with_llm_retry(primary, max_attempts=max_attempts).invoke(messages, config=config)
     except LLM_FALLBACK_EXCEPTIONS as primary_error:
         return _stamp_fallback(
-            _resolve_fallback(fallback, label, primary_error).invoke(
-                messages, config=fallback_config or config
-            )
+            _resolve_fallback(
+                fallback,
+                label,
+                primary_error,
+                # Passed through like the async path: this branch used to hand
+                # _resolve_fallback nothing, so a sync fallback silently landed
+                # on whatever provider the router picked instead of the chain
+                # the primary had been warming.
+                session_id=sticky_session_id or _sticky_session_id(config, auxiliary=False),
+            ).invoke(messages, config=fallback_config or config)
         )
 
 

@@ -15,9 +15,11 @@ These assert on the assembled messages rather than on a hit rate, because the
 hit rate is a provider-side number we cannot observe in a unit test.
 """
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
+from langchain_core.messages import BaseMessage
 import pytest
 
 from app.memory.extraction import extract_memories
@@ -36,7 +38,7 @@ async def _messages_for(
     folder_tree: str,
     recent_facts: list[str] | None = None,
     journaled_today: list[str] | None = None,
-):
+) -> list[BaseMessage]:
     """The messages one extraction call would send, for a given memory state."""
     with patch(
         "app.memory.extraction._invoke_structured",
@@ -54,14 +56,14 @@ async def _messages_for(
     return invoke.await_args.args[1]
 
 
-def _prefix_through_transcript(messages) -> str:
+def _prefix_through_transcript(messages: Sequence[BaseMessage]) -> str:
     """Everything up to and including the transcript — the part that must be
     byte-identical between calls for the transcript to stay cached."""
     return "".join(str(m.content) for m in messages[:2])
 
 
 class TestTheCacheablePrefixSurvivesMemoryGrowth:
-    async def test_a_new_folder_does_not_move_the_prefix(self):
+    async def test_a_new_folder_does_not_move_the_prefix(self) -> None:
         """Filing one fact into a new folder must not re-send the transcript."""
         before = await _messages_for("relationships\npreferences")
         after = await _messages_for("relationships\npreferences\nwork/gaia")
@@ -71,7 +73,7 @@ class TestTheCacheablePrefixSurvivesMemoryGrowth:
             "re-sends uncached whenever the user's memory gains a folder"
         )
 
-    async def test_newly_stored_facts_do_not_move_the_prefix(self):
+    async def test_newly_stored_facts_do_not_move_the_prefix(self) -> None:
         """Same guarantee for the other per-call input that grows."""
         before = await _messages_for("relationships", recent_facts=["likes oat milk"])
         after = await _messages_for(
@@ -80,7 +82,7 @@ class TestTheCacheablePrefixSurvivesMemoryGrowth:
 
         assert _prefix_through_transcript(before) == _prefix_through_transcript(after)
 
-    async def test_the_tail_itself_caches_through_the_journal_while_facts_churn(self):
+    async def test_the_tail_itself_caches_through_the_journal_while_facts_churn(self) -> None:
         """The tail is over half of a real extraction call (measured live:
         cached tokens stop at system+transcript, ~47%, and everything behind is
         tail). Within the tail, churn rates differ wildly: the journal only
@@ -130,7 +132,7 @@ class TestTheCacheablePrefixSurvivesMemoryGrowth:
             "survive) and the whole journal re-sends on every extraction"
         )
 
-    async def test_the_folder_tree_is_still_actually_sent(self):
+    async def test_the_folder_tree_is_still_actually_sent(self) -> None:
         """Moving it must not drop it: the model still files facts by folder."""
         messages = await _messages_for("relationships\nwork/gaia")
 
@@ -138,7 +140,7 @@ class TestTheCacheablePrefixSurvivesMemoryGrowth:
             "the folder tree left the system prompt but never arrived in the tail"
         )
 
-    async def test_a_user_with_no_folders_yet_still_gets_a_readable_section(self):
+    async def test_a_user_with_no_folders_yet_still_gets_a_readable_section(self) -> None:
         """A brand-new user has an empty tree. The section still has to say so
         in words: the model reads it to decide where to file that user's very
         first fact, and an empty heading — or the literal "None" — is what it
@@ -149,7 +151,7 @@ class TestTheCacheablePrefixSurvivesMemoryGrowth:
             f"the empty-tree placeholder did not render as written, got: {tail[-120:]!r}"
         )
 
-    async def test_every_extraction_carries_the_user_s_memory_session_key(self):
+    async def test_every_extraction_carries_the_user_s_memory_session_key(self) -> None:
         """The sticky-routing chain is what keeps consecutive extractions
         landing on the upstream that already holds this user's transcript
         prefixes. Asserted one seam lower than the other tests — at the
@@ -174,14 +176,14 @@ class TestTheCacheablePrefixSurvivesMemoryGrowth:
         assert config["configurable"]["user_id"] == "u1"
         assert "memory_internal" in config["tags"]
 
-    async def test_the_folder_guidance_stays_in_the_stable_prompt(self):
+    async def test_the_folder_guidance_stays_in_the_stable_prompt(self) -> None:
         """Only the mutable tree moves; the instructions on how to use it are
         byte-stable and belong in the cached prefix."""
         messages = await _messages_for("relationships")
 
         assert "category_path" in str(messages[0].content)
 
-    async def test_the_stable_prompt_is_still_personalised_to_the_user(self):
+    async def test_the_stable_prompt_is_still_personalised_to_the_user(self) -> None:
         """The prompt names the user throughout, and the extracted facts are
         written in the third person about them. Losing the name leaves the
         model extracting facts about "None"."""
