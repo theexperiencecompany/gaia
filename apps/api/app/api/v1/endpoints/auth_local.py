@@ -49,7 +49,15 @@ def _burn_one_verification(password: str) -> None:
     global _dummy_digest
     if _dummy_digest is None:
         _dummy_digest = bcrypt.hashpw(b"gaia-timing-equalizer", bcrypt.gensalt(_BCRYPT_ROUNDS))
-    bcrypt.checkpw(password.encode(), _dummy_digest)
+    try:
+        bcrypt.checkpw(password.encode(), _dummy_digest)
+    except ValueError:
+        # bcrypt >= 5 refuses inputs past its 72-byte cap without doing any
+        # work — there is no verification left to burn. The real path also
+        # fails fast on the same input, so skipping the burn keeps both
+        # failure routes equally cheap; the caller turns this into the
+        # uniform invalid-credentials response.
+        return
 
 
 def _client_ip(request: Request) -> str | None:
@@ -185,6 +193,21 @@ async def signup(request: Request, body: SignupRequest) -> JSONResponse:
         # (Greptile finding). Refuse; only brand-new rows can become admin.
         _registration_closed(email)
 
+    # Hash BEFORE creating any row: bcrypt >= 5 raises ValueError past its
+    # 72-byte input cap, and hashing after the insert would strand an orphaned
+    # user row on failure — locking that email out of signup forever via the
+    # existing-identity gate. Request validation enforces the cap; this guard
+    # keeps any hash refusal a clean 422 rather than a 500 with debris.
+    try:
+        password_hash = bcrypt.hashpw(
+            body.password.encode(), bcrypt.gensalt(rounds=_BCRYPT_ROUNDS)
+        ).decode()
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"message": "Password must be at most 72 bytes (UTF-8 encoded)"},
+        ) from exc
+
     user = await user_repository.create(
         UserDocument(
             email=email,
@@ -195,18 +218,14 @@ async def signup(request: Request, body: SignupRequest) -> JSONResponse:
             name=body.name or email.split("@", 1)[0],
         )
     )
-    created_user = True
 
-    password_hash = bcrypt.hashpw(
-        body.password.encode(), bcrypt.gensalt(rounds=_BCRYPT_ROUNDS)
-    ).decode()
     credential = await local_credentials_repository.try_create(
         LocalCredentialDocument(user_id=user.id, password_hash=password_hash)
     )
     if credential is None:
         # Lost the race — another concurrent signup holds the admin slot now.
-        if created_user:
-            await _delete_user_best_effort(user.id)
+        # Remove the user row this request just created so no orphan remains.
+        await _delete_user_best_effort(user.id)
         _registration_closed(email)
 
     token = await issue_session_token(user.id)
@@ -233,11 +252,18 @@ async def login(request: Request, body: LoginRequest) -> JSONResponse:
     user = await user_repository.get_by_email(email)
     credential = await local_credentials_repository.get_by_user_id(user.id) if user else None
 
-    verified = (
-        bcrypt.checkpw(body.password.encode(), credential.password_hash.encode())
-        if user is not None and credential is not None
-        else False
-    )
+    try:
+        verified = (
+            bcrypt.checkpw(body.password.encode(), credential.password_hash.encode())
+            if user is not None and credential is not None
+            else False
+        )
+    except ValueError:
+        # bcrypt >= 5 refuses to process passwords past its 72-byte cap.
+        # That is a wrong-password-shaped outcome, not a server error — fold
+        # it into the uniform 401 below (request validation normally rejects
+        # such passwords earlier with 422).
+        verified = False
     if not verified:
         if user is None or credential is None:
             # Equalize cost with the wrong-password path above.

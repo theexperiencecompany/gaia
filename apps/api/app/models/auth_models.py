@@ -8,11 +8,36 @@ session itself is an HS256 JWT in the ``gaia_session`` cookie.
 from datetime import datetime
 from typing import Annotated
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field, StringConstraints
 
 from app.db.repositories.base import MongoDocument
 
 ADMIN_CREDENTIAL_SLOT = "admin"
+
+# bcrypt hashes at most the first 72 BYTES of a password, and bcrypt >= 5
+# raises ValueError past that instead of silently truncating. The limit is
+# enforced on the wire so an oversized password is a clean 422 before any row
+# is written. Chars are not bytes: multibyte characters blow past the cap far
+# below 72 characters.
+BCRYPT_MAX_PASSWORD_BYTES = 72
+
+
+def _reject_over_bcrypt_limit(value: str) -> str:
+    """Refuse passwords whose UTF-8 encoding exceeds bcrypt's input cap."""
+    if len(value.encode("utf-8")) > BCRYPT_MAX_PASSWORD_BYTES:
+        raise ValueError(
+            f"Password must be at most {BCRYPT_MAX_PASSWORD_BYTES} bytes when UTF-8 encoded"
+        )
+    return value
+
+
+# Byte-level cap as a reusable type: Field(max_length=...) counts characters,
+# so this validator is what actually guarantees bcrypt can hash the value.
+BcryptLimitedPassword = Annotated[
+    str,
+    StringConstraints(max_length=BCRYPT_MAX_PASSWORD_BYTES),
+    AfterValidator(_reject_over_bcrypt_limit),
+]
 
 
 def _normalize_email(value: EmailStr) -> str:
@@ -63,8 +88,9 @@ class SignupRequest(BaseModel):
 
     email: NormalizedEmail
     # Minimum length is part of the request contract; pydantic turns shorter
-    # passwords into a 422 before any write happens.
-    password: str = Field(min_length=8)
+    # passwords into a 422 before any write happens. The upper bound is
+    # bcrypt's hard input cap — see BcryptLimitedPassword.
+    password: BcryptLimitedPassword = Field(min_length=8)
     name: str | None = Field(None, max_length=100)
 
 
@@ -74,4 +100,8 @@ class LoginRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     email: NormalizedEmail
-    password: str
+    # Same byte cap as signup: bcrypt >= 5 raises ValueError verifying a
+    # longer password, which would surface as a 500 instead of the uniform
+    # 401. (No min_length here — login must not reject credentials created
+    # under older policy.)
+    password: BcryptLimitedPassword

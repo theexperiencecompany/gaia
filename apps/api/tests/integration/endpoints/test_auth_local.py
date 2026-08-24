@@ -11,12 +11,13 @@ contract all run for real.
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import bcrypt as bcrypt_lib
 from bson import ObjectId
-from fastapi import FastAPI, Request, WebSocket
+from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.responses import JSONResponse
 import httpx
 from jose import jwt
@@ -24,6 +25,7 @@ import pytest
 
 from app.config.settings import settings
 from app.constants.auth import JWT_ALGORITHM
+from app.constants.error_codes import INVALID_CREDENTIALS
 from app.models.auth_models import LocalCredentialDocument
 from app.models.user_models import UserDocument
 from app.utils.local_auth_utils import (
@@ -34,6 +36,14 @@ from app.utils.local_auth_utils import (
 
 TEST_SECRET = "test-instance-secret-" + "x" * 16
 TEST_PASSWORD = "correct-horse-battery"
+
+# bcrypt hashes at most 72 BYTES of input and refuses anything longer
+# (bcrypt >= 5 raises ValueError instead of silently truncating).
+PASSWORD_AT_BCRYPT_LIMIT = "a" * 72  # boundary: must keep working
+PASSWORD_OVER_BCRYPT_LIMIT = "a" * 73  # one byte past: never 500
+# 19 chars but 76 UTF-8 bytes — chars are not bytes; the byte-level cap must
+# catch what a character-count limit cannot.
+PASSWORD_MULTIBYTE_OVER_LIMIT = "🔐" * 19
 
 
 # ---------------------------------------------------------------------------
@@ -312,6 +322,81 @@ class TestSignup:
         assert credential_store.store == {}
         assert patched_repos.created == []
 
+    async def test_password_at_bcrypt_limit_is_accepted(self, patched_repos, _instance_secret):
+        """Exactly 72 bytes is bcrypt's cap, not past it — the boundary must
+        keep working end to end."""
+        app = _build_router_app()
+        client = await _client(app)
+        async with client:
+            response = await client.post(
+                "/api/v1/auth/signup",
+                json={"email": "admin@gaia.dev", "password": PASSWORD_AT_BCRYPT_LIMIT},
+            )
+
+        assert response.status_code == 201, response.text
+
+    async def test_password_over_bcrypt_limit_is_422_before_any_write(
+        self, patched_repos, credential_store, _instance_secret
+    ):
+        """>72 bytes makes bcrypt >= 5 raise ValueError. Rejected as a plain
+        422 BEFORE any row is written — hashing after the user insert used to
+        orphan the row on failure, permanently locking that email out of
+        signup via the existing-identity gate."""
+        app = _build_router_app()
+        client = await _client(app)
+        async with client:
+            response = await client.post(
+                "/api/v1/auth/signup",
+                json={"email": "admin@gaia.dev", "password": PASSWORD_OVER_BCRYPT_LIMIT},
+            )
+
+        assert response.status_code == 422, response.text
+        # No orphan: neither the user row nor a credential may survive.
+        assert patched_repos.created == []
+        assert credential_store.store == {}
+
+    async def test_multibyte_password_over_byte_limit_is_422_before_any_write(
+        self, patched_repos, credential_store, _instance_secret
+    ):
+        """19 characters — under any character-count limit — but 76 UTF-8
+        bytes, past bcrypt's cap. Proves the limit counts bytes, not chars."""
+        app = _build_router_app()
+        client = await _client(app)
+        async with client:
+            response = await client.post(
+                "/api/v1/auth/signup",
+                json={"email": "admin@gaia.dev", "password": PASSWORD_MULTIBYTE_OVER_LIMIT},
+            )
+
+        assert response.status_code == 422, response.text
+        assert patched_repos.created == []
+        assert credential_store.store == {}
+
+    async def test_lost_race_cleans_up_the_just_created_user_row(
+        self, patched_repos, credential_store, _instance_secret
+    ):
+        """Deterministic replay of a lost registration race: try_create comes
+        back empty exactly as when a concurrent signup won the admin slot.
+        The user row created moments earlier must be removed again — an
+        orphaned row poisons its email against every future signup (the
+        existing-identity gate refuses re-registration)."""
+        credential_store.try_create.side_effect = None
+        credential_store.try_create.return_value = None
+
+        app = _build_router_app()
+        client = await _client(app)
+        async with client:
+            response = await client.post(
+                "/api/v1/auth/signup",
+                json={"email": "loser@example.com", "password": TEST_PASSWORD},
+            )
+
+        assert response.status_code == 403, response.text
+        assert response.json()["detail"]["error_code"] == "registration_closed"
+        # The half-created row was compensated away — nothing orphaned.
+        assert patched_repos.created == []
+        assert patched_repos.by_email == {}
+
     async def test_signup_refuses_existing_identity_claim(
         self, patched_repos, credential_store, _instance_secret
     ):
@@ -440,6 +525,27 @@ class TestLogin:
         assert response.json()["detail"]["error_code"] == "invalid_credentials"
         assert "gaia_session" not in response.cookies
 
+    async def test_over_bcrypt_limit_password_is_422_before_any_lookup(
+        self, admin, _instance_secret
+    ):
+        """bcrypt >= 5 refuses to verify passwords past its 72-byte cap
+        (ValueError). Request validation rejects them with a clear 422
+        before any account lookup happens — never a 500, and no session."""
+        app = _build_router_app()
+        client = await _client(app)
+        async with client:
+            known = await client.post(
+                "/api/v1/auth/login",
+                json={"email": "admin@gaia.dev", "password": PASSWORD_OVER_BCRYPT_LIMIT},
+            )
+            unknown = await client.post(
+                "/api/v1/auth/login",
+                json={"email": "ghost@example.com", "password": PASSWORD_OVER_BCRYPT_LIMIT},
+            )
+
+        assert known.status_code == unknown.status_code == 422, known.text
+        assert "gaia_session" not in known.cookies
+
     async def test_unknown_email_is_401(self, patched_repos, _instance_secret):
         app = _build_router_app()
         client = await _client(app)
@@ -505,6 +611,58 @@ class TestLogin:
         assert unknown.status_code == wrong_password.status_code == 401
         assert unknown.json() == wrong_password.json()
         assert spy.call_count == 2  # one bcrypt verification per failed attempt
+
+
+# ---------------------------------------------------------------------------
+# bcrypt ValueError guards (bcrypt >= 5 refuses >72-byte inputs)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestBcryptValueErrorGuards:
+    """Second line of defense behind request validation: validation already
+    turns over-cap passwords into clean 422s on the wire (see the signup and
+    login tests above). These tests drive the handlers directly with an
+    unvalidated body to pin what happens if a refused input ever reaches them
+    anyway — a clean 422 on signup / uniform 401 on login, never a 500, and
+    never an orphaned user row."""
+
+    @staticmethod
+    def _unvalidated_body(password: str) -> SimpleNamespace:
+        """Stand-in for a request model that skipped validation."""
+        return SimpleNamespace(email="admin@gaia.dev", password=password, name=None)
+
+    async def test_signup_refused_hash_is_422_without_orphan(self, patched_repos, credential_store):
+        import app.api.v1.endpoints.auth_local as auth_local_module
+
+        with pytest.raises(HTTPException) as exc_info:
+            await auth_local_module.signup(
+                request=MagicMock(),
+                body=self._unvalidated_body(PASSWORD_OVER_BCRYPT_LIMIT),
+            )
+
+        assert exc_info.value.status_code == 422
+        # The hash refusal happens BEFORE the user insert — nothing orphaned.
+        assert patched_repos.created == []
+        assert credential_store.store == {}
+
+    async def test_login_refused_hash_is_uniform_401(self, patched_repos, credential_store):
+        import app.api.v1.endpoints.auth_local as auth_local_module
+
+        seed_admin(patched_repos, credential_store, "admin@gaia.dev")
+
+        with pytest.raises(HTTPException) as exc_info:
+            await auth_local_module.login(
+                request=MagicMock(),
+                body=self._unvalidated_body(PASSWORD_OVER_BCRYPT_LIMIT),
+            )
+
+        assert exc_info.value.status_code == 401
+        # Byte-identical to every other login failure — no oracle.
+        assert exc_info.value.detail == {
+            "error_code": INVALID_CREDENTIALS,
+            "message": "Invalid email or password",
+        }
 
 
 # ---------------------------------------------------------------------------
