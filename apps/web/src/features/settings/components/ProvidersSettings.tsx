@@ -109,7 +109,7 @@ const PRESET_CHIPS: ReadonlyArray<{ id: CustomPresetId; label: string }> = [
 function StatusBadge({ configured }: { configured: boolean }) {
   if (configured) {
     return (
-      <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400">
+      <span className="flex items-center gap-1 rounded-full bg-emerald-400/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
         <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
         Connected
       </span>
@@ -445,7 +445,7 @@ export function ProvidersSettings() {
                 <StatusBadge configured={configured} />
                 <Button
                   variant="flat"
-                  color={configured ? "default" : "primary"}
+                  color="default"
                   size="sm"
                   className="text-xs"
                   isDisabled={isLoadingConfigs}

@@ -228,7 +228,7 @@ export default function SettingsMenu({
   };
 
   const menuSections = [
-    ...(subscriptionStatus?.is_subscribed
+    ...(subscriptionStatus?.is_subscribed || billingHidden
       ? []
       : [
           {

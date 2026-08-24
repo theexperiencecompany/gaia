@@ -133,6 +133,12 @@ export const settingsPageItems: SettingsMenuItem[] = [
 /** Settings sections that only make sense inside the desktop app. */
 export const DESKTOP_ONLY_SETTINGS_KEYS = new Set(["desktop"]);
 
+/**
+ * Settings sections that only make sense when the instance bills — hidden
+ * from navigation and redirected away on self-host (billing_enabled=false).
+ */
+export const BILLING_ONLY_SETTINGS_KEYS = new Set(["subscription", "usage"]);
+
 export const socialMediaItems: SettingsMenuItem[] = [
   {
     key: "discord",

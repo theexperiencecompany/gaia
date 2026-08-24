@@ -5,6 +5,7 @@ import { Chip } from "@heroui/chip";
 import { usePathname, useRouter } from "next/navigation";
 
 import {
+  BILLING_ONLY_SETTINGS_KEYS,
   DESKTOP_ONLY_SETTINGS_KEYS,
   settingsPageItems,
 } from "@/features/settings/config/settingsConfig";
@@ -23,7 +24,7 @@ export default function SettingsSidebar() {
   const visibleItems = settingsPageItems.filter(
     (item) =>
       (isElectron || !DESKTOP_ONLY_SETTINGS_KEYS.has(item.key)) &&
-      !(billingHidden && (item.key === "subscription" || item.key === "usage")),
+      !(billingHidden && BILLING_ONLY_SETTINGS_KEYS.has(item.key)),
   );
 
   const handleNavigation = (href: string) => {
