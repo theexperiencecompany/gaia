@@ -2,7 +2,6 @@
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
 
 from dotenv import load_dotenv
 
@@ -20,11 +19,6 @@ load_dotenv(_api_env_path)
 
 class VoiceAgentSettings(BaseAppSettings):
     """Settings specific to the voice agent worker."""
-
-    # Redeclared (as every GAIA app does) to admit the selfhost tier: the
-    # shared base predates it, and without "selfhost" here ENV=selfhost fails
-    # Literal validation in prewarm() and kills every job process.
-    ENV: Literal["production", "staging", "development", "selfhost"] = "production"
 
     GAIA_BACKEND_URL: str = "http://localhost:8000"
 
@@ -59,9 +53,7 @@ def bootstrap_settings() -> VoiceAgentSettings:
     """
     settings = get_settings()
     missing_voice_keys = [
-        key
-        for key in ("DEEPGRAM_API_KEY", "ELEVENLABS_API_KEY")
-        if not getattr(settings, key)
+        key for key in ("DEEPGRAM_API_KEY", "ELEVENLABS_API_KEY") if not getattr(settings, key)
     ]
     if missing_voice_keys:
         # Optional providers (self-host runs without them): warn at boot so the
