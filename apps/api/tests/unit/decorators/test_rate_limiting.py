@@ -172,7 +172,7 @@ class TestBlockedToolStreamsItsCard:
         """The message is the agent's whole instruction sheet — every clause
         (base line, reset, upsell) is pinned so the mutation gate notices if
         any of them stops reaching the model."""
-        exc = rl.LangChainRateLimitException(
+        exc = rl.LangChainRateLimitError(
             feature="generate_image",
             detail={"plan_required": "pro", "current_plan": "free"},
             reset_time=RESET_AT.isoformat(),
@@ -189,7 +189,7 @@ class TestBlockedToolStreamsItsCard:
     async def test_a_free_user_is_pointed_at_the_upgrade_tool(self) -> None:
         """A wall with no way past it reads as a dead end, so the agent-facing
         message names the tool that mints a checkout link."""
-        with pytest.raises(rl.LangChainRateLimitException) as raised:
+        with pytest.raises(rl.LangChainRateLimitError) as raised:
             await _call_blocked_tool(
                 RateLimitExceededException(
                     feature="generate_image", reset_time=RESET_AT, current_plan="free"
@@ -204,7 +204,7 @@ class TestBlockedToolStreamsItsCard:
         )
 
     async def test_a_pro_user_is_not_pitched_an_upgrade(self) -> None:
-        with pytest.raises(rl.LangChainRateLimitException) as raised:
+        with pytest.raises(rl.LangChainRateLimitError) as raised:
             await _call_blocked_tool(
                 RateLimitExceededException(
                     feature="generate_image", reset_time=RESET_AT, current_plan="pro"
