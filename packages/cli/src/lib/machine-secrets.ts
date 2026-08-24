@@ -14,7 +14,7 @@ import * as crypto from "node:crypto";
 import { parseEnvFileValues } from "./env-writer.js";
 
 /** Env vars the CLI owns generating for self-host installs. */
-export const MACHINE_SECRET_VARS = [
+const MACHINE_SECRET_VARS = [
   "AGENT_SECRET",
   "BOT_SESSION_TOKEN_SECRET",
   "EMAIL_UNSUBSCRIBE_SECRET",

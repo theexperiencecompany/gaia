@@ -104,7 +104,7 @@ export async function getComposeProjectContainers(
   return parseComposePsOutput(stdout);
 }
 
-export function parseComposePsOutput(stdout: string): ComposeContainerInfo[] {
+function parseComposePsOutput(stdout: string): ComposeContainerInfo[] {
   const containers: ComposeContainerInfo[] = [];
   for (const line of stdout.trim().split("\n")) {
     if (!line) continue;

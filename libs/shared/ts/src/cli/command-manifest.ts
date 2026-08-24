@@ -10,19 +10,6 @@ export const CLI_COMMAND_DESCRIPTIONS = {
   doctor: "Diagnose a GAIA install: docker, services and setup checks",
 } as const;
 
-export const REQUIRED_DOC_COMMANDS = [
-  "gaia init",
-  "gaia setup",
-  "gaia start",
-  "gaia dev",
-  "gaia dev full",
-  "gaia logs",
-  "gaia stop",
-  "gaia status",
-  "gaia up",
-  "gaia doctor",
-] as const;
-
 /** The canonical way to install the `gaia` CLI, per package manager. */
 export const CLI_INSTALL_COMMANDS = {
   npm: "npm install -g @heygaia/cli",

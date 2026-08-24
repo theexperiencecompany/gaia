@@ -12,9 +12,7 @@ import {
   CUSTOM_PRESETS,
 } from "@/features/settings/api/providersApi";
 
-export const EASE_OUT_QUART: [number, number, number, number] = [
-  0.19, 1, 0.22, 1,
-];
+const EASE_OUT_QUART: [number, number, number, number] = [0.19, 1, 0.22, 1];
 
 export const MOTION_FADE_UP = {
   initial: { opacity: 0, y: 12 },

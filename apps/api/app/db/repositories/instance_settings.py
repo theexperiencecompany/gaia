@@ -54,9 +54,5 @@ class InstanceSettingsRepository(MongoRepository[InstanceSettingsDocument, Insta
         )
         return result.upserted_id is not None
 
-    async def delete_by_key(self, key: str) -> bool:
-        """Remove the setting under ``key``; True when a document was deleted."""
-        return await self.delete(key)
-
 
 instance_settings_repository = InstanceSettingsRepository()

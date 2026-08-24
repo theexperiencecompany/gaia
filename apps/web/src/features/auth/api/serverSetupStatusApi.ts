@@ -14,7 +14,7 @@ import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
  * callers fall back to the classic WorkOS redirect instead of breaking the
  * page.
  */
-export async function getSetupStatusServer(): Promise<SetupStatus | null> {
+async function getSetupStatusServer(): Promise<SetupStatus | null> {
   const apiBaseUrl = getServerApiBaseUrl();
   if (!apiBaseUrl) {
     console.error(

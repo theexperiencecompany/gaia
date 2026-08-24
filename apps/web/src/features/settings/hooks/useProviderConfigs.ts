@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { providersApi } from "@/features/settings/api/providersApi";
 
-export const PROVIDER_CONFIGS_QUERY_KEY = ["setup", "providers"] as const;
+const PROVIDER_CONFIGS_QUERY_KEY = ["setup", "providers"] as const;
 
 /**
  * Admin-only masked provider listing (GET /setup/providers) — the stored

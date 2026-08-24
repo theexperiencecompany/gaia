@@ -8,7 +8,7 @@ import {
   type SetupStatus,
 } from "@/features/settings/api/providersApi";
 
-export const SETUP_STATUS_QUERY_KEY = ["setup", "status"] as const;
+const SETUP_STATUS_QUERY_KEY = ["setup", "status"] as const;
 
 /**
  * Instance setup status (public endpoint). Single shared react-query cache
