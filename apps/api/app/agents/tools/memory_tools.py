@@ -355,7 +355,7 @@ async def add_memory(
         "new": f"Memory stored under '{entry.category_path}'",
         "updated": f"Updated an existing memory under '{entry.category_path}'",
         "extended": f"Stored under '{entry.category_path}', extending a related memory",
-        "duplicate": f"Already known — matched an existing memory under '{entry.category_path}'",
+        "duplicate": f"Already known: matched an existing memory under '{entry.category_path}'",
     }
     message = messages[outcome]
     _stream_memory_data(
@@ -564,8 +564,8 @@ async def search_conversations(
     """Search raw past-conversation transcripts for verbatim details.
 
     Use when the user references something specific from an earlier chat that
-    memory search does not surface — "that list you gave me", "the exact move
-    you suggested", "what did we say about X" — and quote the matching passage.
+    memory search does not surface, such as "that list you gave me", "the exact move
+    you suggested", or "what did we say about X", and quote the matching passage.
     """
     user_id = get_user_id_from_config(config)
     if not user_id:
@@ -709,7 +709,7 @@ async def read_memory_document(
     )
     if document is None or not document.content.strip():
         return (
-            f"The '{doc_type}' document is empty — nothing has been written to it yet. "
+            f"The '{doc_type}' document is empty: nothing has been written to it yet. "
             "It fills in automatically as memory accumulates."
         )
 

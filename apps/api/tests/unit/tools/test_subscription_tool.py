@@ -81,7 +81,7 @@ class TestGetSubscriptionDetails:
         ):
             result = await get_subscription_details.coroutine(config=_cfg())
 
-        assert result == "Plan: Free\nSubscribed: no — this user is on the free tier."
+        assert result == "Plan: Free\nSubscribed: no, this user is on the free tier."
 
     async def test_pro_user_gets_price_renewal_and_charges(self) -> None:
         details = SubscriptionDetails(
@@ -228,7 +228,7 @@ class TestGetSubscriptionDetails:
             "Subscribed: yes (status: active)\n"
             "Price: 30.00 USD per month\n"
             "Cancels on: 2026-04-14T12:00:00Z\n"
-            "Cancellation is scheduled — Pro access continues until the date above, "
+            "Cancellation is scheduled: Pro access continues until the date above, "
             "then the account returns to Free.\n"
             "Recent charges: none recorded yet."
         )
@@ -257,7 +257,7 @@ class TestCreateUpgradeLink:
             result = await create_upgrade_link.coroutine(config=_cfg())
 
         assert result == (
-            "GAIA Pro — 30.00 USD per month.\n"
+            "GAIA Pro: 30.00 USD per month.\n"
             "Includes: Chat on iMessage; Unlimited memories\n"
             "Checkout link (already tied to this user's account): "
             "https://checkout.dodopayments.com/s/cs_1\n"
@@ -294,7 +294,7 @@ class TestCreateUpgradeLink:
             )
 
         checkout.assert_awaited_once_with(FAKE_USER_ID, PlanDuration.YEARLY)
-        assert result.startswith("GAIA Pro — 300.00 USD per year.")
+        assert result.startswith("GAIA Pro: 300.00 USD per year.")
         assert log.get()["payment"] == {
             "operation": "agent_upgrade_link",
             "billing_cycle": PlanDuration.YEARLY,
@@ -314,7 +314,7 @@ class TestCreateUpgradeLink:
             result = await create_upgrade_link.coroutine(config=_cfg())
 
         assert result == (
-            "This user is already on GAIA Pro — no checkout needed. "
+            "This user is already on GAIA Pro, no checkout needed. "
             "Tell them that instead of sending a payment link."
         )
         status.assert_awaited_once_with(FAKE_USER_ID)

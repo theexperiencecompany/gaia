@@ -227,7 +227,7 @@ async def bash(
                     await _publish_artifacts(sbx, user_id, session_id)
             return result
     except SandboxAcquisitionError as e:
-        return _emit_bash_error(run_id, str(e), f"Error: sandbox unavailable — {e}", session_id)
+        return _emit_bash_error(run_id, str(e), f"Error: sandbox unavailable ({e})", session_id)
     except Exception as e:
         # acquire_sandbox already evicted the sandbox if this failure means it
         # died (it health-checks on any error) — here we just surface it.

@@ -20,7 +20,7 @@ from app.utils.webpage_fetch import fetch_webpage
 from shared.py.wide_events import log
 
 _NO_URLS_RETRIEVED_MSG = (
-    "Search failed — no URLs were retrieved. Do NOT fabricate any URLs or results."
+    "Search failed: no URLs were retrieved. Do NOT fabricate any URLs or results."
 )
 
 
@@ -152,7 +152,7 @@ async def web_search_tool(
                 "NEVER invent or fabricate URLs. If no results were found, say so clearly."
             ),
             "instructions": (
-                "Summarise the search results — do not repeat them verbatim. "
+                "Summarise the search results: do not repeat them verbatim. "
                 "Do not show images in markdown. "
                 "Only mention URLs that appear in the search results. "
                 "These results will be shown on the frontend in an appropriate manner."

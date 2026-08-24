@@ -60,7 +60,7 @@ async def write(
             real_mtime = await atomic_write(sbx, abs_path, encoded)
         add_fs_bytes(FsOps.TOOL_WRITE, len(encoded))
     except SandboxAcquisitionError as e:
-        return f"Error: sandbox unavailable — {e}"
+        return f"Error: sandbox unavailable: {e}"
     except Exception as e:
         log.error(f"{LogTag.SANDBOX} write tool failed", error_type=type(e).__name__, exc_info=True)
         return f"Error writing file: {e}"

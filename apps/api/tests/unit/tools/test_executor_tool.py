@@ -289,7 +289,7 @@ class TestCallExecutorLockContention:
         await drain_background_tasks()
 
         assert second == (
-            "That task is already running from this same message — not "
+            "That task is already running from this same message, not "
             "starting it again. The results are on the way."
         )
         assert first.startswith("Task accepted")
@@ -558,7 +558,7 @@ class TestCancelExecutor:
         response = await run_cancel_executor(config=config_for(), task_ids=["q2"])
 
         assert response == (
-            "Cancelled: q2. Currently running task was not in the cancel list — still running."
+            "Cancelled: q2. Currently running task was not in the cancel list, still running."
         )
         assert await fake_redis.get(LOCK_KEY) == "stream-1:running-task"
         cancel_stream.assert_not_awaited()
@@ -751,7 +751,7 @@ class TestCancelWithMalformedQueueItems:
         response = await run_cancel_executor(config=config_for(), task_ids=["q1"])
 
         assert response == (
-            "Cancelled: q1. Currently running task was not in the cancel list — still running."
+            "Cancelled: q1. Currently running task was not in the cancel list, still running."
         )
         assert await fake_redis.get(LOCK_KEY) == "stream-1:running-task"
         assert await fake_redis.lrange(QUEUE_KEY, 0, -1) == ["5"]
@@ -922,7 +922,7 @@ class TestDispatchAcknowledgement:
         task_id = task_id_from(response)
 
         assert response == (
-            f"Task accepted (task_id: {task_id}). Nothing has run yet — this only means the "
+            f"Task accepted (task_id: {task_id}). Nothing has run yet: this only means the "
             "work has STARTED. Do not tell the user anything was sent, created, deleted, or "
             "finished. Risky actions pause for the user's approval first and they see an "
             "approval card; if that happens the work waits on them, not on you. Acknowledge "

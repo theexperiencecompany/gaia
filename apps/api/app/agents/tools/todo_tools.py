@@ -210,7 +210,7 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
                     "messages": [
                         ToolMessage(
                             content=(
-                                "Updated nothing — " + "; ".join(problems) + ". "
+                                "Updated nothing: " + "; ".join(problems) + ". "
                                 "Nothing in this batch was applied; fix the entry and resend "
                                 "the whole batch. Current task ids: "
                                 + (", ".join(todo_map) if todo_map else "none")

@@ -150,11 +150,11 @@ async def take_screenshot(
     # `read` the path back later.
     try:
         path = await _save_screenshot(config, image)
-        location_note = f"saved to {path} — read that path to look at it again later"
+        location_note = f"saved to {path}, read that path to look at it again later"
     except Exception:
         log.exception(f"{LogTag.TOOL} Failed to persist screenshot to the workspace")
         location_note = (
-            "not saved to the workspace, so it cannot be re-read later — answer from it now"
+            "not saved to the workspace, so it cannot be re-read later, answer from it now"
         )
 
     # The pixels go to the model as-is. A lane that cannot see them gets a text

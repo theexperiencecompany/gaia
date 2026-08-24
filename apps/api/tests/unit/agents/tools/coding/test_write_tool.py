@@ -193,7 +193,7 @@ async def test_sandbox_unavailable_returns_friendly_error() -> None:
     with patch(f"{MODULE}.acquire_sandbox", side_effect=SandboxAcquisitionError("pool empty")):
         result = await write.ainvoke({"path": "scratch/x.py", "content": "x"}, config=CONFIG)
 
-    assert result == "Error: sandbox unavailable — pool empty"
+    assert result == "Error: sandbox unavailable: pool empty"
 
 
 async def test_write_failure_returns_error_and_logs() -> None:

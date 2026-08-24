@@ -279,13 +279,13 @@ def _format_result(
 
     notes = []
     if truncated:
-        notes.append("input truncated (file too large) — results may be incomplete")
+        notes.append("input truncated (file too large): results may be incomplete")
     if dropped:
         notes.append(f"{dropped} unparseable line(s) skipped")
     if len(body) > MAX_FILTER_OUTPUT_CHARS:
         body = body[:MAX_FILTER_OUTPUT_CHARS]
         notes.append(
-            f"output truncated at {MAX_FILTER_OUTPUT_CHARS} chars — narrow the filter or lower limit"
+            f"output truncated at {MAX_FILTER_OUTPUT_CHARS} chars: narrow the filter or lower limit"
         )
 
     return body + ("\n\n[" + "; ".join(notes) + "]" if notes else "")

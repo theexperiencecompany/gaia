@@ -88,7 +88,7 @@ def _cap(text: str, *, truncated: bool) -> str:
     if truncated or len(text) > MAX_FILTER_OUTPUT_CHARS:
         return (
             text[:MAX_FILTER_OUTPUT_CHARS]
-            + f"\n... [truncated at {MAX_FILTER_OUTPUT_CHARS} chars — narrow your query]"
+            + f"\n... [truncated at {MAX_FILTER_OUTPUT_CHARS} chars: narrow your query]"
         )
     return text
 

@@ -1224,8 +1224,8 @@ def register_gmail_custom_tools(composio: Composio) -> list[str]:
 
         The canonical thread-read tool. Fetches each ``thread_id`` (batched,
         concurrently) and returns its messages in conversation order, shaped
-        exactly like ``GMAIL_FETCH_MESSAGES`` results — normalized body,
-        attachment metadata, same ``fields``/``body_processing`` contract — so
+        exactly like ``GMAIL_FETCH_MESSAGES`` results: normalized body,
+        attachment metadata, same ``fields``/``body_processing`` contract, so
         there is one read path, not a divergent raw thread view.
 
         Get thread ids from the ``threadId`` on ``GMAIL_FETCH_MESSAGES``

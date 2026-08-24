@@ -259,16 +259,16 @@ async def mark_notifications_read(
 @with_doc(SEND_NOTIFICATION)
 async def send_notification(
     config: RunnableConfig,
-    message: Annotated[str, "Notification body text — keep it concise and actionable"],
+    message: Annotated[str, "Notification body text: keep it concise and actionable"],
     title: Annotated[
         str,
         "Short, specific title summarizing the update (e.g. 'Reminder', 'Task completed', "
-        "'Build failed'). Always write a meaningful title — never a generic app name.",
+        "'Build failed'). Always write a meaningful title, never a generic app name.",
     ],
     channels: Annotated[
         list[str],
         "Channel names to target ('whatsapp', 'telegram', 'discord', 'slack', 'inapp'). "
-        "REQUIRED — pass exactly the channel(s) the user named. If the user did not name a "
+        "REQUIRED: pass exactly the channel(s) the user named. If the user did not name a "
         "channel, ASK them which channel(s) they want before calling this tool. Never guess "
         "and never broadcast to channels the user did not ask for.",
     ],
@@ -300,7 +300,7 @@ async def send_notification(
         if not channels:
             return {
                 "error": (
-                    "channels is required — specify which channel(s) to notify "
+                    "channels is required: specify which channel(s) to notify "
                     f"({', '.join(ALL_AUTO_INJECTED_CHANNELS)}). If the user did not name a "
                     "channel, ask them which one(s) they want before sending."
                 ),

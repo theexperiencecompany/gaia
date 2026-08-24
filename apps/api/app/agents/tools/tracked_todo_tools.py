@@ -94,7 +94,7 @@ def _resolve_cron_first_fire(
     # Cron is the source of truth; an explicit scheduled_at would be redundant.
     if scheduled_at:
         notes.append(
-            "scheduled_at was ignored — for a cron recurrence the first fire "
+            "scheduled_at was ignored: for a cron recurrence the first fire "
             "is computed from the cron in the user's timezone."
         )
     try:
@@ -288,7 +288,7 @@ async def _apply_cron_first_fire(
     """For a cron recurrence, derive first fire in the user's tz and override scheduled_at."""
     if scheduled_at:
         notes.append(
-            "scheduled_at was ignored — for a cron recurrence the first fire "
+            "scheduled_at was ignored: for a cron recurrence the first fire "
             "is computed from the cron in your timezone."
         )
     try:
@@ -402,7 +402,7 @@ def _format_create_output(
     out = (
         f"Tracked todo created: {result.id}\n"
         f"Title: {result.title}\n"
-        "Canvas + activity log are stored on this todo — edit them ONLY via "
+        "Canvas + activity log are stored on this todo. Edit them ONLY via "
         f"update_tracked_todo_canvas(todo_id='{result.id}', ...), never with filesystem tools."
     )
     if parsed_scheduled_at:
@@ -438,7 +438,7 @@ async def create_tracked_todo(
         "Use this ONLY when there is no recurrence, or when the recurrence is a "
         "delta-style shortcut ('daily', 'weekly', 'every_4h', 'every_1h') that "
         "needs a first-fire anchor. "
-        "For cron-style recurrence (e.g. '0 9 * * *' or '0 9,20 * * *'), OMIT this — "
+        "For cron-style recurrence (e.g. '0 9 * * *' or '0 9,20 * * *'), OMIT this: "
         "the first fire is computed automatically in the user's timezone. "
         "Always include the user's timezone offset (e.g., '2026-03-20T09:00:00+05:30'); "
         "never 'Z' unless the user explicitly says UTC.",
@@ -447,10 +447,10 @@ async def create_tracked_todo(
         str | None,
         "How often to repeat. Options: 'daily', 'weekly', 'every_4h', 'every_1h', "
         "or a 5-field cron expression. "
-        "ALWAYS evaluated in the user's stored timezone — the backend handles "
+        "ALWAYS evaluated in the user's stored timezone: the backend handles "
         "the conversion. Just pass the cron in user-local wall-clock terms. "
         "Example: '0 9,20 * * *' fires at 9 AM and 8 PM in the user's timezone "
-        "daily — ONE recurrence, two fires per day; do NOT create two todos. "
+        "daily, ONE recurrence, two fires per day; do NOT create two todos. "
         "Do NOT bake timezone offsets into the cron string itself.",
     ] = None,
     expires_at: Annotated[
@@ -466,7 +466,7 @@ async def create_tracked_todo(
     Create a tracked todo: a GAIA-managed todo with a working-memory canvas.
 
     A tracked todo shows on the user's todos page like a normal todo, but GAIA
-    owns it: it carries canvas.md (GAIA's working notes — key IDs, current state,
+    owns it: it carries canvas.md (GAIA's working notes: key IDs, current state,
     activity log, learnings) plus an optional schedule/recurrence so GAIA can act
     on it over time. It is distinct from the user's own hand-created action items
     (which live in providers like Todoist, Google Tasks, Apple Reminders, Gaia
@@ -477,8 +477,8 @@ async def create_tracked_todo(
     email and awaits a reply, created an issue, posted to Slack, scheduled
     recurring work, or an ongoing multi-step initiative.
 
-    Do NOT create one for read-only work — fetching, listing, searching, or
-    summarizing data — no matter how complex it is or how often it runs (a
+    Do NOT create one for read-only work (fetching, listing, searching, or
+    summarizing data), no matter how complex it is or how often it runs (a
     recurring daily summary is still a read). Saving or persisting a summary,
     digest, or briefing is NOT tracking: return the summary, do not store it as a
     tracked todo. Search existing tracked todos first (search_todo_context) and
@@ -490,7 +490,7 @@ async def create_tracked_todo(
 
     scheduled_at: ISO datetime with the user's timezone offset (e.g., "2026-03-20T09:00:00+05:30").
                   For a one-time run, or as the first-fire anchor for a delta recurrence
-                  ('daily'/'weekly'/'every_4h'). For cron recurrence, OMIT it — the first fire is
+                  ('daily'/'weekly'/'every_4h'). For cron recurrence, OMIT it: the first fire is
                   computed in the user's timezone. Never use raw 'Z' unless the user says UTC.
     recurrence: How often to repeat. Options: 'daily', 'weekly', 'every_4h', or a cron expression.
                 Cron does NOT require scheduled_at; delta shortcuts use scheduled_at as their
@@ -594,9 +594,9 @@ async def update_tracked_todo_canvas(
     mode: Annotated[
         str,
         "How to write: "
-        "'append' (default) — add content at the end of the canvas. Use for activity log entries, timeline events, new notes. No read needed. "
-        "'section' — replace a specific ## Section by name. Use for targeted updates (e.g. Current State). Tool reads and patches internally — no read needed. "
-        "'replace' — overwrite the entire canvas. Only use for initial setup or full restructure.",
+        "'append' (default): add content at the end of the canvas. Use for activity log entries, timeline events, new notes. No read needed. "
+        "'section': replace a specific ## Section by name. Use for targeted updates (e.g. Current State). Tool reads and patches internally, no read needed. "
+        "'replace': overwrite the entire canvas. Only use for initial setup or full restructure.",
     ] = "append",
     section: Annotated[
         str | None,
@@ -607,10 +607,10 @@ async def update_tracked_todo_canvas(
 ) -> str:
     """Update GAIA's working notes on an EXISTING tracked todo's canvas.
 
-    PRECONDITION: only call this when you already have a tracked todo for THIS initiative —
+    PRECONDITION: only call this when you already have a tracked todo for THIS initiative:
     one you created this turn (you hold its todo_id) or the run's "🎯 ACTIVE TODO". If no
     tracked todo exists for the task (a one-off fetch / deploy / build / lookup / edit), do
-    NOT call this. The canvas lives on the todo, not the filesystem — never use read/write/edit.
+    NOT call this. The canvas lives on the todo, not the filesystem, never use read/write/edit.
 
     Modes (once you have a todo_id):
     append  → activity log entries, timeline events, new context. No read needed.
@@ -675,7 +675,7 @@ async def complete_tracked_todo(
         todo_id=todo_id, user_id=user_id, summary=summary
     )
     if not success:
-        return f"Error: could not complete tracked todo {todo_id} — not found or missing vfs_path"
+        return f"Error: could not complete tracked todo {todo_id}, not found or missing vfs_path"
     return f"Tracked todo {todo_id} completed and archived."
 
 
@@ -700,7 +700,7 @@ async def update_tracked_todo(
         str | None,
         "ISO datetime for one-shot scheduled execution, or first-fire anchor for "
         "shortcut recurrences ('daily', 'weekly', 'every_4h', 'every_1h'). "
-        "OMIT for cron-style recurrence — first fire is computed from the cron. "
+        "OMIT for cron-style recurrence: first fire is computed from the cron. "
         "Always include the user's timezone offset. Set to empty string '' to clear.",
     ] = None,
     recurrence: Annotated[

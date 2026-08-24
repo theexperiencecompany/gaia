@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 
 class UrgencyAggregatorInput(BaseModel):
-    """Input for the urgency aggregator — a dict of integration snapshots."""
+    """Input for the urgency aggregator: a dict of integration snapshots."""
 
     snapshots: dict[str, Any] = Field(
         ...,

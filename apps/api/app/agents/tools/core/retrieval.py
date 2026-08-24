@@ -114,20 +114,20 @@ REQUIRED: pass exactly ONE of `query` (to discover by intent) or `exact_tool_nam
 guidance instead of binding anything. If you are looking for a capability, pass
 query="what you want to do".
 
-—DISCOVERY MODE (query)
+DISCOVERY MODE (query)
 Semantic search that returns tool names matching your intent. Tools are NOT loaded yet.
 
 Rules:
 - This is semantic vector search over tool names and descriptions. Phrase the query in
   natural language using the INTEGRATION'S NAME ("github", "gmail", "notion") and the
-  action — NEVER an id, uuid, slug, or internal key. Ids carry no semantic meaning, so
+  action, NEVER an id, uuid, slug, or internal key. Ids carry no semantic meaning, so
   they embed to noise and return irrelevant tools. Search "list github pull requests",
   not the repo/connection id.
 - One well-formed query is enough for most tasks. Do not retry unless results are clearly irrelevant.
 - Do not search repeatedly to be thorough. If the first result looks right, move to binding.
 - Comma-separated intents work: "list pull requests, get repo info"
 
-—BINDING MODE (exact_tool_names)
+BINDING MODE (exact_tool_names)
 Loads tools by exact name so they can be called. Use this after discovery or when you already know the name.
 
 Rules:
@@ -135,7 +135,7 @@ Rules:
 - Unknown or invalid names are silently ignored
 - You CANNOT call a tool that has not been bound first
 
-—STANDARD WORKFLOW
+STANDARD WORKFLOW
 Step 1: retrieve_tools(query="your intent")         → discover tool names
 Step 2: retrieve_tools(exact_tool_names=["TOOL_A"]) → bind for execution
 Step 3: Call the tool directly
@@ -148,21 +148,21 @@ task="..."). Do NOT call retrieve_tools again to "bind" it, and never call
 retrieve_tools with an empty exact_tool_names. Trying to bind a subagent is the
 single most common mistake here: there is no bind step for a subagent.
 
-—EFFICIENCY RULES (follow these strictly)
+EFFICIENCY RULES (follow these strictly)
 - Do not call retrieve_tools more than twice for a single task unless the first discovery returned completely irrelevant results
 - Do not discover the same intent twice with different wording unless the first returned nothing useful
 - Do not bind tools you are not going to call immediately
 - Once a tool is bound and returns results, use those results. Do not search for alternative tools.
 
-—TOOL NAME FORMAT
+TOOL NAME FORMAT
 Tools follow ALLCAPS_SNAKE_CASE naming: "GITHUB_LIST_PULL_REQUESTS", "GMAIL_SEND_EMAIL"
 Internal tools follow snake_case: "plan_tasks", "vfs_read"
 
-—ARGS
+ARGS
 query:
     Natural language description of what you want to do.
     Be specific about the action and name the integration in plain words
-    ("github", "gmail", "notion") — NOT an id, uuid, or slug. This is semantic
+    ("github", "gmail", "notion"), NOT an id, uuid, or slug. This is semantic
     vector search; ids do not embed and will not match.
     Example: "list pull requests", "send email", "create github issue"
 
@@ -170,11 +170,11 @@ exact_tool_names:
     List of exact tool names to load and make executable.
     Example: ["GITHUB_LIST_PULL_REQUESTS", "GITHUB_GET_PULL_REQUEST"]
 
-—RETURNS
+RETURNS
 response: tool names discovered or validated
 tools_to_bind: tools that are now loaded and ready to call
 
-—EXAMPLES
+EXAMPLES
 
 Simple read task:
   retrieve_tools(query="list pull requests")
@@ -200,7 +200,7 @@ Write task with verification:
 
 _RETRIEVE_TOOLS_SUBAGENT_SECTION = """
 
-—SUBAGENT TOOLS
+SUBAGENT TOOLS
 Discovery may also return subagent tools alongside regular tools.
 - Subagent tool format: "subagent:gmail", "subagent:fb9dfd7e05f8"
 - To USE a subagent, call handoff(subagent_id="gmail", task="...") directly.
@@ -612,7 +612,7 @@ def _render_discovery_response(
     else:
         payload["next"] = (
             "Bind with retrieve_tools(exact_tool_names=[...]) then call the tool. "
-            'Subagents are NOT bindable — use handoff(subagent_id="<id>", task="..."). '
+            'Subagents are NOT bindable: use handoff(subagent_id="<id>", task="..."). '
             "Anything under subagents_needing_connection is unusable until the user "
             "connects it, so ask them first."
         )
@@ -875,17 +875,17 @@ def get_retrieve_tools_function(
                 response.append(
                     "These tools are not available inside this subagent and cannot be "
                     f"bound here: {', '.join(out_of_scope_tool_names)}. They belong to the "
-                    "main executor, not this subagent — do not retry binding them; finish "
+                    "main executor, not this subagent. Do not retry binding them; finish "
                     "your task here and let the executor handle them."
                 )
 
             bind_lines: list[str] = []
             if validated_tool_names:
-                bind_lines.append(f"Bound {len(validated_tool_names)} tools — call them directly:")
+                bind_lines.append(f"Bound {len(validated_tool_names)} tools, call them directly:")
                 bind_lines.extend(f"  - {name}" for name in validated_tool_names)
             if renamed_tools:
                 bind_lines.append(
-                    "Resolved to their canonical names — use these from now on: "
+                    "Resolved to their canonical names, use these from now on: "
                     + ", ".join(f"{req} -> {canon}" for req, canon in renamed_tools.items())
                 )
             if unknown_tool_names:
