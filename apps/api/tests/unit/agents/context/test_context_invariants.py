@@ -558,40 +558,58 @@ class TestTheGatherSlotsEachSectionWhereItDeclared:
 
         assert text_of(assembled.stable) == "User Name: Ada\nUser Timezone: Asia/Kolkata"
 
+    @staticmethod
+    async def _volatile_driven_by_todos(text: str) -> str:
+        """The volatile block with ``text`` as the only per-turn content.
+
+        Driven through the tracked-todo summary: it is retrieved per turn and
+        grows with the user's todo list, so it is one of the sections this cap
+        exists for. (``skills`` used to play this role and no longer can — it
+        is byte-stable and now sits in the cached prefix.)
+        """
+        with fake_context_sources(ContextSources(tracked_todos=text)):
+            assembled = await assemble_context(replace(COMMS_CONTEXT, tier=AgentTier.EXECUTOR))
+        return text_of(assembled.volatile)
+
+    async def _section_wrapper_len(self) -> int:
+        """How many characters the section adds around its own text.
+
+        Measured rather than hardcoded, so a reworded heading changes the
+        fixture sizes with it instead of silently making the boundary tests
+        test the wrong boundary.
+        """
+        return len(await self._volatile_driven_by_todos("x")) - 1
+
     async def test_the_volatile_block_is_bounded_however_big_its_sections_get(self) -> None:
         """Sections are emitted whole; this is the backstop on their SUM, so one
-        runaway section cannot blow the context window and the bill. Driven
-        through the skills section because it is the one that can grow without
-        bound — a user's whole installed skill list.
-        """
-        skills = "## Available skills\n" + "- inbox-triage\n" * 2000
-        with fake_context_sources(replace(RICH_SOURCES, skills=skills)):
-            assembled = await assemble_context(replace(COMMS_CONTEXT, tier=AgentTier.EXECUTOR))
+        runaway section cannot blow the context window and the bill."""
+        volatile = await self._volatile_driven_by_todos("- ship the refactor\n" * 2000)
 
-        volatile = text_of(assembled.volatile)
         assert len(volatile) <= VOLATILE_BLOCK_MAX_CHARS + len(VOLATILE_BLOCK_TRUNC_MARKER)
         assert VOLATILE_BLOCK_TRUNC_MARKER in volatile
 
     async def test_a_volatile_block_exactly_at_the_cap_is_left_whole(self) -> None:
         """The ceiling truncates what exceeds it, not what exactly fills it."""
-        skills = "S" * VOLATILE_BLOCK_MAX_CHARS
-        with fake_context_sources(ContextSources(skills=skills)):
-            assembled = await assemble_context(replace(COMMS_CONTEXT, tier=AgentTier.EXECUTOR))
+        filler = "S" * (VOLATILE_BLOCK_MAX_CHARS - await self._section_wrapper_len())
 
-        assert text_of(assembled.volatile) == skills
+        volatile = await self._volatile_driven_by_todos(filler)
+
+        assert len(volatile) == VOLATILE_BLOCK_MAX_CHARS
+        assert VOLATILE_BLOCK_TRUNC_MARKER not in volatile
 
     async def test_an_oversized_volatile_block_keeps_head_and_tail_verbatim(self) -> None:
         """Over the ceiling: head + the exact truncation marker + tail, nothing
         else. The marker's own bytes are asserted whole — a marker that grew
         extra characters would still satisfy a substring check while changing
         what every request sends."""
-        head = "H" * VOLATILE_BLOCK_HEAD_CHARS
-        middle = "M" * 1_000
+        head_filler = "H" * (VOLATILE_BLOCK_HEAD_CHARS - await self._section_wrapper_len())
         tail = "T" * VOLATILE_BLOCK_TAIL_CHARS
-        with fake_context_sources(ContextSources(skills=head + middle + tail)):
-            assembled = await assemble_context(replace(COMMS_CONTEXT, tier=AgentTier.EXECUTOR))
+        expected_head = await self._volatile_driven_by_todos(head_filler)
 
-        assert text_of(assembled.volatile) == f"{head}{VOLATILE_BLOCK_TRUNC_MARKER}{tail}"
+        volatile = await self._volatile_driven_by_todos(f"{head_filler}{'M' * 1_000}{tail}")
+
+        assert len(expected_head) == VOLATILE_BLOCK_HEAD_CHARS
+        assert volatile == f"{expected_head}{VOLATILE_BLOCK_TRUNC_MARKER}{tail}"
 
     async def test_nothing_per_turn_to_say_means_no_volatile_message_at_all(self) -> None:
         """An empty volatile block would still occupy its slot and cost bytes."""

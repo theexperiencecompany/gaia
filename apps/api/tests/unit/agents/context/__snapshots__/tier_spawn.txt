@@ -8,6 +8,8 @@
     User Profession: Engineer
     Session directory: /workspace/sessions/conv-1
     Public artifact URL: a file at `artifacts/<name>` is served at https://api.heygaia.io/api/v1/sessions/conv-1/artifacts/<name>
+    ## Available skills
+    - inbox-triage
 
 [2] human
     Task:
@@ -22,9 +24,6 @@
     
     About Gaia (your identity and capabilities):
     - GAIA can run scheduled workflows.
-    
-    ## Available skills
-    - inbox-triage
     
     Tracked: ship the context refactor
 

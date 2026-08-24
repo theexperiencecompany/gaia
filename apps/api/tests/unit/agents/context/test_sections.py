@@ -122,18 +122,23 @@ class TestTheTableIsWellFormed:
         ]
 
     def test_the_executor_receives_its_own_stable_set(self) -> None:
+        # ``skills`` sits in the STABLE set: the listing is a pure function of
+        # (user, agent) with no query and no clock, Redis-cached for 12h — in
+        # the volatile slot it was re-read on every worker call for nothing.
+        # The known trade: a mid-conversation skill install breaks the prefix
+        # once, same as integrations_manifest already accepts for connects.
         assert [s.id for s in sections_for(AgentTier.EXECUTOR, PromptSlot.DYNAMIC_STABLE)] == [
             "user_identity",
             "user_prefs",
             "workspace_session",
             "integrations_manifest",
+            "skills",
         ]
         assert [s.id for s in sections_for(AgentTier.EXECUTOR, PromptSlot.MEMORY_RECALL)] == [
             "core_memory",
             "agenda_activity",
             "memory_recall",
             "gaia_knowledge",
-            "skills",
             "tracked_todos",
             "bg_banner",
             "active_todo_banner",
