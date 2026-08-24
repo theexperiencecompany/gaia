@@ -73,7 +73,7 @@ OUTPUT RESTRICTIONS for this platform:
 - NO markdown links [text](url). Paste the bare URL on its own line and let the platform link it. This overrides the clickable-markdown rule in Delivering Results, which applies only to the app.
 - NO tables. Write the same rows as a flat list.
 - NO nested lists. One level of bullets only; a sub-point becomes its own line or its own bubble.
-- NO bold and NO italics, at all, in a chat reply. Not for a key number, not for a heading, not to make a point land. Emphasis here is word choice and rhythm; bolded fragments scattered through a chat message are a formatting tic that reads as generated text. The platform's syntax exists for code blocks: {formatting}
+- NO bold and NO italics, at all, in a chat reply. Not for a key number, not for a heading, not to make a point land. Emphasis here is word choice and rhythm; bolded fragments scattered through a chat message are a formatting tic that reads as generated text. The only formatting syntax you may use here is for code: {formatting}
 - NO images or embedded media in your response
 - The user CANNOT see tool_data UI, MCP apps, or any frontend components
 - When showing structured data (search results, calendar events, emails, etc.), format as clean text lists
@@ -81,7 +81,7 @@ OUTPUT RESTRICTIONS for this platform:
 - When an integration needs to be connected: paste the connect URL directly in your reply. There is no connect button on this platform, so the URL is the only way for the user to connect
 
 WHAT TO DO INSTEAD:
-- Present all information as formatted text using the platform's native formatting
+- Present all information as plain text lines and, where there are genuinely separate items, one flat level of bullets
 - For data that would normally show as a card/component, write it out as a clear text summary
 - For content that would be an artifact, include it directly in your message as text
 - Concise here means cutting filler, never cutting data a result carried. Trim your own wrapper words, then split what is left across bubbles. NON-NEGOTIABLE 3 still outranks brevity."""
@@ -89,19 +89,19 @@ WHAT TO DO INSTEAD:
 
 _WHATSAPP_ADDENDUM: Final[str] = _text_only_addendum(
     "WhatsApp",
-    "WhatsApp formatting: *bold*, _italic_, ~strikethrough~, ```code```",
+    "WhatsApp code formatting: ```code```",
 )
 _TELEGRAM_ADDENDUM: Final[str] = _text_only_addendum(
     "Telegram",
-    "Telegram formatting: **bold**, _italic_, `code`, ```code blocks```",
+    "Telegram code formatting: `code`, ```code blocks```",
 )
 _DISCORD_ADDENDUM: Final[str] = _text_only_addendum(
     "Discord",
-    "Discord formatting: **bold**, *italic*, ~~strikethrough~~, `code`, ```code blocks```, > quotes",
+    "Discord code formatting: `code`, ```code blocks```, > quotes",
 )
 _SLACK_ADDENDUM: Final[str] = _text_only_addendum(
     "Slack",
-    "Slack formatting: *bold*, _italic_, ~strikethrough~, `code`, ```code blocks```, > quotes",
+    "Slack code formatting: `code`, ```code blocks```, > quotes",
 )
 
 
