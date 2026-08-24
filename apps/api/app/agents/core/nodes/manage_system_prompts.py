@@ -20,6 +20,7 @@ Runs as a pre-model hook so it also fires when a generation is cancelled
 """
 
 from collections import defaultdict
+import hashlib
 from typing import cast
 
 from langchain_core.messages import AnyMessage
@@ -35,6 +36,7 @@ from app.agents.context.slots import (
 from app.constants.log_tags import LogTag
 from app.models.agent_models import agent_configurable
 from app.override.langgraph_bigtool.utils import PRUNED_MESSAGE_IDS_KEY, State
+from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
 
 #: Wide-event field per slot. Spelled out rather than derived from the enum
@@ -89,8 +91,26 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
                 if stale.id:
                     pruned_ids.append(stale.id)
 
+        # A short content fingerprint per slot. The cached prefix is a BYTE
+        # prefix, so a single slot whose bytes move between turns pushes
+        # everything after it out of the cache — and until now the only way to
+        # find which slot moved was to guess. Comparing these across two
+        # consecutive requests names the culprit directly. Hashes, never
+        # content: these carry user data.
+        slot_digests = {
+            slot.name.lower(): hashlib.blake2b(
+                "\x00".join(
+                    extract_text_content(getattr(m, "content", "")) for m in by_slot[slot]
+                ).encode(),
+                digest_size=4,
+            ).hexdigest()
+            for slot in slot_order
+            if by_slot.get(slot)
+        }
+
         log.set(
             prompt_pruning={
+                "slot_digests": slot_digests,
                 "messages_in": len(messages),
                 "messages_out": len(kept),
                 "dropped_system_prompts": dropped_system,
