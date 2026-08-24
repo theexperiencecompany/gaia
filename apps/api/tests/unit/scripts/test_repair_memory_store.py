@@ -476,14 +476,21 @@ class TestCommandLine:
         with patch("sys.argv", ["repair_memory_store", "--help"]), pytest.raises(SystemExit):
             main()
 
-        help_text = " ".join(capsys.readouterr().out.split())
+        raw = capsys.readouterr().out
+        help_text = " ".join(raw.split())
         assert (
             "Repair a user's memory store after the extraction/reconciliation fixes." in help_text
         )
-        assert "--user USER User id to repair (repeatable)." in help_text
-        assert "--apply Persist changes (otherwise dry run only)." in help_text
-        assert "--retire-ids RETIRE_IDS Forget this memory id outright (repeatable)." in help_text
+        # Scoped to the block argparse RENDERS from add_argument, not the whole
+        # page: the description above it is this module's docstring, and while
+        # that docstring also listed the flags every assertion below passed
+        # against the prose copy — the real help strings were unchecked, and a
+        # mutation run walked straight through all five of them.
+        assert "options:" in raw, raw
+        options = " ".join(raw.split("options:", 1)[1].split())
+        assert "--user USER User id to repair (repeatable)." in options
+        assert "--apply Persist changes (otherwise dry run only)." in options
+        assert "--retire-ids RETIRE_IDS Forget this memory id outright (repeatable)." in options
         assert (
-            "--state-age-days STATE_AGE_DAYS Age past which a state-like row is retired."
-            in help_text
+            "--state-age-days STATE_AGE_DAYS Age past which a state-like row is retired." in options
         )

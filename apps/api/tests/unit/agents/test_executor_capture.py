@@ -196,6 +196,34 @@ class TestReturnedToFrontendNote:
         assert "  - todo_data (1 todo, via subagent:Todos)\n" in note
         assert "  - todo_data (1 todo, via subagent:Todoist)\n" in note
 
+    def test_an_unattributable_card_is_never_credited_to_a_producer(self) -> None:
+        """A subagent that started without a name produces cards nothing can
+        credit — and neither can the executor's own cards. Both must land on the
+        SAME unattributed row: two ways of having no producer are one fact, and
+        splitting them into two rows tells comms two different things happened.
+        """
+        session = create_session("s1", RunKind.QUEUED)
+        session.tool_events.append({"subagent_start": {"subagent_id": "sub-9"}})
+        session.tool_events.append(
+            {"tool_data": {"tool_name": "todo_data", "data": [{"id": "a"}], "subagent_id": "sub-9"}}
+        )
+        session.tool_events.append({"tool_data": {"tool_name": "todo_data", "data": [{"id": "b"}]}})
+
+        note = build_returned_to_frontend_note("s1")
+
+        assert "  - todo_data (2 todo)\n" in note
+        assert "via subagent" not in note
+
+    def test_a_malformed_group_row_is_skipped_not_fatal(self) -> None:
+        """``subagent_group`` rows also arrive pre-formed from child streams, so
+        the shape is not this module's to guarantee. One bad row must cost its
+        own provenance, never the whole note."""
+        session = create_session("s1", RunKind.QUEUED)
+        session.tool_events.append({"tool_data": {"tool_name": "subagent_group", "data": None}})
+        session.tool_events.append({"tool_data": {"tool_name": "todo_data", "data": [{"id": "a"}]}})
+
+        assert "  - todo_data (1 todo)\n" in build_returned_to_frontend_note("s1")
+
     def test_nothing_card_worthy_yields_no_note(self) -> None:
         create_session("s1", RunKind.QUEUED)
         assert build_returned_to_frontend_note("s1") == ""

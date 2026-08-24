@@ -7,6 +7,7 @@ routing, status codes, response bodies, and auth checks.
 import asyncio
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException
@@ -1053,6 +1054,34 @@ class TestBotChatStreamBody:
             {"tool_data": {"tool_name": "memory_data", "data": {}}}, "uid1"
         )
         assert '"notice"' not in body
+
+    async def test_a_message_boundary_reaches_the_bot_intact(self, client: AsyncClient):
+        """The one web frame the translator forwards verbatim.
+
+        A bot needs it twice over: to close a bubble, and — when ``discarded`` —
+        to take back a handoff preamble it has already shown the user. Both the
+        key and the payload underneath it are the contract, so this reads the
+        frame back rather than checking the word appears somewhere.
+        """
+
+        async def retracted_then_replaced() -> AsyncGenerator[str, None]:
+            yield 'data: {"response": "let me get that set up"}\n\n'
+            yield 'data: {"message_boundary": {"message_id": "m1", "discarded": true}}\n\n'
+            yield 'data: {"response": "all set up now."}\n\n'
+            yield "data: [DONE]\n\n"
+
+        body = await self._collect(client, retracted_then_replaced())
+
+        frames = [
+            json.loads(line[len("data: ") :])
+            for line in body.splitlines()
+            if line.startswith("data: ")
+        ]
+        assert {"message_boundary": {"message_id": "m1", "discarded": True}} in frames
+        # The boundary is a frame of its own, never reply text — and it must not
+        # end the turn: the replacement message comes after it.
+        assert {"text": "all set up now."} in frames
+        assert {"done": True, "conversation_id": "conv-1"} in frames
 
     async def test_the_session_token_is_the_first_thing_the_bot_receives(self, client: AsyncClient):
         """The bot stores this to authenticate follow-up calls for the turn."""

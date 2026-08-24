@@ -36,6 +36,7 @@ from app.agents.core.nodes import executor_status
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.models.chat_models import SourceCategory
+from shared.py.wide_events import log, log_context
 
 # The task text the finalize step now receives; forwarded to comms on a cancel.
 TASK = "run the standup summary"
@@ -329,6 +330,45 @@ class TestFinalizeDeliveryFailureDoesNotStrandQueue:
         boundaries.release.assert_awaited_once()  # and the lock still goes
         boundaries.reclaim.assert_awaited_once_with("conv-1")
         spawn.assert_awaited_once()  # the queued task still gets spawned
+
+    async def test_a_swallowed_delivery_failure_is_named_in_the_wide_event(
+        self, boundaries
+    ) -> None:
+        """Swallowing the exception is deliberate — losing it is not.
+
+        ``log.error`` is what puts the failure in the wide event's ``errors[]``;
+        without the cause in it, a user whose result never arrived leaves an
+        event that says the run finished cleanly.
+        """
+        create_session("s1", RunKind.QUEUED)
+        boundaries.deliver.side_effect = RuntimeError("telegram rejected the message")
+
+        async with log_context("executor_finalize_test"):
+            await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "result", "final")
+            event = dict(log.get())
+
+        assert any(
+            "telegram rejected the message" in str(entry.get("error", ""))
+            for entry in event["errors"]
+        ), event["errors"]
+
+    async def test_a_swallowed_lock_release_failure_is_named_in_the_wide_event(
+        self, boundaries
+    ) -> None:
+        """The other swallowing except in finalize. Its message is the only thing
+        separating a failed lock release from a failed delivery in the event."""
+        create_session("s1", RunKind.QUEUED)
+        boundaries.release.side_effect = RuntimeError("redis went away")
+
+        async with log_context("executor_finalize_test"):
+            await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "result", "final")
+            event = dict(log.get())
+
+        assert any(
+            "lock release" in str(entry.get("msg", ""))
+            and "redis went away" in str(entry.get("error", ""))
+            for entry in event["errors"]
+        ), event["errors"]
 
 
 class TestQueueLockHandoff:

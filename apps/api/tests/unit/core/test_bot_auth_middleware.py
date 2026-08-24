@@ -464,6 +464,48 @@ class TestAPIKeyAuth:
         assert data["bot_platform_user_id"] == "tg_123"
 
     @patch("app.core.bot_auth_middleware.get_cache", new_callable=AsyncMock)
+    @patch("app.core.bot_auth_middleware.set_cache", new_callable=AsyncMock)
+    @patch(
+        "app.core.bot_auth_middleware.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.core.bot_auth_middleware.settings")
+    async def test_the_request_resolves_the_platform_user_it_names(
+        self,
+        mock_settings: MagicMock,
+        mock_platform: AsyncMock,
+        mock_set_cache: AsyncMock,
+        mock_get_cache: AsyncMock,
+        app: FastAPI,
+    ) -> None:
+        """Two linked users on one platform must not resolve to each other.
+
+        Every other test here hands the lookup a single canned user, so the id
+        the middleware passed down was never checked — and authenticating one
+        person's request as another is the worst failure this file has.
+        """
+        mock_settings.GAIA_BOT_API_KEY = "secret-bot-key"  # pragma: allowlist secret
+        mock_get_cache.return_value = None
+        linked = {
+            "tg_123": {**FAKE_USER_DATA, "_id": "user_one", "email": "one@example.com"},
+            "tg_456": {**FAKE_USER_DATA, "_id": "user_two", "email": "two@example.com"},
+        }
+        mock_platform.side_effect = lambda _platform, platform_user_id: linked.get(platform_user_id)
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
+            resp = await client.get(
+                "/api/test",
+                headers={
+                    "X-Bot-API-Key": "secret-bot-key",
+                    "X-Bot-Platform": "telegram",
+                    "X-Bot-Platform-User-Id": "tg_456",
+                },
+            )
+
+        assert resp.json()["user"]["user_id"] == "user_two"
+
+    @patch("app.core.bot_auth_middleware.get_cache", new_callable=AsyncMock)
     @patch("app.core.bot_auth_middleware.settings")
     async def test_valid_api_key_with_cached_platform_user(
         self,

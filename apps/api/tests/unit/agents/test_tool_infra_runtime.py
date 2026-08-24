@@ -619,6 +619,12 @@ async def test_base_subagent_wiring_uses_shared_tool_runtime_helpers():
     assert "retrieve_tools_coroutine" not in captured_kwargs
     assert "read" in captured_kwargs["initial_tool_ids"]
     assert "normal_tool" in captured_kwargs["initial_tool_ids"]
+    # A subagent runs no end-graph hook, and the kwarg has to say so under
+    # exactly this name — anything else and create_agent silently falls back to
+    # its own default. The memory hook is the one that matters: a subagent sees
+    # the thread comms already ingested, so hooking it here re-extracts one
+    # conversation once per subagent per turn and bills for every pass.
+    assert captured_kwargs["end_graph_hooks"] == []
 
 
 @pytest.mark.asyncio

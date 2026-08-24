@@ -233,7 +233,15 @@ class TestMemoryNode:
     @pytest.mark.asyncio
     async def test_background_task_exception_is_swallowed(self):
         """retain exceptions must be caught inside _store_user_memory_background."""
-        with patch("app.agents.core.nodes.memory_node.memory_engine") as mock_engine:
+        # redis_cache.client is a property that ALWAYS builds a live client, so
+        # without this patch the high-water-mark read dials a real Redis — and
+        # on a host without one the connection error is swallowed by the same
+        # suppress() this test is about, retain is never reached, and the
+        # assertion below fails for a reason that has nothing to do with it.
+        with (
+            patch("app.agents.core.nodes.memory_node.memory_engine") as mock_engine,
+            patch(f"{NODE}.redis_cache", _fake_redis(None)),
+        ):
             mock_engine.retain = AsyncMock(side_effect=RuntimeError("memory engine is down"))
 
             # Must not raise — the except block must absorb RuntimeError
