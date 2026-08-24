@@ -613,7 +613,7 @@ async def _apply_reconciled(
 
     if fresh:
         await pg_store.insert_memories([record for record, _ in fresh])
-        new += len(fresh)
+        new = len(fresh)
         inserted.extend(fresh)
 
     embeddings_by_content = {item.fact.content: item.embedding for item in reconciled}
