@@ -120,6 +120,10 @@ class TestTheCacheablePrefixSurvivesMemoryGrowth:
                 break
             shared += 1
         common = before[:shared]
+        # The heading is part of the shared bytes AND a model-facing dedup
+        # directive — its emphasis ("do NOT repeat") is written that way on
+        # purpose, so it is asserted verbatim rather than case-insensitively.
+        assert "## Today's journal so far (do NOT repeat these events, even reworded)" in common
         assert "went for a run" in common and "met Priya for lunch" in common, (
             "the rolling facts window sits ahead of the append-only journal, so "
             f"the shared tail prefix ends before the journal (only {shared} chars "

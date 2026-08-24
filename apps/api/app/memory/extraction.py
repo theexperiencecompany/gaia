@@ -65,8 +65,11 @@ def _silent_config(user_id: str) -> RunnableConfig:
     # cold. Per USER, not per conversation: one upstream then holds all of a
     # user's memory-call prefixes, and the "-aux" suffix the runnable adds
     # keeps this chain from ever re-pinning a conversation's.
+    # Indexing, not .get with a default: silent_metered_config always carries a
+    # configurable (it is where the user_id metering lives), and a missing one
+    # here would mean the spend attribution vanished — fail loud, not paper over.
     config["configurable"] = {
-        **config.get("configurable", {}),
+        **config["configurable"],
         "session_id": f"memory-{user_id}",
     }
     return config
