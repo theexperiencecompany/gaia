@@ -545,8 +545,6 @@
     Public artifact URL: a file at `artifacts/<name>` is served at https://api.heygaia.io/api/v1/sessions/conv-1/artifacts/<name>
     CONNECTED INTEGRATIONS (live snapshot of the user's currently connected accounts as of this turn; this is the latest connected set, so trust it over retrieve_tools for what is connected). To act on one, handoff to its subagent using the id in parentheses as the handoff subagent_id. If the user asks for a provider that is NOT listed here, STILL do the handoff: the handoff is what shows the user the connect card. Telling the user to connect WITHOUT handing off leaves them hunting for a button that was never rendered. Built-in subagents (reminders, todos, gaia_knowledge_guide, docgen) are always available and are not listed here:
     - Gmail (gmail)
-    What you remember about this user (memory core):
-    - Prefers short answers.
 
 [2] human
     an older question
@@ -581,6 +579,9 @@
     - "GAIA is doing something the user might ask about later" → create_tracked_todo
 
 [5] system markers=memory_recall
+    What you remember about this user (memory core):
+    - Prefers short answers.
+    
     Based on our previous conversations (bracketed dates say when something happened / was last mentioned):
     - Ships on Fridays [mentioned 2026-02-01]
     

@@ -278,8 +278,6 @@
     - email: ada@example.com
     CUSTOM INSTRUCTIONS FOR GMAIL (set by the user — honor these):
     Always archive newsletters.
-    What you remember about this user (memory core):
-    - Prefers short answers.
 
 [2] human
     summarise my unread mail
@@ -311,6 +309,9 @@
     - "GAIA is doing something the user might ask about later" → create_tracked_todo
 
 [4] system markers=memory_recall
+    What you remember about this user (memory core):
+    - Prefers short answers.
+    
     Based on our previous conversations (bracketed dates say when something happened / was last mentioned):
     - Ships on Fridays [mentioned 2026-02-01]
     

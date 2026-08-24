@@ -216,7 +216,7 @@ SECTIONS: tuple[Section, ...] = (
     # The memory core's documents, not the whole core: the agenda and the
     # activity journal are split off into their own volatile section, because
     # they are rewritten every turn and would otherwise churn the cached prefix.
-    Section("core_memory", PromptSlot.DYNAMIC_STABLE, ALL_TIERS, 70, build_core_memory_block),
+    Section("core_memory", PromptSlot.MEMORY_RECALL, ALL_TIERS, 5, build_core_memory_block),
     Section(
         "agenda_activity", PromptSlot.MEMORY_RECALL, ALL_TIERS, 10, build_agenda_and_activity_block
     ),

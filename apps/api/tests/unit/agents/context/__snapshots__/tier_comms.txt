@@ -555,13 +555,14 @@
     User Profession: Engineer
     Connected integrations (hand off to the matching subagent to use them):
     - Gmail (gmail)
-    What you remember about this user (memory core):
-    - Prefers short answers.
 
 [2] human
     summarise my unread mail
 
 [3] system markers=memory_recall
+    What you remember about this user (memory core):
+    - Prefers short answers.
+    
     Based on our previous conversations (bracketed dates say when something happened / was last mentioned):
     - Ships on Fridays [mentioned 2026-02-01]
     

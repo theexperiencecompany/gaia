@@ -497,14 +497,14 @@ class TestTheGatherSlotsEachSectionWhereItDeclared:
 
         stable = text_of(assembled.stable)
         volatile = text_of(assembled.volatile)
-        # "Prefers short answers" is a memory-core DOCUMENT: rewritten by the
-        # consolidation pass, never per turn, so it declares the stable slot.
-        # The core's agenda and activity journal are the churning half and are
-        # split out into their own volatile section — see the sibling below.
-        for declared_stable in ("Ada", "Asia/Kolkata", "Gmail", "Prefers short answers"):
+        # The memory core in FULL — documents included — now declares the
+        # volatile slot, so "Prefers short answers" belongs below, not here. See
+        # the sibling test for the measurement that moved it.
+        for declared_stable in ("Ada", "Asia/Kolkata", "Gmail"):
             assert declared_stable in stable
             assert declared_stable not in volatile
         for declared_volatile in (
+            "Prefers short answers",
             "Ships on Fridays",
             "GAIA can run scheduled workflows",
             "ship the context refactor",
@@ -512,14 +512,24 @@ class TestTheGatherSlotsEachSectionWhereItDeclared:
             assert declared_volatile in volatile
             assert declared_volatile not in stable
 
-    async def test_the_memory_cores_churning_half_is_split_off_into_the_volatile_block(
+    async def test_the_whole_memory_core_sits_behind_the_conversation(
         self,
     ) -> None:
-        """``get_core_context`` renders the stable documents, the agenda and the
-        activity journal as one string. The agenda's commitments move and the
-        journal grows on every turn, so leaving them joined to the documents puts
-        per-turn bytes inside the cached prefix — measured as ~10 points of comms
-        hit rate before the split."""
+        """``get_core_context`` renders the documents, the agenda and the activity
+        journal as one string, and ALL of it now rides behind the conversation.
+
+        The agenda and journal were split off first, because they obviously churn
+        per turn. The documents were left in the cached prefix on the assumption
+        that only the consolidation pass rewrites them, "not per turn". Measured
+        on the real graph, that assumption is false: consolidation runs DURING a
+        conversation, so the documents move inside the prefix and evict the entire
+        conversation behind them.
+
+        Moving them out costs the documents their own caching — they are re-sent
+        uncached every turn now — and buys the conversation's caching instead. The
+        conversation is the bigger block and it grows, so the trade pays:
+        comms 46.0% -> 59.3%, executor 64.8% -> 75.8%, total 48.4% -> 59.3%.
+        Nothing is dropped; the model still receives the whole core."""
         core = (
             "- Prefers short answers.\n\n"
             "## Current agenda\n- Ship the merge by Friday\n\n"
@@ -530,9 +540,12 @@ class TestTheGatherSlotsEachSectionWhereItDeclared:
 
         stable = text_of(assembled.stable)
         volatile = text_of(assembled.volatile)
-        assert "Prefers short answers" in stable
+        # Nothing from the memory core may sit in the cached prefix.
+        assert "Prefers short answers" not in stable
         assert "Current agenda" not in stable
         assert "Recent activity" not in stable
+        # All of it still reaches the model, behind the conversation.
+        assert "Prefers short answers" in volatile
         assert "Ship the merge by Friday" in volatile
         assert "Asked about the invoice at 14:02" in volatile
 
