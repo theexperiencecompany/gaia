@@ -25,13 +25,11 @@ Usage::
     uv run python -m app.scripts.repair_memory_store --user <id>            # dry run
     uv run python -m app.scripts.repair_memory_store --user <id> --apply    # commit
 
-Flags::
+Run ``--help`` for the flags: this docstring IS the parser's description, so a
+second copy of them here renders twice and drifts from the one argparse builds.
 
-    --user <id>        User to repair (required, repeatable).
-    --apply            Persist changes (otherwise dry run only).
-    --retire-ids <id>  Forget this memory id outright (repeatable) — for rows a
-                       human has read and judged wrong.
-    --state-age-days   Override the age past which a state-like row is retired.
+``--retire-ids`` is the one that needs more than its one-liner: it forgets a
+memory id outright, for rows a human has read and judged wrong.
 
 Every mode prints the full plan first. Nothing is written without ``--apply``.
 """

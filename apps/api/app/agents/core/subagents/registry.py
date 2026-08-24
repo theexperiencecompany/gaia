@@ -82,8 +82,12 @@ def _third_party_name_matchers() -> tuple[tuple[Subagent, re.Pattern[str]], ...]
     for sa in all_subagents():
         if sa.managed_by == "internal":
             continue
-        labels = sorted({sa.name, sa.id}, key=len, reverse=True)
-        alternation = "|".join(re.escape(label) for label in labels)
+        # Sorted only so the compiled pattern is stable across runs (set order
+        # is not). Alternation ORDER cannot change whether the pattern matches:
+        # the engine backtracks to the next alternative when a boundary lookaround
+        # fails, and the only consumer reads `pattern.search(text)` as a boolean,
+        # never the matched text.
+        alternation = "|".join(re.escape(label) for label in sorted({sa.name, sa.id}))
         matchers.append((sa, re.compile(rf"(?<![\w-])(?:{alternation})(?![\w-])", re.IGNORECASE)))
     return tuple(matchers)
 

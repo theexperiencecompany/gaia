@@ -180,14 +180,9 @@ def violation_snippets(text: str) -> dict[str, list[str]]:
     leave the model guessing which words to drop; the fragment is what makes the
     instruction actionable.
     """
-    last_line = next(
-        (
-            line
-            for line in reversed(BUBBLE_SENTINEL_PATTERN.sub("\n", text).splitlines())
-            if line.strip()
-        ),
-        "",
-    )
+    non_blank = [
+        line for line in BUBBLE_SENTINEL_PATTERN.sub("\n", text).splitlines() if line.strip()
+    ]
     found: dict[str, list[str]] = {
         "negation_antithesis": _matches(NEGATION_ANTITHESIS_PATTERNS, text),
         "em_dash": _matches((EM_DASH_CONTEXT_PATTERN,), text),
@@ -195,7 +190,9 @@ def violation_snippets(text: str) -> dict[str, list[str]]:
         + _matches((LET_ME_OPENER_PATTERN,), text),
         "bold_emphasis": _matches((BOLD_EMPHASIS_PATTERN,), text),
         "preamble": _matches(PREAMBLE_PATTERNS, text),
-        "closing_hook": _matches((CLOSING_HOOK_PATTERN,), last_line),
+        # Only the LAST non-blank line can be a closing hook: the same question
+        # earlier in a reply is ordinary conversation.
+        "closing_hook": _matches((CLOSING_HOOK_PATTERN,), non_blank[-1]) if non_blank else [],
         "template_shape": _matches((BOLD_LED_BLOCK_PATTERN,), text)
         if len(BOLD_LED_BLOCK_PATTERN.findall(text)) >= TEMPLATE_SHAPE_MIN_BLOCKS
         else [],
