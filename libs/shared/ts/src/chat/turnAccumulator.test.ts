@@ -334,6 +334,21 @@ describe("a retracted handoff preamble", () => {
 
     expect(acc.responseText).toBe("on it.");
   });
+
+  it("never eats the text a resumed turn already had", () => {
+    // The executor-resume transport seeds the accumulator with the message's
+    // existing content. If the seed did not move currentMessageStart with it, a
+    // discard in the resumed stream would cut that content away.
+    const seeded = createTurnAccumulator("what the message already said. ");
+    const acc = [
+      '{"response":"and now some narration"}',
+      '{"message_boundary":{"message_id":"m1","discarded":true}}',
+    ]
+      .flatMap((frame) => parseChatStreamEvent(frame))
+      .reduce(applyStreamEvent, seeded);
+
+    expect(acc.responseText).toBe("what the message already said. ");
+  });
 });
 
 describe("turnAccumulator invariants", () => {

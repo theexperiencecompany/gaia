@@ -50,9 +50,17 @@ export interface TurnAccumulator {
   extras: Record<string, unknown>;
 }
 
-export const createTurnAccumulator = (): TurnAccumulator => ({
-  responseText: "",
-  currentMessageStart: 0,
+/**
+ * A fresh accumulator, optionally seeded with text a resumed turn already has.
+ *
+ * Seeding goes through here rather than a caller spreading `responseText` on
+ * top, because `currentMessageStart` has to move with it: left at 0, a
+ * discarded message boundary in the resumed stream would cut away content the
+ * message already had.
+ */
+export const createTurnAccumulator = (responseText = ""): TurnAccumulator => ({
+  responseText,
+  currentMessageStart: responseText.length,
   messageBreakPending: false,
   toolData: [],
   followUpActions: null,
