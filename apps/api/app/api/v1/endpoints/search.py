@@ -128,7 +128,9 @@ async def search_email_endpoint(query: str) -> EmailSearchResponse:
 @limiter.limit("100/minute")
 @limiter.limit("500/hour")
 async def fetch_url_metadata_endpoint(
-    request: Request, data: URLRequest, user_id: str = Depends(get_user_id)
+    request: Request,  # noqa: ARG001 -- slowapi requires request in the handler signature
+    data: URLRequest,
+    user_id: str = Depends(get_user_id),
 ) -> MultiURLResponse:
     """
     Fetch metadata for multiple URLs in parallel.

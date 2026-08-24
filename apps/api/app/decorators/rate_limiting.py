@@ -91,7 +91,7 @@ def with_rate_limiting(
         count_tokens: Whether to validate token usage after execution.
         bypass_for_system: Skip rate limiting for system/background operations.
 
-    Raises LangChainRateLimitException (agent-friendly) when limits are exceeded.
+    Raises LangChainRateLimitError (agent-friendly) when limits are exceeded.
     """
 
     def rate_limit_decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
@@ -212,7 +212,7 @@ def with_rate_limiting(
                         except Exception as stream_error:
                             # Usually just "not in a streaming context" (workflows,
                             # background tasks); the card is decoration, the
-                            # LangChainRateLimitException below is the real outcome.
+                            # LangChainRateLimitError below is the real outcome.
                             log.debug(
                                 f"{LogTag.API} Rate limit card not streamed",
                                 actual_feature_key=actual_feature_key,
@@ -220,7 +220,7 @@ def with_rate_limiting(
                                 error_type=type(stream_error).__name__,
                             )
 
-                        raise LangChainRateLimitException(
+                        raise LangChainRateLimitError(
                             feature=actual_feature_key,
                             detail=detail_dict,
                             reset_time=reset_time,
@@ -363,7 +363,7 @@ def tiered_rate_limit(
     return decorator
 
 
-class LangChainRateLimitException(Exception):
+class LangChainRateLimitError(Exception):
     """Agent-friendly rate limit exception with structured data."""
 
     def __init__(

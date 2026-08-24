@@ -176,14 +176,14 @@ async def _core_agent_logic(
         )
 
     log.set(
-        agent=dict(
-            model=configurable.get("model"),
-            has_workflow=bool(request.selectedWorkflow),
-            has_trigger_context=bool(trigger_context),
-            has_calendar_event=bool(request.selectedCalendarEvent),
-            has_reply=bool(request.replyToMessage),
-            history_message_count=len(history),
-        )
+        agent={
+            "model": configurable.get("model"),
+            "has_workflow": bool(request.selectedWorkflow),
+            "has_trigger_context": bool(trigger_context),
+            "has_calendar_event": bool(request.selectedCalendarEvent),
+            "has_reply": bool(request.replyToMessage),
+            "history_message_count": len(history),
+        }
     )
 
     return graph, initial_state, config

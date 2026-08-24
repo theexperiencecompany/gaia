@@ -297,7 +297,7 @@ async def cancel_executor(
     task_ids: Annotated[
         list[str],
         "List of task_ids to cancel. Empty list = cancel ALL (running + queued).",
-    ] = [],  # noqa: B006
+    ] = [],  # noqa: B006 -- empty default is the cancel-all sentinel; list is never mutated
 ) -> str:
     """Cancel background executor tasks by their task_ids.
 

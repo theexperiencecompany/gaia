@@ -7,6 +7,11 @@
 #   e.g. scripts/ci/changed-files.sh ts tsx js jsx json css
 #        scripts/ci/changed-files.sh py
 #
+# Workflow files (.yml) belong ONLY in the code-quality.yml `changes` job's
+# superset detect lists, never in a lane's scoping list: a workflow-only PR
+# must light the lanes up (so CI changes get validated) while every lane
+# self-skips when its own ext list matches nothing.
+#
 # Modes (signalled to callers via a sentinel on the first line of stdout):
 #
 #   PUSH / FULL-SCAN MODE  ($GITHUB_BASE_REF is empty — i.e. not a PR)
@@ -34,8 +39,18 @@ set -euo pipefail
 
 FULL_SENTINEL="__FULL__"
 
-# Push / non-PR event: no base ref to diff against → signal full scan.
+# Push / non-PR event inside CI: no base ref to diff against → signal full scan.
+# The GITHUB_ACTIONS guard matters: on a push to master, HEAD *is* origin/master,
+# so falling through to the base-ref diff below would compare the tree against
+# itself, print nothing, and every scoped lane would report "no changed files —
+# skipping" — a vacuous green precisely when master needs scanning. Local runs
+# keep the fallback because there a diff against origin/master is exactly what
+# a pre-commit / local lane invocation wants.
 if [[ -z "${GITHUB_BASE_REF:-}" ]]; then
+  if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+    printf '%s\n' "$FULL_SENTINEL"
+    exit 0
+  fi
   # Fall back to NX_BASE (set by nrwl/nx-set-shas) or origin/master for local runs
   if [[ -n "${NX_BASE:-}" ]]; then
     GITHUB_BASE_REF="${NX_BASE#origin/}"

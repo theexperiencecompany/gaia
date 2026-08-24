@@ -288,8 +288,8 @@ jobs:
         if: github.event_name == 'pull_request'
         working-directory: apps/api
         run: |
-          trap 'echo "::error::repro: uv tool run diff-cover coverage.xml"' ERR
-          uv tool run diff-cover coverage.xml --compare-branch=origin/master --fail-under=90
+          trap 'echo "::error::repro: uv tool run 'diff-cover==10.5.1' coverage.xml"' ERR
+          uv tool run 'diff-cover==10.5.1' coverage.xml --compare-branch=origin/master --fail-under=90
           echo "diff-cover: OK"
           echo "### Diff coverage — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
       - name: Summary of failed tests (merged)

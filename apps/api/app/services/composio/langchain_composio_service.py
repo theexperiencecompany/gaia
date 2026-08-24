@@ -161,7 +161,7 @@ def _reinstate_reserved_python_keywords(
 class StructuredTool(BaseStructuredTool):
     """StructuredTool that returns a structured failure instead of raising on invalid args."""
 
-    def run(self, *args: t.Any, **kwargs: t.Any) -> t.Any:
+    def run(self, *args: t.Any, **kwargs: t.Any) -> t.Any:  # noqa: ANN401 -- contract
         """Run the tool, converting argument validation errors into a failure result."""
         try:
             return super().run(*args, **kwargs)
@@ -179,7 +179,7 @@ class LangchainProvider(
 
     runtime = "langchain"
 
-    def __init__(self, **kwargs: t.Any) -> None:
+    def __init__(self, **kwargs: t.Any) -> None:  # noqa: ANN401 -- forwards LangChain's arbitrary tool-init bag upstream
         super().__init__(**kwargs)
         # The wrapped tool callables are sync and run in an executor thread, so
         # they cannot await the async expiry transition. Hold the loop they were
@@ -266,7 +266,7 @@ class LangchainProvider(
         keywords: dict[str, t.Any],
         toolkit: str | None = None,
     ) -> types.FunctionType:
-        def function(**kwargs: t.Any) -> dict[str, t.Any]:
+        def function(**kwargs: t.Any) -> dict[str, t.Any]:  # noqa: ANN401 -- contract
             """Wrapper function for composio action."""
 
             # Discarding other data except metadata from __runnable_config__
@@ -365,7 +365,7 @@ class LangchainProvider(
         )
         # typeshed does not declare __signature__ on FunctionType, but inspect.signature()
         # honours it at runtime — that is how the tool's schema is advertised to LangChain.
-        action_func.__signature__ = Signature(parameters=parameters)  # type: ignore[attr-defined]
+        action_func.__signature__ = Signature(parameters=parameters)  # type: ignore[attr-defined]  # signature injected at runtime so FastAPI introspects synthesized tool params
         action_func.__doc__ = description
 
         # Create __annotations__ only for __runnable_config__

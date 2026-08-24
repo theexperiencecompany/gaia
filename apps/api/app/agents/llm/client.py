@@ -8,6 +8,7 @@ from langchain_core.language_models.chat_models import (
     BaseChatModel,
 )
 from langchain_core.messages import AIMessage
+from langchain_core.outputs import LLMResult
 from langchain_core.runnables import (
     Runnable,
     RunnableBinding,
@@ -682,7 +683,7 @@ def _sticky_session_id(config: RunnableConfig | None, *, auxiliary: bool) -> str
 
 
 async def _meter_discarded_replay(
-    discarded: Any,
+    discarded: Any,  # noqa: ANN401 -- framework contract
     config: RunnableConfig | None,
     label: str,
 ) -> None:
@@ -739,7 +740,7 @@ async def ainvoke_llm(
     meter_auxiliary: bool = True,
     fallback_config: RunnableConfig | None = None,
     sticky_session_id: str | None = None,
-) -> Any:
+) -> Any:  # noqa: ANN401 -- overrides LangChain Runnable methods typed Any upstream
     """Invoke a runnable: retry transient errors, then fall back to ``fallback`` (if
     given) on a provider failure. Bugs and CancelledError propagate.
 
@@ -882,7 +883,7 @@ def invoke_llm(
     max_attempts: int = LLM_RETRY_MAX_ATTEMPTS,
     fallback_config: RunnableConfig | None = None,
     sticky_session_id: str | None = None,
-) -> Any:
+) -> Any:  # noqa: ANN401 -- overrides LangChain Runnable methods typed Any upstream
     """Sync counterpart of :func:`ainvoke_llm`."""
     try:
         return with_llm_retry(primary, max_attempts=max_attempts).invoke(messages, config=config)
@@ -912,7 +913,7 @@ def invoke_llm(
 SILENT_LLM_CONFIG: RunnableConfig = {
     "silent": True,
     "metadata": {"silent": True},
-}  # type: ignore[typeddict-unknown-key]
+}  # type: ignore[typeddict-unknown-key]  # custom key consumed by GAIA's stream helpers, not part of RunnableConfig
 
 
 def metered_config(user_id: str) -> RunnableConfig:
@@ -961,7 +962,13 @@ class _GenerationIdCallback(BaseCallbackHandler):
     def __init__(self) -> None:
         self.generation_id: str | None = None
 
-    def on_llm_end(self, response: Any, **_kwargs: Any) -> None:
+    def on_llm_end(
+        self,
+        response: LLMResult,
+        # The callback contract passes run_id/parent_run_id/tags by keyword;
+        # the base signature types them Any and this handler reads none.
+        **_kwargs: Any,  # noqa: ANN401 -- LangChain BaseCallbackHandler contract
+    ) -> None:
         llm_output = getattr(response, "llm_output", None) or {}
         if llm_output.get("id"):
             self.generation_id = str(llm_output["id"])

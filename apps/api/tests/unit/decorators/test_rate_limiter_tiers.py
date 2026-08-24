@@ -167,7 +167,7 @@ class TestRateLimitHitAnalytics:
     @pytest.mark.asyncio
     async def test_with_rate_limiting_captures_pro_hit(self) -> None:
         from app.decorators.rate_limiting import (
-            LangChainRateLimitException,
+            LangChainRateLimitError,
             clear_user_context,
             set_user_context,
             with_rate_limiting,
@@ -193,7 +193,7 @@ class TestRateLimitHitAnalytics:
                 ),
                 patch("app.decorators.rate_limiting.capture_event") as mock_capture,
             ):
-                with pytest.raises(LangChainRateLimitException):
+                with pytest.raises(LangChainRateLimitError):
                     await wrapped(config={})
         finally:
             clear_user_context()
@@ -207,7 +207,7 @@ class TestRateLimitHitAnalytics:
     async def test_with_rate_limiting_skips_free_hit(self) -> None:
         """FREE hits are captured by the upsell seam — no decorator duplicate."""
         from app.decorators.rate_limiting import (
-            LangChainRateLimitException,
+            LangChainRateLimitError,
             clear_user_context,
             set_user_context,
             with_rate_limiting,
@@ -232,7 +232,7 @@ class TestRateLimitHitAnalytics:
                 ),
                 patch("app.decorators.rate_limiting.capture_event") as mock_capture,
             ):
-                with pytest.raises(LangChainRateLimitException):
+                with pytest.raises(LangChainRateLimitError):
                     await wrapped(config={})
         finally:
             clear_user_context()

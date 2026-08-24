@@ -299,7 +299,7 @@ class TestCloseMcpClientPool:
 
 def _svc(name: str, *, required: bool = True) -> StartupService:
     """Build a minimal StartupService for _process_results tests."""
-    return StartupService(func=lambda: None, name=name, required=required)  # type: ignore[arg-type]
+    return StartupService(func=lambda: None, name=name, required=required)
 
 
 class TestProcessResults:

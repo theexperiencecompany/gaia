@@ -28,7 +28,7 @@ from app.override.langgraph_bigtool.utils import State
 from shared.py.wide_events import log
 
 
-async def executor_status_hook(state: State, config: RunnableConfig, store: BaseStore) -> State:
+async def executor_status_hook(state: State, config: RunnableConfig, store: BaseStore) -> State:  # noqa: ARG001 -- execute_hooks() passes state/config/store positionally
     """Append a live-executor status frame when the busy lock is held."""
     try:
         configurable = agent_configurable(config)

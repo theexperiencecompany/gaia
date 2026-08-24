@@ -136,7 +136,7 @@ class TestParseFaviconSize:
 
     def test_none_returns_zero(self) -> None:
         """None sizes attribute returns 0 (falsy check)."""
-        assert _parse_favicon_size(None) == 0  # type: ignore[arg-type]
+        assert _parse_favicon_size(None) == 0
 
     def test_invalid_format_returns_zero(self) -> None:
         """Non-numeric size string returns 0."""
