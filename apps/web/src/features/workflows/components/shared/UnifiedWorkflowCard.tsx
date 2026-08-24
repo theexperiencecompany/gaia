@@ -255,8 +255,9 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
               <span
                 className="relative z-[2]"
                 // Keep Run/Create presses from also triggering the card-level
-                // open/select handler via click bubbling.
+                // open/select handler via click/key bubbling.
                 onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
               >
                 <WorkflowActionButton
                   label={buttonConfig.label}
