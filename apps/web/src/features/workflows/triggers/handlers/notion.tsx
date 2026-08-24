@@ -53,7 +53,9 @@ function NotionSettings({
   const triggerSlug = config.trigger_name || "";
 
   const isDbTrigger = triggerSlug === "notion_new_page_in_db";
-  const isPageTrigger = triggerSlug === "notion_page_updated";
+  const isPageTrigger =
+    triggerSlug === "notion_page_updated" ||
+    triggerSlug === "notion_page_content_updated";
 
   // Fetch databases for database trigger
   const {
@@ -199,6 +201,7 @@ export const notionTriggerHandler: RegisteredHandler = {
     "notion_new_page_in_db",
     "notion_page_updated",
     "notion_all_page_events",
+    "notion_page_content_updated",
   ],
 
   createDefaultConfig: (slug: string): TriggerConfig => {
@@ -209,7 +212,10 @@ export const notionTriggerHandler: RegisteredHandler = {
     if (slug === "notion_new_page_in_db") {
       triggerData.database_ids = [];
     }
-    if (slug === "notion_page_updated") {
+    if (
+      slug === "notion_page_updated" ||
+      slug === "notion_page_content_updated"
+    ) {
       triggerData.page_ids = [];
     }
 
@@ -229,6 +235,8 @@ export const notionTriggerHandler: RegisteredHandler = {
     if (triggerName === "notion_new_page_in_db") label = "on new page in db";
     if (triggerName === "notion_page_updated") label = "on page updated";
     if (triggerName === "notion_all_page_events") label = "on any page event";
+    if (triggerName === "notion_page_content_updated")
+      label = "on page content updated";
 
     return {
       label,

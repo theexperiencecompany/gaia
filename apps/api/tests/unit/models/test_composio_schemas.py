@@ -12,11 +12,13 @@ from pydantic import ValidationError
 import pytest
 
 from app.models.composio_schemas import (
+    AsanaTaskCreatedPayload,
     ComposioResponse,
     GitHubCommitEventPayload,
     GitHubIssueAddedEventPayload,
     GitHubPullRequestEventPayload,
     GitHubStarAddedEventPayload,
+    GmailNewMessagePayload,
     GoogleCalendarEventCreatedPayload,
     GoogleCalendarEventStartingSoonPayload,
     GoogleDocsPageAddedPayload,
@@ -29,14 +31,16 @@ from app.models.composio_schemas import (
     GoogleSheetsSpreadsheet,
     LinearCommentAddedPayload,
     LinearIssueCreatedPayload,
-    NotionAllPageEventsPayload,
+    LinearIssueUpdatedPayload,
     NotionFetchDataData,
     NotionFetchDataInput,
     NotionItem,
-    NotionPageAddedPayload,
-    NotionPageUpdatedPayload,
+    NotionPageContentUpdatedPayload,
+    NotionPageCreatedPayload,
+    NotionPagePropertiesUpdatedPayload,
     SlackChannelCreatedPayload,
     SlackReceiveMessagePayload,
+    TodoistNewTaskCreatedPayload,
 )
 
 # ---------------------------------------------------------------------------
@@ -144,16 +148,22 @@ class TestGitHubStarAddedEventPayload:
     def test_valid_minimal(self):
         m = GitHubStarAddedEventPayload()
         assert m.action is None
-        assert m.user is None
+        assert m.starred_by is None
 
     def test_valid_full(self):
+        # Field set verified against Composio triggers_types API (2026-08).
         m = GitHubStarAddedEventPayload(
             action="starred",
+            repository_id=186853002,
+            repository_name="org/repo",
+            repository_url="https://github.com/org/repo",
             starred_at="2025-01-01T00:00:00Z",
-            user="octocat",
+            starred_by="octocat",
         )
         assert m.starred_at == "2025-01-01T00:00:00Z"
-        assert m.user == "octocat"
+        assert m.starred_by == "octocat"
+        assert m.repository_name == "org/repo"
+        assert m.repository_id == 186853002
 
 
 class TestGitHubIssueAddedEventPayload:
@@ -229,16 +239,15 @@ class TestGoogleCalendarEventStartingSoonPayload:
             hangout_link="https://meet.google.com/abc",
             html_link="https://calendar.google.com/event",
             location="Room 1",
+            minutes_until_start=9.5,
             organizer_email="a@b.com",
-            organizer_self=True,
             start_time="2025-01-01T10:00:00Z",
-            status="confirmed",
+            start_timestamp=1735716000,
             summary="Standup",
-            updated="2025-01-01T09:00:00Z",
         )
         assert m.countdown_window_minutes == 10
-        assert m.organizer_self is True
-        assert m.status == "confirmed"
+        assert m.minutes_until_start == 9.5
+        assert m.start_timestamp == 1735716000
 
     def test_wrong_type_attendees(self):
         with pytest.raises(ValidationError):
@@ -380,52 +389,152 @@ class TestLinearCommentAddedPayload:
         assert m.url is None
 
 
+class TestLinearIssueUpdatedPayload:
+    # Same envelope as the other Linear triggers — action/data/type/url.
+    def test_valid_full(self):
+        m = LinearIssueUpdatedPayload(
+            action="update",
+            data={"identifier": "ENG-1", "state": "done"},
+            type="Issue",
+            url="https://linear.app/org/issue/ENG-1",
+        )
+        assert m.action == "update"
+        assert m.data is not None
+        assert m.type == "Issue"
+
+
+# ---------------------------------------------------------------------------
+# gmail trigger payloads
+# ---------------------------------------------------------------------------
+
+
+class TestGmailNewMessagePayload:
+    # Field set verified against Composio triggers_types API (2026-08).
+    def test_valid_thread_fields(self):
+        m = GmailNewMessagePayload(
+            id="msg-raw-id",
+            message_id="18a1b2c3",
+            thread_id="thd-123",
+            sender="acme@x.com",
+            to="me@gmail.com",
+            subject="Re: Invoice",
+            message_text="Paid today",
+            label_ids=["INBOX", "IMPORTANT"],
+            attachment_list=[{"filename": "receipt.pdf"}],
+        )
+        assert m.thread_id == "thd-123"
+        assert m.id == "msg-raw-id"
+        assert m.label_ids == ["INBOX", "IMPORTANT"]
+        assert m.to == "me@gmail.com"
+
+    def test_valid_minimal(self):
+        m = GmailNewMessagePayload()
+        assert m.thread_id is None
+        assert m.preview is None
+
+
 # ---------------------------------------------------------------------------
 # notion trigger payloads
 # ---------------------------------------------------------------------------
 
 
-class TestNotionPageAddedPayload:
+class TestNotionPageCreatedPayload:
+    # Field set verified against Composio triggers_types API (2026-08).
+    def _payload(self) -> dict:
+        return {
+            "authors": [{"type": "person"}],
+            "data": {"parent": {"type": "data_source_id"}},
+            "event_id": "evt1",
+            "event_type": "page.created",
+            "page_id": "page1",
+            "timestamp": "2025-01-01T00:00:00Z",
+            "workspace_id": "ws1",
+            "workspace_name": "Acme",
+        }
+
     def test_valid_full(self):
-        m = NotionPageAddedPayload(event_type="page.added", block={"id": "page1"})
-        assert m.event_type == "page.added"
-        assert m.block == {"id": "page1"}
+        m = NotionPageCreatedPayload.model_validate(self._payload())
+        assert m.page_id == "page1"
+        assert m.workspace_name == "Acme"
 
-    def test_block_optional(self):
-        m = NotionPageAddedPayload(event_type="page.added")
-        assert m.block is None
+    def test_optional_fields_default_none(self):
+        m = NotionPageCreatedPayload()
+        assert m.authors is None
+        assert m.workspace_name is None
 
-    def test_missing_event_type(self):
+    def test_wrong_type_page_id(self):
         with pytest.raises(ValidationError):
-            NotionPageAddedPayload()
-
-    def test_wrong_type_event_type(self):
-        with pytest.raises(ValidationError):
-            NotionPageAddedPayload(event_type=123)
+            NotionPageCreatedPayload(page_id=123)
 
 
-class TestNotionPageUpdatedPayload:
-    # Same shape as NotionPageAddedPayload — block optional, event_type required.
+class TestNotionPagePropertiesUpdatedPayload:
     def test_valid_full(self):
-        m = NotionPageUpdatedPayload(event_type="page.updated", block={"id": "page1"})
-        assert m.event_type == "page.updated"
-        assert m.block == {"id": "page1"}
+        m = NotionPagePropertiesUpdatedPayload(
+            event_type="page.properties_updated",
+            page_id="page1",
+            data={"parent": {}, "changed_property_ids": ["title"]},
+        )
+        assert m.page_id == "page1"
+        assert m.data is not None
+        assert m.event_type == "page.properties_updated"
 
-    def test_missing_event_type(self):
-        with pytest.raises(ValidationError):
-            NotionPageUpdatedPayload()
 
-
-class TestNotionAllPageEventsPayload:
-    # Same shape as NotionPageAddedPayload — block optional, event_type required.
+class TestNotionPageContentUpdatedPayload:
     def test_valid_full(self):
-        m = NotionAllPageEventsPayload(event_type="page.added", block={"id": "page1"})
-        assert m.event_type == "page.added"
-        assert m.block == {"id": "page1"}
+        m = NotionPageContentUpdatedPayload(
+            event_type="page.content_updated",
+            page_id="page1",
+            data={"parent": {}, "updated_block_ids": ["b1"]},
+        )
+        assert m.page_id == "page1"
+        assert m.data is not None
 
-    def test_missing_event_type(self):
+
+# ---------------------------------------------------------------------------
+# asana trigger payloads
+# ---------------------------------------------------------------------------
+
+
+class TestAsanaTaskCreatedPayload:
+    # Field set verified against Composio triggers_types API (2026-08).
+    def test_valid_full(self):
+        m = AsanaTaskCreatedPayload(
+            created_at="2025-01-01T00:00:00Z",
+            project_gid="1213430481840948",
+            task_gid="1213430481840949",
+            user_gid="1200000000000001",
+        )
+        assert m.project_gid == "1213430481840948"
+        assert m.task_gid == "1213430481840949"
+        assert m.user_gid == "1200000000000001"
+
+    def test_valid_minimal(self):
+        m = AsanaTaskCreatedPayload()
+        assert m.task_gid is None
+
+    def test_wrong_type_project_gid(self):
         with pytest.raises(ValidationError):
-            NotionAllPageEventsPayload()
+            AsanaTaskCreatedPayload(project_gid=123)
+
+
+# ---------------------------------------------------------------------------
+# todoist trigger payloads
+# ---------------------------------------------------------------------------
+
+
+class TestTodoistNewTaskCreatedPayload:
+    def test_valid_full(self):
+        m = TodoistNewTaskCreatedPayload(
+            event_type="task:added",
+            task={"id": "6X2Vw9gHxv8hQ2pP", "content": "Ship it"},
+        )
+        assert m.event_type == "task:added"
+        assert m.task is not None
+        assert m.task["content"] == "Ship it"
+
+    def test_task_required_shape_is_object(self):
+        with pytest.raises(ValidationError):
+            TodoistNewTaskCreatedPayload(task="not-a-dict")
 
 
 # ---------------------------------------------------------------------------

@@ -242,9 +242,23 @@ class NotionPageUpdatedConfig(BaseTriggerConfigData):
 
 
 class NotionAllPageEventsConfig(BaseTriggerConfigData):
-    """Config for notion_all_page_events trigger."""
+    """Config for the retired notion_all_page_events trigger.
+
+    Kept only so stored workflow documents still deserialize; Composio
+    retired the underlying slug and new registrations are rejected.
+    """
 
     trigger_name: Literal["notion_all_page_events"] = "notion_all_page_events"
+
+
+class NotionPageContentUpdatedConfig(BaseTriggerConfigData):
+    """Config for notion_page_content_updated trigger."""
+
+    trigger_name: Literal["notion_page_content_updated"] = "notion_page_content_updated"
+    page_ids: list[str] = Field(
+        default_factory=list,
+        description="List of Notion page IDs to monitor",
+    )
 
 
 # =============================================================================
@@ -305,16 +319,16 @@ class TodoistNewTaskCreatedConfig(BaseTriggerConfigData):
 
 
 class AsanaTaskTriggerConfig(BaseTriggerConfigData):
-    """Config for asana_task_trigger."""
+    """Config for asana_task_trigger (Composio ASANA_TASK_CREATED)."""
 
     trigger_name: Literal["asana_task_trigger"] = "asana_task_trigger"
-    project_id: str = Field(
+    project_gid: str = Field(
         default="",
-        description="ID of the project to trigger on (optional)",
+        description="Asana GID of the project to monitor",
     )
     workspace_id: str = Field(
         default="",
-        description="ID of the workspace to trigger on (optional)",
+        description="Legacy field; ignored by the current Composio trigger config",
     )
 
 
@@ -343,6 +357,7 @@ TriggerConfigData = Annotated[
         NotionNewPageInDbConfig,
         NotionPageUpdatedConfig,
         NotionAllPageEventsConfig,
+        NotionPageContentUpdatedConfig,
         SlackNewMessageConfig,
         SlackChannelCreatedConfig,
         TodoistNewTaskCreatedConfig,
@@ -372,6 +387,7 @@ TriggerName = Literal[
     "notion_new_page_in_db",
     "notion_page_updated",
     "notion_all_page_events",
+    "notion_page_content_updated",
     "slack_new_message",
     "slack_channel_created",
     "todoist_new_task_created",

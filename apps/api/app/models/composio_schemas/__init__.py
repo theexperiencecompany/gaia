@@ -5,6 +5,7 @@ Pydantic models for Composio tool responses and trigger payloads.
 Reference: node_modules/@composio/core/generated/<toolkit>.ts
 """
 
+from .asana import AsanaTaskCreatedPayload
 from .base import ComposioResponse
 from .github import (
     GitHubCommitEventPayload,
@@ -22,12 +23,20 @@ from .google_calendar import (
     GoogleCalendarEventCreatedPayload,
     GoogleCalendarEventStartingSoonPayload,
 )
-from .google_docs import GoogleDocsPageAddedPayload
+from .google_docs import (
+    GoogleDocsDocumentDeletedPayload,
+    GoogleDocsDocumentUpdatedPayload,
+    GoogleDocsPageAddedPayload,
+)
 from .google_sheets import (
     GoogleSheetsNewRowPayload,
     GoogleSheetsNewSheetAddedPayload,
 )
-from .linear import LinearCommentAddedPayload, LinearIssueCreatedPayload
+from .linear import (
+    LinearCommentAddedPayload,
+    LinearIssueCreatedPayload,
+    LinearIssueUpdatedPayload,
+)
 from .linear_tools import (
     LinearGetAllTeamsData,
     LinearGetAllTeamsInput,
@@ -35,9 +44,9 @@ from .linear_tools import (
     LinearTeam,
 )
 from .notion import (
-    NotionAllPageEventsPayload,
-    NotionPageAddedPayload,
-    NotionPageUpdatedPayload,
+    NotionPageContentUpdatedPayload,
+    NotionPageCreatedPayload,
+    NotionPagePropertiesUpdatedPayload,
 )
 from .notion_tools import NotionFetchDataData, NotionFetchDataInput, NotionItem
 from .sheets_tools import (
@@ -53,9 +62,12 @@ from .slack_tools import (
     SlackListAllChannelsData,
     SlackListAllChannelsInput,
 )
+from .todoist import TodoistNewTaskCreatedPayload
 
 __all__ = [
     "ComposioResponse",
+    # Asana
+    "AsanaTaskCreatedPayload",
     # GitHub
     "GitHubCommitEventPayload",
     "GitHubPullRequestEventPayload",
@@ -71,6 +83,8 @@ __all__ = [
     "GoogleCalendarEventStartingSoonPayload",
     # Google Docs
     "GoogleDocsPageAddedPayload",
+    "GoogleDocsDocumentDeletedPayload",
+    "GoogleDocsDocumentUpdatedPayload",
     # Google Sheets
     "GoogleSheetsNewRowPayload",
     "GoogleSheetsNewSheetAddedPayload",
@@ -81,15 +95,16 @@ __all__ = [
     "GoogleSheetsSpreadsheet",
     # Linear
     "LinearIssueCreatedPayload",
+    "LinearIssueUpdatedPayload",
     "LinearCommentAddedPayload",
     "LinearGetAllTeamsInput",
     "LinearGetAllTeamsData",
     "LinearMember",
     "LinearTeam",
     # Notion
-    "NotionPageAddedPayload",
-    "NotionPageUpdatedPayload",
-    "NotionAllPageEventsPayload",
+    "NotionPageCreatedPayload",
+    "NotionPagePropertiesUpdatedPayload",
+    "NotionPageContentUpdatedPayload",
     "NotionFetchDataInput",
     "NotionFetchDataData",
     "NotionItem",
@@ -99,4 +114,6 @@ __all__ = [
     "SlackListAllChannelsInput",
     "SlackListAllChannelsData",
     "SlackChannel",
+    # Todoist
+    "TodoistNewTaskCreatedPayload",
 ]

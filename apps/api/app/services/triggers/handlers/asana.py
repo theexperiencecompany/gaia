@@ -18,10 +18,11 @@ class AsanaTriggerHandler(TriggerHandler):
 
     SUPPORTED_TRIGGERS: ClassVar[list[str]] = ["asana_task_trigger"]
 
-    SUPPORTED_EVENTS: ClassVar[set[str]] = {"ASANA_TASK_TRIGGER"}
+    # Composio retired ASANA_TASK_TRIGGER; the live slug is ASANA_TASK_CREATED.
+    SUPPORTED_EVENTS: ClassVar[set[str]] = {"ASANA_TASK_CREATED"}
 
     TRIGGER_TO_COMPOSIO: ClassVar[dict[str, str]] = {
-        "asana_task_trigger": "ASANA_TASK_TRIGGER",
+        "asana_task_trigger": "ASANA_TASK_CREATED",
     }
 
     @property
@@ -61,12 +62,17 @@ class AsanaTriggerHandler(TriggerHandler):
                 f"but got {type(trigger_data).__name__ if trigger_data else 'None'}"
             )
 
-        # Build trigger config with optional filters
-        composio_trigger_config: dict[str, Any] = {}
-        if trigger_data.project_id:
-            composio_trigger_config["project_id"] = trigger_data.project_id
-        if trigger_data.workspace_id:
-            composio_trigger_config["workspace_id"] = trigger_data.workspace_id
+        # Composio's ASANA_TASK_CREATED requires a project GID; the legacy
+        # workspace_id field is no longer part of the trigger config.
+        if not trigger_data.project_gid:
+            raise TriggerRegistrationError(
+                "asana_task_trigger now requires project_gid "
+                "(Composio retired the unscoped ASANA_TASK_TRIGGER)",
+                trigger_name,
+            )
+        composio_trigger_config: dict[str, Any] = {
+            "project_gid": trigger_data.project_gid,
+        }
 
         # Use the base class helper for consistent error handling
         return await self._register_triggers_parallel(

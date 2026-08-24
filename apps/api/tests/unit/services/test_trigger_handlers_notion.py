@@ -39,13 +39,15 @@ class TestNotionTriggerHandlerProperties:
         handler = _make_handler()
         assert "notion_new_page_in_db" in handler.trigger_names
         assert "notion_page_updated" in handler.trigger_names
-        assert "notion_all_page_events" in handler.trigger_names
+        assert "notion_page_content_updated" in handler.trigger_names
+        # Composio retired the underlying slug; no longer offered.
+        assert "notion_all_page_events" not in handler.trigger_names
 
     def test_event_types(self) -> None:
         handler = _make_handler()
-        assert "NOTION_PAGE_ADDED_TO_DATABASE" in handler.event_types
-        assert "NOTION_PAGE_UPDATED_TRIGGER" in handler.event_types
-        assert "NOTION_ALL_PAGE_EVENTS_TRIGGER" in handler.event_types
+        assert "NOTION_PAGE_CREATED" in handler.event_types
+        assert "NOTION_PAGE_PROPERTIES_UPDATED" in handler.event_types
+        assert "NOTION_PAGE_CONTENT_UPDATED" in handler.event_types
 
 
 # ---------------------------------------------------------------------------
@@ -263,7 +265,12 @@ class TestRegister:
         assert result == ["t1", "t2"]
         mock_reg.assert_called_once()
         call_kwargs = mock_reg.call_args
-        assert call_kwargs.kwargs["composio_slug"] == "NOTION_PAGE_ADDED_TO_DATABASE"
+        assert call_kwargs.kwargs["composio_slug"] == "NOTION_PAGE_CREATED"
+        # database_ids map onto Composio's data_source_id config param.
+        assert call_kwargs.kwargs["configs"] == [
+            {"data_source_id": "db1"},
+            {"data_source_id": "db2"},
+        ]
 
     @pytest.mark.asyncio
     async def test_page_updated_wrong_type_raises(self) -> None:
@@ -303,25 +310,45 @@ class TestRegister:
         assert result == ["t1"]
 
     @pytest.mark.asyncio
-    async def test_all_page_events_no_data(self) -> None:
+    async def test_page_content_updated_calls_parallel_register(self) -> None:
+        from app.models.trigger_configs import NotionPageContentUpdatedConfig
+
         handler = _make_handler()
-        tc = _make_trigger_config(None)
+        td = MagicMock(spec=NotionPageContentUpdatedConfig)
+        td.page_ids = ["p1", "p2"]
+        tc = _make_trigger_config(td)
+
+        with patch.object(
+            handler,
+            "_register_triggers_parallel",
+            new_callable=AsyncMock,
+            return_value=["t1", "t2"],
+        ) as mock_reg:
+            result = await handler.register("u1", "wf1", "notion_page_content_updated", tc)
+
+        assert result == ["t1", "t2"]
+        call_kwargs = mock_reg.call_args
+        assert call_kwargs.kwargs["composio_slug"] == "NOTION_PAGE_CONTENT_UPDATED"
+        assert call_kwargs.kwargs["configs"] == [{"page_id": "p1"}, {"page_id": "p2"}]
+
+    @pytest.mark.asyncio
+    async def test_page_content_updated_no_ids_registers_unscoped(self) -> None:
+        from app.models.trigger_configs import NotionPageContentUpdatedConfig
+
+        handler = _make_handler()
+        td = MagicMock(spec=NotionPageContentUpdatedConfig)
+        td.page_ids = []
+        tc = _make_trigger_config(td)
 
         with patch.object(
             handler,
             "_register_triggers_parallel",
             new_callable=AsyncMock,
             return_value=["t1"],
-        ):
-            result = await handler.register("u1", "wf1", "notion_all_page_events", tc)
+        ) as mock_reg:
+            result = await handler.register("u1", "wf1", "notion_page_content_updated", tc)
         assert result == ["t1"]
-
-    @pytest.mark.asyncio
-    async def test_all_page_events_wrong_type_raises(self) -> None:
-        handler = _make_handler()
-        tc = _make_trigger_config("wrong_type")
-        with pytest.raises(TypeError, match="Expected NotionAllPageEventsConfig"):
-            await handler.register("u1", "wf1", "notion_all_page_events", tc)
+        assert mock_reg.call_args.kwargs["configs"] == [{}]
 
 
 # ---------------------------------------------------------------------------
@@ -339,7 +366,7 @@ class TestFindWorkflows:
         handler = _make_handler()
         mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[MagicMock()])
 
-        result = await handler.find_workflows("NOTION_PAGE_ADDED_TO_DATABASE", "trig1", {})
+        result = await handler.find_workflows("NOTION_PAGE_CREATED", "trig1", {})
 
         assert len(result) == 1
         mock_repo.find_active_by_composio_trigger.assert_awaited_once_with("trig1")
@@ -350,7 +377,7 @@ class TestFindWorkflows:
         handler = _make_handler()
         mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
 
-        result = await handler.find_workflows("NOTION_PAGE_ADDED_TO_DATABASE", "trig_missing", {})
+        result = await handler.find_workflows("NOTION_PAGE_CREATED", "trig_missing", {})
         assert result == []
 
     @pytest.mark.asyncio
@@ -359,41 +386,41 @@ class TestFindWorkflows:
         handler = _make_handler()
         mock_repo.find_active_by_composio_trigger = AsyncMock(side_effect=RuntimeError("db error"))
 
-        result = await handler.find_workflows("NOTION_PAGE_UPDATED_TRIGGER", "trig1", {})
+        result = await handler.find_workflows("NOTION_PAGE_PROPERTIES_UPDATED", "trig1", {})
         assert result == []
 
     @pytest.mark.asyncio
-    @patch("app.services.triggers.handlers.notion.NotionPageAddedPayload")
+    @patch("app.services.triggers.handlers.notion.NotionPageCreatedPayload")
     @patch("app.services.triggers.handlers.notion.workflow_repository")
-    async def test_validates_page_added_payload(
+    async def test_validates_page_created_payload(
         self, mock_repo: MagicMock, mock_payload: MagicMock
     ) -> None:
         handler = _make_handler()
         mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
 
-        await handler.find_workflows("NOTION_new_page_EVENT", "trig1", {"some": "data"})
+        await handler.find_workflows("NOTION_page_created_EVENT", "trig1", {"some": "data"})
         mock_payload.model_validate.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("app.services.triggers.handlers.notion.NotionPageUpdatedPayload")
+    @patch("app.services.triggers.handlers.notion.NotionPagePropertiesUpdatedPayload")
     @patch("app.services.triggers.handlers.notion.workflow_repository")
-    async def test_validates_page_updated_payload(
+    async def test_validates_page_properties_updated_payload(
         self, mock_repo: MagicMock, mock_payload: MagicMock
     ) -> None:
         handler = _make_handler()
         mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
 
-        await handler.find_workflows("NOTION_page_updated_EVENT", "trig1", {})
+        await handler.find_workflows("NOTION_properties_updated_EVENT", "trig1", {})
         mock_payload.model_validate.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("app.services.triggers.handlers.notion.NotionAllPageEventsPayload")
+    @patch("app.services.triggers.handlers.notion.NotionPageContentUpdatedPayload")
     @patch("app.services.triggers.handlers.notion.workflow_repository")
-    async def test_validates_all_page_events_payload(
+    async def test_validates_page_content_updated_payload(
         self, mock_repo: MagicMock, mock_payload: MagicMock
     ) -> None:
         handler = _make_handler()
         mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
 
-        await handler.find_workflows("NOTION_all_page_events_EVENT", "trig1", {})
+        await handler.find_workflows("NOTION_content_updated_EVENT", "trig1", {})
         mock_payload.model_validate.assert_called_once()

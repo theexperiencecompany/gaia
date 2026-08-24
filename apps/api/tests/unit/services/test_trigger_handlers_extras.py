@@ -72,6 +72,15 @@ TRIGGER_CONFIGS = {
 }
 
 
+def _registrable_config(config_cls: type) -> TriggerConfig:
+    # Asana's Composio trigger requires a project GID at registration time.
+    if config_cls is AsanaTaskTriggerConfig:
+        return TriggerConfig(
+            type="integration", trigger_data=AsanaTaskTriggerConfig(project_gid="1213430481840948")
+        )
+    return TriggerConfig(type="integration", trigger_data=config_cls())
+
+
 @pytest.mark.parametrize(
     "handler_cls, instance, config_cls, trigger_name",
     TRIGGER_CONFIGS.values(),
@@ -124,7 +133,7 @@ class TestTriggerHandlerRegister:
     async def test_valid_registration_forwards_to_parallel_helper(
         self, handler_cls, instance, config_cls, trigger_name
     ) -> None:
-        config = TriggerConfig(type="integration", trigger_data=config_cls())
+        config = _registrable_config(config_cls)
         with patch.object(
             instance, "_register_triggers_parallel", new_callable=AsyncMock, return_value=["ok"]
         ) as mock_register:
