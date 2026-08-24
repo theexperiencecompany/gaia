@@ -170,3 +170,26 @@ def extract_message_model(message: AIMessage) -> str:
     """
     resp_meta = getattr(message, "response_metadata", None) or {}
     return str(resp_meta.get("model_name") or "") or UNKNOWN_MODEL_NAME
+
+
+def extract_generation_id(message: AIMessage) -> str | None:
+    """The upstream generation id for this call, when the provider returned one.
+
+    This is the ONLY handle we have on *which upstream served the request*.
+    OpenRouter names the serving upstream in a ``provider`` response field, but
+    ``ChatOpenRouter`` keeps only ``id`` / ``cost`` / ``system_fingerprint`` /
+    ``native_finish_reason`` and stamps ``model_provider`` as the literal
+    ``"openrouter"`` — so the aggregator's own name reaches us and the upstream's
+    never does. ``id`` does survive both paths (``_create_chat_result`` puts it in
+    ``llm_output``, which ``langchain_core`` merges into ``response_metadata``;
+    ``_astream``/``_stream`` set ``generation_info["id"]`` directly), and it
+    resolves to the serving upstream through OpenRouter's generation-metadata
+    endpoint without spending a model call.
+
+    Without it, a request that reports zero cached tokens is ambiguous: it may
+    have landed on a different upstream (which holds no warm prefix at all) or
+    the prompt prefix may have genuinely broken. Those have opposite fixes, so
+    the id is what keeps a cache regression from being diagnosed by guesswork.
+    """
+    resp_meta = getattr(message, "response_metadata", None) or {}
+    return str(resp_meta.get("id") or "") or None

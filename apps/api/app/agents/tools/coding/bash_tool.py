@@ -146,7 +146,7 @@ def _resolve_cwd(cwd: str, session_id: str | None) -> tuple[str, str | None]:
         # reaching host-internal config (`/etc/gaia`).
         normalized = posixpath.normpath(cwd)
         if not is_under_workspace(normalized):
-            return cwd, f"Error: cwd must be under {WORKSPACE_ROOT} (got {cwd!r})"
+            return cwd, f"Error: cwd must be under {WORKSPACE_ROOT}"
         return normalized, None
     return cwd, None
 

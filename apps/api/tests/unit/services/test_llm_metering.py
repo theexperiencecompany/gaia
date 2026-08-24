@@ -14,6 +14,7 @@ from langchain_core.messages import AIMessage
 
 from app.constants.llm import UNKNOWN_MODEL_NAME
 from app.services.llm_metering import (
+    extract_generation_id,
     extract_message_model,
     extract_message_usage,
     record_llm_call,
@@ -239,3 +240,24 @@ async def test_an_unreported_reasoning_count_is_booked_as_none_of_it(
 
     assert usage.await_args.kwargs["reasoning_tokens"] == 0
     assert usage.await_args.kwargs["cached_tokens"] == 0
+
+
+# --- extract_generation_id ------------------------------------------------------ #
+
+
+def test_the_generation_id_is_read_from_the_response() -> None:
+    """The id is the only handle on WHICH UPSTREAM served the call: ChatOpenRouter
+    keeps the aggregator's own name (``model_provider="openrouter"``) and drops the
+    upstream's ``provider`` field, and this id resolves to the serving upstream
+    through the generation-metadata endpoint without spending a model call."""
+    message = AIMessage(content="hi", response_metadata={"id": "gen-abc123"})
+
+    assert extract_generation_id(message) == "gen-abc123"
+
+
+def test_a_response_with_no_generation_id_is_none_rather_than_empty() -> None:
+    """``None`` drops the key from the wide event; an empty string would land in
+    the logs as a real-looking id that resolves to nothing."""
+    assert extract_generation_id(AIMessage(content="hi")) is None
+    assert extract_generation_id(AIMessage(content="hi", response_metadata={})) is None
+    assert extract_generation_id(AIMessage(content="hi", response_metadata={"id": ""})) is None

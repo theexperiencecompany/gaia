@@ -439,7 +439,7 @@ async def test_edit_path_escaping_workspace_is_rejected() -> None:
             config=CONFIG,
         )
 
-    assert result == "Error: Path escapes /workspace: /etc/passwd"
+    assert result == "Error: path must stay inside /workspace"
     mock_acquire.assert_not_called()
 
 

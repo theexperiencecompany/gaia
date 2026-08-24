@@ -1,18 +1,33 @@
 """Tests for app.override.langgraph_bigtool.create_agent."""
 
-from typing import Any, cast
+from collections.abc import Sequence
+from typing import Any, Protocol, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
+from langgraph.graph import StateGraph
+from langgraph.store.base import BaseStore
 import pytest
 
 from app.agents.llm import lane as lane_module
 from app.agents.llm.lane import ModelLane
 from app.agents.llm.types import LLMProviderName
-from app.constants.llm import DEFAULT_MAX_TOKENS, LANE_FIELD_ID
-from app.override.langgraph_bigtool.create_agent import _fallback_config, _prepare_fallback
+from app.constants.llm import (
+    DEFAULT_MAX_TOKENS,
+    LANE_FIELD_ID,
+    RECURSION_WRAPUP_THRESHOLD_STEPS,
+)
+from app.models.agent_models import AgentConfigurable
+from app.override.langgraph_bigtool.create_agent import (
+    _agent_sticky_key,
+    _bind_session_id,
+    _fallback_config,
+    _prepare_fallback,
+    create_agent,
+)
+from app.override.langgraph_bigtool.utils import State
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -48,20 +63,54 @@ def _make_llm() -> MagicMock:
     return llm
 
 
-def _make_config(**configurable: Any) -> dict:
+def _make_config(**configurable: Any) -> RunnableConfig:
     return {"configurable": configurable}
 
 
+class _ModelNode(Protocol):
+    """The two entry points the agent node exposes, named locally.
+
+    LangGraph types ``node.runnable`` as a union that does not statically carry
+    ``func`` / ``afunc``, and ``RunnableCallable`` is not an explicitly exported
+    symbol. Naming only what is used here keeps the tests off a private import.
+    """
+
+    def func(self, state: State, config: RunnableConfig, *, store: BaseStore) -> State: ...
+
+    async def afunc(self, state: State, config: RunnableConfig, *, store: BaseStore) -> State: ...
+
+
+def _agent_runnable(builder: StateGraph) -> _ModelNode:
+    """The agent node's runnable — what actually calls the model."""
+    return cast(_ModelNode, builder.nodes["agent"].runnable)
+
+
 def _make_state(
-    messages: list | None = None,
-    selected_tool_ids: list | None = None,
-    todos: list | None = None,
-) -> dict:
-    return {
-        "messages": messages or [],
-        "selected_tool_ids": selected_tool_ids or [],
-        "todos": todos or [],
-    }
+    messages: Sequence[AnyMessage] | None = None,
+    selected_tool_ids: Sequence[str] | None = None,
+    todos: Sequence[dict[str, Any]] | None = None,
+    remaining_steps: int = RECURSION_WRAPUP_THRESHOLD_STEPS + 1,
+) -> State:
+    """A complete ``State`` — every channel the node's signature promises.
+
+    ``remaining_steps`` defaults just clear of the wrap-up threshold so the
+    recursion notice stays out of these tests; pass a lower value to exercise
+    it.
+    """
+    # cast, like _maybe_inject_wrapup in the module under test: langgraph_bigtool
+    # ships no py.typed, so its State base resolves to Any and mypy sees an
+    # ordinary class rather than a TypedDict a literal could satisfy.
+    return cast(
+        "State",
+        {
+            "messages": list(messages or []),
+            "selected_tool_ids": list(selected_tool_ids or []),
+            "todos": list(todos or []),
+            "intent": None,
+            "integration_usernames": {},
+            "remaining_steps": remaining_steps,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -71,14 +120,10 @@ def _make_state(
 
 class TestCreateAgent:
     def test_returns_state_graph(self) -> None:
-        from app.override.langgraph_bigtool.create_agent import create_agent
-
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a)
 
         builder = create_agent(llm, registry, disable_retrieve_tools=True)
-
-        from langgraph.graph import StateGraph
 
         assert isinstance(builder, StateGraph)
 
@@ -87,8 +132,6 @@ class TestCreateAgent:
         the schema is declared on the StateGraph — dropped, every node sees an
         empty context and nothing raises to say so."""
         from dataclasses import dataclass
-
-        from app.override.langgraph_bigtool.create_agent import create_agent
 
         @dataclass
         class _Ctx:
@@ -104,8 +147,6 @@ class TestCreateAgent:
         assert builder.context_schema is _Ctx
 
     def test_with_retrieve_tools_coroutine(self) -> None:
-        from app.override.langgraph_bigtool.create_agent import create_agent
-
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a)
 
@@ -118,14 +159,10 @@ class TestCreateAgent:
             registry,
             retrieve_tools_coroutine=my_coroutine,
         )
-
-        from langgraph.graph import StateGraph
 
         assert isinstance(builder, StateGraph)
 
     def test_with_retrieve_tools_function(self) -> None:
-        from app.override.langgraph_bigtool.create_agent import create_agent
-
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a)
 
@@ -139,13 +176,9 @@ class TestCreateAgent:
             retrieve_tools_function=my_func,
         )
 
-        from langgraph.graph import StateGraph
-
         assert isinstance(builder, StateGraph)
 
     def test_with_both_retrieve_tools(self) -> None:
-        from app.override.langgraph_bigtool.create_agent import create_agent
-
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a)
 
@@ -164,13 +197,9 @@ class TestCreateAgent:
             retrieve_tools_coroutine=my_coroutine,
         )
 
-        from langgraph.graph import StateGraph
-
         assert isinstance(builder, StateGraph)
 
     def test_with_initial_tool_ids(self) -> None:
-        from app.override.langgraph_bigtool.create_agent import create_agent
-
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a, dummy_tool_b)
 
@@ -181,13 +210,9 @@ class TestCreateAgent:
             initial_tool_ids=["dummy_tool_a"],
         )
 
-        from langgraph.graph import StateGraph
-
         assert isinstance(builder, StateGraph)
 
     def test_with_end_graph_hooks(self) -> None:
-        from app.override.langgraph_bigtool.create_agent import create_agent
-
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a)
 
@@ -201,13 +226,9 @@ class TestCreateAgent:
             end_graph_hooks=[my_hook],
         )
 
-        from langgraph.graph import StateGraph
-
         assert isinstance(builder, StateGraph)
 
     def test_with_middleware(self) -> None:
-        from app.override.langgraph_bigtool.create_agent import create_agent
-
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a)
 
@@ -221,13 +242,9 @@ class TestCreateAgent:
             middleware=[mw],
         )
 
-        from langgraph.graph import StateGraph
-
         assert isinstance(builder, StateGraph)
 
     def test_middleware_non_basetool_filtered(self) -> None:
-        from app.override.langgraph_bigtool.create_agent import create_agent
-
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a)
 
@@ -241,13 +258,9 @@ class TestCreateAgent:
             middleware=[mw],
         )
 
-        from langgraph.graph import StateGraph
-
         assert isinstance(builder, StateGraph)
 
     def test_middleware_without_tools_attr(self) -> None:
-        from app.override.langgraph_bigtool.create_agent import create_agent
-
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a)
 
@@ -259,8 +272,6 @@ class TestCreateAgent:
             disable_retrieve_tools=True,
             middleware=[mw],
         )
-
-        from langgraph.graph import StateGraph
 
         assert isinstance(builder, StateGraph)
 
@@ -275,7 +286,6 @@ class TestCallModel:
 
     def test_sync_call_model_raises_with_middleware(self) -> None:
         """When middleware is configured, sync call_model should raise RuntimeError."""
-        from app.override.langgraph_bigtool.create_agent import create_agent
 
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a)
@@ -299,7 +309,6 @@ class TestCallModel:
 
     def test_sync_call_model_without_middleware(self) -> None:
         """Sync call_model should work without middleware."""
-        from app.override.langgraph_bigtool.create_agent import create_agent
 
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a)
@@ -369,7 +378,6 @@ class TestCallModel:
 
     def test_sync_call_model_empty_response_gets_default(self) -> None:
         """Empty model response should get default content."""
-        from app.override.langgraph_bigtool.create_agent import create_agent
 
         empty_response = AIMessage(content="", tool_calls=[])
         llm = MagicMock()
@@ -394,7 +402,6 @@ class TestCallModel:
     def test_sync_call_model_comms_agent_appends_breaker(self) -> None:
         """comms_agent should append NEW_MESSAGE_BREAKER."""
         from app.constants.general import NEW_MESSAGE_BREAKER
-        from app.override.langgraph_bigtool.create_agent import create_agent
 
         llm = _make_llm()
         registry = _make_tool_registry()
@@ -418,8 +425,6 @@ class TestCallModel:
 class TestAcallModel:
     @pytest.mark.asyncio
     async def test_acall_model_basic(self) -> None:
-        from app.override.langgraph_bigtool.create_agent import create_agent
-
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a)
 
@@ -435,8 +440,6 @@ class TestAcallModel:
 
     @pytest.mark.asyncio
     async def test_acall_model_with_middleware_hooks(self) -> None:
-        from app.override.langgraph_bigtool.create_agent import create_agent
-
         llm = _make_llm()
         registry = _make_tool_registry()
 
@@ -465,8 +468,6 @@ class TestAcallModel:
 
     @pytest.mark.asyncio
     async def test_acall_model_empty_response(self) -> None:
-        from app.override.langgraph_bigtool.create_agent import create_agent
-
         empty_response = AIMessage(content="", tool_calls=[])
         llm = MagicMock()
         configured = MagicMock()
@@ -489,7 +490,6 @@ class TestAcallModel:
     @pytest.mark.asyncio
     async def test_acall_model_comms_agent_appends_breaker(self) -> None:
         from app.constants.general import NEW_MESSAGE_BREAKER
-        from app.override.langgraph_bigtool.create_agent import create_agent
 
         llm = _make_llm()
         registry = _make_tool_registry()
@@ -518,8 +518,6 @@ class TestShouldContinue:
     def test_no_tool_calls_returns_end(self) -> None:
         from langgraph.graph import END
 
-        from app.override.langgraph_bigtool.create_agent import create_agent
-
         llm = _make_llm()
         registry = _make_tool_registry()
 
@@ -535,8 +533,6 @@ class TestShouldContinue:
         assert result == END
 
     def test_no_tool_calls_with_end_hooks(self) -> None:
-        from app.override.langgraph_bigtool.create_agent import create_agent
-
         llm = _make_llm()
         registry = _make_tool_registry()
 
@@ -560,8 +556,6 @@ class TestShouldContinue:
         assert result == "end_graph_hooks"
 
     def test_bound_tool_calls_routed_to_tools(self) -> None:
-        from app.override.langgraph_bigtool.create_agent import create_agent
-
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a)
 
@@ -589,8 +583,6 @@ class TestShouldContinue:
         assert result[0].arg["tool_call"]["name"] == "dummy_tool_a"
 
     def test_unbound_tool_calls_routed_to_reject(self) -> None:
-        from app.override.langgraph_bigtool.create_agent import create_agent
-
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a)
 
@@ -661,8 +653,6 @@ class TestFinishTaskNode:
 
 class TestRejectUnboundTools:
     def test_reject_unbound_tools_returns_error_messages(self) -> None:
-        from app.override.langgraph_bigtool.create_agent import create_agent
-
         llm = _make_llm()
         registry = _make_tool_registry()
 
@@ -678,8 +668,6 @@ class TestRejectUnboundTools:
 
     @pytest.mark.asyncio
     async def test_areject_unbound_tools(self) -> None:
-        from app.override.langgraph_bigtool.create_agent import create_agent
-
         llm = _make_llm()
         registry = _make_tool_registry()
 
@@ -700,8 +688,6 @@ class TestRejectUnboundTools:
 
 class TestSelectTools:
     def test_select_tools_with_dict_result(self) -> None:
-        from app.override.langgraph_bigtool.create_agent import create_agent
-
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a)
 
@@ -721,8 +707,6 @@ class TestSelectTools:
         assert "selected_tool_ids" in result
 
     def test_select_tools_with_list_result(self) -> None:
-        from app.override.langgraph_bigtool.create_agent import create_agent
-
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a)
 
@@ -741,8 +725,6 @@ class TestSelectTools:
         assert "dummy_tool_a" in result["selected_tool_ids"]
 
     def test_select_tools_filters_subagent_prefix(self) -> None:
-        from app.override.langgraph_bigtool.create_agent import create_agent
-
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a)
 
@@ -763,8 +745,6 @@ class TestSelectTools:
 
     @pytest.mark.asyncio
     async def test_aselect_tools(self) -> None:
-        from app.override.langgraph_bigtool.create_agent import create_agent
-
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a)
 
@@ -784,8 +764,6 @@ class TestSelectTools:
 
     @pytest.mark.asyncio
     async def test_aselect_tools_dict_result(self) -> None:
-        from app.override.langgraph_bigtool.create_agent import create_agent
-
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a)
 
@@ -814,8 +792,6 @@ class TestBindSessionId:
     """
 
     def test_a_configured_session_id_is_bound_onto_the_runnable(self) -> None:
-        from app.override.langgraph_bigtool.create_agent import _bind_session_id
-
         llm = MagicMock()
         bound = _bind_session_id(
             llm, {"provider": LLMProviderName.OPENROUTER, "session_id": "conv-1"}
@@ -825,8 +801,6 @@ class TestBindSessionId:
         assert bound is llm.bind.return_value
 
     def test_no_session_id_leaves_the_runnable_exactly_as_it_was(self) -> None:
-        from app.override.langgraph_bigtool.create_agent import _bind_session_id
-
         llm = MagicMock()
         bound = _bind_session_id(llm, {"provider": LLMProviderName.OPENROUTER})
 
@@ -835,7 +809,6 @@ class TestBindSessionId:
 
     def test_an_empty_session_id_is_not_bound(self) -> None:
         # Binding "" would pin every conversation to the same routing key.
-        from app.override.langgraph_bigtool.create_agent import _bind_session_id
 
         llm = MagicMock()
         bound = _bind_session_id(llm, {"provider": LLMProviderName.OPENROUTER, "session_id": ""})
@@ -845,17 +818,97 @@ class TestBindSessionId:
 
     @pytest.mark.parametrize("provider", [LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM])
     def test_a_sticky_provider_gets_the_key(self, provider: LLMProviderName) -> None:
-        from app.override.langgraph_bigtool.create_agent import _bind_session_id
-
         llm = MagicMock()
         _bind_session_id(llm, {"provider": provider, "session_id": "conv-1"})
 
         llm.bind.assert_called_once_with(session_id="conv-1")
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("agent", ["comms_agent", "executor_agent"])
+    async def test_a_real_model_call_carries_the_agent_s_own_key(self, agent: str) -> None:
+        """``_bind_session_id`` being correct is worth nothing if ``create_agent``
+        does not hand it the agent's name. This drives the actual model node and
+        reads the key that reached the runnable, so dropping the argument at the
+        call site is caught rather than only the helper being right in isolation.
+        """
+
+        llm = _make_llm()
+        bound = llm.with_config.return_value.bind_tools.return_value
+        # Binding the session id returns a NEW runnable, and that is the one the
+        # call is actually made on — so it has to stay the configured double.
+        bound.bind.return_value = bound
+        builder = create_agent(
+            llm, _make_tool_registry(dummy_tool_a), disable_retrieve_tools=True, agent_name=agent
+        )
+
+        await _agent_runnable(builder).afunc(
+            _make_state(messages=[HumanMessage(content="hi")]),
+            _make_config(provider=LLMProviderName.OPENROUTER, session_id="conv-1"),
+            store=MagicMock(),
+        )
+
+        assert bound.bind.call_args.kwargs["session_id"] == f"conv-1-{agent}"
+
+    def test_the_sync_model_path_carries_the_agent_s_key_too(self) -> None:
+        """There are two model call sites — sync and async — and they drift
+        independently. The async one above is the production path; this one
+        exists so a fix applied to only one of them is caught here rather than
+        as an unexplained cache gap on whichever lane still runs sync."""
+
+        llm = _make_llm()
+        bound = llm.with_config.return_value.bind_tools.return_value
+        bound.bind.return_value = bound
+        builder = create_agent(
+            llm,
+            _make_tool_registry(dummy_tool_a),
+            disable_retrieve_tools=True,
+            agent_name="comms_agent",
+        )
+
+        _agent_runnable(builder).func(
+            _make_state(messages=[HumanMessage(content="hi")]),
+            _make_config(provider=LLMProviderName.OPENROUTER, session_id="conv-1"),
+            store=MagicMock(),
+        )
+
+        assert bound.bind.call_args.kwargs["session_id"] == "conv-1-comms_agent"
+
+    def test_each_agent_class_gets_its_own_key_on_the_same_conversation(self) -> None:
+        """The fix this parameter exists for. comms, the executor and each
+        subagent run inside ONE conversation but send completely different
+        system prompts, so sharing the conversation's bare key put them all in
+        one routing chain where they evicted each other. The key has to differ
+        per agent, or the eviction comes straight back."""
+
+        keys = []
+        for agent in ("comms_agent", "executor_agent", "gmail_agent"):
+            llm = MagicMock()
+            _bind_session_id(
+                llm, {"provider": LLMProviderName.OPENROUTER, "session_id": "conv-1"}, agent
+            )
+            keys.append(llm.bind.call_args.kwargs["session_id"])
+
+        assert keys == ["conv-1-comms_agent", "conv-1-executor_agent", "conv-1-gmail_agent"]
+        assert len(set(keys)) == len(keys)
+
+    def test_the_conversation_still_separates_two_agents_of_the_same_name(self) -> None:
+        """The agent name narrows the key, it must not replace the conversation:
+        two users' comms agents must never land in one chain."""
+
+        first, second = MagicMock(), MagicMock()
+        _bind_session_id(
+            first, {"provider": LLMProviderName.OPENROUTER, "session_id": "conv-1"}, "comms_agent"
+        )
+        _bind_session_id(
+            second, {"provider": LLMProviderName.OPENROUTER, "session_id": "conv-2"}, "comms_agent"
+        )
+
+        assert first.bind.call_args.kwargs["session_id"] == "conv-1-comms_agent"
+        assert second.bind.call_args.kwargs["session_id"] == "conv-2-comms_agent"
+
     def test_gemini_is_left_alone(self) -> None:
         """session_id is an OpenRouter routing hint. Gemini has no stickiness to
         pin, so sending it there is an unsupported argument on every graph call."""
-        from app.override.langgraph_bigtool.create_agent import _bind_session_id
 
         llm = MagicMock()
         bound = _bind_session_id(llm, {"provider": LLMProviderName.GEMINI, "session_id": "conv-1"})
@@ -864,10 +917,8 @@ class TestBindSessionId:
         assert bound is llm
 
     def test_an_unrelated_configurable_key_is_not_mistaken_for_it(self) -> None:
-        from app.override.langgraph_bigtool.create_agent import _bind_session_id
-
         llm = MagicMock()
-        bound = _bind_session_id(llm, {"thread_id": "conv-1", "model_name": "m"})
+        bound = _bind_session_id(llm, cast(AgentConfigurable, {"thread_id": "conv-1"}))
 
         llm.bind.assert_not_called()
         assert bound is llm
@@ -917,7 +968,9 @@ class TestFallbackPreparation:
         assert _prepare_fallback(_make_llm(), [dummy_tool_a], {}) is None
 
     def test_no_other_configured_provider_means_no_fallback(self) -> None:
-        configurable = {LANE_FIELD_ID: self._openrouter_lane().to_configurable()}
+        configurable = cast(
+            AgentConfigurable, {LANE_FIELD_ID: self._openrouter_lane().to_configurable()}
+        )
 
         with patch.object(lane_module, "next_fallback_provider", lambda _current: None):
             assert _prepare_fallback(_make_llm(), [dummy_tool_a], configurable) is None
@@ -926,7 +979,9 @@ class TestFallbackPreparation:
         llm = MagicMock()
         bound = MagicMock()
         llm.bind_tools.return_value = bound
-        configurable = {LANE_FIELD_ID: self._openrouter_lane().to_configurable()}
+        configurable = cast(
+            AgentConfigurable, {LANE_FIELD_ID: self._openrouter_lane().to_configurable()}
+        )
 
         with self._next_is_gemini():
             prepared = _prepare_fallback(llm, [dummy_tool_a], configurable)
@@ -964,3 +1019,80 @@ class TestFallbackPreparation:
         rebound = _fallback_config(cast(RunnableConfig, {}), self._gemini_lane())
 
         assert rebound["configurable"]["provider"] == LLMProviderName.GEMINI
+
+
+class TestTheFallbackKeepsTheAgentsOwnChain:
+    """The per-agent sticky key must survive a provider failover.
+
+    The primary binds ``{session}-{agent}`` so comms, the executor and each
+    subagent hold separate cache chains. ``ainvoke_llm`` used to recompute the
+    fallback's key from config, which yields the BARE ``{session}`` — so the
+    moment a provider hiccuped, every agent's fallback landed back in one
+    shared chain and they resumed evicting each other, which is the exact
+    failure the per-agent key was measured to fix (+19.2 points on comms).
+    """
+
+    def test_the_key_carries_the_agent_name(self) -> None:
+        configurable = cast(
+            AgentConfigurable,
+            {"provider": LLMProviderName.OPENROUTER, "session_id": "conv-1"},
+        )
+
+        assert _agent_sticky_key(configurable, "comms_agent") == "conv-1-comms_agent"
+        assert _agent_sticky_key(configurable, None) == "conv-1"
+
+    def test_a_non_sticky_provider_has_no_key_to_carry(self) -> None:
+        gemini = cast(
+            AgentConfigurable, {"provider": LLMProviderName.GEMINI, "session_id": "conv-1"}
+        )
+
+        assert _agent_sticky_key(gemini, "comms_agent") is None
+
+    @pytest.mark.asyncio
+    async def test_the_model_node_hands_that_key_to_the_fallback(self) -> None:
+        """The wiring, not just the helper: whatever the primary binds is what
+        the fallback must be told to bind."""
+
+        llm = _make_llm()
+        builder = create_agent(
+            llm,
+            _make_tool_registry(dummy_tool_a),
+            disable_retrieve_tools=True,
+            agent_name="comms_agent",
+        )
+
+        with patch(
+            "app.override.langgraph_bigtool.create_agent.ainvoke_llm",
+            new=AsyncMock(return_value=AIMessage(content="ok")),
+        ) as invoked:
+            await _agent_runnable(builder).afunc(
+                _make_state(messages=[HumanMessage(content="hi")]),
+                _make_config(provider=LLMProviderName.OPENROUTER, session_id="conv-1"),
+                store=MagicMock(),
+            )
+
+        assert invoked.await_args.kwargs["sticky_session_id"] == "conv-1-comms_agent"
+
+    def test_the_sync_model_node_hands_that_key_over_too(self) -> None:
+        """Both model call sites, same as the bind: they drift independently,
+        and a fallback on whichever path lacks the key silently rejoins the
+        shared chain."""
+        llm = _make_llm()
+        builder = create_agent(
+            llm,
+            _make_tool_registry(dummy_tool_a),
+            disable_retrieve_tools=True,
+            agent_name="comms_agent",
+        )
+
+        with patch(
+            "app.override.langgraph_bigtool.create_agent.invoke_llm",
+            return_value=AIMessage(content="ok"),
+        ) as invoked:
+            _agent_runnable(builder).func(
+                _make_state(messages=[HumanMessage(content="hi")]),
+                _make_config(provider=LLMProviderName.OPENROUTER, session_id="conv-1"),
+                store=MagicMock(),
+            )
+
+        assert invoked.call_args.kwargs["sticky_session_id"] == "conv-1-comms_agent"

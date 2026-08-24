@@ -151,9 +151,6 @@ async def _custom_instructions(ctx: SectionContext) -> str:
     return f"CUSTOM INSTRUCTIONS FOR {label} (set by the user — honor these):\n{content.strip()}"
 
 
-# --- volatile sections: retrieved against this turn, churn turn to turn -------
-
-
 async def _skills(ctx: SectionContext) -> str:
     """Installable skills, plus this subagent's integration-specific ones."""
     if not ctx.user_id:
@@ -177,6 +174,9 @@ async def _skills(ctx: SectionContext) -> str:
         if integration_block := integration_skills_block(target_to_subagent(ctx.subagent_id)):
             block = f"{block}\n\n{integration_block}" if block else integration_block
     return block
+
+
+# --- volatile sections: retrieved against this turn, churn turn to turn -------
 
 
 #: The section × tier table. Ordering within a slot is by ``order``; the two
@@ -213,16 +213,23 @@ SECTIONS: tuple[Section, ...] = (
         60,
         _custom_instructions,
     ),
+    # Capability info, not retrieval: the listing is a pure function of the
+    # user and the agent — no query, no clock — and is Redis-cached for 12h,
+    # so it is byte-stable for a conversation's whole life. In the volatile
+    # slot it was re-read on every worker call (~475-1,400 tokens each time).
+    # The trade, taken knowingly: install_skill_from_github can change the
+    # listing mid-conversation, which invalidates the prefix ONCE — the same
+    # trade integrations_manifest already makes for account connects.
+    Section("skills", PromptSlot.DYNAMIC_STABLE, WORKER_TIERS, 70, _skills),
     # The memory core's documents, not the whole core: the agenda and the
     # activity journal are split off into their own volatile section, because
     # they are rewritten every turn and would otherwise churn the cached prefix.
-    Section("core_memory", PromptSlot.DYNAMIC_STABLE, ALL_TIERS, 70, build_core_memory_block),
+    Section("core_memory", PromptSlot.MEMORY_RECALL, ALL_TIERS, 5, build_core_memory_block),
     Section(
         "agenda_activity", PromptSlot.MEMORY_RECALL, ALL_TIERS, 10, build_agenda_and_activity_block
     ),
     Section("memory_recall", PromptSlot.MEMORY_RECALL, ALL_TIERS, 20, build_memory_recall_block),
     Section("gaia_knowledge", PromptSlot.MEMORY_RECALL, ALL_TIERS, 30, build_gaia_knowledge_block),
-    Section("skills", PromptSlot.MEMORY_RECALL, WORKER_TIERS, 40, _skills),
     Section("tracked_todos", PromptSlot.MEMORY_RECALL, ALL_TIERS, 50, build_tracked_todos_block),
     Section("bg_banner", PromptSlot.MEMORY_RECALL, ALL_TIERS, 60, build_background_banner),
     Section(

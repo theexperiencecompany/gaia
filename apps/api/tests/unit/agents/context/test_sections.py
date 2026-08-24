@@ -101,12 +101,18 @@ class TestTheTableIsWellFormed:
             "user_identity",
             "user_prefs",
             "integrations_manifest",
-            # The memory core's DOCUMENTS only. They are rewritten by the
-            # consolidation pass, not per turn, so they belong in the cached
-            # prefix; the agenda and journal below are the half that churns.
-            "core_memory",
         ]
+        # core_memory sits in the volatile TAIL, not the cached prefix. The old
+        # placement assumed the memory documents only change between
+        # conversations ("rewritten by the consolidation pass, not per turn").
+        # Measured on the real graph, that is false — consolidation runs DURING a
+        # conversation, so the documents move inside the prefix and push the whole
+        # conversation out of the cache behind them. Moving them behind the
+        # conversation measured comms 46.0% -> 59.3% and the executor
+        # 64.8% -> 75.8%. The content still reaches the model in full; only its
+        # position changed.
         assert [s.id for s in sections_for(AgentTier.COMMS, PromptSlot.MEMORY_RECALL)] == [
+            "core_memory",
             "agenda_activity",
             "memory_recall",
             "gaia_knowledge",
@@ -116,18 +122,23 @@ class TestTheTableIsWellFormed:
         ]
 
     def test_the_executor_receives_its_own_stable_set(self) -> None:
+        # ``skills`` sits in the STABLE set: the listing is a pure function of
+        # (user, agent) with no query and no clock, Redis-cached for 12h — in
+        # the volatile slot it was re-read on every worker call for nothing.
+        # The known trade: a mid-conversation skill install breaks the prefix
+        # once, same as integrations_manifest already accepts for connects.
         assert [s.id for s in sections_for(AgentTier.EXECUTOR, PromptSlot.DYNAMIC_STABLE)] == [
             "user_identity",
             "user_prefs",
             "workspace_session",
             "integrations_manifest",
-            "core_memory",
+            "skills",
         ]
         assert [s.id for s in sections_for(AgentTier.EXECUTOR, PromptSlot.MEMORY_RECALL)] == [
+            "core_memory",
             "agenda_activity",
             "memory_recall",
             "gaia_knowledge",
-            "skills",
             "tracked_todos",
             "bg_banner",
             "active_todo_banner",
