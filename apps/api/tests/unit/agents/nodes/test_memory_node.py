@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage, ToolMessage
 import pytest
 
 from app.agents.core.nodes.memory_node import (
@@ -621,24 +621,31 @@ class TestTheIngestionHandoff:
             HumanMessage(content="I moved to Bangalore last week", id="m2"),
         ]
 
-    async def _run(self, **overrides: object) -> dict[str, MagicMock]:
+    async def _run(
+        self,
+        *,
+        messages: list[AnyMessage] | None = None,
+        user_id: str = "u1",
+        session_id: str | None = "t1",
+        extraction_prompt: str | None = "pull out slack ids",
+        subagent_id: str | None = "slack",
+        user_name: str | None = "Sam",
+    ) -> dict[str, MagicMock]:
         engine = MagicMock()
         engine.retain = AsyncMock(return_value=None)
         fake = _fake_redis(None)
-        kwargs: dict[str, object] = {
-            "messages": self._thread(),
-            "user_id": "u1",
-            "session_id": "t1",
-            "extraction_prompt": "pull out slack ids",
-            "subagent_id": "slack",
-            "user_name": "Sam",
-        }
-        kwargs.update(overrides)
         with (
             patch(f"{NODE}.memory_engine", engine),
             patch(f"{NODE}.redis_cache", fake),
         ):
-            await _store_user_memory_background(**kwargs)  # type: ignore[arg-type]
+            await _store_user_memory_background(
+                messages=self._thread() if messages is None else messages,
+                user_id=user_id,
+                session_id=session_id,
+                extraction_prompt=extraction_prompt,
+                subagent_id=subagent_id,
+                user_name=user_name,
+            )
         return {"retain": engine.retain, "redis": fake.client}
 
     async def test_the_extraction_is_billed_to_the_user_and_thread_it_came_from(self) -> None:

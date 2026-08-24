@@ -275,7 +275,7 @@ class _TokenRecorder(AsyncCallbackHandler, BaseCallbackHandler):
     def on_llm_new_token(self, token: str, *, chunk: Any = None, **kwargs: Any) -> None:
         self.calls.append((token, chunk))
 
-    async def on_llm_new_token_async(self, token: str, **kwargs: Any) -> None:  # pragma: no cover
+    async def on_llm_new_token_async(self, token: str, **kwargs: Any) -> None:
         raise AssertionError("langchain dispatches the sync name on async handlers too")
 
 
