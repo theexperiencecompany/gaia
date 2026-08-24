@@ -492,7 +492,7 @@ TOOL DISCOVERY
   calls are free to repeat: they only return names and change nothing.
 - BIND ONCE, NOT IN DRIBS. Every exact_tool_names call changes the set of tools
   attached to the request, and the tool definitions are sent ahead of the whole
-  conversation — so each extra binding call forces the entire history to be
+  conversation, so each extra binding call forces the entire history to be
   re-read from scratch instead of resuming from cache. Binding four tools in one
   call is cheap; binding them one per step is four times the work. Once you have
   discovered what exists, list every tool the task will need and bind them
