@@ -8,10 +8,11 @@ authenticated requests, and edge cases around missing settings.
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from httpx import ASGITransport, AsyncClient
 from jose import JWTError
 import pytest
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
 from app.core.bot_auth_middleware import BotAuthMiddleware
 
@@ -107,10 +108,10 @@ class TestAlreadyAuthenticated:
         app = FastAPI()
 
         # A middleware that sets authenticated before BotAuthMiddleware runs
-        from starlette.middleware.base import BaseHTTPMiddleware
-
         class PreAuthMiddleware(BaseHTTPMiddleware):
-            async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+            async def dispatch(
+                self, request: Request, call_next: RequestResponseEndpoint
+            ) -> Response:
                 request.state.authenticated = True
                 request.state.user = {"user_id": "pre_auth_user"}
                 return await call_next(request)
@@ -163,10 +164,11 @@ class TestAlreadyAuthenticated:
         mock_platform.return_value = FAKE_USER_DATA
 
         app = FastAPI()
-        from starlette.middleware.base import BaseHTTPMiddleware
 
         class PreAuthMiddleware(BaseHTTPMiddleware):
-            async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+            async def dispatch(
+                self, request: Request, call_next: RequestResponseEndpoint
+            ) -> Response:
                 request.state.authenticated = True
                 request.state.user = {"user_id": "pre_auth_user"}
                 return await call_next(request)
