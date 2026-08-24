@@ -13,11 +13,12 @@ from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from httpx import ASGITransport, AsyncClient
 from jose import JWTError, jwt
 import pytest
 
+from app.api.v1.endpoints.bot import require_bot_api_key
 from app.config.settings import settings
 from app.constants.auth import JWT_ALGORITHM
 from app.core.bot_auth_middleware import BotAuthMiddleware
@@ -780,3 +781,76 @@ class TestBotAuthFullChain:
             assert payload["platform"] == platform
             assert payload["platform_user_id"] == f"{platform}-user-42"
             assert payload["user_id"] == TEST_USER_ID
+
+
+@pytest.mark.integration
+class TestSessionTokenFastPathReachesBotRoutes:
+    """The real middleware in front of the real ``require_bot_api_key``.
+
+    Every other case here substitutes a header check for the dependency, which
+    is exactly why the fast-path 401 survived: the guard reads middleware state,
+    and the middleware only set that state on the API-key branch.
+    """
+
+    @pytest.fixture
+    def guarded_app(self) -> FastAPI:
+        app = FastAPI()
+        app.add_middleware(BotAuthMiddleware)
+
+        @app.get("/api/v1/bot/guarded", dependencies=[Depends(require_bot_api_key)])
+        async def guarded(request: Request) -> dict[str, object]:
+            return {"user_id": request.state.user["user_id"]}
+
+        return app
+
+    @pytest.mark.regression
+    async def test_a_valid_session_token_plus_key_is_not_401(
+        self,
+        guarded_app: FastAPI,
+        mock_redis_cache: dict[str, AsyncMock],
+        mock_platform_lookup: AsyncMock,
+    ) -> None:
+        mock_platform_lookup.return_value = TEST_USER_DOC
+        token = create_bot_session_token(
+            user_id=TEST_USER_ID,
+            platform=TEST_PLATFORM,
+            platform_user_id=TEST_PLATFORM_USER_ID,
+        )
+
+        transport = ASGITransport(app=guarded_app, raise_app_exceptions=False)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get(
+                "/api/v1/bot/guarded",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "X-Bot-API-Key": TEST_BOT_API_KEY,
+                    "X-Bot-Platform": TEST_PLATFORM,
+                    "X-Bot-Platform-User-Id": TEST_PLATFORM_USER_ID,
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.json()["user_id"] == TEST_USER_ID
+
+    async def test_a_session_token_without_the_key_is_still_401(
+        self,
+        guarded_app: FastAPI,
+        mock_redis_cache: dict[str, AsyncMock],
+        mock_platform_lookup: AsyncMock,
+    ) -> None:
+        """Identifying the user is not authorising the route — the guard still bites."""
+        mock_platform_lookup.return_value = TEST_USER_DOC
+        token = create_bot_session_token(
+            user_id=TEST_USER_ID,
+            platform=TEST_PLATFORM,
+            platform_user_id=TEST_PLATFORM_USER_ID,
+        )
+
+        transport = ASGITransport(app=guarded_app, raise_app_exceptions=False)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get(
+                "/api/v1/bot/guarded",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert response.status_code == 401

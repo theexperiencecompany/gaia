@@ -584,6 +584,80 @@ class TestAuthPrecedence:
         # JWT authenticates via discord (from FAKE_JWT_PAYLOAD), not slack
         assert data["user"]["auth_provider"] == "bot:discord"
 
+    @pytest.mark.regression
+    @patch("app.core.bot_auth_middleware.get_cache", new_callable=AsyncMock)
+    @patch("app.core.bot_auth_middleware.set_cache", new_callable=AsyncMock)
+    @patch(
+        "app.core.bot_auth_middleware.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.core.bot_auth_middleware.verify_bot_session_token")
+    @patch("app.core.bot_auth_middleware.settings")
+    async def test_jwt_fast_path_still_marks_the_bot_api_key_valid(
+        self,
+        mock_settings: MagicMock,
+        mock_verify: MagicMock,
+        mock_platform: AsyncMock,
+        mock_set_cache: AsyncMock,
+        mock_get_cache: AsyncMock,
+    ) -> None:
+        """A valid JWT must not hide a valid API key.
+
+        The key authorises the bot ROUTE (``require_bot_api_key``); the JWT only
+        identifies the user. Verifying the key only when the JWT failed left
+        every fast-path request with ``bot_api_key_valid`` unset, so ``/bot/*``
+        answered 401 and the bot threw its session token away and retried —
+        a wasted round trip on almost every turn.
+        """
+        mock_settings.GAIA_BOT_API_KEY = "secret-bot-key"  # pragma: allowlist secret
+        mock_verify.return_value = FAKE_JWT_PAYLOAD
+        mock_get_cache.return_value = None
+        mock_platform.return_value = FAKE_USER_DATA
+
+        app = _build_app()
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
+            resp = await client.get(
+                "/api/test",
+                headers={
+                    "Authorization": "Bearer jwt-token",
+                    "X-Bot-API-Key": "secret-bot-key",
+                    "X-Bot-Platform": "discord",
+                    "X-Bot-Platform-User-Id": "disc_999",
+                },
+            )
+
+        data = resp.json()
+        assert data["authenticated"] is True
+        assert data["bot_api_key_valid"] is True
+        assert data["bot_platform"] == "discord"
+        assert data["bot_platform_user_id"] == "disc_999"
+
+    @patch("app.core.bot_auth_middleware.verify_bot_session_token")
+    @patch("app.core.bot_auth_middleware.settings")
+    async def test_jwt_fast_path_leaves_an_invalid_key_invalid(
+        self,
+        mock_settings: MagicMock,
+        mock_verify: MagicMock,
+    ) -> None:
+        """The key is verified, not assumed — a wrong key stays rejected even
+        when the JWT authenticated the user."""
+        mock_settings.GAIA_BOT_API_KEY = "secret-bot-key"  # pragma: allowlist secret
+        mock_verify.return_value = FAKE_JWT_PAYLOAD
+
+        app = _build_app()
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
+            resp = await client.get(
+                "/api/test",
+                headers={
+                    "Authorization": "Bearer jwt-token",
+                    "X-Bot-API-Key": "wrong-key",
+                },
+            )
+
+        assert resp.json()["bot_api_key_valid"] is False
+
 
 # ---------------------------------------------------------------------------
 # _verify_api_key edge: missing GAIA_BOT_API_KEY attribute
