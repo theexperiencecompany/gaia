@@ -1,12 +1,15 @@
 """Unit tests for runtime-configurable LLM providers (self-host wave 1).
 
 Covers:
-- init_ollama_llm: ChatOpenAI construction (base_url/model/api_key), env and
-  credential-store sources, trailing-slash normalization
+- init_ollama_llm: ChatOpenAI construction (base_url/model/api_key), explicit
+  OLLAMA_BASE_URL env and credential-store sources, trailing-slash
+  normalization
 - actionable LLMNotConfiguredError from the provider init functions when no
   configuration exists
-- resolver precedence: credential-store snapshot beats env fallback; env path
-  preserved byte-for-byte when nothing was resolved yet
+- resolver precedence: credential-store snapshot beats env fallback; the env
+  fallback IS provider_credentials_service._env_fallback (one shared policy —
+  OpenRouter forwards an explicitly-set OPENROUTER_BASE_URL, Ollama counts only
+  an explicitly-set OLLAMA_BASE_URL)
 - _get_available_providers consulting resolver results instead of import-time
   registry availability
 - refresh_provider_configs populating the snapshot; scheduling is a no-op
@@ -90,14 +93,17 @@ class _FakeChatOpenAI:
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch):
-    """Blank credentials and isolate module-level state between tests."""
+    """Blank credentials and isolate module-level state between tests.
+
+    OLLAMA_BASE_URL is removed from os.environ (not just settings): the env
+    fallback reads the explicit var only, so an ambient value on a developer
+    machine would leak a lane into every test here.
+    """
     monkeypatch.setattr(client_module.settings, "GAIA_SIM_MODE", False, raising=False)
     monkeypatch.setattr(client_module.settings, "OPENROUTER_API_KEY", None, raising=False)
     monkeypatch.setattr(client_module.settings, "OPENROUTER_BASE_URL", None, raising=False)
     monkeypatch.setattr(client_module.settings, "GOOGLE_API_KEY", None, raising=False)
-    monkeypatch.setattr(
-        client_module.settings, "OLLAMA_BASE_URL", "http://127.0.0.1:11434", raising=False
-    )
+    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
     monkeypatch.setattr(client_module.settings, "DEV_LLM_API_KEY", None, raising=False)
     monkeypatch.setattr(client_module.settings, "DEV_LLM_BASE_URL", None, raising=False)
     monkeypatch.setattr(client_module.settings, "DEV_LLM_MODEL", None, raising=False)
@@ -157,9 +163,11 @@ class TestOllamaInit:
         assert kwargs["max_retries"] == 0
         assert cast(Any, instance).profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
 
-    def test_env_fallback_uses_settings_and_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_explicit_env_var_builds_expected_client(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The EXPLICIT OLLAMA_BASE_URL env var (not the settings default) is the
+        env-side source for the keyless lane."""
         monkeypatch.setattr(client_module, "ChatOpenAI", _FakeChatOpenAI)
-        monkeypatch.setattr(client_module.settings, "OLLAMA_BASE_URL", "http://127.0.0.1:11500")
+        monkeypatch.setenv("OLLAMA_BASE_URL", "http://127.0.0.1:11500")
         _FakeChatOpenAI.calls.clear()
 
         init_ollama_llm().loader_func()
@@ -167,6 +175,21 @@ class TestOllamaInit:
         [kwargs] = _FakeChatOpenAI.calls
         assert kwargs["base_url"] == "http://127.0.0.1:11500/v1"
         assert kwargs["model"] == "llama3.2"
+
+    def test_code_default_url_is_not_a_configuration_source(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """F10: the settings default (docker-internal DNS name) must not satisfy
+        the lane — only an explicitly-set env var counts, exactly like the
+        credential service's fallback."""
+        monkeypatch.setattr(
+            client_module.settings, "OLLAMA_BASE_URL", "http://host.docker.internal:11434"
+        )
+        # _hermetic already removed the env var.
+
+        with pytest.raises(LLMNotConfiguredError):
+            init_ollama_llm().loader_func()
+        assert client_module._provider_config(LLMProviderName.OLLAMA) is None
 
     def test_sim_mode_returns_stub(self, monkeypatch: pytest.MonkeyPatch) -> None:
         sentinel = object()
@@ -196,8 +219,9 @@ class TestActionableMissingConfig:
         assert "AI Providers" in message
         assert "setup wizard" in message
 
-    def test_ollama_never_lacks_config(self) -> None:
-        """Ollama is keyless: the settings default alone satisfies it."""
+    def test_ollama_with_explicit_env_is_configured(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Ollama is keyless: an explicitly-set endpoint env var satisfies it."""
+        monkeypatch.setenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
         init_ollama_llm().loader_func()
 
 
@@ -222,8 +246,23 @@ class TestResolverPrecedence:
         assert kwargs["base_url"] == "http://gateway.internal:8080/v1"
 
     def test_env_serves_when_never_resolved(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Pre-refresh (empty snapshot) the env path is byte-for-byte today's:
-        the API key comes from settings and NO base_url kwarg is forwarded."""
+        """Pre-refresh (empty snapshot) the env path serves from settings. With
+        no OPENROUTER_BASE_URL configured, NO base_url kwarg is forwarded — a
+        None kwarg would clobber ChatOpenRouter's OPENROUTER_API_BASE default."""
+        monkeypatch.setattr(client_module, "ChatOpenRouter", _FakeChatOpenRouter)
+        monkeypatch.setattr(client_module.settings, "OPENROUTER_API_KEY", "sk-env-key")
+        _FakeChatOpenRouter.calls.clear()
+
+        init_openrouter_llm().loader_func()
+
+        [kwargs] = _FakeChatOpenRouter.calls
+        assert kwargs["api_key"] == SecretStr("sk-env-key")
+        assert "base_url" not in kwargs
+
+    def test_explicit_env_base_url_is_forwarded(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The shared env-fallback policy: an explicitly-set OPENROUTER_BASE_URL
+        rides the resolved config into client construction, same as it does for
+        the credential service's resolution."""
         monkeypatch.setattr(client_module, "ChatOpenRouter", _FakeChatOpenRouter)
         monkeypatch.setattr(client_module.settings, "OPENROUTER_API_KEY", "sk-env-key")
         monkeypatch.setattr(client_module.settings, "OPENROUTER_BASE_URL", "http://localhost:9797")
@@ -232,8 +271,7 @@ class TestResolverPrecedence:
         init_openrouter_llm().loader_func()
 
         [kwargs] = _FakeChatOpenRouter.calls
-        assert kwargs["api_key"] == SecretStr("sk-env-key")
-        assert "base_url" not in kwargs
+        assert kwargs["base_url"] == "http://localhost:9797"
 
     def test_aux_default_llm_builds_from_store_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(client_module, "ChatOpenRouter", _FakeChatOpenRouter)
@@ -277,9 +315,18 @@ class TestAvailableProviders:
 
         assert available[LLMProviderName.OPENROUTER] is registry["openrouter_llm"]
 
-    def test_unconfigured_providers_excluded_but_ollama_always_there(
-        self, registry: dict[str, object]
+    def test_unconfigured_providers_excluded(self, registry: dict[str, object]) -> None:
+        """No snapshot entries, no explicit env: every lane is unavailable —
+        including Ollama, whose code-default URL is not a configuration source."""
+        available = _get_available_providers()
+
+        assert available == {}
+
+    def test_explicit_ollama_env_makes_it_available(
+        self, registry: dict[str, object], monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        monkeypatch.setenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+
         available = _get_available_providers()
 
         assert set(available) == {LLMProviderName.OLLAMA}
@@ -329,8 +376,10 @@ class TestRefreshProviderConfigs:
 
         from unittest.mock import patch
 
+        # client.py imports `resolve` directly (the phantom cycle was disproven),
+        # so the patch lands on the client module's binding of it.
         with patch(
-            "app.services.providers.provider_credentials_service.resolve",
+            "app.agents.llm.client.resolve",
             side_effect=fake_resolve,
         ):
             await seed_and_refresh()

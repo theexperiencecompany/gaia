@@ -12,7 +12,9 @@ against the new configuration:
 
 - the lazy-loader registry entry for the provider's LLM is reset,
 - the aux-LLM caches inside ``app.agents.llm.client`` are cleared,
-- a Redis publish on ``RUNTIME_CONFIG_CHANNEL`` tells other pods to do the same.
+- a Redis publish on ``RUNTIME_CONFIG_CHANNEL`` tells other pods to do the same
+  (subscribed to per pod by ``app.core.runtime_config_subscriber``, which
+  applies remote updates through :func:`invalidate_locally`).
 """
 
 import importlib
@@ -116,8 +118,15 @@ async def delete(provider: str) -> None:
     await invalidate(provider)
 
 
-async def invalidate(provider: str) -> None:
-    """Drop this pod's cached config and tell every consumer (and pod) to rebuild."""
+def invalidate_locally(provider: str) -> None:
+    """Drop every pod-local cached view of ``provider`` so consumers rebuild.
+
+    The pod-local half of :func:`invalidate`, shared verbatim with the
+    cross-pod path: the runtime-config subscriber applies REMOTE credential
+    updates by calling this, so a save served by another pod rebuilds exactly
+    what a local save does (service TTL cache → lazy-loader registry → aux LLM
+    caches).
+    """
     _cache.pop(provider, None)
 
     registry_key = _LLM_REGISTRY_KEYS.get(provider)
@@ -132,12 +141,19 @@ async def invalidate(provider: str) -> None:
                 name=registry_key,
             )
 
-    # Imported lazily through the module: client.py consumes this service for
-    # provider resolution, so a module-level import (of the module or its
-    # symbol) is a cycle. Contract: A3 provides reset_aux_llm_caches on
+    # Imported lazily through the module: client.py sits ABOVE this service in
+    # the import graph (its resolver consumes this module's symbols at module
+    # level), so importing the client back at module level here would close a
+    # real cycle — this function-level import is the legitimate cycle-breaker,
+    # not a workaround. Contract: reset_aux_llm_caches lives on
     # app.agents.llm.client; a missing symbol fails loud here.
     client_module = importlib.import_module("app.agents.llm.client")
     client_module.reset_aux_llm_caches()
+
+
+async def invalidate(provider: str) -> None:
+    """Drop this pod's cached config and tell every consumer (and pod) to rebuild."""
+    invalidate_locally(provider)
 
     client = redis_cache.redis
     if client is not None:

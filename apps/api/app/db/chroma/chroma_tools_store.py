@@ -522,15 +522,14 @@ async def initialize_chroma_tools_store() -> ChromaStore:
     """
     tool_registry = await get_tool_registry()
     chroma_client = await ChromaClient.get_client()
-    raw_embeddings = await providers.aget("google_embeddings")
-
-    if raw_embeddings is None:
-        raise RuntimeError("Embeddings not available")
-
     # Registered by init_embeddings() in app/agents/tools/core/store.py —
     # Google when a key exists, LOCAL fastembed under bare self-host. The
     # two backends have different vector sizes; the instance declares its own.
-    embeddings = raw_embeddings
+    embeddings = await providers.aget("google_embeddings")
+
+    if embeddings is None:
+        raise RuntimeError("Embeddings not available")
+
     dims = getattr(embeddings, "embedding_dims", 768)
 
     store = ChromaStore(

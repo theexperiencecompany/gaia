@@ -248,9 +248,10 @@ async def _execute_batch_operations(
     required_keys=[],
     strategy=MissingKeyStrategy.WARN,
     warning_message=(
-        "Workflow trigger search disabled — it needs an embeddings provider "
-        "(GOOGLE_API_KEY). Everything else works; agents get a clear "
-        "'unavailable' answer from the search_triggers tool."
+        "Workflow trigger search disabled — it needs the embeddings backend "
+        "(a Google API key, or the built-in keyless local fastembed fallback "
+        "when even that fails to load). Everything else works; agents get a "
+        "clear 'unavailable' answer from the search_triggers tool."
     ),
     auto_initialize=True,
 )
@@ -271,14 +272,14 @@ async def initialize_chroma_triggers_store() -> ChromaStore:
     server — trigger indexing is an enhancement, not core chat.
     """
     chroma_client = await ChromaClient.get_client()
-    raw_embeddings = await providers.aget("google_embeddings")
+    # Registered by init_embeddings() in app/agents/tools/core/store.py —
+    # Google when a key exists, LOCAL fastembed on a bare self-host. The
+    # two backends have different vector sizes; the instance declares its own.
+    embeddings = await providers.aget("google_embeddings")
 
-    if raw_embeddings is None:
+    if embeddings is None:
         raise RuntimeError("Embeddings not available for triggers store")
 
-    # Same backend selection as the tools store: Google with a key, LOCAL
-    # fastembed on a bare self-host. Dims follow the active backend.
-    embeddings = raw_embeddings
     dims = getattr(embeddings, "embedding_dims", 768)
 
     store = ChromaStore(

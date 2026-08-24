@@ -10,6 +10,10 @@ from app.core.provider_registration import (
     unified_shutdown,
     unified_startup,
 )
+from app.core.runtime_config_subscriber import (
+    start_runtime_config_subscriber,
+    stop_runtime_config_subscriber,
+)
 from app.services.device.revoke_listener import (
     start_revoke_listener,
     stop_revoke_listener,
@@ -54,6 +58,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
             start_browser_reaper()
             start_revoke_listener()
             start_up_listener()
+            start_runtime_config_subscriber()
         yield
 
     except Exception as e:
@@ -62,6 +67,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     finally:
         await stop_up_listener()
         await stop_revoke_listener()
+        await stop_runtime_config_subscriber()
         await stop_browser_reaper()
         if posthog_client is not None:
             # shutdown(), not flush(): it flushes the queue AND joins the

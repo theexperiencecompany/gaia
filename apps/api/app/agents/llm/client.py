@@ -1,7 +1,6 @@
 import asyncio
 from functools import cache
-import importlib
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import Any, TypeVar, cast
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.language_models import LanguageModelInput, LanguageModelLike
@@ -65,12 +64,12 @@ from app.services.llm_metering import (
     extract_message_usage,
     record_llm_call,
 )
+from app.services.providers.provider_credentials_service import (
+    ProviderConfig,
+    _env_fallback,
+    resolve,
+)
 from shared.py.wide_events import log
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
-    from app.services.providers.provider_credentials_service import ProviderConfig
 
 _StructuredT = TypeVar("_StructuredT", bound=BaseModel)
 _ResultT = TypeVar("_ResultT")
@@ -108,8 +107,9 @@ def with_llm_retry(runnable: Runnable, *, max_attempts: int = LLM_RETRY_MAX_ATTE
 PROVIDER_MODELS: dict[LLMProviderName, str] = {
     LLMProviderName.GEMINI: DEFAULT_GEMINI_MODEL_NAME,
     LLMProviderName.OPENROUTER: DEFAULT_MODEL_NAME,
-    # Keyless local lane; the store credential or OLLAMA_BASE_URL picks the
-    # endpoint at load time — this is only the model default.
+    # Keyless local lane; the store credential or an explicitly-set
+    # OLLAMA_BASE_URL picks the endpoint at load time — this is only the model
+    # default.
     LLMProviderName.OLLAMA: "llama3.2",
     # The env-defined custom dev endpoint; empty when unset — the provider is
     # only registered in development with all DEV_LLM_* settings present.
@@ -128,42 +128,38 @@ PROVIDER_PRIORITY: dict[int, LLMProviderName] = {
 # Provider credentials are runtime state: users configure them in Settings (or
 # the setup wizard) while the process is up, and they live encrypted in Mongo
 # behind ``provider_credentials_service.resolve`` (store → env fallback → None,
-# 60s TTL). The service is async and must not be imported at module level
-# (import cycle: it resets this module's caches on invalidation), so its
-# results are mirrored into a plain snapshot that the SYNC paths below — the
-# lazy loaders and ``_get_available_providers`` — can read without awaiting:
+# 60s TTL). The service is async, so its results are mirrored into a plain
+# snapshot that the SYNC paths below — the lazy loaders and
+# ``_get_available_providers`` — can read without awaiting:
 #
 # - ``refresh_provider_configs`` pulls every provider's current config into the
 #   snapshot. It runs as a startup task (scheduled by ``register_llm_providers``
 #   when a loop is already running) and again whenever credentials change (the
 #   invalidation fan-out calls ``reset_aux_llm_caches``, which re-schedules).
 # - Until the first refresh lands, every consumer falls back to reading the env
-#   directly — exactly what the pre-selfhost code did — so dev/prod behavior is
-#   unchanged and scripts that never run a loop keep working.
+#   directly — through the service's own ``_env_fallback``, so client and
+#   service share ONE env-fallback policy — which is what the pre-selfhost code
+#   did. Dev/prod behavior is unchanged and scripts that never run a loop keep
+#   working.
 # ---------------------------------------------------------------------------
 
 # Everything with a resolvable credential, including tavily (no LLM lane, but
 # its availability reads through the same snapshot) — mirrors CREDENTIAL_PROVIDERS.
 _RUNTIME_CONFIG_PROVIDERS: tuple[str, ...] = ("openrouter", "gemini", "ollama", "custom", "tavily")
 
-_runtime_configs: dict[str, "ProviderConfig | None"] = {}
+_runtime_configs: dict[str, ProviderConfig | None] = {}
 
 NO_PROVIDER_CONFIGURED_MESSAGE = (
     "No AI provider configured. Open Settings → AI Providers or run the setup wizard."
 )
 
 
-async def resolve_provider_config(provider: str) -> "ProviderConfig | None":
+async def resolve_provider_config(provider: str) -> ProviderConfig | None:
     """The provider's active configuration from the credential service.
 
-    Thin async seam over ``provider_credentials_service.resolve``. Imported
-    lazily through the module — the service's invalidation fan-out imports THIS
-    module back (to call :func:`reset_aux_llm_caches`), so a top-level import of
-    either side is a cycle. The result is cached into :data:`_runtime_configs`
-    so sync consumers see it.
+    Thin async seam over the service's ``resolve``; the result is mirrored
+    into :data:`_runtime_configs` so sync consumers see it.
     """
-    service = importlib.import_module("app.services.providers.provider_credentials_service")
-    resolve = cast("Callable[[str], Awaitable[ProviderConfig | None]]", service.resolve)
     config = await resolve(provider)
     _runtime_configs[provider] = config
     return config
@@ -208,74 +204,25 @@ def _schedule_runtime_config_refresh() -> None:
     task.add_done_callback(_on_refresh_done)
 
 
-def runtime_provider_config(provider: str) -> "ProviderConfig | None":
+def runtime_provider_config(provider: str) -> ProviderConfig | None:
     """The resolver's last-known result for ``provider``, or ``None`` when it
     has not been resolved yet (callers combine this with their own env read —
-    see :func:`_env_provider_config`)."""
+    the service's ``_env_fallback``, see :func:`_provider_config`)."""
     return _runtime_configs.get(provider)
 
 
-def _env_provider_config(provider: LLMProviderName) -> "ProviderConfig | None":
-    """What the environment alone provides — the pre-selfhost behavior, read at
-    call time instead of import time so tests and long-lived processes observe
-    current settings."""
-    match provider:
-        case LLMProviderName.OPENROUTER:
-            if not settings.OPENROUTER_API_KEY:
-                return None
-            # base_url deliberately None: init_openrouter_llm must NOT forward one
-            # (a None kwarg would clobber ChatOpenRouter's OPENROUTER_API_BASE
-            # default; redirecting to the stub is sim mode's job via _sim_llm).
-            return {
-                "api_key": settings.OPENROUTER_API_KEY,
-                "base_url": None,
-                "model": None,
-                "preset": None,
-            }
-        case LLMProviderName.GEMINI:
-            if not settings.GOOGLE_API_KEY:
-                return None
-            return {
-                "api_key": settings.GOOGLE_API_KEY,
-                "base_url": None,
-                "model": None,
-                "preset": None,
-            }
-        case LLMProviderName.OLLAMA:
-            # Keyless local lane — resolvable from its endpoint alone.
-            return {
-                "api_key": None,
-                "base_url": settings.OLLAMA_BASE_URL,
-                "model": None,
-                "preset": None,
-            }
-        case LLMProviderName.CUSTOM:
-            if settings.ENV != "development":
-                return None
-            if not (
-                settings.DEV_LLM_BASE_URL and settings.DEV_LLM_API_KEY and settings.DEV_LLM_MODEL
-            ):
-                return None
-            return {
-                "api_key": settings.DEV_LLM_API_KEY,
-                "base_url": settings.DEV_LLM_BASE_URL,
-                "model": settings.DEV_LLM_MODEL,
-                "preset": None,
-            }
-        case _:
-            raise ValueError(f"Unhandled LLM provider: {provider}")
-
-
-def _provider_config(provider: LLMProviderName) -> "ProviderConfig | None":
+def _provider_config(provider: LLMProviderName) -> ProviderConfig | None:
     """The provider's effective config: resolver result when one exists, the
-    env-only equivalent otherwise. Store credentials therefore win over env the
+    env-only equivalent otherwise — the service's :func:`_env_fallback`, so
+    client and service cannot diverge on env semantics (Ollama's explicit-env
+    rule, OpenRouter's base_url). Store credentials therefore win over env the
     moment a resolution has run, and never before."""
     if provider in _runtime_configs:
         return _runtime_configs[provider]
-    return _env_provider_config(provider)
+    return _env_fallback(provider.value)
 
 
-def _require_provider_config(provider: LLMProviderName, *fields: str) -> "ProviderConfig":
+def _require_provider_config(provider: LLMProviderName, *fields: str) -> ProviderConfig:
     """The provider's config for building a client, raising the actionable
     self-host error when it cannot serve one — either because nothing is
     configured at all or a field the client construction needs is missing."""
@@ -374,10 +321,11 @@ def init_openrouter_llm() -> LanguageModelLike:
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
     config = _require_provider_config(LLMProviderName.OPENROUTER, "api_key")
-    # No base_url kwarg unless a credential STORE entry carries one: passing None
-    # would override the field's OPENROUTER_API_BASE env default_factory, and the
-    # env fallback must keep today's construction byte-for-byte. Redirecting to
-    # the stub is sim mode's job (_sim_llm).
+    # No base_url kwarg unless the resolved config carries one — a store entry,
+    # or an explicitly-set OPENROUTER_BASE_URL via the shared env fallback:
+    # passing None would override the field's OPENROUTER_API_BASE env
+    # default_factory, and the unset case must keep today's construction
+    # byte-for-byte. Redirecting to the stub is sim mode's job (_sim_llm).
     base_url_kwargs: dict[str, Any] = {}
     if config.get("base_url"):
         base_url_kwargs = {"base_url": config["base_url"]}
@@ -421,13 +369,17 @@ def init_ollama_llm() -> LanguageModelLike:
     unlike langchain-openrouter's, honors it — ``without_sdk_retry`` reaches into
     ChatOpenRouter's ``client.sdk_configuration``, which ChatOpenAI has no
     equivalent of). The lane is available whenever an endpoint is configured:
-    the store credential wins over ``OLLAMA_BASE_URL``, whose settings default
-    makes the lane always resolvable.
+    either a store credential or an EXPLICITLY-set ``OLLAMA_BASE_URL`` env var.
+    The settings default deliberately does NOT count (it names a Docker-internal
+    DNS name and made bare instances report a lane that dies on connect) — see
+    the service's ``_env_fallback``, the one env-fallback policy.
     """
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
     config = _require_provider_config(LLMProviderName.OLLAMA, "base_url")
-    base_url = (config.get("base_url") or settings.OLLAMA_BASE_URL).rstrip("/")
+    # _require_provider_config already guaranteed a non-empty endpoint; str()
+    # narrows the TypedDict's str | None read.
+    base_url = str(config["base_url"]).rstrip("/")
     llm = ChatOpenAI(
         model=config.get("model") or PROVIDER_MODELS[LLMProviderName.OLLAMA],
         temperature=DEFAULT_LLM_TEMPERATURE,
@@ -698,9 +650,9 @@ def _build_default_llm(
     temperature: float, api_key: str, base_url: str | None = None
 ) -> BaseChatModel:
     kwargs: dict[str, Any] = {}
-    # Only forward a store-provided base_url: a None kwarg would override the
-    # field's OPENROUTER_API_BASE env default_factory (env fallback carries no
-    # base_url for exactly this reason).
+    # Only forward a truthy base_url: a None kwarg would override the field's
+    # OPENROUTER_API_BASE env default_factory (the shared env fallback leaves it
+    # unset unless OPENROUTER_BASE_URL was explicitly configured).
     if base_url:
         kwargs["base_url"] = base_url
     llm = without_sdk_retry(

@@ -3,6 +3,8 @@
 Covers the contract: Fernet-encrypted JSON payloads in Mongo, DB credential →
 env fallback → None resolution with a 60s TTL cache, and invalidate() clearing
 the cache + resetting the LLM registry + aux LLM caches + Redis publish.
+invalidate_locally is the shared pod-local half of that fan-out — it is what
+the runtime-config subscriber runs when another pod's update arrives.
 """
 
 import json
@@ -420,6 +422,40 @@ class TestInvalidate:
         monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
         assert await resolve("ollama") is None
         assert registry_reset_calls == ["ollama_llm"]
+
+
+# ---------------------------------------------------------------------------
+# invalidate_locally — the pod-local half shared with the remote subscriber
+# ---------------------------------------------------------------------------
+
+
+class TestInvalidateLocally:
+    async def test_drops_caches_and_fans_out_without_publishing(
+        self, repo, fixed_secret, redis_fake, registry_reset_calls, aux_cache_calls
+    ) -> None:
+        """The exact sequence a REMOTE pod's update must run: TTL cache drop,
+        lazy-loader reset, aux LLM caches — and NO publish (that would echo the
+        update back onto the channel and loop it across pods forever)."""
+        await resolve("openrouter")
+        assert "openrouter" in service_module._cache
+
+        service_module.invalidate_locally("openrouter")
+
+        assert "openrouter" not in service_module._cache
+        assert registry_reset_calls == ["openrouter_llm"]
+        assert aux_cache_calls == [1]
+        assert redis_fake.published == []
+
+    def test_unknown_provider_is_a_harmless_noop(
+        self, redis_fake, registry_reset_calls, aux_cache_calls
+    ) -> None:
+        """A payload naming a provider this build doesn't know must still clear
+        what it can without raising inside the listener."""
+        service_module.invalidate_locally("not-a-provider")
+
+        assert registry_reset_calls == []
+        assert aux_cache_calls == [1]
+        assert redis_fake.published == []
 
 
 # ---------------------------------------------------------------------------

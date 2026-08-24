@@ -493,6 +493,9 @@ class TestGetDefaultLlm:
         _build_default_llm.cache_clear()
         yield
         _build_default_llm.cache_clear()
+        # Tests below seed the runtime-config snapshot directly; drop it so a
+        # seeded key can't leak into other tests.
+        client_module._runtime_configs.pop("openrouter", None)
 
     @patch("app.agents.llm.client.ChatOpenRouter")
     @patch("app.agents.llm.client.settings")
@@ -500,7 +503,14 @@ class TestGetDefaultLlm:
         self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
     ) -> None:
         mock_settings.GAIA_SIM_MODE = False
-        mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
+        # Config arrives through the runtime snapshot (what the credential
+        # service resolves); client.settings is patched only for sim mode.
+        client_module._runtime_configs["openrouter"] = {
+            "api_key": "or-key",  # pragma: allowlist secret
+            "base_url": None,
+            "model": None,
+            "preset": None,
+        }
         mock_chat_openrouter.return_value = MagicMock()
 
         assert get_default_llm() is mock_chat_openrouter.return_value
@@ -522,7 +532,12 @@ class TestGetDefaultLlm:
         self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
     ) -> None:
         mock_settings.GAIA_SIM_MODE = False
-        mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
+        client_module._runtime_configs["openrouter"] = {
+            "api_key": "or-key",  # pragma: allowlist secret
+            "base_url": None,
+            "model": None,
+            "preset": None,
+        }
         mock_chat_openrouter.side_effect = lambda **_: MagicMock()
 
         assert get_default_llm() is get_default_llm()

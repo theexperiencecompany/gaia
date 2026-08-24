@@ -6,6 +6,7 @@ from bson import ObjectId
 from fastapi import BackgroundTasks, HTTPException
 import pytest
 
+from app.config.settings import settings
 from app.models.user_models import (
     BioStatus,
     OnboardingPhase,
@@ -228,6 +229,70 @@ class TestGetUserOnboardingStatus:
         with pytest.raises(HTTPException) as exc_info:
             await get_user_onboarding_status("invalid")
         assert exc_info.value.status_code == 500
+
+
+class TestLocalAuthOnboardingSynthesis:
+    """The unified AUTH_MODE=local synthesis (F8): the status endpoint and
+    build_user_context must report completed=True regardless of stored state —
+    self-host has no pipeline that could produce a meaningful False."""
+
+    @pytest.fixture
+    def local_auth(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+
+    async def test_local_forces_completed_over_stored_false(
+        self, mock_repo, sample_user_id, local_auth
+    ):
+        mock_repo.get.return_value = UserDocument.model_validate(
+            {"id": sample_user_id, "onboarding": {"completed": False}}
+        )
+
+        result = await get_user_onboarding_status(sample_user_id)
+
+        assert result.completed is True
+
+    async def test_local_synthesizes_completion_when_nothing_stored(
+        self, mock_repo, sample_user_id, local_auth
+    ):
+        mock_repo.get.return_value = UserDocument.model_validate({"id": sample_user_id})
+
+        result = await get_user_onboarding_status(sample_user_id)
+
+        assert result.completed is True
+        assert result.phase == "completed"
+
+    async def test_local_preserves_stored_phase_and_metadata(
+        self, mock_repo, sample_user_id, local_auth
+    ):
+        mock_repo.get.return_value = UserDocument.model_validate(
+            {
+                "id": sample_user_id,
+                "onboarding": {
+                    "completed": False,
+                    "phase": OnboardingPhase.PERSONALIZATION_PENDING,
+                    "preferences": {"profession": "Engineer"},
+                },
+            }
+        )
+
+        result = await get_user_onboarding_status(sample_user_id)
+
+        assert result.completed is True  # forced…
+        assert result.phase == OnboardingPhase.PERSONALIZATION_PENDING  # …stored phase kept
+        assert result.preferences.profession == "Engineer"
+
+    async def test_workos_keeps_stored_state_untouched(
+        self, mock_repo, sample_user_id, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+        mock_repo.get.return_value = UserDocument.model_validate(
+            {"id": sample_user_id, "onboarding": {"completed": False}}
+        )
+
+        result = await get_user_onboarding_status(sample_user_id)
+
+        assert result.completed is False
+        assert result.phase is None
 
 
 class TestUpdateOnboardingPreferences:

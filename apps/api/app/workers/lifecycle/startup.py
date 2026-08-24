@@ -26,6 +26,7 @@ from app.core.provider_registration import (
     setup_warnings,
     unified_startup,
 )
+from app.core.runtime_config_subscriber import start_runtime_config_subscriber
 from app.utils.browser_reaper import start_browser_reaper
 from app.workers.metrics import start_metrics_server
 from shared.py.wide_events import log, log_context
@@ -62,3 +63,8 @@ async def startup(ctx: dict[str, Any]) -> None:
         # Reap any crawl4ai browser drivers that escape teardown (worker crawl
         # tasks are routinely cancelled; see app/utils/browser_reaper.py).
         start_browser_reaper()
+
+        # Apply provider-credential updates published by the API pod (and any
+        # other worker) — the executor rebuilds LLM clients against fresh
+        # credentials instead of serving the 60s-TTL stale ones.
+        start_runtime_config_subscriber()

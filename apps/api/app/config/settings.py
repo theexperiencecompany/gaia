@@ -712,58 +712,6 @@ class DevelopmentSettings(CommonSettings):
     )
 
 
-# Fields ProductionSettings marks required that a self-host instance legitimately
-# boots without — every SaaS/provider integration is optional (features disable
-# gracefully via the lazy-provider WARN path) so the required set is only the
-# infra connection material plus machine-local secrets, which `gaia up`
-# auto-generates. User-facing provider keys arrive at runtime via the
-# credentials store instead of env.
-_SELFHOST_OPTIONAL_STRS = (
-    "BLOG_BEARER_TOKEN",
-    "CLOUDINARY_API_KEY",
-    "CLOUDINARY_API_SECRET",
-    "CLOUDINARY_CLOUD_NAME",
-    "COMPOSIO_KEY",
-    "COMPOSIO_WEBHOOK_SECRET",
-    "DEEPGRAM_API_KEY",
-    "DODO_PAYMENTS_API_KEY",
-    "DODO_WEBHOOK_PAYMENTS_SECRET",
-    "E2B_API_KEY",
-    "E2B_DOMAIN",
-    "E2B_TEMPLATE_ID",
-    "ELEVENLABS_API_KEY",
-    "ELEVENLABS_TTS_MODEL",
-    "ELEVENLABS_VOICE_ID",
-    "FIGMA_MCP_CLIENT_ID",
-    "FIGMA_MCP_CLIENT_SECRET",
-    "FIRECRAWL_API_KEY",
-    "GAIA_BACKEND_URL",
-    "GOOGLE_API_KEY",
-    "GOOGLE_CLIENT_ID",
-    "GOOGLE_CLIENT_SECRET",
-    "JUICEFS_META_URL_TEMPLATE",
-    "LIVEKIT_API_KEY",
-    "LIVEKIT_API_SECRET",
-    "LIVEKIT_URL",
-    "LLAMA_INDEX_KEY",
-    "MCP_ENCRYPTION_KEY",
-    "NOTION_MCP_CLIENT_ID",
-    "NOTION_MCP_CLIENT_SECRET",
-    "OPENAI_API_KEY",
-    "OPENROUTER_API_KEY",
-    "OPENWEATHER_API_KEY",
-    "R2_ACCESS_KEY",
-    "R2_ACCOUNT_ID",
-    "R2_BUCKET",
-    "R2_SECRET_KEY",
-    "RESEND_API_KEY",
-    "RESEND_AUDIENCE_ID",
-    "SENTRY_DSN",
-    "TAVILY_API_KEY",
-    "VERCEL_MCP_CLIENT_ID",
-)
-
-
 class SelfHostSettings(ProductionSettings):
     """Self-host profile.
 

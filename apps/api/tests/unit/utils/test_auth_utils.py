@@ -6,8 +6,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.config.settings import settings
 from app.models.user_models import UserDocument
-from app.utils.auth_utils import authenticate_workos_session
+from app.utils.auth_utils import (
+    authenticate_workos_session,
+    build_user_context,
+    with_local_onboarding_completed,
+)
 
 
 def _as_user(db_doc: dict) -> UserDocument:
@@ -739,3 +744,81 @@ class TestAuthenticateWorkosSession:
             sealed_session="my_sealed_token",
             cookie_password="pw_123",  # pragma: allowlist secret
         )
+
+
+# ---------------------------------------------------------------------------
+# with_local_onboarding_completed — the ONE AUTH_MODE=local synthesis policy
+# ---------------------------------------------------------------------------
+
+
+class TestLocalOnboardingSynthesis:
+    """F8: build_user_context and onboarding_service must agree — under
+    AUTH_MODE=local BOTH report completed=True regardless of stored state
+    (self-host has no pipeline that could produce a meaningful False)."""
+
+    def test_local_forces_completed_over_stored_false(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The regression: setdefault() honored a stored False and gated local
+        admins out of chat; the force-override must win."""
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+
+        result = with_local_onboarding_completed({"completed": False})
+
+        assert result["completed"] is True
+
+    def test_local_synthesizes_when_nothing_stored(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+
+        result = with_local_onboarding_completed(None)
+
+        assert result == {"completed": True, "phase": "completed"}
+
+    def test_local_preserves_stored_phase_and_fields(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+        stored = {"completed": False, "phase": "personalization_pending", "preferences": {}}
+
+        result = with_local_onboarding_completed(stored)
+
+        assert result["completed"] is True  # forced…
+        assert result["phase"] == "personalization_pending"  # …stored phase kept
+        assert result["preferences"] == {}
+        # Read-only synthesis: the caller's dict is never mutated.
+        assert stored["completed"] is False
+
+    def test_workos_returns_stored_state_untouched(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+        stored = {"completed": False}
+
+        result = with_local_onboarding_completed(stored)
+
+        assert result == {"completed": False}
+
+
+class TestBuildUserContextLocalOnboarding:
+    """build_user_context applies the same synthesis to request.state.user."""
+
+    def test_local_reports_completed_regardless_of_stored_state(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+
+        context = build_user_context(
+            {"_id": "u1", "email": "a@b.c", "onboarding": {"completed": False}},
+            auth_provider="local",
+        )
+
+        assert context["onboarding"]["completed"] is True
+
+    def test_workos_stays_byte_for_byte(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Hosted deployments are untouched: stored False stays False."""
+        monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+        user_data: dict[str, Any] = {
+            "_id": "u1",
+            "email": "a@b.c",
+            "onboarding": {"completed": False},
+        }
+
+        context = build_user_context(user_data, auth_provider="workos")
+
+        assert context["onboarding"] == {"completed": False}

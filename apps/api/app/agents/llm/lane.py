@@ -16,7 +16,7 @@ unreadable and its bugs invisible.
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.agents.llm.client import PROVIDER_MODELS, next_fallback_provider
 from app.agents.llm.types import LLMProviderName
@@ -44,9 +44,12 @@ from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable
 from app.models.models_models import DevModelOption
 
+if TYPE_CHECKING:
+    from app.services.providers.provider_credentials_service import ProviderConfig
+
 #: Injected by provider_registration after the LLM providers register. Reads
 #: the client's runtime snapshot (credential store → env) per provider name.
-_RUNTIME_CONFIG_LOOKUP: Callable[[str], dict[str, Any] | None] | None = None
+_RUNTIME_CONFIG_LOOKUP: Callable[[str], "ProviderConfig | None"] | None = None
 _DEFAULT_LANE_PRIORITY = (
     LLMProviderName.OPENROUTER,
     LLMProviderName.GEMINI,
@@ -56,7 +59,7 @@ _DEFAULT_LANE_PRIORITY = (
 
 
 def set_runtime_config_lookup(
-    fn: Callable[[str], dict[str, Any] | None],
+    fn: "Callable[[str], ProviderConfig | None]",
 ) -> None:
     """Wire the snapshot lookup used by :func:`_default_lane` (DI seam — lane
     and client are mutually importing, so registration happens in

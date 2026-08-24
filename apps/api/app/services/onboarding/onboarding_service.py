@@ -3,7 +3,6 @@ from typing import Any
 
 from fastapi import BackgroundTasks, HTTPException
 
-from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.todos import todo_repository
@@ -36,6 +35,7 @@ from app.services.onboarding.intelligence_job import (
 )
 from app.services.onboarding.post_onboarding_service import seed_initial_user_data
 from app.services.workflow.service import WorkflowService
+from app.utils.auth_utils import with_local_onboarding_completed
 from shared.py.wide_events import log
 
 
@@ -220,12 +220,11 @@ async def get_user_onboarding_status(user_id: str) -> OnboardingStatusResponse:
 
         onboarding_data = user.onboarding or {}
 
-        # Self-host has no hosted onboarding pipeline — a fresh local admin
-        # would read completed=false forever and stay gated out of chat.
-        # Synthesize the completed state (read-only) for local instances;
-        # AUTH_MODE=workos keeps the stored value untouched.
-        if settings.AUTH_MODE == "local":
-            onboarding_data = {**onboarding_data, "completed": True}
+        # Self-host has no hosted onboarding pipeline: report completed
+        # regardless of stored state. auth_utils.with_local_onboarding_completed
+        # is the ONE synthesis policy — build_user_context applies the same one,
+        # so request.state.user and this endpoint can never disagree again.
+        onboarding_data = with_local_onboarding_completed(onboarding_data)
 
         return OnboardingStatusResponse(
             completed=onboarding_data.get("completed", False),
