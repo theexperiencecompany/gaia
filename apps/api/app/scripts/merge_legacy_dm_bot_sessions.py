@@ -34,27 +34,23 @@ Usage::
 Flags::
 
     --apply             Persist changes to MongoDB (otherwise dry run only).
-    --platform <name>   Restrict to one platform (repeatable).
+    --platform <name>   Restrict to one platform.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
-from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
 
-from app.db.mongodb.collections import get_async_collection
+from app.db.repositories.bot_sessions import (
+    LEGACY_DM_SESSION_KEY_SUFFIX,
+    bot_session_repository,
+)
+from app.models.bot_models import BotSessionDocument
 from app.services.bot_service import BotService
 from shared.py.wide_events import log
-
-BOT_SESSIONS_COLLECTION = "bot_sessions"
-
-#: The suffix the old ``channel_id or "dm"`` derivation produced for a DM. Only
-#: that derivation ever wrote it — no platform names a channel "dm".
-LEGACY_DM_SUFFIX = ":dm"
 
 
 class MergeAction(StrEnum):
@@ -77,7 +73,7 @@ class SessionMerge:
     reason: str
 
 
-def last_used(row: Mapping[str, Any]) -> str:
+def last_used(session: BotSessionDocument) -> str:
     """The row's recency marker for the newer-wins comparison.
 
     ``updated_at``/``created_at`` are both written by ``datetime.now(UTC).isoformat()``
@@ -85,113 +81,102 @@ def last_used(row: Mapping[str, Any]) -> str:
     and one offset — lexicographic order is chronological order. A row missing
     both sorts oldest, which is the safe way for an unstamped row to lose.
     """
-    return str(row.get("updated_at") or row.get("created_at") or "")
+    return session.updated_at or session.created_at or ""
+
+
+def canonical_key_for(session: BotSessionDocument) -> str:
+    """The key this session's DM belongs under today.
+
+    Derived through ``BotService.build_session_key`` rather than a format restated
+    here, so the migration can never disagree with the code that will do the next
+    lookup.
+    """
+    return BotService.build_session_key(session.platform, session.platform_user_id, None)
 
 
 def plan_merge(
-    legacy: Mapping[str, Any], canonical: Mapping[str, Any] | None
+    legacy: BotSessionDocument, canonical: BotSessionDocument | None
 ) -> SessionMerge | None:
-    """What to do with one legacy ``:dm`` row, or ``None`` when it is not actionable.
-
-    The canonical key comes from ``BotService.build_session_key`` rather than a
-    format restated here, so the script can never disagree with the code that
-    will do the next lookup.
-    """
-    legacy_key = str(legacy.get("session_key") or "")
-    platform = str(legacy.get("platform") or "")
-    platform_user_id = str(legacy.get("platform_user_id") or "")
-    legacy_conversation_id = str(legacy.get("conversation_id") or "")
-    if not (legacy_key and platform and platform_user_id and legacy_conversation_id):
+    """What to do with one legacy ``:dm`` row, or ``None`` when it is not actionable."""
+    if not (legacy.session_key and legacy.platform and legacy.platform_user_id):
+        return None
+    if not legacy.conversation_id:
         return None
 
-    canonical_key = BotService.build_session_key(platform, platform_user_id, None)
-    if canonical_key == legacy_key:
+    canonical_key = canonical_key_for(legacy)
+    if canonical_key == legacy.session_key:
         return None
 
     if canonical is None:
         return SessionMerge(
-            legacy_key=legacy_key,
+            legacy_key=legacy.session_key,
             canonical_key=canonical_key,
             action=MergeAction.RENAME,
-            surviving_conversation_id=legacy_conversation_id,
+            surviving_conversation_id=legacy.conversation_id,
             orphaned_conversation_id=None,
             reason="no session on the canonical key; the legacy row keeps its conversation",
         )
 
-    canonical_conversation_id = str(canonical.get("conversation_id") or "")
     if last_used(legacy) > last_used(canonical):
         return SessionMerge(
-            legacy_key=legacy_key,
+            legacy_key=legacy.session_key,
             canonical_key=canonical_key,
             action=MergeAction.REPOINT,
-            surviving_conversation_id=legacy_conversation_id,
-            orphaned_conversation_id=canonical_conversation_id,
+            surviving_conversation_id=legacy.conversation_id,
+            orphaned_conversation_id=canonical.conversation_id,
             reason="the legacy session was used more recently",
         )
 
     return SessionMerge(
-        legacy_key=legacy_key,
+        legacy_key=legacy.session_key,
         canonical_key=canonical_key,
         action=MergeAction.DROP,
-        surviving_conversation_id=canonical_conversation_id,
-        orphaned_conversation_id=legacy_conversation_id,
+        surviving_conversation_id=canonical.conversation_id,
+        orphaned_conversation_id=legacy.conversation_id,
         reason="the canonical session was used more recently",
     )
 
 
-def _dm_channel_of(session_key: str) -> str:
+def dm_channel_of(canonical_key: str) -> str:
     """The canonical key's channel component — the platform user id."""
-    return session_key.rsplit(":", 1)[-1]
+    return canonical_key.rsplit(":", 1)[-1]
 
 
-async def _load_legacy_rows(platforms: set[str]) -> list[dict[str, Any]]:
-    query: dict[str, Any] = {"session_key": {"$regex": f"{LEGACY_DM_SUFFIX}$"}}
-    if platforms:
-        query["platform"] = {"$in": sorted(platforms)}
-    cursor = get_async_collection(BOT_SESSIONS_COLLECTION).find(query)
-    return [row async for row in cursor]
-
-
-async def _build_merges(legacy_rows: list[dict[str, Any]]) -> list[SessionMerge]:
-    collection = get_async_collection(BOT_SESSIONS_COLLECTION)
+async def _build_merges(legacy_sessions: list[BotSessionDocument]) -> list[SessionMerge]:
     merges: list[SessionMerge] = []
-    for legacy in legacy_rows:
-        platform = str(legacy.get("platform") or "")
-        platform_user_id = str(legacy.get("platform_user_id") or "")
-        canonical: dict[str, Any] | None = None
-        if platform and platform_user_id:
-            canonical_key = BotService.build_session_key(platform, platform_user_id, None)
-            canonical = await collection.find_one({"session_key": canonical_key})
+    for legacy in legacy_sessions:
+        canonical = await bot_session_repository.get_by_session_key(canonical_key_for(legacy))
         merge = plan_merge(legacy, canonical)
         if merge is None:
-            print(f"  SKIP {legacy.get('session_key')!r}: incomplete row, left untouched")
+            print(f"  SKIP {legacy.session_key!r}: incomplete row, left untouched")
             continue
         merges.append(merge)
     return merges
 
 
 async def _apply_merges(merges: list[SessionMerge]) -> int:
-    """Write the planned merges. Returns the number applied."""
-    collection = get_async_collection(BOT_SESSIONS_COLLECTION)
+    """Write the planned merges. Returns the number that actually landed."""
     applied = 0
     for merge in merges:
         if merge.action is MergeAction.RENAME:
-            await collection.update_one(
-                {"session_key": merge.legacy_key},
-                {
-                    "$set": {
-                        "session_key": merge.canonical_key,
-                        "channel_id": _dm_channel_of(merge.canonical_key),
-                    }
-                },
+            landed = await bot_session_repository.rename_session_key(
+                session_key=merge.legacy_key,
+                new_session_key=merge.canonical_key,
+                channel_id=dm_channel_of(merge.canonical_key),
             )
         else:
             if merge.action is MergeAction.REPOINT:
-                await collection.update_one(
-                    {"session_key": merge.canonical_key},
-                    {"$set": {"conversation_id": merge.surviving_conversation_id}},
+                await bot_session_repository.repoint_conversation(
+                    session_key=merge.canonical_key,
+                    conversation_id=merge.surviving_conversation_id,
                 )
-            await collection.delete_one({"session_key": merge.legacy_key})
+            landed = await bot_session_repository.delete_by_session_key(merge.legacy_key) > 0
+
+        if not landed:
+            # Someone else moved the row between the plan and the write. Say so
+            # rather than counting it — a silent miss leaves a fork in place.
+            print(f"  WARN: {merge.action.value} of {merge.legacy_key} matched nothing")
+            continue
 
         applied += 1
         log.info(
@@ -218,16 +203,16 @@ def _print_plan(merges: list[SessionMerge]) -> None:
 
 
 async def _run(args: argparse.Namespace) -> int:
-    legacy_rows = await _load_legacy_rows(set(args.platform or []))
-    print(f"Found {len(legacy_rows)} legacy '{LEGACY_DM_SUFFIX}' bot session(s).")
-    if not legacy_rows:
+    legacy_sessions = await bot_session_repository.list_legacy_dm_sessions(platform=args.platform)
+    print(f"Found {len(legacy_sessions)} legacy '{LEGACY_DM_SESSION_KEY_SUFFIX}' bot session(s).")
+    if not legacy_sessions:
         return 0
 
     print()
     print("=" * 78)
     print("Plan (DRY RUN)" if not args.apply else "Plan")
     print("=" * 78)
-    merges = await _build_merges(legacy_rows)
+    merges = await _build_merges(legacy_sessions)
     _print_plan(merges)
 
     counts = {action: sum(m.action is action for m in merges) for action in MergeAction}
@@ -246,8 +231,8 @@ async def _run(args: argparse.Namespace) -> int:
 
     applied = await _apply_merges(merges)
     print()
-    print(f"Applied {applied}/{len(merges)} merges. No '{LEGACY_DM_SUFFIX}' session remains.")
-    return 0
+    print(f"Applied {applied}/{len(merges)} merges.")
+    return 0 if applied == len(merges) else 1
 
 
 def main() -> None:
@@ -259,8 +244,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--platform",
-        action="append",
-        help="Restrict to this platform (repeatable).",
+        default=None,
+        help="Restrict to this platform (e.g. telegram).",
     )
     args = parser.parse_args()
     raise SystemExit(asyncio.run(_run(args)))

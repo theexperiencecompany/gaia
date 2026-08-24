@@ -187,10 +187,11 @@ class BotSessionDocument(MongoDocument):
     """A bot chat session — the mapping from a platform conversation to a GAIA
     ``conversation_id``, keyed by a unique ``session_key``.
 
-    Only the fields the app reads are modelled. ``created_at``/``updated_at`` are
-    stored as ISO-format strings for the collection's TTL and are written raw by
-    the repository (never surfaced here), so the base's ``updated_at`` datetime
-    auto-stamp does not apply — preserving the existing on-disk string shape.
+    ``created_at``/``updated_at`` are ISO-format STRINGS (the collection's TTL
+    anchor), written raw by the repository rather than as BSON dates. Modelling
+    them as ``str`` is what lets the DM-session merge compare recency across the
+    typed boundary; the repository sets ``auto_stamp_timestamps = False`` so the
+    base never replaces them with a ``datetime`` and breaks the TTL.
     """
 
     session_key: str
@@ -198,6 +199,8 @@ class BotSessionDocument(MongoDocument):
     platform: str
     platform_user_id: str
     channel_id: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
 
 
 class BotSessionUpdate(BaseModel):
