@@ -262,6 +262,34 @@ def _with_current_time(resume: Command, configurable: AgentConfigurable) -> Comm
     return Command(resume=resume.resume, update=update, goto=resume.goto, graph=resume.graph)
 
 
+class _ReasoningBuffer:
+    """Collects the model's thinking deltas and writes ONE event per tool boundary.
+
+    A write per model chunk is a write per token: every delta is published AND
+    appended to the stream session, which persists the session verbatim — one
+    production conversation carried 22k reasoning entries. The UI shows one
+    thinking block per step regardless, so buffering to the boundary is the same
+    picture for three orders of magnitude fewer entries. The cost is that a live
+    stream shows a step's thinking when the step ends rather than token by token.
+    """
+
+    def __init__(self, stream_writer: StreamWriterCallable | None, subagent_id: str | None) -> None:
+        self._stream_writer = stream_writer
+        self._subagent_id = subagent_id
+        self._deltas: list[str] = []
+
+    def add(self, delta: str) -> None:
+        self._deltas.append(delta)
+
+    def flush(self) -> None:
+        if not self._deltas:
+            return
+        payload = ReasoningPayload(content="".join(self._deltas), subagent_id=self._subagent_id)
+        self._deltas.clear()
+        if self._stream_writer is not None:
+            self._stream_writer({"reasoning": payload.model_dump(exclude_none=True)})
+
+
 def _process_messages_payload(
     # "messages"-mode payloads are always (message chunk, metadata); the driver
     # above holds them as `Any` only because the shape varies per stream mode.
@@ -270,6 +298,7 @@ def _process_messages_payload(
     stream_writer: StreamWriterCallable | None,
     subagent_id: str | None,
     stream_id: str,
+    reasoning: _ReasoningBuffer,
 ) -> str:
     """Handle one "messages"-mode stream event, returning the updated message.
 
@@ -304,21 +333,19 @@ def _process_messages_payload(
         if content:
             complete_message += content
 
-        # Stream the model's thinking interleaved with tool events, so the
-        # UI can show what it reasoned about between each step. Carries the
-        # subagent_id so the client nests it in the right step (same routing
-        # as tool_data/tool_output). Empty for non-reasoning models.
-        if stream_writer:
-            reasoning_delta = _extract_reasoning_delta(chunk)
-            if reasoning_delta:
-                reasoning_payload = ReasoningPayload(
-                    content=reasoning_delta, subagent_id=subagent_id
-                )
-                stream_writer({"reasoning": reasoning_payload.model_dump(exclude_none=True)})
+        # Buffer the model's thinking; the caller flushes it at each tool
+        # boundary and at run end, so the UI can show what it reasoned about
+        # between each step. The event carries the subagent_id so the client
+        # nests it in the right step (same routing as tool_data/tool_output).
+        # Empty for non-reasoning models.
+        reasoning_delta = _extract_reasoning_delta(chunk)
+        if reasoning_delta:
+            reasoning.add(reasoning_delta)
 
     # Emit tool_output when ToolMessage arrives. Text-extract block content so
     # inline media (base64 image blocks) never streams to the frontend.
     elif chunk and isinstance(chunk, ToolMessage):
+        reasoning.flush()  # the step this result belongs to is over
         content_str = extract_text_content(chunk.content)
         complete_message = _capture_finish_task_content(chunk, complete_message)
         if stream_writer and claim_tool_output(stream_id, chunk.tool_call_id, subagent_id):
@@ -355,6 +382,7 @@ async def execute_subagent_stream(
     emitted_tool_calls: set[str] = set()
     tool_ran = False
     pending_approvals: list[dict[str, Any]] = []
+    reasoning = _ReasoningBuffer(stream_writer, subagent_id)
 
     # Inject the UUID subagent_id into configurable so nested spawn_subagent
     # tool calls can read the correct parent_subagent_id via
@@ -418,6 +446,7 @@ async def execute_subagent_stream(
                 # every id here, and an approval left out of that can never be applied.
                 pending_approvals.extend(interrupt_values(payload[LANGGRAPH_INTERRUPT_KEY]))
                 log.info(f"{LogTag.HIL} Subagent paused on approval", agent=ctx.agent_name)
+                reasoning.flush()  # the thinking that reached the gate belongs to it
                 continue
             for node_name, state_update in payload.items():
                 # Only emit tool_data from the LLM ("agent") node.
@@ -433,6 +462,8 @@ async def execute_subagent_stream(
                     emitted_tool_calls=emitted_tool_calls,
                     integration_metadata=integration_metadata,
                 )
+                if entries:
+                    reasoning.flush()  # the thinking that led to these calls closes here
                 for tc_id, tool_entry in entries:
                     # Announcing the call is what claims its result: "messages" mode
                     # will replay this ToolMessage into the outer run's stream too.
@@ -446,7 +477,12 @@ async def execute_subagent_stream(
 
         if stream_mode == "messages":
             complete_message = _process_messages_payload(
-                payload, complete_message, stream_writer, subagent_id, ctx.stream_id or ""
+                payload,
+                complete_message,
+                stream_writer,
+                subagent_id,
+                ctx.stream_id or "",
+                reasoning,
             )
             if isinstance(payload[0], ToolMessage):
                 tool_ran = True
@@ -455,6 +491,10 @@ async def execute_subagent_stream(
         if stream_mode == "custom":
             if stream_writer:
                 stream_writer(normalize_custom_event(payload))
+
+    # Whatever the model was thinking when the run ended (or was cancelled) has no
+    # tool boundary coming to close it.
+    reasoning.flush()
 
     # A pause is not a result: the narration-only heuristic below would misread a
     # half-finished run as "planning text" and tell the parent to re-issue it.

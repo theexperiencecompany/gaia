@@ -996,3 +996,112 @@ class TestCreateSubagentSystemMessage:
 
         assert isinstance(result, SystemMessage)
         assert result.content == "Test prompt"
+
+
+# ---------------------------------------------------------------------------
+# reasoning buffering
+# ---------------------------------------------------------------------------
+
+
+def _thinking(text: str) -> AIMessageChunk:
+    return AIMessageChunk(content="", additional_kwargs={"reasoning_content": text})
+
+
+def _reasoning_writes(stream_writer: MagicMock) -> list[str]:
+    return [
+        call[0][0]["reasoning"]["content"]
+        for call in stream_writer.call_args_list
+        if "reasoning" in call[0][0]
+    ]
+
+
+class TestReasoningIsFlushedPerToolBoundary:
+    """One write per model chunk put ~22k reasoning entries on a single prod
+    conversation: every delta is published AND appended to the stream session,
+    which persists it verbatim. The rendered picture is one thinking block per
+    step, so the deltas are buffered and flushed at each tool boundary."""
+
+    @pytest.mark.asyncio
+    async def test_deltas_around_one_tool_call_become_two_writes(self):
+        stream_writer = MagicMock()
+
+        async def _fake_astream(*args, **kwargs):
+            yield ("messages", (_thinking("a"), {}))
+            yield ("messages", (_thinking("b"), {}))
+            yield ("messages", (_thinking("c"), {}))
+            yield ("updates", {"agent": {"messages": []}})
+            yield ("messages", (_thinking("d"), {}))
+
+        mock_graph = MagicMock()
+        mock_graph.astream = _fake_astream
+        ctx = _make_ctx(subagent_graph=mock_graph)
+
+        with (
+            patch("app.agents.core.subagents.subagent_runner.log"),
+            patch(
+                "app.agents.core.subagents.subagent_runner.extract_tool_entries_from_update",
+                new_callable=AsyncMock,
+                return_value=[("tc-1", {"name": "web_search"})],
+            ),
+        ):
+            await execute_subagent_stream(ctx, stream_writer=stream_writer)
+
+        assert _reasoning_writes(stream_writer) == ["abc", "d"]
+
+    @pytest.mark.asyncio
+    async def test_the_thinking_that_led_to_a_call_is_written_before_it(self):
+        stream_writer = MagicMock()
+
+        async def _fake_astream(*args, **kwargs):
+            yield ("messages", (_thinking("weighing it up"), {}))
+            yield ("updates", {"agent": {"messages": []}})
+
+        mock_graph = MagicMock()
+        mock_graph.astream = _fake_astream
+        ctx = _make_ctx(subagent_graph=mock_graph)
+
+        with (
+            patch("app.agents.core.subagents.subagent_runner.log"),
+            patch(
+                "app.agents.core.subagents.subagent_runner.extract_tool_entries_from_update",
+                new_callable=AsyncMock,
+                return_value=[("tc-1", {"name": "web_search"})],
+            ),
+        ):
+            await execute_subagent_stream(ctx, stream_writer=stream_writer)
+
+        emitted = [next(iter(call[0][0])) for call in stream_writer.call_args_list]
+        assert emitted == ["reasoning", "tool_data"]
+
+    @pytest.mark.asyncio
+    async def test_thinking_left_over_at_run_end_is_never_dropped(self):
+        stream_writer = MagicMock()
+
+        async def _fake_astream(*args, **kwargs):
+            yield ("messages", (_thinking("no tool followed this"), {}))
+
+        mock_graph = MagicMock()
+        mock_graph.astream = _fake_astream
+        ctx = _make_ctx(subagent_graph=mock_graph)
+
+        with patch("app.agents.core.subagents.subagent_runner.log"):
+            await execute_subagent_stream(ctx, stream_writer=stream_writer)
+
+        assert _reasoning_writes(stream_writer) == ["no tool followed this"]
+
+    @pytest.mark.asyncio
+    async def test_a_run_that_parks_on_an_approval_still_writes_its_thinking(self):
+        stream_writer = MagicMock()
+
+        async def _fake_astream(*args, **kwargs):
+            yield ("messages", (_thinking("this one needs a human"), {}))
+            yield ("updates", {"__interrupt__": ()})
+
+        mock_graph = MagicMock()
+        mock_graph.astream = _fake_astream
+        ctx = _make_ctx(subagent_graph=mock_graph)
+
+        with patch("app.agents.core.subagents.subagent_runner.log"):
+            await execute_subagent_stream(ctx, stream_writer=stream_writer)
+
+        assert _reasoning_writes(stream_writer) == ["this one needs a human"]
