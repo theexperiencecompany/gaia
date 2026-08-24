@@ -116,7 +116,7 @@ export default function PaymentSuccessPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center px-4">
+    <div className="relative flex min-h-screen items-center justify-center px-4 pt-24 pb-16">
       <PaymentBackdrop />
 
       {status !== "error" && (

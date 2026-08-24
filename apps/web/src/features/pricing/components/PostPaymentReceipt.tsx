@@ -110,10 +110,8 @@ export function PostPaymentReceipt({
           </ReceiptPrinter.Header>
 
           <ReceiptPrinter.Screen>
-            <div className="space-y-2.5">
-              {/* Grouped dark surfaces on the LCD: plan block, then the total.
-                  Tonal layering only (zinc-800 on zinc-900) — no borders. */}
-              <div className="rounded-lg bg-zinc-800 px-3 py-2.5">
+            <div className="space-y-4">
+              <div>
                 <p className="text-sm font-semibold leading-snug text-zinc-100">
                   {displayName}
                 </p>
@@ -121,10 +119,10 @@ export function PostPaymentReceipt({
                   {billingPeriodLabel(billingPeriod)}
                 </p>
               </div>
-              <div className="flex items-baseline justify-between rounded-lg bg-zinc-800 px-3 py-2.5">
+              <div className="flex items-baseline justify-between">
                 <span className="text-sm text-zinc-300">Total</span>
                 {price && (
-                  <strong className="font-bold text-lg tracking-tight text-zinc-50">
+                  <strong className="text-lg tracking-tight text-zinc-50">
                     {price}
                   </strong>
                 )}
@@ -139,9 +137,7 @@ export function PostPaymentReceipt({
             <dl className="space-y-2.5">
               <div className="flex justify-between gap-4">
                 <dt className="pt-0.5 text-sm">Total</dt>
-                <dd className="text-right font-bold text-xl tracking-tight">
-                  {price}
-                </dd>
+                <dd className="text-right text-xl tracking-tight">{price}</dd>
               </div>
               <div className="flex justify-between gap-4 text-xs">
                 <dt className="opacity-60">{displayName}</dt>
