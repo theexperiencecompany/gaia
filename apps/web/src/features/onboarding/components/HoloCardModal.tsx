@@ -12,7 +12,7 @@ import { Modal, ModalContent } from "@heroui/modal";
 import { Skeleton } from "@heroui/skeleton";
 import { Rocket01Icon } from "@icons";
 import confetti from "canvas-confetti";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { TwitterShareButton } from "react-share";
 import { TwitterIcon } from "@/components/shared/icons";
 import { HoloCardEditor } from "@/components/ui/holo-card/HoloCardEditor";
@@ -128,20 +128,26 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
     onClose();
   };
 
-  const holoCardData: HoloCardDisplayData = {
-    house: selectedHouse,
-    name: user.name || "User",
-    personality_phrase:
-      personalizationData?.personality_phrase || "Curious Adventurer",
-    user_bio:
-      personalizationData?.user_bio ||
-      "A passionate individual exploring new possibilities and making an impact.",
-    account_number: `#${personalizationData?.account_number || "00000"}`,
-    member_since: personalizationData?.member_since || fallbackMemberSince,
-    overlay_color: personalizationData?.overlay_color || "rgba(0,0,0,0)",
-    overlay_opacity: personalizationData?.overlay_opacity ?? 40,
-    holo_card_id: personalizationData?.holo_card_id,
-  };
+  // Memoized so identity is stable across unrelated re-renders — the editor's
+  // render-phase reset keys on object identity (same contract as
+  // ProfileCardSettings' displayData).
+  const holoCardData: HoloCardDisplayData = useMemo(
+    () => ({
+      house: selectedHouse,
+      name: user.name || "User",
+      personality_phrase:
+        personalizationData?.personality_phrase || "Curious Adventurer",
+      user_bio:
+        personalizationData?.user_bio ||
+        "A passionate individual exploring new possibilities and making an impact.",
+      account_number: `#${personalizationData?.account_number || "00000"}`,
+      member_since: personalizationData?.member_since || fallbackMemberSince,
+      overlay_color: personalizationData?.overlay_color || "rgba(0,0,0,0)",
+      overlay_opacity: personalizationData?.overlay_opacity ?? 40,
+      holo_card_id: personalizationData?.holo_card_id,
+    }),
+    [selectedHouse, user.name, personalizationData, fallbackMemberSince],
+  );
 
   const shareTitle = "Check out my Personal Card made using GAIA";
 

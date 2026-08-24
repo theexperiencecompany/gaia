@@ -15,7 +15,7 @@ import confetti from "canvas-confetti";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { HoloCardEditor } from "@/components/ui/holo-card/HoloCardEditor";
 import type { HoloCardDisplayData } from "@/components/ui/holo-card/types";
@@ -188,7 +188,13 @@ export function HoloCardReveal({ personalizationData }: HoloCardRevealProps) {
     };
   }, [revealState]);
 
-  const holoCardData = buildHoloCardData(personalizationData);
+  // Memoized so identity is stable across unrelated re-renders — the editor's
+  // render-phase reset keys on object identity (same contract as
+  // ProfileCardSettings' displayData).
+  const holoCardData = useMemo(
+    () => buildHoloCardData(personalizationData),
+    [personalizationData],
+  );
 
   const handleGiftboxClick = () => {
     if (revealState !== "idle") return;

@@ -102,7 +102,13 @@ export const MentionEditor = ({
   });
 
   useEffect(() => {
-    editor?.setEditable(!readOnly);
+    // setEditable emits an 'update' by default even though toggling editability
+    // never changes the document. With immediatelyRender:false the instance
+    // appears after mount holding content captured from the first render; that
+    // emission would forward the stale doc through onChange and clobber a value
+    // the caller set in the meantime (e.g. the workflow modal restoring the
+    // saved prompt). A programmatic toggle is not a user edit: never emit.
+    editor?.setEditable(!readOnly, false);
   }, [editor, readOnly]);
 
   // External value changes (modal open / reset) replace the document — but only

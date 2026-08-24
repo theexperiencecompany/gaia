@@ -1,7 +1,7 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Button } from "@heroui/button";
 import type { Selection } from "@heroui/react";
-import { Add01Icon } from "@icons";
+import { Add01Icon, RedoIcon } from "@icons";
 import {
   CONNECT_ACTION_LABEL,
   INTEGRATION_STATE_ORDER,
@@ -30,6 +30,9 @@ const IntegrationItem: React.FC<{
   const isConnected = state === "connected";
   // Custom integrations are always available, platform integrations use available field
   const isAvailable = integration.source === "custom" || integration.available;
+  // Pending or expired grants need user action — same treatment as the rows
+  // on the integrations page (IntegrationsList): amber retry/reconnect affordance.
+  const needsAttention = state === "pending" || state === "expired";
 
   const handleClick = () => {
     onClick(integration.id);
@@ -92,20 +95,21 @@ const IntegrationItem: React.FC<{
           <span className="h-2 w-2 rounded-full bg-danger mr-2" />
         )}
 
-        {/* Connect button — a dead connection reads as Reconnect, never Connect */}
-        {(isAvailable || state === "expired") &&
-          !isConnected &&
-          state !== "pending" && (
-            <Button
-              size="sm"
-              variant="flat"
-              color={state === "expired" ? "warning" : "primary"}
-              className="text-xs"
-              onPress={handleConnectClick}
-            >
-              {CONNECT_ACTION_LABEL[state]}
-            </Button>
-          )}
+        {/* Action button — pending reads as Retry, expired as Reconnect, never Connect */}
+        {(isAvailable || needsAttention) && !isConnected && (
+          <Button
+            size="sm"
+            variant="flat"
+            color={needsAttention ? "warning" : "primary"}
+            className="text-xs"
+            startContent={
+              needsAttention ? <RedoIcon width={16} height={16} /> : undefined
+            }
+            onPress={handleConnectClick}
+          >
+            {CONNECT_ACTION_LABEL[state]}
+          </Button>
+        )}
       </div>
     </div>
   );
