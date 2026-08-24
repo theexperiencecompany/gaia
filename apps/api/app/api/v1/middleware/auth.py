@@ -273,7 +273,9 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                 # Hand-picking fields here dropped them, so voice mode lost the
                 # user's system instructions.
                 request.state.user = build_user_context(
-                    user_to_legacy_dict(user_data), auth_provider=auth_provider, impersonated=True
+                    user_to_legacy_dict(user_data),
+                    auth_provider=auth_provider,
+                    impersonated=True,
                 )
                 request.state.authenticated = True
 

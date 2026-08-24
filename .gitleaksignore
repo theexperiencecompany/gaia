@@ -1,0 +1,6 @@
+# False positive: generic-api-key reads build_user_context kwargs
+# (auth_provider=auth_provider, impersonated=True) as key=value credentials.
+# Fixed going forward by splitting the call one-kwarg-per-line (the lone
+# identifier falls below the rule's entropy bar); this entry silences the
+# original single-line commit already on the branch.
+fa4d4185200a547d33ff265635d244ec70a349fc:apps/api/app/api/v1/middleware/auth.py:generic-api-key:276
