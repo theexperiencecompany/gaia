@@ -10,6 +10,7 @@ validation error) on a timezone-naive ISO datetime. Both are fixed at the root
 in tracked_todo_tools.py; the tests here pin the fix down.
 """
 
+from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
@@ -36,13 +37,14 @@ from app.agents.tools.tracked_todo_tools import (
     _validate_recurrence_format,
     complete_tracked_todo,
     create_tracked_todo,
+    finish_todo_run,
     list_tracked_todos,
     search_todo_context,
     update_tracked_todo,
     update_tracked_todo_canvas,
 )
-from app.constants.todos import GAIA_TRACKED_LABEL
-from app.models.todo_models import Priority, TodoDocument, TodoResponse
+from app.constants.todos import ASK_USER_DAILY_LIMIT, GAIA_TRACKED_LABEL, terminal_marker_key
+from app.models.todo_models import PendingQuestion, Priority, TodoDocument, TodoResponse
 from shared.py.wide_events import spawn_logged_task
 
 _FUTURE = (datetime.now(UTC) + timedelta(days=7)).replace(microsecond=0)
@@ -1307,3 +1309,224 @@ class TestListTrackedTodos:
         assert "Active tracked todos (2):" in result
         assert "First" in result
         assert "Second" in result
+
+
+# ---------------------------------------------------------------------------
+# finish_todo_run — the terminal contract tool
+# ---------------------------------------------------------------------------
+
+_TOOLS_MODULE = "app.agents.tools.tracked_todo_tools"
+
+
+def _run_config() -> dict:
+    return {
+        "metadata": {"user_id": "user-1"},
+        "configurable": {
+            "active_todo_id": "t1",
+            "execution_mode": "background",
+            "conversation_id": "conv-1",
+        },
+    }
+
+
+def _pool_for_tool(*, incr_value: int = 1) -> AsyncMock:
+    pool = AsyncMock()
+    pool.incr = AsyncMock(return_value=incr_value)
+    return pool
+
+
+class TestFinishTodoRunGating:
+    async def test_rejects_calls_outside_a_scheduled_run(self):
+        result = await finish_todo_run.coroutine(
+            config=_config("user-1"), outcome="complete", summary="s"
+        )
+        assert "only valid during a scheduled tracked-todo run" in result
+
+    async def test_rejects_interactive_mode_even_with_an_active_todo(self):
+        config = _run_config()
+        config["configurable"]["execution_mode"] = "interactive"
+        result = await finish_todo_run.coroutine(config=config, outcome="complete", summary="s")
+        assert "only valid during a scheduled tracked-todo run" in result
+
+    async def test_rejects_an_unknown_outcome(self):
+        with patch(f"{_TOOLS_MODULE}.todo_repository.get", AsyncMock(return_value=None)):
+            result = await finish_todo_run.coroutine(
+                config=_run_config(), outcome="wing_it", summary="s"
+            )
+        assert "invalid outcome" in result
+
+    @pytest.mark.parametrize(
+        ("outcome", "kwargs"),
+        [
+            ("reschedule", {}),
+            ("ask_user", {}),
+            ("ask_user", {"question": "?", "reschedule_at": _FUTURE_ISO}),
+        ],
+    )
+    async def test_enforces_outcome_coupling(self, outcome, kwargs):
+        doc = TodoDocument(id="t1", user_id="user-1", title="t")
+        with patch(f"{_TOOLS_MODULE}.todo_repository.get", AsyncMock(return_value=doc)):
+            result = await finish_todo_run.coroutine(
+                config=_run_config(), outcome=outcome, summary="s", **kwargs
+            )
+        assert "Error:" in result
+
+    async def test_missing_todo_is_reported(self):
+        with patch(f"{_TOOLS_MODULE}.todo_repository.get", AsyncMock(return_value=None)):
+            result = await finish_todo_run.coroutine(
+                config=_run_config(), outcome="complete", summary="s"
+            )
+        assert "not found" in result
+
+
+class TestFinishTodoRunComplete:
+    async def test_completes_and_writes_the_terminal_marker(self):
+        pool = _pool_for_tool()
+        doc = TodoDocument(id="t1", user_id="user-1", title="t")
+        with (
+            patch(f"{_TOOLS_MODULE}.todo_repository.get", AsyncMock(return_value=doc)),
+            patch(
+                f"{_TOOLS_MODULE}.tracked_todo_service.complete_tracked_todo",
+                AsyncMock(return_value=True),
+            ) as complete,
+            patch(
+                f"{_TOOLS_MODULE}.tracked_todo_service.append_canvas_timeline",
+                AsyncMock(return_value=True),
+            ),
+            patch(f"{_TOOLS_MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
+        ):
+            result = await finish_todo_run.coroutine(
+                config=_run_config(), outcome="complete", summary="all done"
+            )
+
+        assert "completed" in result
+        complete.assert_awaited_once()
+        marker_key, marker_value = pool.set.await_args.args
+        assert marker_key == terminal_marker_key("t1")
+        assert marker_value == "complete"
+
+
+class TestFinishTodoRunReschedule:
+    async def test_reschedules_to_a_future_time_and_writes_the_marker(self):
+        pool = _pool_for_tool()
+        repo_update = AsyncMock()
+        doc = TodoDocument(id="t1", user_id="user-1", title="t")
+        with (
+            patch(f"{_TOOLS_MODULE}.todo_repository.get", AsyncMock(return_value=doc)),
+            patch(f"{_TOOLS_MODULE}.todo_repository.update", repo_update),
+            patch(
+                f"{_TOOLS_MODULE}.tracked_todo_service.reschedule_execution",
+                AsyncMock(return_value=True),
+            ) as reschedule,
+            patch(
+                f"{_TOOLS_MODULE}.tracked_todo_service.append_canvas_timeline",
+                AsyncMock(return_value=True),
+            ),
+            patch(f"{_TOOLS_MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
+        ):
+            result = await finish_todo_run.coroutine(
+                config=_run_config(),
+                outcome="reschedule",
+                summary="waiting on the build",
+                reschedule_at=_FUTURE_ISO,
+            )
+
+        assert "rescheduled" in result
+        reschedule.assert_awaited_once()
+        assert pool.set.await_args.args[1] == "reschedule"
+        assert repo_update.await_args.kwargs["update"].scheduled_at is not None
+
+    async def test_a_past_reschedule_at_is_rejected(self):
+        doc = TodoDocument(id="t1", user_id="user-1", title="t")
+        with (
+            patch(f"{_TOOLS_MODULE}.todo_repository.get", AsyncMock(return_value=doc)),
+            patch(f"{_TOOLS_MODULE}.todo_repository.update", AsyncMock()) as repo_update,
+        ):
+            result = await finish_todo_run.coroutine(
+                config=_run_config(),
+                outcome="reschedule",
+                summary="s",
+                reschedule_at=_PAST_ISO,
+            )
+        assert "must be in the future" in result
+        repo_update.assert_not_awaited()
+
+
+class TestFinishTodoRunAskUser:
+    async def _enter(self, *, doc, incr_value=1):
+        stack = ExitStack()
+        pool = _pool_for_tool(incr_value=incr_value)
+        repo_update = AsyncMock()
+        stack.enter_context(
+            patch(f"{_TOOLS_MODULE}.todo_repository.get", AsyncMock(return_value=doc))
+        )
+        stack.enter_context(patch(f"{_TOOLS_MODULE}.todo_repository.update", repo_update))
+        stack.enter_context(
+            patch(
+                f"{_TOOLS_MODULE}.tracked_todo_service.append_canvas_timeline",
+                AsyncMock(return_value=True),
+            )
+        )
+        stack.enter_context(patch(f"{_TOOLS_MODULE}.update_messages", AsyncMock()))
+        stack.enter_context(
+            patch(
+                f"{_TOOLS_MODULE}.RedisPoolManager.get_pool",
+                AsyncMock(return_value=pool),
+            )
+        )
+        return stack, repo_update, pool
+
+    async def test_sets_pending_question_posts_message_and_writes_the_marker(self):
+        doc = TodoDocument(id="t1", user_id="user-1", title="t")
+        stack, repo_update, pool = await self._enter(doc=doc)
+        with stack:
+            result = await finish_todo_run.coroutine(
+                config=_run_config(),
+                outcome="ask_user",
+                summary="need a decision",
+                question="Proceed with plan A?",
+                options=["yes", "no"],
+            )
+
+        assert "asked the user" in result
+        update = repo_update.await_args.kwargs["update"]
+        pq = update.pending_question
+        assert pq is not None
+        assert pq.question == "Proceed with plan A?"
+        assert pq.options == ["yes", "no"]
+        assert pq.conversation_id == "conv-1"
+        assert pq.message_id
+        assert pool.set.await_args.args[1] == "ask_user"
+
+    async def test_a_second_question_while_one_is_open_is_refused(self):
+        doc = TodoDocument(
+            id="t1",
+            user_id="user-1",
+            title="t",
+            pending_question=PendingQuestion(
+                question="old",
+                asked_at=datetime.now(UTC),
+                expires_at=datetime.now(UTC) + timedelta(hours=1),
+                conversation_id="c",
+                message_id="m",
+            ),
+        )
+        stack, repo_update, pool = await self._enter(doc=doc)
+        with stack:
+            result = await finish_todo_run.coroutine(
+                config=_run_config(),
+                outcome="ask_user",
+                summary="s",
+                question="another one?",
+            )
+        assert "already has an outstanding question" in result
+
+    async def test_the_daily_cap_blocks_excess_questions(self):
+        doc = TodoDocument(id="t1", user_id="user-1", title="t")
+        stack, repo_update, _pool_ = await self._enter(doc=doc, incr_value=ASK_USER_DAILY_LIMIT + 1)
+        with stack:
+            result = await finish_todo_run.coroutine(
+                config=_run_config(), outcome="ask_user", summary="s", question="?"
+            )
+        assert "daily limit" in result
+        repo_update.assert_not_awaited()

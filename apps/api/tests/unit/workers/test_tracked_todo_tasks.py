@@ -28,8 +28,10 @@ from app.models.notification.notification_models import (
 )
 from app.models.todo_models import TodoDocument
 from app.workers.tasks.tracked_todo_tasks import (
+    _LOCK_RELEASE_LUA,
     MAX_RETRY_ATTEMPTS,
     RETRY_BACKOFF,
+    TerminalToolNotCalled,
     _build_execution_prompt,
     _collect_reference_context,
     _compute_next_run,
@@ -65,6 +67,8 @@ def _pool() -> MagicMock:
     pool.delete = AsyncMock(return_value=1)
     pool.exists = AsyncMock(return_value=0)
     pool.enqueue_job = AsyncMock(return_value=MagicMock())
+    pool.eval = AsyncMock(return_value=1)
+    pool.get = AsyncMock(return_value="complete")
     return pool
 
 
@@ -88,8 +92,12 @@ class TestExecuteTrackedTodoLock:
             result = await execute_tracked_todo({}, "todo-1")
 
         assert result == "success:todo-1"
-        pool.set.assert_awaited_once_with("gaia_todo_exec:todo-1", "1", nx=True, ex=1800)
-        pool.delete.assert_awaited_once_with("gaia_todo_exec:todo-1")
+        (lock_key, token), kwargs = pool.set.await_args.args, pool.set.await_args.kwargs
+        assert lock_key == "gaia_todo_exec:todo-1"
+        assert kwargs["nx"] is True and kwargs["ex"] == 1800
+        # Release is compare-and-delete on our own token, never a bare delete.
+        pool.eval.assert_awaited_once_with(_LOCK_RELEASE_LUA, 1, "gaia_todo_exec:todo-1", token)
+        pool.delete.assert_not_awaited()
 
     async def test_lock_already_held_skips_and_does_not_release_the_other_holders_lock(self):
         """Deleting a lock this run never acquired would break mutual exclusion."""
@@ -104,7 +112,7 @@ class TestExecuteTrackedTodoLock:
 
         assert result == "skipped:todo-1 (lock held)"
         inner.assert_not_awaited()
-        pool.delete.assert_not_awaited()
+        pool.eval.assert_not_awaited()
 
     async def test_lock_is_released_when_execution_raises(self):
         pool = _pool()
@@ -118,7 +126,19 @@ class TestExecuteTrackedTodoLock:
         ):
             await execute_tracked_todo({}, "todo-1")
 
-        pool.delete.assert_awaited_once_with("gaia_todo_exec:todo-1")
+        pool.eval.assert_awaited_once()
+
+    async def test_a_run_without_the_lock_never_deletes_anything(self):
+        pool = _pool()
+        pool.set = AsyncMock(return_value=None)
+        with (
+            patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
+            patch(f"{MODULE}._execute_todo_with_retry", AsyncMock(return_value="skipped")),
+        ):
+            await execute_tracked_todo({}, "todo-1")
+
+        pool.delete.assert_not_awaited()
+        pool.eval.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -189,14 +209,14 @@ class TestExecuteTodoWithRetrySuccess:
     def _route_enqueue(self, route_enqueue_via_pool):
         return
 
-    async def _run(self, doc, *, tz="UTC"):
+    async def _run(self, doc, *, tz="UTC", outcome=None):
         pool = _pool()
         repo = MagicMock()
         repo.get_by_id = AsyncMock(return_value=doc)
         repo.update = AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", repo),
-            patch(f"{MODULE}._run_execution", AsyncMock()),
+            patch(f"{MODULE}._run_execution", AsyncMock(return_value=outcome)),
             patch(
                 f"{MODULE}.get_user_by_id",
                 AsyncMock(return_value={"timezone": tz}),
@@ -250,6 +270,47 @@ class TestExecuteTodoWithRetrySuccess:
         assert result == "success:todo-1"
         assert _updates(repo) == [{"gaia_retry_count": 0, "scheduled_at": None}]
         pool.enqueue_job.assert_not_awaited()
+
+    @pytest.mark.parametrize("outcome", ["complete", "reschedule"])
+    async def test_an_agent_decided_outcome_skips_the_recurrence_re_enqueue(self, outcome):
+        """finish_todo_run already decided the next state (archived / new
+        scheduled_at) — the default recurrence path must not overwrite it or
+        double-enqueue."""
+        anchor = datetime.now(UTC) - timedelta(days=2)
+        result, repo, pool = await self._run(
+            _doc(scheduled_at=anchor, recurrence="daily"), outcome=outcome
+        )
+
+        assert result == "success:todo-1"
+        # Only the retry reset lands; scheduled_at stays as the agent set it.
+        assert _updates(repo) == [{"gaia_retry_count": 0}]
+        pool.enqueue_job.assert_not_awaited()
+
+    async def test_a_stale_terminal_marker_is_cleared_before_the_agent_runs(self):
+        """A leftover marker from a previous run would falsely satisfy the
+        terminal contract for a run that never called finish_todo_run."""
+        order: list[str] = []
+        pool = _pool()
+
+        async def _delete(key):
+            order.append(f"delete:{key}")
+
+        pool.delete = AsyncMock(side_effect=_delete)
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=_doc())
+        repo.update = AsyncMock()
+
+        async def _run_execution_marker(doc, user_id, **kw):
+            order.append("run")
+
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}._run_execution", _run_execution_marker),
+            patch(f"{MODULE}.get_user_by_id", AsyncMock(return_value={"timezone": "UTC"})),
+        ):
+            await _execute_todo_with_retry("todo-1", pool)
+
+        assert order == ["delete:gaia_todo_terminal:todo-1", "run"]
 
 
 # ---------------------------------------------------------------------------
@@ -482,12 +543,12 @@ class TestCollectReferenceContext:
 
 class TestBuildExecutionPrompt:
     def test_title_only(self):
-        assert (
-            _build_execution_prompt(
-                title="Ship it", description="", canvas_content=None, reference_context=""
-            )
-            == "Execute the following scheduled task: Ship it"
+        prompt = _build_execution_prompt(
+            title="Ship it", description="", canvas_content=None, reference_context=""
         )
+        assert prompt.startswith("Execute the following scheduled task: Ship it")
+        assert "Canvas context" not in prompt
+        assert "finish_todo_run" in prompt
 
     def test_all_sections_appear_in_order(self):
         prompt = _build_execution_prompt(
@@ -501,7 +562,9 @@ class TestBuildExecutionPrompt:
             "Details: the release",
             "Canvas context:\n## Current State\nblocked",
             "past stuff",
+            prompt.split("\n\n")[-1],  # the MANDATORY finish_todo_run contract
         ]
+        assert prompt.split("\n\n")[-1].startswith("MANDATORY: ")
 
     def test_empty_canvas_string_is_omitted_not_rendered_as_an_empty_header(self):
         prompt = _build_execution_prompt(
@@ -522,6 +585,7 @@ class TestExecuteViaAgent:
         agent,
         canvas="## Current State\nall good",
         canvas_side_effect=None,
+        marker="complete",
     ):
         self.timeline = AsyncMock(return_value=True)
         read = (
@@ -529,11 +593,14 @@ class TestExecuteViaAgent:
             if canvas_side_effect
             else AsyncMock(return_value=canvas)
         )
+        pool = _pool()
+        pool.get = AsyncMock(return_value=marker)
         return (
             patch(f"{MODULE}.call_agent_silent", agent),
             patch(f"{MODULE}.read_canvas", read),
             patch(f"{MODULE}.tracked_todo_service.append_canvas_timeline", self.timeline),
             patch(f"{MODULE}._collect_reference_context", AsyncMock(return_value="")),
+            patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
         )
 
     def _entries(self) -> list[str]:
@@ -541,11 +608,11 @@ class TestExecuteViaAgent:
 
     async def test_writes_start_and_success_markers_around_the_agent_call(self):
         agent = AsyncMock(return_value=("Deploy verified.\nAll green.", {}))
-        p1, p2, p3, p4 = self._patches(agent=agent)
-        with p1, p2, p3, p4:
+        p1, p2, p3, p4, p5 = self._patches(agent=agent, marker="reschedule")
+        with p1, p2, p3, p4, p5:
             result = await _execute_via_agent(_doc(), "user-1", user_data={"user_id": "user-1"})
 
-        assert result == "Deploy verified.\nAll green."
+        assert result == "reschedule"
         start, end = self._entries()
         assert start.startswith("▶ ")
         assert "scheduled run started (conversation_id=" in start
@@ -561,6 +628,7 @@ class TestExecuteViaAgent:
             patch(f"{MODULE}.call_agent_silent", agent),
             patch(f"{MODULE}.read_canvas", AsyncMock(return_value="")),
             patch(f"{MODULE}.tracked_todo_service.append_canvas_timeline", timeline),
+            patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=_pool())),
         ):
             await _execute_via_agent(_doc(), "user-1", user_data={})
 
@@ -568,8 +636,8 @@ class TestExecuteViaAgent:
 
     async def test_prompt_and_trigger_context_carry_the_todo_identity(self):
         agent = AsyncMock(return_value=("ok", {}))
-        p1, p2, p3, p4 = self._patches(agent=agent, canvas="## Current State\nblocked")
-        with p1, p2, p3, p4:
+        p1, p2, p3, p4, p5 = self._patches(agent=agent, canvas="## Current State\nblocked")
+        with p1, p2, p3, p4, p5:
             await _execute_via_agent(
                 _doc(description="verify staging"), "user-1", user_data={"user_id": "user-1"}
             )
@@ -587,11 +655,13 @@ class TestExecuteViaAgent:
         assert "Execute the following scheduled task: Check the deploy" in prompt
         assert "Details: verify staging" in prompt
         assert "Canvas context:\n## Current State\nblocked" in prompt
+        # The terminal contract is taught in the run prompt itself.
+        assert "finish_todo_run" in prompt
 
     async def test_each_run_gets_a_fresh_conversation_id(self):
         agent = AsyncMock(return_value=("ok", {}))
-        p1, p2, p3, p4 = self._patches(agent=agent)
-        with p1, p2, p3, p4:
+        p1, p2, p3, p4, p5 = self._patches(agent=agent)
+        with p1, p2, p3, p4, p5:
             await _execute_via_agent(_doc(), "user-1", user_data={})
             await _execute_via_agent(_doc(), "user-1", user_data={})
 
@@ -600,38 +670,56 @@ class TestExecuteViaAgent:
 
     async def test_a_canvas_read_failure_does_not_abort_the_run(self):
         agent = AsyncMock(return_value=("ok", {}))
-        p1, p2, p3, p4 = self._patches(agent=agent, canvas_side_effect=RuntimeError("mongo down"))
-        with p1, p2, p3, p4:
+        p1, p2, p3, p4, p5 = self._patches(
+            agent=agent, canvas_side_effect=RuntimeError("mongo down")
+        )
+        with p1, p2, p3, p4, p5:
             result = await _execute_via_agent(_doc(), "user-1", user_data={})
 
-        assert result == "ok"
+        assert result == "complete"
         assert "Canvas context" not in agent.await_args.kwargs["request"].message
 
     async def test_an_agent_exception_writes_a_failure_marker_and_propagates(self):
         agent = AsyncMock(side_effect=TimeoutError("llm timeout"))
-        p1, p2, p3, p4 = self._patches(agent=agent)
-        with p1, p2, p3, p4, pytest.raises(TimeoutError):
+        p1, p2, p3, p4, p5 = self._patches(agent=agent)
+        with p1, p2, p3, p4, p5, pytest.raises(TimeoutError):
             await _execute_via_agent(_doc(), "user-1", user_data={})
 
         _start, end = self._entries()
         assert "scheduled run failed (TimeoutError)" in end
 
-    async def test_an_empty_agent_response_is_not_an_error(self):
+    async def test_an_empty_agent_response_with_a_terminal_marker_still_succeeds(self):
         agent = AsyncMock(return_value=("", {}))
-        p1, p2, p3, p4 = self._patches(agent=agent)
-        with p1, p2, p3, p4:
+        p1, p2, p3, p4, p5 = self._patches(agent=agent)
+        with p1, p2, p3, p4, p5:
             result = await _execute_via_agent(_doc(), "user-1", user_data={})
 
-        assert result == ""
+        assert result == "complete"
         assert "summary=''" in self._entries()[1]
 
-    async def test_a_long_response_is_truncated_for_the_return_value_and_the_marker(self):
-        agent = AsyncMock(return_value=("x" * 500, {}))
-        p1, p2, p3, p4 = self._patches(agent=agent)
-        with p1, p2, p3, p4:
-            result = await _execute_via_agent(_doc(), "user-1", user_data={})
+    async def test_a_run_without_the_terminal_tool_raises(self):
+        """The terminal contract: no finish_todo_run marker means a failed run —
+        laziness-as-silence must surface through the retry ladder."""
+        agent = AsyncMock(return_value=("Looks done to me.", {}))
+        pool = _pool()
+        pool.get = AsyncMock(return_value=None)
+        p1, p2, p3, p4, _ = self._patches(agent=agent)
+        with (
+            p1,
+            p2,
+            p3,
+            p4,
+            patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
+            pytest.raises(TerminalToolNotCalled, match="finish_todo_run"),
+        ):
+            await _execute_via_agent(_doc(), "user-1", user_data={})
 
-        assert result == "x" * 200
+    async def test_a_long_response_is_truncated_for_the_timeline_marker(self):
+        agent = AsyncMock(return_value=("x" * 500, {}))
+        p1, p2, p3, p4, p5 = self._patches(agent=agent)
+        with p1, p2, p3, p4, p5:
+            await _execute_via_agent(_doc(), "user-1", user_data={})
+
         assert f"summary={'x' * 120!r}" in self._entries()[1]
 
 

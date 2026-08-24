@@ -12,7 +12,8 @@ Canvas and log content live on the todo document itself — see
 JuiceFS / FUSE mount is required, so tracked todos work in every dev mode.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+import random
 import re
 
 from app.constants.todos import GAIA_TRACKED_LABEL
@@ -303,6 +304,66 @@ class TrackedTodoService:
             user_id,
             f"\n## {now.isoformat()} [{event_type}]\n- {details}\n",
         )
+
+    @staticmethod
+    async def record_pending_question_reply(
+        user_id: str, reply_message_id: str, answer: str
+    ) -> bool:
+        """Record a user's reply to a todo's outstanding question and re-run the todo.
+
+        Deterministic thread-match: ``reply_message_id`` must equal the stored
+        question message's id. Clears ``pending_question`` and enqueues an
+        immediate execution (the Redis lock serializes it against anything else).
+        Returns False when no open question matches.
+        """
+        doc = await todo_repository.find_open_pending_question(user_id, reply_message_id)
+        if not doc or not doc.pending_question:
+            return False
+        todo_id = doc.id
+
+        now = datetime.now(UTC)
+        await TrackedTodoService.system_log(
+            todo_id, user_id, "QUESTION_ANSWERED", f"Answer: {answer}"
+        )
+        await TrackedTodoService.append_canvas_timeline(
+            todo_id=todo_id,
+            user_id=user_id,
+            entry=f"↩ {now.isoformat()} — user replied to pending question: {answer[:200]}",
+        )
+        await todo_repository.update(
+            todo_id, user_id=user_id, update=TodoUpdate(pending_question=None)
+        )
+
+        jitter = random.uniform(5, 30)
+        await TrackedTodoService.schedule_execution(todo_id, now + timedelta(seconds=jitter))
+        log.info(
+            "tracked_todo.question_answered",
+            todo_id=todo_id,
+            user_id=user_id,
+        )
+        return True
+
+    @staticmethod
+    async def clear_pending_question(todo_id: str, user_id: str, reason: str) -> bool:
+        """Drop an expired/unanswerable pending question and reschedule the todo.
+
+        Used by the maintenance sweep so a question that expired without an
+        answer never silently strands the todo.
+        """
+        doc = await todo_repository.get(todo_id, user_id=user_id)
+        if not doc or not doc.pending_question:
+            return False
+
+        await TrackedTodoService.system_log(
+            todo_id,
+            user_id,
+            "QUESTION_EXPIRED",
+            f"Pending question cleared ({reason}); todo rescheduled.",
+        )
+        await todo_repository.update(
+            todo_id, user_id=user_id, update=TodoUpdate(pending_question=None)
+        )
+        return True
 
     @staticmethod
     async def get_signal_matching_context(user_id: str) -> str:

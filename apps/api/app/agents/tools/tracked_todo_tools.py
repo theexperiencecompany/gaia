@@ -6,20 +6,37 @@ and search across canvas context via ChromaDB.
 """
 
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, cast
+from uuid import uuid4
 
 from croniter import croniter as _croniter
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
-from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.todos import (
+    ASK_USER_DAILY_LIMIT,
+    GAIA_TRACKED_LABEL,
+    PENDING_QUESTION_TTL,
+    TERMINAL_MARKER_TTL_SECONDS,
+    terminal_marker_key,
+)
 from app.db.repositories.todos import todo_repository
-from app.models.todo_models import Priority, TodoDocument, TodoResponse, TodoUpdate
+from app.models.chat_models import MessageModel, UpdateMessagesRequest
+from app.models.todo_models import (
+    PendingQuestion,
+    Priority,
+    TodoDocument,
+    TodoResponse,
+    TodoUpdate,
+)
+from app.models.user_models import AuthenticatedUser
+from app.services.conversation_service import update_messages
 from app.services.todo_canvas_storage import append_canvas, read_canvas, write_canvas
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
 from app.utils.canvas_vector_utils import search_canvas_context
 from app.utils.cron_utils import get_next_run_time
+from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import Timezone, is_valid_timezone
 from shared.py.wide_events import log, spawn_logged_task
 
@@ -830,6 +847,185 @@ async def list_tracked_todos(
     return f"Active tracked todos ({len(docs)}):\n\n" + "\n\n".join(lines)
 
 
+_TERMINAL_OUTCOMES = ("complete", "reschedule", "ask_user")
+_ERR_NOT_SCHEDULED_RUN = (
+    "Error: finish_todo_run is only valid during a scheduled tracked-todo run "
+    "(it requires an active todo binding)."
+)
+
+
+def _run_binding(config: RunnableConfig) -> tuple[str, str] | None:
+    """Return (todo_id, user_id) when called inside a scheduled tracked-todo run."""
+    configurable = config.get("configurable", {})
+    todo_id = configurable.get("active_todo_id")
+    execution_mode = configurable.get("execution_mode")
+    user_id = config.get("metadata", {}).get("user_id")
+    if not todo_id or execution_mode != "background" or not user_id:
+        return None
+    return str(todo_id), str(user_id)
+
+
+async def _ask_user_daily_count(user_id: str) -> int:
+    """Increment and return today's ask_user counter for the user (UTC-day key)."""
+    pool = await RedisPoolManager.get_pool()
+    day_key = f"gaia_todo_askuser:{user_id}:{datetime.now(UTC):%Y%m%d}"
+    count = await pool.incr(day_key)
+    await pool.expire(day_key, 172800)  # 2 days — outlives any UTC day boundary
+    return int(count)
+
+
+async def _post_question_message(
+    todo: TodoDocument, question: str, options: list[str], conversation_id: str, user_id: str
+) -> str | None:
+    """Append the question as a bot message to the run's conversation; returns its id."""
+    message_id = uuid4().hex
+    text = question
+    if options:
+        text += "\n\nOptions:\n" + "\n".join(f"- {opt}" for opt in options)
+    message = MessageModel(
+        type="bot",
+        response=text,
+        date=datetime.now(UTC).isoformat(),
+        message_id=message_id,
+        metadata={
+            "pending_question": {"todo_id": todo.id, "title": todo.title},
+        },
+    )
+    await update_messages(
+        UpdateMessagesRequest(conversation_id=conversation_id, messages=[message]),
+        user=cast(AuthenticatedUser, {"user_id": user_id}),
+    )
+    return message_id
+
+
+@tool
+async def finish_todo_run(
+    config: RunnableConfig,
+    outcome: Annotated[
+        str,
+        "Terminal outcome of THIS scheduled run: 'complete', 'reschedule', or 'ask_user'.",
+    ],
+    summary: Annotated[
+        str,
+        "One or two sentences on what this run did or found. Recorded on the todo's timeline.",
+    ],
+    reschedule_at: Annotated[
+        str | None,
+        "ISO datetime (with timezone offset) for the next run. REQUIRED when outcome='reschedule'.",
+    ] = None,
+    question: Annotated[
+        str | None,
+        "The question to ask the user. REQUIRED when outcome='ask_user'.",
+    ] = None,
+    options: Annotated[
+        list[str] | None,
+        "Optional answer choices shown alongside the question (outcome='ask_user' only).",
+    ] = None,
+) -> str:
+    """End THIS scheduled tracked-todo run. Every scheduled run MUST call exactly
+    this tool once, as its final action — ending without it counts as a failed run
+    and burns a retry.
+
+    - 'complete': the todo's goal is fully achieved (archives the todo).
+    - 'reschedule': work remains but should happen later at reschedule_at.
+    - 'ask_user': you are blocked on a decision only the user can make. The user's
+      reply re-triggers the todo automatically. Do not use this for information you
+      can find yourself.
+    """
+    binding = _run_binding(config)
+    if binding is None:
+        return _ERR_NOT_SCHEDULED_RUN
+    todo_id, user_id = binding
+
+    if outcome not in _TERMINAL_OUTCOMES:
+        return f"Error: invalid outcome '{outcome}'. Use one of: {', '.join(_TERMINAL_OUTCOMES)}."
+
+    if outcome == "reschedule" and not reschedule_at:
+        return "Error: outcome 'reschedule' requires reschedule_at."
+    if outcome == "ask_user":
+        if not question or not question.strip():
+            return "Error: outcome 'ask_user' requires question."
+        if reschedule_at:
+            return (
+                "Error: outcome 'ask_user' does not take reschedule_at — the todo "
+                "re-runs automatically when the user replies."
+            )
+
+    doc = await todo_repository.get(todo_id, user_id=user_id)
+    if not doc:
+        return f"Error: tracked todo {todo_id} not found."
+
+    conversation_id = str(config.get("configurable", {}).get("conversation_id") or "")
+    now = datetime.now(UTC)
+
+    if outcome == "complete":
+        success = await tracked_todo_service.complete_tracked_todo(
+            todo_id=todo_id, user_id=user_id, summary=summary
+        )
+        if not success:
+            return f"Error: could not complete tracked todo {todo_id}."
+        detail = "completed"
+
+    elif outcome == "reschedule":
+        parsed_at, error = _parse_iso_future_datetime(reschedule_at or "", "reschedule_at")
+        if error or parsed_at is None:
+            return error or "Error: invalid reschedule_at."
+        await todo_repository.update(
+            todo_id, user_id=user_id, update=TodoUpdate(scheduled_at=parsed_at)
+        )
+        await tracked_todo_service.reschedule_execution(todo_id, parsed_at)
+        detail = f"rescheduled to {parsed_at.isoformat()}"
+
+    else:  # ask_user
+        if doc.pending_question:
+            return (
+                "Error: this todo already has an outstanding question awaiting the user's "
+                "reply. Use outcome 'reschedule' instead."
+            )
+        ask_count = await _ask_user_daily_count(user_id)
+        if ask_count > ASK_USER_DAILY_LIMIT:
+            return (
+                f"Error: daily limit of {ASK_USER_DAILY_LIMIT} questions reached for today. "
+                "Use outcome 'reschedule' instead."
+            )
+        assert question is not None  # validated above; narrows for mypy
+        trimmed_options = [opt.strip() for opt in (options or []) if opt.strip()]
+        message_id = await _post_question_message(
+            doc, question, trimmed_options, conversation_id, user_id
+        )
+        if not message_id:
+            return "Error: could not deliver the question message — try 'reschedule' instead."
+        expires_at = now + PENDING_QUESTION_TTL
+        await todo_repository.update(
+            todo_id,
+            user_id=user_id,
+            update=TodoUpdate(
+                pending_question=PendingQuestion(
+                    question=question,
+                    options=trimmed_options,
+                    asked_at=now,
+                    expires_at=expires_at,
+                    conversation_id=conversation_id,
+                    message_id=message_id,
+                )
+            ),
+        )
+        detail = f"asked the user (expires {expires_at.isoformat()})"
+
+    pool = await RedisPoolManager.get_pool()
+    await pool.set(terminal_marker_key(todo_id), outcome, ex=TERMINAL_MARKER_TTL_SECONDS)
+
+    iso_now = now.isoformat()
+    await tracked_todo_service.append_canvas_timeline(
+        todo_id=todo_id,
+        user_id=user_id,
+        entry=f"■ {iso_now} — run finished via finish_todo_run ({detail}): {summary}",
+    )
+    log.set(todo={"finish_outcome": outcome})
+    log.info("tracked_todo.run_finished", todo_id=todo_id, outcome=outcome)
+    return f"Run finished ({detail})."
+
+
 tools = [
     create_tracked_todo,
     search_todo_context,
@@ -837,4 +1033,5 @@ tools = [
     complete_tracked_todo,
     update_tracked_todo,
     list_tracked_todos,
+    finish_todo_run,
 ]

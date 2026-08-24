@@ -400,3 +400,86 @@ class TestSingleton:
 
     def test_priority_default_is_none(self):
         assert Priority.NONE.value == "none"
+
+
+# ---------------------------------------------------------------------------
+# pending_question — deterministic reply match + expiry clearing
+# ---------------------------------------------------------------------------
+
+
+def _question_doc(**overrides: object) -> TodoDocument:
+    now = datetime.now(UTC)
+    return _todo_doc(
+        pending_question={
+            "question": "Proceed with plan A?",
+            "options": ["yes"],
+            "asked_at": now,
+            "expires_at": now + timedelta(hours=24),
+            "conversation_id": "conv-1",
+            "message_id": "msg-42",
+        },
+        **overrides,
+    )
+
+
+class TestRecordPendingQuestionReply:
+    async def test_matching_reply_clears_the_question_and_reschedules(self):
+        doc = _question_doc()
+        repo_update = AsyncMock()
+        schedule = AsyncMock(return_value=True)
+        with (
+            patch(
+                f"{_MOD}.todo_repository.find_open_pending_question",
+                AsyncMock(return_value=doc),
+            ),
+            patch(f"{_MOD}.todo_repository.update", repo_update),
+            patch(f"{_MOD}.TrackedTodoService.schedule_execution", schedule),
+            patch(f"{_MOD}.TrackedTodoService.system_log", AsyncMock()),
+            patch(f"{_MOD}.TrackedTodoService.append_canvas_timeline", AsyncMock()),
+        ):
+            handled = await tracked_todo_service.record_pending_question_reply(
+                USER_ID, "msg-42", "yes, plan A"
+            )
+
+        assert handled is True
+        update = repo_update.await_args.kwargs["update"]
+        assert update.pending_question is None
+        # The todo re-runs shortly after the answer, under the execution lock.
+        run_at = schedule.await_args.args[1]
+        assert datetime.now(UTC) <= run_at <= datetime.now(UTC) + timedelta(minutes=2)
+
+    async def test_a_non_matching_message_id_is_a_no_op(self):
+        with patch(
+            f"{_MOD}.todo_repository.find_open_pending_question",
+            AsyncMock(return_value=None),
+        ):
+            handled = await tracked_todo_service.record_pending_question_reply(
+                USER_ID, "unrelated", "hello"
+            )
+        assert handled is False
+
+
+class TestClearPendingQuestion:
+    async def test_expires_the_question_without_completing_the_todo(self):
+        doc = _question_doc()
+        repo_update = AsyncMock()
+        with (
+            patch(f"{_MOD}.todo_repository.get", AsyncMock(return_value=doc)),
+            patch(f"{_MOD}.todo_repository.update", repo_update),
+            patch(f"{_MOD}.TrackedTodoService.system_log", AsyncMock()) as system_log,
+        ):
+            cleared = await tracked_todo_service.clear_pending_question(
+                TODO_ID, USER_ID, "question expired without an answer"
+            )
+
+        assert cleared is True
+        assert repo_update.await_args.kwargs["update"].pending_question is None
+        system_log.assert_awaited_once()
+
+    async def test_no_question_to_clear_is_reported(self):
+        with patch(
+            f"{_MOD}.todo_repository.get",
+            AsyncMock(return_value=_todo_doc()),
+        ):
+            cleared = await tracked_todo_service.clear_pending_question(TODO_ID, USER_ID, "reason")
+        assert cleared is False

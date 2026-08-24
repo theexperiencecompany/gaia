@@ -5,6 +5,7 @@ with mocked service layer to verify routing, auth enforcement, response
 structure, and SSE format through the full FastAPI request lifecycle.
 """
 
+from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -465,3 +466,103 @@ class TestCancelStreamEndpoint:
         """POST /api/v1/cancel-stream/{id} without auth must return 401."""
         response = await unauthenticated_client.post("/api/v1/cancel-stream/some-stream-id")
         assert response.status_code == 401
+
+
+@pytest.mark.integration
+class TestChatStreamPendingQuestionReply:
+    """A message replying to a tracked todo's outstanding question records the
+    answer and re-triggers the todo; everything else is untouched."""
+
+    @pytest.fixture(autouse=True)
+    def mock_rate_limiter(self):
+        with patch(
+            "app.api.v1.middleware.tiered_rate_limiter.tiered_limiter.check_and_increment",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            yield
+
+    def _patches(self, record: AsyncMock):
+        return [
+            patch(
+                "app.api.v1.endpoints.chat.stream_manager.subscribe_stream",
+                new=_empty_subscribe_stream,
+            ),
+            patch(
+                "app.api.v1.endpoints.chat.stream_manager.start_stream",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.api.v1.endpoints.chat.run_chat_stream_background",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.api.v1.endpoints.chat.spawn_background_task",
+                side_effect=lambda coro, **kw: coro.close() or _make_mock_task(),
+            ),
+            patch("app.api.v1.endpoints.chat.redis_cache"),
+            patch(
+                "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.api.v1.endpoints.chat.tracked_todo_service.record_pending_question_reply",
+                record,
+            ),
+        ]
+
+    @staticmethod
+    def _extra_patches():
+        # The daily-cost gate lazily initializes the process-global Redis client
+        # inside this test's event loop; a later test function running on its own
+        # loop then hits that stale client in get_cost and 500s. These tests are
+        # about reply matching, not budget enforcement — bypass the gate.
+        return [
+            patch(
+                "app.api.v1.endpoints.chat.enforce_daily_cost_budget",
+                AsyncMock(return_value=None),
+            ),
+        ]
+
+    async def test_a_reply_to_a_pending_question_records_the_answer(self, test_client):
+        from app.models.payment_models import PlanType
+
+        record = AsyncMock(return_value=True)
+        patches = self._patches(record)
+        with ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            stack.enter_context(
+                patch(
+                    "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
+                    AsyncMock(return_value=MagicMock(plan_type=PlanType.FREE)),
+                )
+            )
+            response = await test_client.post(
+                "/api/v1/chat-stream",
+                json={
+                    **_VALID_BODY,
+                    "message": "yes, plan A",
+                    "replyToMessage": {
+                        "id": "msg-42",
+                        "content": "Proceed with plan A?",
+                        "role": "bot",
+                    },
+                },
+            )
+
+        assert response.status_code == 200
+        record.assert_awaited_once()
+        assert record.await_args.args[1] == "msg-42"
+        assert record.await_args.args[2] == "yes, plan A"
+
+    async def test_a_message_without_a_reply_never_touches_the_matcher(self, test_client):
+        record = AsyncMock(return_value=False)
+        patches = self._patches(record) + self._extra_patches()
+        with ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            response = await test_client.post("/api/v1/chat-stream", json=_VALID_BODY)
+
+        assert response.status_code == 200
+        record.assert_not_awaited()

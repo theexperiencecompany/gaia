@@ -71,13 +71,14 @@ async def maintenance_sweep_tracked_todos(_ctx: dict[str, Any]) -> str:
 
     pool = await RedisPoolManager.get_pool()
 
-    expired, overdue, dormant = await _classify_tracked_todos(pool, now)
+    expired, overdue, dormant, expired_questions = await _classify_tracked_todos(pool, now)
 
     # Track health-check calls per user to cap LLM usage per sweep
     health_checks_used: dict[str, int] = {}
     # Cache the daytime decision per user for the duration of this sweep.
     daytime_cache: dict[str, bool] = {}
 
+    requeued_questions = await _process_expired_questions(expired_questions, now)
     archived, notified_expired = await _process_expired(
         expired, pool, now, health_checks_used, daytime_cache
     )
@@ -92,6 +93,7 @@ async def maintenance_sweep_tracked_todos(_ctx: dict[str, Any]) -> str:
     summary = (
         f"archived:{archived} notified_expired:{notified_expired} "
         f"notified_overdue:{notified_overdue} requeued:{requeued} "
+        f"expired_questions_requeued:{requeued_questions} "
         f"digest_items:{len(needs_attention_todos)}"
     )
     log.set(
@@ -99,6 +101,7 @@ async def maintenance_sweep_tracked_todos(_ctx: dict[str, Any]) -> str:
         notified_expired=notified_expired,
         notified_overdue=notified_overdue,
         requeued=requeued,
+        expired_questions_requeued=requeued_questions,
         digest_items=len(needs_attention_todos),
     )
     log.info(
@@ -107,6 +110,7 @@ async def maintenance_sweep_tracked_todos(_ctx: dict[str, Any]) -> str:
         notified_expired=notified_expired,
         notified_overdue=notified_overdue,
         requeued=requeued,
+        expired_questions_requeued=requeued_questions,
         digest_items=len(needs_attention_todos),
     )
     return summary
@@ -114,19 +118,25 @@ async def maintenance_sweep_tracked_todos(_ctx: dict[str, Any]) -> str:
 
 async def _classify_tracked_todos(
     pool: ArqRedis, now: datetime
-) -> tuple[list[TodoDocument], list[TodoDocument], list[TodoDocument]]:
-    """Scan active tracked todos and bucket them into expired/overdue/dormant tiers.
+) -> tuple[list[TodoDocument], list[TodoDocument], list[TodoDocument], list[TodoDocument]]:
+    """Scan active tracked todos into expired/overdue/dormant/expired-question tiers.
 
-    Todos still inside their notification backoff are skipped. Each tier is capped
-    at 20 entries per sweep.
+    Todos still inside their notification backoff are skipped (except expired
+    questions, which must clear regardless — they block the todo's loop). Each
+    tier is capped at 20 entries per sweep.
     """
     todos = await todo_repository.list_active_tracked_all_users(limit=200)
 
     expired: list[TodoDocument] = []
     overdue: list[TodoDocument] = []
     dormant: list[TodoDocument] = []
+    expired_questions: list[TodoDocument] = []
 
     for todo in todos:
+        if todo.pending_question and todo.pending_question.expires_at <= now:
+            expired_questions.append(todo)
+            continue
+
         # Skip todos still inside their (escalating) notification backoff.
         if await pool.exists(_cooldown_key(todo.id)):
             continue
@@ -139,7 +149,24 @@ async def _classify_tracked_todos(
             dormant.append(todo)
 
     # Cap at 20 per tier per sweep
-    return expired[:20], overdue[:20], dormant[:20]
+    return expired[:20], overdue[:20], dormant[:20], expired_questions[:20]
+
+
+async def _process_expired_questions(list_of: list[TodoDocument], now: datetime) -> int:
+    """Clear unanswered expired questions and re-run the todo so it isn't stranded."""
+    requeued = 0
+    for todo in list_of:
+        if not await tracked_todo_service.clear_pending_question(
+            todo.id, todo.user_id, "question expired without an answer"
+        ):
+            continue
+        jitter_seconds = random.randint(10, 120)  # nosec B311  # NOSONAR python:S2245 — non-crypto scheduling jitter
+        await tracked_todo_service.schedule_execution(
+            todo.id, now + timedelta(seconds=jitter_seconds)
+        )
+        log.info("maintenance_sweep.question_expired_requeued", todo_id=todo.id)
+        requeued += 1
+    return requeued
 
 
 async def _process_expired(

@@ -15,6 +15,23 @@ class Priority(str, Enum):
     NONE = "none"  # no color
 
 
+class PendingQuestion(BaseModel):
+    """A question a scheduled tracked-todo run asked the user and is waiting on.
+
+    Waiting state is DERIVED from this field being non-null — there is no
+    status enum. Cleared when the answer arrives or when the sweep expires it.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    question: str = Field(..., min_length=1, max_length=2000)
+    options: list[str] = Field(default_factory=list, max_length=10)
+    asked_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    expires_at: datetime
+    conversation_id: str = Field(..., description="Conversation the question message was posted to")
+    message_id: str = Field(..., description="Bot message carrying the question (reply-match key)")
+
+
 class SubTask(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -341,6 +358,7 @@ class TodoDocument(UserScopedDocument):
     gaia_retry_count: int = 0
     expires_at: datetime | None = None
     references: list[str] = Field(default_factory=list)
+    pending_question: PendingQuestion | None = None
     completed_at: datetime | None = None
     # Canvas + log bodies for tracked todos live on the document itself.
     canvas_content: str | None = None
@@ -373,6 +391,7 @@ class TodoUpdate(BaseModel):
     gaia_retry_count: int | None = None
     expires_at: datetime | None = None
     references: list[str] | None = None
+    pending_question: PendingQuestion | None = None
     completed_at: datetime | None = None
     canvas_content: str | None = None
     log_content: str | None = None

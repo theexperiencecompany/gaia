@@ -9,6 +9,7 @@ Handles:
 - Safety-net cron for orphaned todos
 """
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 import random
 from typing import Any, cast
@@ -17,7 +18,7 @@ from uuid import uuid4
 from arq.connections import ArqRedis
 
 from app.agents.core.agent import call_agent_silent
-from app.constants.todos import FAILED_LABEL
+from app.constants.todos import FAILED_LABEL, terminal_marker_key
 from app.db.repositories.todos import todo_repository
 from app.models.message_models import MessageRequestWithHistory
 from app.models.notification.notification_models import (
@@ -41,6 +42,23 @@ from shared.py.wide_events import log
 MAX_RETRY_ATTEMPTS = 3
 RETRY_BACKOFF = [timedelta(hours=1), timedelta(hours=4)]
 LOCK_TTL_SECONDS = 1800
+# The lock is renewed well inside its TTL so a long run never loses it, and
+# released by compare-and-delete so an expired holder can't delete a successor's lock.
+LOCK_HEARTBEAT_SECONDS = 120
+
+# Redis Lua: only touch the lock if we still own it (value == our token).
+_LOCK_EXTEND_LUA = (
+    "if redis.call('get', KEYS[1]) == ARGV[1] then "
+    "return redis.call('expire', KEYS[1], ARGV[2]) else return 0 end"
+)
+_LOCK_RELEASE_LUA = (
+    "if redis.call('get', KEYS[1]) == ARGV[1] then "
+    "return redis.call('del', KEYS[1]) else return 0 end"
+)
+
+
+class TerminalToolNotCalled(RuntimeError):
+    """A scheduled tracked-todo run ended without calling finish_todo_run."""
 
 
 async def _load_user_with_tz(user_id: str) -> tuple[AuthenticatedUser, Timezone]:
@@ -80,15 +98,26 @@ async def execute_tracked_todo(_ctx: dict[str, Any], todo_id: str) -> str:
     pool = await RedisPoolManager.get_pool()
     lock_key = f"gaia_todo_exec:{todo_id}"
 
-    acquired = await pool.set(lock_key, "1", nx=True, ex=LOCK_TTL_SECONDS)
+    lock_token = uuid4().hex
+    acquired = await pool.set(lock_key, lock_token, nx=True, ex=LOCK_TTL_SECONDS)
     if not acquired:
         log.info("tracked_todo.execute_lock_held", todo_id=todo_id)
         return f"skipped:{todo_id} (lock held)"
 
+    # ArqRedis's stub doesn't declare eval; redis-py's async client does.
+    lua: Any = cast("ArqRedis", pool)
+
+    async def _heartbeat() -> None:
+        while True:
+            await asyncio.sleep(LOCK_HEARTBEAT_SECONDS)
+            await lua.eval(_LOCK_EXTEND_LUA, 1, lock_key, lock_token, LOCK_TTL_SECONDS)
+
+    heartbeat_task = asyncio.create_task(_heartbeat())
     try:
         return await _execute_todo_with_retry(todo_id, pool)
     finally:
-        await pool.delete(lock_key)
+        heartbeat_task.cancel()
+        await lua.eval(_LOCK_RELEASE_LUA, 1, lock_key, lock_token)
 
 
 async def _execute_todo_with_retry(todo_id: str, pool: ArqRedis) -> str:
@@ -133,7 +162,21 @@ async def _execute_todo_with_retry(todo_id: str, pool: ArqRedis) -> str:
     user_data, user_tz = await _load_user_with_tz(user_id)
 
     try:
-        await _run_execution(doc, user_id, user_data=user_data)
+        # A stale marker from a previous run of this todo would falsely satisfy
+        # the terminal contract — clear it before the agent starts.
+        await pool.delete(terminal_marker_key(todo_id))
+
+        outcome = await _run_execution(doc, user_id, user_data=user_data)
+
+        if outcome not in (None, "complete", "reschedule"):
+            log.warning(
+                "tracked_todo.unexpected_terminal_outcome", todo_id=todo_id, outcome=outcome
+            )
+
+        # When the run terminated itself via finish_todo_run (complete/reschedule),
+        # it already decided the todo's next state — don't overwrite scheduled_at
+        # or double-enqueue here. The retry budget still resets: the run succeeded.
+        agent_decided_next = outcome in ("complete", "reschedule")
 
         # scheduled_at must always name the NEXT planned execution — it is the
         # field find_due_tracked_all_users selects on, so a value left pointing
@@ -142,14 +185,14 @@ async def _execute_todo_with_retry(todo_id: str, pool: ArqRedis) -> str:
         # timezone (looked up once at the top of this run).
         next_run = (
             _compute_next_run(doc.recurrence, user_tz.value, anchor=doc.scheduled_at)
-            if doc.recurrence
+            if doc.recurrence and not agent_decided_next
             else None
         )
-        await todo_repository.update(
-            todo_id,
-            user_id=user_id,
-            update=TodoUpdate(gaia_retry_count=0, scheduled_at=next_run),
-        )
+        if agent_decided_next:
+            update = TodoUpdate(gaia_retry_count=0)
+        else:
+            update = TodoUpdate(gaia_retry_count=0, scheduled_at=next_run)
+        await todo_repository.update(todo_id, user_id=user_id, update=update)
 
         if next_run:
             await enqueue_worker_job(
@@ -205,11 +248,15 @@ async def _execute_todo_with_retry(todo_id: str, pool: ArqRedis) -> str:
         return f"retry:{todo_id} (attempt {new_retry_count})"
 
 
-async def _run_execution(doc: TodoDocument, user_id: str, *, user_data: AuthenticatedUser) -> None:
+async def _run_execution(
+    doc: TodoDocument, user_id: str, *, user_data: AuthenticatedUser
+) -> str | None:
     """
     Dispatch execution to the correct path:
     - If the todo has a workflow_id, queue the workflow.
     - Otherwise, run the agent directly.
+
+    Returns the terminal outcome recorded by finish_todo_run (agent path only).
     """
     if doc.workflow_id:
         # Deferred import to avoid circular dependency
@@ -225,8 +272,8 @@ async def _run_execution(doc: TodoDocument, user_id: str, *, user_data: Authenti
         if not success:
             raise RuntimeError(f"Failed to queue workflow {doc.workflow_id} for todo {doc.id}")
         log.info("tracked_todo.workflow_queued", workflow_id=doc.workflow_id, todo_id=doc.id)
-    else:
-        await _execute_via_agent(doc, user_id, user_data=user_data)
+        return None
+    return await _execute_via_agent(doc, user_id, user_data=user_data)
 
 
 def _extract_learnings(ref_canvas: str) -> str | None:
@@ -272,16 +319,25 @@ def _build_execution_prompt(
         prompt_parts.append(f"Canvas context:\n{canvas_content}")
     if reference_context:
         prompt_parts.append(reference_context)
+    prompt_parts.append(
+        "MANDATORY: When the work for THIS run is done, you MUST call finish_todo_run "
+        "as your final action — 'complete' (goal fully achieved), 'reschedule' (with "
+        "reschedule_at) when work remains but should happen later, or 'ask_user' (with "
+        "question) only when you are blocked on a decision only the user can make. "
+        "Ending this run without finish_todo_run counts as a failed run."
+    )
     return "\n\n".join(prompt_parts)
 
 
 async def _execute_via_agent(
     doc: TodoDocument, user_id: str, *, user_data: AuthenticatedUser
-) -> str:
+) -> str | None:
     """
     Execute the todo using call_agent_silent directly (no workflow needed).
 
-    Returns the first 200 chars of the agent response.
+    Enforces the terminal contract: the run MUST end via finish_todo_run.
+    Returns the terminal outcome recorded by that tool, or None when the run
+    ended without it (which raises instead).
     """
     todo_id = doc.id
 
@@ -365,8 +421,17 @@ async def _execute_via_agent(
         entry=f"✓ {end_iso} — scheduled run finished (summary={summary!r})",
     )
 
-    log.info("tracked_todo.agent_completed", todo_id=todo_id)
-    return complete_message[:200] if complete_message else ""
+    pool = await RedisPoolManager.get_pool()
+    marker = await pool.get(terminal_marker_key(todo_id))
+    if isinstance(marker, bytes):
+        marker = marker.decode()
+    if not marker:
+        # No quiet exit: a run that never terminated through finish_todo_run is
+        # a failed run and goes through the standard retry ladder.
+        raise TerminalToolNotCalled(f"run for todo {todo_id} ended without calling finish_todo_run")
+
+    log.info("tracked_todo.agent_completed", todo_id=todo_id, outcome=str(marker))
+    return str(marker)
 
 
 async def _mark_todo_failed(todo_id: str, user_id: str, doc: TodoDocument) -> None:

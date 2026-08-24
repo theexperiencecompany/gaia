@@ -109,6 +109,7 @@ async def build_executor_graph(
             "complete_tracked_todo",
             "search_todo_context",
             "list_tracked_todos",
+            "finish_todo_run",
             "save_learned_skill",
         ],
         middleware=middleware,

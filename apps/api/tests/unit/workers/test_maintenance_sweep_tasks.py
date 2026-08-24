@@ -198,7 +198,7 @@ class TestClassifyTrackedTodos:
             _doc(id="dor", updated_at=NOW - timedelta(days=10)),
             _doc(id="fine", updated_at=NOW),
         ]
-        expired, overdue, dormant = await self._classify(pool, todos)
+        expired, overdue, dormant, _eq = await self._classify(pool, todos)
 
         assert [t.id for t in expired] == ["exp"]
         assert [t.id for t in overdue] == ["due"]
@@ -211,7 +211,7 @@ class TestClassifyTrackedTodos:
             _doc(id="todo-1", expires_at=NOW - timedelta(hours=1)),
             _doc(id="todo-2", expires_at=NOW - timedelta(hours=1)),
         ]
-        expired, _overdue, _dormant = await self._classify(pool, todos)
+        expired, _overdue, _dormant, _eq = await self._classify(pool, todos)
 
         assert [t.id for t in expired] == ["todo-2"]
 
@@ -224,7 +224,7 @@ class TestClassifyTrackedTodos:
                 scheduled_at=NOW + timedelta(hours=1),
             )
         ]
-        _expired, overdue, _dormant = await self._classify(pool, todos)
+        _expired, overdue, _dormant, _eq = await self._classify(pool, todos)
         assert overdue == []
 
     async def test_each_tier_is_capped_at_20(self):
@@ -232,15 +232,15 @@ class TestClassifyTrackedTodos:
         todos = [_doc(id=f"exp-{i}", expires_at=NOW - timedelta(hours=1)) for i in range(25)] + [
             _doc(id=f"dor-{i}", updated_at=NOW - timedelta(days=10)) for i in range(25)
         ]
-        expired, _overdue, dormant = await self._classify(pool, todos)
+        expired, _overdue, dormant, _eq = await self._classify(pool, todos)
 
         assert len(expired) == 20
         assert len(dormant) == 20
 
     async def test_empty_scan_returns_empty_tiers(self):
         pool = _pool()
-        expired, overdue, dormant = await self._classify(pool, [])
-        assert (expired, overdue, dormant) == ([], [], [])
+        expired, overdue, dormant, eq = await self._classify(pool, [])
+        assert (expired, overdue, dormant, eq) == ([], [], [], [])
 
 
 # ---------------------------------------------------------------------------
@@ -584,7 +584,8 @@ class TestMaintenanceSweep:
             summary = await maintenance_sweep_tracked_todos({})
 
         assert (
-            summary == "archived:1 notified_expired:0 notified_overdue:0 requeued:0 digest_items:0"
+            summary
+            == "archived:1 notified_expired:0 notified_overdue:0 requeued:0 expired_questions_requeued:0 digest_items:0"
         )
         mocks["archive"].assert_awaited_once()
         pool.set.assert_awaited()
@@ -597,7 +598,8 @@ class TestMaintenanceSweep:
             summary = await maintenance_sweep_tracked_todos({})
 
         assert (
-            summary == "archived:0 notified_expired:0 notified_overdue:0 requeued:0 digest_items:1"
+            summary
+            == "archived:0 notified_expired:0 notified_overdue:0 requeued:0 expired_questions_requeued:0 digest_items:1"
         )
         mocks["notify"].assert_awaited_once()
         request = mocks["notify"].await_args.args[0]
@@ -614,7 +616,8 @@ class TestMaintenanceSweep:
             summary = await maintenance_sweep_tracked_todos({})
 
         assert (
-            summary == "archived:0 notified_expired:0 notified_overdue:0 requeued:0 digest_items:0"
+            summary
+            == "archived:0 notified_expired:0 notified_overdue:0 requeued:0 expired_questions_requeued:0 digest_items:0"
         )
         mocks["health"].assert_not_awaited()
 
@@ -622,7 +625,7 @@ class TestMaintenanceSweep:
         """Pin the operator-visible summary format with the processing steps faked."""
         with (
             patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=_pool())),
-            patch(f"{MODULE}._classify_tracked_todos", AsyncMock(return_value=([], [], []))),
+            patch(f"{MODULE}._classify_tracked_todos", AsyncMock(return_value=([], [], [], []))),
             patch(f"{MODULE}._process_expired", AsyncMock(return_value=(3, 2))),
             patch(f"{MODULE}._process_overdue", AsyncMock(return_value=4)),
             patch(f"{MODULE}._process_dormant", AsyncMock(return_value=(1, [MagicMock()]))),
@@ -631,6 +634,79 @@ class TestMaintenanceSweep:
             summary = await maintenance_sweep_tracked_todos({})
 
         assert (
-            summary == "archived:3 notified_expired:2 notified_overdue:4 requeued:1 digest_items:1"
+            summary
+            == "archived:3 notified_expired:2 notified_overdue:4 requeued:1 expired_questions_requeued:0 digest_items:1"
         )
         digest.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# pending_question expiry — an unanswered question must never strand a todo
+# ---------------------------------------------------------------------------
+
+
+def _question_doc(**overrides) -> TodoDocument:
+    from app.models.todo_models import PendingQuestion
+
+    question = PendingQuestion(
+        question="Proceed?",
+        options=[],
+        asked_at=NOW - timedelta(hours=25),
+        expires_at=NOW - timedelta(hours=1),
+        conversation_id="conv-1",
+        message_id="msg-1",
+    )
+    overrides.setdefault("pending_question", question)
+    return _doc(**overrides)
+
+
+class TestExpiredPendingQuestions:
+    async def test_an_expired_question_is_classified_into_its_own_tier(self):
+        pool = _pool()
+        todos = [_question_doc(id="q1"), _doc(id="plain")]
+        with patch(
+            f"{MODULE}.todo_repository.list_active_tracked_all_users",
+            AsyncMock(return_value=todos),
+        ):
+            _expired, _overdue, _dormant, eq = await _classify_tracked_todos(pool, NOW)
+
+        assert [t.id for t in eq] == ["q1"]
+
+    async def test_an_unexpired_question_is_not_touched(self):
+        pool = _pool()
+        doc = _question_doc(
+            id="q2",
+            pending_question=_question_doc().pending_question.model_copy(
+                update={"expires_at": NOW + timedelta(hours=5)}
+            ),
+        )
+        with patch(
+            f"{MODULE}.todo_repository.list_active_tracked_all_users",
+            AsyncMock(return_value=[doc]),
+        ):
+            _expired, _overdue, _dormant, eq = await _classify_tracked_todos(pool, NOW)
+
+        assert eq == []
+
+    async def test_expired_questions_are_cleared_and_rescheduled_by_the_sweep(self):
+        doc = _question_doc(id="q3")
+        clear = AsyncMock(return_value=True)
+        schedule = AsyncMock(return_value=True)
+        with (
+            patch(
+                f"{MODULE}.todo_repository.list_active_tracked_all_users",
+                AsyncMock(return_value=[doc]),
+            ),
+            patch(f"{MODULE}.tracked_todo_service.clear_pending_question", clear),
+            patch(f"{MODULE}.tracked_todo_service.schedule_execution", schedule),
+            patch(f"{MODULE}._is_user_daytime", AsyncMock(return_value=True)),
+            patch(f"{MODULE}._read_canvas", AsyncMock(return_value="")),
+            patch(
+                f"{MODULE}._call_health_check_agent", AsyncMock(return_value="NEEDS_ATTENTION: x")
+            ),
+        ):
+            summary = await maintenance_sweep_tracked_todos({})
+
+        clear.assert_awaited_once_with("q3", "user-1", "question expired without an answer")
+        schedule.assert_awaited_once()
+        assert "expired_questions_requeued:1" in summary
