@@ -177,8 +177,15 @@ async def _narrate_and_deliver(
     )
     # If comms is unavailable, fall back to the raw executor text rather than
     # dropping the message entirely.
-    if not notification_text:
+    narrated = bool(notification_text)
+    if not narrated:
         notification_text = result_text
+    log.set_ns(
+        "result_delivery",
+        result_type=result_type,
+        narrated=narrated,
+        text_length=len(notification_text),
+    )
 
     bot_message = MessageModel(
         type="bot",
@@ -344,15 +351,34 @@ async def _narrate_and_deliver(
         delivered = True
         transport = "websocket"
 
-    log.info(
-        f"{LogTag.AGENT} deliver_result: delivered message",
-        message_id=bot_message.message_id,
-        task_id=run.task_id,
-        conversation_id=run.conversation_id,
-        conversation_source=conversation_source.value if conversation_source else None,
+    # Delivery is the last step that can silently lose a finished run: the answer
+    # is saved to the conversation either way, so a failed send leaves a run whose
+    # outcome is "success" and whose user got nothing. Put the verdict ON the
+    # executor_run wide event (not just this line) so that state is queryable.
+    log.set_ns(
+        "result_delivery",
         transport=transport,
         delivered=delivered,
+        source=conversation_source.value if conversation_source else None,
     )
+    if delivered:
+        log.info(
+            f"{LogTag.AGENT} deliver_result: delivered message",
+            message_id=bot_message.message_id,
+            task_id=run.task_id,
+            conversation_id=run.conversation_id,
+            conversation_source=conversation_source.value if conversation_source else None,
+            transport=transport,
+        )
+    else:
+        log.error(
+            f"{LogTag.AGENT} deliver_result: result saved but NOT delivered to the user",
+            message_id=bot_message.message_id,
+            task_id=run.task_id,
+            conversation_id=run.conversation_id,
+            conversation_source=conversation_source.value if conversation_source else None,
+            transport=transport,
+        )
     return notification_text, bot_message.message_id
 
 
