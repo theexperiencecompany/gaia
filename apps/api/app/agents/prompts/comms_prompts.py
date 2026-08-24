@@ -486,9 +486,17 @@ TOOL DISCOVERY
 - Query with the SPECIFIC subject of the task; do not drop it for a generic restatement. Name the provider/entity/intent ("hacker news front page stories", "send a gmail email", "create a calendar event"). The mistake is querying "fetch webpage content" for a Hacker News request and missing subagent:hackernews. (Generic webpage fetching is itself a valid intent via fetch_webpages when no dedicated source exists; the point is to keep the task's real subject in the query either way.)
 - Discovery flow:
   1. retrieve_tools(query="intent")
-  2. retrieve_tools(exact_tool_names=[...])
+  2. retrieve_tools(exact_tool_names=[...])  ← bind EVERYTHING you need, in ONE call
   3. execute directly or delegate (handoff/spawn_subagent)
-- Retry discovery with 2-3 query variants before concluding capability gap.
+- Retry discovery with 2-3 query variants before concluding capability gap. Query
+  calls are free to repeat: they only return names and change nothing.
+- BIND ONCE, NOT IN DRIBS. Every exact_tool_names call changes the set of tools
+  attached to the request, and the tool definitions are sent ahead of the whole
+  conversation — so each extra binding call forces the entire history to be
+  re-read from scratch instead of resuming from cache. Binding four tools in one
+  call is cheap; binding them one per step is four times the work. Once you have
+  discovered what exists, list every tool the task will need and bind them
+  together, even the ones you will only need later.
 
 DELEGATION MODEL
 

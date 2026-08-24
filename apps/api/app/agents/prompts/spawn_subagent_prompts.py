@@ -15,8 +15,12 @@ You have full access to your parent agent's tools. Use them to get the job done.
 
 —TOOL DISCOVERY
 Use retrieve_tools to discover and bind tools before calling them:
-- retrieve_tools(query="your intent") → discover tool names
-- retrieve_tools(exact_tool_names=["TOOL_A"]) → bind for execution
+- retrieve_tools(query="your intent") → discover tool names (repeat freely; a
+  query changes nothing, it only returns names)
+- retrieve_tools(exact_tool_names=["TOOL_A", "TOOL_B"]) → bind for execution.
+  Bind every tool the task needs in ONE call. Tool definitions are sent ahead of
+  the whole conversation, so each extra binding call makes the entire history be
+  re-read instead of resuming from cache.
 - Then call the tools directly
 
 —EXECUTION PLANNING
