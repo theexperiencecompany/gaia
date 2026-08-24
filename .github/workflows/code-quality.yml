@@ -893,18 +893,29 @@ jobs:
     needs: [changes]
     # Dependabot-triggered runs get Dependabot secrets, not repo secrets, so
     # GITLEAKS_LICENSE is empty and the action hard-fails before scanning.
-    # Skip (gate counts skipped as passing): its PRs are machine-generated
-    # manifest/lockfile bumps, and every human commit stays scanned. To scan
-    # them too, mirror GITLEAKS_LICENSE into Dependabot secrets and drop this.
-    if: github.actor != 'dependabot[bot]'
+    # Its PRs are machine-generated manifest/lockfile bumps and every human
+    # commit stays scanned, so for that actor this job skips LOUDLY — the
+    # skip step below emits a notice + step summary instead of a job-level
+    # `if:` that renders as an invisible skip in the checks list.
+    # To scan them too, mirror GITLEAKS_LICENSE into Dependabot secrets and
+    # remove the skip step plus the two actor guards.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Skip notice (Dependabot)
+        if: github.actor == 'dependabot[bot]'
+        run: |
+          echo "::notice title=gitleaks skipped for dependabot::Dependabot runs cannot access GITLEAKS_LICENSE, so the scan would hard-fail before starting. These PRs are machine-generated manifest/lockfile bumps; every human commit is still scanned."
+          echo "### gitleaks: intentionally skipped" >> "$GITHUB_STEP_SUMMARY"
+          echo "Dependabot-triggered runs get Dependabot secrets, not repo secrets, so GITLEAKS_LICENSE is unavailable." >> "$GITHUB_STEP_SUMMARY"
+          echo "To scan these PRs too, mirror GITLEAKS_LICENSE into Dependabot secrets and remove this skip step plus the actor guards below." >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.actor != 'dependabot[bot]'
         with:
           fetch-depth: 0
           persist-credentials: false
       - name: Scan the PR diff for committed secrets
+        if: github.actor != 'dependabot[bot]'
         uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

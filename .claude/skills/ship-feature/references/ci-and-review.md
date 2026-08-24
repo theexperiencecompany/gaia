@@ -9,8 +9,9 @@ lane's exact command; don't trust memory or this file for specifics.
   (Python tests run the full suite against live services). Required check:
   **`quality-gate`**; skipped jobs pass it.
 - **Code Quality** (`code-quality.yml`) — many independent lint/analysis
-  lanes. A lane is enforced iff a marker file exists in
-  `.github/quality-gate/enforced/`. Required check:
+  lanes, every one flat-enforced via the `LANES` array in the `quality-gate`
+  verdict job (the old `.github/quality-gate/enforced/` marker-file ratchet
+  was removed — see `.github/quality-gate/README.md`). Required check:
   **`Quality gate (required)`**. In both gates a skipped lane passes (skipped
   = your diff didn't touch that lane's language).
 - **PR title check** (`pr-naming-conventions.yml`) — Conventional Commit
