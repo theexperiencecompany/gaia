@@ -144,7 +144,7 @@ def test_a_reworded_rule_raises_instead_of_checking_nothing(
     """
 
     def dequote(text: str) -> str:
-        start = text.index("- Banned phrases (they scream chatbot):")
+        start = text.index("- Banned literals (phrases that scream chatbot):")
         stop = text.index("- When the user is just chatting,")
         return text[:start] + text[start:stop].replace('"', "") + text[stop:]
 
@@ -163,8 +163,8 @@ def test_a_reworded_dash_rule_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     _edit(
         monkeypatch,
         lambda text: text.replace(
-            "- NEVER use em dashes (—) or en dashes (–) anywhere in your output, ever.",
-            "- NEVER use em dashes or en dashes anywhere in your output, ever.",
+            "- Banned literals (dashes): NEVER use em dashes (—) or en dashes (–) anywhere in your output, ever.",
+            "- Banned literals (dashes): NEVER use em dashes or en dashes anywhere in your output, ever.",
         ),
     )
     banned_dashes.cache_clear()
