@@ -9,12 +9,12 @@
  * @module commands/doctor/handler
  */
 
-import type { CheckResult } from "./checks.js";
 import {
   type DoctorReport,
   hasBlockingFailure,
   runDoctorChecks,
 } from "./flow.js";
+import type { CheckResult } from "./types.js";
 
 /** Output tag for a check result: warnings render as [warn], not [FAIL]. */
 function tagFor(result: CheckResult): string {

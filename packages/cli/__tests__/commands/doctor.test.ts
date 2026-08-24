@@ -11,8 +11,6 @@ vi.mock("../../src/lib/version.js", () => ({
   CLI_VERSION: "0.0.1-test",
 }));
 
-// Import after mocks are registered so the modules pick them up.
-import type { CheckResult } from "../../src/commands/doctor/checks.js";
 import {
   areServicesRunning,
   checkApiHealth,
@@ -30,6 +28,8 @@ import {
   resolvePort,
 } from "../../src/commands/doctor/checks.js";
 import { hasBlockingFailure } from "../../src/commands/doctor/flow.js";
+// Import after mocks are registered so the modules pick them up.
+import type { CheckResult } from "../../src/commands/doctor/types.js";
 
 const mockedExeca = vi.mocked(execa);
 

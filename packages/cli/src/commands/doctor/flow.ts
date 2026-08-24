@@ -12,7 +12,6 @@
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
 import { detectSetupMode, findRepoRoot } from "../../lib/service-starter.js";
 import {
-  type CheckResult,
   COMPOSE_PROJECT_BY_MODE,
   type ComposeProject,
   checkApiHealth,
@@ -24,6 +23,7 @@ import {
   EXPECTED_SERVICES,
   resolvePort,
 } from "./checks.js";
+import type { CheckResult } from "./types.js";
 
 export interface DoctorReport {
   results: CheckResult[];

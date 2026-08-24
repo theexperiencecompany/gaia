@@ -16,24 +16,9 @@ import {
   isDockerRunning,
 } from "../../lib/docker.js";
 import type { SetupMode } from "../../lib/env-parser.js";
+import type { CheckResult } from "./types";
 
 /** How a failed check influences the exit code. */
-export type CheckSeverity = "blocker" | "warning";
-
-export type CheckState = "ok" | "fail" | "skipped";
-
-export interface CheckResult {
-  /** Stable machine identifier, e.g. "docker-daemon". */
-  id: string;
-  /** Human-readable check name printed in the report. */
-  label: string;
-  severity: CheckSeverity;
-  state: CheckState;
-  /** Observed detail, e.g. per-container status breakdown. */
-  detail?: string;
-  /** Remediation hint, shown for failures. */
-  fix?: string;
-}
 
 /** Minimum free space (bytes) required on the Docker data root. */
 export const MIN_DISK_HEADROOM_BYTES = 2 * 1024 * 1024 * 1024;
