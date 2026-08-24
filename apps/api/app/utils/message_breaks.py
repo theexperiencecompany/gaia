@@ -14,6 +14,8 @@ two must accept the same spellings.
 
 import re
 
+from app.constants.general import NEW_MESSAGE_BREAKER
+
 #: Words of each accepted spelling, in order. Separators between them are
 #: matched leniently (``_``, ``-``, space, or nothing at all).
 _SENTINEL_WORD_SEQUENCES: tuple[tuple[str, ...], ...] = (
@@ -69,6 +71,16 @@ PARTIAL_MESSAGE_BREAK_RE = re.compile(
 def strip_partial_message_break(text: str) -> str:
     """Drop a sentinel that a chunk boundary cut in half at the end of ``text``."""
     return PARTIAL_MESSAGE_BREAK_RE.sub("", text)
+
+
+def append_message_bubble(message: str, bubble: str) -> str:
+    """Append one finished bubble, sentinel-separated from what came before.
+
+    Two assistant messages in one turn are two bubbles. Concatenating their text
+    directly is what turned "fixing it." and "fixing it now" into the single
+    sentence "fixing it.fixing it now" in a persisted reply.
+    """
+    return f"{message}{NEW_MESSAGE_BREAKER}{bubble}" if message else bubble
 
 
 def split_message_bubbles(text: str) -> list[str]:
