@@ -67,7 +67,7 @@ PREAMBLE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
 BOLD_EMPHASIS_PATTERN = re.compile(r"\*\*[^*\n]+\*\*")
 
 #: The sales close: a reply that ends by offering to do the next thing, often
-#: with a justification clause bolted on. Measured in 29 of 72 generated replies
+#: with a justification clause bolted on. Measured in 44 of 72 generated replies
 #: on real production queries, at every temperature and reasoning effort tried,
 #: which is what marks it as prompt-driven rather than sampling noise.
 CLOSING_HOOK_PATTERN = re.compile(
