@@ -9,10 +9,9 @@
  * @module
  */
 import type { Readable } from "node:stream";
-import type { AxiosInstance } from "axios";
 import type { ApprovalRequestData } from "../../chat";
 import { NEW_MESSAGE_BREAK_TOKEN } from "../../utils/messageBreakUtils";
-import type { BotUserContext, ChatRequest } from "../types";
+import type { ChatRequest } from "../types";
 import { getHttpStatus } from "../utils/logger";
 import { wideLog } from "../utils/wide-events";
 import type {
