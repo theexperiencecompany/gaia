@@ -847,3 +847,26 @@ class TestHandoffRejectsAForeignProviderInTheTask:
 
         dispatch.assert_awaited_once()
         assert result == "subagent ran"
+
+
+@pytest.mark.unit
+class TestBackgroundHandoffWithoutAStream:
+    """``background=True`` needs a stream_id to route the result back. Without
+    one the handoff still runs, but blocking — and the executor has to be told,
+    or it calls ``wait_for_subagents()`` for a result that already arrived and
+    waits on nothing."""
+
+    async def test_the_result_is_prefixed_with_the_fallback_warning(self) -> None:
+        with _resolved_subagent("todo_agent", "todos") as dispatch:
+            result = await handoff.coroutine(
+                subagent_id="todos",
+                task="Create a task.",
+                background=True,
+                config={"configurable": {"user_id": "u1", "thread_id": "t1"}},
+            )
+
+        dispatch.assert_awaited_once()
+        assert result == (
+            "[WARNING: background handoff fell back to blocking: "
+            "stream_id not propagated into executor configurable] subagent ran"
+        )

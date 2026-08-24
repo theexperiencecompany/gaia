@@ -71,7 +71,12 @@ def _session_with_cards(stream_id: str) -> None:
 
 
 async def _deliver(
-    conv_source, *, comms_text="result text", result_text="raw", platform_delivered=True
+    conv_source,
+    *,
+    comms_text="result text",
+    result_text="raw",
+    platform_delivered=True,
+    task_id=None,
 ):
     """Run deliver_result with all I/O boundaries mocked.
 
@@ -96,7 +101,7 @@ async def _deliver(
         patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
     ):
         await rd.deliver_result(
-            _run(),
+            _run(task_id=task_id),
             result_text=result_text,
             result_type="final",
         )
@@ -181,6 +186,27 @@ class TestDeliveryOutcomeIsOnTheWideEvent:
         assert len(errors) == 1
         assert "NOT delivered" in errors[0]["msg"]
         assert errors[0]["conversation_id"] == "conv-1"
+
+    async def test_the_undelivered_error_names_the_message_task_and_route(self) -> None:
+        """The error is the whole lead for "a user got silence": without the
+        message id there is nothing to look up, without the task id nothing ties
+        it to the run, and without the route nobody knows which delivery path
+        broke. An error that only says something failed cannot be actioned.
+        """
+        await _deliver(ConversationSource.TELEGRAM, platform_delivered=False, task_id="task-1")
+
+        (error,) = log.get()["errors"]
+        assert error["task_id"] == "task-1"
+        assert error["conversation_source"] == "telegram"
+        assert error["transport"] == "platform"
+        assert error["message_id"], "the saved message must be identified"
+
+    async def test_the_result_type_is_on_the_delivery_namespace(self) -> None:
+        """An errored run and a finished one deliver through the same path; the
+        result_type is what separates them when the delivery itself is fine."""
+        await _deliver(ConversationSource.TELEGRAM)
+
+        assert log.get()["result_delivery"]["result_type"] == "final"
 
     async def test_a_successful_send_is_recorded_as_delivered_with_no_error(self) -> None:
         await _deliver(ConversationSource.TELEGRAM)

@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.bot_sessions import (
     LEGACY_DM_SESSION_KEY_SUFFIX,
     BotSessionsRepository,
@@ -144,6 +145,17 @@ class TestRepointConversation:
         assert filter_ == {"session_key": CANONICAL_KEY}
         assert update == {"$set": {"conversation_id": "conv-winner"}}
 
+    async def test_it_reports_a_filter_that_matched_nothing(
+        self, repo: BotSessionsRepository, collection: MagicMock
+    ) -> None:
+        """A repoint that hit no row must say so: the migration counts it as
+        applied otherwise, and reports a fork it never actually merged."""
+        collection.update_one.return_value = MagicMock(matched_count=0, upserted_id=None)
+
+        assert not await repo.repoint_conversation(
+            session_key=CANONICAL_KEY, conversation_id="conv-winner"
+        )
+
 
 class TestDeleteBySessionKey:
     async def test_it_reports_how_many_rows_it_removed(
@@ -153,3 +165,41 @@ class TestDeleteBySessionKey:
 
         assert await repo.delete_by_session_key(LEGACY_KEY) == 1
         assert collection.delete_many.await_args.args[0] == {"session_key": LEGACY_KEY}
+
+
+class TestSessionWritesBustTheGlobalCache:
+    """These three rows are keyed by ``session_key``, not by user, so they live
+    in the repository's GLOBAL cache scope. Invalidating any other scope leaves
+    the pre-migration session cached: the row moves, the next lookup still reads
+    the old conversation, and the fork the migration just merged comes back.
+    """
+
+    async def test_rename_invalidates_the_global_scope(
+        self, repo: BotSessionsRepository, collection: MagicMock
+    ) -> None:
+        with patch.object(repo, "_invalidate", new_callable=AsyncMock) as invalidate:
+            await repo.rename_session_key(
+                session_key=LEGACY_KEY, new_session_key=CANONICAL_KEY, channel_id=TELEGRAM_USER
+            )
+
+        invalidate.assert_awaited_once_with(REPO_GLOBAL_SCOPE)
+
+    async def test_repoint_invalidates_the_global_scope(
+        self, repo: BotSessionsRepository, collection: MagicMock
+    ) -> None:
+        with patch.object(repo, "_invalidate", new_callable=AsyncMock) as invalidate:
+            await repo.repoint_conversation(
+                session_key=CANONICAL_KEY, conversation_id="conv-winner"
+            )
+
+        invalidate.assert_awaited_once_with(REPO_GLOBAL_SCOPE)
+
+    async def test_delete_invalidates_the_global_scope(
+        self, repo: BotSessionsRepository, collection: MagicMock
+    ) -> None:
+        collection.delete_many = AsyncMock(return_value=MagicMock(deleted_count=1))
+
+        with patch.object(repo, "_invalidate", new_callable=AsyncMock) as invalidate:
+            await repo.delete_by_session_key(LEGACY_KEY)
+
+        invalidate.assert_awaited_once_with(REPO_GLOBAL_SCOPE)

@@ -380,6 +380,15 @@ async def test_spawned_retrieve_cannot_bind_back_an_excluded_tool():
     assert "subagent:gmail" not in result["tools_to_bind"]
     assert "handoff" not in result["tools_to_bind"]
     assert "normal_tool" in result["tools_to_bind"]
+    # Refusing is only half of it: the response has to tell the subagent to STOP
+    # asking and hand the work back, or it retries the same bind until it runs
+    # out of steps. This sentence is the entire instruction.
+    assert (
+        "main executor, not this subagent. Do not retry binding them; finish "
+        "your task here and let the executor handle them."
+    ) in " ".join(
+        result["response"] if isinstance(result["response"], list) else [result["response"]]
+    )
 
 
 @pytest.mark.asyncio

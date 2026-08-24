@@ -450,7 +450,22 @@ class TestThePatchIsBound:
     """apply() is what makes any of the above true of the real class."""
 
     def test_both_generators_are_rebound_to_the_wrapper(self) -> None:
-        _patch.apply()
+        """The binding is put back FIRST, so this watches apply() do the work.
 
-        assert ChatOpenRouter._stream is _patch._stream
-        assert ChatOpenRouter._astream is _patch._astream
+        Importing the module already applied it, so reading the class straight
+        after a second apply() passes even when apply() wrote to some other
+        attribute entirely — the wrappers were bound before it ran.
+        """
+        bound_stream = ChatOpenRouter._stream
+        bound_astream = ChatOpenRouter._astream
+        try:
+            ChatOpenRouter._stream = _patch._ORIGINAL_STREAM
+            ChatOpenRouter._astream = _patch._ORIGINAL_ASTREAM
+
+            _patch.apply()
+
+            assert ChatOpenRouter._stream is _patch._stream
+            assert ChatOpenRouter._astream is _patch._astream
+        finally:
+            ChatOpenRouter._stream = bound_stream
+            ChatOpenRouter._astream = bound_astream

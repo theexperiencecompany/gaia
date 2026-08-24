@@ -6,6 +6,8 @@ economic guard does, what a dev override wins over, and what survives a
 serialization round trip.
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -74,6 +76,23 @@ def _plan(plan: PlanType, *, over_budget: bool = False) -> Any:
     )
 
 
+@contextmanager
+def _distinct_reasoning_knobs() -> Iterator[None]:
+    """Give the two reasoning knobs different values for the duration.
+
+    ``PAID_COMMS_REASONING`` and ``OPENROUTER_REASONING`` are both
+    ``{"effort": "medium"}`` right now, so any assertion on their real values
+    passes whichever one the code picked. These stand-ins make the choice
+    observable — the point is which knob a role is routed to, not what today's
+    effort happens to be.
+    """
+    with (
+        patch.object(lane_module, "PAID_COMMS_REASONING", {"effort": "comms-only"}),
+        patch.object(lane_module, "OPENROUTER_REASONING", {"effort": "everyone-else"}),
+    ):
+        yield
+
+
 async def _resolve(
     plan: PlanType, role: AgentRole = AgentRole.COMMS, *, over_budget: bool = False
 ) -> ModelLane:
@@ -103,6 +122,17 @@ class TestPlanRouting:
         assert resolved.model == PAID_MODEL_NAME
         assert resolved.provider_pin is None
         assert "model_kwargs" not in resolved.binding_keys()
+
+    async def test_a_paid_lane_routes_each_role_to_its_own_reasoning_knob(self) -> None:
+        """The comms knob exists so it can be raised past the executor's without
+        moving it. Routed to one shared knob, raising comms silently raises every
+        background turn's spend too."""
+        with _distinct_reasoning_knobs():
+            comms = await _resolve(PlanType.PRO, AgentRole.COMMS)
+            executor = await _resolve(PlanType.PRO, AgentRole.EXECUTOR)
+
+        assert comms.reasoning == {"effort": "comms-only"}
+        assert executor.reasoning == {"effort": "everyone-else"}
 
     async def test_every_lane_carries_the_context_window(self) -> None:
         """A lane with no budget silently uncaps the summarization middleware."""
@@ -466,15 +496,21 @@ class TestDevOverride:
     async def test_a_reasoning_dev_model_gets_the_asking_roles_effort(self) -> None:
         """A dev pick is a PAID lane by definition — it is an explicit choice, not
         plan routing — so comms gets the paid comms effort and the executor the
-        client default, exactly as a paid turn does."""
+        client default, exactly as a paid turn does.
+
+        The two knobs hold the same effort today, so asserting their real values
+        cannot tell "routed by role" from "returns one constant for everybody".
+        Pulling them apart for the duration is what makes the routing visible.
+        """
         option = dev_option_for("minimax-m3", use_defaults=False)
         assert option is not None
 
-        comms, _ = await resolve_lane(USER, AgentRole.COMMS, dev_option=option)
-        executor, _ = await resolve_lane(USER, AgentRole.EXECUTOR, dev_option=option)
+        with _distinct_reasoning_knobs():
+            comms, _ = await resolve_lane(USER, AgentRole.COMMS, dev_option=option)
+            executor, _ = await resolve_lane(USER, AgentRole.EXECUTOR, dev_option=option)
 
-        assert comms.reasoning == PAID_COMMS_REASONING
-        assert executor.reasoning == OPENROUTER_REASONING
+        assert comms.reasoning == {"effort": "comms-only"}
+        assert executor.reasoning == {"effort": "everyone-else"}
 
     async def test_a_dev_model_keeps_its_own_provider_routing_pin(self) -> None:
         option = dev_option_for("minimax-m3", use_defaults=False)

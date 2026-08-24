@@ -249,6 +249,34 @@ class TestTakeScreenshot:
             "screenshot_data" in e.get("tool_data", {}).get("tool_name", "") for e in streamed
         )
 
+    async def test_a_screenshot_that_could_not_be_saved_says_answer_from_it_now(self) -> None:
+        """The model cannot re-read a screenshot that never reached the workspace,
+        so the note has to tell it to answer from the pixels in front of it. Left
+        vague, the model defers to a file it will never find."""
+        writer = MagicMock()
+        with (
+            patch(f"{MODULE}.get_stream_writer", MagicMock(return_value=writer)),
+            patch(
+                f"{MODULE}.request_desktop_action",
+                AsyncMock(
+                    return_value=DesktopToolOutcome(
+                        ok=True,
+                        data={"image_b64": "cG5n", "width": 800, "height": 600},
+                    )
+                ),
+            ),
+            patch(f"{MODULE}.ImageCodec.from_base64", AsyncMock(return_value=self._image())),
+            patch(f"{MODULE}.write_session_file", AsyncMock(side_effect=RuntimeError("no jfs"))),
+        ):
+            result = await take_screenshot.coroutine(config=_desktop_config(), query="find the bug")
+
+        # The note is pinned by the sentence it forms, not by containment: a
+        # padded or re-cased variant still "contains" the original substring.
+        assert result[0]["text"].startswith(
+            "Screenshot of the user's screen, not saved to the workspace, so it cannot "
+            "be re-read later, answer from it now. Looking for: find the bug"
+        )
+
     async def test_failed_bridge_returns_an_error_string(self) -> None:
         with (
             patch(f"{MODULE}.get_stream_writer", MagicMock()),

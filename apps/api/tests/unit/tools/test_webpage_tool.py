@@ -199,7 +199,17 @@ class TestWebSearchTool:
         assert result["web"] == [
             SearchResultItem(title="Result 1", url="https://r1.com").model_dump()
         ]
-        assert "instructions" in result
+        # The instructions ARE the tool's contract with the model — "summarise,
+        # do not repeat verbatim" is what keeps a search from being pasted back
+        # at the user wholesale, and nothing else enforces it.
+        # Pinned whole rather than by containment: a padded or re-cased fragment
+        # still "contains" the original sentence.
+        assert result["instructions"] == (
+            "Summarise the search results: do not repeat them verbatim. "
+            "Do not show images in markdown. "
+            "Only mention URLs that appear in the search results. "
+            "These results will be shown on the frontend in an appropriate manner."
+        )
         mock_search.assert_awaited_once_with(query="test query", count=10)
 
     @patch(f"{MODULE}.get_stream_writer")

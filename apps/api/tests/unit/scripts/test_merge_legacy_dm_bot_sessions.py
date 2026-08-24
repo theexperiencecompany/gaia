@@ -80,6 +80,12 @@ class TestPlanMerge:
         assert merge.canonical_key == CANONICAL_KEY
         assert merge.surviving_conversation_id == "conv-legacy"
         assert merge.orphaned_conversation_id is None
+        # The reason is the operator's only record of WHY a row moved — the plan
+        # prints it — so a wrong one sends whoever audits this migration looking
+        # for a conflict that never existed.
+        assert merge.reason == (
+            "no session on the canonical key; the legacy row keeps its conversation"
+        )
 
     def test_the_newer_legacy_conversation_wins_and_the_canonical_row_is_repointed(self) -> None:
         merge = plan_merge(
@@ -89,8 +95,10 @@ class TestPlanMerge:
 
         assert merge is not None
         assert merge.action is MergeAction.REPOINT
+        assert merge.canonical_key == CANONICAL_KEY
         assert merge.surviving_conversation_id == "conv-legacy"
         assert merge.orphaned_conversation_id == "conv-canonical"
+        assert merge.reason == "the legacy session was used more recently"
 
     def test_the_newer_canonical_conversation_wins_and_the_legacy_row_is_dropped(self) -> None:
         """The prod shape: the live chat kept writing the canonical key after the
@@ -102,8 +110,10 @@ class TestPlanMerge:
 
         assert merge is not None
         assert merge.action is MergeAction.DROP
+        assert merge.canonical_key == CANONICAL_KEY
         assert merge.surviving_conversation_id == "conv-canonical"
         assert merge.orphaned_conversation_id == "conv-legacy"
+        assert merge.reason == "the canonical session was used more recently"
 
     def test_an_equal_timestamp_keeps_the_canonical_row(self) -> None:
         """A tie must not repoint — the canonical key is the one in use."""
@@ -175,6 +185,13 @@ def test_dm_channel_of_is_the_platform_user_id() -> None:
     assert dm_channel_of(CANONICAL_KEY) == TELEGRAM_USER
 
 
+def test_dm_channel_of_takes_the_channel_segment_not_the_user() -> None:
+    """On Telegram the user and the channel are the same string, so a DM key
+    alone cannot tell "last segment" from "middle segment". A key where they
+    differ can — and the last segment is what gets stamped onto the row."""
+    assert dm_channel_of("discord:user-1:channel-9") == "channel-9"
+
+
 class TestApplyMerges:
     async def test_rename_moves_the_row_and_stamps_the_dm_channel(
         self, repository: _FakeRepository
@@ -238,6 +255,23 @@ class TestApplyMerges:
 
         assert await _apply_merges([merge]) == 0
         assert "matched nothing" in capsys.readouterr().out
+
+    async def test_a_row_that_moved_under_us_does_not_abandon_the_rest(
+        self, repository: _FakeRepository
+    ) -> None:
+        """One row someone else moved between the plan and the write must cost
+        only itself. Stopping the loop there would leave every remaining fork in
+        place, and the run would still report a clean partial count."""
+        repository.renamed = False  # the RENAME below matches nothing
+        first = plan_merge(_session(LEGACY_KEY, "conv-a", "2026-08-16T09:23:00+00:00"), None)
+        second = plan_merge(
+            _session(LEGACY_KEY, "conv-b", "2026-08-16T09:23:00+00:00"),
+            _session(CANONICAL_KEY, "conv-c", "2026-08-16T18:00:00+00:00"),
+        )
+        assert first is not None and second is not None
+
+        assert await _apply_merges([first, second]) == 1
+        assert any(call[0] == "delete_by_session_key" for call in repository.calls)
 
     async def test_a_delete_that_matched_nothing_is_not_counted_as_applied(
         self, repository: _FakeRepository
