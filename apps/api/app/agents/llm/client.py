@@ -989,13 +989,12 @@ async def ainvoke_structured(
     ``schema`` instance. Raises ``LLMNotConfiguredError`` when ``OPENROUTER_API_KEY``
     is unset — this lane is OpenRouter, not Google (see :func:`get_default_llm`).
 
-    Runs on :data:`AUX_MODEL_NAME` — a separate model id (the ORIGINAL V4 Flash
-    release, not the re-post-trained 0731 revision the graph uses), which is
-    what gives these calls their own provider-side cache namespace. The agent
-    graph's calls share the conversation's namespace; if the aux calls did
-    too, their ~30k tokens/turn of new blocks would evict the conversation
-    between turns (measured). Tradeoff: aux one-shots are served by the older
-    model version."""
+    Runs on :data:`AUX_MODEL_NAME` — the same model id as the graph, isolated
+    from the conversation's cache chain by the suffixed sticky session rather
+    than by a second model id. The second id used to provide the isolation,
+    but its provider pool cannot cache or hold session affinity for
+    tool-carrying requests (measured with fixed sessions; see the constant's
+    comment), and every structured one-shot carries a tool."""
     # Metering lives in ainvoke_llm, which this delegates to — a handler here too
     # would record the same call twice and over-report the user's COGS.
     return cast(

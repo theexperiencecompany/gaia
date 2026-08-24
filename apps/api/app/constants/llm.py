@@ -205,12 +205,17 @@ UNKNOWN_MODEL_NAME = "unknown"
 # cache namespace. They must NOT share the conversation's namespace — their
 # ~30k tokens/turn of new blocks were evicting the conversation chain between
 # turns (measured: real-graph hit rate capped at ~63% while the intra-turn
-# steady state is 87–91%). A separate id lets the aux calls chain with each
-# other and stops the eviction. This id is priced SEPARATELY from the default
-# — see its MODEL_PRICING entry (app/config/model_pricing.py), which is what
-# meters it. Nothing reconciles that rate against OpenRouter's live listing, so
-# it has to be re-checked by hand whenever either id is re-pointed.
-AUX_MODEL_NAME = "deepseek/deepseek-v4-flash"
+# steady state is 87–91%).
+#
+# That isolation used to come from a SEPARATE model id (the original V4 Flash).
+# It now comes from the suffixed sticky sessions ("-aux", "memory-{user}"),
+# because the separate id's provider pool turned out unable to cache or hold
+# affinity for TOOL-carrying requests at all — measured with fixed sessions:
+# the old id read [1536,0]/[0,0]/[0,0] across three sessions while this id
+# read [0,1792,1792]/[1792,1792,1792], and every structured one-shot carries a
+# tool. Same id as the graph, different sessions: the chains stay separate per
+# key, and the follow-up/memory lanes get a pool that actually caches them.
+AUX_MODEL_NAME = DEFAULT_MODEL_NAME
 
 # The OpenRouter-served chat models GAIA runs, mapped to whether images survive
 # in their TOOL results (the onboarding gate in tests/model_onboarding vets the
