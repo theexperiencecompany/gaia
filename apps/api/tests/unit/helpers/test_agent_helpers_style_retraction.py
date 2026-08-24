@@ -21,10 +21,11 @@ from typing import Annotated, Any, TypedDict
 from unittest.mock import AsyncMock, patch
 
 from langchain.agents.middleware.types import ModelRequest, ModelResponse
-from langchain_core.messages import AnyMessage
+from langchain_core.messages import AIMessage, AnyMessage
 from langchain_openrouter import ChatOpenRouter
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
+from pydantic import SecretStr
 import pytest
 
 from app.agents.middleware.style_guard import StyleGuardMiddleware
@@ -46,7 +47,7 @@ class _GraphState(TypedDict):
 
 def _build_graph(base_url: str) -> Any:
     """One agent node, wrapped in the real style guard, on a real wire client."""
-    llm = ChatOpenRouter(model="m", api_key="k", base_url=base_url, streaming=True)
+    llm = ChatOpenRouter(model="m", api_key=SecretStr("k"), base_url=base_url, streaming=True)
     guard = StyleGuardMiddleware()
 
     async def handler(request: ModelRequest) -> ModelResponse:
@@ -61,7 +62,9 @@ def _build_graph(base_url: str) -> Any:
             runtime=None,
         )
         response = await guard.awrap_model_call(request, handler)
-        return {"messages": [response.result[0]]}
+        final = response.result[0]
+        assert isinstance(final, AIMessage)
+        return {"messages": [final]}
 
     builder = StateGraph(_GraphState)
     builder.add_node("agent", agent)

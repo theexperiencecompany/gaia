@@ -24,10 +24,11 @@ import threading
 from typing import Annotated, Any, TypedDict
 from unittest.mock import AsyncMock, patch
 
-from langchain_core.messages import AnyMessage, ToolMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from langchain_openrouter import ChatOpenRouter
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
+from pydantic import SecretStr
 import pytest
 
 from app.constants.general import NEW_MESSAGE_BREAKER
@@ -120,19 +121,21 @@ def _build_graph(base_url: str, nudges: int = 0) -> Any:
     reply is sent back for one more pass instead of ending the run, which is the
     only way a single turn produces two assistant messages the user keeps.
     """
-    llm = ChatOpenRouter(model="m", api_key="k", base_url=base_url, streaming=True)
+    llm = ChatOpenRouter(model="m", api_key=SecretStr("k"), base_url=base_url, streaming=True)
     remaining = {"nudges": nudges}
 
     async def agent(state: _GraphState) -> _GraphState:
         return {"messages": [await llm.ainvoke(state["messages"])]}
 
     async def tools(state: _GraphState) -> _GraphState:
-        call = state["messages"][-1].tool_calls[0]  # type: ignore[union-attr]
+        last = state["messages"][-1]
+        assert isinstance(last, AIMessage)
+        call = last.tool_calls[0]
         return {"messages": [ToolMessage(content="Task accepted.", tool_call_id=call["id"])]}
 
     async def nudge(state: _GraphState) -> _GraphState:
         remaining["nudges"] -= 1
-        return {"messages": [("user", "keep going")]}
+        return {"messages": [HumanMessage(content="keep going")]}
 
     def route(state: _GraphState) -> str:
         if getattr(state["messages"][-1], "tool_calls", None):
