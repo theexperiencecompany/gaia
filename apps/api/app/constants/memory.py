@@ -197,8 +197,11 @@ AGENDA_ITEM_TTL_DAYS = 90
 # the taxonomy the extraction prompt offers).
 AGENDA_CATEGORY_PATH = "agenda"
 # How many agenda items the always-injected block renders. The rest stay
-# searchable; the injected block is a reminder, not the whole backlog.
-AGENDA_INJECTED_ITEM_CAP = 8
+# searchable; the injected block is a reminder, not the whole backlog. Sized
+# so a real backlog arrives whole (30 items of typical length sit inside the
+# agenda's injection bound below) rather than being cut to a handful: a
+# commitment the agent cannot see is one it silently drops.
+AGENDA_INJECTED_ITEM_CAP = 30
 
 # Reconciliation looks at this many nearest existing memories per new fact.
 # Sized so a subject-attribute already stated several ways (the same partner's
@@ -265,7 +268,10 @@ CONSOLIDATION_FACTS_LIMIT = 500
 # Hard cap on a core document. Enforced in code after the rewrite (one retry
 # with an explicit trim instruction, then the previous version stands) — the
 # prompt asking nicely was the only enforcement, and agenda.md reached 4,886.
-DOCUMENT_TARGET_MAX_CHARS = 2500
+# Matches the per-document injection bound in CORE_CONTEXT_SECTION_MAX_CHARS:
+# a write cap below the read bound would trim knowledge the prompt had room
+# for, and one above it would write documents that arrive clipped every turn.
+DOCUMENT_TARGET_MAX_CHARS = 4000
 
 # /workspace/memory projection: journal pages older than this are dropped
 # from the on-disk view (Postgres keeps the full history).
@@ -402,19 +408,26 @@ MEMORY_DOC_FILENAMES: dict[MemoryDocType, str] = {
     MemoryDocType.PEOPLE_MD: "people.md",
 }
 
-# Per-section bounds on the always-injected core-context block. A single
-# head/tail cut over the whole volatile block let an oversized agenda eat the
-# journal instead of itself; each section now carries its own budget, so a
-# runaway section can only truncate itself. Sized against the measured
-# production block (~15k chars of memory context injected per turn).
 # Stands in for what a document lost when it overran its budget. Fixed text, so
 # the notice never itself grows with the content it replaces.
 CORE_CONTEXT_TRUNC_MARKER = "\n…[document clipped to bound prompt size]…\n"
 
+# Per-section bounds on the always-injected core-context block. A single
+# head/tail cut over the whole volatile block let an oversized agenda eat the
+# journal instead of itself; each section now carries its own budget, so a
+# runaway section can only truncate itself.
+#
+# These are a runaway backstop, NOT a diet. Memory is the product: the bounds
+# sit above what a healthy document actually is, so the normal case is injected
+# whole and only a document that has genuinely gone wrong is ever clipped.
+# Measured against production (user.md 3,077 / memory.md 3,920 / agenda.md
+# 4,886), the two profile documents land inside their bound untouched and only
+# the agenda — the one that ran away — is bounded, which its item cap
+# (AGENDA_INJECTED_ITEM_CAP) now keeps it under anyway.
 CORE_CONTEXT_SECTION_MAX_CHARS: dict[MemoryDocType, int] = {
-    MemoryDocType.USER_MD: 2_500,
-    MemoryDocType.MEMORY_MD: 2_000,
-    MemoryDocType.AGENDA_MD: 800,
+    MemoryDocType.USER_MD: 4_000,
+    MemoryDocType.MEMORY_MD: 4_000,
+    MemoryDocType.AGENDA_MD: 3_000,
 }
 
 

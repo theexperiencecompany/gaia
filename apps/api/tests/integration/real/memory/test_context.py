@@ -9,7 +9,11 @@ from datetime import UTC, datetime
 
 import pytest
 
-from app.constants.memory import MemoryDocType
+from app.constants.memory import (
+    CORE_CONTEXT_SECTION_MAX_CHARS,
+    CORE_CONTEXT_TRUNC_MARKER,
+    MemoryDocType,
+)
 from app.db.redis import redis_cache
 from app.memory import pg_store
 from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
@@ -71,8 +75,9 @@ async def test_core_context_omits_blank_documents(memory_user: str) -> None:
 async def test_an_oversized_document_only_truncates_itself(memory_user: str) -> None:
     # One head/tail cut over the whole block meant an oversized agenda ate the
     # journal that followed it. Each document now pays for its own overrun.
+    agenda_bound = CORE_CONTEXT_SECTION_MAX_CHARS[MemoryDocType.AGENDA_MD]
     await memory_engine.update_document(
-        memory_user, MemoryDocType.AGENDA_MD, "- " + ("agenda item. " * 500)
+        memory_user, MemoryDocType.AGENDA_MD, "- " + "agenda item. " * (agenda_bound // 10)
     )
     await pg_store.append_episode_entries(
         memory_user,
@@ -82,8 +87,10 @@ async def test_an_oversized_document_only_truncates_itself(memory_user: str) -> 
 
     context = await memory_engine.get_core_context(memory_user)
 
-    agenda_body = context[context.index(AGENDA_HEADING) : context.index(RECENT_ACTIVITY_HEADING)]
-    assert len(agenda_body) < 1_200, "the agenda must be clipped to its own budget"
+    agenda_section = context[context.index(AGENDA_HEADING) : context.index(RECENT_ACTIVITY_HEADING)]
+    assert CORE_CONTEXT_TRUNC_MARKER in agenda_section, "the overrun must be marked, not silent"
+    kept = agenda_section.split(f"{AGENDA_HEADING}\n", 1)[1].split(CORE_CONTEXT_TRUNC_MARKER)[0]
+    assert len(kept) == agenda_bound, "the agenda must be clipped to exactly its own budget"
     assert "JOURNAL-SENTINEL" in context, "the journal must survive an oversized agenda"
 
 
