@@ -92,6 +92,23 @@ PARAGRAPH_SEPARATOR_PATTERN = re.compile(r"\n\s*\n")
 
 EM_DASH = "—"
 
+#: Enough of the sentence around an em dash to quote it back to the model. A
+#: bare "—" told to rewrite says nothing about which clause to fix.
+EM_DASH_CONTEXT_PATTERN = re.compile(rf"[^\n]{{0,30}}{EM_DASH}[^\n]{{0,30}}")
+
+#: The scored fields, in scoring order. Single source of truth for both
+#: ``total_violations`` and ``violation_snippets``, which drifted apart the
+#: moment they each listed the detectors themselves.
+VIOLATION_FIELDS: tuple[str, ...] = (
+    "negation_antithesis",
+    "em_dash",
+    "banned_phrases",
+    "bold_emphasis",
+    "preamble",
+    "closing_hook",
+    "template_shape",
+)
+
 
 @dataclass(frozen=True)
 class AiIsmScore:
@@ -110,15 +127,7 @@ class AiIsmScore:
 
     @property
     def total_violations(self) -> int:
-        return (
-            self.negation_antithesis
-            + self.em_dash
-            + self.banned_phrases
-            + self.bold_emphasis
-            + self.preamble
-            + self.closing_hook
-            + self.template_shape
-        )
+        return sum(int(getattr(self, field)) for field in VIOLATION_FIELDS)
 
 
 def _count(patterns: tuple[re.Pattern[str], ...], text: str) -> int:
@@ -158,3 +167,37 @@ def score_reply(text: str) -> AiIsmScore:
         chars=len(text),
         paragraphs=sum(1 for block in PARAGRAPH_SEPARATOR_PATTERN.split(text) if block.strip()),
     )
+
+
+def _matches(patterns: tuple[re.Pattern[str], ...], text: str) -> list[str]:
+    return [match.group(0).strip() for pattern in patterns for match in pattern.finditer(text)]
+
+
+def violation_snippets(text: str) -> dict[str, list[str]]:
+    """The offending fragments per detector, for a correction note that quotes them.
+
+    Only detectors that actually fired appear. Counts alone ("2 banned phrases")
+    leave the model guessing which words to drop; the fragment is what makes the
+    instruction actionable.
+    """
+    last_line = next(
+        (
+            line
+            for line in reversed(BUBBLE_SENTINEL_PATTERN.sub("\n", text).splitlines())
+            if line.strip()
+        ),
+        "",
+    )
+    found: dict[str, list[str]] = {
+        "negation_antithesis": _matches(NEGATION_ANTITHESIS_PATTERNS, text),
+        "em_dash": _matches((EM_DASH_CONTEXT_PATTERN,), text),
+        "banned_phrases": _matches(BANNED_PHRASE_PATTERNS, text)
+        + _matches((LET_ME_OPENER_PATTERN,), text),
+        "bold_emphasis": _matches((BOLD_EMPHASIS_PATTERN,), text),
+        "preamble": _matches(PREAMBLE_PATTERNS, text),
+        "closing_hook": _matches((CLOSING_HOOK_PATTERN,), last_line),
+        "template_shape": _matches((BOLD_LED_BLOCK_PATTERN,), text)
+        if len(BOLD_LED_BLOCK_PATTERN.findall(text)) >= TEMPLATE_SHAPE_MIN_BLOCKS
+        else [],
+    }
+    return {detector: snippets for detector, snippets in found.items() if snippets}

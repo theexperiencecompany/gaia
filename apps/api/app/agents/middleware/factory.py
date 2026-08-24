@@ -18,6 +18,7 @@ from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
 from app.agents.middleware.hil_approval import HILApprovalMiddleware
 from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.agents.middleware.media import MediaDescriptionMiddleware
+from app.agents.middleware.style_guard import StyleGuardMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.middleware.subagent_join import SubagentJoinMiddleware
 from app.agents.middleware.summarization import (
@@ -288,12 +289,19 @@ def create_comms_middleware(chat_llm: LanguageModelLike | None = None) -> AgentM
     File-offload compaction is intentionally off: comms has no read/bash/subagent
     tool, so a compacted output would leave it holding an unreadable file path.
     """
-    return create_middleware_stack(
+    stack = create_middleware_stack(
         agent_name="comms_agent",
         chat_llm=chat_llm,
         enable_subagent=False,
         enable_compaction=False,
     )
+    # Innermost of the wrap_model_call chain, so it scores the response the
+    # model actually produced rather than one an outer middleware has already
+    # substituted (the budget wall's stop text, for one, is not the model's
+    # prose and must not be rewritten).
+    stack.append(StyleGuardMiddleware())
+    log.debug(f"{LogTag.AGENT} StyleGuardMiddleware enabled", agent_name="comms_agent")
+    return stack
 
 
 def create_subagent_middleware(

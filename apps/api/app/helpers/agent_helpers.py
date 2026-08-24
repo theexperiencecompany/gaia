@@ -86,6 +86,24 @@ def _flush_held_messages(complete_message: str, held: dict[str, str]) -> str:
     return complete_message
 
 
+def drop_retracted_text(payload: object, held: dict[str, str]) -> None:
+    """Forget text whose message was retracted mid-node, before its boundary.
+
+    Both retractions the drivers know about are announced at the END of a node,
+    from the ``updates`` payload — except the style guard's, which retracts a
+    draft it is about to replace with a second model call inside the SAME node.
+    It has to announce that on the custom stream, between the draft's tokens and
+    the rewrite's, or a bot would drop the replacement along with the draft. So
+    the driver has to honour a discarded boundary arriving there too, or the
+    draft is retracted on screen and still persisted.
+    """
+    if not isinstance(payload, dict):
+        return
+    boundary = payload.get("message_boundary")
+    if isinstance(boundary, dict) and boundary.get("discarded"):
+        held.pop(str(boundary.get("message_id") or ""), None)
+
+
 def last_ai_message(messages: Sequence[AnyMessage]) -> AIMessage | None:
     """The model's own reply in a node update.
 
@@ -635,6 +653,7 @@ async def execute_graph_silent(
                     message_texts[message_id] = message_texts.get(message_id, "") + content
 
         elif stream_mode == "custom":
+            drop_retracted_text(payload, message_texts)
             # Accumulate todo_progress for persistence (payload is a dict here)
             if isinstance(payload, dict) and "todo_progress" in payload:
                 snapshot = payload["todo_progress"]
@@ -963,6 +982,7 @@ async def execute_graph_streaming(
             continue
 
         if stream_mode == "custom":
+            drop_retracted_text(payload, message_texts)
             yield f"data: {json.dumps(payload)}\n\n"
 
             # Intercept subagent tool_data events for MCP App detection.
