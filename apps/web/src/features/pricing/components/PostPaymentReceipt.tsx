@@ -42,7 +42,11 @@ function formatDate(dateString?: string | null): string | null {
   if (!dateString) return null;
   const date = new Date(dateString);
   if (Number.isNaN(date.getTime())) return null;
+  // Billing dates can arrive as date-only strings ("2027-08-22"), which JS
+  // parses as UTC midnight — format in UTC so the calendar date never shifts
+  // a day in UTC-negative timezones.
   return date.toLocaleDateString("en-US", {
+    timeZone: "UTC",
     year: "numeric",
     month: "short",
     day: "numeric",
