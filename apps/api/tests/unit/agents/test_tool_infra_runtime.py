@@ -955,7 +955,7 @@ class TestDiscoveryZeroMatchSignal:
         a subagent, and offering an unconnected integration as if it worked."""
         assert _render(["x"], total_candidates=1)["next"] == (
             "Bind with retrieve_tools(exact_tool_names=[...]) then call the tool. "
-            'Subagents are NOT bindable — use handoff(subagent_id="<id>", task="..."). '
+            'Subagents are NOT bindable: use handoff(subagent_id="<id>", task="..."). '
             "Anything under subagents_needing_connection is unusable until the user "
             "connects it, so ask them first."
         )
@@ -1001,7 +1001,7 @@ async def _bind(names: list[str], registry_tools: list[str]):
 async def test_binding_announces_what_the_model_may_now_call():
     result = await _bind(["normal_tool"], ["normal_tool"])
 
-    assert result["response_text"] == "Bound 1 tools — call them directly:\n  - normal_tool"
+    assert result["response_text"] == "Bound 1 tools, call them directly:\n  - normal_tool"
 
 
 @pytest.mark.asyncio
@@ -1020,7 +1020,7 @@ async def test_a_resolved_alias_is_named_back_so_the_model_stops_using_it():
     result = await _bind(["normal-tool"], ["normal_tool"])
 
     assert (
-        "Resolved to their canonical names — use these from now on: normal-tool -> normal_tool"
+        "Resolved to their canonical names, use these from now on: normal-tool -> normal_tool"
         in result["response_text"]
     )
 

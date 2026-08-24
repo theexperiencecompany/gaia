@@ -472,7 +472,7 @@ class TestCommsToExecutor:
         assert run.transcript.args("retrieve_tools") == {"exact_tool_names": ["create_flowchart"]}
         assert (
             run.transcript.result_for("retrieve_tools")
-            == "Bound 1 tools — call them directly:\n  - create_flowchart"
+            == "Bound 1 tools, call them directly:\n  - create_flowchart"
         )
 
     async def test_every_card_precedes_its_own_result_across_both_tiers(self) -> None:
