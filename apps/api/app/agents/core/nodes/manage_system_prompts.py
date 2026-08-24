@@ -97,20 +97,28 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
         # find which slot moved was to guess. Comparing these across two
         # consecutive requests names the culprit directly. Hashes, never
         # content: these carry user data.
-        slot_digests = {
-            slot.name.lower(): hashlib.blake2b(
-                "\x00".join(
-                    extract_text_content(getattr(m, "content", "")) for m in by_slot[slot]
-                ).encode(),
-                digest_size=4,
-            ).hexdigest()
+        slot_text = {
+            slot.name.lower(): "\x00".join(
+                extract_text_content(getattr(m, "content", "")) for m in by_slot[slot]
+            )
             for slot in slot_order
             if by_slot.get(slot)
         }
+        slot_digests = {
+            name: hashlib.blake2b(text.encode(), digest_size=4).hexdigest()
+            for name, text in slot_text.items()
+        }
+        # Sizes answer the question the digests cannot: once the prefix IS stable,
+        # what is left uncached is simply the bytes behind the cache boundary, and
+        # the only way to raise the hit rate further is to know which slot owns
+        # them. Characters, not tokens — this node has no tokenizer, and ~4 chars
+        # per token is close enough to rank the slots.
+        slot_chars = {name: len(text) for name, text in slot_text.items()}
 
         log.set(
             prompt_pruning={
                 "slot_digests": slot_digests,
+                "slot_chars": slot_chars,
                 "messages_in": len(messages),
                 "messages_out": len(kept),
                 "dropped_system_prompts": dropped_system,
