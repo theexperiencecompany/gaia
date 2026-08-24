@@ -26,6 +26,20 @@ from shared.py.wide_events import log
 # name, or an ordered list of (field, direction | "text") pairs.
 IndexKeys = str | list[tuple[str, int | str]]
 
+# Collections whose index builds are security-critical: their unique indexes
+# ENFORCE invariants rather than merely speed up queries. auth_credentials.slot
+# is THE single-admin registration gate for local auth (every credential row
+# carries slot="admin", so uniqueness admits exactly one document);
+# instance_settings.key and provider_credentials.provider are the upsert keys
+# concurrent provisioning races on. When such a build fails — pre-existing
+# duplicates after a restore, a transient Mongo failure — the constraint simply
+# doesn't exist, and the stack runs "healthy" forever with registration
+# unenforced. Unlike performance indexes (warn-and-continue), a failure here
+# aborts boot, same fail-loud convention as startup_validation.
+SECURITY_CRITICAL_COLLECTIONS = frozenset(
+    {"auth_credentials", "instance_settings", "provider_credentials"}
+)
+
 
 async def create_all_indexes() -> None:
     """Create all database indexes. Called during application startup."""
@@ -102,6 +116,7 @@ async def create_all_indexes() -> None:
         ]
 
         index_results = {}
+        critical_failures: list[tuple[str, Exception]] = []
         for i, (collection_name, result) in enumerate(zip(collection_names, results)):
             if isinstance(result, Exception):
                 log.error(
@@ -110,6 +125,8 @@ async def create_all_indexes() -> None:
                     result=result,
                 )
                 index_results[collection_name] = f"FAILED: {result!s}"
+                if collection_name in SECURITY_CRITICAL_COLLECTIONS:
+                    critical_failures.append((collection_name, result))
             else:
                 index_results[collection_name] = "SUCCESS"
 
@@ -129,6 +146,22 @@ async def create_all_indexes() -> None:
             log.warning(
                 f"{LogTag.MONGO} Failed to create indexes for collections",
                 failed_collections=failed_collections,
+            )
+
+        # Fail loud when a security-critical build failed: booting without the
+        # unique constraints leaves registration/provisioning unenforced while
+        # every healthcheck stays green. Same convention as startup_validation.
+        if critical_failures:
+            log.error(
+                f"{LogTag.MONGO} Security-critical index creation failed — refusing to start",
+                failed_collections=[name for name, _ in critical_failures],
+            )
+            raise RuntimeError(
+                "Security-critical MongoDB index creation failed; unique "
+                "constraints are NOT enforced — "
+                + "; ".join(f"{name}: {error}" for name, error in critical_failures)
+                + ". Resolve the cause (e.g. duplicate documents left by a "
+                "restore, or the logged Mongo error) and restart."
             )
 
     except Exception as e:
