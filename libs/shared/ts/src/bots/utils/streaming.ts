@@ -151,6 +151,8 @@ async function _handleStream(
    * a message — until the real reply overwrites it in place.
    */
   let bubbleProvisional = false;
+  /** True once the stream's own error handler has told the user about a failure. */
+  let failureReported = false;
 
   // Serialization queue to prevent concurrent Telegram API calls
   // which cause out-of-order message updates
@@ -437,6 +439,7 @@ async function _handleStream(
       },
       async (error) => {
         streamDone = true;
+        failureReported = true;
         if (editTimer) {
           clearTimeout(editTimer);
           editTimer = null;
@@ -468,6 +471,15 @@ async function _handleStream(
       handleMessageBoundary,
     );
   } catch (error) {
+    // `streamChat` reports a non-retryable failure through `onError` and THEN
+    // rethrows it, so by the time it reaches here the user has already been
+    // told — reporting again delivered every rate limit and every dead backend
+    // as two identical messages. This catch is the net for failures that never
+    // reached `onError` at all, such as a throw out of a delivery callback.
+    if (failureReported) {
+      logger.info("stream_error_already_reported", sanitizeErrorForLog(error));
+      return;
+    }
     await emitGenericError(formatBotError(error));
   }
 }

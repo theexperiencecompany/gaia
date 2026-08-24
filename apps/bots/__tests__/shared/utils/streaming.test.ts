@@ -112,6 +112,25 @@ function streamingGaia(
   } as unknown as GaiaClient;
 }
 
+/**
+ * A GaiaClient whose stream fails the way `streamChat` does for a
+ * non-retryable transport error: report it through `onError`, then rethrow.
+ */
+function failingGaia(error: unknown): GaiaClient {
+  return {
+    chatStream: async (
+      _request: unknown,
+      _onChunk: unknown,
+      _onDone: unknown,
+      onError: (e: Error) => void | Promise<void>,
+    ) => {
+      await onError(error as Error);
+      throw error;
+    },
+    createLinkToken: async () => ({ authUrl: "https://gaia.test/link" }),
+  } as unknown as GaiaClient;
+}
+
 interface Delivered {
   /** Final text of every message the platform ended up holding, in order. */
   bubbles: string[];
@@ -119,6 +138,8 @@ interface Delivered {
   writes: string[];
   /** How many brand-new messages the platform was asked to post. */
   newMessages: number;
+  /** Every formatted error the platform was asked to show. */
+  errors: string[];
 }
 
 /**
@@ -133,15 +154,19 @@ async function deliver(
     editable = true,
     approvalAfter,
     failEdit,
+    failStream,
   }: {
     editable?: boolean;
     approvalAfter?: number;
     /** Throws on the Nth edit (0-based), emulating a platform rejection. */
     failEdit?: { at: number; error: unknown };
+    /** The transport error to fail the whole stream with, instead of streaming. */
+    failStream?: unknown;
   } = {},
 ): Promise<Delivered> {
   const bubbles: string[] = [];
   const writes: string[] = [];
+  const errors: string[] = [];
   let current = -1;
   let editAttempts = 0;
   let newMessages = 0;
@@ -183,7 +208,9 @@ async function deliver(
   };
 
   await handleStreamingChat(
-    streamingGaia(chunks, approvalAfter),
+    failStream === undefined
+      ? streamingGaia(chunks, approvalAfter)
+      : failingGaia(failStream),
     {
       message: "drive the streamer",
       platform,
@@ -196,12 +223,15 @@ async function deliver(
       throw new Error("auth error path is not exercised by these cases");
     },
     async (formattedError: string) => {
-      throw new Error(`unexpected stream error: ${formattedError}`);
+      errors.push(formattedError);
+      if (failStream === undefined) {
+        throw new Error(`unexpected stream error: ${formattedError}`);
+      }
     },
     STREAMING_DEFAULTS[platform],
   );
 
-  return { bubbles, writes, newMessages };
+  return { bubbles, writes, newMessages, errors };
 }
 
 /** Word count, so text is compared by content rather than exact whitespace. */
@@ -621,6 +651,52 @@ describe("handleStreamingChat delivery", () => {
       const { writes } = await deliver(platform, [body("Alpha", 200), BREAK]);
       expect(writes.join(" ")).not.toContain("(truncated)");
     }
+  });
+});
+
+describe("a stream that fails before it starts", () => {
+  /** The API's real 429 body when the day's AI-usage budget is spent. */
+  const RATE_LIMITED = Object.assign(
+    new Error("Request failed with status code 429"),
+    {
+      response: {
+        status: 429,
+        data: {
+          detail: {
+            error: "rate_limit_exceeded",
+            feature: "chat_messages",
+            message:
+              "You've used today's AI usage allowance. Upgrade to Pro for higher limits.",
+            plan_required: "pro",
+            current_plan: "free",
+          },
+        },
+      },
+    },
+  );
+
+  it("tells the user once, not twice", async () => {
+    // `streamChat` reports a non-retryable failure through `onError` AND
+    // rethrows it, and the streamer's outer catch reported it a second time —
+    // so every rate limit and every dead backend arrived as two identical
+    // messages.
+    const { errors } = await deliver("telegram", [], {
+      failStream: RATE_LIMITED,
+    });
+
+    expect(errors).toHaveLength(1);
+  });
+
+  it("shows the server's own 429 copy, not the generic throttle line", async () => {
+    // "You're sending messages too fast" is the wrong thing to tell someone who
+    // is out of allowance: waiting does not fix it, upgrading does.
+    const { errors } = await deliver("telegram", [], {
+      failStream: RATE_LIMITED,
+    });
+
+    expect(errors[0]).toContain("today's AI usage allowance");
+    expect(errors[0]).toContain("Upgrade to Pro");
+    expect(errors[0]).not.toContain("too fast");
   });
 });
 
