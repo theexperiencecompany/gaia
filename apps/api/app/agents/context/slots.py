@@ -107,10 +107,11 @@ def request_slot_order(provider: str | None) -> tuple[PromptSlot, ...]:
     cache can therefore only ever cover ``[static, dynamic_stable]``.
 
     On the OpenAI wire the per-turn slots move after the conversation, making the
-    stable prefix ``[static, dynamic_stable, ...conversation]``. Measured on the
-    real lane: 97% hit rate against 83% for the leading-block layout
-    (``scripts/measure_llm_cache.py``), because the conversation joins the cached
-    prefix instead of re-sending in full every turn.
+    stable prefix ``[static, dynamic_stable, ...conversation]``, because the
+    conversation then joins the cached prefix instead of re-sending in full every
+    turn. The A/B against the leading-block layout measured 35.2% -> 94.9% on the
+    isolated harness and ~45% -> 80-85% steady-state end to end; methodology and
+    charts are in ``docs/llm-cache-measurements.md``.
     """
     if provider not in TAIL_VOLATILE_PROVIDERS:
         return tuple(PromptSlot)
