@@ -279,43 +279,41 @@ plus the turn's own new text (~400 tokens, generously):
 warm ceiling  =  1 - (volatile_tokens + 400) / 35132
 ```
 
-Everything turns on `volatile_tokens`. Its dominant term is measurable today
-without waiting for a deploy: `get_core_context` caches the fully assembled
-memory core at `user:{id}:memory:core`, so `STRLEN` on those keys is the exact
-size that reaches the prompt. Measured in production: **902, 1202, 2290, 2471,
-3145 chars — mean ~2,000, so ~500 tokens.** (Only a handful of keys exist at
-once; the cache is invalidated on every ingestion, so this is a thin sample of
-live users rather than a full census.)
+Everything turns on `volatile_tokens`, and it needs no deploy to read:
+`assemble_context` already records `memory_recall_chars` — the size of the whole
+volatile block — on the `dynamic_context` wide event for every assembly
+(`assemble.py`). Measured over 24h in production:
 
-Adding the other volatile sections at their configured limits — recall is capped
-at 8 entries, knowledge at 5 results, plus the todo and run banners, plus the
-skills listing on worker tiers (measured 1,904 chars):
+| Tier | n | mean volatile | warm ceiling | blended @10% first-calls | @15% | @20% |
+|---|---|---|---|---|---|---|
+| comms | 118 | 2,670 chars (667 tok) | 97.0% | 94.2% | 92.8% | 91.4% |
+| executor | 35 | 3,818 chars (954 tok) | 96.1% | 93.5% | 92.1% | 90.8% |
+| provider_subagent | 34 | 2,946 chars (736 tok) | 96.8% | 94.0% | 92.6% | 91.3% |
+| **all tiers** | 187 | 2,935 chars (734 tok) | **96.8%** | **94.0%** | 92.7% | 91.3% |
 
-| Tier | volatile | warm ceiling | blended @10% first-calls | @15% | @20% |
-|---|---|---|---|---|---|
-| comms | ~1,050 tok | 95.9% | 93.2% | 91.9% | 90.6% |
-| executor / subagent | ~1,526 tok | 94.5% | 92.0% | 90.7% | 89.5% |
+Mean rather than median, because a token-weighted rate sums bytes and the
+distribution has a long tail (comms medians 2,155 against a p90 of 6,500). The
+8,000-char cap truncates only 1.1% of calls, so it is working as the backstop it
+was meant to be and is not what sets the ceiling.
 
 First calls are blended in at 69.3% — the best observed in production — because
 they can inherit the shared static prefix but never a conversation.
 
-So the honest answer to "can we hit 90–95%": **90% yes**, on both tiers, once
-the invalidation and cold-start buckets close. **95% no**, not as a blended
-figure — the warm-call ceiling itself is 94.5–95.9%, so the blend cannot reach
-95% while any meaningful share of calls are first-on-thread. Getting there needs
-the volatile block roughly halved, which means shrinking what every turn carries
-rather than anything the cache can do.
+So the answer to "can we hit 90–95%": **yes, the range is reachable.** The
+warm-call ceiling is ~96.8%, and a realistic blend lands at **91–94%** depending
+on what share of prompt tokens are first-on-thread. The bottom of the target is
+comfortable once the invalidation and cold-start buckets close; the top of it
+(95%) additionally needs first calls held below ~10% of tokens *and* doing
+better than the 69.3% they currently manage at best.
 
-Note this supersedes two earlier estimates in this section's history, both wrong
-in the same way — reasoning about `volatile_tokens` from a bound rather than
-measuring it. The first used `VOLATILE_BLOCK_MAX_CHARS` (a backstop that binds
-only for outliers) and concluded 95% was arithmetically impossible; the second
-offered a range because the value was "not measured". It was measurable the
-whole time. `slot_chars` on the `prompt_pruning` event will report it per slot
-per call once deployed, which beats this estimate — but the estimate is grounded
-in a real read, not a bound.
+Two earlier revisions of this section got this wrong in opposite directions,
+both by reasoning about `volatile_tokens` from a bound instead of reading it:
+first from `VOLATILE_BLOCK_MAX_CHARS` (concluding 95% was arithmetically
+impossible), then from summing each section's configured limits, which
+double-counted and came out roughly 2x high. The number had been on the wide
+event the whole time.
 
-One correction this arithmetic forces: an earlier estimate of "~10 points" for
-the volatile-tail work is too high whichever anchor holds. At the cap the entire
-block is 5.7% of a mean prompt, and most of it (recall, knowledge, agenda,
-todos, run banners) is genuinely per-turn and cannot move at all.
+One thing this does settle: the volatile-tail work is small. At the measured
+mean the whole block is ~2% of a prompt, not the "~10 points" an earlier
+estimate claimed, and most of it (recall, knowledge, agenda, todos, run banners)
+is genuinely per-turn and cannot move anywhere.
