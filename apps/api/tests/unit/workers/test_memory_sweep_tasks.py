@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.workers.tasks.memory_sweep_tasks import sweep_expired_memories
+from tests.helpers import captured_wide_event
 
 
 @pytest.fixture
@@ -44,7 +45,7 @@ class TestSweepExpiredMemories:
 
         summary = await sweep_expired_memories({})
 
-        assert "3" in summary
+        assert summary == "expired=3 users=2"
 
     async def test_each_affected_user_is_repaired_exactly_once(
         self, sweep_boundaries: dict[str, AsyncMock]
@@ -55,7 +56,10 @@ class TestSweepExpiredMemories:
 
         assert {call.args[0] for call in sweep_boundaries["render"].await_args_list} == {"u1", "u2"}
         assert sweep_boundaries["render"].await_count == 2
-        assert sweep_boundaries["invalidate"].await_count == 2
+        assert [call.args for call in sweep_boundaries["invalidate"].await_args_list] == [
+            ("u1",),
+            ("u2",),
+        ]
 
     async def test_the_free_plan_counter_is_reseeded_from_the_authoritative_count(
         self, sweep_boundaries: dict[str, AsyncMock]
@@ -65,7 +69,20 @@ class TestSweepExpiredMemories:
 
         await sweep_expired_memories({})
 
+        assert sweep_boundaries["count"].await_args.args == ("u1",)
         assert sweep_boundaries["seed"].await_args.args == ("u1", 7)
+
+    async def test_the_sweep_is_reported_on_the_wide_event(
+        self, sweep_boundaries: dict[str, AsyncMock]
+    ) -> None:
+        # The nightly task has no caller to return to — the wide event is the
+        # only place the night's work is visible.
+        sweep_boundaries["sweep"].return_value = ["u1", "u1", "u2"]
+
+        async with captured_wide_event() as event:
+            await sweep_expired_memories({})
+
+        assert event["memory_sweep"] == {"memories_expired": 3, "users_repaired": 2}
 
     async def test_a_clean_sweep_touches_nobody(
         self, sweep_boundaries: dict[str, AsyncMock]

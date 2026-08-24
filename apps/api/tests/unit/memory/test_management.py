@@ -113,6 +113,20 @@ class TestUpdateMemoryResolvesTheChainHead:
         assert record.shelf_life == MemoryShelfLife.STATE.value
         assert record.forget_after == expiry
 
+    async def test_the_lookup_is_scoped_to_the_caller(self, boundaries: MagicMock) -> None:
+        # A memory id belonging to somebody else must not resolve: the owner is
+        # half of the key, not a filter applied afterwards.
+        stale = make_row(is_latest=False)
+        head = make_row(version=2)
+        boundaries.get_memory.return_value = stale
+        boundaries.get_chain.return_value = [head]
+        boundaries.supersede_memory.return_value = make_row(content="corrected", version=3)
+
+        await update_memory(USER, str(stale.id), "corrected")
+
+        assert boundaries.get_memory.await_args.args == (str(stale.id), USER)
+        assert boundaries.get_chain.await_args.args == (str(stale.id), USER)
+
 
 @pytest.mark.unit
 class TestUpdateMemoryFailsLoud:
@@ -127,19 +141,61 @@ class TestUpdateMemoryFailsLoud:
     ) -> None:
         boundaries.get_memory.side_effect = ValueError("badly formed hexadecimal UUID string")
 
-        with pytest.raises(MemoryNotFoundError):
+        with pytest.raises(MemoryNotFoundError) as raised:
             await update_memory(USER, "not-a-uuid", "corrected")
 
+        assert raised.value.meta == {"memory_id": "not-a-uuid"}
+
     async def test_a_forgotten_memory_raises(self, boundaries: MagicMock) -> None:
+        memory_id = str(uuid.uuid4())
         boundaries.get_memory.return_value = make_row(is_forgotten=True)
 
-        with pytest.raises(MemoryNotFoundError):
-            await update_memory(USER, str(uuid.uuid4()), "corrected")
+        with pytest.raises(MemoryNotFoundError) as raised:
+            await update_memory(USER, memory_id, "corrected")
+
+        assert raised.value.meta == {"memory_id": memory_id}
 
     async def test_a_chain_with_no_live_head_raises(self, boundaries: MagicMock) -> None:
         stale = make_row(is_latest=False)
         boundaries.get_memory.return_value = stale
         boundaries.get_chain.return_value = [make_row(is_latest=False), stale]
 
-        with pytest.raises(MemoryNotFoundError):
+        with pytest.raises(MemoryNotFoundError) as raised:
             await update_memory(USER, str(stale.id), "corrected")
+
+        assert raised.value.meta == {"memory_id": str(stale.id)}
+
+    async def test_a_head_that_vanished_between_resolve_and_write_raises(
+        self, boundaries: MagicMock
+    ) -> None:
+        head = make_row()
+        boundaries.get_memory.return_value = head
+        boundaries.supersede_memory.return_value = None
+
+        with pytest.raises(MemoryNotFoundError) as raised:
+            await update_memory(USER, str(head.id), "corrected")
+
+        assert raised.value.meta == {"memory_id": str(head.id)}
+
+
+@pytest.mark.unit
+class TestMemoryNotFoundError:
+    """The error text is the tool result the model reads — it is a contract.
+
+    The tool used to return "Error: ... not found or already superseded" as an
+    ordinary result string; the model read it as success and told the user the
+    memory was fixed. Every field below exists to stop that.
+    """
+
+    def test_it_names_the_id_and_tells_the_model_not_to_claim_success(self) -> None:
+        error = MemoryNotFoundError("mem-42")
+
+        assert error.message == "Memory mem-42 does not exist for this user."
+        assert error.why == "The id does not name any memory in this user's store."
+        assert error.fix == (
+            "Call search_memory to get the current id of the fact you mean, "
+            "then retry the correction with that id. Do NOT tell the user "
+            "the memory was corrected — it was not."
+        )
+        assert error.status_code == 404
+        assert error.meta == {"memory_id": "mem-42"}

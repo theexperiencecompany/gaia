@@ -18,13 +18,18 @@ import pytest
 from sqlalchemy import Select, Update
 from sqlalchemy.dialects import postgresql
 
-from app.constants.memory import FORGET_REASON_MAX_CHARS, MemoryRelationType
+from app.constants.memory import (
+    AGENDA_CATEGORY_PATH,
+    FORGET_REASON_MAX_CHARS,
+    MemoryRelationType,
+)
 from app.memory.pg_store._session import escape_like
 from app.memory.pg_store.memories import (
     _active_memories_query,
     _not_expired_clause,
     count_live_memories,
     fts_search,
+    get_agenda_memories,
     get_all_live_memories,
     get_chain,
     get_facts_for_consolidation,
@@ -37,6 +42,7 @@ from app.memory.pg_store.memories import (
     list_memories,
     mark_forgotten,
     supersede_memory,
+    sweep_expired_memories,
 )
 from app.models.memory_db_models import MemoryRecord
 
@@ -815,3 +821,106 @@ class TestGetRecentFacts:
         (stmt,) = _executed_stmts(session)
         _, params = _compiled(stmt)
         assert params["param_1"] == 3
+
+
+# ---------------------------------------------------------------------------
+# get_agenda_memories
+# ---------------------------------------------------------------------------
+
+
+class TestGetAgendaMemories:
+    async def test_reads_only_the_agenda_folder_most_important_first(self) -> None:
+        # agenda.md is rendered from this query and injected on every turn, so
+        # what it drops when it hits the cap has to be the least important item,
+        # not an arbitrary row.
+        rows = [make_record(), make_record()]
+        session = MagicMock()
+        session.execute = AsyncMock(return_value=_scalars_result(rows))
+        with _patched_memory_session(session):
+            assert await get_agenda_memories(USER, limit=8) == rows
+
+        (stmt,) = _executed_stmts(session)
+        sql, params = _compiled(stmt)
+        assert "memories.category_path = %(category_path_1)s" in sql
+        assert params["category_path_1"] == AGENDA_CATEGORY_PATH
+        assert "ORDER BY memories.importance DESC, memories.created_at DESC" in sql
+        assert params["param_1"] == 8
+        assert params["user_id_1"] == USER
+
+    async def test_only_live_rows_reach_the_page(self) -> None:
+        session = MagicMock()
+        session.execute = AsyncMock(return_value=_scalars_result([]))
+        with _patched_memory_session(session):
+            await get_agenda_memories(USER, limit=8)
+
+        (stmt,) = _executed_stmts(session)
+        sql, _ = _compiled(stmt)
+        assert "memories.is_latest IS true" in sql
+        assert "memories.is_forgotten IS false" in sql
+        assert "memories.forget_after IS NULL OR memories.forget_after >" in sql
+
+
+# ---------------------------------------------------------------------------
+# sweep_expired_memories
+# ---------------------------------------------------------------------------
+
+
+class TestSweepExpiredMemories:
+    async def test_retires_past_due_rows_and_returns_their_owners(self) -> None:
+        session = MagicMock()
+        session.execute = AsyncMock(return_value=_all_result([("u1",), ("u2",), ("u1",)]))
+        session.commit = AsyncMock()
+        with _patched_memory_session(session):
+            owners = await sweep_expired_memories()
+
+        assert owners == ["u1", "u2", "u1"]
+        session.commit.assert_awaited_once()
+        (stmt,) = _executed_stmts(session)
+        sql, params = _compiled(stmt)
+        assert sql.startswith("UPDATE memories SET")
+        assert "is_forgotten=%(is_forgotten)s" in sql
+        assert "forget_reason=%(forget_reason)s" in sql
+        assert params["is_forgotten"] is True
+        assert params["forget_reason"] == "expired"
+        assert "RETURNING memories.user_id" in sql
+
+    async def test_the_filter_is_live_rows_whose_expiry_has_arrived(self) -> None:
+        session = MagicMock()
+        session.execute = AsyncMock(return_value=_all_result([]))
+        session.commit = AsyncMock()
+        with _patched_memory_session(session):
+            await sweep_expired_memories()
+
+        (stmt,) = _executed_stmts(session)
+        sql, params = _compiled(stmt)
+        assert "memories.is_forgotten IS false" in sql
+        assert "memories.forget_after IS NOT NULL" in sql
+        # `<=`, not `<`: an expiry that lands exactly now has arrived.
+        assert "memories.forget_after <= %(forget_after_1)s" in sql
+        assert params["forget_after_1"].tzinfo is not None
+
+    async def test_an_unscoped_sweep_touches_every_owner(self) -> None:
+        session = MagicMock()
+        session.execute = AsyncMock(return_value=_all_result([]))
+        session.commit = AsyncMock()
+        with _patched_memory_session(session):
+            await sweep_expired_memories()
+
+        (stmt,) = _executed_stmts(session)
+        sql, params = _compiled(stmt)
+        where_clause = sql.split("WHERE", 1)[1].split("RETURNING", 1)[0]
+        assert "memories.user_id" not in where_clause
+        assert "user_id_1" not in params
+
+    async def test_a_scoped_sweep_is_confined_to_that_owner(self) -> None:
+        # The repair script sweeps one user; the nightly task sweeps everyone.
+        session = MagicMock()
+        session.execute = AsyncMock(return_value=_all_result([]))
+        session.commit = AsyncMock()
+        with _patched_memory_session(session):
+            await sweep_expired_memories(USER)
+
+        (stmt,) = _executed_stmts(session)
+        sql, params = _compiled(stmt)
+        assert "memories.user_id = %(user_id_1)s" in sql
+        assert params["user_id_1"] == USER
