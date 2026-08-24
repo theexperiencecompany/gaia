@@ -144,3 +144,26 @@ def test_distant_group_comment_does_not_cover_new_entry(repo: Path) -> None:
     result = run(repo)
     assert result.returncode == 1
     assert 'ignore["E741"] has no why-comment' in result.stderr
+
+
+def test_single_line_module_array_does_not_swallow_weakening_keys(repo: Path) -> None:
+    """``module = ["x"]`` closes on its own line — every key after it is still a
+    key, not another module name."""
+    text = MINIMAL + (
+        "\n[[tool.mypy.overrides]]\nmodule = [\"vendor.sdk\"]\nignore_errors = true\n"
+    )
+    (repo / "pyproject.toml").write_text(text)
+    result = run(repo)
+    assert result.returncode == 1
+    assert "mypy-override[vendor.sdk] (ignore_errors)" in result.stderr
+
+
+def test_warn_unused_ignores_false_is_a_weakening(repo: Path) -> None:
+    """It defaults true; setting it false hides dead ``type: ignore`` comments."""
+    text = MINIMAL + (
+        "\n[[tool.mypy.overrides]]\nmodule = \"flaky.*\"\nwarn_unused_ignores = false\n"
+    )
+    (repo / "pyproject.toml").write_text(text)
+    result = run(repo)
+    assert result.returncode == 1
+    assert "mypy-override[flaky.*] (warn_unused_ignores)" in result.stderr

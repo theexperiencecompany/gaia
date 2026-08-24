@@ -68,7 +68,6 @@ _TRACKED_GLOBS = ("*.py", "*.ts", "*.tsx", "*.js", "*.jsx", "*.mjs", "*.cjs", "*
 
 _NOQA_RE = re.compile(r"#\s*noqa\b")
 _TYPE_IGNORE_RE = re.compile(r"#\s*type:\s*ignore\b")
-_BIOME_IGNORE_RE = re.compile(r"//\s*biome-ignore\b")
 _BIOME_IGNORE_ANY_RE = re.compile(r"/{1,2}\s*\**\s*biome-ignore\b")
 
 #: Stripped off the front of a comment to leave the reason prose behind.

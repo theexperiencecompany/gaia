@@ -123,37 +123,33 @@ jobs:
           FILES=$(scripts/ci/changed-files.sh ts tsx js jsx json jsonc css \
             | grep -Ev '^(apps/api|apps/voice-agent|apps/web/public|infra|docs|\.github|\.claude|\.agents|\.husky|\.yarn|\.vscode|\.idea|\.mise|\.opencode|\.worktrees|\.jscpd-report)/' || true)
           if [ "$FILES" = "__FULL__" ]; then
-            pnpm run quality:lint
-          elif [ -z "$FILES" ]; then
-            echo "No matching changed files — skipping."
-          else
-            pnpm exec biome check $FILES
+            FILES="."
           fi
+          if [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+            echo "::endgroup::"
+            exit 0
+          fi
+          # One run, captured then inspected — never `biome | grep -q`: grep
+          # closes the pipe on its first match, SIGPIPE-kills biome, and the
+          # false exit code under pipefail makes the gate below report a pass.
+          # $FILES is unquoted on purpose: it is a newline-delimited path list
+          # and must word-split into one argument per file.
+          BIOME_STATUS=0
+          BIOME_OUT=$(pnpm exec biome check $FILES 2>&1) || BIOME_STATUS=$?
+          echo "$BIOME_OUT"
           echo "::endgroup::"
           # Dead-suppression gate: biome emits `suppressions/unused` as a
           # fixed-severity WARNING (not a configurable rule), so warnings stay
           # non-blocking — except this one category. A suppression comment that
           # no longer masks anything is exactly the rot the suppression-hygiene
           # lane exists to prevent; grep biome's own verdict for it.
-          if [ "$FILES" = "__FULL__" ]; then
-            BIOME_TARGETS="."
-          elif [ -z "$FILES" ]; then
-            BIOME_TARGETS=""
-          else
-            BIOME_TARGETS="$FILES"
-          fi
-          if [ -n "$BIOME_TARGETS" ]; then
-            # Capture first, grep second: `biome | grep -q` lets grep close the
-            # pipe early, SIGPIPE-kills biome under pipefail, and the false
-            # exit code makes the gate report a pass. No pipes.
-            BIOME_OUT=$(pnpm exec biome check "$BIOME_TARGETS" 2>&1 || true)
-            echo "$BIOME_OUT"
-            case "$BIOME_OUT" in
-              *"suppressions/unused"*)
-                echo "::error::dead biome-ignore found — delete it or fix what it suppressed"
-                exit 1 ;;
-            esac
-          fi
+          case "$BIOME_OUT" in
+            *"suppressions/unused"*)
+              echo "::error::dead biome-ignore found — delete it or fix what it suppressed"
+              exit 1 ;;
+          esac
+          [ "$BIOME_STATUS" -eq 0 ] || exit "$BIOME_STATUS"
           echo "Biome: OK (0 errors; dead-suppression gate passed)"
 
   # --- Workspace dependency hygiene ---------------------------------------

@@ -153,13 +153,13 @@ def mypy_entries(lines: list[str]) -> list[Entry]:
         "strict_equality",
         "warn_return_any",
         "warn_unreachable",
+        # defaults TRUE: an override setting it FALSE silences dead-ignore
+        # detection, so stale `type: ignore` comments rot unnoticed
+        "warn_unused_ignores",
         "no_implicit_reexport",
         "extra_checks",
     }
     weaken_true = {"ignore_errors", "ignore_missing_imports"}
-    # warn_unused_ignores defaults TRUE: an override setting it FALSE silences
-    # dead-ignore detection — that is the weakening we must catch.
-    # any non-empty disable_error_code list weakens checking
 
     s, _e = _section_span(lines, "[tool.mypy]")
     out: list[Entry] = []
@@ -177,10 +177,11 @@ def mypy_entries(lines: list[str]) -> list[Entry]:
             raw = lines[j]
             st = raw.strip()
             if st.startswith("module") and "=" in st:
-                in_modules = st.endswith("]")
-                modules += [
-                    m.strip('" ') for m in st.split("=", 1)[1].strip("[]").split(",") if m.strip()
-                ]
+                value = st.split("=", 1)[1].strip()
+                # Only an array left open on this line continues onto the next;
+                # a scalar or a single-line array is already complete.
+                in_modules = value.startswith("[") and not value.endswith("]")
+                modules += [m.strip('" ') for m in value.strip("[]").split(",") if m.strip()]
             elif in_modules:
                 if _MODULE_ARRAY_END_RE.match(raw):
                     in_modules = False
@@ -194,10 +195,9 @@ def mypy_entries(lines: list[str]) -> list[Entry]:
                         weakened.add(key)
                     if key in weaken_true and val == "true":
                         weakened.add(key)
+                    # any non-empty disable_error_code list weakens checking
                     if key == "disable_error_code" and val not in ("[]", '""'):
                         weakened.add("disable_error_code")
-                    if key == "warn_unused_ignores" and val == "false":
-                        weakened.add("warn_unused_ignores")
             j += 1
         if weakened:
             label = ", ".join(modules[:3])
