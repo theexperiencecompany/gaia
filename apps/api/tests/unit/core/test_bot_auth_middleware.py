@@ -135,6 +135,64 @@ class TestAlreadyAuthenticated:
         assert data["authenticated"] is True
         assert data["user_id"] == "pre_auth_user"
 
+    @patch("app.core.bot_auth_middleware.get_cache", new_callable=AsyncMock)
+    @patch("app.core.bot_auth_middleware.set_cache", new_callable=AsyncMock)
+    @patch(
+        "app.core.bot_auth_middleware.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.core.bot_auth_middleware.verify_bot_session_token")
+    async def test_already_authenticated_request_is_never_re_resolved(
+        self,
+        mock_verify: MagicMock,
+        mock_platform: AsyncMock,
+        mock_set_cache: AsyncMock,
+        mock_get_cache: AsyncMock,
+    ) -> None:
+        """The short circuit must actually skip re-authentication, not just
+        happen to leave the same answer in place.
+
+        A valid ``Authorization`` header for a DIFFERENT user rides along on
+        this request. If the ``if getattr(request.state, "authenticated",
+        False):`` guard is bypassed (wrong object, wrong attribute name, or
+        wrong default), the middleware runs its own JWT verification and
+        clobbers the pre-authenticated identity with this one.
+        """
+        mock_verify.return_value = FAKE_JWT_PAYLOAD  # resolves to "user_abc123"
+        mock_get_cache.return_value = None
+        mock_platform.return_value = FAKE_USER_DATA
+
+        app = FastAPI()
+        from starlette.middleware.base import BaseHTTPMiddleware
+
+        class PreAuthMiddleware(BaseHTTPMiddleware):
+            async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+                request.state.authenticated = True
+                request.state.user = {"user_id": "pre_auth_user"}
+                return await call_next(request)
+
+        app.add_middleware(BotAuthMiddleware)
+        app.add_middleware(PreAuthMiddleware)
+
+        @app.get("/api/test")
+        async def endpoint(request: Request) -> dict[str, Any]:
+            return {
+                "authenticated": request.state.authenticated,
+                "user_id": request.state.user.get("user_id"),
+            }
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
+            resp = await client.get(
+                "/api/test",
+                headers={"Authorization": "Bearer someone-elses-valid-jwt"},
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["user_id"] == "pre_auth_user"
+        mock_verify.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # JWT Bearer token authentication
@@ -145,6 +203,37 @@ class TestJWTAuth:
     @pytest.fixture
     def app(self) -> FastAPI:
         return _build_app()
+
+    @patch("app.core.bot_auth_middleware.get_cache", new_callable=AsyncMock)
+    @patch("app.core.bot_auth_middleware.set_cache", new_callable=AsyncMock)
+    @patch(
+        "app.core.bot_auth_middleware.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.core.bot_auth_middleware.verify_bot_session_token")
+    async def test_exactly_the_bearer_prefix_is_stripped_from_the_token(
+        self,
+        mock_verify: MagicMock,
+        mock_platform: AsyncMock,
+        mock_set_cache: AsyncMock,
+        mock_get_cache: AsyncMock,
+        app: FastAPI,
+    ) -> None:
+        """``"Bearer "`` is 7 characters — the verifier must receive the token
+        with none of its own characters eaten."""
+        mock_verify.return_value = FAKE_JWT_PAYLOAD
+        mock_get_cache.return_value = None
+        mock_platform.return_value = FAKE_USER_DATA
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
+            resp = await client.get(
+                "/api/test",
+                headers={"Authorization": "Bearer abcdef123456"},
+            )
+
+        assert resp.status_code == 200
+        mock_verify.assert_called_once_with("abcdef123456")
 
     @patch("app.core.bot_auth_middleware.get_cache", new_callable=AsyncMock)
     @patch("app.core.bot_auth_middleware.set_cache", new_callable=AsyncMock)

@@ -23,6 +23,8 @@ from app.agents.middleware.factory import (
     create_middleware_stack,
     create_subagent_middleware,
 )
+from app.agents.middleware.style_guard import StyleGuardMiddleware
+from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.middleware.summarization import (
     WorkspaceArchivingSummarizationMiddleware,
 )
@@ -101,6 +103,29 @@ class TestChatLlmWiring:
         stack = create_subagent_middleware(subagent_llm=llm, enable_subagent=False)
         compactor = next(mw for mw in stack if isinstance(mw, WorkspaceCompactionMiddleware))
         assert compactor.summary_llm is llm
+
+
+class TestCommsStackComposition:
+    """Comms is the only tier whose text a person reads, and the only one that
+    delegates instead of acting — so what is and is not in its stack is the
+    contract, not an implementation detail."""
+
+    def test_the_style_guard_is_the_innermost_middleware(self) -> None:
+        """Position is load-bearing: innermost of the wrap_model_call chain means
+        it scores the response the model actually produced, not one an outer
+        middleware already substituted (the budget wall's stop text, for one, is
+        not the model's prose and must not be rewritten)."""
+        stack = create_comms_middleware(chat_llm=_fake_llm())
+
+        assert isinstance(stack[-1], StyleGuardMiddleware)
+        assert sum(isinstance(mw, StyleGuardMiddleware) for mw in stack) == 1
+
+    def test_comms_can_never_spawn_a_subagent(self) -> None:
+        """Comms has no work tools by design — it hands everything to the
+        executor. A spawn tool here would let the front door do the work."""
+        stack = create_comms_middleware(chat_llm=_fake_llm())
+
+        assert not any(isinstance(mw, SubagentMiddleware) for mw in stack)
 
 
 class ConfigCapturingModel:

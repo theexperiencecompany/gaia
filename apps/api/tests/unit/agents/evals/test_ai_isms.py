@@ -9,7 +9,7 @@ production wording proves nothing.
 
 import pytest
 
-from app.agents.evals.ai_isms import AiIsmScore, score_reply
+from app.agents.evals.ai_isms import AiIsmScore, score_reply, violation_snippets
 
 PROD_REPLIES: tuple[str, ...] = (
     "on it, pinging you in 3 hours.<NEW_MESSAGE_BREAK>",
@@ -259,3 +259,61 @@ def test_total_violations_sums_the_tells_and_not_the_shape() -> None:
         + score.template_shape
     )
     assert score.total_violations > 0
+
+
+class TestViolationSnippets:
+    @pytest.mark.parametrize("text", ["", "   \n  "])
+    def test_empty_or_blank_text_yields_no_violations(self, text: str) -> None:
+        assert violation_snippets(text) == {}
+
+    def test_plain_text_yields_no_violations(self) -> None:
+        assert violation_snippets("the invoice is due friday. thanks for confirming.") == {}
+
+    def test_every_detector_fires_with_exact_keys_and_snippets(self) -> None:
+        text = (
+            "here's what i found:\n\n"
+            "honestly, it's not a bug, it's a **feature** — trust me on this.\n\n"
+            "1. **buy resend**\n2. **email churned users**\n3. **record the video**\n\n"
+            "want me to ship it now?"
+        )
+        assert violation_snippets(text) == {
+            "negation_antithesis": ["not a bug, it's"],
+            "em_dash": ["not a bug, it's a **feature** — trust me on this."],
+            "banned_phrases": ["honestly"],
+            "bold_emphasis": [
+                "**feature**",
+                "**buy resend**",
+                "**email churned users**",
+                "**record the video**",
+            ],
+            "preamble": ["here's what i found"],
+            "closing_hook": ["want me to ship it now?"],
+            "template_shape": [
+                "1. **buy resend**",
+                "2. **email churned users**",
+                "3. **record the video**",
+            ],
+        }
+
+    def test_closing_hook_snippet_comes_from_the_sentinel_joined_last_line(self) -> None:
+        """A bubble-split reply is one logical text; the sentinel must be
+        rejoined into a newline (not consumed) before the last-line search, or
+        the trailing bubble's content gets glued onto the sentinel and its
+        word-boundary match breaks."""
+        text = "the numbers are in<NEW_MESSAGE_BREAK>want me to draft that?"
+        assert violation_snippets(text) == {"closing_hook": ["want me to draft that?"]}
+
+    def test_closing_hook_ignores_a_mid_reply_question(self) -> None:
+        text = "want me to check first? no, i already did.\n\nthey're all set. go sleep."
+        assert violation_snippets(text) == {}
+
+    def test_template_shape_fires_at_exactly_the_minimum_block_count(self) -> None:
+        text = "1. **a**\n2. **b**\n3. **c**"
+        result = violation_snippets(text)
+        assert result["template_shape"] == ["1. **a**", "2. **b**", "3. **c**"]
+
+    def test_template_shape_absent_below_the_minimum_block_count(self) -> None:
+        text = "1. **a**\n2. **b**"
+        result = violation_snippets(text)
+        assert "template_shape" not in result
+        assert result["bold_emphasis"] == ["**a**", "**b**"]

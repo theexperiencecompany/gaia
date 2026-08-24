@@ -26,6 +26,7 @@ from app.agents.core.background.session import (
     get_session,
     signal_executor_done,
 )
+from app.constants.agents import AgentTag, wrap_agent_payload
 
 
 @pytest.fixture(autouse=True)
@@ -198,6 +199,97 @@ class TestReturnedToFrontendNote:
     def test_nothing_card_worthy_yields_no_note(self) -> None:
         create_session("s1", RunKind.QUEUED)
         assert build_returned_to_frontend_note("s1") == ""
+
+    def test_the_full_note_is_pinned_verbatim_for_a_named_subagent_card(self) -> None:
+        """Exact rendered text — not a substring — so a dropped tool name, an
+        emptied subagent name, or a vanished data lookup all go red here even
+        if a looser 'in note' check would not notice the surrounding text."""
+        session = create_session("s1", RunKind.QUEUED)
+        session.tool_events.append(
+            {
+                "subagent_start": {
+                    "subagent_id": "sub-1",
+                    "subagent_name": "Todos",
+                    "agent_type": "handoff",
+                }
+            }
+        )
+        session.tool_events.append(
+            {
+                "tool_data": {
+                    "tool_name": "todo_data",
+                    "data": [{"id": "x"}],
+                    "subagent_id": "sub-1",
+                }
+            }
+        )
+
+        note = build_returned_to_frontend_note("s1")
+
+        assert note == wrap_agent_payload(
+            AgentTag.RETURNED_TO_FRONTEND,
+            "These native cards are already on the user's screen this turn:\n"
+            "  - todo_data (1 todo, via subagent:Todos)\n"
+            "They visually render the RAW items, so don't re-type those items "
+            "row-by-row and don't re-emit them as OpenUI — that literal duplication "
+            "is the ONLY thing to avoid here.\n"
+            "The cards are visual aids, NOT your reply. You still owe the user the "
+            "ANSWER in your own voice — the substance the executor produced: what it "
+            "found, grouped and counted, the few items that actually matter (and "
+            'why), and the natural next step. This synthesis is never "card '
+            'contents"; suppressing it because a card exists is the worst failure '
+            "you can have.\n"
+            "Match the depth to the work: a quick outcome gets a line or two; a "
+            "large, comprehensive result (a full triage, a multi-item analysis) gets "
+            "a real structured rundown — never a one-liner. Replying just \"here's "
+            'the list 👇" with no substance, when the executor did real work, fails '
+            "the user. Point them to the card for the granular rows AFTER you've "
+            "actually delivered the gist.\n"
+            "CRITICAL EXCEPTION — LONG-FORM DELIVERABLE: if the executor's result is "
+            "itself a finished written piece (a research report, an article, an "
+            "analysis, a document), that is the ANSWER, not raw card rows. The cards "
+            "above were just the research/loading steps along the way. Deliver the "
+            "deliverable IN FULL per the long-form rule — every section, point, and "
+            "citation — and do NOT compress it to a 'here's the breakdown' summary. "
+            "This note never authorizes shrinking a report; it only stops you "
+            "re-typing rows a card already lists.",
+        )
+
+
+class TestCollectCoalescesReasoning:
+    """Direct unit coverage of ``redis_writer._collect``'s content-merge line —
+    pins the exact defaults used when a dict is missing its ``content`` key,
+    which the higher-level streaming tests never exercise (every delta they
+    send already carries content)."""
+
+    def test_two_consecutive_deltas_concatenate_exactly(self) -> None:
+        session = create_session("s1", RunKind.QUEUED)
+        rw._collect(session, {"reasoning": {"content": "hello ", "subagent_id": None}})
+        rw._collect(session, {"reasoning": {"content": "world", "subagent_id": None}})
+
+        assert session.tool_events == [
+            {"reasoning": {"content": "hello world", "subagent_id": None}}
+        ]
+
+    def test_a_previous_entry_with_no_content_key_defaults_to_empty_not_the_word_none(
+        self,
+    ) -> None:
+        session = create_session("s1", RunKind.QUEUED)
+        session.tool_events.append({"reasoning": {"subagent_id": None}})  # no "content" key
+
+        rw._collect(session, {"reasoning": {"content": "world", "subagent_id": None}})
+
+        assert session.tool_events[-1]["reasoning"]["content"] == "world"
+
+    def test_an_incoming_delta_with_no_content_key_leaves_the_previous_content_unchanged(
+        self,
+    ) -> None:
+        session = create_session("s1", RunKind.QUEUED)
+        rw._collect(session, {"reasoning": {"content": "hello", "subagent_id": None}})
+
+        rw._collect(session, {"reasoning": {"subagent_id": None}})  # no "content" key
+
+        assert session.tool_events[-1]["reasoning"]["content"] == "hello"
 
 
 class TestRedisStreamWriter:

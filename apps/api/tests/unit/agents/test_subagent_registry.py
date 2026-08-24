@@ -486,3 +486,11 @@ class TestForeignProviderNamedIn:
         so only third-party products are matched."""
         assert foreign_provider_named_in("add reminders for each of the todos", "gmail") is None
         assert foreign_provider_named_in("use your skills to draft it", "gmail") is None
+
+    def test_an_uppercase_spelling_still_matches(self) -> None:
+        """The matcher is compiled with re.IGNORECASE; without it, a caller who
+        writes "TODOIST" or "Todoist" instead of the lowercase id would slip
+        past undetected."""
+        named = foreign_provider_named_in("push it to TODOIST", target_id="todos")
+
+        assert named is not None and named.id == "todoist"

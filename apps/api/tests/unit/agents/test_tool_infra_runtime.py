@@ -622,6 +622,56 @@ async def test_base_subagent_wiring_uses_shared_tool_runtime_helpers():
 
 
 @pytest.mark.asyncio
+async def test_provider_subagent_defaults_tool_space_to_general():
+    """``tool_space`` defaults to "general" — the literal string, not "GENERAL"
+    or any other spelling — and that default must actually reach the
+    middleware that scopes what the subagent (and anything it spawns) may call."""
+    provider_tool = normal_tool
+    full_tools = {"normal_tool": normal_tool, "vfs_read": vfs_read, "search_memory": normal_tool}
+    dummy_registry = _DummyRegistry([provider_tool], full_tools)
+
+    def _fake_create_agent(**kwargs: Any):
+        return _DummyBuilder(kwargs)
+
+    captured_middleware_kwargs: dict[str, Any] = {}
+
+    def _fake_create_subagent_middleware(**kwargs: Any):
+        captured_middleware_kwargs.update(kwargs)
+        return []
+
+    with (
+        patch(
+            "app.agents.core.subagents.base_subagent.get_tools_store",
+            new=AsyncMock(return_value=MagicMock()),
+        ),
+        patch(
+            "app.agents.core.subagents.base_subagent.get_tool_registry",
+            new=AsyncMock(return_value=dummy_registry),
+        ),
+        patch(
+            "app.agents.core.subagents.base_subagent.create_agent",
+            new=_fake_create_agent,
+        ),
+        patch(
+            "app.agents.core.subagents.base_subagent.create_subagent_middleware",
+            new=_fake_create_subagent_middleware,
+        ),
+        patch(
+            "app.agents.core.subagents.base_subagent.get_checkpointer_manager",
+            new=AsyncMock(return_value=SimpleNamespace(get_checkpointer=object)),
+        ),
+    ):
+        await SubAgentFactory.create_provider_subagent(
+            provider="provider",
+            name="provider_agent",
+            llm=BindableToolsFakeModel(responses=[], profile={"max_input_tokens": 1_000_000}),
+            # tool_space intentionally omitted — must default to "general".
+        )
+
+    assert captured_middleware_kwargs["subagent_tool_space"] == "general"
+
+
+@pytest.mark.asyncio
 async def test_base_subagent_dynamic_mode_wires_retrieve_and_auto_bind():
     captured_kwargs, mw = await _run_provider_subagent_factory(
         use_direct_tools=False,

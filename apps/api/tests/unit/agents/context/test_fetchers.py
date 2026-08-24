@@ -15,6 +15,7 @@ from tests._harness.context_sources import knowledge, memory
 from tests.helpers import captured_wide_event
 
 from app.agents.context.fetchers import (
+    _dedupe_by_provider,
     _split_core_context,
     _split_off_section,
     build_active_todo_banner,
@@ -326,6 +327,49 @@ class TestConnectedIntegrationsManifest:
             manifest = await build_connected_integrations_manifest("u1", header="HEADER:")
 
         assert manifest == "HEADER:\n- Google Calendar (googlecalendar)"
+
+
+@pytest.mark.unit
+class TestDedupeByProvider:
+    def test_a_real_name_already_held_is_never_displaced_by_an_id_named_duplicate(
+        self,
+    ) -> None:
+        """A later id-only entry for the same provider must not clobber an
+        earlier one that already resolved to a display name."""
+        items = [
+            {"id": "slack", "name": "Slack Workspace"},
+            {"id": "sl_ack", "name": "sl_ack"},
+        ]
+
+        assert _dedupe_by_provider(items) == [{"id": "slack", "name": "Slack Workspace"}]
+
+    def test_an_id_named_entry_held_first_is_replaced_once_a_real_name_arrives(self) -> None:
+        items = [
+            {"id": "slack", "name": "slack"},
+            {"id": "sl_ack", "name": "Slack Workspace"},
+        ]
+
+        assert _dedupe_by_provider(items) == [{"id": "sl_ack", "name": "Slack Workspace"}]
+
+    def test_the_first_real_name_wins_over_a_second_equally_real_name(self) -> None:
+        """Once a provider has resolved to ANY display name, a second row for
+        the same provider must not overwrite it — even when the second row
+        also carries a real name, not just an id."""
+        items = [
+            {"id": "calendar", "name": "Calendar One"},
+            {"id": "cal_endar", "name": "Calendar Two"},
+        ]
+
+        assert _dedupe_by_provider(items) == [{"id": "calendar", "name": "Calendar One"}]
+
+    def test_distinct_providers_are_all_kept_in_first_seen_order(self) -> None:
+        items = [
+            {"id": "gmail", "name": "Gmail"},
+            {"id": "slack", "name": "Slack"},
+            {"id": "notion", "name": "Notion"},
+        ]
+
+        assert _dedupe_by_provider(items) == items
 
 
 @pytest.mark.unit

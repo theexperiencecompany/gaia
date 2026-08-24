@@ -780,9 +780,139 @@ class TestBotChatStream:
             event = dict(log.get())
 
         assert response.status_code == 200
+        assert event["operation"] == "bot_chat_stream"
         assert event["user"] == {"id": "uid1"}
         assert event["platform"] == "discord"
         assert event["outcome"] == "success"
+
+    @patch("app.api.v1.endpoints.bot.spawn_background_task", new=MagicMock())
+    @patch("app.api.v1.endpoints.bot.run_chat_stream_background", new=AsyncMock())
+    @patch(
+        "app.api.v1.endpoints.bot.create_bot_session_token",
+        new=MagicMock(return_value="tok"),
+    )
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.stream_manager")
+    @patch("app.api.v1.endpoints.bot.BotService")
+    @patch("app.api.v1.endpoints.bot.capture_event")
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
+    async def test_enforce_rate_limit_receives_platform_and_platform_user_id_in_order(
+        self,
+        mock_capture: MagicMock,
+        mock_bot_svc: MagicMock,
+        mock_sm: MagicMock,
+        mock_get_user: AsyncMock,
+    ):
+        """`BotService.enforce_rate_limit` is the flat per-platform anti-spam
+        gate — it must see the platform AND the platform user id, positionally
+        in that order, taken from the request body rather than swapped or
+        dropped."""
+        mock_get_user.return_value = {"user_id": "uid1", "_id": "uid1"}
+        mock_bot_svc.enforce_rate_limit = AsyncMock()
+        mock_bot_svc.get_or_create_session = AsyncMock(return_value="conv-1")
+        mock_bot_svc.load_conversation_history = AsyncMock(return_value=[])
+        mock_sm.start_stream = AsyncMock()
+
+        body = BotChatRequest(message="hi", platform="whatsapp", platform_user_id="wa_777")
+        request = MagicMock()
+        request.state = _make_request()
+
+        response = await bot_chat_stream(request, body)
+
+        assert response.status_code == 200
+        mock_bot_svc.enforce_rate_limit.assert_awaited_once_with("whatsapp", "wa_777")
+
+    @patch("app.api.v1.endpoints.bot.spawn_background_task", new=MagicMock())
+    @patch("app.api.v1.endpoints.bot.run_chat_stream_background", new=AsyncMock())
+    @patch(
+        "app.api.v1.endpoints.bot.create_bot_session_token",
+        new=MagicMock(return_value="tok"),
+    )
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.stream_manager")
+    @patch("app.api.v1.endpoints.bot.BotService")
+    @patch("app.api.v1.endpoints.bot.capture_event")
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
+    async def test_a_middleware_resolved_user_skips_the_platform_link_lookup(
+        self,
+        mock_capture: MagicMock,
+        mock_bot_svc: MagicMock,
+        mock_sm: MagicMock,
+        mock_get_user: AsyncMock,
+    ):
+        """When `BotAuthMiddleware` already put an authenticated user on
+        `request.state`, the handler must use it as-is rather than re-resolving
+        through `PlatformLinkService` — the DB round trip is a fallback for the
+        unlinked/legacy path, not the common one."""
+        mock_bot_svc.enforce_rate_limit = AsyncMock()
+        mock_bot_svc.get_or_create_session = AsyncMock(return_value="conv-1")
+        mock_bot_svc.load_conversation_history = AsyncMock(return_value=[])
+        mock_sm.start_stream = AsyncMock()
+
+        body = BotChatRequest(message="hi", platform="discord", platform_user_id="disc_1")
+        request = MagicMock()
+        request.state = _make_request(
+            user={"user_id": "uid_from_middleware", "_id": "uid_from_middleware"},
+            authenticated=True,
+        )
+
+        response = await bot_chat_stream(request, body)
+
+        assert response.status_code == 200
+        mock_get_user.assert_not_awaited()
+        mock_bot_svc.get_or_create_session.assert_awaited_once_with(
+            "discord",
+            "disc_1",
+            None,
+            {"user_id": "uid_from_middleware", "_id": "uid_from_middleware"},
+        )
+
+    @patch("app.api.v1.endpoints.bot.spawn_background_task", new=MagicMock())
+    @patch("app.api.v1.endpoints.bot.run_chat_stream_background", new=AsyncMock())
+    @patch(
+        "app.api.v1.endpoints.bot.create_bot_session_token",
+        new=MagicMock(return_value="tok"),
+    )
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.stream_manager")
+    @patch("app.api.v1.endpoints.bot.BotService")
+    @patch("app.api.v1.endpoints.bot.capture_event")
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
+    async def test_a_state_user_without_authenticated_flag_still_falls_back(
+        self,
+        mock_capture: MagicMock,
+        mock_bot_svc: MagicMock,
+        mock_sm: MagicMock,
+        mock_get_user: AsyncMock,
+    ):
+        """`request.state.user` alone is not enough — `authenticated` must also
+        be true, or a stale/partial state object would be trusted."""
+        mock_get_user.return_value = {"user_id": "uid_from_lookup", "_id": "uid_from_lookup"}
+        mock_bot_svc.enforce_rate_limit = AsyncMock()
+        mock_bot_svc.get_or_create_session = AsyncMock(return_value="conv-1")
+        mock_bot_svc.load_conversation_history = AsyncMock(return_value=[])
+        mock_sm.start_stream = AsyncMock()
+
+        body = BotChatRequest(message="hi", platform="discord", platform_user_id="disc_1")
+        request = MagicMock()
+        request.state = _make_request(
+            user={"user_id": "uid_from_middleware", "_id": "uid_from_middleware"},
+            authenticated=False,
+        )
+
+        response = await bot_chat_stream(request, body)
+
+        assert response.status_code == 200
+        mock_get_user.assert_awaited_once_with("discord", "disc_1")
 
 
 # ---------------------------------------------------------------------------
