@@ -340,6 +340,8 @@ On Linux hosts, Ollama listens on `127.0.0.1` by default, which the container ca
 The self-host stack deliberately runs the backend **without** `--proxy-headers`, so uvicorn ignores spoofable `X-Forwarded-For` headers and rate limits (login/signup: 10/min per IP) key off the real client IP. If you put GAIA behind your own reverse proxy (nginx, Caddy, Cloudflare Tunnel, …), you MUST edit the `gaia-backend` `command` in `infra/docker/docker-compose.selfhost.yml` to re-add `--proxy-headers` AND set `--forwarded-allow-ips` to your proxy's IP — never `*`. Without them every request appears to come from the proxy itself, so all visitors share a single rate-limit bucket; with `*`, any direct-to-port client can forge the header instead and get a fresh bucket per request.
 </Warning>
 
+If you terminate TLS at a proxy, ensure it sets `X-Forwarded-Proto: https` — session cookies are marked Secure based on this header.
+
 ## Data Persistence
 
 Data is persisted using Docker volumes (prefixed `gaia-selfhost_`):

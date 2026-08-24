@@ -73,6 +73,10 @@ router.include_router(oauth.router, prefix="/oauth", tags=["OAuth"])
 # deployments expose no password-registration endpoint and no unauthenticated
 # instance-posture probe. The in-module 404 guards in setup.py are a second
 # layer on top of this mount gate.
+#
+# /setup/status is not unconditionally public: the middleware's conditional
+# exclude block appends "/api/v1/setup/status" to exclude_paths only when
+# settings.AUTH_MODE == "local", never in workos mode.
 if settings.AUTH_MODE == "local":
     router.include_router(auth_local.router, prefix="/auth", tags=["Auth"])
 if settings.AUTH_MODE == "local" or settings.ENV == "selfhost":
