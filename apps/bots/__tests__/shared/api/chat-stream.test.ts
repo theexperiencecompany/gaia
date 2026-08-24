@@ -128,6 +128,49 @@ describe("streamChat — the rate-limit notice", () => {
   });
 });
 
+describe("streamChat — the 401 session-token retry", () => {
+  it("keeps every handler on the retried attempt", async () => {
+    // The retry re-invoked the streamer with `onApprovalUpdate` and the
+    // boundary handler but not `onNotice`, so a stale session token — routine,
+    // the token lives 12 minutes — silently cost that turn its rate-limit
+    // notice. Nothing failed; the user just hit a wall and was told nothing.
+    const body = frames(
+      { notice: { text: NOTICE } },
+      { text: "all set." },
+      { done: true, conversation_id: "c1" },
+    );
+    let attempt = 0;
+    const deps: ChatStreamClient = {
+      client: {
+        post: vi.fn(async () => {
+          attempt += 1;
+          if (attempt === 1) throw { response: { status: 401 } };
+          return { data: Readable.from([body]) };
+        }),
+      } as unknown as ChatStreamClient["client"],
+      userHeaders: () => ({}),
+      storeSessionToken: vi.fn(),
+      clearSessionToken: vi.fn(),
+    };
+
+    const onNotice = vi.fn();
+    await streamChat(
+      deps,
+      REQUEST,
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+      "/api/v1/bot/chat-stream",
+      vi.fn(),
+      vi.fn(),
+      onNotice,
+    );
+
+    expect(attempt).toBe(2);
+    expect(onNotice).toHaveBeenCalledWith(NOTICE);
+  });
+});
+
 describe("streamChat — a chunk carrying several frames", () => {
   it("applies every frame in it, even when the stream ends immediately", async () => {
     // SSE frames coalesce into one TCP chunk all the time, and a short reply
