@@ -61,6 +61,12 @@
       "isIgnored": true
     },
     {
+      "label": "gaia-mobile pins typescript@6 line: the Expo CLI tsconfig loader calls ts.sys.getCurrentDirectory, which TS 7's native API does not expose — Metro config loading crashes on TS 7",
+      "dependencies": ["typescript"],
+      "packages": ["gaia-mobile"],
+      "isIgnored": true
+    },
+    {
       "label": "All deps must agree across packages",
       "dependencies": ["**"]
     }
