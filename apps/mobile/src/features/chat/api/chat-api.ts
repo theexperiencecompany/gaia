@@ -55,7 +55,7 @@ export interface ApiConversationDetail {
 
 export interface ImageData {
   url: string;
-  prompt: string;
+  prompt?: string;
   improvedPrompt?: string;
 }
 

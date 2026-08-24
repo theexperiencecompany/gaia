@@ -1,4 +1,8 @@
 import {
+  SUBAGENT_GROUP_TOOL_NAME,
+  TOOL_CALLS_DATA_TOOL_NAME,
+} from "@gaia/shared/chat";
+import {
   parseOpenUISegments,
   parseThinkingFromText,
   splitMessageByBreaks,
@@ -342,7 +346,8 @@ function AIChatMessage({
     () =>
       (message.toolData ?? []).filter(
         (e) =>
-          e.tool_name !== "tool_calls_data" && e.tool_name !== "subagent_group",
+          e.tool_name !== TOOL_CALLS_DATA_TOOL_NAME &&
+          e.tool_name !== SUBAGENT_GROUP_TOOL_NAME,
       ),
     [message.toolData],
   );

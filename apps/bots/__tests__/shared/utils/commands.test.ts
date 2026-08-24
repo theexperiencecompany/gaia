@@ -12,7 +12,7 @@
  * - Subcommand dispatch routes to the right handler
  */
 
-import type { CommandContext } from "@gaia/shared/bots";
+import type { CommandContext, GaiaClient } from "@gaia/shared/bots";
 import {
   dispatchTodoSubcommand,
   dispatchWorkflowSubcommand,
@@ -55,7 +55,7 @@ function makeGaia() {
     listConversations: vi.fn(),
     resetSession: vi.fn(),
     getFrontendUrl: vi.fn().mockReturnValue("https://heygaia.io"),
-  } as unknown as import("@gaia/shared/bots").GaiaClient;
+  } as unknown as GaiaClient;
 }
 
 // ---------------------------------------------------------------------------

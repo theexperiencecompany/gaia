@@ -468,8 +468,20 @@ export function useChat(
                   // data so tool cards render live during streaming.
                   liveStore.updateLastAssistantMessage(convId, {
                     toolData: acc.toolData,
+                    imageData: acc.imageData,
                   });
                   return;
+                case "unknown": {
+                  // Image-generation frames arrive as untyped payloads; the
+                  // accumulator turns them into first-class image state
+                  // (generating = url "" until the real URL lands).
+                  if (acc.imageData === null && !acc.generatingImage) return;
+                  liveStore.updateLastAssistantMessage(convId, {
+                    toolData: acc.toolData,
+                    imageData: acc.imageData,
+                  });
+                  return;
+                }
                 case "follow_up_actions":
                   liveStore.updateLastMessageFollowUp(convId, event.actions);
                   return;
