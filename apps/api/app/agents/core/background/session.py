@@ -24,6 +24,7 @@ from typing import Any
 
 from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable
+from app.models.chat_models import SourceCategory
 from app.models.user_models import AuthenticatedUser
 from shared.py.wide_events import log
 
@@ -97,6 +98,10 @@ class ExecutorRun:
     workflow_title: str = ""
     workflow_notify_on_completion: bool = True
     active_todo_id: str | None = None
+    #: Where the turn that spawned this run came from. Defaults to background
+    #: work, matching ``build_agent_config``: the only callers that leave the
+    #: source unset are the silent background paths.
+    source_category: SourceCategory = SourceCategory.BG
 
     @classmethod
     def from_configurable(
@@ -131,11 +136,25 @@ class ExecutorRun:
             workflow_title=configurable.get("workflow_title", ""),
             workflow_notify_on_completion=configurable.get("workflow_notify_on_completion", True),
             active_todo_id=configurable.get("active_todo_id"),
+            source_category=SourceCategory(
+                configurable.get("source_category") or SourceCategory.BG.value
+            ),
         )
 
     @property
     def is_queued(self) -> bool:
         return self.kind is RunKind.QUEUED
+
+    @property
+    def renders_native_cards(self) -> bool:
+        """Whether this run's items reach the user as cards rather than as words.
+
+        Only first-party clients render tool cards. A bot conversation gets plain
+        text over its platform API and a scheduled workflow gets a notification,
+        so telling comms "these items are already on the user's screen" there
+        suppresses the only copy of the data the user would ever see.
+        """
+        return self.source_category is SourceCategory.UI
 
     @property
     def executor_owns_tool_data(self) -> bool:
