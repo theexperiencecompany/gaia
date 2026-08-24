@@ -3,13 +3,15 @@
 Live A/B measured on the production lane (OpenRouter → `deepseek/deepseek-v4-flash-0731`,
 DeepSeek's automatic prefix cache). Two complementary measurements:
 
-1. **Harness** (`apps/api/scripts/measure_llm_cache.py`): real message shapes
-   through the real `manage_system_prompts_node` against the real provider,
-   back-to-back per-turn calls (what the layout alone is worth).
-2. **End-to-end** (`apps/api/scripts/drive_big_conversation.py`): the real
-   `/api/v1/chat-stream` endpoint — full comms → executor graph, real history
-   growth, 45-turn conversations, ~2.7M input tokens per run (what production
-   gets).
+1. **Harness**: real message shapes through the real `manage_system_prompts_node`
+   against the real provider, back-to-back per-turn calls (what the layout alone
+   is worth).
+2. **End-to-end**: the real `/api/v1/chat-stream` endpoint — full comms →
+   executor graph, real history growth, 45-turn conversations, ~2.7M input
+   tokens per run (what production gets).
+
+Both driver scripts were removed in `9db9dbd6b`; see "Reading the live rate"
+at the end for how to measure the current number without them.
 
 ## The layouts
 
@@ -184,3 +186,81 @@ real provider, per-run isolated bytes) for the layout A/B, and the real
 `/api/v1/chat-stream` endpoint was driven for the end-to-end runs. Requests
 were captured byte-level through a logging proxy to verify determinism and
 the exact divergence points.
+
+Those driver scripts were deliberately removed in `9db9dbd6b` — they billed real
+tokens on every run, and their findings are recorded above. Do not go looking for
+them. To read the rate as it stands today, use the method below instead: it costs
+nothing and answers the same question against real traffic.
+
+## Reading the live rate (free, repeatable)
+
+Every LLM call already emits an `llm_call` wide event carrying `input_tokens`
+and `cached_tokens`. Reading them needs no driver, no tokens and no deploy —
+only Loki:
+
+```
+{service=~"gaia-backend|arq_worker"} | json | llm_event="llm_call"
+```
+
+Then `sum(cached_tokens) / sum(input_tokens)`.
+
+Three things decide whether the number is true. Each was got wrong at least once:
+
+- **Query both services.** `arq_worker` is a separate `service` label and carries
+  the memory and workflow lanes. `gaia-backend` alone reported **51.5%** against
+  a true **39.8%** — twelve points of pure selection bias.
+- **Drop `sticky_flip_discarded="true"`.** Those are retry replays of bytes just
+  sent, ~99% cached by construction. Counting them flatters every aggregate.
+- **Weight by tokens, not by call.** A mean of per-call rates lets a handful of
+  tiny one-shots outvote the 40k-token subagent calls that carry the cost.
+  Tokens are what is billed, so tokens are what the metric is.
+
+Group by `agent_name` for the per-lane split, and chain by `thread_id` in time
+order to separate a genuine cold start from a cache that was lost. Note that
+threads are strictly **per agent** (`<conv>` is comms, `executor_<conv>`,
+`<subagent>_executor_<conv>`), so anything about agents evicting *each other*
+has to be looked for at the conversation level — the trailing id segment — not
+per thread. A per-thread comparison cannot see it and will report zero.
+
+### Baseline, 24h to 2026-08-24 (pre-#1095)
+
+**39.8% overall.** The three agent lanes are 84.8% of all prompt tokens and 47
+of the 60 points of loss:
+
+| Lane | Hit rate | Share of prompt tokens | Points of loss |
+|---|---|---|---|
+| provider_subagent | 37.6% | 26.2% | 16.4 |
+| comms_agent | 44.7% | 29.4% | 16.3 |
+| executor_agent | 50.1% | 29.2% | 14.6 |
+| memory:extraction | 12.8% | 10.7% | 9.3 |
+| everything else | — | 4.5% | 3.7 |
+
+### The shape that matters
+
+The loss is **bimodal, not spread**. When the cache works it reads over 90%;
+almost all loss is calls reading *exactly zero* — 44.5% of comms calls, 54.1% of
+subagent calls. Splitting those by whether they were the first call on their
+thread is what turns the number into a plan:
+
+- **Lost warm caches** — 118 calls that were *not* first on their thread yet read
+  0% (4.1M tokens, ~19 pts). 87 of them fired within 60s of the previous call on
+  the same thread, on the same model: far too fast to be expiry, so these are
+  prefixes being invalidated. At the conversation level, 29% had another agent of
+  the same conversation run in between (shared routing key) and 71% did not
+  (churn inside one agent's own chain).
+- **Cold first calls** — 117 calls (4.0M tokens, ~18 pts). Not inherently
+  unavoidable: in the same window 21 of 69 comms first-calls read **69.3%**, 17
+  of 51 executor first-calls read 60.0%. The static prefix is byte-identical
+  across conversations for an agent, so it is already warm somewhere. Closing
+  that gap is worth ~11 pts — but note `session_id` is bound on every request
+  today and those 21 still hit, so "pinning prevents landing warm" is *not*
+  established. It needs an A/B, and an earlier broader pinning change measured
+  worse and was reverted.
+- **No `thread_id` at all** — the background lanes cannot chain or route
+  stickily. `memory:reconcile`, `consolidate` and `episode_summary` are 100%
+  cold but average 960 / 1,038 / 257 tokens per call, below the provider's
+  minimum cacheable block, so there is nothing to win there.
+
+Sizing every bucket this way is what stops the next person optimising the wrong
+thing: shrinking `VOLATILE_BLOCK_MAX_CHARS` only helps calls that are already
+warm, and those already read 90%+.
