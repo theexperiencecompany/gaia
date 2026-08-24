@@ -12,6 +12,7 @@ import { LAST_CHECKOUT_PRODUCT_KEY } from "@/features/pricing/constants";
 import { useDodoPayments } from "@/features/pricing/hooks/useDodoPayments";
 import { usePricing } from "@/features/pricing/hooks/usePricing";
 import { useReceiptPrinterStage } from "@/features/pricing/hooks/useReceiptPrinterStage";
+import { verifyPaymentWithRetry } from "@/features/pricing/utils/verifyPaymentWithRetry";
 import UseCreateConfetti from "@/hooks/ui/useCreateConfetti";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
@@ -49,14 +50,17 @@ export default function PaymentSuccessPage() {
 
     const run = async () => {
       try {
-        const result = await verifyPayment();
+        // The Dodo redirect can beat the webhook, so a single "not
+        // completed" is not a failure — retry with growing delays while the
+        // printer shows "Processing your order", and only then give up.
+        const result = await verifyPaymentWithRetry(() => verifyPayment());
         if (result.payment_completed) {
           trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_COMPLETED);
           setStatus("success");
         } else {
           setStatus("error");
           setErrorMessage(
-            "Your payment hasn't completed yet. You can try checking out again.",
+            "We haven't received your payment confirmation yet. You can try checking out again.",
           );
         }
       } catch (error) {
