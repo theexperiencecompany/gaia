@@ -1011,6 +1011,24 @@ class TestMemoryLaneProviderSelection:
     isolation on one provider, so the reason for the split is gone and the lane
     with a working cache wins."""
 
+    @patch("app.agents.llm.client.settings")
+    def test_the_aux_lane_predicate_reads_the_openrouter_key(
+        self, mock_settings: MagicMock
+    ) -> None:
+        """The real predicate body, not a patch of it: the lane choice above
+        hangs off this one boolean, so its truth table is contract."""
+        from app.agents.llm.client import aux_lane_available
+
+        mock_settings.GAIA_SIM_MODE = False
+        mock_settings.OPENROUTER_API_KEY = "or-key"
+        assert aux_lane_available() is True
+
+        mock_settings.OPENROUTER_API_KEY = None
+        assert aux_lane_available() is False
+
+        mock_settings.GAIA_SIM_MODE = True
+        assert aux_lane_available() is True
+
     @patch("app.agents.llm.client._aux_structured_runnable")
     @patch("app.agents.llm.client.ainvoke_llm", new_callable=AsyncMock)
     @patch("app.agents.llm.client.get_memory_llm")

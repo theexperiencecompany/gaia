@@ -145,6 +145,31 @@ class TestTheCacheablePrefixSurvivesMemoryGrowth:
             f"the empty-tree placeholder did not render as written, got: {tail[-120:]!r}"
         )
 
+    async def test_every_extraction_carries_the_user_s_memory_session_key(self):
+        """The sticky-routing chain is what keeps consecutive extractions
+        landing on the upstream that already holds this user's transcript
+        prefixes. Asserted one seam lower than the other tests — at the
+        client-call boundary — because the key is added by the real config
+        builder, and patching above it would test nothing."""
+        with patch(
+            "app.memory.extraction.ainvoke_structured_gemini",
+            new=AsyncMock(return_value=ExtractedMemoryBatch()),
+        ) as invoke:
+            await extract_memories(
+                _TRANSCRIPT,
+                user_id="u1",
+                user_name="Aryan",
+                folder_tree="relationships",
+                recent_facts=[],
+                current_date=_WHEN,
+            )
+
+        config = invoke.await_args.kwargs["config"]
+        assert config["configurable"]["session_id"] == "memory-u1"
+        # The key must never displace the spend attribution it merges beside.
+        assert config["configurable"]["user_id"] == "u1"
+        assert "memory_internal" in config["tags"]
+
     async def test_the_folder_guidance_stays_in_the_stable_prompt(self):
         """Only the mutable tree moves; the instructions on how to use it are
         byte-stable and belong in the cached prefix."""
