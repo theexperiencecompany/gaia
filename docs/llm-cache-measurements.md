@@ -272,46 +272,44 @@ falls out of three measured quantities, and it is worth knowing before anyone
 sets a target.
 
 The graph lane's mean prompt is **35,132 tokens** (532 calls, 24h). On a warm
-mid-conversation call the bytes that *must* be re-read are the volatile block —
-capped at `VOLATILE_BLOCK_MAX_CHARS = 8000`, so ~2,000 tokens — plus the turn's
-own new text, generously ~400 tokens. That is:
+mid-conversation call the bytes that *must* be re-read are the volatile block
+plus the turn's own new text (~400 tokens, generously):
 
 ```
-1 - (2000 + 400) / 35132  =  93.2%
+warm ceiling  =  1 - (volatile_tokens + 400) / 35132
 ```
 
-**93.2% is the ceiling for a warm call**, with every prefix bug fixed and
-nothing else changed. First calls on a thread cannot reach it: the best observed
-in production is 69.3%, since they can only inherit the shared static prefix,
-never a conversation. Blending the two by token share:
+Everything turns on `volatile_tokens`, and that is the one input **not** yet
+measured in production. Two anchors bracket it: the earlier campaign recorded
+the volatile tail at **~370 tokens**, while `VOLATILE_BLOCK_MAX_CHARS = 8000`
+puts the worst case at ~2,000. The truth today sits between them and is probably
+above 370, because the memory core's documents moved *into* the volatile slot
+after that measurement.
 
-| First-call share of tokens | Blended ceiling |
-|---|---|
-| 10% | 90.8% |
-| 15% | 89.6% |
-| 20% | 88.4% |
-| 25% | 87.2% |
+| volatile tokens | warm ceiling | blended @10% first-calls | @15% | @20% | @25% |
+|---|---|---|---|---|---|
+| 370 (measured, pre-move) | 97.8% | **95.0%** | 93.5% | 92.1% | 90.7% |
+| 900 (mid) | 96.3% | 93.6% | 92.2% | 90.9% | 89.5% |
+| 2000 (at the cap) | 93.2% | 90.8% | 89.6% | 88.4% | 87.2% |
 
-Turning that around — what the volatile block would have to shrink to for a
-given blended target, at a 15% first-call share:
+First calls are blended in at 69.3% — the best observed in production — because
+they can inherit the shared static prefix but never a conversation.
 
-| Target | Volatile block must be |
-|---|---|
-| 90% | ≤ 7,300 chars (today's cap is 8,000) |
-| 93% | ≤ 2,400 chars |
-| 95% | impossible — the budget goes negative |
+Read that table before setting a target. **90% is reachable across the whole
+range**, even at the cap, once the invalidation and cold-start buckets close.
+**95% is reachable only in the top-left corner**: a small volatile block *and*
+first calls held to about a tenth of prompt tokens. It is not arithmetically
+impossible — an earlier revision of this section said so, on the mistake of
+using the 8000-char *cap* as if it were the typical per-call cost, when the cap
+binds only for outlier users.
 
-So: **90% is reachable** once the invalidation and cold-start buckets are closed,
-and it needs only a modest trim of the volatile block. **93% needs that block cut
-to roughly a quarter of its current cap.** **95% is not reachable at all** while a
-request carries a ~19k static prefix, a full conversation, and 8k of per-turn
-context — the arithmetic leaves no room, whatever the cache does.
+So the honest answer to "can we hit 90–95%" is: 90% yes; 95% only if the
+volatile block stays small and long conversations dominate short ones. Which of
+those we are actually in is a single measurement away — `slot_chars` on the
+`prompt_pruning` event reports the real per-slot byte sizes, and reading it once
+after deploy replaces this whole table with one row.
 
-Getting past 93% is therefore not a caching problem. It needs the prompt itself
-to carry less per turn, or turns to be fewer and larger — a prompt/agent design
-change, and one that trades against answer quality rather than cost alone.
-
-This also corrects an earlier estimate of "~10 points" for the volatile-tail
-work: the whole block is 5.7% of a mean prompt, so 5.7 points is its hard
-ceiling, and most of it (recall, knowledge, agenda, todos, run banners) is
-genuinely per-turn and cannot move at all.
+One correction this arithmetic forces: an earlier estimate of "~10 points" for
+the volatile-tail work is too high whichever anchor holds. At the cap the entire
+block is 5.7% of a mean prompt, and most of it (recall, knowledge, agenda,
+todos, run banners) is genuinely per-turn and cannot move at all.
