@@ -147,6 +147,38 @@ class TestTriggerHandlerRegister:
         assert call_kwargs["composio_slug"] == instance.TRIGGER_TO_COMPOSIO[trigger_name]
 
 
+class TestAsanaProjectGidRequirement:
+    # Composio's ASANA_TASK_CREATED requires a project GID; these pin both
+    # the rejection branch and the exact config forwarded upstream.
+    @pytest.mark.asyncio
+    async def test_empty_project_gid_raises_registration_error(self) -> None:
+        config = TriggerConfig(
+            type="integration", trigger_data=AsanaTaskTriggerConfig(project_gid="")
+        )
+        # Exact-message assert: substring match would survive mutmut's
+        # XX-wrap / case mutations of the error string.
+        with pytest.raises(
+            TriggerRegistrationError,
+            match=r"^asana_task_trigger now requires project_gid "
+            r"\(Composio retired the unscoped ASANA_TASK_TRIGGER\)$",
+        ) as excinfo:
+            await asana_trigger_handler.register("u-1", "wf-1", "asana_task_trigger", config)
+        assert excinfo.value.trigger_name == "asana_task_trigger"
+
+    @pytest.mark.asyncio
+    async def test_registration_forwards_project_gid_config(self) -> None:
+        config = _registrable_config(AsanaTaskTriggerConfig)
+        with patch.object(
+            asana_trigger_handler,
+            "_register_triggers_parallel",
+            new_callable=AsyncMock,
+            return_value=["ok"],
+        ) as mock_register:
+            await asana_trigger_handler.register("u-1", "wf-1", "asana_task_trigger", config)
+
+        assert mock_register.await_args.kwargs["configs"] == [{"project_gid": "1213430481840948"}]
+
+
 @pytest.mark.parametrize(
     "handler_cls, instance, config_cls, trigger_name",
     TRIGGER_CONFIGS.values(),

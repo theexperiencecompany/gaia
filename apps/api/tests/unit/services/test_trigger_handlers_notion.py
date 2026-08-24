@@ -230,7 +230,13 @@ class TestRegister:
     async def test_new_page_in_db_wrong_type_raises(self) -> None:
         handler = _make_handler()
         tc = _make_trigger_config("not_right_type")
-        with pytest.raises(TypeError, match="Expected NotionNewPageInDbConfig"):
+        # Exact-message asserts throughout: substring matches survive
+        # mutmut's mutations of the f-string internals.
+        with pytest.raises(
+            TypeError,
+            match=r"^Expected NotionNewPageInDbConfig for trigger "
+            r"'notion_new_page_in_db', but got str$",
+        ):
             await handler.register("u1", "wf1", "notion_new_page_in_db", tc)
 
     @pytest.mark.asyncio
@@ -276,7 +282,11 @@ class TestRegister:
     async def test_page_updated_wrong_type_raises(self) -> None:
         handler = _make_handler()
         tc = _make_trigger_config("bad")
-        with pytest.raises(TypeError, match="Expected NotionPageUpdatedConfig"):
+        with pytest.raises(
+            TypeError,
+            match=r"^Expected NotionPageUpdatedConfig for trigger "
+            r"'notion_page_updated', but got str$",
+        ):
             await handler.register("u1", "wf1", "notion_page_updated", tc)
 
     @pytest.mark.asyncio
@@ -350,6 +360,32 @@ class TestRegister:
         assert result == ["t1"]
         assert mock_reg.call_args.kwargs["configs"] == [{}]
 
+    @pytest.mark.asyncio
+    async def test_page_content_updated_none_data_raises_exact_message(self) -> None:
+        # Exact-message assert (including the terminal "None"): substring
+        # match survives mutmut's case/XX-wrap mutations of the f-string.
+        handler = _make_handler()
+        tc = _make_trigger_config(None)
+        with pytest.raises(
+            TypeError,
+            match=r"^Expected NotionPageContentUpdatedConfig for trigger "
+            r"'notion_page_content_updated', but got None$",
+        ):
+            await handler.register("u1", "wf1", "notion_page_content_updated", tc)
+
+    @pytest.mark.asyncio
+    async def test_page_content_updated_wrong_type_raises_exact_message(self) -> None:
+        # Truthy wrong type pins the f-string's type() branch, which the
+        # None-data case above never evaluates.
+        handler = _make_handler()
+        tc = _make_trigger_config("bad")
+        with pytest.raises(
+            TypeError,
+            match=r"^Expected NotionPageContentUpdatedConfig for trigger "
+            r"'notion_page_content_updated', but got str$",
+        ):
+            await handler.register("u1", "wf1", "notion_page_content_updated", tc)
+
 
 # ---------------------------------------------------------------------------
 # find_workflows
@@ -398,8 +434,11 @@ class TestFindWorkflows:
         handler = _make_handler()
         mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
 
-        await handler.find_workflows("NOTION_page_created_EVENT", "trig1", {"some": "data"})
-        mock_payload.model_validate.assert_called_once()
+        data = {"page_id": "p1"}
+        await handler.find_workflows("NOTION_page_created_EVENT", "trig1", data)
+        # Exact-arg assert: a bare called-once check survives mutants that
+        # swap `data` for None.
+        mock_payload.model_validate.assert_called_once_with(data)
 
     @pytest.mark.asyncio
     @patch("app.services.triggers.handlers.notion.NotionPagePropertiesUpdatedPayload")
@@ -410,8 +449,9 @@ class TestFindWorkflows:
         handler = _make_handler()
         mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
 
-        await handler.find_workflows("NOTION_properties_updated_EVENT", "trig1", {})
-        mock_payload.model_validate.assert_called_once()
+        data = {"page_id": "p1"}
+        await handler.find_workflows("NOTION_properties_updated_EVENT", "trig1", data)
+        mock_payload.model_validate.assert_called_once_with(data)
 
     @pytest.mark.asyncio
     @patch("app.services.triggers.handlers.notion.NotionPageContentUpdatedPayload")
@@ -422,5 +462,6 @@ class TestFindWorkflows:
         handler = _make_handler()
         mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
 
-        await handler.find_workflows("NOTION_content_updated_EVENT", "trig1", {})
-        mock_payload.model_validate.assert_called_once()
+        data = {"page_id": "p1"}
+        await handler.find_workflows("NOTION_content_updated_EVENT", "trig1", data)
+        mock_payload.model_validate.assert_called_once_with(data)
