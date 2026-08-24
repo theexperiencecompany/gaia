@@ -111,19 +111,20 @@ export function PostPaymentReceipt({
 
           <ReceiptPrinter.Screen>
             <div className="space-y-2.5">
-              {/* Grouped surfaces on the LCD: plan block, then the total. */}
-              <div className="rounded-lg bg-white px-3 py-2.5 shadow-sm ring-1 ring-zinc-950/5">
-                <p className="text-sm font-semibold leading-snug">
+              {/* Grouped dark surfaces on the LCD: plan block, then the total.
+                  Tonal layering only (zinc-800 on zinc-900) — no borders. */}
+              <div className="rounded-lg bg-zinc-800 px-3 py-2.5">
+                <p className="text-sm font-semibold leading-snug text-zinc-100">
                   {displayName}
                 </p>
-                <p className="text-xs text-zinc-500">
+                <p className="text-xs text-zinc-400">
                   {billingPeriodLabel(billingPeriod)}
                 </p>
               </div>
-              <div className="flex items-baseline justify-between rounded-lg bg-white px-3 py-2.5 shadow-sm ring-1 ring-zinc-950/5">
-                <span className="text-sm">Total</span>
+              <div className="flex items-baseline justify-between rounded-lg bg-zinc-800 px-3 py-2.5">
+                <span className="text-sm text-zinc-300">Total</span>
                 {price && (
-                  <strong className="font-bold text-lg tracking-tight">
+                  <strong className="font-bold text-lg tracking-tight text-zinc-50">
                     {price}
                   </strong>
                 )}
@@ -156,7 +157,7 @@ export function PostPaymentReceipt({
               )}
             </dl>
             <hr />
-            <p className="text-xs leading-relaxed opacity-70">
+            <p className="mt-8 text-xs leading-relaxed opacity-70">
               Thanks for subscribing to {displayName}. Every Pro feature is now
               unlocked — welcome aboard.
             </p>

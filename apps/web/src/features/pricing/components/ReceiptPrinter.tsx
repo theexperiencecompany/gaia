@@ -173,7 +173,7 @@ function ReceiptPrinterScreen({
   return (
     <div
       className={cn(
-        "relative z-10 isolate overflow-hidden rounded-[var(--printer-inner-radius)] border border-zinc-950 bg-zinc-100 p-4 text-zinc-950 shadow-inner shadow-zinc-950/20 after:pointer-events-none after:absolute after:inset-0 after:z-20 after:rounded-[inherit] after:shadow-[inset_0_0_24px_4px_color-mix(in_oklab,#18181b_18%,transparent)] after:content-['']",
+        "relative z-10 isolate overflow-hidden rounded-[var(--printer-inner-radius)] border border-zinc-950 bg-zinc-900 p-4 text-zinc-50 shadow-inner shadow-zinc-950/40 after:pointer-events-none after:absolute after:inset-0 after:z-20 after:rounded-[inherit] after:shadow-[inset_0_0_24px_4px_color-mix(in_oklab,#09090b_45%,transparent)] after:content-['']",
         className,
       )}
       {...props}
@@ -203,7 +203,7 @@ function StatusIndicator({
         {isComplete ? (
           <m.span
             animate={{ opacity: 1, transform: "scale(1)" }}
-            className="col-start-1 row-start-1 grid place-items-center text-emerald-500"
+            className="col-start-1 row-start-1 grid place-items-center text-emerald-400"
             exit={{
               opacity: animate ? 0 : 1,
               transform: move ? "scale(0.96)" : "scale(1)",
@@ -220,7 +220,7 @@ function StatusIndicator({
         ) : (
           <m.span
             animate={{ opacity: 1, transform: "scale(1)" }}
-            className="col-start-1 row-start-1 grid place-items-center text-zinc-400"
+            className="col-start-1 row-start-1 grid place-items-center text-zinc-500"
             exit={{
               opacity: animate ? 0 : 1,
               transform: move ? "scale(0.96)" : "scale(1)",
@@ -263,7 +263,7 @@ function ReceiptPrinterStatus({
         <AnimatePresence initial={false} mode="sync">
           <m.div
             animate={{ opacity: 1, transform: "translateY(0px)" }}
-            className="col-start-1 row-start-1 truncate font-medium text-xs leading-none text-zinc-500"
+            className="col-start-1 row-start-1 truncate font-medium text-xs leading-none text-zinc-400"
             exit={{
               opacity: animate ? 0 : 1,
               transform: shouldMove ? "translateY(-4px)" : "translateY(0px)",
