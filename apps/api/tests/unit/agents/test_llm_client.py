@@ -1385,6 +1385,97 @@ class TestRecordAuxiliaryUsage:
         handler.usage_metadata = dict(usage_by_model)
         return handler
 
+    async def test_the_llm_call_event_carries_the_generation_id(self) -> None:
+        """The generation id is the only handle on WHICH upstream served a
+        call, and structured calls used to lose it (every follow-up and
+        memory-family event read MISSING) — so the per-provider cache table
+        covered only the graph trio and the lanes most in need of attribution
+        had none. The aux metering path must put it on the wide event."""
+        handler = self._handler(m={"input_tokens": 10, "output_tokens": 2})
+
+        with (
+            patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.0)),
+            patch("app.agents.llm.client.log") as mock_log,
+        ):
+            await _record_auxiliary_usage(
+                handler, "follow_up_actions", "user-1", generation_id="gen-abc123"
+            )
+
+        assert mock_log.info.call_args.kwargs["generation_id"] == "gen-abc123"
+
+    def test_the_generation_id_callback_reads_llm_output_then_generation_info(self) -> None:
+        """ChatOpenRouter puts the id in ``llm_output`` on the non-streaming
+        path and in ``generation_info`` when streaming; the callback must read
+        both, and report None — never a placeholder — when neither carries one."""
+        from langchain_core.outputs import ChatGeneration, LLMResult
+
+        from app.agents.llm.client import _GenerationIdCallback
+
+        cb = _GenerationIdCallback()
+        cb.on_llm_end(LLMResult(generations=[[]], llm_output={"id": "gen-nonstream"}))
+        assert cb.generation_id == "gen-nonstream"
+
+        cb = _GenerationIdCallback()
+        cb.on_llm_end(
+            LLMResult(
+                generations=[
+                    [
+                        ChatGeneration(
+                            message=AIMessage(content="x"),
+                            generation_info={"id": "gen-streamed"},
+                        )
+                    ]
+                ],
+                llm_output=None,
+            )
+        )
+        assert cb.generation_id == "gen-streamed"
+
+        cb = _GenerationIdCallback()
+        cb.on_llm_end(LLMResult(generations=[[]], llm_output={}))
+        assert cb.generation_id is None
+
+    async def test_ainvoke_llm_threads_the_generation_id_to_the_metering(self) -> None:
+        """The callback being correct is worth nothing if ainvoke_llm does not
+        attach it and hand its CAPTURED VALUE to the metering — the value, not
+        just the kwarg, or a hardcoded None passes unnoticed."""
+        from tests.helpers import create_fake_llm
+
+        with (
+            patch("app.agents.llm.client._GenerationIdCallback") as cb_cls,
+            patch("app.agents.llm.client._record_auxiliary_usage", new=AsyncMock()) as rec,
+        ):
+            cb_cls.return_value.generation_id = "gen-wired"
+            await ainvoke_llm(create_fake_llm(["ok"]), "hi", label="follow_up_actions")
+
+        assert rec.await_args.kwargs["generation_id"] == "gen-wired"
+
+    async def test_the_fallback_call_carries_the_generation_handler_too(self) -> None:
+        """A fallback that drops the handler makes exactly the calls that
+        changed provider — the ones whose serving upstream matters MOST —
+        unattributable. Both invoke sites must attach it."""
+        from tests.helpers import create_fake_llm
+
+        failing = NonCallableMagicMock()
+        failing.with_retry = MagicMock(return_value=failing)
+        failing.ainvoke = AsyncMock(side_effect=ConnectionError("primary down"))
+
+        with (
+            patch("app.agents.llm.client._GenerationIdCallback") as cb_cls,
+            patch("app.agents.llm.client._record_auxiliary_usage", new=AsyncMock()),
+            patch(
+                "app.agents.llm.client._with_usage_handler",
+                side_effect=lambda config, handler: dict(config or {}),
+            ) as attach,
+        ):
+            await ainvoke_llm(
+                failing, "hi", fallback=create_fake_llm(["ok"]), label="follow_up_actions"
+            )
+
+        attached = [call.args[1] for call in attach.call_args_list]
+        # primary: usage + generation handler; fallback: usage + generation handler
+        assert attached.count(cb_cls.return_value) == 2
+
     async def test_books_reasoning_tokens_from_the_output_details(self) -> None:
         """Reasoning tokens are billed and priced separately, so losing them
         under-reports the cost of every reasoning-model helper call."""

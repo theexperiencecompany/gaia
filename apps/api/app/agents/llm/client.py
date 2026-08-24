@@ -730,12 +730,16 @@ async def ainvoke_llm(
     # fallback policy) but is already metered by LLMAccountingMiddleware, so it
     # passes meter_auxiliary=False — otherwise every graph call is booked twice.
     usage_handler = UsageMetadataCallbackHandler() if meter_auxiliary else None
+    generation_handler = _GenerationIdCallback() if meter_auxiliary else None
     user_id = (config or {}).get("configurable", {}).get("user_id")
     try:
         async with asyncio.timeout(timeout):
             try:
                 result = await with_llm_retry(primary, max_attempts=max_attempts).ainvoke(
-                    messages, config=_with_usage_handler(config, usage_handler)
+                    messages,
+                    config=_with_usage_handler(
+                        _with_usage_handler(config, usage_handler), generation_handler
+                    ),
                 )
                 # OpenRouter's sticky routing expires after ~5 minutes and the
                 # next request lands on a cold provider (a known OpenRouter
@@ -801,14 +805,22 @@ async def ainvoke_llm(
                         session_id=_sticky_session_id(config, auxiliary=meter_auxiliary),
                     ).ainvoke(
                         messages,
-                        config=_with_usage_handler(fallback_config or config, usage_handler),
+                        config=_with_usage_handler(
+                            _with_usage_handler(fallback_config or config, usage_handler),
+                            generation_handler,
+                        ),
                     )
                 )
     finally:
         # ``finally``: a failed call still burned the tokens of every attempt the
         # retry and fallback made, and that spend is just as real.
         if usage_handler is not None:
-            await _record_auxiliary_usage(usage_handler, label, str(user_id) if user_id else None)
+            await _record_auxiliary_usage(
+                usage_handler,
+                label,
+                str(user_id) if user_id else None,
+                generation_id=generation_handler.generation_id if generation_handler else None,
+            )
 
 
 def invoke_llm(
@@ -878,6 +890,33 @@ def _silenced(config: RunnableConfig) -> RunnableConfig:
     return cast(RunnableConfig, merged)
 
 
+class _GenerationIdCallback(BaseCallbackHandler):
+    """Captures the upstream generation id for auxiliary calls.
+
+    Structured one-shots return the parsed schema, not the ``AIMessage``
+    carrying ``response_metadata`` — so ``extract_generation_id`` has nothing
+    to read and every follow-up / memory-family ``llm_call`` event logged no
+    id. Without the id those lanes cannot be attributed to a serving upstream,
+    and the per-provider cache table only covers the graph trio. ChatOpenRouter
+    puts the id in ``llm_output`` on the non-streaming path and in
+    ``generation_info`` when streaming; both are read here."""
+
+    def __init__(self) -> None:
+        self.generation_id: str | None = None
+
+    def on_llm_end(self, response: Any, **_kwargs: Any) -> None:
+        llm_output = getattr(response, "llm_output", None) or {}
+        if llm_output.get("id"):
+            self.generation_id = str(llm_output["id"])
+            return
+        for generations in getattr(response, "generations", None) or []:
+            for generation in generations:
+                info = getattr(generation, "generation_info", None) or {}
+                if info.get("id"):
+                    self.generation_id = str(info["id"])
+                    return
+
+
 def _with_usage_handler(
     config: RunnableConfig | None, handler: BaseCallbackHandler | None
 ) -> RunnableConfig:
@@ -901,7 +940,11 @@ def _with_usage_handler(
 
 
 async def _record_auxiliary_usage(
-    handler: UsageMetadataCallbackHandler, label: str, user_id: str | None
+    handler: UsageMetadataCallbackHandler,
+    label: str,
+    user_id: str | None,
+    *,
+    generation_id: str | None = None,
 ) -> None:
     """Meter one auxiliary (non-agent) model call for COGS observability.
 
@@ -952,6 +995,7 @@ async def _record_auxiliary_usage(
             background=True,
             agent_name=label,
             model=model_name,
+            generation_id=generation_id,
             user_id=user_id,
             input_tokens=input_tokens,
             cached_tokens=cached_tokens,
