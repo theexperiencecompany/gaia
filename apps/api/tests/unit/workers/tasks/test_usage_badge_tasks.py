@@ -8,34 +8,14 @@ semantics (thresholds, monotonic promotion, idempotency) live in the service
 and are its own tests' job; here we pin the wrapper's contract.
 """
 
-from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from app.workers.tasks.usage_badge_tasks import promote_usage_badges
+from tests.helpers import WideEventRecorder
 
 MODULE = "app.workers.tasks.usage_badge_tasks"
-
-
-class _EventRecorder:
-    """Captures the wide event a ``wide_task`` boundary flushes to the sink."""
-
-    def __init__(self) -> None:
-        self.events: list[dict[str, Any]] = []
-
-    def bind(self, **kwargs: Any) -> "_EventRecorder":
-        self._ctx = kwargs
-        return self
-
-    def log(self, level: str, message: str) -> None:
-        self.events.append(dict(self._ctx))
-
-    def opt(self, **kwargs: Any) -> "_EventRecorder":
-        return self
-
-    def __getattr__(self, name: str) -> Any:
-        return lambda *a, **k: None
 
 
 class TestPromoteUsageBadges:
@@ -66,7 +46,7 @@ class TestPromoteUsageBadges:
         assert result == "Scanned 0 users, 0 promoted, 0 badge emails sent"
 
     async def test_stats_land_on_the_worker_wide_event(self) -> None:
-        recorder = _EventRecorder()
+        recorder = WideEventRecorder()
         with (
             patch("shared.py.wide_events._loguru", recorder),
             patch(
@@ -85,7 +65,7 @@ class TestPromoteUsageBadges:
         assert event["emailed"] == 3
 
     async def test_service_failure_propagates_and_the_event_records_it(self) -> None:
-        recorder = _EventRecorder()
+        recorder = WideEventRecorder()
         with (
             patch("shared.py.wide_events._loguru", recorder),
             patch(
