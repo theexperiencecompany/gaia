@@ -1,15 +1,8 @@
+# Ruff check/format are gated repo-wide by the ROOT .pre-commit-config.yaml
+# (ruff-pre-commit @ v0.14.13, --fix autofix) — see the #1063 "pin ALL
+# surfaces" note there. Do not reintroduce a project-level copy: it drifts
+# versions and double-runs every Python commit.
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.6
-    hooks:
-      - id: ruff
-        args: [--fix, --exit-non-zero-on-fix]
-        stages: [pre-commit]
-        priority: 0
-      - id: ruff-format
-        stages: [pre-commit]
-        priority: 0
-
   - repo: local
     hooks:
       - id: bandit

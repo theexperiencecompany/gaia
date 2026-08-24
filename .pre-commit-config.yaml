@@ -32,6 +32,9 @@ repos:
     rev: v0.14.13
     hooks:
       - id: ruff-check
+        # Autofix at commit time — parity with the biome hook below. A fix
+        # fails the commit so the corrected files get re-staged.
+        args: [--fix, --exit-non-zero-on-fix]
         priority: 0
       - id: ruff-format
         priority: 0
@@ -58,18 +61,3 @@ repos:
         language: system
         files: \.(js|jsx|ts|tsx|json|css|html)$
         exclude: ^(apps/api/|apps/voice-agent/|infra/|docs/)
-
-      # Python parity with the biome hook: autofix at commit time instead of
-      # letting findings surface first in CI. Version pinned to the same ruff
-      # CI enforces (code-quality.yml) — never call bare `uvx ruff` here.
-      - id: ruff-check
-        name: Ruff check (autofix)
-        entry: uvx ruff@0.14.13 check --fix
-        language: system
-        files: \.py$
-
-      - id: ruff-format
-        name: Ruff format
-        entry: uvx ruff@0.14.13 format
-        language: system
-        files: \.py$
