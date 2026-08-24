@@ -13,7 +13,7 @@ from collections.abc import Callable
 import json
 from typing import Any
 
-from app.agents.core.background.session import get_session
+from app.agents.core.background.session import StreamSession, get_session
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.utils.background_tasks import spawn_background_task
@@ -23,6 +23,35 @@ from app.utils.background_tasks import spawn_background_task
 #: task in the process (some of which outlive any single turn).
 STREAM_PUBLISH_TASK_NAME = "stream-publish"
 from shared.py.wide_events import log
+
+
+def _collect(session: StreamSession, data: dict[str, Any]) -> None:
+    """Append an event to the session collector, coalescing reasoning deltas.
+
+    Reasoning arrives one event per model chunk — effectively per token — and
+    everything in this list is persisted onto the message verbatim, which is how
+    one production conversation ended up carrying ~22k reasoning entries. The
+    frontend renders a step's thinking as one block regardless.
+
+    So the collector keeps ONE entry per contiguous run of thinking: any other
+    event between two deltas (a tool call announced, a tool result, a subagent
+    boundary) closes the block, and the end of the run closes the last one by
+    simply never extending it. Deltas are still published individually above —
+    the live stream must stay token by token; only what gets persisted is
+    batched. Same-``subagent_id`` only, so two subagents thinking concurrently
+    on one stream never merge into each other.
+    """
+    reasoning = data.get("reasoning")
+    if not isinstance(reasoning, dict):
+        session.tool_events.append(data)
+        return
+    previous = session.tool_events[-1].get("reasoning") if session.tool_events else None
+    if isinstance(previous, dict) and previous.get("subagent_id") == reasoning.get("subagent_id"):
+        previous["content"] = f"{previous.get('content', '')}{reasoning.get('content', '')}"
+        return
+    # A copy: the published dict belongs to the caller, and the merge above
+    # mutates whatever is stored here on every subsequent delta.
+    session.tool_events.append({"reasoning": dict(reasoning)})
 
 
 def make_redis_stream_writer(stream_id: str) -> Callable[[dict[str, Any]], None]:
@@ -35,7 +64,9 @@ def make_redis_stream_writer(stream_id: str) -> Callable[[dict[str, Any]], None]
     session is registered) so chat_service can capture executor tool_data /
     tool_output / todo_progress for MongoDB persistence after the notifier
     returns. The SSE publish happens regardless — the session is a side-channel
-    only for the save path, not for re-publishing.
+    only for the save path, not for re-publishing — and it publishes every event
+    verbatim, including each reasoning delta, which ``_collect`` coalesces for
+    the save path alone.
     """
 
     def writer(data: dict[str, Any]) -> None:
@@ -50,6 +81,6 @@ def make_redis_stream_writer(stream_id: str) -> Callable[[dict[str, Any]], None]
 
         session = get_session(stream_id)
         if session is not None:
-            session.tool_events.append(data)
+            _collect(session, data)
 
     return writer
