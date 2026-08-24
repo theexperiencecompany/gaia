@@ -279,35 +279,41 @@ plus the turn's own new text (~400 tokens, generously):
 warm ceiling  =  1 - (volatile_tokens + 400) / 35132
 ```
 
-Everything turns on `volatile_tokens`, and that is the one input **not** yet
-measured in production. Two anchors bracket it: the earlier campaign recorded
-the volatile tail at **~370 tokens**, while `VOLATILE_BLOCK_MAX_CHARS = 8000`
-puts the worst case at ~2,000. The truth today sits between them and is probably
-above 370, because the memory core's documents moved *into* the volatile slot
-after that measurement.
+Everything turns on `volatile_tokens`. Its dominant term is measurable today
+without waiting for a deploy: `get_core_context` caches the fully assembled
+memory core at `user:{id}:memory:core`, so `STRLEN` on those keys is the exact
+size that reaches the prompt. Measured in production: **902, 1202, 2290, 2471,
+3145 chars — mean ~2,000, so ~500 tokens.** (Only a handful of keys exist at
+once; the cache is invalidated on every ingestion, so this is a thin sample of
+live users rather than a full census.)
 
-| volatile tokens | warm ceiling | blended @10% first-calls | @15% | @20% | @25% |
+Adding the other volatile sections at their configured limits — recall is capped
+at 8 entries, knowledge at 5 results, plus the todo and run banners, plus the
+skills listing on worker tiers (measured 1,904 chars):
+
+| Tier | volatile | warm ceiling | blended @10% first-calls | @15% | @20% |
 |---|---|---|---|---|---|
-| 370 (measured, pre-move) | 97.8% | **95.0%** | 93.5% | 92.1% | 90.7% |
-| 900 (mid) | 96.3% | 93.6% | 92.2% | 90.9% | 89.5% |
-| 2000 (at the cap) | 93.2% | 90.8% | 89.6% | 88.4% | 87.2% |
+| comms | ~1,050 tok | 95.9% | 93.2% | 91.9% | 90.6% |
+| executor / subagent | ~1,526 tok | 94.5% | 92.0% | 90.7% | 89.5% |
 
 First calls are blended in at 69.3% — the best observed in production — because
 they can inherit the shared static prefix but never a conversation.
 
-Read that table before setting a target. **90% is reachable across the whole
-range**, even at the cap, once the invalidation and cold-start buckets close.
-**95% is reachable only in the top-left corner**: a small volatile block *and*
-first calls held to about a tenth of prompt tokens. It is not arithmetically
-impossible — an earlier revision of this section said so, on the mistake of
-using the 8000-char *cap* as if it were the typical per-call cost, when the cap
-binds only for outlier users.
+So the honest answer to "can we hit 90–95%": **90% yes**, on both tiers, once
+the invalidation and cold-start buckets close. **95% no**, not as a blended
+figure — the warm-call ceiling itself is 94.5–95.9%, so the blend cannot reach
+95% while any meaningful share of calls are first-on-thread. Getting there needs
+the volatile block roughly halved, which means shrinking what every turn carries
+rather than anything the cache can do.
 
-So the honest answer to "can we hit 90–95%" is: 90% yes; 95% only if the
-volatile block stays small and long conversations dominate short ones. Which of
-those we are actually in is a single measurement away — `slot_chars` on the
-`prompt_pruning` event reports the real per-slot byte sizes, and reading it once
-after deploy replaces this whole table with one row.
+Note this supersedes two earlier estimates in this section's history, both wrong
+in the same way — reasoning about `volatile_tokens` from a bound rather than
+measuring it. The first used `VOLATILE_BLOCK_MAX_CHARS` (a backstop that binds
+only for outliers) and concluded 95% was arithmetically impossible; the second
+offered a range because the value was "not measured". It was measurable the
+whole time. `slot_chars` on the `prompt_pruning` event will report it per slot
+per call once deployed, which beats this estimate — but the estimate is grounded
+in a real read, not a bound.
 
 One correction this arithmetic forces: an earlier estimate of "~10 points" for
 the volatile-tail work is too high whichever anchor holds. At the cap the entire
