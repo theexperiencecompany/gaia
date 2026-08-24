@@ -10,7 +10,7 @@
       "path": "apps/api/app/agents/core/subagents/base_subagent.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "b42f17c2cd967b3bd56072dd32bbc0dc2452f40d05dc8fa50aaab7dd06cd4a36"
+      "hash": "dfd547b9619423369b7c764129a0c1a8fe3637b137f525c812f16f620fbc678e"
     },
     {
       "path": "apps/api/app/agents/core/subagents/provider_subagents.py",
@@ -40,13 +40,13 @@
       "path": "apps/api/app/agents/tools/coding/bash_tool.py",
       "kind": "type-ignore",
       "count": 4,
-      "hash": "bbc965189efe67b272de38198ba5dcc17a8b036d8f0f339e3a9f00bc3078bcb7"
+      "hash": "020ab200cd9cc4d50443901153f60ad38d8dc14bc4181bbfb11118f68e036838"
     },
     {
       "path": "apps/api/app/agents/tools/executor_tool.py",
       "kind": "noqa",
       "count": 1,
-      "hash": "318634e37fe39e1628e7c20affbbeae613834f77a1867cbb65b0505b1ab55cc9"
+      "hash": "1d6fd08f2066138efe10e94a1bf9719af59a0367cdc6a612a0d38acada9913dc"
     },
     {
       "path": "apps/api/app/agents/tools/integrations/google_sheets_tool.py",
@@ -124,13 +124,13 @@
       "path": "apps/api/app/services/composio/composio_service.py",
       "kind": "noqa",
       "count": 1,
-      "hash": "2da071f58ab06182900fb966c37de4925dff5b35836fa0602853fcc689d90f1d"
+      "hash": "8d64b17bd21aed4d15188d1fa9ee4355e50da6106093c05d990165d04d013201"
     },
     {
       "path": "apps/api/app/services/composio/langchain_composio_service.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "6fe587ff8fa5f7f517ca6af632f86abb2897608933f0498af6d501d8f8b7eb85"
+      "hash": "077358f37f59bb51d7d2ea0aa39c8342c8310c937c5e164ff2c9b091cd0b0dac"
     },
     {
       "path": "apps/api/app/services/notes_service.py",
@@ -160,7 +160,7 @@
       "path": "apps/api/app/worker.py",
       "kind": "noqa",
       "count": 1,
-      "hash": "cd653d88b6b31a3486a8bdf8b9ca443de3a9fb2a5aab3ef38a88ec2a22a0e3c4"
+      "hash": "7d0cc93f02a375a72866b586643fe304f1453c43a2517f78e2f849bbd9f1cb7d"
     },
     {
       "path": "apps/api/scripts/memory_benchmark/__main__.py",
@@ -196,7 +196,7 @@
       "path": "apps/api/tests/helpers.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "7426170b56f8414611275cce97581395dd6265a3c2793a020b0076978825c81f"
+      "hash": "c4fcd38fa8110faf9c380b2470f30db68ea9eb2fa443e8a0981307c05ecc4280"
     },
     {
       "path": "apps/api/tests/integration/agents/test_real_comms_agent.py",
@@ -226,19 +226,19 @@
       "path": "apps/api/tests/model_onboarding/test_tool_media_support.py",
       "kind": "noqa",
       "count": 1,
-      "hash": "9e87e6235ee6ede663bbbc6884351763d363a15c0b06f19d85ad10d7c92bda7a"
+      "hash": "e1d583c1bf904bceb57c16002167c7a3756ccd062bbcf644fe660c13980532f8"
     },
     {
       "path": "apps/api/tests/unit/agents/test_agent_core.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "821b7bc0f35049c620381af62cec9ce49d766692f81c9c618f1c847c906cfbfc"
+      "hash": "14e12e18ef89e756f001827d97ff02fa49a0bc743a3fb8cd2f33c911fae0bac0"
     },
     {
       "path": "apps/api/tests/unit/agents/test_handoff_tools.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "536e7bcec2c103842673bd4544dece621f575ab951de4a799db03f8af30de11a"
+      "hash": "75b6c412f37439423b131d00e81157382551d4d63558364c3cc4a8cac71888f5"
     },
     {
       "path": "apps/api/tests/unit/agents/test_llm_client.py",
@@ -268,13 +268,13 @@
       "path": "apps/api/tests/unit/agents/test_subagent_registry.py",
       "kind": "type-ignore",
       "count": 2,
-      "hash": "856ac27f5f08a2acbf4e63a7fce39a084516767ca7acaaeb7e59308e820aa30e"
+      "hash": "03924b92a86014092dad673e83fd694cfc57cc98c1a9b2ea78e7e6a2f76252d1"
     },
     {
       "path": "apps/api/tests/unit/agents/test_subagent_runner.py",
       "kind": "type-ignore",
       "count": 2,
-      "hash": "c7300efb108c75ca455b580aa3fa7c6d438ea5ee9657f7bc6fee288c5a4947c9"
+      "hash": "ea8a9b7ab320b2774699ed397e4b0730eb7411430e6731ce06e9509eda72ce12"
     },
     {
       "path": "apps/api/tests/unit/api/test_integrations_config_endpoint.py",
@@ -298,19 +298,13 @@
       "path": "apps/api/tests/unit/config/test_rate_limits.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "ea09a94d89fce4d0fdeb0ba01d393b5124eb40095b99489a99dcc38925156fbc"
-    },
-    {
-      "path": "apps/api/tests/unit/core/test_bot_auth_middleware.py",
-      "kind": "type-ignore",
-      "count": 1,
-      "hash": "f35d6d831b486d9eaf39a7c5624a519ba19492af6d59bbb1ea1202b5fa9be9a0"
+      "hash": "c26ebf3ae5034db24c1ffd3d917016be866dc05169d34650b928368412d23eb4"
     },
     {
       "path": "apps/api/tests/unit/core/test_lazy_loader.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "6568d178e3c2a390887ac599d0c1e3e7687d551bce0fbec9df301ac39f404420"
+      "hash": "71238ea9313327891a743c45d14ff9303f650d2f64988dd3c7318bbbbc8569ed"
     },
     {
       "path": "apps/api/tests/unit/helpers/test_email_helpers.py",
@@ -364,7 +358,7 @@
       "path": "apps/api/tests/unit/services/test_integration_service.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "e9ea61047eff2146e5ec4b0b91351c46c2a007e0a618194d74f11ad0bbcd38f7"
+      "hash": "dd2d85f5180bb5935a2d20d29e63e038135bf038cc897b5e77f222dd447fc8bd"
     },
     {
       "path": "apps/api/tests/unit/services/test_marketplace_service.py",
@@ -394,7 +388,7 @@
       "path": "apps/api/tests/unit/tools/test_integration_tool_standalone.py",
       "kind": "type-ignore",
       "count": 19,
-      "hash": "d6ea3e65a0dc9aa8f0de073eece2a612ac8b7af2279bf507e292df5cdd4650b4"
+      "hash": "c70a8c50d765543126d0bcdd99c6c7218dcd9e6b0d95c591e7949d7eff521e42"
     },
     {
       "path": "apps/api/tests/unit/tools/test_integration_tools_proxy.py",
@@ -574,7 +568,7 @@
       "path": "apps/mobile/src/features/chat/components/sidebar/chat-history.tsx",
       "kind": "biome-ignore",
       "count": 2,
-      "hash": "d6fc270a440f7d83046e0042dbf883103da461a3c7f92fcd46dc3c78079acbde"
+      "hash": "945f05101502c95b00d7feabb974407d3d5b1184d8e1b24e418241a90a894244"
     },
     {
       "path": "apps/mobile/src/features/integrations/components/CommunityIntegrationsTab.tsx",
