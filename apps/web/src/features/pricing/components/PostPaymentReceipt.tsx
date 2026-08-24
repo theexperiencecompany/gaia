@@ -31,11 +31,18 @@ type PostPaymentReceiptProps = {
 
 /** Formats minor-unit money with the currency it was actually charged in. */
 function formatMoney(amount: number, currency?: string): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: currency || "USD",
-    currencyDisplay: "narrowSymbol",
-  }).format(amount / CENTS_PER_DOLLAR);
+  // The currency arrives from webhook data; a malformed code makes Intl throw
+  // (RangeError), which must never take down the payment screen — degrade to
+  // "amount CURRENCY" instead.
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currency || "USD",
+      currencyDisplay: "narrowSymbol",
+    }).format(amount / CENTS_PER_DOLLAR);
+  } catch {
+    return `${amount / CENTS_PER_DOLLAR} ${currency || "USD"}`;
+  }
 }
 
 function formatDate(dateString?: string | null): string | null {
@@ -119,14 +126,14 @@ export function PostPaymentReceipt({
                   {billingPeriodLabel(billingPeriod)}
                 </p>
               </div>
-              <div className="flex items-baseline justify-between">
-                <span className="text-sm text-zinc-300">Total</span>
-                {price && (
+              {price && (
+                <div className="flex items-baseline justify-between">
+                  <span className="text-sm text-zinc-300">Total</span>
                   <strong className="text-lg tracking-tight text-zinc-50">
                     {price}
                   </strong>
-                )}
-              </div>
+                </div>
+              )}
               <ReceiptPrinter.Status />
             </div>
           </ReceiptPrinter.Screen>
