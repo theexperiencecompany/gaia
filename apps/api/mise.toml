@@ -130,10 +130,6 @@ run = "uv sync --group backend --group dev"
 description = "Install backend + dev dependencies only"
 run = "uv sync --group backend --group dev"
 
-[tasks."seed:models"]
-description = "Seed AI models"
-run = "uv run --group backend python scripts/seed_models.py --force"
-
 [tasks."seed:workflows"]
 description = "Seed workflows"
 run = "uv run --group backend python scripts/seed_workflows.py"

@@ -176,8 +176,12 @@ def init_gemini_llm() -> LanguageModelLike:
         model=PROVIDER_MODELS[LLMProviderName.GEMINI],
         temperature=DEFAULT_LLM_TEMPERATURE,
         streaming=True,
-    ).configurable_fields(model=_MODEL_FIELD)
-    return llm
+    )
+    # Every chat LLM must carry the context-window profile — fractional-token
+    # middleware (summarization/compaction triggers) raises without it. Same
+    # contract as _build_default_llm/_sim_llm/init_custom_llm.
+    llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
+    return llm.configurable_fields(model=_MODEL_FIELD)
 
 
 @lazy_provider(
@@ -198,30 +202,30 @@ def init_openrouter_llm() -> LanguageModelLike:
     """
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
-    # No base_url kwarg here on purpose: passing None would override the field's
-    # OPENROUTER_API_BASE env default_factory. Redirecting to the stub is sim
-    # mode's job (_sim_llm); this construction is identical to pre-sim behavior.
-    return _openrouter_wire_configurables(
-        without_sdk_retry(
-            ChatOpenRouter(
-                model=PROVIDER_MODELS[LLMProviderName.OPENROUTER],
-                temperature=DEFAULT_LLM_TEMPERATURE,
-                streaming=True,
-                stream_usage=True,
-                # Output cap; must stay well under the model's shared input+output context
-                # window (see OPENROUTER_MAX_OUTPUT_TOKENS) or OpenRouter rejects the request.
-                max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
-                api_key=settings.OPENROUTER_API_KEY,
-                # App attribution → OpenRouter rankings/analytics. ChatOpenRouter exposes
-                # these as dedicated params (NOT `default_headers`, which it forwards to
-                # send_async and crashes on). https://openrouter.ai/docs/app-attribution
-                app_url=settings.FRONTEND_URL,
-                app_title=OPENROUTER_APP_TITLE,
-                app_categories=OPENROUTER_APP_CATEGORIES,
-                reasoning=OPENROUTER_REASONING,
-            )
+    llm = without_sdk_retry(
+        ChatOpenRouter(
+            model=PROVIDER_MODELS[LLMProviderName.OPENROUTER],
+            temperature=DEFAULT_LLM_TEMPERATURE,
+            streaming=True,
+            stream_usage=True,
+            # Output cap; must stay well under the model's shared input+output context
+            # window (see OPENROUTER_MAX_OUTPUT_TOKENS) or OpenRouter rejects the request.
+            max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
+            api_key=settings.OPENROUTER_API_KEY,
+            # App attribution → OpenRouter rankings/analytics. ChatOpenRouter exposes
+            # these as dedicated params (NOT `default_headers`, which it forwards to
+            # send_async and crashes on). https://openrouter.ai/docs/app-attribution
+            app_url=settings.FRONTEND_URL,
+            app_title=OPENROUTER_APP_TITLE,
+            app_categories=OPENROUTER_APP_CATEGORIES,
+            reasoning=OPENROUTER_REASONING,
         )
     )
+    # Every chat LLM must carry the context-window profile — fractional-token
+    # middleware (summarization/compaction triggers) raises without it. Same
+    # contract as _build_default_llm/_sim_llm/init_gemini_llm/init_custom_llm.
+    llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
+    return _openrouter_wire_configurables(llm)
 
 
 @lazy_provider(
@@ -242,19 +246,24 @@ def init_custom_llm() -> LanguageModelLike:
     """
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
-    return _openrouter_wire_configurables(
-        without_sdk_retry(
-            ChatOpenRouter(
-                model=PROVIDER_MODELS[LLMProviderName.CUSTOM],
-                temperature=DEFAULT_LLM_TEMPERATURE,
-                streaming=True,
-                stream_usage=True,
-                max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
-                api_key=settings.DEV_LLM_API_KEY,
-                base_url=settings.DEV_LLM_BASE_URL,
-            )
+    llm = without_sdk_retry(
+        ChatOpenRouter(
+            model=PROVIDER_MODELS[LLMProviderName.CUSTOM],
+            temperature=DEFAULT_LLM_TEMPERATURE,
+            streaming=True,
+            stream_usage=True,
+            max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
+            api_key=settings.DEV_LLM_API_KEY,
+            base_url=settings.DEV_LLM_BASE_URL,
         )
     )
+    # Fractional-window middleware (the summarization/compaction triggers)
+    # resolves the context window from the model's profile at graph-build time
+    # and raises without it — same contract _build_default_llm satisfies for the
+    # default model and _sim_llm for the stub. The DEV_LLM_* model is env-defined
+    # and has no curated registry entry, so pin the shared default window here.
+    llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
+    return _openrouter_wire_configurables(llm)
 
 
 def init_llm(
@@ -598,7 +607,7 @@ def _sticky_session_id(config: RunnableConfig | None, *, auxiliary: bool) -> str
 
 
 async def _meter_discarded_replay(
-    discarded: Any,
+    discarded: Any,  # noqa: ANN401 -- framework contract
     config: RunnableConfig | None,
     label: str,
 ) -> None:
@@ -654,7 +663,7 @@ async def ainvoke_llm(
     timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS,
     meter_auxiliary: bool = True,
     fallback_config: RunnableConfig | None = None,
-) -> Any:
+) -> Any:  # noqa: ANN401 -- overrides LangChain Runnable methods typed Any upstream
     """Invoke a runnable: retry transient errors, then fall back to ``fallback`` (if
     given) on a provider failure. Bugs and CancelledError propagate.
 
@@ -783,7 +792,7 @@ def invoke_llm(
     label: str = "model",
     max_attempts: int = LLM_RETRY_MAX_ATTEMPTS,
     fallback_config: RunnableConfig | None = None,
-) -> Any:
+) -> Any:  # noqa: ANN401 -- overrides LangChain Runnable methods typed Any upstream
     """Sync counterpart of :func:`ainvoke_llm`."""
     try:
         return with_llm_retry(primary, max_attempts=max_attempts).invoke(messages, config=config)
@@ -806,7 +815,7 @@ def invoke_llm(
 SILENT_LLM_CONFIG: RunnableConfig = {
     "silent": True,
     "metadata": {"silent": True},
-}  # type: ignore[typeddict-unknown-key]
+}  # type: ignore[typeddict-unknown-key]  # custom key consumed by GAIA's stream helpers, not part of RunnableConfig
 
 
 def metered_config(user_id: str) -> RunnableConfig:

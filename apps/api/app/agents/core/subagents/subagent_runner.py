@@ -603,7 +603,7 @@ def interrupt_payload(raw: object) -> dict[str, Any]:
     message park two tasks in the same step, and the caller stamps re-dispatch context
     onto each id this returns (``executor_runner._record_pause``). Returning only the
     first left the second with no ``resume_item`` at all, so approving it raised
-    ``ApprovalNotResumable`` and the decision could never be applied.
+    ``ApprovalNotResumableError`` and the decision could never be applied.
 
     The first payload's own fields stay at the top level, so callers that read a single
     approval (``resume_for_gate``) are unaffected; ``approval_ids`` is what the batch

@@ -854,12 +854,12 @@ def get_retrieve_tools_function(
                 )
 
             log.set(
-                tool_retrieval=dict(
-                    mode="binding",
-                    tools_requested=len(exact_tool_names),
-                    tools_bound=len(validated_tool_names),
-                    tools_filtered=len(exact_tool_names) - len(validated_tool_names),
-                )
+                tool_retrieval={
+                    "mode": "binding",
+                    "tools_requested": len(exact_tool_names),
+                    "tools_bound": len(validated_tool_names),
+                    "tools_filtered": len(exact_tool_names) - len(validated_tool_names),
+                }
             )
 
             # Bind valid tools regardless; add corrective guidance for subagent /
@@ -1000,19 +1000,19 @@ def get_retrieve_tools_function(
             final_tools = discovered_tools
 
         log.set(
-            tool_retrieval=dict(
-                mode="discovery",
-                query=query,
-                tool_space=tool_space,
-                user_id=user_id,
-                namespaces_searched=sorted(user_namespaces),
-                tools_discovered=len(final_tools),
-                chroma_hits=chroma_hits,
-                public_hits=public_hits,
-                per_namespace_hits=per_namespace_hits,
-                candidates_after_filter=len(all_results),
-                chroma_preview=chroma_preview,
-            )
+            tool_retrieval={
+                "mode": "discovery",
+                "query": query,
+                "tool_space": tool_space,
+                "user_id": user_id,
+                "namespaces_searched": sorted(user_namespaces),
+                "tools_discovered": len(final_tools),
+                "chroma_hits": chroma_hits,
+                "public_hits": public_hits,
+                "per_namespace_hits": per_namespace_hits,
+                "candidates_after_filter": len(all_results),
+                "chroma_preview": chroma_preview,
+            }
         )
         if chroma_hits == 0:
             log.warning(

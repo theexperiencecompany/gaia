@@ -57,7 +57,7 @@ def _make_subagent(
         id=subagent_id,
         name=subagent_id.title(),
         provider=provider,
-        managed_by=managed_by,  # type: ignore[arg-type]
+        managed_by=managed_by,  # type: ignore[arg-type]  # fixture uses a plain string for the managed_by Literal
         config=_make_subagent_config(agent_name=agent_name),
         short_name=short_name,
     )
@@ -75,7 +75,7 @@ def _make_ctx(**overrides) -> SubagentExecutionContext:
         "stream_id": None,
     }
     defaults.update(overrides)
-    return SubagentExecutionContext(**defaults)  # type: ignore[arg-type]
+    return SubagentExecutionContext(**defaults)  # type: ignore[arg-type]  # fixture spreads an untyped defaults dict into the model
 
 
 FAKE_SUBAGENTS = (

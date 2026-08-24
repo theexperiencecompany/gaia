@@ -42,7 +42,7 @@ def _make_sentry_loguru_sink() -> Callable[[object], None]:
     """
 
     def _sink(message: object) -> None:
-        record = message.record  # type: ignore[attr-defined]
+        record = message.record  # type: ignore[attr-defined]  # loguru's sink hands us a Message whose .record attr is untyped upstream
         if record["level"].no < 40:  # below ERROR — skip
             return
 

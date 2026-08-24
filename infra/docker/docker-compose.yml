@@ -367,6 +367,10 @@ services:
       # Persist the ~1.85GB model weights so repeated `compose up` runs don't
       # re-download them (the prod sidecar does the same with a named volume).
       - MEMORY_MODEL_CACHE_DIR=/models
+      # Measured (scripts/sidecar_benchmark/): 2 ORT threads per inference
+      # matches 4-thread throughput at high concurrency while using less peak
+      # RSS. Concurrency stays adaptive (cores / threads).
+      - MEMORY_ONNX_THREADS=2
       # MUST be unset here so the sidecar itself uses the local models.
     volumes:
       - embedding_models:/models
@@ -384,9 +388,11 @@ services:
         "8200",
       ]
     restart: always
-    # Footprint is ~1.85GB (mxbai + jina) and flat under load; 2.5g is a runaway
-    # ceiling with headroom. Capping below ~2G would OOM-kill it (the model can't
-    # load in less). In prod swarm this is deploy.resources.limits instead.
+    # Measured envelope (#918 fix): model floor ~1.9-2.1GB, peak under mixed
+    # load ~2.4GB (bounded batches keep activations flat regardless of request
+    # size). 2560m is a runaway ceiling with headroom; capping below ~2G would
+    # OOM-kill it (the model can't load in less). In prod swarm this is
+    # deploy.resources.limits instead.
     mem_limit: 2560m
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; urllib.request.urlopen('http://localhost:8200/health'); sys.exit(0)"]

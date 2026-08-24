@@ -140,6 +140,12 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             await self._count(
                 {
                     "user_id": user_id,
+                    # A workflow execution appends to its system conversation and
+                    # stamps updatedAt, so counting those would let a user's own
+                    # automation vouch for them as "active" forever — the
+                    # circularity that kept the dormancy sweep from ever pausing
+                    # an armed workflow. Only human-touched conversations count.
+                    "is_system_generated": {"$ne": True},
                     "$or": [
                         {"updatedAt": {"$gte": since}},
                         {"createdAt": {"$gte": since.isoformat()}},

@@ -11,7 +11,7 @@ from app.services.reminder_service import reminder_scheduler
 from shared.py.wide_events import log
 
 
-async def process_reminder(ctx: dict[str, Any], reminder_id: str) -> str:
+async def process_reminder(ctx: dict[str, Any], reminder_id: str) -> str:  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
     """
     Process a reminder task.
 
@@ -29,7 +29,7 @@ async def process_reminder(ctx: dict[str, Any], reminder_id: str) -> str:
     return f"Successfully processed reminder {reminder_id}"
 
 
-async def cleanup_expired_reminders(ctx: dict[str, Any]) -> str:
+async def cleanup_expired_reminders(ctx: dict[str, Any]) -> str:  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
     """
     Cleanup expired or completed reminders (scheduled task).
 

@@ -1,0 +1,267 @@
+name: Deploy Web (Cloudflare)
+
+# ──────────────────────────────────────────────────────────────────────────
+# Deploys the OpenNext Cloudflare Worker via GitHub (not Cloudflare dashboard
+# Builds).  Timing + failure are visible in GitHub checks; PRs get a preview
+# version alias pr-<number>.
+#
+# Secrets required (already configured via `gh secret`):
+#   CLOUDFLARE_API_TOKEN  — minimal token: Workers Scripts Write + R2 Write/Read + Routes Write
+#                           scoped to account d65fe47d4d3b4f2725e87b91c772cbc3, expires 2027-08-21
+#   CLOUDFLARE_ACCOUNT_ID — d65fe47d4d3b4f2725e87b91c772cbc3
+#
+# ── Workers Builds auto-deploy — MUST be disabled ────────────────────────
+# This workflow is the sole deploy path for the hosted frontend. Cloudflare
+# dashboard "Workers Builds" (git-connected auto-deploy) must be disconnected
+# or it will race/double-deploy on every master push.
+#
+# Manual dashboard step (required, one-time per worker):
+#   1. Cloudflare dashboard → Workers & Pages → gaia → Settings → Builds
+#      (or Settings → Build → Build configuration depending on UI version)
+#   2. If a Git repository is connected, click  "Disconnect" / "Disable Builds"
+#      or set Build trigger → "None" / toggle "Enable automatic builds" OFF.
+#   3. Save. Confirm the worker shows "Builds: Disabled" or "No git repo connected".
+#   Docs: https://developers.cloudflare.com/workers/ci-cd/builds/
+#
+# API attempt (best-effort, may not exist for all account/worker types):
+#   The workflow does NOT auto-disable Builds on every run (token lacks that
+#   scope + endpoint is dashboard-only for some plans). A best-effort API
+#   probe is included in the `preflight` step and logged to the job summary.
+#   If the probe reports "connected", perform the manual step above. See
+#   scripts/ci/disable-cf-builds.sh for a local manual API attempt:
+#     CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=d65fe... bash scripts/ci/disable-cf-builds.sh
+#
+# After disabling, pushes to master deploy ONLY via this workflow (visible
+# duration + failure in GitHub). PRs deploy a preview version alias.
+# ──────────────────────────────────────────────────────────────────────────
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "apps/web/**"
+      - "libs/shared/ts/**"
+      - "apps/web/wrangler.jsonc"
+      - "apps/web/open-next.config.ts"
+      - "apps/web/next.config.mjs"
+      - ".github/workflows/deploy-web.yml"
+  pull_request:
+    branches: [master]
+    paths:
+      - "apps/web/**"
+      - "libs/shared/ts/**"
+      - "apps/web/wrangler.jsonc"
+      - "apps/web/open-next.config.ts"
+      - "apps/web/next.config.mjs"
+      - ".github/workflows/deploy-web.yml"
+  workflow_dispatch:
+
+# Production deploys must never be cancelled mid-flight (rapid master merges
+# should queue, not drop the final deploy). PR previews are per-ref so this
+# group is effectively unique per PR; false is safe for both.
+concurrency:
+  group: deploy-web-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  deployments: write
+  pull-requests: write
+
+jobs:
+  build:
+    name: build (cf:build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Mark build start
+        id: t0
+        run: echo "epoch=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/setup-node-pnpm
+
+      - uses: ./.github/actions/restore-nextjs-cache
+
+      # No Nx cache here: `cf:build` is a plain `pnpm --filter ./apps/web
+      # cf:build` script — no nx command runs, so the restore (~42s), the
+      # explicit save (~86s) and the combined action's post-save re-upload
+      # (~113s) were ~4 min of pure ceremony per web PR (measured on
+      # 32592594996: build step itself is only 179s of the 545s job).
+      # The Next.js compiler cache above is what actually warms next build.
+
+      # No Cloudflare secrets here — preflight moved to preview/deploy (environment-gated)
+      - name: Build Cloudflare bundle
+        env:
+          NEXT_PUBLIC_API_BASE_URL: "http://fake-api-for-build.example.com"
+        run: |
+          echo "::group::opennext build — pnpm --filter ./apps/web cf:build"
+          time pnpm --filter ./apps/web cf:build
+          echo "::endgroup::"
+          echo "Build output:"
+          du -sh apps/web/.open-next 2>/dev/null || true
+          du -h apps/web/.open-next/worker.js 2>/dev/null | awk '{print "worker size:", $1, $2}' || true
+          du -sh apps/web/.open-next/assets/* 2>/dev/null | head -n 5 || du -sh apps/web/.open-next/assets 2>/dev/null | head -n 5 || true
+
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: open-next
+          path: apps/web/.open-next/**/*
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 3
+
+      - name: Report build duration
+        if: always()
+        run: |
+          end=$(date +%s)
+          start=${{ steps.t0.outputs.epoch }}
+          dur=$((end - start))
+          mins=$((dur/60)); secs=$((dur%60))
+          echo "### ⏱️ Build duration: ${mins}m ${secs}s (${dur}s)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Build finished at $(date -u +%Y-%m-%dT%H:%M:%SZ) — duration ${dur}s" >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=Build duration::${mins}m ${secs}s (${dur}s)"
+
+      - name: Fail visibly on build error
+        if: failure()
+        run: |
+          echo "::error title=Cloudflare build failed::pnpm --filter ./apps/web cf:build failed — see logs above"
+          echo "### ❌ Build failed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Check the \"Build Cloudflare bundle\" step for the error." >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-prod:
+    name: deploy (production)
+    needs: build
+    # Run on master pushes and manual dispatches targeting master; not on PRs.
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Mark deploy start
+        id: t0
+        run: echo "epoch=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: open-next
+          path: apps/web/.open-next
+
+      - uses: ./.github/actions/setup-node-pnpm
+
+      - name: Verify bundle present
+        run: |
+          set -euo pipefail
+          test -f apps/web/.open-next/worker.js || { echo "::error::worker.js missing — build artifact not restored"; exit 1; }
+          du -h apps/web/.open-next/worker.js
+          du -sh apps/web/.open-next
+
+      - name: Deploy to Cloudflare Workers (production)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          pnpm exec wrangler deploy --config apps/web/wrangler.jsonc
+
+      - name: Report deploy duration
+        if: always()
+        run: |
+          end=$(date +%s)
+          start=${{ steps.t0.outputs.epoch }}
+          dur=$((end - start))
+          mins=$((dur/60)); secs=$((dur%60))
+          echo "### ⏱️ Production deploy duration: ${mins}m ${secs}s (${dur}s)" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ Production deploy succeeded — https://gaia.heygaia.io (worker: gaia)" >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice title=Deploy succeeded::Production deploy ${mins}m ${secs}s"
+          fi
+
+      - name: Fail visibly on deploy error
+        if: failure()
+        run: |
+          echo "::error title=Cloudflare deploy failed::wrangler deploy failed — check CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID and worker logs"
+          echo "### ❌ Production deploy failed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Token scopes needed: Workers Scripts Write + R2 Write/Read + Routes Write on account d65fe47d…. Verify secrets and wrangler.jsonc." >> "$GITHUB_STEP_SUMMARY"
+
+  preview:
+    name: preview (PR pr-${{ github.event.number }})
+    needs: build
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: preview
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Mark preview start
+        id: t0
+        run: echo "epoch=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: open-next
+          path: apps/web/.open-next
+
+      - uses: ./.github/actions/setup-node-pnpm
+
+      - name: Verify bundle present
+        run: |
+          set -euo pipefail
+          test -f apps/web/.open-next/worker.js || { echo "::error::worker.js missing — build artifact not restored"; exit 1; }
+          du -h apps/web/.open-next/worker.js
+          du -sh apps/web/.open-next
+
+      - name: Upload preview version (alias pr-${{ github.event.number }})
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          pnpm exec wrangler versions upload --preview-alias pr-${{ github.event.number }} --config apps/web/wrangler.jsonc
+
+      - name: Report preview duration
+        if: always()
+        run: |
+          end=$(date +%s)
+          start=${{ steps.t0.outputs.epoch }}
+          dur=$((end - start))
+          mins=$((dur/60)); secs=$((dur%60))
+          {
+            echo "### ⏱️ Preview deploy duration: ${mins}m ${secs}s (${dur}s)"
+            echo "Preview alias: \`pr-${{ github.event.number }}\`"
+            echo "Expected preview URL: \`https://pr-${{ github.event.number }}-gaia.heygaia.workers.dev\` (if preview_urls / dispatch route configured)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=Preview duration::${mins}m ${secs}s alias pr-${{ github.event.number }}"
+
+      - name: Fail visibly on preview error
+        if: failure()
+        run: |
+          echo "::error title=Cloudflare preview failed::versions upload --preview-alias pr-${{ github.event.number }} failed"
+          echo "### ❌ Preview deploy failed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Check token scopes and that Workers Gradual Rollouts / Versions is enabled for this worker." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment PR with preview URL
+        if: success()
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          script: |
+            const pr = context.issue.number;
+            const alias = `pr-${pr}`;
+            const body = `☁️ Cloudflare preview deployed — alias \`${alias}\`\n\n` +
+              `Expected URL: https://pr-${pr}-gaia.heygaia.workers.dev\n` +
+              `> Preview requires Workers preview_urls / route. Check job summary for duration.`;
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr,
+              body
+            }).catch(e => core.warning(`PR comment failed: ${e.message}`));

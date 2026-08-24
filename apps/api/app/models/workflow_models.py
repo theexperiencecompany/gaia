@@ -45,6 +45,7 @@ class DeactivationReason(str, Enum):
     user-initiated deactivation records no reason at all."""
 
     USER_DORMANT = "user_dormant"
+    INTEGRATION_EXPIRED = "integration_expired"
 
 
 class IntegrationRef(BaseModel):
@@ -137,7 +138,13 @@ class TriggerConfig(BaseModel):
 
         try:
             schedule_tz = Timezone.parse(user_timezone or self.timezone)
-            return get_next_run_time(self.cron_expression, base_time, schedule_tz)
+            next_run = get_next_run_time(self.cron_expression, base_time, schedule_tz)
+            # Whole seconds only. The scheduler stamps each ARQ job with
+            # ``int(armed_time.timestamp())`` and the stale-fire claim gate pins
+            # ``next_run`` by equality against the reconstructed stamp, so a
+            # sub-second component anywhere would make fresh fires read as
+            # stale. Cron granularity is minutes; drop any stray sub-second.
+            return next_run.replace(microsecond=0) if next_run else None
         except Exception as e:
             log.error("Error calculating next run time", error=str(e), error_type=type(e).__name__)
             return None
@@ -301,7 +308,7 @@ class Workflow(BaseScheduledTask):
         description="Creator info hydrated for public workflow lookups.",
     )
 
-    def __init__(self, **data: Any) -> None:
+    def __init__(self, **data: Any) -> None:  # noqa: ANN401 -- framework contract
         """Initialize workflow with mapping from trigger_config to BaseScheduledTask fields.
 
         ``**data`` stays ``Any``. Measured, don't re-litigate: ``**data: object``
@@ -354,7 +361,7 @@ class Workflow(BaseScheduledTask):
 
     @model_validator(mode="before")
     @classmethod
-    def hydrate_legacy_prompt_and_description(cls, data: Any) -> Any:
+    def hydrate_legacy_prompt_and_description(cls, data: Any) -> Any:  # noqa: ANN401 -- forwards **data into BaseScheduledTask's typed __init__
         """Ensure legacy records still expose prompt and non-null description."""
         if isinstance(data, dict):
             description = data.get("description") or ""

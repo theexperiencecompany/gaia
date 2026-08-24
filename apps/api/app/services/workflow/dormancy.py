@@ -33,14 +33,16 @@ from app.models.workflow_models import DeactivationReason, WorkflowDocument
 from app.services.workflow.service import WorkflowService
 from shared.py.wide_events import log
 
-# 90 days, not 30, because the signal is imperfect and this is the window where
-# that stops mattering. Measured on production: at 30 days, `last_active_at`
-# alone and the full signal set disagree about 210 users owning 1,965 activated
-# workflows; at 90 days they disagree about 6 users owning 91. A threshold whose
-# answer barely moves with the signal is one a metering gap cannot turn into
-# pausing an active user's automation. Revisit once every entry point records
-# activity (bot chat historically did not).
-DORMANCY_THRESHOLD = timedelta(days=90)
+# 30 days. The original 90 was chosen when the activity signals were both
+# incomplete (bot chat recorded nothing) and circular — a user's own workflow
+# executions stamped their conversations' ``updatedAt`` and incremented their
+# ``usage_daily`` count, so anyone with an armed integration workflow could
+# never be judged dormant and the wide threshold was covering for it. Both
+# signals now count only human-initiated activity (system conversations are
+# excluded from ``has_activity_since``; ``trigger_workflow_executions`` no
+# longer records activity), so a month of silence on every real surface —
+# web login, chat from any bot, metered feature use — is dormancy.
+DORMANCY_THRESHOLD = timedelta(days=30)
 
 
 class DormantUserWorkflows(BaseModel):
@@ -74,7 +76,11 @@ async def _is_really_dormant(user_id: str, cutoff: datetime) -> bool:
     """
     if await conversation_repository.has_activity_since(user_id, cutoff):
         return False
-    return not await usage_daily_repository.counts_since(user_id, cutoff.strftime("%Y-%m-%d"))
+    # Sum, not truthiness: a pure-automation day writes a usage_daily row with
+    # cost but count 0, and a dict holding only zero-count rows is still truthy
+    # — which read as "active" and kept automation-only users unsweepable.
+    counts = await usage_daily_repository.counts_since(user_id, cutoff.strftime("%Y-%m-%d"))
+    return sum(counts.values()) == 0
 
 
 async def find_dormancy_candidates(

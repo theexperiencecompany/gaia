@@ -34,8 +34,8 @@ async def post_approval_decision(
 ) -> ApprovalDecisionResponse:
     """Apply a button decision and resume the paused run.
 
-    ``resolve_approval`` raises :class:`ApprovalRequestNotFound` (410) or
-    :class:`ApprovalRequestForbidden` (403) — both ``AppError`` subclasses — so
+    ``resolve_approval`` raises :class:`ApprovalRequestNotFoundError` (410) or
+    :class:`ApprovalRequestForbiddenError` (403) — both ``AppError`` subclasses — so
     late/duplicate or cross-user deliveries can't double-resolve a request.
     """
     user_id = user.get("user_id")

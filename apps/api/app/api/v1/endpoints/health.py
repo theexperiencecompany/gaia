@@ -41,8 +41,9 @@ _DEGRADED_RESPONSE_SCHEMA: dict[int | str, dict[str, Any]] = {
 @router.get("/api/v1/ping", responses=_DEGRADED_RESPONSE_SCHEMA)
 async def health_check(response: Response) -> HealthResponse | DegradedHealthResponse:
     """Report API liveness, build identity, and current event-loop responsiveness."""
-    # Lazy import to avoid loading settings during module import
-    from app.config.settings import settings
+    from app.config.settings import (  # noqa: PLC0415 -- importing this module must not pay settings init; the cost moves to first request
+        settings,
+    )
 
     lag_ms = await measure_event_loop_lag()
     if lag_ms > EVENT_LOOP_LAG_THRESHOLD_MS:

@@ -90,6 +90,14 @@ class AgentConfigurable(TypedDict, total=False):
     #: judge grounds gated calls against these, so they are never an agent's
     #: paraphrase of the request.
     user_messages: list[str] | None
+    #: The live turn's request, exactly as the user typed it and NOT clipped
+    #: (``user_messages`` is capped at ``HIL_JUDGE_MAX_TURN_CHARS`` per turn, so it
+    #: cannot serve as the verbatim copy). Established once by comms and inherited
+    #: parent-overrides, same rule as ``user_messages``. ``call_executor`` folds it
+    #: into the executor brief so the worker tier always sees the user's own words
+    #: next to the comms agent's paraphrase of them. Absent for non-chat roots
+    #: (workflow/trigger runs), which have no literal user turn.
+    user_request: str | None
     user_message_id: str
     #: The live comms turn's own bot message id (chat stream's ``state.bot_message_id``).
     #: Threaded into ``call_executor`` so a HIL pause that later resumes can reconcile

@@ -40,7 +40,7 @@ ERROR_TIMEOUT = (
 ERROR_REDIS_UNAVAILABLE = "Desktop bridge unavailable (no Redis connection)."
 
 
-class DesktopRequestNotFound(AppError):
+class DesktopRequestNotFoundError(AppError):
     """The pending request key is gone — expired or already resolved."""
 
     def __init__(self) -> None:
@@ -50,7 +50,7 @@ class DesktopRequestNotFound(AppError):
         )
 
 
-class DesktopRequestForbidden(AppError):
+class DesktopRequestForbiddenError(AppError):
     """A result was POSTed by a user who does not own the pending request."""
 
     def __init__(self) -> None:
@@ -200,16 +200,16 @@ async def relay_desktop_result(
     """Validate ownership of a pending desktop request and relay its result.
 
     Deletes the request key (so late/duplicate deliveries cannot double-resolve)
-    before publishing. Raises :class:`DesktopRequestNotFound` if the request
-    expired or was already resolved, or :class:`DesktopRequestForbidden` if the
+    before publishing. Raises :class:`DesktopRequestNotFoundError` if the request
+    expired or was already resolved, or :class:`DesktopRequestForbiddenError` if the
     POSTing user does not own it.
     """
     request_key = f"{DESKTOP_REQUEST_PREFIX}{request_id}"
     pending = await redis_cache.get(request_key)
     if not pending:
-        raise DesktopRequestNotFound()
+        raise DesktopRequestNotFoundError()
     if pending.get("user_id") != user_id:
-        raise DesktopRequestForbidden()
+        raise DesktopRequestForbiddenError()
 
     await redis_cache.delete(request_key)
     await publish_desktop_result(request_id, ok=ok, data=data, error=error)

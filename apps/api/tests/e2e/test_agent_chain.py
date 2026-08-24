@@ -368,7 +368,7 @@ async def run_chain(
         # the NEXT test's executor onto its own stream id.
         await redis_cache.delete(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
         if subagent is not None:
-            providers.reset(SUBAGENT_AGENT)
+            await providers.areset(SUBAGENT_AGENT)
 
     frames = [chunk async for chunk in stream_manager.subscribe_stream(stream_id)]
     run.transcript = Transcript.from_sse("".join(frames))

@@ -12,9 +12,9 @@ from httpx import AsyncClient
 from app.models.hil_models import HILMode, HILPreferences
 from app.schemas.hil_schemas import BatchDecisionOutcome
 from app.services.hil.resolution import (
-    ApprovalNotResumable,
-    ApprovalRequestForbidden,
-    ApprovalRequestNotFound,
+    ApprovalNotResumableError,
+    ApprovalRequestForbiddenError,
+    ApprovalRequestNotFoundError,
 )
 
 APPROVALS_BASE = "/api/v1/approvals"
@@ -72,21 +72,21 @@ class TestPostApprovalDecision:
     async def test_late_or_duplicate_decision_is_410(
         self, mock_resolve: AsyncMock, client: AsyncClient
     ):
-        mock_resolve.side_effect = ApprovalRequestNotFound()
+        mock_resolve.side_effect = ApprovalRequestNotFoundError()
         resp = await client.post(f"{APPROVALS_BASE}/a1/decision", json={"decision": "approve"})
         assert resp.status_code == 410
         assert "expired or already resolved" in resp.json()["message"]
 
     @patch("app.api.v1.endpoints.approvals.resolve_approval", new_callable=AsyncMock)
     async def test_cross_user_decision_is_403(self, mock_resolve: AsyncMock, client: AsyncClient):
-        mock_resolve.side_effect = ApprovalRequestForbidden()
+        mock_resolve.side_effect = ApprovalRequestForbiddenError()
         resp = await client.post(f"{APPROVALS_BASE}/a1/decision", json={"decision": "approve"})
         assert resp.status_code == 403
         assert "another user" in resp.json()["message"]
 
     @patch("app.api.v1.endpoints.approvals.resolve_approval", new_callable=AsyncMock)
     async def test_unresumable_approval_is_503(self, mock_resolve: AsyncMock, client: AsyncClient):
-        mock_resolve.side_effect = ApprovalNotResumable()
+        mock_resolve.side_effect = ApprovalNotResumableError()
         resp = await client.post(f"{APPROVALS_BASE}/a1/decision", json={"decision": "approve"})
         assert resp.status_code == 503
 

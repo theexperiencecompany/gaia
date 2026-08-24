@@ -592,7 +592,11 @@ class TestProcessWorkflowGenerationTask:
         assert payload["todo_id"] == todo_id
 
     async def test_empty_description_uses_no_details_section(self, ctx):
-        """When description is empty the prompt template omits the details section."""
+        """When description is empty the prompt template omits the details section.
+
+        The argument is omitted entirely so the function's default value is what's
+        under test, not an explicitly-passed empty string.
+        """
         # Must be a valid 24-char hex ObjectId string because production code
         # calls ObjectId(todo_id) before the mocked update_one is invoked.
         todo_id = "507f1f77bcf86cd799439013"
@@ -622,12 +626,10 @@ class TestProcessWorkflowGenerationTask:
             mock_ws.broadcast_to_user = AsyncMock()
             mock_ws_mgr.return_value = mock_ws
 
-            await process_workflow_generation_task(
-                ctx, todo_id, user_id, "Buy groceries", description=""
-            )
+            await process_workflow_generation_task(ctx, todo_id, user_id, "Buy groceries")
 
         assert len(captured_requests) == 1
-        # The **Details:** section should be absent when description is empty
+        # The **Details:** section should be absent when the (default) description is empty
         assert "**Details:**" not in captured_requests[0].prompt
 
 
@@ -645,7 +647,7 @@ class TestRegenerateWorkflowSteps:
         workflow_id = str(uuid4())
         user_id = "user_abc"
 
-        with patch("app.services.workflow.WorkflowService") as mock_wf_svc:
+        with patch("app.services.workflow.service.WorkflowService") as mock_wf_svc:
             mock_wf_svc.regenerate_workflow_steps = AsyncMock()
             result = await regenerate_workflow_steps(ctx, workflow_id, user_id, "Steps were wrong")
 
@@ -656,7 +658,7 @@ class TestRegenerateWorkflowSteps:
         workflow_id = str(uuid4())
         user_id = "user_abc"
 
-        with patch("app.services.workflow.WorkflowService") as mock_wf_svc:
+        with patch("app.services.workflow.service.WorkflowService") as mock_wf_svc:
             mock_wf_svc.regenerate_workflow_steps = AsyncMock(
                 side_effect=RuntimeError("Service down")
             )
@@ -667,7 +669,7 @@ class TestRegenerateWorkflowSteps:
         workflow_id = str(uuid4())
         user_id = "user_abc"
 
-        with patch("app.services.workflow.WorkflowService") as mock_wf_svc:
+        with patch("app.services.workflow.service.WorkflowService") as mock_wf_svc:
             mock_wf_svc.regenerate_workflow_steps = AsyncMock()
             await regenerate_workflow_steps(ctx, workflow_id, user_id, "reason")
 
@@ -691,7 +693,7 @@ class TestGenerateWorkflowSteps:
         user_id = "user_abc"
         workflow = _make_workflow(workflow_id=workflow_id, is_todo_workflow=False)
 
-        with patch("app.services.workflow.WorkflowService") as mock_wf_svc:
+        with patch("app.services.workflow.service.WorkflowService") as mock_wf_svc:
             mock_wf_svc._generate_workflow_steps = AsyncMock()
             mock_wf_svc.get_workflow = AsyncMock(return_value=workflow)
 
@@ -714,7 +716,7 @@ class TestGenerateWorkflowSteps:
         mock_ws.broadcast_to_user = AsyncMock()
 
         with (
-            patch("app.services.workflow.WorkflowService") as mock_wf_svc,
+            patch("app.services.workflow.service.WorkflowService") as mock_wf_svc,
             patch(
                 "app.workers.tasks.workflow_tasks.get_websocket_manager",
                 return_value=mock_ws,
@@ -743,7 +745,7 @@ class TestGenerateWorkflowSteps:
         mock_ws.broadcast_to_user = AsyncMock()
 
         with (
-            patch("app.services.workflow.WorkflowService") as mock_wf_svc,
+            patch("app.services.workflow.service.WorkflowService") as mock_wf_svc,
             patch(
                 "app.workers.tasks.workflow_tasks.get_websocket_manager",
                 return_value=mock_ws,
@@ -760,7 +762,7 @@ class TestGenerateWorkflowSteps:
         workflow_id = str(uuid4())
         user_id = "user_abc"
 
-        with patch("app.services.workflow.WorkflowService") as mock_wf_svc:
+        with patch("app.services.workflow.service.WorkflowService") as mock_wf_svc:
             mock_wf_svc._generate_workflow_steps = AsyncMock(side_effect=RuntimeError("LLM error"))
 
             with pytest.raises(RuntimeError, match="LLM error"):
@@ -1682,7 +1684,7 @@ class TestGenerateWorkflowStepsAdditional:
         mock_ws.broadcast_to_user = AsyncMock()
 
         with (
-            patch("app.services.workflow.WorkflowService") as mock_wf_svc,
+            patch("app.services.workflow.service.WorkflowService") as mock_wf_svc,
             patch(
                 "app.workers.tasks.workflow_tasks.get_websocket_manager",
                 return_value=mock_ws,
@@ -1710,7 +1712,7 @@ class TestGenerateWorkflowStepsAdditional:
         mock_ws.broadcast_to_user = AsyncMock()
 
         with (
-            patch("app.services.workflow.WorkflowService") as mock_wf_svc,
+            patch("app.services.workflow.service.WorkflowService") as mock_wf_svc,
             patch(
                 "app.workers.tasks.workflow_tasks.get_websocket_manager",
                 return_value=mock_ws,
@@ -1740,7 +1742,7 @@ class TestGenerateWorkflowStepsAdditional:
         mock_ws.broadcast_to_user = AsyncMock(side_effect=RuntimeError("WS error"))
 
         with (
-            patch("app.services.workflow.WorkflowService") as mock_wf_svc,
+            patch("app.services.workflow.service.WorkflowService") as mock_wf_svc,
             patch(
                 "app.workers.tasks.workflow_tasks.get_websocket_manager",
                 return_value=mock_ws,
@@ -1771,7 +1773,7 @@ class TestRegenerateWorkflowStepsAdditional:
         workflow_id = str(uuid4())
         user_id = "user_abc"
 
-        with patch("app.services.workflow.WorkflowService") as mock_wf_svc:
+        with patch("app.services.workflow.service.WorkflowService") as mock_wf_svc:
             mock_wf_svc.regenerate_workflow_steps = AsyncMock()
             await regenerate_workflow_steps(
                 ctx, workflow_id, user_id, "reason", force_different_tools=False

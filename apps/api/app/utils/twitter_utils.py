@@ -27,7 +27,7 @@ def _proxy(
         user_id=user_id,
         toolkit=TWITTER_TOOLKIT,
         endpoint=endpoint,
-        method=method,  # type: ignore[arg-type]
+        method=method,  # type: ignore[arg-type]  # proxy accepts any HTTP verb literal; twitter caller passes one narrowed per endpoint
         body=body,
         query=query,
     )

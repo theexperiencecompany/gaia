@@ -29,7 +29,7 @@ from app.services.integrations.my_integrations import (
     get_my_integrations as fetch_my_integrations,
 )
 from app.services.tools.tools_service import get_integration_tool_list
-from app.services.workflow import WorkflowService
+from app.services.workflow.service import WorkflowService
 from app.services.workflow.trigger_search import TriggerSearchService
 from app.utils.workflow_utils import (
     error_response,

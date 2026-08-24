@@ -335,6 +335,14 @@ async def connect_composio_integration(
 
     url = await composio_service.connect_account(provider, user_id, state_token=state_token)
 
+    # Composio mints the connected account at initiate time, before the user has
+    # authorized it. Record the id now so a connection abandoned mid-flow is still
+    # addressable; the callback overwrites it with whichever account actually
+    # completed.
+    await update_user_integration_status(
+        user_id, integration_id, "created", connected_account_id=url["connection_id"]
+    )
+
     log.set(
         integration={
             "provider": provider,

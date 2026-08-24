@@ -174,10 +174,7 @@ def can_create_directly(draft: FinalizedOutput) -> bool:
         return False
 
     # Integration triggers ALWAYS need confirmation (have config_fields like calendar_ids, channel_ids)
-    if draft.trigger_type == "integration":
-        return False
-
-    return True
+    return draft.trigger_type != "integration"
 
 
 async def create_workflow_directly(
@@ -200,7 +197,7 @@ async def create_workflow_directly(
         user_timezone=user_timezone,
     )
     try:
-        from app.services.workflow import WorkflowService
+        from app.services.workflow.service import WorkflowService
 
         trigger_config = TriggerConfig(
             type=draft.backend_trigger_type,
@@ -210,7 +207,7 @@ async def create_workflow_directly(
             timezone=user_timezone,
         )
 
-        workflow_description = draft.prompt if draft.prompt else draft.description
+        workflow_description = draft.prompt or draft.description
 
         request = CreateWorkflowRequest(
             title=draft.title,
@@ -327,7 +324,7 @@ async def apply_workflow_edit(
     repos, calendars — must be set in the app's workflow editor); the caller is
     told so the user can adjust it there.
     """
-    from app.services.workflow import WorkflowService
+    from app.services.workflow.service import WorkflowService
 
     new_type = draft.backend_trigger_type
     current = workflow.trigger_config
@@ -423,7 +420,9 @@ async def apply_workflow_edit(
                 user_id=user_id,
             )
 
-    writer({"workflow_data": {"action": "updated", "workflow": updated.model_dump()}})
+    # mode="json" — the frame is json.dumps'd by the stream writer; a native
+    # datetime would raise inside the edit tool and loop the agent on retries.
+    writer({"workflow_data": {"action": "updated", "workflow": updated.model_dump(mode="json")}})
 
     message = f"Workflow '{updated.title}' updated."
     if needs_editor:

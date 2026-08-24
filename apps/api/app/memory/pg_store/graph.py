@@ -124,8 +124,7 @@ async def upsert_entities(user_id: str, names_types: list[tuple[str, str]]) -> d
                     MemoryEntity.name_lower.in_([name_lower for _, name_lower, _ in survivors]),
                 )
             )
-            for name_lower, entity_id in created.all():
-                id_map[name_lower] = entity_id
+            id_map.update({name_lower: entity_id for name_lower, entity_id in created.all()})
             for alias_lower, survivor_lower in alias_to_survivor.items():
                 if survivor_lower in id_map:
                     id_map[alias_lower] = id_map[survivor_lower]

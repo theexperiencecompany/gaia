@@ -48,8 +48,8 @@ async def desktop_tool_result(
 ) -> DesktopToolResultResponse:
     """Accept a desktop tool result and relay it to the awaiting agent tool.
 
-    ``relay_desktop_result`` raises :class:`DesktopRequestNotFound` (410) or
-    :class:`DesktopRequestForbidden` (403) — both ``AppError`` subclasses that the
+    ``relay_desktop_result`` raises :class:`DesktopRequestNotFoundError` (410) or
+    :class:`DesktopRequestForbiddenError` (403) — both ``AppError`` subclasses that the
     global handler maps to the right status — so late/duplicate or cross-user
     deliveries can't double-resolve a request.
     """

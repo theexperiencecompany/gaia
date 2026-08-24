@@ -1,6 +1,12 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { RedoIcon } from "@icons";
+import {
+  CONNECT_ACTION_LABEL,
+  formatRelativeTime,
+  INTEGRATION_STATE_ORDER,
+  integrationConnectionState,
+} from "@shared/utils";
 import type React from "react";
 import { useMemo } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -23,12 +29,17 @@ const IntegrationRow: React.FC<{
   onConnect: (id: string) => void;
   onClick: (id: string) => void;
 }> = ({ integration, onConnect, onClick }) => {
-  const isConnected = integration.status === "connected";
-  // "created" = added but not yet successfully connected (e.g. a failed/pending
-  // connect) — offer a Retry instead of a first-time Connect.
-  const isCreated = integration.status === "created";
+  const state = integrationConnectionState(integration.status);
+  const isConnected = state === "connected";
   // Custom integrations are always available, platform integrations use available field
   const isAvailable = integration.source === "custom" || integration.available;
+  const needsAttention = state === "pending" || state === "expired";
+  // How long the grant has been dead — the difference between "I never set this
+  // up" and "this broke while I wasn't looking".
+  const disconnectedAgo =
+    state === "expired" && integration.expiredAt
+      ? formatRelativeTime(integration.expiredAt)
+      : null;
 
   const handleClick = () => {
     onClick(integration.id);
@@ -54,8 +65,15 @@ const IntegrationRow: React.FC<{
 
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <div className="font-medium">{integration.name}</div>
-        <div className="truncate text-sm font-light text-zinc-400">
-          {integration.description}
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="truncate text-sm font-light text-zinc-400">
+            {integration.description}
+          </div>
+          {disconnectedAgo && (
+            <span className="shrink-0 text-xs text-zinc-500">
+              Disconnected {disconnectedAgo}
+            </span>
+          )}
         </div>
       </div>
 
@@ -66,19 +84,19 @@ const IntegrationRow: React.FC<{
           </Chip>
         )}
 
-        {(isAvailable || isCreated) && !isConnected && (
+        {(isAvailable || needsAttention) && !isConnected && (
           <Button
             variant="flat"
             size="sm"
-            color={isCreated ? "warning" : "primary"}
+            color={needsAttention ? "warning" : "primary"}
             startContent={
-              isCreated ? <RedoIcon width={16} height={16} /> : undefined
+              needsAttention ? <RedoIcon width={16} height={16} /> : undefined
             }
             onPress={() => {
               onConnect(integration.id);
             }}
           >
-            {isCreated ? "Retry" : "Connect"}
+            {CONNECT_ACTION_LABEL[state]}
           </Button>
         )}
       </div>
@@ -193,9 +211,12 @@ export const IntegrationsList: React.FC<{
       grouped[category] = searchQuery.trim()
         ? items
         : items.toSorted((a, b) => {
-            // Connected first
-            if (a.status === "connected" && b.status !== "connected") return -1;
-            if (a.status !== "connected" && b.status === "connected") return 1;
+            // Needs-attention (expired, pending) first, then connected
+            const orderA =
+              INTEGRATION_STATE_ORDER[integrationConnectionState(a.status)];
+            const orderB =
+              INTEGRATION_STATE_ORDER[integrationConnectionState(b.status)];
+            if (orderA !== orderB) return orderA - orderB;
             // Then alphabetically
             return a.name.localeCompare(b.name);
           });

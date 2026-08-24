@@ -43,7 +43,10 @@ def execute_tool(
     Raises:
         Exception: If the tool execution fails.
     """
-    from app.services.composio.composio_service import get_composio_service
+    # Deferred import: heavy Composio SDK service stack loads only when context enrichment executes a tool
+    from app.services.composio.composio_service import (  # noqa: PLC0415 -- deferred
+        get_composio_service,
+    )
 
     log.set(tool_name=tool_name, user_id=user_id)
     composio_service = get_composio_service()
@@ -62,7 +65,8 @@ def execute_tool(
     if output_model:
         try:
             validated = output_model.model_validate(data)
-            return validated.model_dump()
+            # Tool returns cross into text; python-mode keeps native datetimes.
+            return validated.model_dump(mode="json")
         except Exception as e:
             log.warning(
                 f"{LogTag.AGENT} Schema validation warning for",
@@ -111,19 +115,19 @@ def fetch_all_providers(
     # This prevents unbounded thread creation under concurrent agent sessions
     # and isolates context-fetching threads from the default asyncio pool.
     futures = {_CONTEXT_EXECUTOR.submit(fetch_one, p): p for p in providers}
-    for future in futures:
+    for future, submitted_provider in futures.items():
         try:
             provider, data = future.result(timeout=PROVIDER_TIMEOUT_SECONDS)
             if data is not None:
                 results[provider] = data
         except FuturesTimeout:
-            provider = futures[future]
-            log.warning(f"{LogTag.AGENT} Provider timed out", provider=provider, user_id=user_id)
+            log.warning(
+                f"{LogTag.AGENT} Provider timed out", provider=submitted_provider, user_id=user_id
+            )
         except Exception as e:
-            provider = futures[future]
             log.error(
                 f"{LogTag.AGENT} Unexpected error for",
-                provider=provider,
+                provider=submitted_provider,
                 error=str(e),
                 error_type=type(e).__name__,
                 user_id=user_id,
@@ -152,7 +156,7 @@ async def resolve_providers(
     if requested:
         return [p.lower() for p in requested if p.lower() in provider_tools]
 
-    from app.services.integrations.integration_service import (
+    from app.services.integrations.integration_service import (  # noqa: PLC0415 -- integration-service stack deferred until provider auto-detection actually runs
         get_user_available_tool_namespaces,
     )
 

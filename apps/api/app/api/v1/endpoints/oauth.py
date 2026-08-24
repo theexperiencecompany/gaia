@@ -20,6 +20,7 @@ from app.constants.auth import (
 from app.constants.cache import MOBILE_REDIRECT_TTL
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
+from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.oauth_models import MobileLoginUrlResponse, OAuthClientMetadataResponse
 from app.services.analytics_service import AnalyticsEvents, capture_event
@@ -534,7 +535,22 @@ async def composio_callback(
             url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error={error_type}"
         )
 
-    # Ensure we have connectedAccountId for success status
+    # Composio's hosted Connect Link redirects back without the `connectedAccountId`
+    # the retired initiate() flow appended, and the parameter is documented nowhere,
+    # so it cannot be relied on either way. The id is minted at initiate time and
+    # stored on the user's record then (connect_composio_integration), which is the
+    # source of truth here — failing on the query string alone rejected connections
+    # that had actually succeeded.
+    if not connectedAccountId:
+        record = await user_integration_repository.get_for_user(
+            expected_user_id, state_data["integration_id"]
+        )
+        connectedAccountId = record.connected_account_id if record else None
+        log.set_ns(
+            "oauth",
+            connected_account_id_source="stored_record" if connectedAccountId else "missing",
+        )
+
     if not connectedAccountId:
         log.error(
             f"{LogTag.OAUTH} Connected account ID missing for successful connection",
@@ -601,6 +617,7 @@ async def composio_callback(
             user_id=str(user_id),
             integration_config=integration_config,
             background_tasks=background_tasks,
+            connected_account_id=connectedAccountId,
         )
         log.audit(
             "integration connected",

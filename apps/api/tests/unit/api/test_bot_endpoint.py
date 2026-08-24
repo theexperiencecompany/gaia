@@ -6,16 +6,23 @@ routing, status codes, response bodies, and auth checks.
 
 import asyncio
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException
 from httpx import AsyncClient
 import pytest
 
-from app.api.v1.endpoints.bot import bot_chat_stream
+from app.api.v1.endpoints.bot import _bot_rate_limit_notice, bot_chat_stream
 from app.core.stream_manager import with_heartbeat
 from app.models.bot_models import BotChatRequest
-from app.models.payment_models import PlanType
+from app.models.payment_models import (
+    CreateSubscriptionResponse,
+    PlanDuration,
+    PlanResponse,
+    PlanType,
+    ProCheckout,
+)
 from app.services.analytics_service import AnalyticsEvents
 from shared.py.wide_events import log, log_context
 
@@ -868,6 +875,50 @@ class TestBotChatStreamBody:
         assert '"done": true' in body
         assert '"conversation_id": "conv-1"' in body
 
+    async def test_a_rate_limit_card_reaches_the_bot_as_a_notice_for_this_user(
+        self, client: AsyncClient
+    ):
+        """The web-only rate-limit card is the one frame the translator must
+        convert, not drop — and it is minted for the RESOLVED user, so the
+        checkout link inside it attributes to their account."""
+
+        async def walled() -> AsyncGenerator[str, None]:
+            yield (
+                'data: {"tool_data": {"tool_name": "rate_limit_data",'
+                ' "data": {"feature": "chat_messages", "current_plan": "free"}}}\n\n'
+            )
+            yield "data: [DONE]\n\n"
+
+        mint = AsyncMock(return_value="upgrade-link-notice")
+        with patch("app.api.v1.endpoints.bot._bot_rate_limit_notice", mint):
+            body = await self._collect(client, walled())
+
+        mint.assert_awaited_once_with(
+            {
+                "tool_data": {
+                    "tool_name": "rate_limit_data",
+                    "data": {"feature": "chat_messages", "current_plan": "free"},
+                }
+            },
+            "uid1",
+        )
+        # The notice rides as its own text frame, blank-padded on both sides.
+        assert '"text": "\\n\\nupgrade-link-notice\\n\\n"' in body
+
+    async def test_a_non_rate_limit_card_yields_no_notice_frame(self, client: AsyncClient):
+        async def other_card() -> AsyncGenerator[str, None]:
+            yield 'data: {"tool_data": {"tool_name": "memory_data", "data": {}}}\n\n'
+            yield "data: [DONE]\n\n"
+
+        mint = AsyncMock(return_value=None)
+        with patch("app.api.v1.endpoints.bot._bot_rate_limit_notice", mint):
+            body = await self._collect(client, other_card())
+
+        mint.assert_awaited_once_with(
+            {"tool_data": {"tool_name": "memory_data", "data": {}}}, "uid1"
+        )
+        assert '"text": "\\n\\n' not in body
+
     async def test_the_session_token_is_the_first_thing_the_bot_receives(self, client: AsyncClient):
         """The bot stores this to authenticate follow-up calls for the turn."""
 
@@ -1128,3 +1179,86 @@ class TestBotChatStreamMetering:
             )
 
         limiter.assert_not_awaited()
+
+
+class TestBotRateLimitNotice:
+    """Rate limits reach bots as text, so the upgrade path has to be a link.
+
+    Bots drop `tool_data`, so the web's RateLimitCard (and its pricing-modal CTA)
+    never renders for them. A checkout link is the only one-tap route a WhatsApp
+    or Telegram user has.
+    """
+
+    @staticmethod
+    def _card(current_plan: str = PlanType.FREE.value) -> dict[str, object]:
+        return {
+            "tool_data": {
+                "tool_name": "rate_limit_data",
+                "data": {"feature": "chat_messages", "current_plan": current_plan},
+            }
+        }
+
+    async def test_free_user_gets_a_real_checkout_link(self) -> None:
+        checkout = AsyncMock(
+            return_value=ProCheckout(
+                plan=PlanResponse(
+                    id="plan_pro",
+                    dodo_product_id="prod_pro",
+                    name="Pro",
+                    amount=3000,
+                    currency="USD",
+                    duration=PlanDuration.MONTHLY,
+                    is_active=True,
+                    created_at=datetime(2026, 1, 1, tzinfo=UTC),
+                    updated_at=datetime(2026, 1, 1, tzinfo=UTC),
+                ),
+                checkout=CreateSubscriptionResponse(
+                    subscription_id="cs_1",
+                    payment_link="https://checkout.dodopayments.com/s/cs_1",
+                    status="payment_link_created",
+                ),
+            )
+        )
+        with patch("app.api.v1.endpoints.bot.payment_service.create_pro_checkout", checkout):
+            notice = await _bot_rate_limit_notice(self._card(), "user_1")
+
+        assert notice is not None
+        assert "chat messages limit" in notice
+        assert "[Upgrade to Pro](https://checkout.dodopayments.com/s/cs_1)" in notice
+        checkout.assert_awaited_once_with("user_1")
+
+    async def test_dodo_failure_degrades_to_the_pricing_page(self) -> None:
+        """A marketing link must never cost the user their reply."""
+        log.reset()
+        with patch(
+            "app.api.v1.endpoints.bot.payment_service.create_pro_checkout",
+            AsyncMock(side_effect=RuntimeError("dodo down")),
+        ):
+            notice = await _bot_rate_limit_notice(self._card(), "user_1")
+
+        assert notice is not None
+        assert "/pricing)" in notice
+        # The fallback is loud: the wide event carries a bounded operation and
+        # failure reason (never provider error text), not a silent degrade.
+        assert log.get()["warnings"] == [
+            {
+                "msg": "[PAYMENT] Could not mint bot upgrade link, falling back to pricing page",
+                "user": {"id": "user_1"},
+                "payment": {"operation": "bot_upgrade_link"},
+                "failure_reason": "checkout_unavailable",
+                "error_type": "RuntimeError",
+            }
+        ]
+
+    async def test_pro_user_gets_no_pitch_and_no_session(self) -> None:
+        checkout = AsyncMock()
+        with patch("app.api.v1.endpoints.bot.payment_service.create_pro_checkout", checkout):
+            notice = await _bot_rate_limit_notice(self._card(PlanType.PRO.value), "user_1")
+
+        assert notice is not None
+        assert "Upgrade" not in notice
+        checkout.assert_not_awaited()
+
+    async def test_other_tool_cards_are_left_alone(self) -> None:
+        chunk = {"tool_data": {"tool_name": "memory_data", "data": {}}}
+        assert await _bot_rate_limit_notice(chunk, "user_1") is None

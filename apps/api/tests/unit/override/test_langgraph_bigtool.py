@@ -3,7 +3,7 @@
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 import pytest
@@ -295,7 +295,7 @@ class TestCallModel:
         store = MagicMock()
 
         with pytest.raises(RuntimeError, match="sync execution was requested"):
-            agent_node.runnable.func(state, config, store=store)  # type: ignore[union-attr]
+            agent_node.runnable.func(state, config, store=store)  # type: ignore[union-attr]  # langgraph Runnable union exposes .func/.afunc only at runtime
 
     def test_sync_call_model_without_middleware(self) -> None:
         """Sync call_model should work without middleware."""
@@ -308,6 +308,7 @@ class TestCallModel:
             llm,
             registry,
             disable_retrieve_tools=True,
+            initial_tool_ids=["dummy_tool_a"],
         )
 
         agent_node = builder.nodes["agent"]
@@ -315,8 +316,56 @@ class TestCallModel:
         config = _make_config()
         store = MagicMock()
 
-        result = agent_node.runnable.func(state, config, store=store)  # type: ignore[union-attr]
+        result = agent_node.runnable.func(state, config, store=store)  # type: ignore[union-attr]  # langgraph Runnable union exposes .func/.afunc only at runtime
         assert "messages" in result
+        # The model must be bound to exactly the initial tool set — binding None
+        # or a wrong list silently produces an agent that cannot call anything.
+        llm.with_config.return_value.bind_tools.assert_called_once_with([dummy_tool_a])
+
+    @pytest.mark.asyncio
+    async def test_after_model_keys_flow_back_but_base_state_does_not(self) -> None:
+        """Keys added by after_model hooks flow back to the graph, but the base
+        state's own keys do not — messages use an append reducer, so echoing the
+        full history would duplicate every earlier turn in the checkpoint."""
+        from app.override.langgraph_bigtool.create_agent import create_agent
+
+        llm = _make_llm()
+        registry = _make_tool_registry()
+
+        mw = MagicMock()
+        mw.tools = []
+        history = [HumanMessage("hi")]
+        after_state = {
+            "messages": [*history, AIMessage(content="hello")],
+            "selected_tool_ids": ["tool-a"],
+            "todos": [{"id": "t1"}],
+            "enriched": {"by": "after_model_hook"},
+        }
+
+        with patch("app.override.langgraph_bigtool.create_agent.MiddlewareExecutor") as mock_me_cls:
+            mock_me = MagicMock()
+            mock_me.execute_before_model = AsyncMock(return_value=_make_state(history))
+            mock_me.has_wrap_model_call = MagicMock(return_value=False)
+            mock_me.execute_after_model = AsyncMock(return_value=after_state)
+            mock_me_cls.return_value = mock_me
+
+            builder = create_agent(
+                llm,
+                registry,
+                disable_retrieve_tools=True,
+                middleware=[mw],
+            )
+            agent_node = builder.nodes["agent"]
+            result = await agent_node.runnable.afunc(  # type: ignore[union-attr]  # langgraph Runnable union exposes .func/.afunc only at runtime
+                _make_state(), _make_config(), store=MagicMock()
+            )
+
+        # Only the new response rides the append reducer — not the full list.
+        assert [m.content for m in result["messages"]] == ["hello"]
+        # Hook-added keys flow back; the base state's own keys do not.
+        assert result["todos"] == [{"id": "t1"}]
+        assert result["enriched"] == {"by": "after_model_hook"}
+        assert "selected_tool_ids" not in result
 
     def test_sync_call_model_empty_response_gets_default(self) -> None:
         """Empty model response should get default content."""
@@ -339,7 +388,7 @@ class TestCallModel:
         config = _make_config()
         store = MagicMock()
 
-        result = agent_node.runnable.func(state, config, store=store)  # type: ignore[union-attr]
+        result = agent_node.runnable.func(state, config, store=store)  # type: ignore[union-attr]  # langgraph Runnable union exposes .func/.afunc only at runtime
         assert result["messages"][0].content == "Empty response from model."
 
     def test_sync_call_model_comms_agent_appends_breaker(self) -> None:
@@ -362,7 +411,7 @@ class TestCallModel:
         config = _make_config()
         store = MagicMock()
 
-        result = agent_node.runnable.func(state, config, store=store)  # type: ignore[union-attr]
+        result = agent_node.runnable.func(state, config, store=store)  # type: ignore[union-attr]  # langgraph Runnable union exposes .func/.afunc only at runtime
         assert result["messages"][0].content.endswith(NEW_MESSAGE_BREAKER)
 
 
@@ -381,7 +430,7 @@ class TestAcallModel:
         config = _make_config()
         store = MagicMock()
 
-        result = await agent_node.runnable.afunc(state, config, store=store)  # type: ignore[union-attr]
+        result = await agent_node.runnable.afunc(state, config, store=store)  # type: ignore[union-attr]  # langgraph Runnable union exposes .func/.afunc only at runtime
         assert "messages" in result
 
     @pytest.mark.asyncio
@@ -409,7 +458,7 @@ class TestAcallModel:
             )
             agent_node = builder.nodes["agent"]
             state = _make_state()
-            result = await agent_node.runnable.afunc(  # type: ignore[union-attr]
+            result = await agent_node.runnable.afunc(  # type: ignore[union-attr]  # langgraph Runnable union exposes .func/.afunc only at runtime
                 state, _make_config(), store=MagicMock()
             )
             assert "messages" in result
@@ -432,7 +481,7 @@ class TestAcallModel:
 
         agent_node = builder.nodes["agent"]
         state = _make_state()
-        result = await agent_node.runnable.afunc(  # type: ignore[union-attr]
+        result = await agent_node.runnable.afunc(  # type: ignore[union-attr]  # langgraph Runnable union exposes .func/.afunc only at runtime
             state, _make_config(), store=MagicMock()
         )
         assert result["messages"][0].content == "Empty response from model."
@@ -454,7 +503,7 @@ class TestAcallModel:
 
         agent_node = builder.nodes["agent"]
         state = _make_state()
-        result = await agent_node.runnable.afunc(  # type: ignore[union-attr]
+        result = await agent_node.runnable.afunc(  # type: ignore[union-attr]  # langgraph Runnable union exposes .func/.afunc only at runtime
             state, _make_config(), store=MagicMock()
         )
         assert result["messages"][0].content.endswith(NEW_MESSAGE_BREAKER)
@@ -481,7 +530,7 @@ class TestShouldContinue:
         store = MagicMock()
 
         branch = builder.branches["agent"]["should_continue"]
-        edge_fn = branch.path.func  # type: ignore[attr-defined]
+        edge_fn = branch.path.func  # type: ignore[attr-defined]  # langgraph Runnable exposes .func only at runtime
         result = edge_fn(state, store=store)
         assert result == END
 
@@ -506,7 +555,7 @@ class TestShouldContinue:
         store = MagicMock()
 
         branch = builder.branches["agent"]["should_continue"]
-        edge_fn = branch.path.func  # type: ignore[attr-defined]
+        edge_fn = branch.path.func  # type: ignore[attr-defined]  # langgraph Runnable exposes .func only at runtime
         result = edge_fn(state, store=store)
         assert result == "end_graph_hooks"
 
@@ -533,7 +582,7 @@ class TestShouldContinue:
         # One task per call, so a call that pauses for approval leaves its completed
         # siblings alone (LangGraph persists their writes — see
         # tests/unit/agents/test_pause_checkpointing.py).
-        edge_fn = builder.branches["agent"]["should_continue"].path.func  # type: ignore[attr-defined]
+        edge_fn = builder.branches["agent"]["should_continue"].path.func  # type: ignore[attr-defined]  # langgraph Runnable exposes .func only at runtime
         result = edge_fn(state, store=store)
         assert len(result) == 1
         assert result[0].node == "tools"
@@ -554,7 +603,7 @@ class TestShouldContinue:
         state = _make_state(messages=[msg])
         store = MagicMock()
 
-        edge_fn = builder.branches["agent"]["should_continue"].path.func  # type: ignore[attr-defined]
+        edge_fn = builder.branches["agent"]["should_continue"].path.func  # type: ignore[attr-defined]  # langgraph Runnable exposes .func only at runtime
         result = edge_fn(state, store=store)
         has_reject = any(getattr(s, "node", None) == "reject_unbound_tools" for s in result)
         assert has_reject
@@ -563,6 +612,51 @@ class TestShouldContinue:
 # ---------------------------------------------------------------------------
 # reject_unbound_tools
 # ---------------------------------------------------------------------------
+
+
+class TestFinishTaskNode:
+    """The finish_task node turns each finished tool call into a ToolMessage the
+    model can read — under its own name, keyed as messages for the reducer."""
+
+    @staticmethod
+    def _builder():
+        from app.override.langgraph_bigtool.create_agent import create_agent
+
+        return create_agent(_make_llm(), _make_tool_registry(), disable_retrieve_tools=True)
+
+    def test_reports_the_result_the_task_returned(self) -> None:
+        from app.constants.general import FINISH_TASK_NAME
+
+        node = self._builder().nodes[FINISH_TASK_NAME].runnable
+        tool_calls = [{"id": "tc1", "name": FINISH_TASK_NAME, "args": {"result": "done"}}]
+
+        result = node.func(tool_calls, store=MagicMock())
+
+        assert [m.content for m in result["messages"]] == ["done"]
+        assert result["messages"][0].tool_call_id == "tc1"
+        assert result["messages"][0].name == FINISH_TASK_NAME
+
+    def test_a_missing_result_still_closes_the_call(self) -> None:
+        from app.constants.general import FINISH_TASK_NAME
+
+        node = self._builder().nodes[FINISH_TASK_NAME].runnable
+        tool_calls = [{"id": "tc2", "name": FINISH_TASK_NAME, "args": {}}]
+
+        result = node.func(tool_calls, store=MagicMock())
+
+        assert [m.content for m in result["messages"]] == ["Task completed."]
+        assert result["messages"][0].tool_call_id == "tc2"
+
+    @pytest.mark.asyncio
+    async def test_async_twin_matches(self) -> None:
+        from app.constants.general import FINISH_TASK_NAME
+
+        node = self._builder().nodes[FINISH_TASK_NAME].runnable
+        tool_calls = [{"id": "tc3", "name": FINISH_TASK_NAME, "args": {"result": "async done"}}]
+
+        result = await node.afunc(tool_calls, store=MagicMock())
+
+        assert [m.content for m in result["messages"]] == ["async done"]
 
 
 class TestRejectUnboundTools:
@@ -578,7 +672,7 @@ class TestRejectUnboundTools:
         tool_calls = [{"id": "tc1", "name": "missing_tool"}]
         store = MagicMock()
 
-        result = reject_node.runnable.func(tool_calls, store=store)  # type: ignore[union-attr]
+        result = reject_node.runnable.func(tool_calls, store=store)  # type: ignore[union-attr]  # langgraph Runnable union exposes .func/.afunc only at runtime
         assert len(result["messages"]) == 1
         assert "not bound" in result["messages"][0].content
 
@@ -595,7 +689,7 @@ class TestRejectUnboundTools:
         tool_calls = [{"id": "tc1", "name": "missing_tool"}]
         store = MagicMock()
 
-        result = await reject_node.runnable.afunc(tool_calls, store=store)  # type: ignore[union-attr]
+        result = await reject_node.runnable.afunc(tool_calls, store=store)  # type: ignore[union-attr]  # langgraph Runnable union exposes .func/.afunc only at runtime
         assert len(result["messages"]) == 1
 
 
@@ -615,14 +709,14 @@ class TestSelectTools:
             """Retrieve tools."""
             return {"tools_to_bind": ["dummy_tool_a"], "response": ["dummy_tool_a"]}
 
-        builder = create_agent(llm, registry, retrieve_tools_function=my_func)  # type: ignore[arg-type]
+        builder = create_agent(llm, registry, retrieve_tools_function=my_func)  # type: ignore[arg-type]  # test stub returns a bare dict, not the declared RetrieveToolsResult union
 
         select_node = builder.nodes["select_tools"]
         tool_calls = [{"id": "tc1", "args": {"query": "test"}}]
         config = _make_config()
         store = MagicMock()
 
-        result = select_node.runnable.func(tool_calls, config, store=store)  # type: ignore[union-attr]
+        result = select_node.runnable.func(tool_calls, config, store=store)  # type: ignore[union-attr]  # langgraph Runnable union exposes .func/.afunc only at runtime
         assert "messages" in result
         assert "selected_tool_ids" in result
 
@@ -643,7 +737,7 @@ class TestSelectTools:
         config = _make_config()
         store = MagicMock()
 
-        result = select_node.runnable.func(tool_calls, config, store=store)  # type: ignore[union-attr]
+        result = select_node.runnable.func(tool_calls, config, store=store)  # type: ignore[union-attr]  # langgraph Runnable union exposes .func/.afunc only at runtime
         assert "dummy_tool_a" in result["selected_tool_ids"]
 
     def test_select_tools_filters_subagent_prefix(self) -> None:
@@ -663,7 +757,7 @@ class TestSelectTools:
         config = _make_config(user_id="u1")
         store = MagicMock()
 
-        result = select_node.runnable.func(tool_calls, config, store=store)  # type: ignore[union-attr]
+        result = select_node.runnable.func(tool_calls, config, store=store)  # type: ignore[union-attr]  # langgraph Runnable union exposes .func/.afunc only at runtime
         bind_ids = result["selected_tool_ids"]
         assert "subagent:gmail" not in bind_ids
 
@@ -685,7 +779,7 @@ class TestSelectTools:
         config = _make_config()
         store = MagicMock()
 
-        result = await select_node.runnable.afunc(tool_calls, config, store=store)  # type: ignore[union-attr]
+        result = await select_node.runnable.afunc(tool_calls, config, store=store)  # type: ignore[union-attr]  # langgraph Runnable union exposes .func/.afunc only at runtime
         assert "dummy_tool_a" in result["selected_tool_ids"]
 
     @pytest.mark.asyncio
@@ -699,14 +793,14 @@ class TestSelectTools:
             """Retrieve tools."""
             return {"tools_to_bind": ["dummy_tool_a"], "response": ["dummy_tool_a"]}
 
-        builder = create_agent(llm, registry, retrieve_tools_coroutine=my_coro)  # type: ignore[arg-type]
+        builder = create_agent(llm, registry, retrieve_tools_coroutine=my_coro)  # type: ignore[arg-type]  # test stub returns a bare dict, not the declared RetrieveToolsResult union
 
         select_node = builder.nodes["select_tools"]
         tool_calls = [{"id": "tc1", "args": {}}]
         config = _make_config()
         store = MagicMock()
 
-        result = await select_node.runnable.afunc(tool_calls, config, store=store)  # type: ignore[union-attr]
+        result = await select_node.runnable.afunc(tool_calls, config, store=store)  # type: ignore[union-attr]  # langgraph Runnable union exposes .func/.afunc only at runtime
         assert "dummy_tool_a" in result["selected_tool_ids"]
 
 

@@ -34,7 +34,7 @@ import re
 import sys
 from typing import Any
 
-import yaml  # type: ignore[import-untyped]
+import yaml
 
 BACKEND_DIR = Path(__file__).parent.parent
 DEFAULT_OUTPUT_DIR = BACKEND_DIR.parent.parent / ".agents" / "plans" / "composio_tools_output"

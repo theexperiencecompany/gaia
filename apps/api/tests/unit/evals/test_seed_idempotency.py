@@ -173,7 +173,7 @@ def test_seeding_over_legacy_traces_fails_loudly(monkeypatch: pytest.MonkeyPatch
     abort with an instruction, not quietly double the project.
     """
     monkeypatch.setattr(opiksink, "legacy_case_traces", lambda _project, _expected: 387)
-    with pytest.raises(seed_module.LegacyTracesPresent) as caught:
+    with pytest.raises(seed_module.LegacyTracesPresentError) as caught:
         seed_module._refuse_to_double(PROJECT, [_trace()])
     assert "387" in str(caught.value)
     assert "ingest" in str(caught.value), "the error must name the way out"
