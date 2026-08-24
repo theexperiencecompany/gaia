@@ -24,6 +24,7 @@ from app.constants.memory import (
 )
 from app.memory.prompts import (
     CATEGORIZE_SYSTEM_PROMPT,
+    DOCUMENT_VERIFICATION_PROMPT,
     EPISODE_SUMMARY_SYSTEM_PROMPT,
     EXTRACTION_SYSTEM_PROMPT,
     RECONCILE_SYSTEM_PROMPT,
@@ -36,6 +37,7 @@ from app.memory.schemas import (
     FactCategorization,
     ReconcileBatchResult,
     ReconcileDecision,
+    VerifiedDocument,
 )
 from shared.py.wide_events import log
 
@@ -255,6 +257,26 @@ async def rewrite_core_document(system_prompt: str, inputs: str, *, user_id: str
         user_id=user_id,
     )
     return result.content if result else None
+
+
+async def verify_core_document(
+    content: str, facts: list[str], *, user_id: str
+) -> VerifiedDocument | None:
+    """Strike document lines the source facts do not support (consolidation pass).
+
+    Returns None on total LLM failure — the caller keeps the unverified
+    document rather than losing the rewrite.
+    """
+    fact_lines = "\n".join(f"- {fact}" for fact in facts)
+    return await _invoke_structured(
+        VerifiedDocument,
+        [
+            SystemMessage(content=DOCUMENT_VERIFICATION_PROMPT),
+            HumanMessage(content=f"## Document\n{content}\n\n## Source facts\n{fact_lines}"),
+        ],
+        operation="verify_document",
+        user_id=user_id,
+    )
 
 
 def _format_reconcile_input(pairs: list[tuple[ExtractedFact, list[SimilarMemory]]]) -> str:

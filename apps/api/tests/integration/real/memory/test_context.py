@@ -12,6 +12,7 @@ import pytest
 from app.constants.memory import MemoryDocType
 from app.db.redis import redis_cache
 from app.memory import pg_store
+from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
 from app.memory.engine import memory_engine
 
 pytestmark = pytest.mark.memory
@@ -28,7 +29,6 @@ async def test_core_context_sections_structure_and_order(memory_user: str) -> No
     await memory_engine.update_document(
         memory_user, MemoryDocType.PEOPLE_MD, "PEOPLE-REGISTER-SENTINEL"
     )
-    await memory_engine.update_document(memory_user, MemoryDocType.INSIGHTS_MD, "INSIGHTS-SENTINEL")
     await pg_store.append_episode_entries(
         memory_user,
         datetime.now(UTC).date(),
@@ -51,9 +51,8 @@ async def test_core_context_sections_structure_and_order(memory_user: str) -> No
     assert "- 08:30 Started the workday" in context
     assert f"Today ({datetime.now(UTC).date().isoformat()})" in context
 
-    # people.md and insights.md are retrieval-only — never injected hot.
+    # people.md is retrieval-only — never injected hot.
     assert "PEOPLE-REGISTER-SENTINEL" not in context
-    assert "INSIGHTS-SENTINEL" not in context
 
 
 async def test_core_context_empty_user_returns_empty_string(memory_user: str) -> None:
@@ -67,6 +66,25 @@ async def test_core_context_omits_blank_documents(memory_user: str) -> None:
     context = await memory_engine.get_core_context(memory_user)
     assert "## About the user" not in context, "blank documents must be omitted"
     assert "## Current agenda" in context
+
+
+async def test_an_oversized_document_only_truncates_itself(memory_user: str) -> None:
+    # One head/tail cut over the whole block meant an oversized agenda ate the
+    # journal that followed it. Each document now pays for its own overrun.
+    await memory_engine.update_document(
+        memory_user, MemoryDocType.AGENDA_MD, "- " + ("agenda item. " * 500)
+    )
+    await pg_store.append_episode_entries(
+        memory_user,
+        datetime.now(UTC).date(),
+        [{"time": "08:30", "text": "JOURNAL-SENTINEL", "source": "conversation"}],
+    )
+
+    context = await memory_engine.get_core_context(memory_user)
+
+    agenda_body = context[context.index(AGENDA_HEADING) : context.index(RECENT_ACTIVITY_HEADING)]
+    assert len(agenda_body) < 1_200, "the agenda must be clipped to its own budget"
+    assert "JOURNAL-SENTINEL" in context, "the journal must survive an oversized agenda"
 
 
 async def test_core_context_survives_redis_outage(

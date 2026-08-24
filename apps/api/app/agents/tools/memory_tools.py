@@ -28,7 +28,7 @@ contract (the tool cards mirror them):
 ``app.models.memory_models.MemoryEntry`` (``model_dump(mode="json")``,
 snake_case keys), with ``content`` capped at MEMORY_TOOL_CONTENT_MAX_CHARS.
 Document ``content`` is capped at MEMORY_TOOL_DOCUMENT_MAX_CHARS. ``doc_type``
-is a ``MemoryDocType`` value (``user_md`` ... ``insights_md``).
+is a ``MemoryDocType`` value (``user_md`` ... ``people_md``).
 """
 
 from datetime import date as date_type
@@ -442,6 +442,11 @@ async def update_memory(
     if not user_id:
         return _ERR_NO_USER_ID
 
+    # A bad id RAISES (MemoryNotFoundError) rather than returning an error
+    # string. The string version read back to the model as an ordinary result:
+    # it typo'd an id, got "Error: ... not found", and told the user the
+    # memory was fixed. A superseded id is not a failure — the engine resolves
+    # it to the live head of its chain.
     try:
         entry = await memory_engine.update_memory(user_id, memory_id, new_content)
     except Exception as e:
@@ -453,13 +458,6 @@ async def update_memory(
         )
         log.set(memory=MemoryContext(operation="update", success=False))
         raise
-
-    if entry is None:
-        log.warning("memory_tool_memory_not_found", operation="update", memory_id=memory_id)
-        return (
-            f"Error: memory {memory_id} not found or already superseded — "
-            "search_memory for the current version and use its ID."
-        )
 
     log.set(
         user=UserContext(id=user_id),

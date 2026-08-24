@@ -42,6 +42,7 @@ from app.constants.memory import (
     MemorySourceType,
     ReconcileOutcome,
 )
+from app.memory.management import MemoryNotFoundError
 from app.memory.retrieval import EpisodeHit
 from app.models.memory_models import (
     MemoryDocument,
@@ -776,17 +777,19 @@ class TestUpdateMemory:
         assert [memory["id"] for memory in payload["memories"]] == ["mem-2"]
 
     @patch(f"{MODULE}.memory_engine")
-    async def test_unknown_id_returns_a_corrective_error_without_streaming(
+    async def test_an_unknown_id_raises_instead_of_returning_a_readable_error(
         self, mock_engine: MagicMock, stream: MagicMock
     ) -> None:
-        mock_engine.update_memory = AsyncMock(return_value=None)
+        # An error STRING reads back to the model as an ordinary tool result:
+        # it typo'd an id, saw "Error: ... not found", and told the user the
+        # memory had been corrected. Raising is what stops that.
+        mock_engine.update_memory = AsyncMock(side_effect=MemoryNotFoundError("gone"))
 
-        result = await update_memory.coroutine(
-            config=_make_config(), memory_id="gone", new_content="new"
-        )
+        with pytest.raises(MemoryNotFoundError):
+            await update_memory.coroutine(
+                config=_make_config(), memory_id="gone", new_content="new"
+            )
 
-        assert "not found or already superseded" in result
-        assert "search_memory" in result
         stream.assert_not_called()
 
     async def test_missing_user_id_returns_error(self) -> None:
@@ -1273,17 +1276,17 @@ class TestUpdateMemoryDocument:
         self, mock_engine: MagicMock, stream: MagicMock
     ) -> None:
         mock_engine.update_document = AsyncMock(
-            return_value=_make_document(doc_type=MemoryDocType.INSIGHTS_MD, version=2)
+            return_value=_make_document(doc_type=MemoryDocType.PEOPLE_MD, version=2)
         )
 
         await update_memory_document.coroutine(
-            config=_make_config(), doc_type="insights", content="# New"
+            config=_make_config(), doc_type="people", content="# New"
         )
 
         payload = _payloads(stream)[0]
         assert payload["action"] == "document"
         assert payload["updated"] is True
-        assert payload["document"]["doc_type"] == "insights_md"
+        assert payload["document"]["doc_type"] == "people_md"
         assert payload["document"]["version"] == 2
 
     @patch(f"{MODULE}.memory_engine")

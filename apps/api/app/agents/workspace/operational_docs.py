@@ -365,7 +365,6 @@ fail or won't stick. Mutate memory through the tools, never the files.
         memory.md        how to assist them: preferences, tone, dos/don'ts
         agenda.md        open loops: active projects, commitments, deadlines
         people.md        relationship register: names, roles, key dates
-        insights.md      observed patterns and routines (proactivity fuel)
         journal/         one page per day (last 30 days): what the user did
                          and what you did for them, plus a day summary
         facts/           atomic facts filed by topic folder, one file per

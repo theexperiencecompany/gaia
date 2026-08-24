@@ -36,6 +36,7 @@ from app.models.memory_models import (
     MemoryTreeResponse,
 )
 from app.services.memory_fs import schedule_memory_vfs_sync
+from app.utils.errors import AppError
 
 
 async def get_tree(user_id: str) -> MemoryTreeResponse:
@@ -150,28 +151,83 @@ async def get_history(user_id: str, memory_id: str) -> MemorySearchResult:
     return MemorySearchResult(memories=memories, total_count=len(memories))
 
 
-async def update_memory(user_id: str, memory_id: str, content: str) -> MemoryEntry | None:
-    """Correct a memory by chaining an UPDATES version onto it.
+class MemoryNotFoundError(AppError):
+    """No live memory could be resolved from the id a caller supplied."""
 
-    The old row stays as history (``is_latest=False``); the new row inherits
-    folder, kind, importance and entity links. Returns None when the memory
-    does not exist or is not the live head of its chain.
+    def __init__(self, memory_id: str) -> None:
+        super().__init__(
+            message=f"Memory {memory_id} does not exist for this user.",
+            why="The id does not name any memory in this user's store.",
+            fix=(
+                "Call search_memory to get the current id of the fact you mean, "
+                "then retry the correction with that id. Do NOT tell the user "
+                "the memory was corrected — it was not."
+            ),
+            status_code=404,
+            meta={"memory_id": memory_id},
+        )
+
+
+async def _resolve_live_head(memory_id: str, user_id: str) -> MemoryRecord:
+    """The live head of the chain ``memory_id`` belongs to.
+
+    A model correcting a memory routinely hands back an id it saw in an older
+    recall, which by then has been superseded. That id still names a real
+    chain, so resolve it to the chain's live head rather than refusing — the
+    correction the user asked for is unambiguous either way.
+
+    Raises ``MemoryNotFoundError`` when the id names nothing at all (a typo, a
+    hallucination, another user's memory) or when the chain has no live head.
+    That has to be an exception, not a string: the tool returned
+    "Error: ... not found or already superseded" as its result and the model
+    read it as a result, told the user the memory was fixed, and moved on.
     """
-    old = await pg_store.get_memory(memory_id, user_id)
-    if old is None or not old.is_latest or old.is_forgotten:
-        return None
+    try:
+        row = await pg_store.get_memory(memory_id, user_id)
+    except ValueError as e:
+        # Not even a UUID — a fabricated id, which is exactly the case that
+        # must not read back as an ordinary tool result.
+        raise MemoryNotFoundError(memory_id) from e
+    if row is None or row.is_forgotten:
+        raise MemoryNotFoundError(memory_id)
+    if row.is_latest:
+        return row
+
+    head = next(
+        (version for version in await pg_store.get_chain(memory_id, user_id) if version.is_latest),
+        None,
+    )
+    if head is None or head.is_forgotten:
+        raise MemoryNotFoundError(memory_id)
+    return head
+
+
+async def update_memory(user_id: str, memory_id: str, content: str) -> MemoryEntry:
+    """Correct a memory by chaining an UPDATES version onto its live head.
+
+    A superseded id resolves to the head of its chain, so a correction never
+    fails just because the model quoted an older version. The old row stays as
+    history (``is_latest=False``); the new row inherits folder, kind, shelf
+    life, expiry, importance and entity links.
+
+    Raises ``MemoryNotFoundError`` when no live memory can be resolved.
+    """
+    old = await _resolve_live_head(memory_id, user_id)
+    memory_id = str(old.id)
 
     record = MemoryRecord(
         user_id=user_id,
         kind=old.kind,
+        shelf_life=old.shelf_life,
         content=content,
         category_path=old.category_path,
         importance=old.importance,
+        forget_after=old.forget_after,
         source_type=MemorySourceType.MANUAL.value,
     )
     row = await pg_store.supersede_memory(memory_id, user_id, record, MemoryRelationType.UPDATES)
     if row is None:
-        return None
+        raise MemoryNotFoundError(memory_id)
 
     entities_by_memory = await pg_store.get_entities_for_memories([old.id])
     entities = entities_by_memory.get(old.id, [])

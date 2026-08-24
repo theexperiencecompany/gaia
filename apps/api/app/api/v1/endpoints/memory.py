@@ -334,10 +334,9 @@ async def update_memory(
         memory=MemoryContext(operation="update", memory_id=memory_id),
     )
 
+    # A superseded id resolves to its chain head; an unknown one raises
+    # MemoryNotFoundError, which the AppError handler renders as a 404.
     entry = await memory_engine.update_memory(user_id, memory_id, request.content)
-    if entry is None:
-        log.warning("memory_not_found", operation="update", memory_id=memory_id)
-        raise HTTPException(status_code=404, detail="Memory not found or already superseded")
 
     log.set(memory=MemoryContext(operation="update", new_memory_id=entry.id, version=entry.version))
     return entry
