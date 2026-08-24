@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import (
+    Runnable,
     RunnableBinding,
     RunnableConfig,
     RunnableLambda,
@@ -2092,6 +2093,23 @@ class TestTheStickyKeyNeverReachesANonOpenRouterFallback:
         open-ended walk never converges — it hung this file's suite for eight
         minutes. The walk follows only the two real wrapper types, bounded."""
         assert _is_openrouter_wire(NonCallableMagicMock()) is False
+
+    def test_a_wrapper_stack_deeper_than_the_bound_is_not_assumed_openrouter(self) -> None:
+        """Running out of hops means the walk never SAW an OpenRouter client,
+        so the honest answer is no. Answering yes there would bind
+        ``session_id`` onto whatever the stack actually wraps, and a provider
+        that does not understand it rejects the call outright — the exact
+        failure the bound exists to avoid, reintroduced by the safeguard."""
+        from app.agents.llm.client import _WIRE_WALK_MAX_HOPS, _is_openrouter_wire
+        from tests.helpers import create_fake_llm
+
+        node: Runnable = create_fake_llm(["ok"])
+        for _ in range(_WIRE_WALK_MAX_HOPS + 1):
+            binding = NonCallableMagicMock(spec=RunnableBinding)
+            binding.bound = node
+            node = binding
+
+        assert _is_openrouter_wire(node) is False
 
     async def test_a_gemini_fallback_is_invoked_without_the_sticky_key(self) -> None:
         """The regression itself: a real Gemini structured runnable as the
