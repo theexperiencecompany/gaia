@@ -246,10 +246,10 @@ async def test_an_unreported_reasoning_count_is_booked_as_none_of_it(
 
 
 def test_the_generation_id_is_read_from_the_response() -> None:
-    """The id is the only handle on WHICH UPSTREAM served the call: OpenRouter's
-    ``provider`` field is dropped by langchain_openai's fixed ``llm_output``
-    whitelist, and this id resolves to the serving provider through the
-    generation-metadata endpoint without spending a model call."""
+    """The id is the only handle on WHICH UPSTREAM served the call: ChatOpenRouter
+    keeps the aggregator's own name (``model_provider="openrouter"``) and drops the
+    upstream's ``provider`` field, and this id resolves to the serving upstream
+    through the generation-metadata endpoint without spending a model call."""
     message = AIMessage(content="hi", response_metadata={"id": "gen-abc123"})
 
     assert extract_generation_id(message) == "gen-abc123"
