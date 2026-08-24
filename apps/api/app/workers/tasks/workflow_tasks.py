@@ -711,7 +711,7 @@ async def execute_workflow_by_id(
         # error) must not permanently kill a recurring workflow.
         await _rearm_quietly(scheduler, workflow, context, workflow_id)
 
-        return "Error executing workflow %s: %s" % (workflow_id, str(e))
+        return f"Error executing workflow {workflow_id}: {e}"
     finally:
         # Events that landed while this run held the batch could not schedule
         # their own run (the job id was occupied). Every exit owes them a
