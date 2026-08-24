@@ -2,7 +2,7 @@ import {
   fetchBytesCapped,
   MediaReadTimeoutError,
   readResponseBytesCapped,
-} from "@gaia/shared";
+} from "@gaia/shared/bots";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const CHUNK = 256;

@@ -36,7 +36,7 @@ import {
   richMessageToMarkdown,
   type SentMessage,
   STREAMING_DEFAULTS,
-} from "@gaia/shared";
+} from "@gaia/shared/bots";
 import { App } from "@slack/bolt";
 
 /** Bolt's respond function for slash command responses. */

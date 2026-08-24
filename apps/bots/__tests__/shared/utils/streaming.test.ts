@@ -14,7 +14,7 @@ import {
   type PlatformName,
   renderForPlatform,
   STREAMING_DEFAULTS,
-} from "@gaia/shared";
+} from "@gaia/shared/bots";
 import { describe, expect, it } from "vitest";
 
 const BREAK = "<NEW_MESSAGE_BREAK>";

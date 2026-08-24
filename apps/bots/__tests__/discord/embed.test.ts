@@ -10,7 +10,7 @@
  * `apps/bots/__tests__/shared/adapter/rich-renderer.test.ts`.
  */
 
-import type { RichMessage } from "@gaia/shared";
+import type { RichMessage } from "@gaia/shared/bots";
 import { describe, expect, it } from "vitest";
 import { richMessageToEmbed } from "../../discord/src/adapter";
 

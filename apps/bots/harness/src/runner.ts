@@ -9,7 +9,7 @@
  * against.
  */
 
-import type { PlatformName } from "@gaia/shared";
+import type { PlatformName } from "@gaia/shared/bots";
 import { HarnessAdapter } from "./adapter";
 import { isEmulatablePlatform, resolveEmulation } from "./emulation";
 import type { Scenario, ScenarioAssertion } from "./scenario.types";

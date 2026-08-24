@@ -17,7 +17,7 @@
  * 8. command path → an ephemeral reply records an ephemeral event
  */
 
-import type { PlatformName } from "@gaia/shared";
+import type { PlatformName } from "@gaia/shared/bots";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HarnessAdapter } from "../../harness/src/adapter";
 import { resolveEmulation } from "../../harness/src/emulation";

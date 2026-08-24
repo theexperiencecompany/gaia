@@ -28,7 +28,7 @@ vi.mock("@hono/node-server", () => ({
   serve: vi.fn(),
 }));
 
-vi.mock("@gaia/shared", async () => {
+vi.mock("@gaia/shared/bots", async () => {
   const { makeGaiaSharedMock } = await import("../shared/mocks/gaiaSharedBase");
   const real = await import("../../../../libs/shared/ts/src/bots/utils");
   return makeGaiaSharedMock("imessage", {
@@ -55,7 +55,7 @@ vi.mock("@gaia/shared", async () => {
   });
 });
 
-import { handleStreamingChat, MEDIA_READ_TIMEOUT_MS } from "@gaia/shared";
+import { handleStreamingChat, MEDIA_READ_TIMEOUT_MS } from "@gaia/shared/bots";
 import { attachment } from "spectrum-ts";
 import { ImessageAdapter } from "../../imessage/src/adapter";
 

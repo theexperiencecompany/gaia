@@ -21,7 +21,7 @@ import {
   buildPlanRequiredMessage,
   type PlatformName,
   renderForPlatform,
-} from "@gaia/shared";
+} from "@gaia/shared/bots";
 import { describe, expect, it, vi } from "vitest";
 import { HarnessAdapter } from "../../harness/src/adapter";
 import { resolveEmulation } from "../../harness/src/emulation";

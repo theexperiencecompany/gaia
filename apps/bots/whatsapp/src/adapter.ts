@@ -15,6 +15,7 @@
  * @module
  */
 
+import { BOT_EVENTS } from "@gaia/shared/analytics";
 import {
   BaseBotAdapter,
   BODY_READ_TIMEOUT,
@@ -44,8 +45,7 @@ import {
   WEBHOOK_MAX_BODY_BYTES,
   wideLog,
   withWideEvent,
-} from "@gaia/shared";
-import { BOT_EVENTS } from "@gaia/shared/analytics";
+} from "@gaia/shared/bots";
 import { WhatsAppClient } from "@kapso/whatsapp-cloud-api";
 import {
   NOTIFICATION_TEMPLATE_LANGUAGE,

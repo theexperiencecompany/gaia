@@ -28,7 +28,7 @@ import {
   type RichMessageTarget,
   richMessageToMarkdown,
   type SentMessage,
-} from "@gaia/shared";
+} from "@gaia/shared/bots";
 import type { PlatformEmulation } from "./emulation";
 import type { TranscriptRecorder } from "./transcript";
 

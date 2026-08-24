@@ -9,7 +9,11 @@
  * Run with: `pnpm deploy-commands` or `tsx src/deploy-commands.ts`
  */
 
-import { allCommands, type BotCommand, createBotLogger } from "@gaia/shared";
+import {
+  allCommands,
+  type BotCommand,
+  createBotLogger,
+} from "@gaia/shared/bots";
 import {
   ApplicationCommandType,
   ContextMenuCommandBuilder,

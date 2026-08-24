@@ -30,7 +30,7 @@ import {
   WEBHOOK_MAX_BODY_BYTES,
   wideLog,
   withWideEvent,
-} from "@gaia/shared";
+} from "@gaia/shared/bots";
 import { attachment, type Message, type Space, Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import {

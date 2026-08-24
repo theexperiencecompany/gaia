@@ -101,7 +101,7 @@ vi.mock("../../whatsapp/src/webhook", () => ({
 // Mock @gaia/shared — BaseBotAdapter stub + shared helpers.
 // ---------------------------------------------------------------------------
 
-vi.mock("@gaia/shared", async () => {
+vi.mock("@gaia/shared/bots", async () => {
   const { makeGaiaSharedMock } = await import("../shared/mocks/gaiaSharedBase");
   // Wire the REAL pure helpers the adapter imports (command-arg parsing and the
   // media error/unsupported copy) so behavior is asserted against production
@@ -128,7 +128,7 @@ vi.mock("@gaia/shared", async () => {
 // Now import the real adapter (which will use the mocks above).
 // ---------------------------------------------------------------------------
 
-import { handleStreamingChat, richMessageToMarkdown } from "@gaia/shared";
+import { handleStreamingChat, richMessageToMarkdown } from "@gaia/shared/bots";
 import { WhatsAppAdapter } from "../../whatsapp/src/adapter";
 
 // ---------------------------------------------------------------------------

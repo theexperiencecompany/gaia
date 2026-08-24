@@ -38,7 +38,7 @@ import {
   STREAMING_DEFAULTS,
   wideLog,
   withWideEvent,
-} from "@gaia/shared";
+} from "@gaia/shared/bots";
 import {
   ActionRowBuilder,
   ActivityType,

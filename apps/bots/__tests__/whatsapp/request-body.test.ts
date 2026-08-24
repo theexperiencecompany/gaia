@@ -18,7 +18,7 @@ import {
   BODY_READ_TIMEOUT,
   BODY_TOO_LARGE,
   readBodyBounded,
-} from "@gaia/shared";
+} from "@gaia/shared/bots";
 import { describe, expect, it, vi } from "vitest";
 
 const enc = new TextEncoder();
