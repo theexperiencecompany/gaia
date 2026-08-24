@@ -135,8 +135,12 @@ async def _astream(
 
 def apply() -> None:
     """Rebind ChatOpenRouter's streaming generators to the usage-normalising ones."""
-    ChatOpenRouter._stream = _stream  # type: ignore[method-assign]
-    ChatOpenRouter._astream = _astream  # type: ignore[method-assign]
+    # setattr through a variable name: monkeypatching a method is exactly what
+    # this patch exists to do, and neither mypy's method-assign check nor ruff's
+    # B010 has a way to express "this assignment is the point".
+    replacements: dict[str, object] = {"_stream": _stream, "_astream": _astream}
+    for method_name, replacement in replacements.items():
+        setattr(ChatOpenRouter, method_name, replacement)
 
 
 apply()

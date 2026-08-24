@@ -32,7 +32,9 @@ from pydantic import SecretStr
 import pytest
 
 # Importing the patch module normalises ChatOpenRouter's stream at import time.
-import app.patches.openrouter_cumulative_usage_patch  # noqa: F401
+from app.patches import openrouter_cumulative_usage_patch as _patch
+
+assert _patch is not None  # imported for its side effect: the patch applies at import
 from app.services.llm_metering import extract_message_usage
 
 MODEL = "deepseek-v4-flash"

@@ -83,11 +83,6 @@ export function normalizeMessageBreakTokens(text: string): string {
   return text.replace(MESSAGE_BREAK_VARIANT_PATTERN, NEW_MESSAGE_BREAK_TOKEN);
 }
 
-/** True when the text holds any complete break-sentinel spelling. */
-export function containsMessageBreakToken(text: string): boolean {
-  return new RegExp(`${OPEN}(?:${SENTINEL_BODY})${CLOSE}`, "i").test(text);
-}
-
 /**
  * Drops a trailing partial break sentinel.
  *
