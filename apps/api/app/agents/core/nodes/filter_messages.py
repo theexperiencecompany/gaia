@@ -18,7 +18,7 @@ from shared.py.wide_events import log
 T = TypeVar("T", bound=MessagesState)
 
 
-def filter_messages_node(state: T, config: RunnableConfig, store: BaseStore) -> T:
+def filter_messages_node(state: T, config: RunnableConfig, store: BaseStore) -> T:  # noqa: ARG001 -- execute_hooks() passes state/config/store positionally
     """
     Filters out unanswered tool calls from AI messages.
 
@@ -64,7 +64,7 @@ def filter_messages_node(state: T, config: RunnableConfig, store: BaseStore) -> 
                 # Keep all other messages as-is (SystemMessage, HumanMessage, ToolMessage, etc.)
                 filtered_messages.append(msg)
 
-        return {**state, "messages": filtered_messages}  # type: ignore[return-value]
+        return {**state, "messages": filtered_messages}  # type: ignore[return-value]  # generic T: dict literal can't satisfy an arbitrary MessagesState subclass
 
     except Exception as e:
         log.error(

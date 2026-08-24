@@ -226,7 +226,7 @@ class WorkflowGenerationService:
             try:
                 # Local import: my_integrations -> tools/oauth services transitively
                 # import this module, so a top-level import is a circular import.
-                from app.services.integrations.my_integrations import (
+                from app.services.integrations.my_integrations import (  # noqa: PLC0415 -- my_integrations transitively re-imports this module; top-level would be circular
                     get_my_integrations,
                 )
 

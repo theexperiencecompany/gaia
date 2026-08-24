@@ -463,7 +463,7 @@ class TestRichTextToMarkdown:
 
 class TestBlockToMarkdown:
     def test_not_a_dict(self) -> None:
-        assert block_to_markdown("not a dict") == ""  # type: ignore[arg-type]
+        assert block_to_markdown("not a dict") == ""  # type: ignore[arg-type]  # malformed input exercises the defensive branch
 
     def test_missing_type(self) -> None:
         assert block_to_markdown({"data": "something"}) == ""
@@ -854,7 +854,7 @@ class TestBlocksToMarkdown:
                 },
             },
         ]
-        assert blocks_to_markdown(blocks) == "Visible"  # type: ignore[arg-type]
+        assert blocks_to_markdown(blocks) == "Visible"  # type: ignore[arg-type]  # malformed input exercises the defensive branch
 
     def test_nesting(self) -> None:
         blocks = [

@@ -205,7 +205,7 @@ class TestEveryPausedCallIsReported:
 
     The caller stamps re-dispatch context onto every id the pause reports
     (``executor_runner._record_pause``). An approval left out of that list gets no
-    ``resume_item``, and deciding it later raises ApprovalNotResumable — the user
+    ``resume_item``, and deciding it later raises ApprovalNotResumableError — the user
     presses Approve and the action can never happen.
     """
 

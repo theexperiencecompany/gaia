@@ -78,7 +78,7 @@ async def search_uploaded_files(
 
     except Exception as e:
         log.error(f"{LogTag.TOOL} Error in querying document", error_type=type(e).__name__)
-        raise e
+        raise
 
 
 async def _get_similar_documents(
@@ -156,7 +156,7 @@ def _construct_content(
     """
     content = ""
 
-    for similar_document, score in similar_documents:
+    for similar_document, _score in similar_documents:
         document_id = similar_document.metadata["file_id"]
         document = next(
             (doc for doc in documents if str(doc.file_id) == str(document_id)),

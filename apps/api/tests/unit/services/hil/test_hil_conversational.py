@@ -26,7 +26,7 @@ from app.services.hil.conversational import (
     DecisionResult,
     resolve_pending_from_message,
 )
-from app.services.hil.resolution import ApprovalRequestNotFound
+from app.services.hil.resolution import ApprovalRequestNotFoundError
 
 from .conftest import CONVERSATION_ID, USER_ID, make_record
 
@@ -394,7 +394,7 @@ class TestRacingDecisions:
                 BatchItemDecision(index=2, action="approve"),
             ],
         )
-        resolver["resolve"].side_effect = [ApprovalRequestNotFound(), None]
+        resolver["resolve"].side_effect = [ApprovalRequestNotFoundError(), None]
         with pending("Send email", "Post to Slack"):
             action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes")
 
@@ -403,6 +403,16 @@ class TestRacingDecisions:
 
     async def test_an_already_resolved_single_approval_does_not_raise(self, resolver: dict) -> None:
         resolver["llm"].return_value = DecisionResult(action="approve")
-        resolver["resolve"].side_effect = ApprovalRequestNotFound()
+        resolver["resolve"].side_effect = ApprovalRequestNotFoundError()
+        with pending("Send email"):
+            assert await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes") == "approve"
+
+    async def test_a_forbidden_approval_is_swallowed_the_same_way(self, resolver: dict) -> None:
+        """A decision that lost an ownership race (approval belongs to another
+        user) must read as "already handled", not blow up the chat turn."""
+        from app.services.hil.resolution import ApprovalRequestForbiddenError
+
+        resolver["llm"].return_value = DecisionResult(action="approve")
+        resolver["resolve"].side_effect = ApprovalRequestForbiddenError()
         with pending("Send email"):
             assert await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes") == "approve"

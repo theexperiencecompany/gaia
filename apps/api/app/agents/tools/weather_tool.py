@@ -13,7 +13,7 @@ from app.utils.weather_utils import user_weather
 @with_rate_limiting("weather_checks")
 @with_doc(GET_WEATHER)
 async def get_weather(
-    config: RunnableConfig,
+    config: RunnableConfig,  # noqa: ARG001 -- framework contract
     location: Annotated[str, "Name of the location (e.g. Mumbai,IN)"],
 ) -> str:
     writer = get_stream_writer()

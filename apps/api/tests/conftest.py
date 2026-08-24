@@ -187,7 +187,7 @@ for p in _patches:
 # future refactor that binds or resolves inject_infisical_secrets at import
 # time inside settings.py would silently defeat every patch above. These
 # asserts pin the two bindings that matter. importlib (not a top-level
-# import) so the E402 suppression-ratchet stays clean: a from-import here
+# import) so the E402 rule stays clean: a from-import here
 # would also be a module-level import after the patch loop.
 _secrets_module = importlib.import_module("app.config.secrets")
 _settings_module = importlib.import_module("app.config.settings")
@@ -281,6 +281,16 @@ def _hermetic_environment() -> Iterator[None]:
         os.environ["LANG"] = "C.UTF-8"
         os.environ["LC_ALL"] = "C.UTF-8"
         os.environ["PYTHONHASHSEED"] = "0"
+        # Process identity the worker stamps at import (app/workers/lifecycle/
+        # startup.py setdefaults GAIA_SERVICE_NAME=arq_worker before its app
+        # imports, so the first emitted log line already carries the Promtail
+        # label). Any test importing that chain would otherwise leak the var and
+        # trip the pollution guard below — e.g. test_worker_smoke, or any
+        # single-file selection that is the only importer of app.worker. Pinning
+        # it here keeps the guard's baseline complete: under tests the process
+        # is not the worker, and env_context() falls through "" to the default
+        # service name.
+        os.environ.setdefault("GAIA_SERVICE_NAME", "")
         yield
     finally:
         os.environ.clear()

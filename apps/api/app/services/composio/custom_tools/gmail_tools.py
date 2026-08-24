@@ -228,7 +228,7 @@ def _effective_max(request: FetchMessagesInput, default_max: int) -> int:
 # =============================================================================
 
 
-class _PartialResult(Exception):
+class _PartialResultError(Exception):
     """Raised internally to short-circuit the pagination loop on error.
 
     Caught at the top of ``FETCH_MESSAGES`` and rendered as a
@@ -324,7 +324,7 @@ def _aggregate_pages(
     Per-message fetches within a page fan out over a bounded thread pool
     (``FETCH_CONCURRENCY``); results keep the page order. Returns
     ``(messages, truncated)`` where messages are full (unprojected) views.
-    Raises ``_PartialResult`` for mid-loop errors, carrying the messages
+    Raises ``_PartialResultError`` for mid-loop errors, carrying the messages
     already aggregated.
     """
     all_messages: list[dict[str, Any]] = []
@@ -398,7 +398,7 @@ def _aggregate_pages(
             error_type=type(exc).__name__,
             user_id=user_id,
         )
-        raise _PartialResult(reason=str(exc), partial_messages=all_messages) from exc
+        raise _PartialResultError(reason=str(exc), partial_messages=all_messages) from exc
 
     return all_messages, truncated
 
@@ -612,7 +612,7 @@ def _summarize(
         full_views, truncated = _aggregate_pages(
             user_id, request, combined_query=combined_query, effective_max=cap
         )
-    except _PartialResult as exc:
+    except _PartialResultError as exc:
         return _format_partial_result(
             [project_message_view(view, request.fields) for view in exc.partial_messages],
             reason=exc.reason,
@@ -717,7 +717,7 @@ def _aggregate_threads(
     """Fetch every requested thread over the bounded pool, honoring the total
     message cap. Returns ``(threads, flat_views, truncated)`` where ``threads``
     keeps the per-thread grouping and ``flat_views`` is every message view.
-    Raises ``_PartialResult`` on a mid-fetch error once anything succeeded.
+    Raises ``_PartialResultError`` on a mid-fetch error once anything succeeded.
     """
     needs_full = _thread_needs_full(request)
     cap = min(request.max_messages or MAX_ABSOLUTE_MESSAGES, MAX_ABSOLUTE_MESSAGES)
@@ -751,7 +751,7 @@ def _aggregate_threads(
             error_type=type(exc).__name__,
             user_id=user_id,
         )
-        raise _PartialResult(reason=str(exc), partial_messages=flat_views) from exc
+        raise _PartialResultError(reason=str(exc), partial_messages=flat_views) from exc
 
     return threads, flat_views, truncated
 
@@ -762,7 +762,7 @@ def _summarize_threads(user_id: str, request: FetchThreadInput) -> dict[str, Any
     config = _current_config()
     try:
         threads, flat_views, truncated = _aggregate_threads(user_id, request)
-    except _PartialResult as exc:
+    except _PartialResultError as exc:
         return _format_partial_result(
             [project_message_view(view, request.fields) for view in exc.partial_messages],
             reason=exc.reason,

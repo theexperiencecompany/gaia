@@ -30,7 +30,7 @@ router = APIRouter()
 @router.post("/test/{integration_id}", response_model_exclude_none=True)
 async def test_mcp_connection(
     integration_id: str,
-    user: AuthenticatedUser = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),  # noqa: PT028 -- contract
 ) -> MCPConnectionTestResponse:
     """
     Test connection to an MCP server.
@@ -59,10 +59,10 @@ async def test_mcp_connection(
     # Probe the server
     probe_result = await client.probe_connection(server_url)
     log.set(
-        probe=dict(
-            requires_auth=probe_result.get("requires_auth", False),
-            has_error=bool(probe_result.get("error")),
-        )
+        probe={
+            "requires_auth": probe_result.get("requires_auth", False),
+            "has_error": bool(probe_result.get("error")),
+        }
     )
 
     probe_error = probe_result.get("error")

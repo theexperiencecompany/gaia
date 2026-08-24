@@ -43,7 +43,7 @@ def extract_headings_from_document(
             level = HEADING_STYLE_MAP[named_style]
         elif full_text.startswith("#"):
             # Check for markdown style headings (e.g. "# Heading")
-            import re
+            import re  # noqa: PLC0415 -- stdlib import kept local to the markdown-heading branch
 
             match = re.match(r"^(#+)\s+([^\n]+)", full_text)
             if match:

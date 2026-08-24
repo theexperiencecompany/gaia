@@ -762,13 +762,20 @@ class TestExecuteGraphSilent:
 
     @patch("app.helpers.agent_helpers.process_custom_event_for_tools")
     async def test_custom_events_merged(self, mock_process):
-        mock_process.return_value = {
-            "tool_data": [{"tool_name": "custom_tool"}],
-            "follow_up_actions": ["action1"],
-        }
+        """tool_data entries ACCUMULATE across events while every other key is
+        merged by name — a second event's tool_data must not replace the first
+        event's entries."""
+        mock_process.side_effect = [
+            {"tool_data": [{"tool_name": "first_tool"}]},
+            {
+                "tool_data": [{"tool_name": "custom_tool"}],
+                "follow_up_actions": ["action1"],
+            },
+        ]
 
         events = [
             ((), "custom", {"some": "data"}),
+            ((), "custom", {"other": "data"}),
         ]
 
         graph = AsyncMock()
@@ -779,7 +786,10 @@ class TestExecuteGraphSilent:
             {},
             {"configurable": {"user_id": USER_ID}},
         )
-        assert len(tool_data["tool_data"]) == 1
+        assert [e["tool_name"] for e in tool_data["tool_data"]] == [
+            "first_tool",
+            "custom_tool",
+        ]
         assert tool_data["follow_up_actions"] == ["action1"]
 
     async def test_todo_progress_accumulated(self):

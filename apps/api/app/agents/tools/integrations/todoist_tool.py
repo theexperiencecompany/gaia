@@ -1,6 +1,6 @@
 """Todoist tools using Composio custom tool infrastructure."""
 
-from datetime import date
+from datetime import UTC, datetime
 from typing import Any
 
 from composio import Composio
@@ -32,7 +32,7 @@ def register_todoist_custom_tools(composio: Composio) -> list[str]:
         tasks = data.get("items", data.get("tasks", data)) if isinstance(data, dict) else data
         if not isinstance(tasks, list):
             tasks = []
-        today = date.today().strftime("%Y-%m-%d")
+        today = datetime.now(UTC).date().strftime("%Y-%m-%d")
         overdue = [
             t
             for t in tasks

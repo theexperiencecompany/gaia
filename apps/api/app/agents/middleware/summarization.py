@@ -46,7 +46,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         keep: ContextSize = ("messages", 15),
         enable_archive: bool = True,
         excluded_tools: set[str] | None = None,
-        **kwargs: Any,
+        **kwargs: Any,  # noqa: ANN401 -- framework contract
     ) -> None:
         super().__init__(model=model, trigger=trigger, keep=keep, **kwargs)
         self.enable_archive = enable_archive

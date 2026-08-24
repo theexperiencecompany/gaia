@@ -1,6 +1,6 @@
 """Asana tools using Composio custom tool infrastructure."""
 
-from datetime import date
+from datetime import UTC, datetime
 from typing import Any
 
 from composio import Composio
@@ -34,7 +34,7 @@ def register_asana_custom_tools(composio: Composio) -> list[str]:
             user_id,
         )
         tasks = data.get("data", data.get("tasks", []))
-        today = date.today().strftime("%Y-%m-%d")
+        today = datetime.now(UTC).date().strftime("%Y-%m-%d")
         overdue = [t for t in tasks if t.get("due_on") and t["due_on"] < today]
         return {"tasks": tasks, "overdue_tasks": overdue}
 

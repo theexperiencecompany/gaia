@@ -250,7 +250,7 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
                 error_type=type(e).__name__,
                 user_id=user_id,
             )
-            for integration_id in composio_id_to_provider.keys():
+            for integration_id in composio_id_to_provider:
                 result[integration_id] = False
 
     # Include custom integrations from MongoDB that are connected
