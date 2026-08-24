@@ -56,7 +56,10 @@ def mock_sync():
 
 class TestBuildVfsLabel:
     def test_label_format(self):
-        assert build_vfs_label(USER_ID, TODO_ID) == f"/users/{USER_ID}/todos/{TODO_ID}"
+        assert build_vfs_label(TODO_ID) == f"/workspace/gaia-tasks/{TODO_ID}"
+
+    def test_label_never_contains_user_id(self):
+        assert USER_ID not in build_vfs_label(TODO_ID)
 
 
 class TestReadCanvas:

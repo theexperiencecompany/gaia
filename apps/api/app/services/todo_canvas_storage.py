@@ -6,8 +6,9 @@ writing, and appending go through the todos repository — no FUSE mount or
 JuiceFS required, so tracked todos work in every dev mode.
 
 The legacy ``vfs_path`` field on the todo doc is retained as a stable
-display label (``/users/{user_id}/todos/{todo_id}``) but is no longer a
-real filesystem path.
+display label (``/workspace/gaia-tasks/{todo_id}``) but is no longer a
+real filesystem path. It never carries the host-side ``/users/<uid>``
+prefix — the LLM only ever sees the sandbox-visible workspace path.
 """
 
 from app.db.repositories.todos import todo_repository
@@ -16,9 +17,9 @@ from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
 from shared.py.wide_events import log
 
 
-def build_vfs_label(user_id: str, todo_id: str) -> str:
+def build_vfs_label(todo_id: str) -> str:
     """Stable label used wherever the old VFS path was surfaced for display."""
-    return f"/users/{user_id}/todos/{todo_id}"
+    return f"/workspace/gaia-tasks/{todo_id}"
 
 
 async def read_canvas(todo_id: str, user_id: str) -> str | None:
