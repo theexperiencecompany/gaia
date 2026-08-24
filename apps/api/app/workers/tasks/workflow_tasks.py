@@ -48,6 +48,11 @@ from app.models.workflow_models import (
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
 from app.services.notification_service import notification_service
+from app.services.triggers.batching import (
+    coalesce_window_seconds,
+    drain_trigger_batch,
+    reschedule_if_refilled,
+)
 from app.services.user_service import get_user_by_id
 from app.services.workflow.conversation_service import (
     add_workflow_execution_messages,
@@ -65,7 +70,11 @@ _DRIFT_WARN_SECONDS = 300
 
 
 async def process_workflow_generation_task(
-    ctx: dict[str, Any], todo_id: str, user_id: str, title: str, description: str = ""
+    ctx: dict[str, Any],  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
+    todo_id: str,
+    user_id: str,
+    title: str,
+    description: str = "",
 ) -> str:
     """
     Process workflow generation task for todos.
@@ -169,7 +178,10 @@ async def process_workflow_generation_task(
                     )
 
                 # Clear the generating flag
-                from app.services.workflow.queue_service import WorkflowQueueService
+                # Deferred import: function-local re-bind in this success path; the workflow stack is already loaded by module-top service imports
+                from app.services.workflow.queue_service import (  # noqa: PLC0415 -- deferred
+                    WorkflowQueueService,
+                )
 
                 try:
                     await WorkflowQueueService.clear_workflow_generating_flag(todo_id)
@@ -208,7 +220,9 @@ async def process_workflow_generation_task(
     except Exception as e:
         # Clear the generating flag on failure too
         try:
-            from app.services.workflow.queue_service import WorkflowQueueService
+            from app.services.workflow.queue_service import (  # noqa: PLC0415 -- heavy workflow queue loads only when this task runs
+                WorkflowQueueService,
+            )
 
             await WorkflowQueueService.clear_workflow_generating_flag(todo_id)
         except Exception as cleanup_error:
@@ -471,7 +485,9 @@ def _origin_for(trigger_type: str) -> LimitHitOrigin:
 
 
 async def execute_workflow_by_id(
-    ctx: dict[str, Any], workflow_id: str, context: dict[str, Any] | None = None
+    ctx: dict[str, Any],  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
+    workflow_id: str,
+    context: dict[str, Any] | None = None,
 ) -> str:
     """
     Execute a workflow by ID with proper execution count tracking.
@@ -488,12 +504,21 @@ async def execute_workflow_by_id(
     scheduler = workflow_scheduler
     workflow = None
     execution_id = None
+    # Resolved before the try so the finally's refill check can see it on
+    # every exit path.
+    batch_key = (context or {}).get("trigger_batch_key")
 
     try:
         workflow = await scheduler.get_task(workflow_id)
 
         if not workflow:
             return f"Workflow {workflow_id} not found"
+
+        # A coalesced trigger run carries its events (keyed by batch_key) in
+        # Redis rather than in the job payload, so that concurrent enqueues
+        # could dedup down to this one job. Drained only AFTER the gates below
+        # — a run the onboarding or budget gate rejects must leave the buffer
+        # intact for a later run, not consume the events and discard them.
 
         # Determine trigger type from context. An explicit trigger_type always
         # wins; only an ABSENT one falls back — to "integration" when the
@@ -596,6 +621,22 @@ async def execute_workflow_by_id(
             feature_key="trigger_workflow_executions",
         )
 
+        # Both gates passed — take the batch. An empty one means another run
+        # already drained these events and there is nothing left to do.
+        if batch_key:
+            events = await drain_trigger_batch(str(batch_key))
+            if events is None:
+                # Redis unreachable: the buffer may hold events — exit WITHOUT
+                # claiming they were drained; the finally's refill check (or the
+                # next inbound event) schedules a fresh run once Redis returns.
+                log.set_ns("workflow", outcome="trigger_batch_unavailable")
+                return f"Workflow {workflow_id} skipped — trigger batch unavailable"
+            log.set_ns("workflow", trigger_batch_size=len(events))
+            if not events:
+                log.set_ns("workflow", outcome="trigger_batch_empty")
+                return f"Workflow {workflow_id} skipped — trigger batch empty"
+            context = {**(context or {}), "trigger_data": {"events": events, "count": len(events)}}
+
         # Create execution record at start
         execution = await create_execution(
             workflow_id=workflow_id,
@@ -670,7 +711,27 @@ async def execute_workflow_by_id(
         # error) must not permanently kill a recurring workflow.
         await _rearm_quietly(scheduler, workflow, context, workflow_id)
 
-        return "Error executing workflow %s: %s" % (workflow_id, str(e))
+        return f"Error executing workflow {workflow_id}: {e}"
+    finally:
+        # Events that landed while this run held the batch could not schedule
+        # their own run (the job id was occupied). Every exit owes them a
+        # follow-up — a failed or gate-skipped run must strand them no more
+        # than a successful one. Best-effort: a scheduling error only warns.
+        if batch_key is not None and workflow is not None:
+            try:
+                await reschedule_if_refilled(
+                    workflow_id,
+                    str(batch_key),
+                    coalesce_window_seconds(workflow.trigger_config),
+                    context or {},
+                )
+            except Exception as refill_error:
+                log.warning(
+                    f"{LogTag.WORKER} Trigger batch refill check failed",
+                    workflow_id=workflow_id,
+                    error=str(refill_error),
+                    error_type=type(refill_error).__name__,
+                )
 
 
 # No static origin: this decorator is evaluated at import, long before the
@@ -692,7 +753,7 @@ async def execute_workflow_as_chat(
     """
 
     # Avoid circular import
-    from app.agents.core.agent import call_agent_silent
+    from app.agents.core.agent import call_agent_silent  # noqa: PLC0415 -- agent cycle
 
     user_id = user["user_id"]
 
@@ -822,7 +883,7 @@ async def execute_workflow_as_chat(
 
 
 async def regenerate_workflow_steps(
-    ctx: dict[str, Any],
+    ctx: dict[str, Any],  # noqa: ARG001 -- framework contract
     workflow_id: str,
     user_id: str,
     regeneration_reason: str,
@@ -850,7 +911,7 @@ async def regenerate_workflow_steps(
     )
 
     # Import here to avoid circular imports
-    from app.services.workflow.service import WorkflowService
+    from app.services.workflow.service import WorkflowService  # noqa: PLC0415 -- cycle
 
     # Regenerate steps using the service method (without background queue)
     await WorkflowService.regenerate_workflow_steps(
@@ -864,7 +925,7 @@ async def regenerate_workflow_steps(
     return f"Successfully regenerated steps for workflow {workflow_id}"
 
 
-async def generate_workflow_steps(ctx: dict[str, Any], workflow_id: str, user_id: str) -> str:
+async def generate_workflow_steps(ctx: dict[str, Any], workflow_id: str, user_id: str) -> str:  # noqa: ARG001 -- contract
     """
     Generate workflow steps for a workflow.
     Broadcasts WebSocket event when complete if it's a todo workflow.
@@ -879,7 +940,7 @@ async def generate_workflow_steps(ctx: dict[str, Any], workflow_id: str, user_id
     """
     log.set(workflow_id=workflow_id, user_id=user_id)
     # Import here to avoid circular imports
-    from app.services.workflow.service import WorkflowService
+    from app.services.workflow.service import WorkflowService  # noqa: PLC0415 -- cycle
 
     # Generate steps using the service method
     await WorkflowService._generate_workflow_steps(workflow_id, user_id)

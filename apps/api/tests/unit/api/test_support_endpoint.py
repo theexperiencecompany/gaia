@@ -106,3 +106,30 @@ class TestSubmitSupportRequest:
                 "attachment_count": 1,
             },
         )
+
+    async def test_submit_with_attachments_stamps_the_wide_event(self, client: AsyncClient) -> None:
+        """operation + category are how a burst of failed uploads is told apart
+        from a surge of feature requests in Loki; the ticket id lands later."""
+        result = SupportRequestSubmissionResponse(
+            success=True, message="Submitted", ticket_id="T-125"
+        )
+        with (
+            patch(
+                f"{SUPPORT_ENDPOINT}.create_support_request_with_attachments",
+                new_callable=AsyncMock,
+                return_value=result,
+            ),
+            patch(f"{SUPPORT_ENDPOINT}.log") as mock_log,
+        ):
+            resp = await client.post(
+                "/api/v1/support/requests/with-attachments",
+                data={"type": "feature", "title": "New idea", "description": "Add a thing"},
+                files=[("attachments", ("a.png", b"png", "image/png"))],
+            )
+
+        assert resp.status_code == 200
+        first_set = mock_log.set.call_args_list[0].kwargs
+        assert first_set == {
+            "operation": "submit_support_request_with_attachments",
+            "category": "feature",
+        }

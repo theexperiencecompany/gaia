@@ -8,7 +8,7 @@ metering route prices through).
 """
 
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage
 
@@ -189,11 +189,10 @@ def test_a_response_with_no_model_is_unknown_rather_than_guessed() -> None:
 @patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock)
 @patch(
     "app.services.llm_metering.calculate_token_cost",
-    new_callable=AsyncMock,
     return_value={"total_cost": 0.25},
 )
 async def test_the_priced_call_reaches_the_rollup_whole(
-    _price: AsyncMock, usage: AsyncMock
+    _price: MagicMock, usage: AsyncMock
 ) -> None:
     cost = await record_llm_call(
         user_id="u1",
@@ -222,11 +221,10 @@ async def test_the_priced_call_reaches_the_rollup_whole(
 @patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock)
 @patch(
     "app.services.llm_metering.calculate_token_cost",
-    new_callable=AsyncMock,
     return_value={"total_cost": 0.25},
 )
 async def test_an_unreported_reasoning_count_is_booked_as_none_of_it(
-    _price: AsyncMock, usage: AsyncMock
+    _price: MagicMock, usage: AsyncMock
 ) -> None:
     # Most providers report no reasoning tokens at all, and those callers omit
     # the argument. Defaulting to anything but zero would invent hidden-thinking

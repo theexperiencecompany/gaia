@@ -260,7 +260,10 @@ async def _run_execution(
     """
     if doc.workflow_id:
         # Deferred import to avoid circular dependency
-        from app.services.workflow.queue_service import WorkflowQueueService
+        # Deferred import: breaks circular dependency with the workflow queue/service stack
+        from app.services.workflow.queue_service import (  # noqa: PLC0415 -- deferred
+            WorkflowQueueService,
+        )
 
         context = {
             "trigger_type": "scheduled_todo",

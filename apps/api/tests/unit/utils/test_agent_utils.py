@@ -69,14 +69,14 @@ class TestLookupCustomIntegrationName:
             mock_repo.find_by_id_prefix = AsyncMock(
                 return_value=_integration("custom_id_123", "My Custom Tool")
             )
-            result = await _lookup_custom_integration_name.__wrapped__("custom_id_123")  # type: ignore[attr-defined]
+            result = await _lookup_custom_integration_name.__wrapped__("custom_id_123")  # type: ignore[attr-defined]  # reaching the unwrapped original under functools.wraps
         assert result == "My Custom Tool"
 
     @pytest.mark.asyncio
     async def test_not_found(self) -> None:
         with patch("app.utils.agent_utils.integration_repository") as mock_repo:
             mock_repo.find_by_id_prefix = AsyncMock(return_value=None)
-            result = await _lookup_custom_integration_name.__wrapped__("unknown_id")  # type: ignore[attr-defined]
+            result = await _lookup_custom_integration_name.__wrapped__("unknown_id")  # type: ignore[attr-defined]  # reaching the unwrapped original under functools.wraps
         assert result is None
 
 
@@ -154,7 +154,7 @@ class TestFormatToolCallEntry:
             new_callable=AsyncMock,
             return_value=mock_registry,
         ):
-            result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]
+            result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
         assert result is None
 
     @pytest.mark.asyncio
@@ -167,7 +167,7 @@ class TestFormatToolCallEntry:
             new_callable=AsyncMock,
             return_value=mock_registry,
         ):
-            result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]
+            result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
 
         assert result is not None
         assert result["data"]["message"] == "Retrieve tools"
@@ -187,7 +187,7 @@ class TestFormatToolCallEntry:
             new_callable=AsyncMock,
             return_value=mock_registry,
         ):
-            result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]
+            result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
 
         assert result is not None
         assert "Calendar" in result["data"]["message"]
@@ -204,7 +204,7 @@ class TestFormatToolCallEntry:
             return_value=mock_registry,
         ):
             result = await format_tool_call_entry(
-                tool_call,  # type: ignore[arg-type]
+                tool_call,  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
                 integration_id="gmail_integration",
             )
 
@@ -223,7 +223,7 @@ class TestFormatToolCallEntry:
             new_callable=AsyncMock,
             return_value=mock_registry,
         ):
-            result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]
+            result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
 
         assert result is not None
         assert result["data"]["tool_category"] == "some_server"
@@ -247,7 +247,7 @@ class TestFormatToolCallEntry:
             new_callable=AsyncMock,
             return_value=mock_registry,
         ):
-            result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]
+            result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
 
         assert result is not None
         assert result["mcp_ui"] == {"type": "form"}
@@ -266,13 +266,13 @@ class TestFormatToolCallEntry:
             return_value=mock_registry,
         ):
             result = await format_tool_call_entry(
-                tool_call,  # type: ignore[arg-type]
+                tool_call,  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
                 icon_url="https://icon.png",
                 integration_name="My Service",
             )
 
-        assert result["data"]["icon_url"] == "https://icon.png"  # type: ignore[index]
-        assert result["data"]["integration_name"] == "My Service"  # type: ignore[index]
+        assert result["data"]["icon_url"] == "https://icon.png"  # type: ignore[index]  # runtime returns a dict though the signature says str
+        assert result["data"]["integration_name"] == "My Service"  # type: ignore[index]  # runtime returns a dict though the signature says str
 
 
 # ---------------------------------------------------------------------------
@@ -308,7 +308,7 @@ class TestResolveMcpIconName:
             ) as mock_repo_get,
         ):
             result = await format_tool_call_entry(
-                tool_call,  # type: ignore[arg-type]
+                tool_call,  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
                 integration_id="custom_integration_1",
                 user_id="user123",
             )
@@ -341,7 +341,7 @@ class TestResolveMcpIconName:
             ) as mock_repo_get,
         ):
             result = await format_tool_call_entry(
-                tool_call,  # type: ignore[arg-type]
+                tool_call,  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
                 integration_id="custom_integration_2",
                 user_id="user123",
             )

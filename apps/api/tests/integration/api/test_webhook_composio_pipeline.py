@@ -23,6 +23,7 @@ import pytest
 
 from app.config.settings import settings
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep
+from app.services.triggers.batching import PER_EMAIL_FALLBACK_WINDOW_SECONDS
 from app.services.workflow.queue_service import WorkflowQueueService
 from shared.py.wide_events import spawn_logged_task
 
@@ -155,14 +156,19 @@ class TestTriggerDeliveryToQueuedExecution:
     """A signed GMAIL_NEW_GMAIL_MESSAGE delivery must come out the other end as
     a queued workflow execution carrying the payload and the integration stamp."""
 
-    async def test_a_signed_delivery_queues_the_matched_workflow(
+    async def test_a_signed_delivery_buffers_the_matched_workflow_for_a_batched_run(
         self,
         unauthenticated_client: AsyncClient,
         _webhook_secret: None,
         _redis: MagicMock,
         _spawned: list,
     ) -> None:
+        """gmail_new_message fires once per inbound email, so a delivery joins the
+        workflow's daily batch instead of queueing its own agent run — the direct
+        per-event queue path must NOT be taken (that fan-out once spent a paying
+        user's whole daily budget in three minutes)."""
         queue = AsyncMock()
+        buffer = AsyncMock(return_value=True)
         body = _gmail_delivery()
         with (
             patch(
@@ -179,6 +185,7 @@ class TestTriggerDeliveryToQueuedExecution:
                 "app.services.tracked_todo_service.tracked_todo_service.get_signal_matching_context",
                 AsyncMock(return_value="todo context"),
             ),
+            patch("app.services.triggers.base.buffer_trigger_event", buffer),
             patch.object(WorkflowQueueService, "queue_workflow_execution", queue),
         ):
             response = await unauthenticated_client.post(
@@ -191,16 +198,17 @@ class TestTriggerDeliveryToQueuedExecution:
         assert response.status_code == 200
         assert response.json()["message"] == "Webhook accepted"
 
-        queue.assert_awaited_once()
-        workflow_id, user_id = queue.await_args.args
-        context = queue.await_args.kwargs["context"]
+        buffer.assert_awaited_once()
+        workflow_id, user_id, data, window_seconds, context = buffer.await_args.args
         assert workflow_id == WORKFLOW_ID
         assert user_id == USER_ID
+        assert data["payload"]["message_id"] == "msg-1"
+        assert window_seconds == PER_EMAIL_FALLBACK_WINDOW_SECONDS
         # The stamp that tells the worker this run came from an integration
         # trigger, not a manual "run now".
         assert context["trigger_type"] == TriggerType.INTEGRATION.value
-        assert context["trigger_data"]["payload"]["message_id"] == "msg-1"
         assert context["tracked_todos_context"] == "todo context"
+        queue.assert_not_awaited()
 
     async def test_a_bad_signature_is_refused_and_never_reaches_the_handler(
         self,
@@ -240,6 +248,7 @@ class TestTriggerDeliveryToQueuedExecution:
         # First delivery claims the key; Composio's retry finds it taken.
         _redis.client.set = AsyncMock(side_effect=[True, None])
         queue = AsyncMock()
+        buffer = AsyncMock(return_value=True)
         body = _gmail_delivery()
         headers = _signed_headers(body, "wh-e2e-dupe")
         with (
@@ -257,6 +266,7 @@ class TestTriggerDeliveryToQueuedExecution:
                 "app.services.tracked_todo_service.tracked_todo_service.get_signal_matching_context",
                 AsyncMock(return_value=""),
             ),
+            patch("app.services.triggers.base.buffer_trigger_event", buffer),
             patch.object(WorkflowQueueService, "queue_workflow_execution", queue),
         ):
             first = await unauthenticated_client.post(
@@ -269,7 +279,8 @@ class TestTriggerDeliveryToQueuedExecution:
 
         assert first.json()["message"] == "Webhook accepted"
         assert second.json()["message"] == "Duplicate webhook ignored"
-        queue.assert_awaited_once()
+        buffer.assert_awaited_once()
+        queue.assert_not_awaited()
 
 
 class TestConnectionExpiryDelivery:

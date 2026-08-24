@@ -179,7 +179,15 @@ jobs:
           COVERAGE_FILE: .coverage.${{ matrix.shard }}
         run: |
           trap 'echo "::error::repro: bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest"' ERR
-          bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest -n auto -m 'not composio and not model_onboarding and not schemathesis' \
+          # -p no:randomly: pytest-split slices the COLLECTED ORDER into 6
+          # chunks, and pytest-randomly shuffles that order with a fresh seed
+          # per runner — six differently-shuffled lists sliced positionally
+          # neither cover the suite nor stay disjoint. Measured on one PR run:
+          # 9,817 distinct tests executed of ~14,100 collected, 3,540 ran in
+          # more than one shard, and ~4,300 ran in NO shard — silently, with
+          # every shard green. Random ordering still applies inside the
+          # unsharded lanes; the split itself must be deterministic.
+          bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest -n auto -p no:randomly -m 'not composio and not model_onboarding and not schemathesis' \
             --splits 6 --group ${{ matrix.shard }} \
             --ignore=tests/integration/real/test_device_bridge_e2e.py \
             --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
@@ -250,19 +258,29 @@ jobs:
           path: /tmp/shard-artifacts
           pattern: pytest-results-*
           merge-multiple: true
+      # Guards the gate below: a shard overlap means the same number of tests
+      # ran nowhere, and their files read as uncovered rather than as skipped.
+      - name: Assert shards partitioned the suite
+        # Only meaningful once every shard finished — a shard that died early
+        # uploads a partial junit that has no overlap to find.
+        if: needs.test-python.result == 'success'
+        run: |
+          trap 'echo "::error::repro: uv run --no-project scripts/ci/assert_shard_partition.py /tmp/shard-artifacts/test-results/pytest-*.xml"' ERR
+          uv run --no-project scripts/ci/assert_shard_partition.py /tmp/shard-artifacts/test-results/pytest-*.xml
       - name: Combine coverage and enforce gates
         working-directory: apps/api
         run: |
           set -euo pipefail
           ls -la /tmp/shard-artifacts/
           cp /tmp/shard-artifacts/.coverage.* . 2>/dev/null || { echo "::error::Missing per-shard .coverage files"; ls -R /tmp/shard-artifacts; exit 1; }
+          shards=$(ls .coverage.* | wc -l)
           echo "Combining coverage from shards..."
           uv run --frozen coverage combine
           uv run --frozen coverage report --fail-under=70 --show-missing
           uv run --frozen coverage xml -o coverage.xml
-          echo "Coverage combine: OK (merged $(ls .coverage* 2>/dev/null | wc -l) shards)"
+          echo "Coverage combine: OK (merged $shards shards)"
           mkdir -p test-results
-          cp /tmp/shard-artifacts/pytest-*.xml test-results/ 2>/dev/null || true
+          cp /tmp/shard-artifacts/test-results/pytest-*.xml test-results/
           echo "## Python coverage (merged shards)" >> "$GITHUB_STEP_SUMMARY"
           echo "fail-under 70% enforced on merged coverage" >> "$GITHUB_STEP_SUMMARY"
           if [ -f coverage.xml ]; then echo "coverage.xml exists (merged)" >> "$GITHUB_STEP_SUMMARY"; fi
@@ -270,8 +288,8 @@ jobs:
         if: github.event_name == 'pull_request'
         working-directory: apps/api
         run: |
-          trap 'echo "::error::repro: uv tool run diff-cover coverage.xml"' ERR
-          uv tool run diff-cover coverage.xml --compare-branch=origin/master --fail-under=90
+          trap 'echo "::error::repro: uv tool run 'diff-cover==10.5.1' coverage.xml"' ERR
+          uv tool run 'diff-cover==10.5.1' coverage.xml --compare-branch=origin/master --fail-under=90
           echo "diff-cover: OK"
           echo "### Diff coverage — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
       - name: Summary of failed tests (merged)
@@ -365,10 +383,10 @@ jobs:
         run: |
           trap 'echo "::error::repro: uv run --no-project --with pytest"' ERR
           echo "::group::pytest output"
-          uv run --no-project --with pytest pytest tools/lints tools/llm-stub -q
+          uv run --no-project --with pytest --with defusedxml pytest tools/lints tools/llm-stub scripts/ci -q
           echo "::endgroup::"
           echo "### Harness tooling tests — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
-          echo "Harness tooling tests: OK (tools/lints + tools/llm-stub)"
+          echo "Harness tooling tests: OK (tools/lints + tools/llm-stub + scripts/ci)"
 
   # --- Changelog sync check (always) --------------------------------------
   changelog-sync:

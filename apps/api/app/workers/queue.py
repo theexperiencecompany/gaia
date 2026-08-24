@@ -23,7 +23,10 @@ TRACE_ID_KWARG = "_gaia_trace_id"
 
 
 async def enqueue_worker_job(
-    pool: ArqRedis, function: str, *args: Any, **kwargs: Any
+    pool: ArqRedis,
+    function: str,
+    *args: Any,  # noqa: ANN401 -- ARQ's enqueue_job takes an arbitrary arg bag upstream
+    **kwargs: Any,  # noqa: ANN401 -- ARQ's enqueue_job takes an arbitrary arg bag upstream
 ) -> Job | None:
     """Enqueue an ARQ job stamped with the caller's trace id.
 

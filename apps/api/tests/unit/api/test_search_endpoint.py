@@ -230,7 +230,7 @@ class TestFetchUrlMetadata:
             favicon="https://example.com/favicon.ico",
             website_name="Example",
             website_image=None,
-            url="https://example.com",  # type: ignore[arg-type]
+            url="https://example.com",
         )
         response = await client.post(
             f"{SEARCH_BASE}/fetch-url-metadata",
@@ -257,7 +257,7 @@ class TestFetchUrlMetadata:
             favicon=None,
             website_name=None,
             website_image=None,
-            url="https://a.com",  # type: ignore[arg-type]
+            url="https://a.com",
         )
         url2_resp = URLResponse(
             title="Site B",
@@ -265,7 +265,7 @@ class TestFetchUrlMetadata:
             favicon=None,
             website_name=None,
             website_image=None,
-            url="https://b.com",  # type: ignore[arg-type]
+            url="https://b.com",
         )
         mock_fetch.side_effect = [url1_resp, url2_resp]
         response = await client.post(
@@ -291,7 +291,7 @@ class TestFetchUrlMetadata:
             favicon=None,
             website_name=None,
             website_image=None,
-            url="https://good.com",  # type: ignore[arg-type]
+            url="https://good.com",
         )
         mock_fetch.side_effect = [good_resp, Exception("Timeout")]
         response = await client.post(

@@ -30,7 +30,7 @@ import pytest
 # prevent workflow/service.py from reaching back into app.services.triggers.
 # ---------------------------------------------------------------------------
 _trigger_service_stub = ModuleType("app.services.workflow.trigger_service")
-_trigger_service_stub.TriggerService = MagicMock()  # type: ignore[attr-defined]
+_trigger_service_stub.TriggerService = MagicMock()  # type: ignore[attr-defined]  # stub module gains the service attribute for patching
 
 # Only inject if not yet loaded (idempotent for repeated imports)
 _stub_injected = "app.services.workflow.trigger_service" not in sys.modules
@@ -913,7 +913,7 @@ class TestSlackTriggerHandler:
 
         handler = SlackTriggerHandler()
         # Patch the sync helper so the exception propagates through asyncio.to_thread
-        handler._register_single_trigger_sync = sync_side_effect  # type: ignore[assignment]
+        handler._register_single_trigger_sync = sync_side_effect
 
         data = SlackNewMessageConfig(
             channel_ids=["C001"],

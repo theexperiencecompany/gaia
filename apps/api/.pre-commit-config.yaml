@@ -1,6 +1,6 @@
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.6
+    rev: v0.14.13
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
@@ -17,7 +17,7 @@ repos:
         language: system
         # Load [tool.bandit] skips from the root pyproject.toml — bandit's config
         # discovery only looks in the hook cwd (apps/api), which has no section.
-        entry: bash -c "uvx bandit -c \"$(git rev-parse --show-toplevel)/pyproject.toml\" -r app --exclude app/agents/prompts"
+        entry: bash -c "uvx --no-build bandit@1.9.4 -c \"$(git rev-parse --show-toplevel)/pyproject.toml\" -r app --exclude app/agents/prompts"
         types: [python]
         pass_filenames: false
         priority: 0
@@ -25,14 +25,17 @@ repos:
       - id: pip-audit
         name: Pip Audit
         language: system
-        entry: bash -c "uv export --no-dev --frozen --no-emit-header 2>/dev/null | uvx pip-audit --disable-pip --no-deps -r /dev/stdin"
+        entry: bash -c "uv export --no-dev --frozen --no-emit-header 2>/dev/null | uvx --no-build pip-audit@2.10.1 --disable-pip --no-deps -r /dev/stdin"
         pass_filenames: false
         priority: 0
 
       - id: outbound-topology-parity
         name: Outbound topology parity (Python <-> TypeScript)
         language: system
-        entry: python3 apps/api/scripts/check_outbound_topology_parity.py
+        # Same pattern as gaia-ignore-whys below: this sub-config's hooks run
+        # with cwd=apps/api, where the repo-relative path does not resolve and
+        # the system python3 (older than 3.10 on macOS) cannot run the tooling.
+        entry: ../../.venv/bin/python ../../apps/api/scripts/check_outbound_topology_parity.py
         files: ^(apps/api/(app/models/chat_models\.py|scripts/check_outbound_topology_parity\.py)|libs/shared/ts/src/bots/consumer/topology\.ts)$
         pass_filenames: false
         priority: 0
@@ -40,31 +43,33 @@ repos:
       - id: gaia-python-lints
         name: GAIA custom Python lints (route contract, service classes, wide events)
         language: system
-        entry: python3 tools/lints/run.py apps/api/app
+        # Same pattern as gaia-ignore-whys below: hooks in this sub-config run
+        # with cwd=apps/api, and the system python3 (3.9 on macOS) crashes
+        # ast.parse on the app's 3.10+ syntax — run on the repo venv instead.
+        entry: ../../.venv/bin/python ../../tools/lints/run.py ../../apps/api/app
         files: ^(apps/api/app/.*\.py|tools/lints/.*\.py)$
         pass_filenames: false
         priority: 0
 
-      - id: gaia-ignore-ratchet
-        name: Ruff ignore-list ratchet (ignore / per-file-ignores may only shrink)
+      - id: gaia-ignore-whys
+        name: Ruff/mypy escape hatches must carry a why-comment
         language: system
         # The api sub-config runs with cwd=apps/api, but the script lives at
-        # the repo root, and it needs Python >= 3.11 for tomllib — neither the
-        # relative path nor the system python3 works here.
-        entry: ../../.venv/bin/python ../../tools/lints/check_ignore_ratchet.py
-        files: ^(pyproject\.toml|tools/lints/(check_ignore_ratchet\.py|ignore_ratchet_baseline\.txt))$
+        # the repo root — neither the relative path nor the system python3
+        # works here.
+        entry: ../../.venv/bin/python ../../tools/lints/check_ignore_whys.py
+        files: ^(pyproject\.toml|tools/lints/(check_ignore_whys\.py|test_check_ignore_whys\.py))$
         pass_filenames: false
         priority: 0
 
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.13.0
+  - repo: local
     hooks:
-      - id: mypy
-        args: [--ignore-missing-imports]
+      - id: gaia-mypy
+        name: Mypy (pinned to uv.lock version)
+        language: system
+        # Pinned via uvx instead of the mirror: same version as CI's lockfile
+        # mypy, no tag drift; stub packages ride along via --with.
+        entry: bash -c 'uvx --no-build --with types-redis --with types-requests --with types-pytz --with types-croniter mypy@1.19.1 --ignore-missing-imports "$@"' --
         files: ^apps/api/app/
-        additional_dependencies:
-          - types-redis
-          - types-requests
-          - types-pytz
-          - types-croniter
+        pass_filenames: true
         priority: 0

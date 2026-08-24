@@ -10,6 +10,7 @@ Two invariants, both owned by ``result_delivery.py``:
   the user already saw, or resurrects an approval they already decided.
 """
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 from uuid import UUID
@@ -42,9 +43,10 @@ def _run(
     stream_id: str = "",
     task_id: str | None = None,
     bot_message_id: str | None = None,
+    workflow: bool = False,
 ) -> ExecutorRun:
     """A run context for delivery tests (defaults: live, non-workflow)."""
-    return ExecutorRun(
+    run = ExecutorRun(
         stream_id=stream_id,
         conversation_id="conv-1",
         user={"user_id": "user-1"},
@@ -52,7 +54,11 @@ def _run(
         task_id=task_id,
         user_message_id=None,
         bot_message_id=bot_message_id,
+        workflow_id="wf-1" if workflow else None,
+        workflow_title="Morning digest" if workflow else "",
+        active_todo_id="todo-9" if workflow else None,
     )
+    return run
 
 
 def _session_with_cards(stream_id: str) -> None:
@@ -138,6 +144,57 @@ class TestDeliverResultRouting:
             ConversationSource.WHATSAPP, comms_text="", result_text="raw executor output"
         )
         assert platform.await_args.args[2] == "raw executor output"
+
+
+class TestDeliveryOrigin:
+    """The provenance frame recorded into a platform thread when a workflow
+    result is delivered there — it is how a later turn backtracks to the
+    source, so the title, both machine ids, and their absence cases are
+    load-bearing."""
+
+    def test_names_the_title_and_both_ids(self) -> None:
+        run = _run(workflow=True)
+        assert rd._delivery_origin(run) == (
+            'workflow "Morning digest" (id wf-1), tracked todo (id todo-9)'
+        )
+
+    def test_an_untitled_workflow_has_no_quote_fragment(self) -> None:
+        run = _run(workflow=True)
+        run = replace(run, workflow_title="", active_todo_id=None)
+        assert rd._delivery_origin(run) == "workflow (id wf-1)"
+
+    def test_an_untracked_run_has_no_todo_clause(self) -> None:
+        run = _run(workflow=True)
+        run = replace(run, active_todo_id=None)
+        assert rd._delivery_origin(run) == 'workflow "Morning digest" (id wf-1)'
+
+
+class TestWorkflowResultReachesThePlatformDelivery:
+    """A finished workflow run hands its result to the platform-delivery path
+    with the run's own owner and provenance — a wrong user_id would deliver
+    into a stranger's chats, a wrong origin would orphan the trail."""
+
+    async def test_delivery_carries_the_runs_owner_and_origin(self) -> None:
+        with (
+            patch.object(
+                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="done"
+            ),
+            patch.object(rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[]),
+            patch.object(rd, "update_messages", new_callable=AsyncMock),
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
+            patch.object(
+                rd, "deliver_workflow_result_to_platforms", new_callable=AsyncMock
+            ) as deliver,
+            patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock) as notify,
+        ):
+            await rd.deliver_result(_run(workflow=True), result_text="done", result_type="final")
+
+        deliver.assert_awaited_once()
+        kwargs = deliver.await_args.kwargs
+        assert kwargs["user"] == {"user_id": "user-1"}
+        assert kwargs["user_id"] == "user-1"
+        assert kwargs["origin"] == ('workflow "Morning digest" (id wf-1), tracked todo (id todo-9)')
+        notify.assert_awaited_once()  # the in-app badge still fires alongside
 
 
 class TestGetConversationSource:

@@ -592,7 +592,11 @@ class TestProcessWorkflowGenerationTask:
         assert payload["todo_id"] == todo_id
 
     async def test_empty_description_uses_no_details_section(self, ctx):
-        """When description is empty the prompt template omits the details section."""
+        """When description is empty the prompt template omits the details section.
+
+        The argument is omitted entirely so the function's default value is what's
+        under test, not an explicitly-passed empty string.
+        """
         # Must be a valid 24-char hex ObjectId string because production code
         # calls ObjectId(todo_id) before the mocked update_one is invoked.
         todo_id = "507f1f77bcf86cd799439013"
@@ -622,12 +626,10 @@ class TestProcessWorkflowGenerationTask:
             mock_ws.broadcast_to_user = AsyncMock()
             mock_ws_mgr.return_value = mock_ws
 
-            await process_workflow_generation_task(
-                ctx, todo_id, user_id, "Buy groceries", description=""
-            )
+            await process_workflow_generation_task(ctx, todo_id, user_id, "Buy groceries")
 
         assert len(captured_requests) == 1
-        # The **Details:** section should be absent when description is empty
+        # The **Details:** section should be absent when the (default) description is empty
         assert "**Details:**" not in captured_requests[0].prompt
 
 

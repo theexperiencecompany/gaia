@@ -193,7 +193,4 @@ def is_safe_redirect_path(path: str) -> bool:
         return False
 
     # Must not contain @ (could indicate user:pass@domain)
-    if "@" in path:
-        return False
-
-    return True
+    return "@" not in path

@@ -150,8 +150,6 @@ depends = ["setup:env", "setup:deps", "setup:voice-agent"]
 run = '''
 echo "Starting Docker services..."
 nx run docker:docker:up
-echo "Seeding AI models..."
-(cd apps/api && uv run --group backend python scripts/seed_models.py --force)
 echo ""
 echo "Setup complete! Run 'mise dev' to start development servers."
 '''

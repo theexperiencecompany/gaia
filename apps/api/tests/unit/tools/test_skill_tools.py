@@ -85,19 +85,19 @@ class TestGetUserId:
     def test_extracts_user_id(self) -> None:
         from app.agents.tools.skill_tools import _get_user_id
 
-        assert _get_user_id(_cfg()) == FAKE_USER_ID  # type: ignore[arg-type]
+        assert _get_user_id(_cfg()) == FAKE_USER_ID  # type: ignore[arg-type]  # tests pass a plain dict where RunnableConfig is declared
 
     def test_missing_user_id_raises(self) -> None:
         from app.agents.tools.skill_tools import _get_user_id
 
         with pytest.raises(ValueError, match="User ID not found"):
-            _get_user_id(_cfg_no_user())  # type: ignore[arg-type]
+            _get_user_id(_cfg_no_user())  # type: ignore[arg-type]  # tests pass a plain dict where RunnableConfig is declared
 
     def test_none_config(self) -> None:
         from app.agents.tools.skill_tools import _get_user_id
 
         with pytest.raises(ValueError, match="User ID not found"):
-            _get_user_id(None)  # type: ignore[arg-type]
+            _get_user_id(None)
 
 
 # ---------------------------------------------------------------------------
@@ -112,7 +112,7 @@ class TestInstallSkillFromGithub:
 
         from app.agents.tools.skill_tools import install_skill_from_github
 
-        result = await install_skill_from_github.coroutine(  # type: ignore[attr-defined]
+        result = await install_skill_from_github.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_cfg(), repo_url="owner/repo", skill_path="skills/pdf"
         )
         assert "Installed skill 'pdf-processing'" in result
@@ -124,7 +124,7 @@ class TestInstallSkillFromGithub:
 
         from app.agents.tools.skill_tools import install_skill_from_github
 
-        result = await install_skill_from_github.coroutine(  # type: ignore[attr-defined]
+        result = await install_skill_from_github.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_cfg(), repo_url="owner/repo"
         )
         assert "3 files" in result
@@ -137,7 +137,7 @@ class TestInstallSkillFromGithub:
     async def test_validation_error(self, mock_install: AsyncMock) -> None:
         from app.agents.tools.skill_tools import install_skill_from_github
 
-        result = await install_skill_from_github.coroutine(  # type: ignore[attr-defined]
+        result = await install_skill_from_github.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_cfg(), repo_url="bad"
         )
         assert "Failed to install skill" in result
@@ -151,7 +151,7 @@ class TestInstallSkillFromGithub:
     async def test_general_error(self, mock_install: AsyncMock) -> None:
         from app.agents.tools.skill_tools import install_skill_from_github
 
-        result = await install_skill_from_github.coroutine(  # type: ignore[attr-defined]
+        result = await install_skill_from_github.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_cfg(), repo_url="owner/repo"
         )
         assert "Error installing skill from GitHub" in result
@@ -160,7 +160,7 @@ class TestInstallSkillFromGithub:
         from app.agents.tools.skill_tools import install_skill_from_github
 
         with pytest.raises(ValueError, match="User ID not found"):
-            await install_skill_from_github.coroutine(  # type: ignore[attr-defined]
+            await install_skill_from_github.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_cfg_no_user(), repo_url="owner/repo"
             )
 
@@ -170,7 +170,7 @@ class TestInstallSkillFromGithub:
 
         from app.agents.tools.skill_tools import install_skill_from_github
 
-        await install_skill_from_github.coroutine(  # type: ignore[attr-defined]
+        await install_skill_from_github.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_cfg(), repo_url="owner/repo", skill_path="", target=""
         )
         # Should pass None for empty strings
@@ -191,7 +191,7 @@ class TestCreateSkill:
 
         from app.agents.tools.skill_tools import create_skill
 
-        result = await create_skill.coroutine(  # type: ignore[attr-defined]
+        result = await create_skill.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_cfg(),
             name="standup-format",
             description="Format standups",
@@ -209,7 +209,7 @@ class TestCreateSkill:
     async def test_validation_error(self, mock_install: AsyncMock) -> None:
         from app.agents.tools.skill_tools import create_skill
 
-        result = await create_skill.coroutine(  # type: ignore[attr-defined]
+        result = await create_skill.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_cfg(), name="bad!", description="d", instructions="i"
         )
         assert "Failed to create skill" in result
@@ -222,7 +222,7 @@ class TestCreateSkill:
     async def test_general_error(self, mock_install: AsyncMock) -> None:
         from app.agents.tools.skill_tools import create_skill
 
-        result = await create_skill.coroutine(  # type: ignore[attr-defined]
+        result = await create_skill.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_cfg(), name="test", description="d", instructions="i"
         )
         assert "Error creating skill" in result
@@ -231,7 +231,7 @@ class TestCreateSkill:
         from app.agents.tools.skill_tools import create_skill
 
         with pytest.raises(ValueError, match="User ID not found"):
-            await create_skill.coroutine(  # type: ignore[attr-defined]
+            await create_skill.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_cfg_no_user(), name="test", description="d", instructions="i"
             )
 
@@ -251,7 +251,7 @@ class TestListInstalledSkills:
 
         from app.agents.tools.skill_tools import list_installed_skills
 
-        result = await list_installed_skills.coroutine(config=_cfg())  # type: ignore[attr-defined]
+        result = await list_installed_skills.coroutine(config=_cfg())  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
         assert "Installed skills (2)" in result
         assert "pdf-processing" in result
         assert "email-templates" in result
@@ -260,14 +260,14 @@ class TestListInstalledSkills:
     async def test_empty(self, mock_list: AsyncMock) -> None:
         from app.agents.tools.skill_tools import list_installed_skills
 
-        result = await list_installed_skills.coroutine(config=_cfg())  # type: ignore[attr-defined]
+        result = await list_installed_skills.coroutine(config=_cfg())  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
         assert "No skills installed" in result
 
     @patch(f"{MODULE}.list_skills", new_callable=AsyncMock, return_value=[])
     async def test_filter_by_target(self, mock_list: AsyncMock) -> None:
         from app.agents.tools.skill_tools import list_installed_skills
 
-        result = await list_installed_skills.coroutine(config=_cfg(), target="executor")  # type: ignore[attr-defined]
+        result = await list_installed_skills.coroutine(config=_cfg(), target="executor")  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
         mock_list.assert_awaited_once_with(user_id=FAKE_USER_ID, target="executor")
         assert "for target 'executor'" in result
 
@@ -278,7 +278,7 @@ class TestListInstalledSkills:
 
         from app.agents.tools.skill_tools import list_installed_skills
 
-        result = await list_installed_skills.coroutine(config=_cfg())  # type: ignore[attr-defined]
+        result = await list_installed_skills.coroutine(config=_cfg())  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
         assert "Source URL" in result
 
     @patch(f"{MODULE}.list_skills", new_callable=AsyncMock)
@@ -288,21 +288,21 @@ class TestListInstalledSkills:
 
         from app.agents.tools.skill_tools import list_installed_skills
 
-        result = await list_installed_skills.coroutine(config=_cfg())  # type: ignore[attr-defined]
+        result = await list_installed_skills.coroutine(config=_cfg())  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
         assert "disabled" in result
 
     @patch(f"{MODULE}.list_skills", new_callable=AsyncMock, side_effect=RuntimeError("err"))
     async def test_error(self, mock_list: AsyncMock) -> None:
         from app.agents.tools.skill_tools import list_installed_skills
 
-        result = await list_installed_skills.coroutine(config=_cfg())  # type: ignore[attr-defined]
+        result = await list_installed_skills.coroutine(config=_cfg())  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
         assert "Error listing skills" in result
 
     async def test_no_user_id(self) -> None:
         from app.agents.tools.skill_tools import list_installed_skills
 
         with pytest.raises(ValueError, match="User ID not found"):
-            await list_installed_skills.coroutine(config=_cfg_no_user())  # type: ignore[attr-defined]
+            await list_installed_skills.coroutine(config=_cfg_no_user())  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
 
 
 # ---------------------------------------------------------------------------
@@ -318,7 +318,7 @@ class TestManageSkill:
 
         from app.agents.tools.skill_tools import manage_skill
 
-        result = await manage_skill.coroutine(  # type: ignore[attr-defined]
+        result = await manage_skill.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_cfg(), skill_name="pdf-processing", action="enable"
         )
         assert "enabled" in result
@@ -331,7 +331,7 @@ class TestManageSkill:
 
         from app.agents.tools.skill_tools import manage_skill
 
-        result = await manage_skill.coroutine(  # type: ignore[attr-defined]
+        result = await manage_skill.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_cfg(), skill_name="pdf-processing", action="disable"
         )
         assert "disabled" in result
@@ -344,7 +344,7 @@ class TestManageSkill:
 
         from app.agents.tools.skill_tools import manage_skill
 
-        result = await manage_skill.coroutine(  # type: ignore[attr-defined]
+        result = await manage_skill.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_cfg(), skill_name="pdf-processing", action="uninstall"
         )
         assert "uninstalled" in result
@@ -360,7 +360,7 @@ class TestManageSkill:
 
         from app.agents.tools.skill_tools import manage_skill
 
-        result = await manage_skill.coroutine(  # type: ignore[attr-defined]
+        result = await manage_skill.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_cfg(), skill_name="pdf-processing", action="uninstall"
         )
         assert "Failed to uninstall" in result
@@ -369,7 +369,7 @@ class TestManageSkill:
     async def test_skill_not_found(self, mock_get: AsyncMock) -> None:
         from app.agents.tools.skill_tools import manage_skill
 
-        result = await manage_skill.coroutine(  # type: ignore[attr-defined]
+        result = await manage_skill.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_cfg(), skill_name="nonexistent", action="enable"
         )
         assert "not found" in result
@@ -380,7 +380,7 @@ class TestManageSkill:
 
         from app.agents.tools.skill_tools import manage_skill
 
-        result = await manage_skill.coroutine(  # type: ignore[attr-defined]
+        result = await manage_skill.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_cfg(), skill_name="pdf-processing", action="restart"
         )
         assert "Unknown action" in result
@@ -393,7 +393,7 @@ class TestManageSkill:
     async def test_error(self, mock_get: AsyncMock) -> None:
         from app.agents.tools.skill_tools import manage_skill
 
-        result = await manage_skill.coroutine(  # type: ignore[attr-defined]
+        result = await manage_skill.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_cfg(), skill_name="pdf-processing", action="enable"
         )
         assert "Error managing skill" in result
@@ -402,7 +402,7 @@ class TestManageSkill:
         from app.agents.tools.skill_tools import manage_skill
 
         with pytest.raises(ValueError, match="User ID not found"):
-            await manage_skill.coroutine(  # type: ignore[attr-defined]
+            await manage_skill.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_cfg_no_user(), skill_name="test", action="enable"
             )
 
@@ -413,7 +413,7 @@ class TestManageSkill:
 
         from app.agents.tools.skill_tools import manage_skill
 
-        result = await manage_skill.coroutine(  # type: ignore[attr-defined]
+        result = await manage_skill.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
             config=_cfg(), skill_name="pdf-processing", action="enable"
         )
         assert "already enabled" in result

@@ -28,6 +28,22 @@ FAKE_USER_ID = "507f1f77bcf86cd799439011"
 MODULE = "app.agents.tools.todo_tool"
 
 
+class _UTCOnlyDateTime(datetime):
+    """datetime stand-in whose ``now(None)`` (local time) reads a different DATE
+    than ``now(UTC)``.
+
+    The todo tools' day boundaries must follow the UTC calendar; this clock turns
+    a non-UTC read into a wrong window the exact-boundary assertions can see,
+    instead of relying on the run machine's timezone differing from UTC.
+    """
+
+    @classmethod
+    def now(cls, tz: datetime | None = None) -> datetime:  # type: ignore[override]  # mirrors datetime.now's optional-tz signature deliberately
+        if tz is None:
+            return cls(2026, 6, 14, 20, 0)  # naive local read: previous day
+        return cls(2026, 6, 15, 2, 0, tzinfo=UTC)
+
+
 def _make_config(user_id: str = FAKE_USER_ID) -> dict[str, Any]:
     """Return a minimal RunnableConfig-like dict with metadata.user_id."""
     return {"metadata": {"user_id": user_id}}
@@ -665,6 +681,7 @@ class TestGetTodoStatistics:
 class TestGetTodayTodos:
     """Tests for the get_today_todos tool."""
 
+    @patch(f"{MODULE}.datetime", _UTCOnlyDateTime)
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_todos_by_date_range", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
@@ -683,6 +700,14 @@ class TestGetTodayTodos:
 
         assert result["error"] is None
         assert result["count"] == 1
+        # The query window is the full day "now" falls on, as naive datetimes
+        # (datetime.combine keeps time.min/max's null tzinfo) on the UTC clock's
+        # calendar date — pinned exactly against a fake clock so a local-time or
+        # None bound cannot slip through.
+        (user_arg, start, end), _ = mock_service.await_args
+        assert user_arg == FAKE_USER_ID
+        assert start == datetime(2026, 6, 15, 0, 0)
+        assert end == datetime(2026, 6, 15, 23, 59, 59, 999999)
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_todos_by_date_range", new_callable=AsyncMock)
@@ -1269,6 +1294,7 @@ class TestDeleteSubtask:
 class TestGetTodosSummary:
     """Tests for the get_todos_summary tool."""
 
+    @patch(f"{MODULE}.datetime", _UTCOnlyDateTime)
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_all_projects_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
@@ -1283,9 +1309,8 @@ class TestGetTodosSummary:
         mock_writer_factory: MagicMock,
     ) -> None:
         mock_writer_factory.return_value = _writer_mock()
-        now = datetime.now(UTC)
         todo = _make_todo_response(
-            due_date=now,
+            due_date=datetime(2026, 6, 15, 9, 0, tzinfo=UTC),
             completed=False,
             priority=Priority.HIGH,
             completed_at=None,
@@ -1304,6 +1329,12 @@ class TestGetTodosSummary:
         assert "today" in summary
         assert "stats" in summary
         assert "by_project" in summary
+        # Same day-window contract as get_today_todos, pinned against the same
+        # fake clock: the first gather call fetches today's bounds.
+        (user_arg, start, end), _ = mock_date_range.await_args_list[0]
+        assert user_arg == FAKE_USER_ID
+        assert start == datetime(2026, 6, 15, 0, 0)
+        assert end == datetime(2026, 6, 15, 23, 59, 59, 999999)
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_user_id_from_config", return_value="")

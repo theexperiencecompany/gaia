@@ -15,6 +15,7 @@ or propagates to the caller — the result is already persisted to the conversat
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from app.agents.core.background.comms_narrator import record_platform_delivery
 from app.constants.general import MESSAGE_BREAK_SENTINEL_RE
 from app.constants.log_tags import LogTag
 from app.models.chat_models import (
@@ -26,7 +27,11 @@ from app.models.chat_models import (
 from app.models.user_models import AuthenticatedUser
 from app.services.bot_service import BotService
 from app.services.conversation_service import update_messages
-from app.services.outbound_delivery import OutboundResult, publish_outbound_message
+from app.services.outbound_delivery import (
+    PLATFORM_DISPLAY_NAMES,
+    OutboundResult,
+    publish_outbound_message,
+)
 from app.services.platform_link_service import PlatformLinkService
 from app.utils.notification.channel_preferences import fetch_channel_preferences
 from shared.py.wide_events import log
@@ -37,6 +42,7 @@ async def deliver_workflow_result_to_platforms(
     user: AuthenticatedUser,
     user_id: str,
     notification_text: str,
+    origin: str,
 ) -> None:
     """Deliver a finished workflow's result into the user's preferred messaging
     platforms as real, persisted bot messages, split into natural bubbles.
@@ -66,6 +72,7 @@ async def deliver_workflow_result_to_platforms(
             platform_user_id=platform_user_id,
             response=notification_text,
             bubbles=bubbles,
+            origin=origin,
         )
 
 
@@ -104,9 +111,12 @@ async def _post_workflow_message(
     platform_user_id: str,
     response: str,
     bubbles: list[str],
+    origin: str,
 ) -> None:
     """Persist the result into the platform's session conversation and deliver it
-    as ordered bubbles. Best-effort: logs and swallows any single-platform failure."""
+    as ordered bubbles, then record it in that conversation's langgraph thread —
+    framed with the platform and origin so a later turn can backtrack to the
+    source. Best-effort: logs and swallows any single-platform failure."""
     try:
         conversation_id = await BotService.get_or_create_session(
             platform=source.value,
@@ -134,6 +144,18 @@ async def _post_workflow_message(
                 bubbles=len([b for b in bubbles if b.strip()]),
             )
             return
+        if result is OutboundResult.PUBLISHED:
+            # The Mongo save above never reaches the langgraph thread this
+            # session's next turn reads its history from. Record what was
+            # actually delivered — the outbound path strips the sentinel and
+            # blank bubbles, so join the nonblank bubbles rather than the raw
+            # response (which still contains control tokens).
+            delivered_text = "\n\n".join(b.strip() for b in bubbles if b.strip())
+            display = PLATFORM_DISPLAY_NAMES.get(source, source.value.capitalize())
+            await record_platform_delivery(
+                conversation_id,
+                f"[Delivered to the user on {display} — result of {origin}]: {delivered_text}",
+            )
         log.info(
             f"{LogTag.AGENT} workflow result delivered to platform",
             platform=source.value,
