@@ -160,8 +160,8 @@ async def update_user_name(
         capture_context_event(AnalyticsEvents.PROFILE_UPDATED, {"changed_field_count": 1})
         log.set(outcome="success")
         return updated_user
-    except HTTPException as e:
-        raise e
+    except HTTPException:
+        raise
     except Exception as e:
         log.error(
             f"{LogTag.API} Error updating user name",
@@ -211,8 +211,8 @@ async def update_user_timezone(
             message="Timezone updated successfully",
             timezone=user_timezone.strip(),
         )
-    except HTTPException as e:
-        raise e
+    except HTTPException:
+        raise
     except Exception as e:
         log.error(
             f"{LogTag.API} Error updating timezone",

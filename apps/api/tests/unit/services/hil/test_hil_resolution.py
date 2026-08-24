@@ -17,9 +17,9 @@ import pytest
 from app.schemas.hil_schemas import BatchDecisionOutcome
 from app.services.hil.resolution import (
     CANCELLED_FEEDBACK,
-    ApprovalNotResumable,
-    ApprovalRequestForbidden,
-    ApprovalRequestNotFound,
+    ApprovalNotResumableError,
+    ApprovalRequestForbiddenError,
+    ApprovalRequestNotFoundError,
     abandon_conversation_approvals,
     cancel_conversation_approvals,
     resolve_approval,
@@ -61,7 +61,7 @@ class TestAuthorization:
         with (
             patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=record)),
             patch(f"{MODULE}.mark_decided", new=AsyncMock()) as decided,
-            pytest.raises(ApprovalRequestForbidden),
+            pytest.raises(ApprovalRequestForbiddenError),
         ):
             await resolve_approval(approval_id="appr-1", user_id="attacker-id", kind="approve")
 
@@ -74,7 +74,7 @@ class TestAuthorization:
     ) -> None:
         with (
             patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=None)),
-            pytest.raises(ApprovalRequestNotFound),
+            pytest.raises(ApprovalRequestNotFoundError),
         ):
             await resolve_approval(approval_id="nope", user_id=USER_ID, kind="approve")
         assert resume.prepare.await_count == 0
@@ -91,7 +91,7 @@ class TestExactlyOnce:
         with (
             patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=record)),
             patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=False)),
-            pytest.raises(ApprovalRequestNotFound),
+            pytest.raises(ApprovalRequestNotFoundError),
         ):
             await resolve_approval(approval_id="appr-1", user_id=USER_ID, kind="approve")
 
@@ -181,7 +181,7 @@ class TestUnresumableRecords:
         with (
             patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=record)),
             patch(f"{MODULE}.mark_decided", new=AsyncMock()) as decided,
-            pytest.raises(ApprovalNotResumable),
+            pytest.raises(ApprovalNotResumableError),
         ):
             await resolve_approval(approval_id="appr-1", user_id=USER_ID, kind="approve")
 
@@ -217,7 +217,7 @@ class TestUnresumableRecords:
             patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=record)),
             patch(f"{MODULE}.is_executor_busy", new=AsyncMock(return_value=False)),
             patch(f"{MODULE}.mark_decided", new=AsyncMock()) as decided,
-            pytest.raises(ApprovalNotResumable),
+            pytest.raises(ApprovalNotResumableError),
         ):
             await resolve_approval(approval_id="appr-1", user_id=USER_ID, kind="approve")
 

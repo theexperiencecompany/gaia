@@ -9,7 +9,7 @@ payment provider.
 from datetime import UTC, datetime
 
 from app.constants.memory import FREE_MEMORY_FACT_LIMIT
-from app.models.payment_models import PlanDocument
+from app.models.payment_models import PlanDocument, PlanDuration
 
 
 def build_plan_catalogue(monthly_product_id: str, yearly_product_id: str) -> list[PlanDocument]:
@@ -34,7 +34,7 @@ def build_plan_catalogue(monthly_product_id: str, yearly_product_id: str) -> lis
             description="Start free. See what GAIA can do.",
             amount=0,
             currency="USD",
-            duration="monthly",
+            duration=PlanDuration.MONTHLY,
             max_users=1,
             features=[
                 "Chat on WhatsApp, Telegram, Discord & Slack",
@@ -54,7 +54,7 @@ def build_plan_catalogue(monthly_product_id: str, yearly_product_id: str) -> lis
             description="For serious users who want to save time.",
             amount=3000,  # $30.00 in cents
             currency="USD",
-            duration="monthly",
+            duration=PlanDuration.MONTHLY,
             max_users=1,
             features=pro_features,
             is_active=True,
@@ -67,7 +67,7 @@ def build_plan_catalogue(monthly_product_id: str, yearly_product_id: str) -> lis
             description="For serious users who want to save time.",
             amount=30000,  # $300.00 in cents (2 months free, ~16.7% discount)
             currency="USD",
-            duration="yearly",
+            duration=PlanDuration.YEARLY,
             max_users=1,
             features=pro_features,
             is_active=True,
@@ -81,7 +81,7 @@ def build_plan_catalogue(monthly_product_id: str, yearly_product_id: str) -> lis
             description="For teams ready to roll GAIA out to every employee.",
             amount=0,  # Custom pricing, frontend shows 'Custom' label.
             currency="USD",
-            duration="monthly",
+            duration=PlanDuration.MONTHLY,
             max_users=0,  # 0 == unlimited, contact sales
             features=[
                 "Everything in Pro",

@@ -50,7 +50,7 @@ async def list_available_tools(
 @router.get("/tools/categories")
 @Cacheable(smart_hash=True, ttl=21600)  # 6 hours
 async def list_tool_categories(
-    user: AuthenticatedUser = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),  # noqa: ARG001 -- contract
 ) -> dict[str, int]:
     """
     Get all tool categories with their counts.
@@ -72,7 +72,8 @@ async def list_tool_categories(
 
 @router.get("/tools/category/{category_name}", response_model=ToolsCategoryResponse)
 async def get_tools_in_category(
-    category_name: str, user: AuthenticatedUser = Depends(get_current_user)
+    category_name: str,
+    user: AuthenticatedUser = Depends(get_current_user),  # noqa: ARG001 -- contract
 ) -> ToolsCategoryResponse:
     """
     Get tools filtered by category.

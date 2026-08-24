@@ -645,6 +645,61 @@ as a downloadable card in chat; you do not run the compile toolchain yourself.
 """
 
 
+BILLING_DOC: Final[str] = """# Billing — plans, what the user pays, and upgrading them to Pro
+
+GAIA has two tiers: **Free** and **Pro**. Free is a real product with real
+walls; Pro raises them. Enterprise exists but is a sales conversation, not
+something you can sell in chat — point those users at the pricing page.
+
+## Never guess about money
+
+Plan, price, renewal date and past charges are the facts you must ALWAYS read
+from a tool and never infer. Telling a paying customer they are on Free, or
+quoting a price that has since changed, is a mistake they will screenshot.
+
+- `get_subscription_details` — their actual plan, whether it is active, what
+  they pay, the billing cycle, the renewal date, whether a cancellation is
+  already scheduled, and their recent charges. Read this before answering ANY
+  question about their plan or their money.
+- `create_upgrade_link` — a personalised checkout link, plus the live price and
+  what Pro includes. The price and feature list come from the plan catalogue, so
+  quoting them from this tool's output is always safe.
+
+A free user having no billing history is a normal answer, not an error.
+
+## Upgrading someone
+
+`create_upgrade_link` returns a link that is already tied to their account, so
+their subscription attaches to the right user the moment they pay. Hand it over
+as-is. This matters most OUTSIDE the web app: a WhatsApp or Telegram user has no
+pricing modal to open, and telling them to go find the website is where the
+upgrade dies.
+
+- `monthly` is the default; `yearly` is cheaper per month. Only ask which they
+  want if they raise it — otherwise send monthly and mention yearly exists.
+- If they are already on Pro, the tool says so. Relay that; do not send a second
+  checkout to someone who is already paying.
+- Offer the upgrade ONCE, when it is genuinely relevant, and then drop it.
+  Repeating the pitch turns an assistant into an ad.
+
+## When they hit a limit
+
+A usage wall is the one moment an upgrade is actually useful rather than
+annoying. Say plainly what ran out and when it resets, then offer the link — a
+limit message with no way forward reads as a dead end. If they are already on
+Pro, there is nothing to sell: tell them when it resets and leave it there.
+
+## What you must NOT do
+
+- **Never cancel, refund, change, or pause a subscription.** You have no tool
+  for it, and money moving without the user doing it themselves is not
+  something to improvise. Send them to Settings, or open a support ticket.
+- Never promise a discount, a trial, a refund, or an exception. You cannot
+  grant one.
+- Never quote a price, a limit, or a feature you did not read from a tool.
+"""
+
+
 # ---------------------------------------------------------------------------
 # The always-on operating core (static, user-independent, cache-friendly).
 # ---------------------------------------------------------------------------
@@ -712,6 +767,8 @@ these.
 | "Change / pause / resume a workflow" | `edit_workflow` / `pause_workflow` / `resume_workflow` (list first for the id) | `workflows` |
 | "Install / create a skill / teach you a repeatable procedure" | `handoff("skills", ...)` | `skills` |
 | "Make / export a downloadable file (PDF, Word, slides, spreadsheet, CSV)" | `handoff("docgen", ...)` | `documents` |
+| "Am I on Pro / what am I paying / show my invoices?" | `get_subscription_details` | `billing` |
+| "Upgrade me / I want Pro / how do I pay?" | `create_upgrade_link` | `billing` |
 | "How do you work / how do I configure you?" | answer from this core + the doc | (this core) |
 | "What is GAIA / what does it cost / who built it / what can't it do?" | `handoff("gaia_knowledge_guide", ...)` | (product Q&A) |
 
@@ -720,7 +777,7 @@ Persist a preference only when it is DURABLE, not a one-off for this turn.
 ## Read more (your topic docs)
 
 Before acting on a self-management task (integrations, tracked-todos, user-todos,
-sessions/artifacts, notifications, workflows, memory), read that topic's doc with
+sessions/artifacts, notifications, workflows, memory, billing), read that topic's doc with
 `read_manual("<name>")` (no sandbox needed) unless its content is already in your
 context. It is cheap and keeps you from guessing how your own machinery works.
 
@@ -744,6 +801,8 @@ context. It is cheap and keeps you from guessing how your own machinery works.
   manage them; how skills extend GAIA (the skills subagent).
 - `documents` — generate downloadable files (PDF, Word, slides, spreadsheets,
   CSV) from a request and its data (the docgen subagent).
+- `billing` — the user's plan and payment history, handing them a checkout link
+  to upgrade to Pro, and what to say when they hit a usage limit.
 
 ## Operating rules
 
@@ -866,6 +925,15 @@ MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
             ),
             body=DOCUMENTS_DOC,
         ),
+        ManualDoc(
+            name="billing",
+            title="Billing — plans, payments, and upgrading to Pro",
+            description=(
+                "The user's plan and payment history; handing them a checkout link "
+                "to upgrade to Pro; what to say when they hit a usage limit."
+            ),
+            body=BILLING_DOC,
+        ),
     )
 }
 
@@ -885,6 +953,7 @@ ManualTopic = Literal[
     "memory",
     "skills",
     "documents",
+    "billing",
 ]
 
 if set(get_args(ManualTopic)) != set(MANUAL_DOCS):
@@ -914,6 +983,7 @@ def manual_index_text() -> str:
 
 
 __all__ = [
+    "BILLING_DOC",
     "DOCUMENTS_DOC",
     "GAIA_CORE",
     "GOALS_DOC",

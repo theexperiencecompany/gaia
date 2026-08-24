@@ -118,7 +118,6 @@ class FakeSeedState:
         self.reset()
 
     def reset(self) -> None:
-        self.models_seeded = True
         self.plans_seeded = True
 
 
@@ -126,10 +125,6 @@ provider_service = FakeProviderService()
 instance_settings_repo = FakeInstanceSettingsRepository()
 local_credentials_repo = FakeLocalCredentialsRepository()
 seed_state = FakeSeedState()
-
-
-async def _fake_are_models_seeded() -> bool:
-    return seed_state.models_seeded
 
 
 async def _fake_is_payment_setup() -> bool:
@@ -155,7 +150,6 @@ def _bind_fake_seams(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         instance_admin_module, "local_credentials_repository", local_credentials_repo
     )
-    monkeypatch.setattr(setup_module, "are_models_seeded", _fake_are_models_seeded)
     monkeypatch.setattr(setup_module, "is_payment_setup", _fake_is_payment_setup)
     monkeypatch.setattr(settings, "ENV", "selfhost")
 

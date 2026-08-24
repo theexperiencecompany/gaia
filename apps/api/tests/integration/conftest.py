@@ -49,7 +49,7 @@ async def memory_saver():
             open=False,
         )
         await pool.open(wait=True, timeout=30)
-        checkpointer = AsyncPostgresSaver(conn=pool)  # type: ignore[call-arg]
+        checkpointer = AsyncPostgresSaver(conn=pool)
         await checkpointer.setup()
         yield checkpointer
         await pool.close()

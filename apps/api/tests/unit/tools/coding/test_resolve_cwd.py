@@ -44,7 +44,9 @@ def test_dotdot_escape_is_rejected_after_normalization(escape: str) -> None:
     # escaped. _resolve_cwd must normpath BEFORE the containment check.
     _, err = _resolve_cwd(escape, "c")
     assert err is not None, f"{escape!r} must be rejected — it escapes /workspace"
-    assert "must be under" in err
+    # Exact message: it goes back to the LLM, and it must not echo the
+    # rejected cwd back.
+    assert err == f"Error: cwd must be under {WORKSPACE_ROOT}"
 
 
 def test_relative_cwd_joins_to_session_dir_like_read_and_write() -> None:

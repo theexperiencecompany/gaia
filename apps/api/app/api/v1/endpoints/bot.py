@@ -33,6 +33,7 @@ from app.models.bot_models import (
     UnlinkAccountResponse,
 )
 from app.models.message_models import MessageDict, MessageRequestWithHistory
+from app.models.payment_models import PlanType
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.audio_transcription_service import (
@@ -47,6 +48,7 @@ from app.services.bot_token_service import create_bot_session_token
 from app.services.chat.stream import run_chat_stream_background
 from app.services.integrations.marketplace import get_integration_details
 from app.services.integrations.user_integrations import get_user_integration_records
+from app.services.payments.payment_service import payment_service
 from app.services.platform_link_service import (
     Platform,
     PlatformLinkService,
@@ -102,7 +104,34 @@ async def require_bot_api_key(request: Request) -> None:
         raise HTTPException(status_code=401, detail="Invalid or missing bot API key")
 
 
-def _bot_rate_limit_notice(chunk: dict[str, Any]) -> str | None:
+async def _bot_upgrade_url(user_id: str) -> str:
+    """A one-tap Dodo checkout URL for this user, or the pricing page if Dodo fails.
+
+    Bots are where the pricing page is worst: a WhatsApp user has to go find the
+    web app and sign in before they can pay, and most never do. A personalised
+    checkout link removes both steps and attributes the subscription correctly.
+    The session is cached for an hour, so a user who hits limits repeatedly gets
+    the same link rather than a trail of abandoned ones.
+    """
+    try:
+        pro = await payment_service.create_pro_checkout(user_id)
+    except Exception as e:
+        # A marketing link must never cost the user their reply — degrade to the
+        # pricing page, loudly.
+        # Bounded fields, not provider error text: the event stays queryable
+        # without leaking upstream payloads into telemetry.
+        log.warning(
+            f"{LogTag.PAYMENT} Could not mint bot upgrade link, falling back to pricing page",
+            user={"id": user_id},
+            payment={"operation": "bot_upgrade_link"},
+            failure_reason="checkout_unavailable",
+            error_type=type(e).__name__,
+        )
+        return f"{settings.FRONTEND_URL}/pricing"
+    return pro.checkout.payment_link or f"{settings.FRONTEND_URL}/pricing"
+
+
+async def _bot_rate_limit_notice(chunk: dict[str, Any], user_id: str) -> str | None:
     """Render a web-only rate-limit card as a plain-text notice for bots.
 
     Rate limits are streamed as a ``tool_data`` card for the web UI to render.
@@ -122,9 +151,8 @@ def _bot_rate_limit_notice(chunk: dict[str, Any]) -> str | None:
     notice = f"⏳ You've reached your {feature} limit. Please try again later."
 
     # Nudge an upgrade only for non-Pro users (Pro is the top tier).
-    if card.get("current_plan") != "pro":
-        pricing_url = f"{settings.FRONTEND_URL}/pricing"
-        notice += f" [Upgrade to Pro]({pricing_url}) for higher limits."
+    if card.get("current_plan") != PlanType.PRO.value:
+        notice += f" [Upgrade to Pro]({await _bot_upgrade_url(user_id)}) for higher limits."
     return notice
 
 
@@ -443,7 +471,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
                         # Non-terminal: the agent's partial reply still streams, so
                         # pad with blank lines on both sides to keep the notice on its
                         # own paragraph rather than running into adjacent agent text.
-                        rate_limit_notice = _bot_rate_limit_notice(data)
+                        rate_limit_notice = await _bot_rate_limit_notice(data, user_id)
                         if rate_limit_notice is not None:
                             payload = json.dumps({"text": f"\n\n{rate_limit_notice}\n\n"})
                             yield f"data: {payload}\n\n"

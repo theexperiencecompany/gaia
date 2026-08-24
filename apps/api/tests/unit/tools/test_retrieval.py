@@ -542,6 +542,39 @@ class TestGetRetrieveToolsFunction:
 
 class TestRetrieveToolsBinding:
     @pytest.mark.asyncio
+    async def test_binding_mode_stamps_the_wide_event(self):
+        """The binding counts are how an operator tells 'model asked for the
+        wrong names' from 'registry lost tools' in production events."""
+        from app.agents.tools.core.retrieval import get_retrieve_tools_function
+        from shared.py.wide_events import log
+
+        log.reset()
+        fn = get_retrieve_tools_function(include_subagents=True)
+        store = MagicMock()
+        config: dict = {"configurable": {"user_id": "u1"}}
+
+        mock_registry = MagicMock()
+        mock_registry.get_tool_names.return_value = ["TOOL_A", "TOOL_B"]
+
+        with patch(
+            "app.agents.tools.core.retrieval.get_tool_registry",
+            new_callable=AsyncMock,
+            return_value=mock_registry,
+        ):
+            await fn(
+                store=store,
+                config=config,
+                exact_tool_names=["TOOL_A", "TOOL_C"],
+            )
+
+        assert log.get()["tool_retrieval"] == {
+            "mode": "binding",
+            "tools_requested": 2,
+            "tools_bound": 1,
+            "tools_filtered": 1,
+        }
+
+    @pytest.mark.asyncio
     async def test_returns_corrective_when_no_args(self):
         from app.agents.tools.core.retrieval import get_retrieve_tools_function
 
@@ -641,6 +674,63 @@ class TestRetrieveToolsBinding:
 
 
 class TestRetrieveToolsDiscovery:
+    @pytest.mark.asyncio
+    async def test_discovery_mode_stamps_the_wide_event(self):
+        """Discovery telemetry answers 'did the index have anything?' vs 'did
+        the filter drop it?' — pinned field by field, counts included."""
+        from types import SimpleNamespace
+
+        from app.agents.tools.core.retrieval import get_retrieve_tools_function
+        from shared.py.wide_events import log
+
+        log.reset()
+        fn = get_retrieve_tools_function(include_subagents=False, limit=5)
+        store = MagicMock()
+        store.asearch = AsyncMock(
+            return_value=[
+                SimpleNamespace(key="TOOL_A", score=0.9, namespace=("general",), value={}),
+                SimpleNamespace(key="TOOL_B", score=0.8, namespace=("general",), value={}),
+            ]
+        )
+        config: dict = {"configurable": {"user_id": "u1"}}
+
+        mock_registry = MagicMock()
+        # Only TOOL_A is a known tool — TOOL_B is filtered out downstream.
+        mock_registry.get_tool_names.return_value = ["TOOL_A"]
+
+        with (
+            patch(
+                "app.agents.tools.core.retrieval.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=mock_registry,
+            ),
+            patch(
+                "app.agents.tools.core.retrieval._get_user_context",
+                new_callable=AsyncMock,
+                return_value=({"general"}, {}, set()),
+            ),
+            patch(
+                "app.agents.tools.core.retrieval._user_mcp_tool_names",
+                new_callable=AsyncMock,
+                return_value=set(),
+            ),
+        ):
+            await fn(store=store, config=config, query="send email", exact_tool_names=[])
+
+        assert log.get()["tool_retrieval"] == {
+            "mode": "discovery",
+            "query": "send email",
+            "tool_space": "general",
+            "user_id": "u1",
+            "namespaces_searched": ["general"],
+            "tools_discovered": 1,
+            "chroma_hits": 2,
+            "public_hits": 0,
+            "per_namespace_hits": {"general": 2},
+            "candidates_after_filter": 1,
+            "chroma_preview": ["('general',)::TOOL_A", "('general',)::TOOL_B"],
+        }
+
     @pytest.mark.asyncio
     async def test_discovery_mode(self):
         from app.agents.tools.core.retrieval import get_retrieve_tools_function

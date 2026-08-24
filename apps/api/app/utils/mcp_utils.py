@@ -159,7 +159,7 @@ def wrap_tool_with_null_filter(
                 return f"The MCP server timed out. Please try again. Error: {error_msg}"
             return f"MCP tool error: {error_msg}"
 
-    tool._arun = filtered_arun  # type: ignore[method-assign]
+    tool._arun = filtered_arun  # type: ignore[method-assign]  # swapping BaseTool._arun with a filtered wrapper is the deliberate dispatch mechanism
     # Stash original for the reconnect path to bypass this wrapper on retry.
     tool._original_arun = original_arun
     return tool

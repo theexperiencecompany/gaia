@@ -25,6 +25,7 @@ from app.constants.memory import (
 from app.memory.prompts import (
     CATEGORIZE_SYSTEM_PROMPT,
     EPISODE_SUMMARY_SYSTEM_PROMPT,
+    EXTRACTION_FOLDER_TREE_BLOCK,
     EXTRACTION_SYSTEM_PROMPT,
     RECONCILE_SYSTEM_PROMPT,
 )
@@ -53,10 +54,25 @@ _TRANSCRIPT_TRUNCATION_MARKER = "\n[... transcript truncated ...]\n"
 # see ``ainvoke_structured``; without it the pipeline's real COGS would land in
 # nobody's budget.
 def _silent_config(user_id: str) -> RunnableConfig:
-    return {
+    config: RunnableConfig = {
         **silent_metered_config(user_id),
         "tags": ["memory_internal"],
     }
+    # The memory family's own sticky-routing chain, per user. On the aux lane
+    # the sticky session is what keeps consecutive extractions landing on the
+    # upstream that already holds this user's transcript prefixes — without it
+    # every call routes independently and the append-only transcript re-sends
+    # cold. Per USER, not per conversation: one upstream then holds all of a
+    # user's memory-call prefixes, and the "-aux" suffix the runnable adds
+    # keeps this chain from ever re-pinning a conversation's.
+    # Indexing, not .get with a default: silent_metered_config always carries a
+    # configurable (it is where the user_id metering lives), and a missing one
+    # here would mean the spend attribution vanished — fail loud, not paper over.
+    config["configurable"] = {
+        **config["configurable"],
+        "session_id": f"memory-{user_id}",
+    }
+    return config
 
 
 # Provider failures and malformed structured output both degrade to None so the
@@ -160,23 +176,28 @@ async def extract_memories(
     journal_section = (
         "\n".join(f"- {line}" for line in journaled_today) if journaled_today else "(empty)"
     )
-    system_prompt = EXTRACTION_SYSTEM_PROMPT.format(
-        user_name=user_name,
-        folder_tree=folder_tree or "(no folders yet)",
-    )
-    # The volatile context (today's date, recently stored facts, today's
-    # journal) rides in a TRAILING message, NOT inside the system prompt.
-    # The memory lane's cache is a byte-prefix cache: with the facts/journal
+    system_prompt = EXTRACTION_SYSTEM_PROMPT.format(user_name=user_name)
+    # The volatile context (today's date, the journal, the folder tree, the
+    # recently stored facts) rides in a TRAILING message, NOT inside the system
+    # prompt: the memory lane's cache is a byte-prefix cache, and with these
     # churning inside the system prompt the prefix broke there and the whole
-    # (append-only) transcript re-sent uncached every turn — measured ~41%
-    # hit on the lane. With them moved to the tail, the cached prefix extends
-    # through the stable template + the transcript and only this small tail
-    # re-sends uncached.
+    # (append-only) transcript re-sent uncached every turn — measured ~41% hit
+    # on the lane.
+    #
+    # WITHIN the tail, order is by churn rate, slowest first, because the tail
+    # is over half of a real extraction call (measured live: the cached prefix
+    # stops at system+transcript, ~47%). The date is stable all day; the
+    # journal only APPENDS during a day; the folder tree gains a line rarely;
+    # the recent-facts window ROLLS on every ingestion and the hints are
+    # per-run. With the rolling window ahead of the journal, one new fact
+    # re-sent the whole journal on every extraction.
     volatile_context = (
         f"Today is {current_date:%A, %d %B %Y}.\n"
-        f"## Recently stored facts (do NOT re-extract these)\n{recent_facts_section}\n"
         "## Today's journal so far (do NOT repeat these events, even reworded)\n"
-        f"{journal_section}{hints_section}"
+        f"{journal_section}\n"
+        + EXTRACTION_FOLDER_TREE_BLOCK.format(folder_tree=folder_tree or "(no folders yet)")
+        + f"\n## Recently stored facts (do NOT re-extract these)\n{recent_facts_section}"
+        + hints_section
     )
 
     result = await _invoke_structured(

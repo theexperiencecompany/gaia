@@ -14,12 +14,23 @@ end-of-turn hooks, and how a turn carries into the next.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from itertools import pairwise
+import json
 from uuid import uuid4
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
+from langgraph.graph.state import CompiledStateGraph
 import pytest
 
 from app.constants.general import NEW_MESSAGE_BREAKER
+from app.utils.multimodal import extract_text_content
 from tests.e2e._harness.graph_run import (
     AGENT_NODE,
     REJECT_NODE,
@@ -263,3 +274,132 @@ class TestAcrossTurns:
 
         shown = " ".join(str(m.content) for m in run.last_prompt())
         assert "conversation one" not in shown
+
+
+#: One message as the cache sees it: its type, its text, and its tool-call
+#: identity. Not a bare string — a message whose tool calls change while its
+#: text does not is identical in a transcript and different on the wire.
+_MessageFingerprint = tuple[str, str, str]
+
+
+class TestTheConversationGrowsAppendOnly:
+    """The provider caches a BYTE prefix of the request, so a turn only resumes
+    from cache if it begins with the previous turn's history verbatim. Appending
+    is free; rewriting a message that was already sent truncates the cache at
+    that point and every message behind it is re-read.
+
+    This is invisible to every other assertion: a rewrite leaves the same
+    messages present and the agent still answers correctly, so the transcript
+    looks right while the bytes on the wire changed. Only a byte-level check
+    catches it, which is why it belongs in the suite rather than in a dashboard.
+    """
+
+    @staticmethod
+    def _tool_identity(message: BaseMessage) -> str:
+        """Everything about a message's tool calls that the wire carries.
+
+        An assistant turn is identified by every call it makes — ``name``,
+        ``args`` and ``id`` — because a request whose args change while the
+        text stays identical is a different byte sequence behind an unchanged
+        transcript. A tool result is identified by the call it answers, so a
+        re-correlated result is caught the same way. ``args`` is serialised
+        with sorted keys: the fingerprint has to move when the values move and
+        stay put when only dict ordering does.
+        """
+        if isinstance(message, ToolMessage):
+            return f"->{message.tool_call_id}"
+        return ";".join(
+            f"{call.get('name', '')}({json.dumps(call.get('args', {}), sort_keys=True)})"
+            f"#{call.get('id', '')}"
+            for call in (getattr(message, "tool_calls", None) or [])
+        )
+
+    @classmethod
+    def _conversation(cls, prompt_messages: Sequence[BaseMessage]) -> list[_MessageFingerprint]:
+        """The conversation portion of one recorded request.
+
+        System slots are handled separately and excluded here. Identity is
+        (type, text, tool identity) — see :meth:`_tool_identity` for why the
+        text alone is not enough.
+        """
+        return [
+            (
+                type(m).__name__,
+                extract_text_content(getattr(m, "content", "")),
+                cls._tool_identity(m),
+            )
+            for m in prompt_messages
+            if not isinstance(m, SystemMessage)
+        ]
+
+    @classmethod
+    async def _requests_across_turns(
+        cls, graph: CompiledStateGraph, prompts: Sequence[str], thread: str
+    ) -> list[list[_MessageFingerprint]]:
+        """Every model call the graph made, in order, across several turns.
+
+        ``run.prompts`` is copied off the scripted model, which accumulates for
+        the lifetime of the graph — so turn 2's ``run`` re-reports turn 1's calls
+        as well. Taking it whole makes the second turn look like it rewound the
+        conversation. Only the calls added since the previous turn are new.
+        """
+        requests: list[list[_MessageFingerprint]] = []
+        seen = 0
+        for prompt in prompts:
+            run = await run_graph(graph, prompt, thread_id=thread)
+            requests.extend(cls._conversation(p) for p in run.prompts[seen:])
+            seen = len(run.prompts)
+        assert len(requests) >= 2, f"need at least two model calls to compare, got {len(requests)}"
+        return requests
+
+    async def test_each_request_begins_with_the_previous_requests_history(self) -> None:
+        """Two turns on ONE thread, which is where the cache is supposed to pay:
+        turn 2's request must open with turn 1's history byte for byte.
+
+        A single plain-reply turn makes exactly one model call and so compares
+        nothing, hence two turns against the same ``thread_id``.
+        """
+        async with comms_graph(["first reply", "second reply"]) as graph:
+            requests = await self._requests_across_turns(
+                graph, ("first question", "second question"), f"cache-{uuid4()}"
+            )
+
+        self._assert_append_only(requests)
+
+    async def test_a_turn_that_called_a_tool_still_begins_with_its_own_history(self) -> None:
+        """The case with something to break. Delegating through ``call_executor``
+        leaves an AI message carrying ``tool_calls`` in the history, and
+        ``filter_messages_node`` rebuilds that message on every later call,
+        narrowing its ``tool_calls`` to the answered ones (``filter_messages.py``).
+
+        Rebuilding is only safe while it is *stable* — the same message in, the
+        same bytes out. The moment the rebuild's result depends on how much of
+        the turn has run, an already-sent message changes shape mid-conversation
+        and everything behind it is re-read at full price.
+        """
+        async with comms_graph(
+            [call("call_executor", {"task": "do it"}, id="x1"), "done", "second reply"]
+        ) as graph:
+            requests = await self._requests_across_turns(
+                graph, ("delegate something", "and now this"), f"cache-tool-{uuid4()}"
+            )
+
+        self._assert_append_only(requests)
+
+    @staticmethod
+    def _assert_append_only(requests: Sequence[Sequence[_MessageFingerprint]]) -> None:
+        for index, (earlier, later) in enumerate(pairwise(requests)):
+            shared = later[: len(earlier)]
+            if shared == earlier:
+                continue
+            first_diff = next(
+                (i for i in range(min(len(earlier), len(later))) if earlier[i] != later[i]),
+                len(shared),
+            )
+            raise AssertionError(
+                f"request {index + 1} did not begin with request {index}'s history — "
+                f"the conversation was rewritten at index {first_diff}, so the "
+                f"{len(earlier) - first_diff} messages behind it lost their cache.\n"
+                f"  was: {earlier[first_diff] if first_diff < len(earlier) else '<missing>'}\n"
+                f"  now: {later[first_diff] if first_diff < len(later) else '<missing>'}"
+            )

@@ -290,7 +290,7 @@ def scripted_model(script: Sequence[Any]) -> RecordingFakeModel:
             responses.append(AIMessage(content="", tool_calls=list(item)))
         else:
             responses.append(AIMessage(content=str(item)))
-    return RecordingFakeModel(responses=responses)
+    return RecordingFakeModel(responses=responses, profile={"max_input_tokens": 1_000_000})
 
 
 def call_all_tools_response_generator(

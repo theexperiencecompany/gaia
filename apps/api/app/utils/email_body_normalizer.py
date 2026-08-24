@@ -200,10 +200,11 @@ def _clean_url(match: re.Match[str]) -> str:
     pairs = [pair for pair in query.split("&") if pair]
     kept = []
     for pair in pairs:
-        if "=" in pair:
-            key = pair.split("=", 1)[0]
-        else:
-            key = pair
+        # partition (not split): the key is everything before the first "=";
+        # a value may itself contain "=" (base64 padding), which split(maxsplit)
+        # variants handle differently and mutation-equivalent maxsplit values
+        # would survive the gate on.
+        key = pair.partition("=")[0]
         if key.lower() in _TRACKING_PARAMS:
             continue
         kept.append(pair)

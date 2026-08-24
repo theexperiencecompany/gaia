@@ -8,7 +8,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
-from livekit import rtc  # type: ignore[attr-defined]
+from livekit import rtc  # type: ignore[attr-defined]  # livekit __init__ untyped upstream
 from livekit.agents.llm import LLM, ChatChunk, ChatContext, ChoiceDelta
 
 from shared.py.wide_events import VoiceContext, get_trace_id, log, log_context, wide_task

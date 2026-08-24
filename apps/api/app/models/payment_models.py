@@ -3,7 +3,7 @@ Payment and subscription related models for Dodo Payments integration.
 """
 
 from datetime import datetime
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -16,6 +16,18 @@ class PlanType(str, Enum):
 
     FREE = "free"
     PRO = "pro"
+
+
+class PlanDuration(StrEnum):
+    """Billing cycle a plan is charged on.
+
+    Closed and repository-owned: the catalogue is written by
+    ``scripts/payment_setup.py`` and the web already types the wire field as
+    ``"monthly" | "yearly"`` (``apps/web/src/features/pricing/api/pricingApi.ts``).
+    """
+
+    MONTHLY = "monthly"
+    YEARLY = "yearly"
 
 
 class SubscriptionStatus(str, Enum):
@@ -50,7 +62,7 @@ class PlanResponse(BaseModel):
     description: str | None = Field(None, description="Plan description")
     amount: int = Field(..., description="Plan amount")
     currency: str = Field(..., description="Currency")
-    duration: str = Field(..., description="Billing duration")
+    duration: PlanDuration = Field(..., description="Billing duration")
     max_users: int | None = Field(None, description="Maximum users")
     features: list[str] = Field(default_factory=list, description="Features")
     is_active: bool = Field(..., description="Active status")
@@ -67,6 +79,18 @@ class CreateSubscriptionResponse(BaseModel):
     subscription_id: str = Field(..., description="Dodo checkout session ID")
     payment_link: str | None = Field(None, description="Hosted checkout URL")
     status: str = Field(..., description="Checkout creation status")
+
+
+class ProCheckout(BaseModel):
+    """A resolved Pro plan paired with its hosted checkout session.
+
+    One catalogue resolution backs both, so the price quoted to the user and the
+    price behind the link can never disagree — including when the session comes
+    from cache and was minted under an earlier catalogue read.
+    """
+
+    plan: PlanResponse
+    checkout: CreateSubscriptionResponse
 
 
 class UserSubscriptionStatus(BaseModel):
@@ -100,7 +124,7 @@ class PlanDocument(MongoDocument):
     description: str | None = None
     amount: int
     currency: str
-    duration: str
+    duration: PlanDuration
     max_users: int | None = None
     features: list[str] = Field(default_factory=list)
     is_active: bool = True
@@ -132,6 +156,8 @@ class SubscriptionDocument(MongoDocument):
     product_id: str | None = None
     status: str = "pending"
     cancel_at_next_billing_date: bool | None = None
+    #: The ISO string Dodo sends, stored verbatim (see ``SubscriptionUpdate``).
+    next_billing_date: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -190,3 +216,38 @@ class PaymentVerificationResponse(BaseModel):
     payment_completed: bool
     subscription_id: str | None = None
     message: str
+
+
+class PaymentHistoryEntry(BaseModel):
+    """One charge from Dodo's payment ledger, flattened for display.
+
+    Dodo is the ledger — nothing local records individual charges — so these are
+    read live from ``payments.list`` rather than a collection.
+    """
+
+    payment_id: str
+    status: str | None = None
+    amount: int = Field(..., description="Charged amount in the currency's minor unit")
+    currency: str
+    created_at: datetime
+    payment_method: str | None = None
+
+
+class SubscriptionDetails(BaseModel):
+    """Everything GAIA needs to answer 'what am I on, and what have I paid?'.
+
+    ``UserSubscriptionStatus`` is the frontend's shape and carries raw Mongo/plan
+    dicts; this is the flattened, typed view the agent reads.
+    """
+
+    plan_type: PlanType
+    is_subscribed: bool
+    status: SubscriptionStatus | None = None
+    plan_name: str | None = None
+    #: Plan price in the currency's minor unit, matching Dodo's wire format.
+    amount: int | None = None
+    currency: str | None = None
+    billing_cycle: PlanDuration | None = None
+    next_billing_date: str | None = None
+    cancel_at_next_billing_date: bool = False
+    payments: list[PaymentHistoryEntry] = Field(default_factory=list)

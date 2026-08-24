@@ -320,6 +320,24 @@ _CORE_CATEGORY_NAMES = [
 ]
 
 
+class TestBillingCategory:
+    def test_billing_category_registers_the_subscription_tools(self):
+        """The real initializer must wire the billing category to the two
+        subscription tools with nothing marked destructive — a checkout link is
+        inert until the user pays it, so the upgrade flow must never trip HIL."""
+        registry = ToolRegistry()
+        registry._initialize_categories()
+
+        category = registry.get_category("billing")
+        assert category is not None
+        assert sorted(tool.name for tool in category.tools) == [
+            "create_upgrade_link",
+            "get_subscription_details",
+        ]
+        assert all(tool.destructive is False for tool in category.tools)
+        assert category.internal is False
+
+
 def _patch_initialize_categories():
     """
     Return a patcher that replaces _initialize_categories with a lightweight

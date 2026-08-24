@@ -372,14 +372,14 @@ async def search_messages(
     query: str | None = None,
     max_results: int = 20,
     page_token: str | None = None,
-    format: str | None = None,
+    message_format: str | None = None,
     include_payload: bool | None = None,
     verbose: bool | None = None,
 ) -> GmailMessagesResponse:
     """
     Search Gmail messages using Composio Gmail tool.
 
-    Pass format="metadata" with include_payload=False and verbose=False to
+    Pass message_format="metadata" with include_payload=False and verbose=False to
     skip body decode and bypass GMAIL_FULL_FETCH_HARD_LIMIT.
     """
     log.set(user={"id": user_id}, mail=MailContext(operation="fetch", provider="gmail"))
@@ -390,8 +390,8 @@ async def search_messages(
         }
         if page_token:
             parameters["page_token"] = page_token
-        if format is not None:
-            parameters["format"] = format
+        if message_format is not None:
+            parameters["format"] = message_format
         if include_payload is not None:
             parameters["include_payload"] = include_payload
         if verbose is not None:

@@ -212,10 +212,15 @@ async def get_workflow(
         if not workflow:
             return error_response("not_found", f"Workflow {workflow_id} not found")
 
+        # mode="json": this payload is plain json.dumps'd twice — as the tool
+        # result handed to the LLM and as the stream-writer SSE frame — so a
+        # native datetime raises TypeError inside the tool and wedges the agent
+        # in a retry loop.
+        workflow_json = workflow.model_dump(mode="json")
         writer = get_stream_writer()
-        writer({"workflow_data": {"action": "get", "workflow": workflow.model_dump(mode="json")}})
+        writer({"workflow_data": {"action": "get", "workflow": workflow_json}})
 
-        return success_response(workflow.model_dump(mode="json"))
+        return success_response(workflow_json)
 
     except Exception as e:
         log.error(

@@ -161,7 +161,7 @@ def _compute_trigger_diff(
             triggers_to_upsert.append((trigger_slug, trigger_data))
 
     # Find deleted triggers
-    for existing_slug in existing_triggers.keys():
+    for existing_slug in existing_triggers:
         if existing_slug not in current_triggers:
             triggers_to_delete.append(existing_slug)
 

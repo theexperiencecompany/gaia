@@ -35,6 +35,9 @@ set -euo pipefail
 : "${BACKEND_IMAGES_PUBLISHED:=false}"
 : "${MANUAL_MODE_INPUT:=}"
 : "${MANUAL_MODE_EVENT:=}"
+# quality-gate result from the caller (phase=deploy). 'success' default keeps
+# the legacy manual/dispatch flow gate-free. A failed gate must never deploy.
+: "${GATE_RESULT:=success}"
 
 backend_affected=false
 [[ "$API_AFFECTED" = "true" ]] || [[ "$BOTS_AFFECTED" = "true" ]] && backend_affected=true
@@ -56,12 +59,15 @@ fi
 on_master=false
 [[ "$REF" = "refs/heads/master" ]] && on_master=true
 
+gate_passed=false
+[[ "$GATE_RESULT" = "success" ]] && gate_passed=true
+
 if [[ "$on_master" = "false" ]]; then
   echo "Not on master; deploy jobs disabled."
 elif [[ "$EVENT_NAME" = "workflow_dispatch" ]]; then
   case "$manual_mode" in
     auto)
-      if [[ "$backend_affected" = "true" ]] && [[ "$DOCKER_RELEASE_RESULT" = "success" ]]; then
+      if [[ "$gate_passed" = "true" ]] && [[ "$backend_affected" = "true" ]] && [[ "$DOCKER_RELEASE_RESULT" = "success" ]]; then
         backend_deploy=true
       fi
       ;;
@@ -81,15 +87,18 @@ elif [[ "$EVENT_NAME" = "workflow_dispatch" ]]; then
       ;;
   esac
 else
-  # Automatic push-triggered plan.
-  if [[ "$backend_affected" = "true" ]] && [[ "$DOCKER_RELEASE_RESULT" = "success" ]]; then
+  # Automatic push-triggered plan (main.yml phase=deploy passes GATE_RESULT).
+  if [[ "$gate_passed" = "true" ]] && [[ "$backend_affected" = "true" ]] && [[ "$DOCKER_RELEASE_RESULT" = "success" ]]; then
     backend_deploy=true
   fi
 fi
 
-# Orphan detection: images landed in GHCR tagged :latest but the deploy that
+# Orphan detection: immutable images landed in GHCR but the deploy that
 # would roll them out did not run this time, for ANY reason (lane failure,
-# cancellation, or the plan deciding not to deploy). Scoped to master:
+# cancellation, a failed quality gate, or the plan deciding not to deploy).
+# :latest does not move in that case (it is re-pointed only after a
+# successful deploy), so production is unaffected — the drift is master
+# being ahead of what runs. Scoped to master:
 # off-master manual builds intentionally never deploy and must not be
 # reported as drift. A deploy the operator explicitly excluded via a manual
 # mode is not drift either.

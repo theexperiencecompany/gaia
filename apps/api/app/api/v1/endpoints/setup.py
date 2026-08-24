@@ -38,7 +38,7 @@ from app.services.providers.provider_credentials_service import (
     resolve as resolve_provider_config,
     upsert as upsert_provider_config,
 )
-from app.services.startup_validation import are_models_seeded, is_payment_setup
+from app.services.startup_validation import is_payment_setup
 from app.utils.url_safety import assert_public_http_url, assert_safe_url_shape
 from shared.py.wide_events import log
 
@@ -95,7 +95,6 @@ async def get_setup_status() -> dict[str, Any]:
         "needs_setup": _needs_setup(has_admin_account, configured),
         "billing_enabled": settings.ENV != "selfhost",
         "providers": {p: {"configured": c} for p, c in configured.items()},
-        "models_seeded": await are_models_seeded(),
         "plans_seeded": await is_payment_setup(),
     }
 

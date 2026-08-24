@@ -278,8 +278,15 @@
     - email: ada@example.com
     CUSTOM INSTRUCTIONS FOR GMAIL (set by the user — honor these):
     Always archive newsletters.
-    What you remember about this user (memory core):
-    - Prefers short answers.
+    ## Available skills
+    - inbox-triage
+    
+    ## Available skills for gmail
+    Read `/workspace/integrations/gmail/agent/skills/<slug>/skill.md` before invoking the underlying tool. Use the exact path shown for each skill below; do not rewrite it. The body is the full recipe; the description below is a one-line trigger so you know which file to cat.
+    - **gmail-clean-inbox** (`/workspace/integrations/gmail/agent/skills/gmail-clean-inbox/skill.md`) — Intelligently clean Gmail inbox - audit labels, identify patterns, batch categorize, archive old messages, present cleanup summary
+    - **gmail-draft-send** (`/workspace/integrations/gmail/agent/skills/gmail-draft-send/skill.md`) — Create and send Gmail emails using draft-first workflow. Always draft first, get user approval, then send.
+    - **gmail-find-contacts** (`/workspace/integrations/gmail/agent/skills/gmail-find-contacts/skill.md`) — Find contacts in Gmail - search for specific people or email addresses from email history.
+    - **gmail-search-context** (`/workspace/integrations/gmail/agent/skills/gmail-search-context/skill.md`) — Read, search, and summarize Gmail — precise queries, large-inbox fan-out reads, synthesized findings, and the opinionated inbox triage report
 
 [2] human
     summarise my unread mail
@@ -311,21 +318,14 @@
     - "GAIA is doing something the user might ask about later" → create_tracked_todo
 
 [4] system markers=memory_recall
+    What you remember about this user (memory core):
+    - Prefers short answers.
+    
     Based on our previous conversations (bracketed dates say when something happened / was last mentioned):
     - Ships on Fridays [mentioned 2026-02-01]
     
     About Gaia (your identity and capabilities):
     - GAIA can run scheduled workflows.
-    
-    ## Available skills
-    - inbox-triage
-    
-    ## Available skills for gmail
-    Read `/workspace/integrations/gmail/agent/skills/<slug>/skill.md` before invoking the underlying tool. Use the exact path shown for each skill below; do not rewrite it. The body is the full recipe; the description below is a one-line trigger so you know which file to cat.
-    - **gmail-clean-inbox** (`/workspace/integrations/gmail/agent/skills/gmail-clean-inbox/skill.md`) — Intelligently clean Gmail inbox - audit labels, identify patterns, batch categorize, archive old messages, present cleanup summary
-    - **gmail-draft-send** (`/workspace/integrations/gmail/agent/skills/gmail-draft-send/skill.md`) — Create and send Gmail emails using draft-first workflow. Always draft first, get user approval, then send.
-    - **gmail-find-contacts** (`/workspace/integrations/gmail/agent/skills/gmail-find-contacts/skill.md`) — Find contacts in Gmail - search for specific people or email addresses from email history.
-    - **gmail-search-context** (`/workspace/integrations/gmail/agent/skills/gmail-search-context/skill.md`) — Read, search, and summarize Gmail — precise queries, large-inbox fan-out reads, synthesized findings, and the opinionated inbox triage report
     
     Tracked: ship the context refactor
 

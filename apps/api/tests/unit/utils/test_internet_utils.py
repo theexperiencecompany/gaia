@@ -501,7 +501,7 @@ class TestFetchUrlMetadata:
     async def test_none_url_raises_http_exception(self) -> None:
         """None URL raises HTTPException."""
         with pytest.raises(Exception) as exc_info:
-            await fetch_url_metadata(None)  # type: ignore[arg-type]
+            await fetch_url_metadata(None)
 
         from fastapi import HTTPException
 

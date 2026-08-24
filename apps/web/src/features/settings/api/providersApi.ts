@@ -61,7 +61,6 @@ export interface SetupStatus {
   /** false on self-host instances — usage is tracked but never billed. */
   billing_enabled: boolean;
   providers: Record<CredentialProvider, ProviderStatus>;
-  models_seeded: boolean;
   plans_seeded: boolean;
 }
 

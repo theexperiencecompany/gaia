@@ -113,7 +113,6 @@ class TestStatus:
             "needs_setup",
             "billing_enabled",
             "providers",
-            "models_seeded",
             "plans_seeded",
         }
         assert set(body["providers"]) == {"openrouter", "gemini", "ollama", "custom", "tavily"}
@@ -209,7 +208,6 @@ class TestStatus:
 
     async def test_seed_flags_surfaced(self, client: AsyncClient) -> None:
         body = (await client.get(f"{API}/status")).json()
-        assert body["models_seeded"] is True
         assert body["plans_seeded"] is True
 
         seed_state.plans_seeded = False

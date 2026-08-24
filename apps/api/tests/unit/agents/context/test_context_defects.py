@@ -68,11 +68,18 @@ class TestVolatileContentIsNotInTheCacheablePrefix:
         assert "Ships on Fridays" in recall
 
     @pytest.mark.parametrize("tier", WORKER_TIERS)
-    async def test_skills_are_in_the_volatile_slot(self, tier: AgentTier) -> None:
+    async def test_skills_are_in_the_cached_prefix(self, tier: AgentTier) -> None:
+        """The listing is byte-stable per (user, agent) — no query, no clock,
+        Redis-cached 12h — so it belongs in the prefix where it costs nothing
+        per call, not in the tail it was re-read from on every worker call.
+        A mid-conversation skill install breaks the prefix once; that is the
+        same trade integrations_manifest already makes for connects."""
         messages = await effective_context(tier, sources=VOLATILE_SOURCES)
 
+        stable = text_of(message_in_slot(messages, PromptSlot.DYNAMIC_STABLE))
         recall = text_of(message_in_slot(messages, PromptSlot.MEMORY_RECALL))
-        assert "inbox-triage" in recall
+        assert "inbox-triage" in stable
+        assert "inbox-triage" not in recall
 
     @pytest.mark.parametrize("tier", [AgentTier.EXECUTOR, AgentTier.PROVIDER_SUBAGENT])
     async def test_run_banners_are_in_the_volatile_slot(self, tier: AgentTier) -> None:
@@ -93,11 +100,12 @@ class TestVolatileContentIsNotInTheCacheablePrefix:
         # "Prefers short answers" is deliberately absent: a memory-core DOCUMENT
         # is rewritten by consolidation, not per query, so it belongs in the
         # prefix. The core's agenda and journal are what churn, and they are a
-        # separate section in the volatile slot.
-        for volatile in ("Ships on Fridays", "inbox-triage"):
-            assert volatile not in stable, (
-                f"{volatile!r} churns per query but sits in the cacheable prefix"
-            )
+        # separate section in the volatile slot. "inbox-triage" (the skills
+        # listing) is likewise absent: it is byte-stable per (user, agent) and
+        # now lives in the prefix on purpose.
+        assert "Ships on Fridays" not in stable, (
+            "per-query recall churns per turn but sits in the cacheable prefix"
+        )
 
 
 @pytest.mark.unit

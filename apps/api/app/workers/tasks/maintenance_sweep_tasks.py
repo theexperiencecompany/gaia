@@ -277,10 +277,7 @@ def _is_dormant(todo: TodoDocument, now: datetime) -> bool:
 
     # Blocking label present — only surface if it has been stuck too long
     # Use idle_days as proxy for label age (label changes trigger updated_at)
-    if idle_days > WAITING_LABEL_MAX_DAYS:
-        return True
-
-    return False
+    return idle_days > WAITING_LABEL_MAX_DAYS
 
 
 async def _health_check_expired(todo: TodoDocument, pool: ArqRedis) -> ExpiredOutcome:

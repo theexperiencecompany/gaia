@@ -58,7 +58,11 @@ from app.services.cost_budget import (
     get_budget_stop_reason,
     is_budget_wrapup_threshold,
 )
-from app.services.llm_metering import extract_message_usage, record_llm_call
+from app.services.llm_metering import (
+    extract_generation_id,
+    extract_message_usage,
+    record_llm_call,
+)
 from shared.py.wide_events import ModelContext, log
 
 
@@ -382,6 +386,13 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             reasoning_tokens=reasoning_tokens,
             cost_usd=total_cost,
             step_index=step_index,
+            # Which UPSTREAM served this call. ``provider`` above is the lane's
+            # configured provider (always "openrouter"), which cannot answer the
+            # question a zero-cache call raises: did the request land on a
+            # different upstream that holds no warm prefix, or did the prefix
+            # break? This id resolves to the serving provider through
+            # OpenRouter's generation-metadata endpoint, spending no model call.
+            generation_id=extract_generation_id(ai_msg),
         )
 
         # Recursion high-water-mark — emitted once per thread when the run

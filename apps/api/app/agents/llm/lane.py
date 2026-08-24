@@ -19,7 +19,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from app.agents.llm.client import PROVIDER_MODELS, next_fallback_provider
-from app.agents.llm.types import LLMProviderName
+from app.agents.llm.types import DevModelOption, LLMProviderName
 from app.config.rate_limits import RateLimitPeriod, get_reset_time, get_time_window_key
 from app.config.settings import settings
 from app.constants.cache import COST_BUDGET_NOTIFIED_KEY
@@ -42,7 +42,17 @@ from app.constants.llm import (
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable
-from app.models.models_models import DevModelOption
+from app.models.notification.notification_models import (
+    NotificationContent,
+    NotificationRequest,
+    NotificationSourceEnum,
+)
+from app.models.payment_models import PlanType
+from app.services.cost_budget import get_cost
+from app.services.notification_service import notification_service
+from app.services.payments.payment_service import payment_service
+from app.utils.background_tasks import spawn_background_task
+from shared.py.wide_events import log
 
 if TYPE_CHECKING:
     from app.services.providers.provider_credentials_service import ProviderConfig
@@ -67,18 +77,6 @@ def set_runtime_config_lookup(
     global _RUNTIME_CONFIG_LOOKUP
     _RUNTIME_CONFIG_LOOKUP = fn
 
-
-from app.models.notification.notification_models import (
-    NotificationContent,
-    NotificationRequest,
-    NotificationSourceEnum,
-)
-from app.models.payment_models import PlanType
-from app.services.cost_budget import get_cost
-from app.services.notification_service import notification_service
-from app.services.payments.payment_service import payment_service
-from app.utils.background_tasks import spawn_background_task
-from shared.py.wide_events import log
 
 #: Every configurable key a lane owns. These must be REPLACED wholesale on a lane
 #: change, never merged into — a leftover key is the previous lane still steering
