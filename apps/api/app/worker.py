@@ -7,7 +7,7 @@ from arq.typing import WorkerCoroutine
 # same monkey-patches as the API process (main.py). Without this, custom tools
 # 500 with "Missing user_id in auth_credentials" because the CustomTool
 # user_id-injection patch never loads in this process.
-import app.patches  # noqa: F401
+import app.patches  # noqa: F401 -- applies monkeypatches on import; must run before the patched SDKs are used
 from app.workers.config.worker_settings import WorkerSettings
 from app.workers.lifecycle import shutdown, startup
 from app.workers.task_envelope import arq_task

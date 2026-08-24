@@ -127,7 +127,7 @@ async def _build_spawn_graph(
         )
     )
 
-    builder = create_agent(**kwargs)  # type: ignore[arg-type]
+    builder = create_agent(**kwargs)  # type: ignore[arg-type]  # kwargs assembled as a runtime dict; **-unpacking defeats mypy's kwarg checking
 
     try:
         checkpointer_manager = await get_checkpointer_manager()

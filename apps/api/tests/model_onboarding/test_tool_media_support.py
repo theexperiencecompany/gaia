@@ -41,7 +41,7 @@ from app.constants.llm import OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT
 # Applies openrouter_tool_multimodal_patch: the client library converts media
 # blocks for user messages but not for tool messages, so without this the SDK
 # rejects the payload locally and the test would never reach the model.
-import app.patches  # noqa: F401
+import app.patches  # noqa: F401  # imported for patch registration side effects
 
 pytestmark = pytest.mark.model_onboarding
 

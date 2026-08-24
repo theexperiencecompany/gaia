@@ -52,7 +52,7 @@ _KEPT_FIELDS = {
 }
 
 
-def manage_system_prompts_node(state: State, config: RunnableConfig, store: BaseStore) -> State:
+def manage_system_prompts_node(state: State, config: RunnableConfig, store: BaseStore) -> State:  # noqa: ARG001 -- execute_hooks() passes state/config/store positionally
     """Keep the latest message per slot and emit them in canonical slot order.
 
     The order depends on the provider the request is bound for — see

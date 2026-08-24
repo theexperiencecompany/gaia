@@ -421,6 +421,22 @@ class TestEventCreateRequest:
         )
         assert m.is_all_day is True
 
+    def test_valid_unpadded_date_is_accepted(self):
+        """The date-only fallback (strptime %Y-%m-%d) accepts unpadded dates.
+
+        fromisoformat rejects e.g. "2025-6-1", but the fallback's lenient parse
+        accepts it — that acceptance is the fallback branch's only observable
+        language, and the only thing that distinguishes the format string from
+        a mutated lookalike (so a corrupted format is caught).
+        """
+        m = EventCreateRequest(
+            summary="Holiday",
+            start="2025-6-1",
+            end="2025-6-1",
+            is_all_day=True,
+        )
+        assert m.is_all_day is True
+
     def test_start_after_end_raises(self):
         with pytest.raises(ValidationError, match="Start time must be before end time"):
             EventCreateRequest(
@@ -438,7 +454,7 @@ class TestEventCreateRequest:
             )
 
     def test_invalid_time_format(self):
-        with pytest.raises(ValidationError):
+        with pytest.raises(ValidationError, match="must be in ISO format"):
             EventCreateRequest(summary="Bad", start="not-a-time", end="also-bad")
 
     def test_all_day_event_start_after_end_ok(self):

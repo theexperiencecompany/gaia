@@ -110,7 +110,7 @@ async def run_file_filter(
     """
     try:
         user_id = get_user_id(config)
-        abs_path, rel = canonical_rel(path, session_id=get_session_id(config))
+        _abs_path, rel = canonical_rel(path, session_id=get_session_id(config))
     except ValueError as e:
         return f"Error: {e}"
 

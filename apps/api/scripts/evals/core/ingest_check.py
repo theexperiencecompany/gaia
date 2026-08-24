@@ -177,7 +177,7 @@ def trace_count(base_url: str, project: str) -> int:
     return int(str(_api(base_url, "/traces", project_name=project, size=1).get("total") or 0))
 
 
-class ProjectMissing(LookupError):
+class ProjectMissingError(LookupError):
     """The project holds no traces because it does not exist."""
 
 
@@ -197,7 +197,7 @@ def _all_traces(base_url: str, project: str) -> list[dict[str, object]]:
         except httpx.HTTPStatusError as e:
             if e.response.status_code != HTTPStatus.NOT_FOUND:
                 raise
-            raise ProjectMissing(project) from e
+            raise ProjectMissingError(project) from e
         chunk = data.get("content") or []
         if not isinstance(chunk, list):
             return out
@@ -212,7 +212,7 @@ def read_project(base_url: str, project: str) -> ProjectFacts:
     facts = ProjectFacts(name=project)
     try:
         traces = _all_traces(base_url, project)
-    except ProjectMissing:
+    except ProjectMissingError:
         # Absent, not empty. Reported as zero traces so the journal comparison
         # fires — the alternative, skipping it, is how a stage that wrote nothing
         # came to report success.

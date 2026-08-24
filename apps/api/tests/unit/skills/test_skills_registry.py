@@ -329,7 +329,7 @@ class TestInstallSkill:
             vfs_path="/skills/my-skill",
             source=SkillSource.GITHUB,
             source_url="https://github.com/org/repo",
-            license="MIT",
+            skill_license="MIT",
         )
         mock_skill_repo.create.assert_awaited_once()
         created = mock_skill_repo.create.await_args.args[0]

@@ -28,7 +28,7 @@ from app.templates.docstrings.desktop_tool_docs import (
     TAKE_SCREENSHOT,
     WRITE_CLIPBOARD,
 )
-from app.utils.image_codec import ImageCodec, InlineImage, InvalidImage
+from app.utils.image_codec import ImageCodec, InlineImage, InvalidImageError
 from app.utils.multimodal import text_content_block
 from shared.py.wide_events import log
 
@@ -141,7 +141,7 @@ async def take_screenshot(
 
     try:
         image = await ImageCodec.from_base64(image_b64)
-    except InvalidImage as e:
+    except InvalidImageError as e:
         return f"Could not read the captured screen: {e}"
 
     # Persisting the capture is best-effort: the pixels are already captured and

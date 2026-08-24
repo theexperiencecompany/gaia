@@ -141,7 +141,7 @@ class TestProcessFileRouting:
     """Verify that process_file routes to the correct sub-processor."""
 
     async def test_image_routes_to_process_image(self, processor: DocumentProcessor) -> None:
-        processor.process_image = AsyncMock(return_value="image desc")  # type: ignore[method-assign]
+        processor.process_image = AsyncMock(return_value="image desc")  # type: ignore[method-assign]  # instance method stubbed with unittest.mock
         result = await processor.process_file(b"imgdata", "image/png", "photo.png")
         processor.process_image.assert_awaited_once_with(b"imgdata")
         assert result == "image desc"
@@ -150,17 +150,17 @@ class TestProcessFileRouting:
     async def test_various_image_types_route_to_process_image(
         self, processor: DocumentProcessor, content_type: str
     ) -> None:
-        processor.process_image = AsyncMock(return_value="ok")  # type: ignore[method-assign]
+        processor.process_image = AsyncMock(return_value="ok")  # type: ignore[method-assign]  # instance method stubbed with unittest.mock
         await processor.process_file(b"data", content_type, "file.img")
         processor.process_image.assert_awaited_once()
 
     async def test_pdf_routes_to_process_doc(self, processor: DocumentProcessor) -> None:
-        processor.process_doc = AsyncMock(return_value=[])  # type: ignore[method-assign]
+        processor.process_doc = AsyncMock(return_value=[])  # type: ignore[method-assign]  # instance method stubbed with unittest.mock
         await processor.process_file(b"pdfdata", "application/pdf", "doc.pdf")
         processor.process_doc.assert_awaited_once_with(b"pdfdata")
 
     async def test_text_routes_to_process_text(self, processor: DocumentProcessor) -> None:
-        processor.process_text = AsyncMock(  # type: ignore[method-assign]
+        processor.process_text = AsyncMock(  # type: ignore[method-assign]  # instance method stubbed with unittest.mock
             return_value=DocumentSummaryModel(
                 data=DocumentPageModel(page_number=1, content="hello"),
                 summary="summary",
@@ -173,7 +173,7 @@ class TestProcessFileRouting:
     async def test_various_text_types_route_to_process_text(
         self, processor: DocumentProcessor, content_type: str
     ) -> None:
-        processor.process_text = AsyncMock(  # type: ignore[method-assign]
+        processor.process_text = AsyncMock(  # type: ignore[method-assign]  # instance method stubbed with unittest.mock
             return_value=DocumentSummaryModel(
                 data=DocumentPageModel(page_number=1, content="c"),
                 summary="s",
@@ -200,13 +200,13 @@ class TestProcessFileRouting:
     async def test_office_and_csv_types_route_to_process_office_document(
         self, processor: DocumentProcessor, content_type: str, suffix: str
     ) -> None:
-        processor.process_office_document = AsyncMock(return_value=[])  # type: ignore[method-assign]
+        processor.process_office_document = AsyncMock(return_value=[])  # type: ignore[method-assign]  # instance method stubbed with unittest.mock
         await processor.process_file(b"data", content_type, f"file{suffix}")
         processor.process_office_document.assert_awaited_once_with(b"data", suffix=suffix)
 
     async def test_json_routes_to_process_text(self, processor: DocumentProcessor) -> None:
         """JSON is text; it routes to process_text, not the office parser."""
-        processor.process_text = AsyncMock(  # type: ignore[method-assign]
+        processor.process_text = AsyncMock(  # type: ignore[method-assign]  # instance method stubbed with unittest.mock
             return_value=DocumentSummaryModel(
                 data=DocumentPageModel(page_number=1, content='{"a": 1}'),
                 summary="summary",
@@ -222,7 +222,7 @@ class TestProcessFileRouting:
         assert "no content extraction" in result
 
     async def test_exception_returns_error_string(self, processor: DocumentProcessor) -> None:
-        processor.process_image = AsyncMock(side_effect=RuntimeError("boom"))  # type: ignore[method-assign]
+        processor.process_image = AsyncMock(side_effect=RuntimeError("boom"))  # type: ignore[method-assign]  # instance method stubbed with unittest.mock
         result = await processor.process_file(b"img", "image/png", "bad.png")
         assert isinstance(result, str)
         assert "File processing failed" in result

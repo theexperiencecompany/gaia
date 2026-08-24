@@ -28,7 +28,7 @@ _NO_URLS_RETRIEVED_MSG = (
 @with_rate_limiting("webpage_fetch")
 @with_doc(FETCH_WEBPAGES)
 async def fetch_webpages(
-    config: RunnableConfig,
+    config: RunnableConfig,  # noqa: ARG001 -- framework contract
     urls: Annotated[list[str], "List of URLs to fetch content from"],
     # state: Annotated[dict, InjectedState],
 ) -> dict[str, Union[str, Sequence[str]]]:
@@ -84,7 +84,7 @@ async def web_search_tool(
         str,
         "The search query to look up on the web. Be specific and concise for better results.",
     ],
-    config: RunnableConfig,
+    config: RunnableConfig,  # noqa: ARG001 -- framework contract
 ) -> dict[str, Any]:
     log.set(tool={"name": "web_search_tool", "action": "search"})
     start_time = time.time()

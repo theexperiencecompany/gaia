@@ -142,7 +142,10 @@ class WorkflowService:
             )
 
         # Imported lazily to avoid a circular import via system_workflows.
-        from app.services.oauth.oauth_service import check_integration_status
+        # Deferred import: lazy to break the circular import routed via system_workflows
+        from app.services.oauth.oauth_service import (  # noqa: PLC0415 -- deferred
+            check_integration_status,
+        )
 
         integration_id = get_integration_for_trigger(trigger_name)
         if integration_id:
@@ -540,9 +543,9 @@ class WorkflowService:
             # Enrich all workflows with integration fields in one status call.
             # Deferred import: oauth_service → provisioner → service is circular.
             if workflows:
-                from app.services.oauth.oauth_service import get_all_integrations_status
+                from app.services.oauth import oauth_service  # noqa: PLC0415 -- oauth
 
-                status_map = await get_all_integrations_status(user_id)
+                status_map = await oauth_service.get_all_integrations_status(user_id)
                 for workflow in workflows:
                     required = compute_required_integrations(
                         workflow.steps, workflow.trigger_config
@@ -749,7 +752,7 @@ class WorkflowService:
                         registered_trigger_ids,
                         workflow_id,
                     )
-                raise db_err
+                raise
 
             if updated is None:
                 return None
@@ -955,7 +958,7 @@ class WorkflowService:
             # Refuse activation up front: registration would otherwise silently
             # no-op for a disconnected integration, confusing the user.
             if trigger_type == TriggerType.INTEGRATION and trigger_config.trigger_name:
-                from app.services.oauth.oauth_service import (
+                from app.services.oauth.oauth_service import (  # noqa: PLC0415 -- breaks circular chain: oauth_service -> provisioner -> this service
                     check_integration_status,
                 )
 

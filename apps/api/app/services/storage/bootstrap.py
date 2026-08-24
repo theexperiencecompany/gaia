@@ -224,11 +224,7 @@ def _run(
     invoking ``juicefs format`` — argv is visible to anyone with shell on the
     host via ``ps auxww`` during the format window.
     """
-    merged_env: dict[str, str] | None
-    if env is None:
-        merged_env = None
-    else:
-        merged_env = {**os.environ, **env}
+    merged_env: dict[str, str] | None = None if env is None else {**os.environ, **env}
     return subprocess.run(  # nosec B603 - argv list, no shell
         cmd,
         check=False,

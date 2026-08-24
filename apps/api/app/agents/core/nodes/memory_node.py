@@ -232,7 +232,7 @@ async def _store_user_memory_background(
 async def memory_node(
     state: State,
     config: RunnableConfig,
-    store: BaseStore,
+    store: BaseStore,  # noqa: ARG001 -- framework contract
 ) -> State:
     """End-graph hook that stores user memory from comms turns.
 

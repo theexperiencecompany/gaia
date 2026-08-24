@@ -43,7 +43,7 @@ async def update_note(note_id: str, note: NoteModel, user_id: str) -> NoteRespon
     # Keep the vector index in sync; a ChromaDB hiccup must not fail the write.
     try:
         chroma_notes_collection = await ChromaClient.get_langchain_client(collection_name="notes")
-        await chroma_notes_collection.update_document(  # type: ignore[func-returns-value]
+        await chroma_notes_collection.update_document(  # type: ignore[func-returns-value]  # langchain types update_document as None-returning; upstream actually returns the doc
             document_id=note_id,
             document=Document(page_content=note.plaintext),
         )

@@ -35,9 +35,9 @@ from app.models.device import Device
 from app.models.mcp_config import MCPConfig, OAuthDiscovery
 from app.services.mcp.langchain_adapter import SanitizingLangChainAdapter
 from app.services.mcp.mcp_client import (
-    DCRNotSupportedException,
+    DCRNotSupportedError,
     MCPClient,
-    StepUpAuthRequired,
+    StepUpAuthRequiredError,
     _parse_device_server_url,
     get_mcp_client,
 )
@@ -443,7 +443,7 @@ class TestMCPClientDoConnect:
         client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
         client.token_store.get_oauth_token = AsyncMock(return_value="tok")
 
-        with pytest.raises(StepUpAuthRequired) as exc_info:
+        with pytest.raises(StepUpAuthRequiredError) as exc_info:
             await client._do_connect(INTEGRATION_ID)
 
         assert exc_info.value.integration_id == INTEGRATION_ID
@@ -781,7 +781,7 @@ class TestGetMcpClient:
 
 class TestStepUpAuthRequired:
     def test_attributes(self):
-        exc = StepUpAuthRequired("my_int", ["read", "write"])
+        exc = StepUpAuthRequiredError("my_int", ["read", "write"])
         assert exc.integration_id == "my_int"
         assert exc.required_scopes == ["read", "write"]
         assert "my_int" in str(exc)
@@ -789,8 +789,8 @@ class TestStepUpAuthRequired:
 
 class TestDCRNotSupportedException:
     def test_can_be_raised(self):
-        with pytest.raises(DCRNotSupportedException):
-            raise DCRNotSupportedException("Server doesn't support DCR")
+        with pytest.raises(DCRNotSupportedError):
+            raise DCRNotSupportedError("Server doesn't support DCR")
 
 
 # ===========================================================================
@@ -2000,7 +2000,7 @@ class TestResilientLangChainAdapter:
                 raise Exception("Invalid schema")
             return good_lc_tool
 
-        adapter._convert_single_tool = mock_convert  # type: ignore[method-assign]
+        adapter._convert_single_tool = mock_convert
 
         with patch(
             "app.services.mcp.resilient_adapter.patch_tool_schema",
@@ -2029,7 +2029,7 @@ class TestResilientLangChainAdapter:
         async def always_fail(tool, connector):
             raise Exception("Schema error")
 
-        adapter._convert_single_tool = always_fail  # type: ignore[method-assign]
+        adapter._convert_single_tool = always_fail
 
         with patch(
             "app.services.mcp.resilient_adapter.patch_tool_schema",
@@ -2060,7 +2060,7 @@ class TestResilientLangChainAdapter:
         async def mock_convert(tool, connector):
             return lc_tool
 
-        adapter._convert_single_tool = mock_convert  # type: ignore[method-assign]
+        adapter._convert_single_tool = mock_convert
 
         with patch(
             "app.services.mcp.resilient_adapter.patch_tool_schema",
@@ -2095,7 +2095,7 @@ class TestResilientLangChainAdapter:
         async def mock_convert(t, c):
             return lc_tool
 
-        adapter._convert_single_tool = mock_convert  # type: ignore[method-assign]
+        adapter._convert_single_tool = mock_convert
 
         with patch(
             "app.services.mcp.resilient_adapter.patch_tool_schema",
@@ -2128,7 +2128,7 @@ class TestResilientLangChainAdapter:
         async def mock_convert(t, c):
             return lc_tool
 
-        adapter._convert_single_tool = mock_convert  # type: ignore[method-assign]
+        adapter._convert_single_tool = mock_convert
 
         with patch(
             "app.services.mcp.resilient_adapter.patch_tool_schema",
@@ -2223,7 +2223,7 @@ class TestMCPClientRegisterClient:
             mock_cm.__aenter__.return_value = mock_http_client
             mock_http.return_value = mock_cm
 
-            with pytest.raises(DCRNotSupportedException):
+            with pytest.raises(DCRNotSupportedError):
                 await client._register_client(
                     INTEGRATION_ID,
                     as_metadata,
@@ -2247,7 +2247,7 @@ class TestMCPClientRegisterClient:
             mock_cm.__aenter__.return_value = mock_http_client
             mock_http.return_value = mock_cm
 
-            with pytest.raises(DCRNotSupportedException):
+            with pytest.raises(DCRNotSupportedError):
                 await client._register_client(
                     INTEGRATION_ID,
                     as_metadata,
@@ -2271,7 +2271,7 @@ class TestMCPClientRegisterClient:
             mock_cm.__aenter__.return_value = mock_http_client
             mock_http.return_value = mock_cm
 
-            with pytest.raises(DCRNotSupportedException):
+            with pytest.raises(DCRNotSupportedError):
                 await client._register_client(
                     INTEGRATION_ID,
                     as_metadata,

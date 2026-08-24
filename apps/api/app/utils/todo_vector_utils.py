@@ -216,7 +216,7 @@ async def semantic_search_todos(
 
         # Extract todo IDs from results
         todo_ids = []
-        for doc, score in results:
+        for doc, _score in results:
             if hasattr(doc, "metadata") and "todo_id" in doc.metadata:
                 todo_ids.append(doc.metadata["todo_id"])
 
@@ -248,7 +248,8 @@ async def semantic_search_todos(
         # Fallback to traditional search on error
         if include_traditional_search:
             log.info(f"{LogTag.CHROMA} Falling back to traditional search due to error")
-            from app.services.todos.todo_service import search_todos
+            # Deferred import: breaks circular dependency: todo_service imports this module
+            from app.services.todos.todo_service import search_todos  # noqa: PLC0415 -- deferred
 
             return await search_todos(query, user_id)
 
@@ -281,7 +282,9 @@ async def hybrid_search_todos(
         )
 
         # Get traditional search results
-        from app.services.todos.todo_service import search_todos
+        from app.services.todos.todo_service import (  # noqa: PLC0415 -- todo_service imports this module at module level, so a top-level import back would be circular
+            search_todos,
+        )
 
         traditional_results = await search_todos(query, user_id)
 

@@ -85,7 +85,8 @@ class MongoDB:
         try:
             log.info(f"{LogTag.MONGO} Initializing all indexes in MongoDB...")
             # Import here to avoid circular import
-            from app.db.mongodb.indexes import create_all_indexes
+            # Deferred import: breaks circular dependency: indexes imports collections, which imports this module
+            from app.db.mongodb.indexes import create_all_indexes  # noqa: PLC0415 -- deferred
 
             await create_all_indexes()
             # await log_index_summary()

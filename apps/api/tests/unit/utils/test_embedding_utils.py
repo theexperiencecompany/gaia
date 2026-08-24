@@ -36,7 +36,7 @@ def _make_tool(
         del tool.func
     # By default tools are callable; override when needed
     if not callable_self:
-        tool.__call__ = None  # type: ignore[method-assign, assignment]
+        tool.__call__ = None  # type: ignore[method-assign]  # instance method stubbed with unittest.mock
         tool.configure_mock(__call__=None)
     return tool
 

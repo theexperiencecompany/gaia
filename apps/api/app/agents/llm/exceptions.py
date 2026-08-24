@@ -43,7 +43,7 @@ _OPENROUTER_TRANSIENT_ERRORS: tuple[type[BaseException], ...] = (
 # Transient provider/infra errors — safe to retry, usually succeed on a second
 # attempt. The agent model node wraps the bound model in ``with_retry`` on these.
 # Provider 429s are the provider's own quota, distinct from the application rate
-# limiter (``LangChainRateLimitException``) which must NOT be retried.
+# limiter (``LangChainRateLimitError``) which must NOT be retried.
 #
 # Gemini: ``langchain-google-genai`` (google-genai SDK) lets ``ServerError`` (5xx)
 # propagate raw but wraps every ``ClientError`` (4xx, INCLUDING transient 429s)

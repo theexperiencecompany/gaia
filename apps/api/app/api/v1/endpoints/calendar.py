@@ -309,8 +309,8 @@ async def get_calendar_preferences(
     try:
         log.set(user={"id": user_id}, calendar={"operation": "get_preferences"})
         return await calendar_service.get_user_calendar_preferences(user_id)
-    except HTTPException as e:
-        raise e
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 

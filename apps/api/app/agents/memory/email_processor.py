@@ -277,7 +277,7 @@ async def fetch_emails_for_onboarding(
                 query=query,
                 max_results=remaining,
                 page_token=page_token,
-                format=fmt,
+                message_format=fmt,
                 include_payload=not metadata_mode,
                 verbose=not metadata_mode,
             )
@@ -918,7 +918,7 @@ async def _discover_and_store_linked_profiles(
 
         # Crawl and store discovered profiles in background
         crawl_tasks = []
-        for key, profile_info in discovered_profiles.items():
+        for profile_info in discovered_profiles.values():
             platform = profile_info["platform"]
             url = profile_info["url"]
             task = crawl_profile_url(url, platform, semaphore)

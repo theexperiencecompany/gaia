@@ -293,6 +293,26 @@ async def test_run_file_filter_happy_path(tmp_path: Path) -> None:
     assert out.strip() == "2:ERROR boom"
 
 
+async def test_run_file_filter_resolves_relative_paths_against_the_session_dir() -> None:
+    """A relative path must join the caller's session root, not /workspace —
+    otherwise every tool reads the wrong file (or another session's)."""
+    mock_resolve = AsyncMock(return_value=Path("/tmp/ignored"))
+    with patch.object(_filter, "resolve_user_file", mock_resolve):
+        await run_file_filter(
+            config=CONFIG,
+            binary="grep",
+            args=["-n", "-e", "ERROR", "--"],
+            path="run.log",
+            ok_returncodes=(0, 1),
+            empty_message="(no matches)",
+            error_label="grep",
+        )
+
+    user_arg, rel_arg = mock_resolve.await_args.args
+    assert user_arg == "u1"
+    assert rel_arg == "sessions/c1/run.log"
+
+
 # --- grep tool (ainvoke) ----------------------------------------------------- #
 
 

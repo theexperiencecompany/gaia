@@ -580,8 +580,9 @@ async def get_today_todos(config: RunnableConfig) -> TodoListResult:
         if not user_id:
             return {"error": "User authentication required", "todos": []}
 
-        today_start = datetime.combine(datetime.today(), time.min)
-        today_end = datetime.combine(datetime.today(), time.max)
+        now = datetime.now(UTC)
+        today_start = datetime.combine(now, time.min)
+        today_end = datetime.combine(now, time.max)
 
         results = await get_todos_by_date_range(user_id, today_start, today_end)
         todos_data = [todo.model_dump(mode="json") for todo in results]
@@ -1243,8 +1244,8 @@ async def get_todos_summary(config: RunnableConfig) -> TodosSummaryResult:
         def get_date_ranges() -> tuple[datetime, datetime, datetime, datetime, datetime]:
             """Calculate all needed date ranges."""
             now = datetime.now(UTC)
-            today_start = datetime.combine(datetime.today(), time.min)
-            today_end = datetime.combine(datetime.today(), time.max)
+            today_start = datetime.combine(now, time.min)
+            today_end = datetime.combine(now, time.max)
             week_end = now + timedelta(days=7)
             yesterday = now - timedelta(days=1)
             return now, today_start, today_end, week_end, yesterday
