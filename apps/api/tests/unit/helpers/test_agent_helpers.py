@@ -2,6 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.messages import AIMessageChunk
 import pytest
 
 from app.agents.llm.lane import ModelLane
@@ -686,19 +687,8 @@ class TestBuildInitialState:
 class TestExecuteGraphSilent:
     async def test_accumulates_message_content(self):
         """Verifies AIMessageChunk content from comms_agent is accumulated."""
-        chunk = MagicMock()
-        chunk.text = "Hello "
-        chunk.__class__.__name__ = "AIMessageChunk"
-        # Make isinstance check work
-        from langchain_core.messages import AIMessageChunk as AIMC
-
-        chunk2 = MagicMock(spec=AIMC)
-        chunk2.text = "world"
-        chunk2.content = "world"
-
-        chunk1 = MagicMock(spec=AIMC)
-        chunk1.text = "Hello "
-        chunk1.content = "Hello "
+        chunk1 = AIMessageChunk(content="Hello ", id="msg-1")
+        chunk2 = AIMessageChunk(content="world", id="msg-1")
 
         events = [
             ((), "messages", (chunk1, {"agent_name": "comms_agent"})),
@@ -717,11 +707,7 @@ class TestExecuteGraphSilent:
         assert msg == "Hello world"
 
     async def test_skips_silent_chunks(self):
-        from langchain_core.messages import AIMessageChunk as AIMC
-
-        chunk = MagicMock(spec=AIMC)
-        chunk.text = "should be skipped"
-        chunk.content = "should be skipped"
+        chunk = AIMessageChunk(content="should be skipped", id="msg-1")
 
         events = [
             ((), "messages", (chunk, {"agent_name": "comms_agent", "silent": True})),
@@ -739,11 +725,7 @@ class TestExecuteGraphSilent:
         assert msg == ""
 
     async def test_skips_non_comms_agent_chunks(self):
-        from langchain_core.messages import AIMessageChunk as AIMC
-
-        chunk = MagicMock(spec=AIMC)
-        chunk.text = "executor text"
-        chunk.content = "executor text"
+        chunk = AIMessageChunk(content="executor text", id="msg-1")
 
         events = [
             ((), "messages", (chunk, {"agent_name": "executor_agent"})),
@@ -974,11 +956,7 @@ class TestExecuteGraphStreaming:
     async def test_cancellation(self, mock_sm):
         mock_sm.is_cancelled = AsyncMock(return_value=True)
 
-        from langchain_core.messages import AIMessageChunk as AIMC
-
-        chunk = MagicMock(spec=AIMC)
-        chunk.text = "text"
-        chunk.content = "text"
+        chunk = AIMessageChunk(content="text", id="msg-1")
 
         events = [
             ((), "messages", (chunk, {"agent_name": "comms_agent"})),
@@ -1002,11 +980,7 @@ class TestExecuteGraphStreaming:
         mock_sm.is_cancelled = AsyncMock(return_value=False)
         mock_format_sse.return_value = "data: Hello\n\n"
 
-        from langchain_core.messages import AIMessageChunk as AIMC
-
-        chunk = MagicMock(spec=AIMC)
-        chunk.text = "Hello"
-        chunk.content = "Hello"
+        chunk = AIMessageChunk(content="Hello", id="msg-1")
 
         events = [
             ((), "messages", (chunk, {"agent_name": "comms_agent"})),
