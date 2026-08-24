@@ -264,3 +264,54 @@ thread is what turns the number into a plan:
 Sizing every bucket this way is what stops the next person optimising the wrong
 thing: shrinking `VOLATILE_BLOCK_MAX_CHARS` only helps calls that are already
 warm, and those already read 90%+.
+
+## What the shape of the prompt permits
+
+Fixing every bucket above does not get you an arbitrary number. The ceiling
+falls out of three measured quantities, and it is worth knowing before anyone
+sets a target.
+
+The graph lane's mean prompt is **35,132 tokens** (532 calls, 24h). On a warm
+mid-conversation call the bytes that *must* be re-read are the volatile block —
+capped at `VOLATILE_BLOCK_MAX_CHARS = 8000`, so ~2,000 tokens — plus the turn's
+own new text, generously ~400 tokens. That is:
+
+```
+1 - (2000 + 400) / 35132  =  93.2%
+```
+
+**93.2% is the ceiling for a warm call**, with every prefix bug fixed and
+nothing else changed. First calls on a thread cannot reach it: the best observed
+in production is 69.3%, since they can only inherit the shared static prefix,
+never a conversation. Blending the two by token share:
+
+| First-call share of tokens | Blended ceiling |
+|---|---|
+| 10% | 90.8% |
+| 15% | 89.6% |
+| 20% | 88.4% |
+| 25% | 87.2% |
+
+Turning that around — what the volatile block would have to shrink to for a
+given blended target, at a 15% first-call share:
+
+| Target | Volatile block must be |
+|---|---|
+| 90% | ≤ 7,300 chars (today's cap is 8,000) |
+| 93% | ≤ 2,400 chars |
+| 95% | impossible — the budget goes negative |
+
+So: **90% is reachable** once the invalidation and cold-start buckets are closed,
+and it needs only a modest trim of the volatile block. **93% needs that block cut
+to roughly a quarter of its current cap.** **95% is not reachable at all** while a
+request carries a ~19k static prefix, a full conversation, and 8k of per-turn
+context — the arithmetic leaves no room, whatever the cache does.
+
+Getting past 93% is therefore not a caching problem. It needs the prompt itself
+to carry less per turn, or turns to be fewer and larger — a prompt/agent design
+change, and one that trades against answer quality rather than cost alone.
+
+This also corrects an earlier estimate of "~10 points" for the volatile-tail
+work: the whole block is 5.7% of a mean prompt, so 5.7 points is its hard
+ceiling, and most of it (recall, knowledge, agenda, todos, run banners) is
+genuinely per-turn and cannot move at all.
