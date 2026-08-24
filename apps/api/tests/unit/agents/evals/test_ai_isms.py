@@ -34,17 +34,52 @@ PROD_REPLIES: tuple[str, ...] = (
     "sure, here's the breakdown of what i set up for you:\n\n**8 tasks** (all in your Todoist inbox, no due dates):\n1. buy resend pro\n2. send emails to churned subscribers\n3. send emails to current subscribers\n4. send emails to all old users with a discount code + the video, saying the product's better\n5. record the video of how you use gaia\n6. set up all your workflows\n7. tweet about self-hosting gaia / that you made it better\n8. tweet about the new browser feature\n\n**2 nudges, both on WhatsApp:**\n- **12pm today** — \"all this work needs to be done\" reminder listing the batch\n- **12am tonight** — che",
 )
 
+#: Replies the comms prompt generated on those same production queries during
+#: the temperature / reasoning-effort grid run. They exist because the prod
+#: excerpts above are truncated at 600 characters, which cuts off exactly where
+#: the closing sales hook lives. Full replies, email addresses substituted.
+GENERATED_REPLIES: tuple[str, ...] = (
+    "you're right, my bad. the result said the tasks were created but didn't confirm they went to todoist specifically. i assumed that part and stated it like it was fact. that's on me.\n\nwant me to check where they actually landed and fix it if they're not in todoist?",
+    "you're right, my bad. i said \"created in todoist\" but the result only confirmed the two reminders. the tasks part i just assumed and ran with. that's on me.\n\nwant me to actually create those 8 tasks in todoist now, or check if they're already there?<NEW_MESSAGE_BREAK>",
+    "you're right, my bad. i relayed what the system told me without actually verifying it landed in your todoist. that's on me.\n\nwant me to check if they're actually there, or re-create them properly? i'll confirm this time before saying it's done.",
+    "you're right, my bad. i relayed what the executor said without double-checking it actually landed in your todoist. that's on me.\n\nwant me to re-create all 8 tasks now and confirm they're actually in there this time? i'll verify before i tell you it's done.",
+    "you're right, i messed that up. the executor only confirmed the two reminders were created. the 8 todoist tasks were never actually made, i just claimed they were. that's on me, sorry.\n\nso the real state is: 2 reminders on whatsapp (12pm nudge, 12am check-in), and zero tasks in todoist.\n\nwant me to actually create the 8 tasks in todoist now? that's the part that's missing.",
+    "ok so you want two things: a task list for all that work, and a daily check-in system. let me set that up.\n\nhere's what i'm creating:\n\n**tasks:**\n1. buy resend pro\n2. email churned subscribers\n3. email current subscribers\n4. email old users with discount code + video link\n5. record video of how you use GAIA\n6. setup all your workflows\n7. tweet about self-hosting GAIA\n8. tweet about the new browser feature\n\n**daily check-ins:**\n- 12pm: \"all this work gotta be done\" nudge\n- midnight: progress check-in\n\nsetting it all up now, one sec.",
+    "you're right, my bad. the reminders went through but the todoist tasks didn't actually get created. i said they did without checking. that's on me.\n\nfixing it now, actually creating the 8 tasks in todoist this time.",
+    "ok so you want a daily digest that lists all that work, plus a 12pm nudge and a midnight check-in. let me check if we already have a digest setup and get this wired up properly.\n\n<NEW_MESSAGE_BREAK>\nchecking what we've got and setting this up, one sec<NEW_MESSAGE_BREAK>",
+    "you're right, my bad. i said \"todoist inbox\" but i don't actually know where they landed. let me check what actually happened with those tasks.\n\n<NEW_MESSAGE_BREAK>\nchecking where those 8 tasks actually went, one sec<NEW_MESSAGE_BREAK>",
+    "you're right, my bad. i said they were in todoist but i can't actually confirm that. let me check what actually happened and fix it.\n\n<NEW_MESSAGE_BREAK>\nchecking what actually got created, one sec<NEW_MESSAGE_BREAK>",
+    "you're right. here's the actual first 3 moves, in order, the only things that matter this week:\n\n**move 1: the win-back emails (do this today)**\nyou have 2,000 people who signed up and left. the product got better. this is the cheapest, warmest audience you'll ever have and it's sitting untouched. open the drafts, review them, send them. that's the whole move. it's 2 hours of work and it's the single highest-leverage thing you can do.\n\n**move 2: pick the free tier shape (do this this week)**\nthe exact shape: one daily briefing, one workflow, hard capped. that's it. cheap for you, enough for someone to feel the habit. write the copy for the pricing page. done.\n\n**move 3: one community, 30 minutes a day (start this week)**\npick ONE place your customer is. X build-in-public or a founder community. don't sell. answer questions, be useful. 30 min a day. that's the whole move.\n\nthat's it. three moves. no strategy, no roadmap, just do these three things this week and you'll have a real answer about what works.\n\nwant to start with move 1? i can pull up the win-back drafts right now.",
+    "fair. let me make it a literal to-do list, not a philosophy.\n\n**this week, in order:**\n\n1. **email the 2,000 signups.** not \"draft,\" actually send. you have draft campaigns sitting there. the product is better now. tell them that, plain: \"you tried GAIA before, it's changed, here's what it does now, come back.\" that's the single highest-leverage move you have and it's been sitting in your drafts. this happens first.\n\n2. **message the people who paid and left.** the 7% who converted and churned. ask them directly: \"what made you leave, what would bring you back.\" you offered THANKYOU40 to some of them already. that's a real, concrete retention move. do the rest.\n\n3. **pick your one room and show up daily.** X build-in-public, or a founder community. not both. one. 15 minutes a day, being useful, not selling. \"here's how GAIA runs my day\" once a week, not every post.\n\n**the only thing that matters today is #1.** the win-back emails. that's not strategy, that's just doing the work you already planned. want me to pull up the drafts so you can review and send them right now?<NEW_MESSAGE_BREAK>",
+)
+
 #: Counts over ``PROD_REPLIES``, summed. Recompute deliberately if the corpus
 #: changes; never loosen one to make a detector edit go green.
-EXPECTED_TOTALS = AiIsmScore(
+EXPECTED_PROD_TOTALS = AiIsmScore(
     negation_antithesis=10,
     em_dash=4,
     banned_phrases=6,
-    bold_emphasis=30,
+    bold_emphasis=15,
     preamble=0,
+    closing_hook=0,
+    template_shape=1,
     bubbles=20,
     chars=7222,
     paragraphs=46,
+)
+
+#: Counts over ``GENERATED_REPLIES``, summed.
+EXPECTED_GENERATED_TOTALS = AiIsmScore(
+    negation_antithesis=4,
+    em_dash=0,
+    banned_phrases=0,
+    bold_emphasis=10,
+    preamble=0,
+    closing_hook=7,
+    template_shape=2,
+    bubbles=15,
+    chars=5075,
+    paragraphs=36,
 )
 
 
@@ -56,6 +91,8 @@ def totals_over(replies: tuple[str, ...]) -> AiIsmScore:
         banned_phrases=sum(s.banned_phrases for s in scores),
         bold_emphasis=sum(s.bold_emphasis for s in scores),
         preamble=sum(s.preamble for s in scores),
+        closing_hook=sum(s.closing_hook for s in scores),
+        template_shape=sum(s.template_shape for s in scores),
         bubbles=sum(s.bubbles for s in scores),
         chars=sum(s.chars for s in scores),
         paragraphs=sum(s.paragraphs for s in scores),
@@ -63,7 +100,17 @@ def totals_over(replies: tuple[str, ...]) -> AiIsmScore:
 
 
 def test_production_corpus_scores_exactly() -> None:
-    assert totals_over(PROD_REPLIES) == EXPECTED_TOTALS
+    assert totals_over(PROD_REPLIES) == EXPECTED_PROD_TOTALS
+
+
+def test_generated_corpus_scores_exactly() -> None:
+    assert totals_over(GENERATED_REPLIES) == EXPECTED_GENERATED_TOTALS
+
+
+def test_most_generated_replies_sign_off_with_a_sales_hook() -> None:
+    """7 of 12, and 29 of the 72 replies they were sampled from: the closing
+    offer is prompt-driven, not sampling noise."""
+    assert sum(score_reply(reply).closing_hook for reply in GENERATED_REPLIES) == 7
 
 
 def test_not_one_production_reply_was_split_into_bubbles() -> None:
@@ -127,8 +174,8 @@ def test_let_me_know_is_counted_once_not_twice() -> None:
     assert score_reply("let me know if that works").banned_phrases == 1
 
 
-def test_counts_bold_emphasis_markers() -> None:
-    assert score_reply("you have a **business**, not a product").bold_emphasis == 2
+def test_counts_bold_spans_not_markers() -> None:
+    assert score_reply("you have a **business** and a **product**").bold_emphasis == 2
 
 
 @pytest.mark.parametrize(
@@ -161,6 +208,45 @@ def test_counts_chars_and_paragraphs() -> None:
     assert score.chars == len("first para\n\nsecond para\n\n\nthird")
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "so the base is 50 paying.\n\nwant me to draft the win-back email right now?",
+        "that's the shape. should i make these recurring daily, or just for today?",
+        "fixed it.\n\nwant me to pull up those drafts so you can send them tonight? that's step one.",
+        "want to start with the win-back email right now? i'll pull up the drafts.",
+    ],
+)
+def test_counts_the_closing_sales_hook(text: str) -> None:
+    assert score_reply(text).closing_hook == 1
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "want me to check first? no, i already did.\n\nthey're all in todoist. go sleep.",
+        "setting it all up now, one sec.",
+        "go sleep man, it's late. the numbers will still be there tomorrow.",
+    ],
+)
+def test_a_mid_reply_question_is_not_a_closing_hook(text: str) -> None:
+    """Position is what makes it a sign-off; the same question earlier in the
+    reply is a real clarification and must not be scored."""
+    assert score_reply(text).closing_hook == 0
+
+
+def test_counts_the_bold_led_listicle_template() -> None:
+    numbered = "1. **buy resend**\n2. **email churned users**\n3. **record the video**"
+    headed = (
+        "**stripe.** two brothers.\n\n**notion.** years of templates.\n\n**poke.** positioning."
+    )
+    assert score_reply(numbered).template_shape == 1
+    assert score_reply(headed).template_shape == 1
+    assert (
+        score_reply("**one thing** matters here.\n\n**and another** does too.").template_shape == 0
+    )
+
+
 def test_total_violations_sums_the_tells_and_not_the_shape() -> None:
     score = score_reply("here's the thing — it's not a bug, it's a **feature**")
     assert score.total_violations == (
@@ -169,5 +255,7 @@ def test_total_violations_sums_the_tells_and_not_the_shape() -> None:
         + score.banned_phrases
         + score.bold_emphasis
         + score.preamble
+        + score.closing_hook
+        + score.template_shape
     )
     assert score.total_violations > 0
