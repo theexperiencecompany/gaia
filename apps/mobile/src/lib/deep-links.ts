@@ -20,8 +20,6 @@ export interface ParsedDeepLink {
     | "notifications"
     | "settings"
     | "integrations"
-    | "openui-demo"
-    | "tool-gallery"
     | "unknown";
   params: Record<string, string>;
 }
@@ -59,17 +57,6 @@ export function parseDeepLink(url: string): ParsedDeepLink {
     return { screen: "integrations", params: {} };
   }
 
-  if (host === "openui-demo") {
-    return { screen: "openui-demo", params: {} };
-  }
-
-  if (host === "tool-gallery") {
-    const toolName = path.replace(/^\//, "");
-    return toolName
-      ? { screen: "tool-gallery", params: { tool: toolName } }
-      : { screen: "tool-gallery", params: {} };
-  }
-
   return { screen: "unknown", params: {} };
 }
 
@@ -91,12 +78,6 @@ export function getRouteForDeepLink(link: ParsedDeepLink): string | null {
       return "/(app)/settings";
     case "integrations":
       return "/(app)/integrations";
-    case "openui-demo":
-      return "/openui-demo";
-    case "tool-gallery":
-      return link.params.tool
-        ? `/tool-gallery/${link.params.tool}`
-        : "/tool-gallery";
     default:
       return null;
   }
