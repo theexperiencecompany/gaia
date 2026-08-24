@@ -301,9 +301,11 @@ class TestInitPostgresqlEngine:
 
             await _get_original_init_fn()()
 
-            # Production calls run_sync twice: Base.metadata.create_all and
-            # _ensure_timestamptz_columns (promotes legacy timestamp columns to timestamptz).
-            assert mock_conn.run_sync.await_count == 2
+            # Production calls run_sync three times: Base.metadata.create_all,
+            # _ensure_timestamptz_columns (promotes legacy timestamp columns to
+            # timestamptz) and _ensure_added_columns (adds columns introduced
+            # after a table already existed, e.g. memories.shelf_life).
+            assert mock_conn.run_sync.await_count == 3
 
     async def test_engine_pool_configuration(self) -> None:
         """Engine should be created with expected pool settings."""
