@@ -170,3 +170,23 @@ def extract_message_model(message: AIMessage) -> str:
     """
     resp_meta = getattr(message, "response_metadata", None) or {}
     return str(resp_meta.get("model_name") or "") or UNKNOWN_MODEL_NAME
+
+
+def extract_generation_id(message: AIMessage) -> str | None:
+    """The upstream generation id for this call, when the provider returned one.
+
+    This is the ONLY handle we have on *which upstream served the request*.
+    OpenRouter names the serving provider in a ``provider`` response field, but
+    ``langchain_openai`` builds ``llm_output`` from a fixed whitelist
+    (``token_usage`` / ``model_provider`` / ``model_name`` / ``system_fingerprint``
+    / ``id`` / ``service_tier``) and drops every other key, so ``provider`` never
+    reaches us. ``id`` survives, and it resolves to the serving provider through
+    OpenRouter's generation-metadata endpoint without spending a model call.
+
+    Without it, a request that reports zero cached tokens is ambiguous: it may
+    have landed on a different upstream (which holds no warm prefix at all) or
+    the prompt prefix may have genuinely broken. Those have opposite fixes, so
+    the id is what keeps a cache regression from being diagnosed by guesswork.
+    """
+    resp_meta = getattr(message, "response_metadata", None) or {}
+    return str(resp_meta.get("id") or "") or None

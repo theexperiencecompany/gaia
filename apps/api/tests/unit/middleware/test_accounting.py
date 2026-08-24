@@ -743,10 +743,34 @@ async def test_the_llm_call_event_carries_the_per_step_attribution() -> None:
         "reasoning_tokens": 0,
         "cost_usd": pytest.approx(0.14),
         "step_index": 1,
+        "generation_id": None,
     }
     second = emitted[1][1]
     assert second["input_tokens"] == 7  # per step, not a running total
     assert second["step_index"] == 2
+
+
+async def test_the_llm_call_event_carries_the_upstream_generation_id() -> None:
+    # `model` above is the lane's CONFIGURED provider, which is always the
+    # aggregator — it cannot say which upstream actually served the request. A
+    # call reporting zero cached tokens is otherwise ambiguous between "routed to
+    # a different upstream holding no warm prefix" and "the prefix broke", and
+    # those have opposite fixes. This id resolves the serving provider without
+    # spending a model call.
+    emitted: list[tuple[str, dict[str, Any]]] = []
+    mw = LLMAccountingMiddleware(agent_name="comms_agent")
+    config_patch, cost_patch, usage_patch = _accounting_env()
+    ai_message = _ai(input_tokens=100, output_tokens=20, cached=40)
+    ai_message.response_metadata = {"id": "gen-xyz789"}
+    with (
+        config_patch,
+        cost_patch,
+        usage_patch,
+        patch.object(log, "info", lambda message, **kw: emitted.append((message, kw))),
+    ):
+        await mw.aafter_model(_state(ai_message), None)
+
+    assert emitted[0][1]["generation_id"] == "gen-xyz789"
 
 
 # --- the lane the call is priced against -------------------------------------- #
