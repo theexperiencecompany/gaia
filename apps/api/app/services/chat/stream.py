@@ -63,6 +63,7 @@ from app.services.platform_message_service import is_bot_platform
 from app.services.storage import flush_fs_metrics
 from app.utils.agent_utils import format_sse_data, format_sse_response
 from app.utils.chat_utils import generate_and_update_description
+from app.utils.message_breaks import strip_partial_message_break
 from app.utils.stream_utils import reconstruct_subagent_groups
 from shared.py.wide_events import ChatContext, get_trace_id, log, wide_task
 
@@ -584,12 +585,16 @@ async def _consume_agent_stream(
 
 
 def _parse_complete_message(chunk: str) -> tuple[str, bool]:
-    """Pull ``(complete_message, cancelled)`` out of a ``nostream: {...}`` marker."""
+    """Pull ``(complete_message, cancelled)`` out of a ``nostream: {...}`` marker.
+
+    A run cut short mid-sentinel leaves a truncated ``<NEW_MESSAGE_B`` on the
+    end; it must never reach the persisted turn, where every reader (web, bots,
+    the next turn's history) would render it as literal text.
+    """
     nostream_json = json.loads(chunk.removeprefix("nostream: "))
     if isinstance(nostream_json, dict):
-        return str(nostream_json.get("complete_message", "")), bool(
-            nostream_json.get("cancelled", False)
-        )
+        message = strip_partial_message_break(str(nostream_json.get("complete_message", "")))
+        return message, bool(nostream_json.get("cancelled", False))
     return "", False
 
 
