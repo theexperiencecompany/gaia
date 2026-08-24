@@ -442,6 +442,26 @@ def get_default_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChat
     return _build_default_llm(temperature)
 
 
+def _provider_order_kwargs() -> dict[str, Any]:
+    """OpenRouter provider-routing preference, from OPENROUTER_PROVIDER_ORDER.
+
+    The model's pool has ~30 upstreams and only some cache tool-carrying
+    requests; which one a request draws decides its cache fate. Measured in one
+    window: pinned ``coreweave/fp8`` read [1792x5,128]/[1792x4,0,128] while
+    unpinned read [0,0,0]. ``order`` with fallbacks (never ``only``) so an
+    upstream outage degrades to the rotation instead of failing the call.
+
+    Opt-in and empty by default, deliberately: an earlier hard pin measured
+    worse and was reverted, so the preference is set from the per-provider
+    hit table (generation_id + the metadata endpoint), not baked in from one
+    night's probes."""
+    raw = settings.OPENROUTER_PROVIDER_ORDER
+    if not raw:
+        return {}
+    order = [slug.strip() for slug in raw.split(",") if slug.strip()]
+    return {"model_kwargs": {"provider": {"order": order}}} if order else {}
+
+
 @cache
 def _build_default_llm(temperature: float) -> BaseChatModel:
     llm = without_sdk_retry(
@@ -457,6 +477,7 @@ def _build_default_llm(temperature: float) -> BaseChatModel:
             stream_usage=True,
             max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
             api_key=settings.OPENROUTER_API_KEY,
+            **_provider_order_kwargs(),
         )
     )
     # LangChain resolves a model's context window from its curated profile registry,

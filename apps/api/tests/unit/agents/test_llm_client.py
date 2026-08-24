@@ -1012,6 +1012,30 @@ class TestMemoryLaneProviderSelection:
     with a working cache wins."""
 
     @patch("app.agents.llm.client.settings")
+    def test_provider_order_setting_becomes_the_routing_preference(
+        self, mock_settings: MagicMock
+    ) -> None:
+        """OPENROUTER_PROVIDER_ORDER exists because which upstream a request
+        draws decides its cache fate (measured: pinned coreweave/fp8 read
+        [1792x5,128] while unpinned read [0,0,0] in the same window). The knob
+        must translate exactly — slugs in order, fallbacks left enabled — and
+        stay a no-op when unset, since a hard pin was measured worse once and
+        the preference is meant to be set from prod data."""
+        from app.agents.llm.client import _provider_order_kwargs
+
+        mock_settings.OPENROUTER_PROVIDER_ORDER = "coreweave/fp8, deepseek"
+        assert _provider_order_kwargs() == {
+            "model_kwargs": {"provider": {"order": ["coreweave/fp8", "deepseek"]}}
+        }
+
+        mock_settings.OPENROUTER_PROVIDER_ORDER = None
+        assert _provider_order_kwargs() == {}
+
+        # Whitespace-only must not send an empty order list to the provider.
+        mock_settings.OPENROUTER_PROVIDER_ORDER = " , "
+        assert _provider_order_kwargs() == {}
+
+    @patch("app.agents.llm.client.settings")
     def test_the_aux_lane_predicate_reads_the_openrouter_key(
         self, mock_settings: MagicMock
     ) -> None:
