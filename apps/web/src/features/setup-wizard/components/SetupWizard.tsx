@@ -1,10 +1,12 @@
 /**
  * First-run self-host setup wizard. One full-screen shell (onboarding-style
- * wallpaper + stepper header + editorial serif heading) hosting all four
- * steps: AI provider, web search, account connections, done. Fetches
- * instance setup status on mount — instances that don't need setup are sent
- * straight to chat. Never traps the user: every step has an escape hatch
- * ("Skip for now") and Back.
+ * wallpaper + stepper header + editorial serif heading) hosting the steps:
+ * admin account (fresh local-auth instances), AI provider, web search,
+ * account connections, done. Fetches instance setup status on mount —
+ * instances that don't need setup are sent straight to chat. Never traps the
+ * user: every step has an escape hatch ("Skip for now" or Back); the account
+ * step is the one exception because nothing else in the wizard can work
+ * without its session.
  */
 
 "use client";
@@ -16,12 +18,14 @@ import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { MOTION_FADE_UP, WIZARD_STEPS } from "../constants";
+import { useLoginModalActions } from "@/features/auth/hooks/useLoginModal";
 import {
   isAnyLlmConfigured,
   isProviderConfigured,
   useSetupStatus,
-} from "../hooks/useSetupStatus";
+} from "@/features/settings/hooks/useSetupStatus";
+import { ACCOUNT_STEP, MOTION_FADE_UP, WIZARD_STEPS } from "../constants";
+import { AccountStep } from "./steps/AccountStep";
 import { DoneStep } from "./steps/DoneStep";
 import { IntegrationsStep } from "./steps/IntegrationsStep";
 import { ProviderStep } from "./steps/ProviderStep";
@@ -32,12 +36,26 @@ const WALLPAPER_STYLE = {
   backgroundImage: "url('/images/wallpapers/bands_gradient_black.png')",
 } as const;
 
-const LAST_STEP_INDEX = WIZARD_STEPS.length - 1;
-
 export function SetupWizard() {
   const router = useRouter();
   const { data: status, isLoading, isError, refetch } = useSetupStatus();
+  const { suppressModal, unsuppressModal } = useLoginModalActions();
   const [stepIndex, setStepIndex] = useState(0);
+
+  // Whether the wizard leads with account creation — captured from the FIRST
+  // status load so the step list can't shift underneath the stepper once the
+  // account exists (creating it flips has_admin_account mid-wizard).
+  const [needsAccountStep, setNeedsAccountStep] = useState<boolean | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (status && needsAccountStep === null) {
+      setNeedsAccountStep(
+        status.auth_mode === "local" && !status.has_admin_account,
+      );
+    }
+  }, [status, needsAccountStep]);
 
   // Already-configured instances have no business in the wizard.
   useEffect(() => {
@@ -46,7 +64,24 @@ export function SetupWizard() {
     }
   }, [status, router]);
 
-  if (isLoading || (status !== undefined && !status.needs_setup)) {
+  // While the wizard owns authentication (its own signup form below), the
+  // global login modal must stay out of the way: its only action redirects
+  // to WorkOS OAuth, which does not exist on self-host instances.
+  useEffect(() => {
+    if (!needsAccountStep) return;
+    suppressModal();
+    return () => unsuppressModal();
+  }, [needsAccountStep, suppressModal, unsuppressModal]);
+
+  const steps =
+    needsAccountStep === true ? [ACCOUNT_STEP, ...WIZARD_STEPS] : WIZARD_STEPS;
+  const lastStepIndex = steps.length - 1;
+
+  if (
+    isLoading ||
+    (needsAccountStep === null && !isError) ||
+    (status !== undefined && !status.needs_setup)
+  ) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary-bg">
         <Spinner size="lg" />
@@ -54,6 +89,8 @@ export function SetupWizard() {
     );
   }
 
+  // Error screen — unreachable while loading or once status has resolved;
+  // a failed status fetch must surface instead of spinning forever.
   if (isError || status === undefined) {
     return (
       <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-primary-bg px-4 text-center">
@@ -68,18 +105,20 @@ export function SetupWizard() {
     );
   }
 
-  const step = WIZARD_STEPS[stepIndex];
-  const isLastStep = stepIndex === LAST_STEP_INDEX;
+  const step = steps[stepIndex];
+  const isLastStep = stepIndex === lastStepIndex;
 
   // Each step's objective — Continue unlocks once met; Skip always escapes.
   const stepObjectiveMet =
-    step.id === "provider"
-      ? isAnyLlmConfigured(status)
-      : step.id === "search"
-        ? isProviderConfigured(status, "tavily")
-        : true;
+    step.id === "account"
+      ? status.has_admin_account
+      : step.id === "provider"
+        ? isAnyLlmConfigured(status)
+        : step.id === "search"
+          ? isProviderConfigured(status, "tavily")
+          : true;
 
-  const goNext = () => setStepIndex((i) => Math.min(i + 1, LAST_STEP_INDEX));
+  const goNext = () => setStepIndex((i) => Math.min(i + 1, lastStepIndex));
   const goBack = () => setStepIndex((i) => Math.max(i - 1, 0));
   const refreshStatus = () => void refetch();
 
@@ -92,10 +131,7 @@ export function SetupWizard() {
       />
 
       <div className="relative z-10">
-        <WizardStepper
-          currentStep={stepIndex}
-          totalSteps={WIZARD_STEPS.length}
-        />
+        <WizardStepper currentStep={stepIndex} totalSteps={steps.length} />
       </div>
 
       <div className="relative z-10 flex-1 overflow-y-auto px-4 pb-16">
@@ -125,6 +161,14 @@ export function SetupWizard() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.25, ease: "easeOut" }}
             >
+              {step.id === "account" && (
+                <AccountStep
+                  onCreated={() => {
+                    refreshStatus();
+                    goNext();
+                  }}
+                />
+              )}
               {step.id === "provider" && (
                 <ProviderStep status={status} onSaved={refreshStatus} />
               )}
@@ -162,15 +206,19 @@ export function SetupWizard() {
                   Continue
                 </Button>
               </div>
-              <Button
-                variant="light"
-                size="sm"
-                radius="full"
-                className="text-zinc-500"
-                onPress={goNext}
-              >
-                Skip for now
-              </Button>
+              {/* The account step has no skip: without its session every
+                  later wizard write would bounce off auth. */}
+              {step.id !== "account" && (
+                <Button
+                  variant="light"
+                  size="sm"
+                  radius="full"
+                  className="text-zinc-500"
+                  onPress={goNext}
+                >
+                  Skip for now
+                </Button>
+              )}
             </m.div>
           )}
         </div>

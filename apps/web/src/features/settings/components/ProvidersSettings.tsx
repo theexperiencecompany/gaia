@@ -9,6 +9,7 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
+import { ViewIcon, ViewOffSlashIcon } from "@icons";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
@@ -18,10 +19,12 @@ import {
   type ProviderTestResult,
   providerFaviconUrl,
   providersApi,
+  type StoredProviderConfig,
 } from "@/features/settings/api/providersApi";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
+import { useProviderConfigs } from "@/features/settings/hooks/useProviderConfigs";
 import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { toast } from "@/lib/toast";
@@ -36,6 +39,8 @@ interface ProviderRow {
   defaultModel?: string;
   /** Tavily is a tool key — no model applies. */
   showModelField: boolean;
+  /** Whether the backend can live-probe this credential (it cannot for Tavily). */
+  connectionTestable: boolean;
 }
 
 // Mirrors PRESETS in app/constants/providers.py.
@@ -47,6 +52,7 @@ const PROVIDER_ROWS: ProviderRow[] = [
     faviconDomain: "openrouter.ai",
     needsBaseUrl: false,
     showModelField: true,
+    connectionTestable: true,
   },
   {
     key: "gemini",
@@ -55,6 +61,7 @@ const PROVIDER_ROWS: ProviderRow[] = [
     faviconDomain: "ai.google.dev",
     needsBaseUrl: false,
     showModelField: true,
+    connectionTestable: true,
   },
   {
     key: "ollama",
@@ -65,6 +72,7 @@ const PROVIDER_ROWS: ProviderRow[] = [
     defaultBaseUrl: "http://host.docker.internal:11434",
     defaultModel: "llama3.2",
     showModelField: true,
+    connectionTestable: true,
   },
   {
     key: "custom",
@@ -74,6 +82,7 @@ const PROVIDER_ROWS: ProviderRow[] = [
     faviconDomain: "opencode.ai",
     needsBaseUrl: true,
     showModelField: true,
+    connectionTestable: true,
   },
   {
     key: "tavily",
@@ -82,6 +91,7 @@ const PROVIDER_ROWS: ProviderRow[] = [
     faviconDomain: "tavily.com",
     needsBaseUrl: false,
     showModelField: false,
+    connectionTestable: false,
   },
 ];
 
@@ -149,6 +159,8 @@ function ProviderFavicon({
 
 interface ConfigureProviderModalProps {
   row: ProviderRow | null;
+  /** Masked stored config for this row, when the listing has loaded. */
+  stored?: StoredProviderConfig;
   isConfigured: boolean;
   onSaved: () => void;
   onClose: () => void;
@@ -156,12 +168,14 @@ interface ConfigureProviderModalProps {
 
 function ConfigureProviderModal({
   row,
+  stored,
   isConfigured,
   onSaved,
   onClose,
 }: ConfigureProviderModalProps) {
   const { confirm, confirmationProps } = useConfirmation();
   const [apiKey, setApiKey] = useState("");
+  const [isKeyVisible, setIsKeyVisible] = useState(false);
   const [baseUrl, setBaseUrl] = useState("");
   const [model, setModel] = useState("");
   const [preset, setPreset] = useState<CustomPresetId>("manual");
@@ -171,18 +185,30 @@ function ConfigureProviderModal({
 
   const isOpen = row != null;
 
+  // Seed from the STORED config (masked listing), falling back to row
+  // defaults. The upsert endpoint replaces a provider's whole config, so
+  // saving must carry the resolved base_url/model or they would be wiped.
   useEffect(() => {
     if (!row) return;
     setApiKey("");
-    setBaseUrl(row.defaultBaseUrl ?? "");
-    setModel(row.defaultModel ?? "");
-    setPreset("manual");
+    setBaseUrl(stored?.base_url || row.defaultBaseUrl || "");
+    setModel(row.showModelField ? stored?.model || row.defaultModel || "" : "");
+    setPreset(
+      CUSTOM_PRESETS.find((p) => p.baseUrl === stored?.base_url)?.id ??
+        "manual",
+    );
     setTestResult(null);
     setIsSaving(false);
     setIsTesting(false);
-  }, [row]);
+  }, [row, stored]);
 
   if (!row) return null;
+
+  // A stored key can never be read back (only its last four chars are listed)
+  // and an upsert that omits api_key deletes it — so updating anything about a
+  // key-backed provider requires pasting the key again.
+  const hasStoredKey = Boolean(stored?.api_key_hint);
+  const needsKeyReentry = hasStoredKey && apiKey.trim().length === 0;
 
   const selectPreset = (id: CustomPresetId) => {
     setPreset(id);
@@ -196,10 +222,10 @@ function ConfigureProviderModal({
 
   const buildBody = (): ProviderConfigBody => {
     const body: ProviderConfigBody = {};
-    if (apiKey) body.api_key = apiKey;
+    if (apiKey.trim()) body.api_key = apiKey.trim();
     if (preset !== "manual") body.preset = preset;
-    if (baseUrl) body.base_url = baseUrl;
-    if (row.showModelField && model) body.model = model;
+    if (baseUrl.trim()) body.base_url = baseUrl.trim();
+    if (row.showModelField && model.trim()) body.model = model.trim();
     return body;
   };
 
@@ -264,15 +290,40 @@ function ConfigureProviderModal({
           <ModalBody className="gap-4">
             <Input
               autoFocus
-              type="password"
+              type={isKeyVisible ? "text" : "password"}
               label="API key"
               placeholder={
-                isConfigured
-                  ? "•••••••• (saved)"
+                hasStoredKey
+                  ? `Stored (${stored?.api_key_hint}) — paste to replace`
                   : `Paste your ${row.label} key`
               }
+              description={
+                hasStoredKey
+                  ? "Saved keys can't be read back — paste yours again to keep or replace it."
+                  : undefined
+              }
               value={apiKey}
-              onValueChange={setApiKey}
+              onValueChange={(value) => {
+                setApiKey(value);
+                setTestResult(null);
+              }}
+              endContent={
+                <Button
+                  isIconOnly
+                  size="sm"
+                  variant="light"
+                  radius="full"
+                  aria-label={isKeyVisible ? "Hide API key" : "Show API key"}
+                  onPress={() => setIsKeyVisible((visible) => !visible)}
+                  className="text-zinc-500"
+                >
+                  {isKeyVisible ? (
+                    <ViewOffSlashIcon size={16} />
+                  ) : (
+                    <ViewIcon size={16} />
+                  )}
+                </Button>
+              }
             />
             {(row.needsBaseUrl || showPresetChips) && (
               <>
@@ -348,23 +399,25 @@ function ConfigureProviderModal({
             <Button variant="flat" size="sm" onPress={onClose}>
               Cancel
             </Button>
-            <Button
-              variant="flat"
-              color="default"
-              size="sm"
-              isLoading={isTesting}
-              isDisabled={isSaving}
-              onPress={() => {
-                void handleTest();
-              }}
-            >
-              Test
-            </Button>
+            {row.connectionTestable && (
+              <Button
+                variant="flat"
+                color="default"
+                size="sm"
+                isLoading={isTesting}
+                isDisabled={isSaving}
+                onPress={() => {
+                  void handleTest();
+                }}
+              >
+                Test
+              </Button>
+            )}
             <Button
               color="primary"
               size="sm"
               isLoading={isSaving}
-              isDisabled={isTesting}
+              isDisabled={isTesting || needsKeyReentry}
               onPress={() => {
                 void handleSave();
               }}
@@ -380,7 +433,12 @@ function ConfigureProviderModal({
 }
 
 export function ProvidersSettings() {
-  const { data: status, refetch } = useSetupStatus();
+  const { data: status, refetch: refetchStatus } = useSetupStatus();
+  const {
+    data: storedConfigs,
+    isLoading: isLoadingConfigs,
+    refetch: refetchConfigs,
+  } = useProviderConfigs();
   const [editingKey, setEditingKey] = useState<CredentialProvider | null>(null);
 
   const editingRow = PROVIDER_ROWS.find((r) => r.key === editingKey) ?? null;
@@ -405,6 +463,7 @@ export function ProvidersSettings() {
                   color={configured ? "default" : "primary"}
                   size="sm"
                   className="text-xs"
+                  isDisabled={isLoadingConfigs}
                   onPress={() => setEditingKey(row.key)}
                 >
                   Configure
@@ -417,12 +476,14 @@ export function ProvidersSettings() {
 
       <ConfigureProviderModal
         row={editingRow}
+        stored={editingKey != null ? storedConfigs?.[editingKey] : undefined}
         isConfigured={
           editingKey != null &&
           status?.providers?.[editingKey]?.configured === true
         }
         onSaved={() => {
-          void refetch();
+          void refetchStatus();
+          void refetchConfigs();
           setEditingKey(null);
         }}
         onClose={() => setEditingKey(null)}

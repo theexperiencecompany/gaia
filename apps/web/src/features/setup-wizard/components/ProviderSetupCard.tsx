@@ -1,16 +1,25 @@
 /**
  * One provider card inside the setup wizard: brand favicon, credential
  * inputs (per provider shape), preset chips for OpenAI-compatible endpoints,
- * and an inline "Test & Save" flow that persists then probes the credential,
- * rendering the result (Connected · N models, or the failure detail) in place.
+ * and an inline connect flow that probes then persists the credential,
+ * rendering the result (Connected · N models, Saved, or the failure detail)
+ * in place. Providers the backend cannot probe (Tavily) save directly.
  */
 
 "use client";
 
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
-import { Alert01Icon, KeyIcon, McpServerIcon, Tick02Icon } from "@icons";
+import {
+  Alert01Icon,
+  KeyIcon,
+  McpServerIcon,
+  Tick02Icon,
+  ViewIcon,
+  ViewOffSlashIcon,
+} from "@icons";
 import Image from "next/image";
+import { useState } from "react";
 import { providerFaviconUrl } from "@/features/settings/api/providersApi";
 import type { ProviderCardConfig } from "../constants";
 import { useProviderSetup } from "../hooks/useProviderSetup";
@@ -28,6 +37,7 @@ export function ProviderSetupCard({
   isConfigured,
   onSaved,
 }: ProviderSetupCardProps) {
+  const [isKeyVisible, setIsKeyVisible] = useState(false);
   const {
     apiKey,
     setApiKey,
@@ -41,7 +51,7 @@ export function ProviderSetupCard({
     isBusy,
     outcome,
     error,
-    testAndSave,
+    connect,
   } = useProviderSetup(config, onSaved);
 
   const canSave =
@@ -100,14 +110,29 @@ export function ProviderSetupCard({
       <div className="space-y-2">
         {config.showApiKey && (
           <Input
-            type="password"
+            type={isKeyVisible ? "text" : "password"}
             placeholder="Paste your API key"
             value={apiKey}
-            onValueChange={(value) => {
-              setApiKey(value);
-            }}
+            onValueChange={setApiKey}
             autoComplete="off"
             startContent={<KeyIcon size={16} className="text-zinc-500" />}
+            endContent={
+              <Button
+                isIconOnly
+                size="sm"
+                variant="light"
+                radius="full"
+                aria-label={isKeyVisible ? "Hide API key" : "Show API key"}
+                onPress={() => setIsKeyVisible((visible) => !visible)}
+                className="text-zinc-500"
+              >
+                {isKeyVisible ? (
+                  <ViewOffSlashIcon size={16} />
+                ) : (
+                  <ViewIcon size={16} />
+                )}
+              </Button>
+            }
             size="sm"
             radius="md"
             isDisabled={isBusy}
@@ -136,16 +161,21 @@ export function ProviderSetupCard({
       </div>
 
       <div className="mt-3 flex items-center justify-between gap-2">
-        <OutcomeLine outcome={outcome} error={error} />
+        <OutcomeLine
+          outcome={outcome}
+          error={error}
+          savedLabel={config.connectionTestable ? "Connected" : "Saved"}
+          showModelCount={config.connectionTestable}
+        />
         <Button
           size="sm"
           color="primary"
           variant="flat"
           isLoading={isBusy}
           isDisabled={!canSave || isBusy}
-          onPress={testAndSave}
+          onPress={connect}
         >
-          Test &amp; Save
+          {config.connectionTestable ? "Test & Save" : "Save"}
         </Button>
       </div>
     </div>
@@ -155,13 +185,21 @@ export function ProviderSetupCard({
 function OutcomeLine({
   outcome,
   error,
+  savedLabel,
+  showModelCount,
 }: {
   outcome: ReturnType<typeof useProviderSetup>["outcome"];
   error: string | null;
+  /** Label for a successful outcome — probed providers connect, others save. */
+  savedLabel: string;
+  showModelCount: boolean;
 }) {
   if (error) {
     return (
-      <span className="flex min-w-0 items-center gap-1 rounded-full bg-red-400/10 px-2 py-0.5 text-xs text-red-400">
+      <span
+        title={error}
+        className="flex min-w-0 items-center gap-1 rounded-full bg-red-400/10 px-2 py-0.5 text-xs text-red-400"
+      >
         <Alert01Icon height={14} className="shrink-0" />
         <span className="truncate">{error}</span>
       </span>
@@ -169,19 +207,28 @@ function OutcomeLine({
   }
   if (!outcome) return null;
   if (!outcome.ok) {
+    const detail = outcome.detail || "Test failed";
     return (
-      <span className="flex min-w-0 items-center gap-1 rounded-full bg-red-400/10 px-2 py-0.5 text-xs text-red-400">
+      <span
+        title={detail}
+        className="flex min-w-0 items-center gap-1 rounded-full bg-red-400/10 px-2 py-0.5 text-xs text-red-400"
+      >
         <Alert01Icon height={14} className="shrink-0" />
-        <span className="truncate">{outcome.detail || "Test failed"}</span>
+        <span className="truncate">{detail}</span>
       </span>
     );
   }
   const countLabel =
-    outcome.modelCount > 0 ? ` · ${outcome.modelCount} models` : "";
+    showModelCount && outcome.modelCount > 0
+      ? ` · ${outcome.modelCount} models`
+      : "";
   return (
     <span className="flex min-w-0 items-center gap-1 rounded-full bg-emerald-400/10 px-2 py-0.5 text-xs text-emerald-400">
       <Tick02Icon height={14} className="shrink-0" />
-      <span className="truncate">Connected{countLabel}</span>
+      <span className="truncate">
+        {savedLabel}
+        {countLabel}
+      </span>
     </span>
   );
 }

@@ -2,6 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
+import { Link } from "@heroui/link";
 import { Alert01Icon } from "@icons";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
@@ -88,6 +89,12 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
       >
         Sign in
       </Button>
+
+      {/* This form only renders on self-host instances (local auth), where a
+          signup page exists — mirror the signup page's sign-in link. */}
+      <Link href="/signup" size="sm" color="primary" className="self-center">
+        Need an account? Sign up
+      </Link>
     </form>
   );
 }

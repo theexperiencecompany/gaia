@@ -21,7 +21,16 @@ const GENERIC_ERROR_COPY = "Could not create your account. Please try again.";
  * takes over; later signups are refused by the backend with 403
  * `registration_closed`.
  */
-export function SignupForm() {
+interface SignupFormProps {
+  /**
+   * Called after the admin account is created instead of navigating to
+   * /setup — the setup wizard embeds this form as its first step and
+   * continues in place.
+   */
+  onCreated?: () => void;
+}
+
+export function SignupForm({ onCreated }: SignupFormProps) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -42,7 +51,12 @@ export function SignupForm() {
     setError(null);
     try {
       await authApi.localSignup(name, email.trim(), password);
-      // Hand off to the first-run setup wizard.
+      // Hand off to the first-run setup wizard (or let the embedding wizard
+      // continue in place).
+      if (onCreated) {
+        onCreated();
+        return;
+      }
       router.push("/setup");
     } catch (err) {
       const authError = getLocalAuthError(err);

@@ -8,6 +8,15 @@ export type CredentialProvider =
   | "custom"
   | "tavily";
 
+/** All credential-backed providers, in display order (mirrors CREDENTIAL_PROVIDERS). */
+export const SETUP_PROVIDER_KEYS = [
+  "openrouter",
+  "gemini",
+  "ollama",
+  "custom",
+  "tavily",
+] as const satisfies readonly CredentialProvider[];
+
 export interface ProviderStatus {
   configured: boolean;
 }
@@ -37,10 +46,29 @@ export interface ProviderTestResult {
   models: string[];
 }
 
+/** One entry of the admin-only masked provider listing (GET /setup/providers). */
+export interface StoredProviderConfig {
+  configured: boolean;
+  /** Stored endpoint — null when unset or when only an env fallback is active. */
+  base_url?: string | null;
+  model?: string | null;
+  /** Last four characters of the stored key; keys are never readable in full. */
+  api_key_hint?: string | null;
+}
+
 class ProvidersApiService {
   async fetchSetupStatus(): Promise<SetupStatus> {
     const response = await apiauth.get<SetupStatus>("/setup/status");
     return response.data;
+  }
+
+  async listProviders(): Promise<
+    Record<CredentialProvider, StoredProviderConfig>
+  > {
+    const response = await apiauth.get<{
+      providers: Record<CredentialProvider, StoredProviderConfig>;
+    }>("/setup/providers");
+    return response.data.providers;
   }
 
   async upsertProvider(

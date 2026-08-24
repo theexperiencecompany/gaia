@@ -8,8 +8,8 @@
 
 import * as m from "motion/react-m";
 import type { SetupStatus } from "@/features/settings/api/providersApi";
+import { isProviderConfigured } from "@/features/settings/hooks/useSetupStatus";
 import { LLM_PROVIDER_CARDS, MOTION_FADE_UP } from "../../constants";
-import { isProviderConfigured } from "../../hooks/useSetupStatus";
 import { ProviderSetupCard } from "../ProviderSetupCard";
 
 interface ProviderStepProps {

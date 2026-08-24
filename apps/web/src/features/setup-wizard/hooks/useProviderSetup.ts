@@ -11,7 +11,7 @@ import {
   type ProviderCardConfig,
 } from "../constants";
 
-export type ProviderSetupPhase = "idle" | "saving" | "testing";
+export type ProviderSetupPhase = "saving" | "testing";
 
 export interface ProviderTestOutcome {
   ok: boolean;
@@ -20,9 +20,12 @@ export interface ProviderTestOutcome {
 }
 
 /**
- * State + save/test flow for one provider card. "Test & Save" persists the
- * credential (PUT) then probes it (POST test); the outcome renders inline in
- * the card. Field defaults come from the card config (and the selected
+ * State + connect flow for one provider card. The credential is TESTED first
+ * (caller-supplied values via the test endpoint's body — the supported path
+ * before anything is stored) and only persisted once the probe passes; a
+ * failed test leaves the store untouched so a wrong key can never poison the
+ * instance state. Providers the backend cannot probe (Tavily) skip straight
+ * to saving. Field defaults come from the card config (and the selected
  * preset, for the Custom card).
  */
 export function useProviderSetup(
@@ -33,21 +36,50 @@ export function useProviderSetup(
   const [baseUrl, setBaseUrl] = useState(config.defaultBaseUrl);
   const [model, setModel] = useState(config.defaultModel);
   const [preset, setPreset] = useState<CustomPreset | null>(null);
-  const [phase, setPhase] = useState<ProviderSetupPhase>("idle");
+  const [phase, setPhase] = useState<ProviderSetupPhase | null>(null);
   const [outcome, setOutcome] = useState<ProviderTestOutcome | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const isBusy = phase === "saving" || phase === "testing";
+  const isBusy = phase !== null;
+
+  /** A new attempt invalidates whatever the previous attempt reported. */
+  const resetResult = useCallback(() => {
+    setOutcome(null);
+    setError(null);
+  }, []);
+
+  const updateApiKey = useCallback(
+    (value: string) => {
+      setApiKey(value);
+      resetResult();
+    },
+    [resetResult],
+  );
+
+  const updateBaseUrl = useCallback(
+    (value: string) => {
+      setBaseUrl(value);
+      resetResult();
+    },
+    [resetResult],
+  );
+
+  const updateModel = useCallback(
+    (value: string) => {
+      setModel(value);
+      resetResult();
+    },
+    [resetResult],
+  );
 
   const applyPreset = useCallback(
     (selected: CustomPreset | null) => {
       setPreset(selected);
       setBaseUrl(selected ? selected.baseUrl : config.defaultBaseUrl);
       setModel(selected ? selected.defaultModel : config.defaultModel);
-      setOutcome(null);
-      setError(null);
+      resetResult();
     },
-    [config.defaultBaseUrl, config.defaultModel],
+    [config.defaultBaseUrl, config.defaultModel, resetResult],
   );
 
   const body = useMemo((): ProviderConfigBody => {
@@ -59,46 +91,57 @@ export function useProviderSetup(
     return result;
   }, [apiKey, baseUrl, model, preset]);
 
-  const testAndSave = useCallback(async () => {
-    setPhase("saving");
-    setError(null);
-    setOutcome(null);
+  const connect = useCallback(async () => {
+    resetResult();
     try {
-      await providersApi.upsertProvider(config.key, body);
-      setPhase("testing");
-      const test = await providersApi.testProvider(config.key);
-      setOutcome({
-        ok: test.ok,
-        detail: test.detail,
-        modelCount: test.models?.length ?? 0,
-      });
-      if (test.ok) {
-        // Clear the pasted key so a re-opened card never shows stale secret
-        // material; the stored credential is server-side from here on.
-        setApiKey("");
-        onSaved();
+      if (config.connectionTestable) {
+        setPhase("testing");
+        const test = await providersApi.testProvider(config.key, body);
+        if (!test.ok) {
+          // Red pill with the probe's detail — and nothing persisted.
+          setOutcome({
+            ok: false,
+            detail: test.detail,
+            modelCount: test.models?.length ?? 0,
+          });
+          return;
+        }
+        setOutcome({
+          ok: true,
+          detail: test.detail,
+          modelCount: test.models?.length ?? 0,
+        });
       }
+      setPhase("saving");
+      await providersApi.upsertProvider(config.key, body);
+      if (!config.connectionTestable) {
+        setOutcome({ ok: true, detail: "Saved", modelCount: 0 });
+      }
+      // Clear the pasted key so a re-opened card never shows stale secret
+      // material; the stored credential is server-side from here on.
+      setApiKey("");
+      onSaved();
     } catch (err) {
       setError(extractProviderError(err));
     } finally {
-      setPhase("idle");
+      setPhase(null);
     }
-  }, [config.key, body, onSaved]);
+  }, [config.key, config.connectionTestable, body, onSaved, resetResult]);
 
   return {
     apiKey,
-    setApiKey,
+    setApiKey: updateApiKey,
     baseUrl,
-    setBaseUrl,
+    setBaseUrl: updateBaseUrl,
     model,
-    setModel,
+    setModel: updateModel,
     preset,
     applyPreset,
     presets: CUSTOM_PRESETS,
     isBusy,
     outcome,
     error,
-    testAndSave,
+    connect,
   };
 }
 

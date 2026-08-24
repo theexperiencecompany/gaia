@@ -13,13 +13,13 @@ import nextDynamic from "next/dynamic";
 import Link from "next/link";
 import { type ReactNode, useEffect } from "react";
 import type { SetupStatus } from "@/features/settings/api/providersApi";
+import { isProviderConfigured } from "@/features/settings/hooks/useSetupStatus";
 import { apiService } from "@/lib/api/service";
 import {
   LLM_PROVIDER_CARDS,
   MOTION_FADE_UP,
   SEARCH_PROVIDER_CARD,
 } from "../../constants";
-import { isProviderConfigured } from "../../hooks/useSetupStatus";
 
 const ConnectedAppsCount = nextDynamic(() => import("./ConnectedAppsCount"), {
   ssr: false,

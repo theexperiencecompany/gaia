@@ -57,6 +57,12 @@ export interface ProviderCardConfig {
   showApiKey: boolean;
   showBaseUrl: boolean;
   showModel: boolean;
+  /**
+   * Whether the backend can live-probe this credential. Tavily is a search
+   * tool key with no listable endpoint — the test endpoint hard-rejects it —
+   * so its card saves directly and reports "Saved" instead of "Connected".
+   */
+  connectionTestable: boolean;
   defaultBaseUrl: string;
   defaultModel: string;
   hasPresets: boolean;
@@ -71,6 +77,7 @@ export const LLM_PROVIDER_CARDS: ProviderCardConfig[] = [
     showApiKey: true,
     showBaseUrl: false,
     showModel: false,
+    connectionTestable: true,
     defaultBaseUrl: "",
     defaultModel: "",
     hasPresets: false,
@@ -83,6 +90,7 @@ export const LLM_PROVIDER_CARDS: ProviderCardConfig[] = [
     showApiKey: true,
     showBaseUrl: false,
     showModel: false,
+    connectionTestable: true,
     defaultBaseUrl: "",
     defaultModel: "",
     hasPresets: false,
@@ -95,6 +103,7 @@ export const LLM_PROVIDER_CARDS: ProviderCardConfig[] = [
     showApiKey: false,
     showBaseUrl: true,
     showModel: true,
+    connectionTestable: true,
     defaultBaseUrl: "http://host.docker.internal:11434",
     defaultModel: "llama3.2",
     hasPresets: false,
@@ -111,6 +120,7 @@ export const LLM_PROVIDER_CARDS: ProviderCardConfig[] = [
     showApiKey: true,
     showBaseUrl: true,
     showModel: true,
+    connectionTestable: true,
     defaultBaseUrl: "",
     defaultModel: "",
     hasPresets: true,
@@ -125,16 +135,29 @@ export const SEARCH_PROVIDER_CARD: ProviderCardConfig = {
   showApiKey: true,
   showBaseUrl: false,
   showModel: false,
+  connectionTestable: false,
   defaultBaseUrl: "",
   defaultModel: "",
   hasPresets: false,
 };
 
 export interface WizardStepMeta {
-  id: "provider" | "search" | "integrations" | "done";
+  id: "account" | "provider" | "search" | "integrations" | "done";
   title: string;
   subtitle: string;
 }
+
+/**
+ * Optional first step: on a fresh local-auth instance no administrator exists
+ * yet, and every provider write needs its session — so the wizard asks for
+ * the admin account before anything else.
+ */
+export const ACCOUNT_STEP: WizardStepMeta = {
+  id: "account",
+  title: "Create your admin account",
+  subtitle:
+    "This instance needs an administrator before it can be configured. It takes one email and password — you'll continue straight into setup.",
+};
 
 export const WIZARD_STEPS: WizardStepMeta[] = [
   {

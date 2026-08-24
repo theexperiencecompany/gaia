@@ -1,10 +1,11 @@
 /**
  * Dismissible checklist card shown on the chat empty state until the
  * instance's essentials are configured (AI provider, web search, admin
- * account). Each row deep-links to where it can be fixed. Hides entirely
- * once dismissed (localStorage `gaia_setup_checklist_dismissed`) or once
- * nothing is left to configure. Renders nothing while loading or on error —
- * it must never block or clutter an already-working chat.
+ * account). Each row deep-links to where it can be fixed. Dismissal records
+ * WHICH items were pending and only hides those — if the instance slips back
+ * into an unconfigured state later (e.g. the LLM key is removed), the card
+ * re-arms and shows again. Renders nothing while loading or on error — it
+ * must never block or clutter an already-working chat.
  */
 
 "use client";
@@ -14,8 +15,11 @@ import { ArrowRight02Icon, Cancel01Icon } from "@icons";
 import * as m from "motion/react-m";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { isProviderConfigured, useSetupStatus } from "../hooks/useSetupStatus";
-import { SETUP_PROVIDER_KEYS } from "../types";
+import { SETUP_PROVIDER_KEYS } from "@/features/settings/api/providersApi";
+import {
+  isProviderConfigured,
+  useSetupStatus,
+} from "@/features/settings/hooks/useSetupStatus";
 
 const DISMISSED_KEY = "gaia_setup_checklist_dismissed";
 
@@ -26,17 +30,29 @@ interface ChecklistItem {
   href: string;
 }
 
+/** Item keys pending when the checklist was last dismissed (localStorage).
+ * A missing/legacy/unparsable value reads as nothing-dismissed so the card
+ * re-arms instead of staying hidden forever. */
+function readDismissedSnapshot(): string[] {
+  try {
+    const raw = window.localStorage.getItem(DISMISSED_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((key): key is string => typeof key === "string");
+  } catch {
+    // localStorage unavailable (private mode) — never treat as dismissed.
+    return [];
+  }
+}
+
 export function SetupChecklistCard() {
   const { data: status } = useSetupStatus();
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissedKeys, setDismissedKeys] = useState<string[]>([]);
 
   // Read localStorage after mount so SSR and hydration agree.
   useEffect(() => {
-    try {
-      setDismissed(window.localStorage.getItem(DISMISSED_KEY) === "true");
-    } catch {
-      // localStorage unavailable (private mode) — just don't persist.
-    }
+    setDismissedKeys(readDismissedSnapshot());
   }, []);
 
   const items = useMemo<ChecklistItem[]>(() => {
@@ -72,12 +88,20 @@ export function SetupChecklistCard() {
     return list;
   }, [status]);
 
-  if (!status || items.length === 0 || dismissed) return null;
+  // Hidden only while the pending set matches what was dismissed; any new or
+  // returning item (LLM unconfigured again) makes the card visible once more.
+  const isDismissed =
+    items.length > 0 &&
+    dismissedKeys.length === items.length &&
+    items.every((item) => dismissedKeys.includes(item.key));
+
+  if (!status || items.length === 0 || isDismissed) return null;
 
   const handleDismiss = () => {
-    setDismissed(true);
+    const keys = items.map((item) => item.key);
+    setDismissedKeys(keys);
     try {
-      window.localStorage.setItem(DISMISSED_KEY, "true");
+      window.localStorage.setItem(DISMISSED_KEY, JSON.stringify(keys));
     } catch {
       // Same as above — non-persistent dismissal is fine.
     }
