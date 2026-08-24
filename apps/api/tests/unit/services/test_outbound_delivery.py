@@ -271,3 +271,78 @@ class TestPublishOutboundFile:
             "content_type": "application/pdf",
             "caption": "here you go",
         }
+
+
+class TestNotifyAccountLinked:
+    async def test_a_linked_bot_platform_gets_the_confirmation_with_its_display_name(self) -> None:
+        publisher = AsyncMock()
+        with (
+            patch.object(
+                od.PlatformLinkService,
+                "get_linked_platforms",
+                new_callable=AsyncMock,
+                return_value={"telegram": {"platformUserId": "tg-123"}},
+            ),
+            patch.object(
+                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
+            ),
+        ):
+            result = await od.notify_account_linked("telegram", "user-1")
+
+        assert result is od.OutboundResult.PUBLISHED
+        envelope = json.loads(publisher.publish_outbound.await_args.args[1])
+        assert envelope["destination_id"] == "tg-123"
+        # The friendly display name, not the raw enum value.
+        assert "Your Telegram account is now linked to GAIA." in envelope["text"]
+
+    async def test_whatsapp_uses_cased_display_name(self) -> None:
+        """WhatsApp's display name is ``WhatsApp``, not ``Whatsapp`` — a
+        ``.capitalize()`` fallback would be observable."""
+        publisher = AsyncMock()
+        with (
+            patch.object(
+                od.PlatformLinkService,
+                "get_linked_platforms",
+                new_callable=AsyncMock,
+                return_value={"whatsapp": {"platformUserId": "wa-123"}},
+            ),
+            patch.object(
+                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
+            ),
+        ):
+            result = await od.notify_account_linked("whatsapp", "user-1")
+
+        assert result is od.OutboundResult.PUBLISHED
+        envelope = json.loads(publisher.publish_outbound.await_args.args[1])
+        assert "Your WhatsApp account is now linked to GAIA." in envelope["text"]
+        assert "Your Whatsapp account" not in envelope["text"]
+
+    async def test_imessage_fallback_uses_capitalized_name(self) -> None:
+        """iMessage has no entry in PLATFORM_DISPLAY_NAMES — the fallback
+        ``source.value.capitalize()`` must be used rather than ``None``."""
+        publisher = AsyncMock()
+        with (
+            patch.object(
+                od.PlatformLinkService,
+                "get_linked_platforms",
+                new_callable=AsyncMock,
+                return_value={"imessage": {"platformUserId": "im-123"}},
+            ),
+            patch.object(
+                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
+            ),
+        ):
+            result = await od.notify_account_linked("imessage", "user-1")
+
+        assert result is od.OutboundResult.PUBLISHED
+        envelope = json.loads(publisher.publish_outbound.await_args.args[1])
+        assert "Your Imessage account is now linked to GAIA." in envelope["text"]
+        assert "Your None account" not in envelope["text"]
+
+    async def test_a_non_bot_platform_is_skipped(self) -> None:
+        with patch.object(
+            od.PlatformLinkService, "get_linked_platforms", new_callable=AsyncMock
+        ) as linked:
+            result = await od.notify_account_linked("web", "user-1")
+        assert result is od.OutboundResult.SKIPPED
+        linked.assert_not_awaited()

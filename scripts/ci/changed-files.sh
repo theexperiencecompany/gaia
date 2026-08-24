@@ -36,6 +36,15 @@ FULL_SENTINEL="__FULL__"
 
 # Push / non-PR event: no base ref to diff against → signal full scan.
 if [[ -z "${GITHUB_BASE_REF:-}" ]]; then
+  # Fall back to NX_BASE (set by nrwl/nx-set-shas) or origin/master for local runs
+  if [[ -n "${NX_BASE:-}" ]]; then
+    GITHUB_BASE_REF="${NX_BASE#origin/}"
+  else
+    GITHUB_BASE_REF="master"
+  fi
+fi
+# Still empty (should not happen) → full scan
+if [[ -z "${GITHUB_BASE_REF:-}" ]]; then
   printf '%s\n' "$FULL_SENTINEL"
   exit 0
 fi

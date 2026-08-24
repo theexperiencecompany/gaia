@@ -50,7 +50,6 @@ async def create_all_indexes() -> None:
             create_payment_indexes(),
             create_processed_webhook_indexes(),
             create_usage_indexes(),
-            create_ai_models_indexes(),
             create_integration_indexes(),
             create_user_integration_indexes(),
             create_integration_instructions_indexes(),
@@ -82,7 +81,6 @@ async def create_all_indexes() -> None:
             "payments",
             "processed_webhooks",
             "usage",
-            "ai_models",
             "integrations",
             "user_integrations",
             "integration_instructions",
@@ -710,47 +708,6 @@ async def create_usage_indexes() -> None:
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating usage indexes",
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        raise
-
-
-async def create_ai_models_indexes() -> None:
-    """
-    Create indexes for ai_models collection for optimal query performance.
-
-    Query patterns:
-    - Find models by ID (primary lookup)
-    - Find active models by plan availability
-    - Find default models
-    - Pricing lookups
-    """
-    ai_models_collection = get_async_collection("ai_models")
-    try:
-        await asyncio.gather(
-            # Primary model lookup
-            ai_models_collection.create_index("model_id", unique=True),
-            # Active models filtering
-            ai_models_collection.create_index("is_active"),
-            # Default model lookup
-            ai_models_collection.create_index([("is_default", 1), ("is_active", 1)]),
-            # Plan availability queries
-            ai_models_collection.create_index("available_in_plans"),
-            # Combined active + plan queries (most common)
-            ai_models_collection.create_index([("is_active", 1), ("available_in_plans", 1)]),
-            # Pricing queries (for cost calculation)
-            ai_models_collection.create_index(
-                [("model_id", 1), ("is_active", 1)], name="model_pricing_lookup"
-            ),
-            # Provider filtering
-            ai_models_collection.create_index("model_provider"),
-            ai_models_collection.create_index("inference_provider"),
-        )
-
-    except Exception as e:
-        log.error(
-            f"{LogTag.MONGO} Error creating AI models indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

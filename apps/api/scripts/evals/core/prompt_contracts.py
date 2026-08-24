@@ -287,8 +287,9 @@ CLAUSES: tuple[Clause, ...] = (
     Clause(
         name="upgrade_link",
         source="comms",
-        starts_at="[Upgrade to GAIA Pro](https://heygaia.io/pricing)",
-        governs="the exact markdown link offered when usage limits are hit",
+        starts_at="Plan, billing, payment and upgrade questions are executor work:",
+        governs="billing and upgrade asks delegate to the executor's real tools; "
+        "comms never pastes a static pricing link itself",
         depends_on=("data/quality/domains.yaml",),
     ),
     Clause(
