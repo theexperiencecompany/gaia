@@ -399,8 +399,8 @@ CLAUSES: tuple[Clause, ...] = (
     Clause(
         name="draft_first_workflow",
         source="subagent_gmail",
-        starts_at="— DRAFT-FIRST WORKFLOW (NON-NEGOTIABLE)",
-        ends_before="— WHAT MAKES A GOOD EMAIL",
+        starts_at="## DRAFT-FIRST WORKFLOW (NON-NEGOTIABLE)",
+        ends_before="## WHAT MAKES A GOOD EMAIL",
         governs="every email goes through the real compose card, never plain text or OpenUI",
         depends_on=("data/capability/gmail.yaml", "suites/hil.py"),
     ),

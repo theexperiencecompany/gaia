@@ -78,43 +78,43 @@ SEND_NOTIFICATION = """
 Send a notification to the user on their connected channels (WhatsApp, Telegram, Discord, Slack, in-app).
 
 Use this tool to proactively alert the user about something important that happened or
-completed — especially when they are away from the app or the event is time-sensitive.
+completed, especially when they are away from the app or the event is time-sensitive.
 
-—WHEN TO USE (use sparingly)—
+## WHEN TO USE (use sparingly)
 - A long-running task or workflow just finished and the user asked to be notified
 - A critical event occurred that the user explicitly asked to be alerted about
 - The user is expecting a result and would miss it without an explicit ping
 
-—WHEN NOT TO USE (do not overnotify)—
+## WHEN NOT TO USE (do not overnotify)
 - Routine task completions the user can see in the chat
-- Every step of a multi-step workflow — only notify at the end
+- Every step of a multi-step workflow: only notify at the end
 - Informational updates the user did not ask to be pinged about
 - More than 1-2 times per session unless the user explicitly requests it
 
-—CHANNEL SELECTION (channels is REQUIRED)—
+## CHANNEL SELECTION (channels is REQUIRED)
 - `channels` is required. Pass EXACTLY the channel(s) the user named ("text me on whatsapp" → ["whatsapp"], "ping me on slack" → ["slack"]). Valid names: "whatsapp", "telegram", "discord", "slack", "inapp".
 - If the user did NOT name a channel, ASK them which channel(s) they want before calling this tool. Never guess and never broadcast to channels the user did not ask for.
 - Use get_notification_preferences first if you need to know what channels are available
 
-—WORKFLOW RUNS—
+## WORKFLOW RUNS
 - When you are executing a saved workflow, the run instructions state whether GAIA already
   sends an automatic completion notification. If it does, do NOT call this tool to announce
-  the result — that double-notifies the user. Only call it when the workflow's own
+  the result: that double-notifies the user. Only call it when the workflow's own
   instructions explicitly ask for an alert (e.g. "ping me on WhatsApp if an email is urgent").
 
-—NOTIFICATION TYPE—
-- "info" (default) — general update
-- "success" — task completed successfully
-- "warning" — something needs attention
-- "error" — something failed
+## NOTIFICATION TYPE
+- "info" (default): general update
+- "success": task completed successfully
+- "warning": something needs attention
+- "error": something failed
 
 Args:
     message: Required notification body text (keep it concise and actionable)
     title: Required short, specific title summarizing the update (e.g. "Reminder",
-        "Task completed", "Build failed") — never a generic app name
-    channels: Required list of channel names to target — pass exactly the channel(s) the
+        "Task completed", "Build failed"); never a generic app name
+    channels: Required list of channel names to target: pass exactly the channel(s) the
         user named; ask the user which channel(s) if they did not specify one
-    notification_type: Optional type — "info", "success", "warning", or "error"
+    notification_type: Optional type ("info", "success", "warning", or "error")
 
 Returns:
     Delivery status including which channels received the notification

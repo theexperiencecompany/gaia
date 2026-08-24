@@ -36,7 +36,7 @@ BUILTIN_SUBAGENTS: Final[tuple[Subagent, ...]] = (
             agent_name="docgen_agent",
             tool_space="docgen",
             handoff_tool_name="call_docgen",
-            domain="creating downloadable documents — PDF, Word (docx), PowerPoint (pptx), Excel (xlsx), and CSV — from a request and its source data",
+            domain="creating downloadable documents (PDF, Word/docx, PowerPoint/pptx, Excel/xlsx, and CSV) from a request and its source data",
             capabilities=(
                 "writing document source in the sandbox and compiling it with "
                 "the right toolchain (Typst/tectonic for PDF, docx-js, pptxgenjs, "
@@ -44,12 +44,12 @@ BUILTIN_SUBAGENTS: Final[tuple[Subagent, ...]] = (
                 "create-spreadsheet skills, then delivering the finished file"
             ),
             use_cases=(
-                "any request to produce or export a document file — 'make a PDF "
+                "any request to produce or export a document file, e.g. 'make a PDF "
                 "report', 'export this as a Word doc', 'build a slide deck', "
                 "'create a spreadsheet', 'generate an invoice'. Use this whenever "
                 "the deliverable is a downloadable file rather than a chat answer. "
                 "Do NOT use it for editing third-party docs in connected apps "
-                "(Google Docs/Sheets) — those belong to their integration subagents."
+                "(Google Docs/Sheets); those belong to their integration subagents."
             ),
             system_prompt=DOCGEN_AGENT_SYSTEM_PROMPT,
             use_direct_tools=True,
@@ -67,20 +67,20 @@ BUILTIN_SUBAGENTS: Final[tuple[Subagent, ...]] = (
             agent_name="gaia_knowledge_guide_agent",
             tool_space="gaia_knowledge_guide",
             handoff_tool_name="call_gaia_knowledge_guide",
-            domain="any question about GAIA itself — the product, company, agent system, integrations, pricing, architecture, philosophy, or anything else",
+            domain="any question about GAIA itself: the product, company, agent system, integrations, pricing, architecture, philosophy, or anything else",
             capabilities=(
                 "exploring GAIA's own documentation to answer any question "
                 "about GAIA, grounding every claim in fetched content rather "
                 "than training-data knowledge"
             ),
             use_cases=(
-                "any meta question about GAIA the product — what it is, "
+                "any meta question about GAIA the product: what it is, "
                 "what it does, what it supports, how it works, why it was "
                 "built, who built it, what it costs, how it compares to "
                 "alternatives, what it does NOT do, troubleshooting, "
                 "onboarding, account questions. Use this whenever the user "
                 "asks ABOUT GAIA. Do NOT use this for action requests "
-                "(send email, schedule, build a workflow) — those belong "
+                "(send email, schedule, build a workflow); those belong "
                 "to other subagents."
             ),
             system_prompt=GAIA_AGENT_SYSTEM_PROMPT,

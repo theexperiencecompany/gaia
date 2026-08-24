@@ -469,7 +469,7 @@ async def execute_subagent_stream(
     if not tool_ran and not emitted_tool_calls and complete_message:
         log.warning("subagent_returned_narration_only", subagent_name=ctx.agent_name)
         final_message = (
-            f"The {ctx.agent_name} subagent ended without running any tool — it only "
+            f"The {ctx.agent_name} subagent ended without running any tool; it only "
             f'produced planning text: "{complete_message}". Re-issue the handoff with an '
             "explicit instruction to perform the action."
         )
