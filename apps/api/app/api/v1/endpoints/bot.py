@@ -485,6 +485,14 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
                             yield f"data: {json.dumps({'approval': approval_payload})}\n\n"
                             continue
 
+                        # An assistant message just ended. Bots need this to
+                        # know a bubble is finished — and, when `discarded`, to
+                        # take back the handoff preamble they already showed.
+                        if "message_boundary" in data:
+                            payload = json.dumps({"message_boundary": data["message_boundary"]})
+                            yield f"data: {payload}\n\n"
+                            continue
+
                         # Skip web-only fields
                         if any(
                             key in data

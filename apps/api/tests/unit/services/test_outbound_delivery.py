@@ -346,3 +346,49 @@ class TestNotifyAccountLinked:
             result = await od.notify_account_linked("web", "user-1")
         assert result is od.OutboundResult.SKIPPED
         linked.assert_not_awaited()
+
+
+class TestOutboundBubbleSplitting:
+    """Raw agent text carries bubble-break sentinels; the outbound publish is the
+    last place that can turn them into real bubbles instead of literal tokens."""
+
+    async def test_sentinels_inside_one_part_become_ordered_bubbles(self) -> None:
+        publisher = AsyncMock()
+        with (
+            patch.object(
+                od.PlatformLinkService,
+                "get_linked_platforms",
+                new_callable=AsyncMock,
+                return_value={"whatsapp": {"platformUserId": "15551234567"}},
+            ),
+            patch.object(
+                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
+            ),
+        ):
+            ok = await od.publish_outbound_message(
+                ConversationSource.WHATSAPP,
+                "user-1",
+                ["all set.<NEW_MESSAGE_BREAK>8 tasks created[NEW_LINE_BREAK]2 nudges"],
+            )
+        assert ok is od.OutboundResult.PUBLISHED
+        envelope = json.loads(publisher.publish_outbound.await_args.args[1])
+        assert envelope["text_parts"] == ["all set.", "8 tasks created", "2 nudges"]
+
+    async def test_a_trailing_partial_sentinel_never_ships(self) -> None:
+        publisher = AsyncMock()
+        with (
+            patch.object(
+                od.PlatformLinkService,
+                "get_linked_platforms",
+                new_callable=AsyncMock,
+                return_value={"whatsapp": {"platformUserId": "15551234567"}},
+            ),
+            patch.object(
+                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
+            ),
+        ):
+            await od.publish_outbound_message(
+                ConversationSource.WHATSAPP, "user-1", ["here are your numbers<NEW_MESSAGE_B"]
+            )
+        envelope = json.loads(publisher.publish_outbound.await_args.args[1])
+        assert envelope["text"] == "here are your numbers"

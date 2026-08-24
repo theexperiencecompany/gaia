@@ -17,7 +17,11 @@ import type {
 } from "../types";
 import { getHttpStatus } from "../utils/logger";
 import { wideLog } from "../utils/wide-events";
-import { type ApprovalUpdateHandler, streamChat } from "./chat-stream";
+import {
+  type ApprovalUpdateHandler,
+  type DiscardMessageHandler,
+  streamChat,
+} from "./chat-stream";
 import {
   downloadArtifactRequest,
   transcribeAudioRequest,
@@ -168,6 +172,7 @@ export class GaiaClient {
     onDone: (fullText: string, conversationId: string) => void | Promise<void>,
     onError: (error: Error) => void | Promise<void>,
     onApprovalUpdate?: ApprovalUpdateHandler,
+    onDiscardMessage?: DiscardMessageHandler,
   ): Promise<string> {
     return streamChat(
       {
@@ -182,6 +187,7 @@ export class GaiaClient {
       onError,
       "/api/v1/bot/chat-stream",
       onApprovalUpdate,
+      onDiscardMessage,
     );
   }
 

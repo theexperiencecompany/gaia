@@ -130,8 +130,7 @@ export const createExecutorStreamHandler =
     let acc = createTurnAccumulator();
     if (existing) {
       acc = {
-        ...acc,
-        responseText: existing.content ?? "",
+        ...createTurnAccumulator(existing.content ?? ""),
         toolData: [
           ...((existing.tool_data as TurnAccumulator["toolData"]) ?? []),
         ],

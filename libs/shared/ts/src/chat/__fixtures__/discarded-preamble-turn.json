@@ -1,0 +1,10 @@
+[
+  "{\"conversation_id\": \"c1\", \"user_message_id\": \"u1\", \"user_message_content\": \"set all that up\", \"bot_message_id\": \"b1\", \"stream_id\": \"s1\"}",
+  "{\"response\": \"yeah, i can set all that up. \"}",
+  "{\"response\": \"let me get the tasks created\"}",
+  "{\"message_boundary\": {\"message_id\": \"lc_run--1\", \"discarded\": true}}",
+  "{\"response\": \"yeah, all of it's being set up now.\"}",
+  "{\"message_boundary\": {\"message_id\": \"lc_run--2\", \"discarded\": false}}",
+  "{\"main_response_complete\": true, \"usage\": null}",
+  "[DONE]"
+]

@@ -11,6 +11,7 @@
 import type { Readable } from "node:stream";
 import type { AxiosInstance } from "axios";
 import type { ApprovalRequestData } from "../../chat";
+import { NEW_MESSAGE_BREAK_TOKEN } from "../../utils/messageBreakUtils";
 import type { BotUserContext, ChatRequest } from "../types";
 import { getHttpStatus } from "../utils/logger";
 import { wideLog } from "../utils/wide-events";
@@ -19,6 +20,13 @@ import { wideLog } from "../utils/wide-events";
 export type ApprovalUpdateHandler = (
   data: ApprovalRequestData,
 ) => void | Promise<void>;
+
+/**
+ * Fired when the backend retracts the assistant message currently on screen —
+ * its text turned out to be a preamble to a handoff, and the real reply is the
+ * next message.
+ */
+export type DiscardMessageHandler = () => void | Promise<void>;
 
 /**
  * The slice of {@link GaiaClient} the streamer needs: the HTTP client, auth
@@ -59,6 +67,7 @@ export async function streamChat(
   onError: (error: Error) => void | Promise<void>,
   endpoint: string,
   onApprovalUpdate?: ApprovalUpdateHandler,
+  onDiscardMessage?: DiscardMessageHandler,
   maxRetries = 2,
 ): Promise<string> {
   let lastError: Error | null = null;
@@ -75,6 +84,7 @@ export async function streamChat(
         attempt > 0,
         endpoint,
         onApprovalUpdate,
+        onDiscardMessage,
       );
     } catch (error: unknown) {
       lastError = error instanceof Error ? error : new Error(String(error));
@@ -117,6 +127,12 @@ export const BOT_STREAM_ERROR = {
   planRequired: "plan_required",
 } as const;
 
+/** End of one assistant message; `discarded` retracts the text it streamed. */
+export interface MessageBoundary {
+  message_id: string;
+  discarded: boolean;
+}
+
 /** The subset of an SSE `data:` frame the streamer acts on. */
 interface SseFrame {
   keepalive?: boolean;
@@ -124,6 +140,7 @@ interface SseFrame {
   session_token?: string;
   approval?: ApprovalRequestData;
   text?: string;
+  message_boundary?: MessageBoundary;
   done?: boolean;
   conversation_id?: string;
 }
@@ -152,10 +169,25 @@ async function streamChatOnce(
   retried: boolean,
   endpoint: string,
   onApprovalUpdate?: ApprovalUpdateHandler,
+  onDiscardMessage?: DiscardMessageHandler,
 ): Promise<string> {
   let fullText = "";
+  // Text streamed since the last message boundary. It only joins `fullText`
+  // once the backend confirms the message it belongs to was a real reply —
+  // a handoff preamble is streamed first and retracted afterwards, and
+  // `fullText` is the whole reply on platforms that render nothing until the
+  // stream ends (Discord, WhatsApp, iMessage).
+  let pendingText = "";
   let conversationId = "";
   let streamError: Error | null = null;
+
+  const keepPendingText = (): void => {
+    if (!pendingText) return;
+    fullText = fullText
+      ? `${fullText}${NEW_MESSAGE_BREAK_TOKEN}${pendingText}`
+      : pendingText;
+    pendingText = "";
+  };
 
   const ctx = {
     platform: request.platform,
@@ -200,6 +232,7 @@ async function streamChatOnce(
         if (!finished) {
           finished = true;
           stream.destroy();
+          keepPendingText();
           if (fullText) {
             // If we got some content, consider it a success
             await onDone(fullText, conversationId);
@@ -249,11 +282,21 @@ async function streamChatOnce(
           return false;
         }
         if (frame.text) {
-          fullText += frame.text;
+          pendingText += frame.text;
           await onChunk(frame.text);
+        }
+        if (frame.message_boundary) {
+          if (frame.message_boundary.discarded) {
+            pendingText = "";
+            await onDiscardMessage?.();
+          } else {
+            keepPendingText();
+          }
+          return false;
         }
         if (frame.done) {
           finish();
+          keepPendingText();
           conversationId = frame.conversation_id || "";
           await onDone(fullText, conversationId);
           return true;
@@ -312,6 +355,7 @@ async function streamChatOnce(
         try {
           if (!finished) {
             finished = true;
+            keepPendingText();
             if (fullText) {
               // Got partial response - return what we have
               await onDone(fullText, conversationId);
@@ -343,6 +387,7 @@ async function streamChatOnce(
         try {
           if (!finished) {
             finished = true;
+            keepPendingText();
             const isRetryable = RETRYABLE_ERRORS.some((retryableErr) =>
               err.message.includes(retryableErr),
             );
@@ -382,6 +427,7 @@ async function streamChatOnce(
         true,
         endpoint,
         onApprovalUpdate,
+        onDiscardMessage,
       );
     }
 

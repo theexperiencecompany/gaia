@@ -1,3 +1,4 @@
+import { NEW_MESSAGE_BREAK_TOKEN } from "../utils/messageBreakUtils";
 import { upsertApprovalToolData } from "./approvals";
 import type {
   ChatStreamEvent,
@@ -23,7 +24,23 @@ import { REASONING_TOOL_NAME, SUBAGENT_GROUP_TOOL_NAME } from "./types";
  * reload all see identically-assembled data.
  */
 export interface TurnAccumulator {
+  /**
+   * Everything the assistant has said this turn that is still standing: the
+   * messages it kept, joined by the bubble-break sentinel, plus the text of the
+   * message currently streaming.
+   */
   responseText: string;
+  /**
+   * Where in `responseText` the message currently streaming begins.
+   *
+   * A message that turns out to carry tool calls was narrating a handoff, and
+   * the backend retracts it — but the wire delivers that text BEFORE the tool
+   * call, so it has already been rendered. This index is what lets it be cut
+   * back out, instead of withholding every reply's text until its message ends.
+   */
+  currentMessageStart: number;
+  /** A kept message just ended: the next text opens a new bubble. */
+  messageBreakPending: boolean;
   toolData: StreamToolDataEntry[];
   followUpActions: string[] | null;
   imageData: { url: string; prompt?: string } | null;
@@ -33,8 +50,18 @@ export interface TurnAccumulator {
   extras: Record<string, unknown>;
 }
 
-export const createTurnAccumulator = (): TurnAccumulator => ({
-  responseText: "",
+/**
+ * A fresh accumulator, optionally seeded with text a resumed turn already has.
+ *
+ * Seeding goes through here rather than a caller spreading `responseText` on
+ * top, because `currentMessageStart` has to move with it: left at 0, a
+ * discarded message boundary in the resumed stream would cut away content the
+ * message already had.
+ */
+export const createTurnAccumulator = (responseText = ""): TurnAccumulator => ({
+  responseText,
+  currentMessageStart: responseText.length,
+  messageBreakPending: false,
   toolData: [],
   followUpActions: null,
   imageData: null,
@@ -356,13 +383,57 @@ const applyUnknownPayload = (
  * conversation init, desktop tool requests, …) intentionally return the
  * accumulator unchanged — they belong to the turn session, not the message.
  */
+/**
+ * Appends a streamed delta, opening a new bubble first when the previous
+ * message closed on a real reply.
+ */
+const applyResponseChunk = (
+  acc: TurnAccumulator,
+  chunk: string,
+): TurnAccumulator => {
+  if (!acc.messageBreakPending) {
+    return { ...acc, responseText: acc.responseText + chunk };
+  }
+  return {
+    ...acc,
+    responseText: acc.responseText + NEW_MESSAGE_BREAK_TOKEN + chunk,
+    currentMessageStart:
+      acc.responseText.length + NEW_MESSAGE_BREAK_TOKEN.length,
+    messageBreakPending: false,
+  };
+};
+
+/**
+ * Closes the message that was streaming. A discarded one has its text cut back
+ * out of the turn; a kept one becomes its own bubble.
+ */
+const applyMessageBoundary = (
+  acc: TurnAccumulator,
+  discarded: boolean,
+): TurnAccumulator => {
+  if (discarded) {
+    return {
+      ...acc,
+      responseText: acc.responseText.slice(0, acc.currentMessageStart),
+    };
+  }
+  return {
+    ...acc,
+    currentMessageStart: acc.responseText.length,
+    // A message with no text of its own needs no separator before the next one.
+    messageBreakPending: acc.responseText.length > acc.currentMessageStart,
+  };
+};
+
 export const applyStreamEvent = (
   acc: TurnAccumulator,
   event: ChatStreamEvent,
 ): TurnAccumulator => {
   switch (event.type) {
     case "response":
-      return { ...acc, responseText: acc.responseText + event.chunk };
+      return applyResponseChunk(acc, event.chunk);
+    case "message_boundary":
+      return applyMessageBoundary(acc, event.discarded);
     case "tool_data":
       return applyToolData(acc, event.entry);
     case "tool_output":

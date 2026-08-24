@@ -31,6 +31,8 @@ import {
 import type { GaiaClient } from "../api";
 import { BOT_STREAM_ERROR } from "../api/chat-stream";
 import type { ChatRequest, PlatformName } from "../types";
+import { segmentIntoBubbles } from "./bubbles";
+import { isMessageGoneError, retryAfterMs } from "./delivery-errors";
 import {
   buildPlanRequiredMessage,
   formatBotError,
@@ -111,6 +113,7 @@ async function _handleStream(
     onDone: (fullText: string, conversationId: string) => void | Promise<void>,
     onError: (error: Error) => void | Promise<void>,
     deliverOutOfBand: (text: string) => Promise<void>,
+    discardMessage: () => Promise<void>,
   ) => Promise<string>,
   request: ChatRequest,
   gaia: GaiaClient,
@@ -147,6 +150,14 @@ async function _handleStream(
   let shownText = "";
   /** True once the live bubble holds finished text and must not be rewritten. */
   let bubbleSealed = false;
+  /** Position of the next finished bubble in this reply, for the delivery event. */
+  let bubbleIndex = 0;
+  /**
+   * True while the live bubble holds text the backend has since retracted (a
+   * MOMENT-1 handoff preamble). It stays on screen — no platform lets us delete
+   * a message — until the real reply overwrites it in place.
+   */
+  let bubbleProvisional = false;
 
   // Serialization queue to prevent concurrent Telegram API calls
   // which cause out-of-order message updates
@@ -162,23 +173,61 @@ async function _handleStream(
    * final text, and it never truncates — oversized input is chunked before it
    * gets here.
    */
+  const noteDelivered = (method: "edit" | "new", chars: number): void => {
+    logger.info("bubble_delivered", { method, index: bubbleIndex, chars });
+  };
+
+  /**
+   * Puts finished text into the live bubble, reacting to WHY an edit failed.
+   *
+   * Every failure used to take the same branch — re-send the whole text as a
+   * new message — which on a rate limit or a network blip left the original
+   * bubble on screen and posted the reply a second time underneath it. Only a
+   * message that is genuinely gone justifies a new one.
+   */
+  const editFinished = async (text: string): Promise<void> => {
+    try {
+      await currentEditor(text);
+      noteDelivered("edit", text.length);
+      return;
+    } catch (err) {
+      if (isMessageGoneError(err)) {
+        // Nothing to edit any more, and this is the only copy of the text.
+        logger.info("stream_edit_recovered", sanitizeErrorForLog(err));
+        currentEditor = await wrappedSendNewMessage(text);
+        noteDelivered("new", text.length);
+        return;
+      }
+      const waitMs = retryAfterMs(err);
+      if (waitMs !== null) {
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+      }
+      try {
+        await currentEditor(text);
+        noteDelivered("edit", text.length);
+      } catch (retryErr) {
+        // Keep the bubble that is already there. Re-sending is what
+        // double-posted the reply, and the user is not better off with two.
+        logger.info("stream_edit_skipped", {
+          ...sanitizeErrorForLog(retryErr),
+          bubble_index: bubbleIndex,
+        });
+      }
+    }
+  };
+
   const deliverBubble = async (text: string): Promise<void> => {
     if (!text) return;
     if (bubbleSealed) {
       currentEditor = await wrappedSendNewMessage(text);
+      noteDelivered("new", text.length);
     } else if (text !== shownText) {
-      try {
-        await currentEditor(text);
-      } catch (err) {
-        // The live bubble may have been deleted or expired. This is the only
-        // copy of this text the user gets, so recover onto a fresh message
-        // rather than dropping it.
-        logger.debug("stream_edit_recovered", sanitizeErrorForLog(err));
-        currentEditor = await wrappedSendNewMessage(text);
-      }
+      await editFinished(text);
     }
     shownText = text;
     bubbleSealed = true;
+    bubbleProvisional = false;
+    bubbleIndex += 1;
   };
 
   /**
@@ -197,14 +246,29 @@ async function _handleStream(
     try {
       await currentEditor(text);
       shownText = text;
+      bubbleProvisional = false;
     } catch (err) {
       // Transient: the live bubble may have been deleted or the interaction
-      // expired. The next edit or the final delivery recovers, so this is
-      // debug, not a failure — but it is logged so a persistent edit problem
-      // stays visible.
-      logger.debug("stream_edit_skipped", sanitizeErrorForLog(err));
+      // expired. The next edit or the final delivery recovers — but a
+      // persistent edit problem is exactly how a bot goes quiet without
+      // failing, so it is a visible line, not a debug one.
+      logger.info("stream_edit_skipped", sanitizeErrorForLog(err));
     }
   };
+
+  /**
+   * The messages a finished piece of reply should be sent as: segmented into
+   * bubbles the way a person texts, then chunked to the platform's limit.
+   *
+   * Segmentation is not optional politeness. The model is asked to split its
+   * own replies with the sentinel and across 42 consecutive production replies
+   * never once did, so "one sentinel-free reply" is the normal case, not the
+   * edge case — and it arrived as a single 4,358-character Telegram message.
+   */
+  const bubblesFor = (segment: string): string[] =>
+    segmentIntoBubbles(segment).flatMap((bubble) =>
+      chunkResponse(bubble, platform, render),
+    );
 
   /**
    * Moves every finished piece out of ``pending`` and delivers it.
@@ -217,6 +281,10 @@ async function _handleStream(
    * be delivered in full — chunked across as many bubbles as it needs, never
    * truncated.
    *
+   * Paragraph segmentation runs only on those finished pieces: whether a
+   * paragraph should merge with its neighbour depends on the block AFTER it,
+   * which has not arrived yet for the growing tail.
+   *
    * Whatever is left in ``pending`` afterwards is the still-growing tail, which
    * only ever gets shown as a live preview.
    */
@@ -228,14 +296,15 @@ async function _handleStream(
     const finished: string[] = [];
 
     // Normalize first: the model emits near-miss spellings of the sentinel
-    // (<NEW_LINE_BREAK>), and only the canonical token may be split on.
+    // (<NEW_LINE_BREAK>, [NEW_MESSAGE_BREAK]), and only the canonical token may
+    // be split on.
     pending = normalizeMessageBreakTokens(pending);
 
     let breakIndex = pending.indexOf(NEW_MESSAGE_BREAK_TOKEN);
     while (breakIndex !== -1) {
-      const segment = pending.slice(0, breakIndex).trim();
+      const segment = pending.slice(0, breakIndex);
       pending = pending.slice(breakIndex + NEW_MESSAGE_BREAK_TOKEN_LENGTH);
-      finished.push(...chunkResponse(segment, platform, render));
+      finished.push(...bubblesFor(segment));
       breakIndex = pending.indexOf(NEW_MESSAGE_BREAK_TOKEN);
     }
 
@@ -252,13 +321,32 @@ async function _handleStream(
     }
   };
 
-  /** Delivers the tail as the last bubble, once the stream is over. */
+  /** Delivers the tail, once the stream is over and nothing can extend it. */
   const flushTail = async (): Promise<void> => {
-    const tail = normalizeMessageBreakTokens(pending).trim();
+    const tail = pending;
     pending = "";
-    for (const chunk of chunkResponse(tail, platform, render)) {
+    for (const chunk of bubblesFor(tail)) {
       await deliverBubble(chunk);
     }
+  };
+
+  /**
+   * The backend has retracted the message currently on screen: its text turned
+   * out to be a preamble to a handoff ("let me get the tasks created…") and the
+   * real reply is the NEXT message.
+   *
+   * No platform lets a bot unsend, and sending a correction would be a second
+   * message about a message. So the bubble is un-sealed instead: the reply that
+   * arrives next overwrites it in place, and the user only ever sees one.
+   */
+  const discardMessage = async (): Promise<void> => {
+    await enqueue(async () => {
+      if (!pending && !shownText) return;
+      pending = "";
+      bubbleSealed = false;
+      bubbleProvisional = true;
+      logger.info("bubble_discarded", { chars: shownText.length });
+    });
   };
 
   /**
@@ -350,6 +438,14 @@ async function _handleStream(
 
         await flushFinished();
         await flushTail();
+
+        // A retracted preamble with nothing to replace it means the turn
+        // produced no reply at all. The preamble stays — a blank message is
+        // worse than the agent's own words — but it must be visible that it
+        // happened.
+        if (bubbleProvisional) {
+          logger.info("bubble_preamble_kept", { chars: shownText.length });
+        }
       },
       async (error) => {
         streamDone = true;
@@ -381,6 +477,7 @@ async function _handleStream(
         }
       },
       deliverOutOfBand,
+      discardMessage,
     );
   } catch (error) {
     await emitGenericError(formatBotError(error));
@@ -457,6 +554,7 @@ async function runStreamingChat(
   let hadError = false;
   let firstChunkMs: number | null = null;
   let chunkCount = 0;
+  let discardedMessages = 0;
   let conversationId = "";
 
   analytics?.client.capture(analytics.distinctId, BOT_EVENTS.MESSAGE_RECEIVED, {
@@ -505,6 +603,7 @@ async function runStreamingChat(
     onDone: (fullText: string, conversationId: string) => void | Promise<void>,
     onError: (error: Error) => void | Promise<void>,
     deliverOutOfBand: (text: string) => Promise<void>,
+    discardMessage: () => Promise<void>,
   ) =>
     gaia.chatStream(
       request,
@@ -533,6 +632,11 @@ async function runStreamingChat(
         if (data.status !== "pending") return;
         await deliverOutOfBand(formatApprovalPrompt(data));
       },
+      // The message on screen was a handoff preamble; the real reply is next.
+      async () => {
+        discardedMessages += 1;
+        await discardMessage();
+      },
     );
 
   try {
@@ -550,6 +654,7 @@ async function runStreamingChat(
     wideLog.set({
       ttfb_ms: firstChunkMs ?? undefined,
       chunk_count: chunkCount,
+      discarded_messages: discardedMessages,
       response_length: responseLength,
       conversation_id: conversationId || undefined,
     });
