@@ -15,6 +15,7 @@ from sqlalchemy import func, select
 from app.constants.memory import (
     CHROMA_MEMORIES_COLLECTION,
     MemoryKind,
+    MemoryShelfLife,
     MemorySourceType,
 )
 from app.memory import chroma_store, pg_store
@@ -37,6 +38,7 @@ class MemorySpec(TypedDict, total=False):
     content: str
     category: str
     kind: MemoryKind
+    shelf_life: MemoryShelfLife
     importance: float
     forget_after: datetime | None
     entities: list[tuple[str, str]]  # (name, entity_type)
@@ -49,6 +51,7 @@ async def seed_memories(user_id: str, specs: list[MemorySpec]) -> list[MemoryRec
         MemoryRecord(
             user_id=user_id,
             kind=spec.get("kind", MemoryKind.FACT).value,
+            shelf_life=spec.get("shelf_life", MemoryShelfLife.DURABLE).value,
             content=spec["content"],
             category_path=spec.get("category", "general"),
             importance=spec.get("importance", 0.5),

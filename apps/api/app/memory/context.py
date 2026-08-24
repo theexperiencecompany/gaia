@@ -13,12 +13,15 @@ from datetime import UTC, date as date_type, datetime, timedelta
 from app.constants.memory import (
     CORE_CONTEXT_CACHE_KEY,
     CORE_CONTEXT_CACHE_TTL,
+    CORE_CONTEXT_SECTION_MAX_CHARS,
+    CORE_CONTEXT_TRUNC_MARKER,
     MemoryDocType,
 )
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.memory import pg_store
 from app.memory.retrieval import invalidate_recall_cache
 from app.models.memory_db_models import MemoryEpisode
+from shared.py.wide_events import log
 
 # Public because get_core_context joins the sections into one string and
 # message_helpers has to find the boundaries again to split the volatile
@@ -49,6 +52,29 @@ def _strip_leading_h1(content: str) -> str:
     return content
 
 
+def _bounded(body: str, doc_type: MemoryDocType) -> str:
+    """Clip one document to its own share of the always-injected block.
+
+    Each document is bounded separately rather than the joined block being
+    head/tail-cut as a whole. A single cut over everything meant an oversized
+    agenda (production: 4,886 characters) ate the journal that followed it —
+    the section that overran was never the one that paid for it. The write
+    path caps these documents too; this is the read-side backstop for a
+    document written before the cap existed.
+    """
+    limit = CORE_CONTEXT_SECTION_MAX_CHARS.get(doc_type)
+    if limit is None or len(body) <= limit:
+        return body
+    log.warning(
+        "memory_core_context_section_clipped",
+        error_type="core_context_section_over_budget",
+        doc_type=doc_type.value,
+        chars=len(body),
+        limit=limit,
+    )
+    return body[:limit] + CORE_CONTEXT_TRUNC_MARKER
+
+
 async def get_core_context(user_id: str) -> str:
     """Assembled always-injected memory context, cached in Redis.
 
@@ -71,7 +97,8 @@ async def get_core_context(user_id: str) -> str:
     for doc_type, heading in _DOC_SECTIONS:
         document = documents_by_type.get(doc_type.value)
         if document is not None and document.content.strip():
-            sections.append(f"{heading}\n{_strip_leading_h1(document.content.strip())}")
+            body = _bounded(_strip_leading_h1(document.content.strip()), doc_type)
+            sections.append(f"{heading}\n{body}")
 
     recent_activity = _format_recent_activity(episodes, today)
     if recent_activity:

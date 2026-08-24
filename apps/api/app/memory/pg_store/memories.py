@@ -10,7 +10,11 @@ import uuid
 
 from sqlalchemy import ColumnElement, Select, func, or_, select, update
 
-from app.constants.memory import FORGET_REASON_MAX_CHARS, MemoryRelationType
+from app.constants.memory import (
+    AGENDA_CATEGORY_PATH,
+    FORGET_REASON_MAX_CHARS,
+    MemoryRelationType,
+)
 from app.memory.pg_store._session import (
     LIKE_ESCAPE_CHAR,
     escape_like,
@@ -19,9 +23,15 @@ from app.memory.pg_store._session import (
 )
 from app.models.memory_db_models import MemoryEntityLink, MemoryRecord
 
+_EXPIRY_FORGET_REASON = "expired"
+
 
 def _not_expired_clause() -> ColumnElement[bool]:
-    """Read-time expiry filter: ``forget_after`` is enforced on read, never swept."""
+    """Read-time expiry filter, belt to ``sweep_expired_memories``' braces.
+
+    The nightly sweep is what actually retires an expired row; this clause
+    keeps one from being read in the window between expiring and being swept.
+    """
     return (MemoryRecord.forget_after.is_(None)) | (MemoryRecord.forget_after > datetime.now(UTC))
 
 
@@ -279,18 +289,20 @@ async def get_facts_for_consolidation(
     user_id: str,
     *,
     category_prefixes: list[str] | None = None,
-    kind: str | None = None,
+    shelf_life: str | None = None,
     limit: int,
 ) -> list[MemoryRecord]:
     """Live memories feeding one core-document rewrite, newest first.
 
     ``category_prefixes`` match a folder exactly or as a subtree prefix
-    ('work' covers both 'work' and 'work/gaia'); ``kind`` narrows to
-    fact/experience. Both filters optional and AND-combined.
+    ('work' covers both 'work' and 'work/gaia'); ``shelf_life`` narrows to
+    durable rows, which is what keeps a value that was only true "as of" a
+    moment out of an always-injected document. Both filters optional and
+    AND-combined.
     """
     query = _active_memories_query(user_id)
-    if kind is not None:
-        query = query.where(MemoryRecord.kind == kind)
+    if shelf_life is not None:
+        query = query.where(MemoryRecord.shelf_life == shelf_life)
     if category_prefixes is not None:
         if not category_prefixes:
             return []
@@ -303,6 +315,45 @@ async def get_facts_for_consolidation(
     async with memory_session() as session:
         result = await session.execute(query.order_by(MemoryRecord.created_at.desc()).limit(limit))
         return list(result.scalars().all())
+
+
+async def get_agenda_memories(user_id: str, limit: int) -> list[MemoryRecord]:
+    """Live agenda rows, most important first then newest — what agenda.md renders."""
+    async with memory_session() as session:
+        result = await session.execute(
+            _active_memories_query(user_id)
+            .where(MemoryRecord.category_path == AGENDA_CATEGORY_PATH)
+            .order_by(MemoryRecord.importance.desc(), MemoryRecord.created_at.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+
+async def sweep_expired_memories(user_id: str | None = None) -> list[str]:
+    """Forget every row whose ``forget_after`` has passed; returns their owners.
+
+    Expiry was enforced only at read time, so an expired row stayed live in the
+    folder tree, the free-plan cap count, the ``/workspace/memory`` projection
+    and every rendered document forever. The owner of each swept row comes back
+    so the caller can repair exactly those users' derived state. ``user_id``
+    scopes the sweep for the repair script; the nightly task sweeps everyone.
+    """
+    filters: list[ColumnElement[bool]] = [
+        MemoryRecord.is_forgotten.is_(False),
+        MemoryRecord.forget_after.is_not(None),
+        MemoryRecord.forget_after <= datetime.now(UTC),
+    ]
+    if user_id is not None:
+        filters.append(MemoryRecord.user_id == user_id)
+    async with memory_session() as session:
+        result = await session.execute(
+            update(MemoryRecord)
+            .where(*filters)
+            .values(is_forgotten=True, forget_reason=_EXPIRY_FORGET_REASON)
+            .returning(MemoryRecord.user_id)
+        )
+        await session.commit()
+        return [owner for (owner,) in result.all()]
 
 
 async def get_all_live_memories(user_id: str) -> list[MemoryRecord]:

@@ -700,22 +700,21 @@ class TestGetFactsForConsolidation:
         sql, params = _compiled(stmt)
         assert "ORDER BY memories.created_at DESC" in sql
         assert "LIMIT" in sql
-        assert "memories.kind =" not in sql
-        assert "memories.kind IN" not in sql
+        assert "memories.shelf_life =" not in sql
         assert "LIKE" not in sql
         assert params["user_id_1"] == USER
         assert params["param_1"] == 50
 
-    async def test_filters_by_kind(self) -> None:
+    async def test_filters_by_shelf_life(self) -> None:
         session = MagicMock()
         session.execute = AsyncMock(return_value=_scalars_result([]))
         with _patched_memory_session(session):
-            await get_facts_for_consolidation(USER, kind="fact", limit=10)
+            await get_facts_for_consolidation(USER, shelf_life="durable", limit=10)
 
         (stmt,) = _executed_stmts(session)
         sql, params = _compiled(stmt)
-        assert "memories.kind = %(kind_1)s" in sql
-        assert params["kind_1"] == "fact"
+        assert "memories.shelf_life = %(shelf_life_1)s" in sql
+        assert params["shelf_life_1"] == "durable"
 
     async def test_filters_by_category_prefixes(self) -> None:
         session = MagicMock()
@@ -746,20 +745,20 @@ class TestGetFactsForConsolidation:
         assert result == []
         patched.assert_not_called()
 
-    async def test_kind_and_prefixes_combine_with_and(self) -> None:
+    async def test_shelf_life_and_prefixes_combine_with_and(self) -> None:
         session = MagicMock()
         session.execute = AsyncMock(return_value=_scalars_result([]))
         with _patched_memory_session(session):
             await get_facts_for_consolidation(
-                USER, category_prefixes=["work"], kind="fact", limit=10
+                USER, category_prefixes=["work"], shelf_life="durable", limit=10
             )
 
         (stmt,) = _executed_stmts(session)
         sql, params = _compiled(stmt)
-        assert "memories.kind = %(kind_1)s" in sql
+        assert "memories.shelf_life = %(shelf_life_1)s" in sql
         assert "memories.category_path = %(category_path_1)s" in sql
         assert "memories.category_path LIKE %(category_path_2)s ESCAPE" in sql
-        assert params["kind_1"] == "fact"
+        assert params["shelf_life_1"] == "durable"
         assert params["category_path_1"] == "work"
         assert params["category_path_2"] == "work/%"
 

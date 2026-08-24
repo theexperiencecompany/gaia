@@ -9,7 +9,7 @@ does, because the Chroma vector ids are derived from it after the insert.
 """
 
 from dataclasses import dataclass, field
-from datetime import UTC, date as date_type, datetime
+from datetime import UTC, date as date_type, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
@@ -17,8 +17,11 @@ import uuid
 import pytest
 
 from app.constants.memory import (
+    AGENDA_CATEGORY_PATH,
+    AGENDA_ITEM_TTL_DAYS,
     CATEGORY_PATH_MAX_DEPTH,
     DEFAULT_MEMORY_IMPORTANCE,
+    STATE_FACT_TTL_DAYS,
     TRANSCRIPT_CHUNK_MAX_CHARS,
     TRANSCRIPT_CHUNK_OVERLAP_CHARS,
     TRANSCRIPT_CHUNK_TURNS,
@@ -26,6 +29,7 @@ from app.constants.memory import (
     MemoryDocType,
     MemoryKind,
     MemoryRelationType,
+    MemoryShelfLife,
     MemorySourceType,
     ReconcileOutcome,
 )
@@ -33,6 +37,7 @@ from app.memory import ingestion
 from app.memory.ingestion import RetainResult, retain, retain_single, summarize_episode
 from app.memory.reconciliation import ReconciledFact
 from app.memory.schemas import (
+    AgendaUpdate,
     ExtractedEdge,
     ExtractedEntity,
     ExtractedFact,
@@ -49,24 +54,24 @@ def make_fact(
     content: str = "sam likes green tea",
     *,
     kind: MemoryKind = MemoryKind.FACT,
+    shelf_life: MemoryShelfLife = MemoryShelfLife.DURABLE,
     category_path: str = "preferences",
     importance: float = 0.5,
     entities: list[ExtractedEntity] | None = None,
     edges: list[ExtractedEdge] | None = None,
     occurred_start: datetime | None = None,
     occurred_end: datetime | None = None,
-    forget_after: datetime | None = None,
 ) -> ExtractedFact:
     return ExtractedFact(
         content=content,
         kind=kind,
+        shelf_life=shelf_life,
         category_path=category_path,
         importance=importance,
         entities=entities or [],
         edges=edges or [],
         occurred_start=occurred_start,
         occurred_end=occurred_end,
-        forget_after=forget_after,
     )
 
 
@@ -144,6 +149,9 @@ class Boundaries:
     invalidate_caches: AsyncMock
     schedule_vfs_sync: MagicMock
     schedule_consolidation: AsyncMock
+    render_agenda_document: AsyncMock
+    query_similar: AsyncMock
+    forget_memory: AsyncMock
     inserted_records: list[MemoryRecord] = field(default_factory=list)
 
     @property
@@ -200,6 +208,7 @@ def boundaries() -> Any:
         "set_memory_flags": AsyncMock(return_value=None),
         "upsert_conversation_chunks": AsyncMock(return_value=None),
         "upsert_episode": AsyncMock(return_value=None),
+        "query_similar": AsyncMock(return_value=[]),
     }
     insert_mock = AsyncMock(side_effect=fake_insert)
     embed_batch_mock = AsyncMock(side_effect=fake_embed_batch)
@@ -212,6 +221,8 @@ def boundaries() -> Any:
         "reconcile": AsyncMock(return_value=[]),
         "invalidate_user_memory_caches": AsyncMock(return_value=None),
         "schedule_consolidation": AsyncMock(return_value=None),
+        "render_agenda_document": AsyncMock(return_value=None),
+        "forget_memory": AsyncMock(return_value=True),
     }
     vfs_mock = MagicMock(return_value=None)
 
@@ -255,6 +266,9 @@ def boundaries() -> Any:
             invalidate_caches=module_patches["invalidate_user_memory_caches"],
             schedule_vfs_sync=vfs_mock,
             schedule_consolidation=module_patches["schedule_consolidation"],
+            render_agenda_document=module_patches["render_agenda_document"],
+            query_similar=chroma_patches["query_similar"],
+            forget_memory=module_patches["forget_memory"],
             inserted_records=inserted,
         )
 
@@ -317,7 +331,6 @@ class TestBuildRecord:
     def test_maps_every_fact_field_onto_the_row(self) -> None:
         start = datetime(2026, 1, 1, tzinfo=UTC)
         end = datetime(2026, 1, 2, tzinfo=UTC)
-        forget = datetime(2026, 6, 1, tzinfo=UTC)
         fact = make_fact(
             "sam moved to berlin",
             kind=MemoryKind.EXPERIENCE,
@@ -325,7 +338,6 @@ class TestBuildRecord:
             importance=0.9,
             occurred_start=start,
             occurred_end=end,
-            forget_after=forget,
         )
         record = ingestion._build_record(
             fact, user_id=USER, source_type=MemorySourceType.EMAIL, source_id="msg-9"
@@ -337,9 +349,39 @@ class TestBuildRecord:
         assert record.importance == 0.9
         assert record.occurred_start == start
         assert record.occurred_end == end
-        assert record.forget_after == forget
         assert record.source_type == MemorySourceType.EMAIL.value
         assert record.source_id == "msg-9"
+
+    def test_a_durable_fact_never_expires(self) -> None:
+        record = ingestion._build_record(
+            make_fact(shelf_life=MemoryShelfLife.DURABLE),
+            user_id=USER,
+            source_type=MemorySourceType.CONVERSATION,
+            source_id=None,
+        )
+        assert record.forget_after is None
+
+    def test_a_state_fact_expires_after_the_state_window(self) -> None:
+        now = datetime(2026, 3, 1, tzinfo=UTC)
+        record = ingestion._build_record(
+            make_fact("gmail is disconnected", shelf_life=MemoryShelfLife.STATE),
+            user_id=USER,
+            source_type=MemorySourceType.CONVERSATION,
+            source_id=None,
+            mentioned_at=now,
+        )
+        assert record.forget_after == now + timedelta(days=STATE_FACT_TTL_DAYS)
+
+    def test_an_agenda_item_expires_after_the_agenda_window(self) -> None:
+        now = datetime(2026, 3, 1, tzinfo=UTC)
+        record = ingestion._build_record(
+            make_fact("file the tax return", shelf_life=MemoryShelfLife.TASK),
+            user_id=USER,
+            source_type=MemorySourceType.CONVERSATION,
+            source_id=None,
+            mentioned_at=now,
+        )
+        assert record.forget_after == now + timedelta(days=AGENDA_ITEM_TTL_DAYS)
 
     def test_category_path_is_clamped_on_the_row(self) -> None:
         record = ingestion._build_record(
@@ -659,11 +701,12 @@ class TestApplyReconciled:
         assert applied.inserted == []
         assert boundaries.vector_items == []
 
-    async def test_extends_links_to_its_parent_without_bumping_the_version(
+    async def test_extends_supersedes_its_parent_and_retires_its_vector(
         self, boundaries: Boundaries
     ) -> None:
         parent = make_row(content="sam drinks tea")
-        boundaries.get_memories_by_ids.return_value = [parent]
+        superseding = make_row(content="sam drinks matcha")
+        boundaries.supersede_memory.return_value = superseding
         reconciled = [
             make_reconciled(
                 make_fact("sam drinks matcha"),
@@ -674,14 +717,12 @@ class TestApplyReconciled:
         applied = await ingestion._apply_reconciled(
             USER, reconciled, source_type=MemorySourceType.CONVERSATION, source_id=None
         )
-        assert applied.extended == 1
-        assert applied.new == 0
-        record = boundaries.inserted_records[0]
-        assert record.parent_id == parent.id
-        assert record.relation_type == MemoryRelationType.EXTENDS.value
-        # EXTENDS coexists with its parent: no supersession, no version bump.
-        assert record.root_id is None
-        boundaries.set_memory_flags.assert_not_awaited()
+        assert (applied.new, applied.extended) == (0, 1)
+        # Two rows about the same subject-attribute must never both be live.
+        target_id, _user, _record, relation = boundaries.supersede_memory.await_args.args
+        assert target_id == str(parent.id)
+        assert relation is MemoryRelationType.EXTENDS
+        boundaries.set_memory_flags.assert_awaited_once_with(str(parent.id), is_latest=False)
 
     async def test_extends_with_a_vanished_parent_degrades_to_a_plain_new(
         self, boundaries: Boundaries
@@ -708,7 +749,7 @@ class TestApplyReconciled:
             USER, reconciled, source_type=MemorySourceType.CONVERSATION, source_id=None
         )
         assert (applied.new, applied.extended) == (1, 0)
-        boundaries.get_memories_by_ids.assert_awaited_once_with(USER, [])
+        boundaries.supersede_memory.assert_not_awaited()
 
     async def test_updates_supersedes_the_target_and_retires_its_vector(
         self, boundaries: Boundaries
@@ -746,16 +787,20 @@ class TestApplyReconciled:
         assert [record.content for record in boundaries.inserted_records] == ["racy"]
         boundaries.set_memory_flags.assert_not_awaited()
 
-    async def test_updates_without_a_target_id_is_ignored(self, boundaries: Boundaries) -> None:
+    async def test_updates_without_a_target_id_is_stored_rather_than_dropped(
+        self, boundaries: Boundaries
+    ) -> None:
+        # A supersession verdict with nothing to supersede used to vanish
+        # entirely; the fact itself is still real, so it lands as a plain row.
         reconciled = [
             make_reconciled(make_fact("x"), ReconcileOutcome.UPDATES, target_memory_id=None)
         ]
         applied = await ingestion._apply_reconciled(
             USER, reconciled, source_type=MemorySourceType.CONVERSATION, source_id=None
         )
-        assert (applied.new, applied.updated) == (0, 0)
+        assert (applied.new, applied.updated) == (1, 0)
         boundaries.supersede_memory.assert_not_awaited()
-        assert boundaries.inserted_records == []
+        assert [record.content for record in boundaries.inserted_records] == ["x"]
 
     async def test_vectors_carry_the_row_id_content_and_latest_flags(
         self, boundaries: Boundaries
@@ -982,36 +1027,53 @@ class TestApplyGraph:
 
 class TestSchedulePostIngest:
     async def test_projection_sync_always_runs(self, boundaries: Boundaries) -> None:
-        await ingestion._schedule_post_ingest(USER, inserted_facts=[], agenda_updates=[])
+        await ingestion._schedule_post_ingest(USER, inserted_facts=[])
         boundaries.schedule_vfs_sync.assert_called_once_with(USER)
 
     async def test_no_touched_documents_skips_consolidation(self, boundaries: Boundaries) -> None:
-        await ingestion._schedule_post_ingest(USER, inserted_facts=[], agenda_updates=[])
+        await ingestion._schedule_post_ingest(USER, inserted_facts=[])
         boundaries.schedule_consolidation.assert_not_awaited()
 
-    async def test_agenda_updates_alone_schedule_the_agenda_document(
-        self, boundaries: Boundaries
-    ) -> None:
+    async def test_a_durable_fact_schedules_its_document(self, boundaries: Boundaries) -> None:
         await ingestion._schedule_post_ingest(
-            USER, inserted_facts=[], agenda_updates=["owes the user a draft"]
+            USER,
+            inserted_facts=[make_fact("sam is vegetarian", category_path="food-preferences")],
         )
         user_id, doc_types = boundaries.schedule_consolidation.await_args.args
         assert user_id == USER
-        assert MemoryDocType.AGENDA_MD in doc_types
-        assert boundaries.schedule_consolidation.await_args.kwargs["agenda_updates"] == [
-            "owes the user a draft"
-        ]
+        assert MemoryDocType.MEMORY_MD in doc_types
 
-    async def test_experience_facts_schedule_the_insights_document(
+    async def test_an_agenda_row_never_feeds_a_consolidated_document(
+        self, boundaries: Boundaries
+    ) -> None:
+        # agenda.md is rendered from its rows, and a task must not leak into
+        # the always-injected identity document either.
+        await ingestion._schedule_post_ingest(
+            USER,
+            inserted_facts=[
+                make_fact(
+                    "owes the user a draft",
+                    shelf_life=MemoryShelfLife.TASK,
+                    category_path=AGENDA_CATEGORY_PATH,
+                )
+            ],
+        )
+        boundaries.schedule_consolidation.assert_not_awaited()
+
+    async def test_a_state_fact_never_feeds_a_consolidated_document(
         self, boundaries: Boundaries
     ) -> None:
         await ingestion._schedule_post_ingest(
             USER,
-            inserted_facts=[make_fact("went to berlin", kind=MemoryKind.EXPERIENCE)],
-            agenda_updates=[],
+            inserted_facts=[
+                make_fact(
+                    "sam has 18 active workflows",
+                    shelf_life=MemoryShelfLife.STATE,
+                    category_path="work",
+                )
+            ],
         )
-        doc_types = boundaries.schedule_consolidation.await_args.args[1]
-        assert MemoryDocType.INSIGHTS_MD in doc_types
+        boundaries.schedule_consolidation.assert_not_awaited()
 
 
 class TestBuildSingleFact:
@@ -1129,7 +1191,7 @@ class TestRetainSingle:
     async def test_follow_ups_are_scheduled_for_the_stored_fact(
         self, boundaries: Boundaries
     ) -> None:
-        fact = make_fact("went to berlin", kind=MemoryKind.EXPERIENCE)
+        fact = make_fact("went to berlin", kind=MemoryKind.EXPERIENCE, category_path="life")
         boundaries.reconcile.return_value = [make_reconciled(fact)]
         with patch.object(ingestion, "row_to_entry", return_value=MagicMock()):
             await retain_single(
@@ -1137,7 +1199,7 @@ class TestRetainSingle:
             )
         boundaries.invalidate_caches.assert_awaited_once_with(USER)
         boundaries.schedule_vfs_sync.assert_called_once_with(USER)
-        assert MemoryDocType.INSIGHTS_MD in boundaries.schedule_consolidation.await_args.args[1]
+        assert MemoryDocType.USER_MD in boundaries.schedule_consolidation.await_args.args[1]
 
     async def test_entities_are_attached_to_the_returned_entry(
         self, boundaries: Boundaries
@@ -1170,21 +1232,24 @@ class TestRetain:
         boundaries.reconcile.assert_not_awaited()
         assert boundaries.inserted_records == []
 
-    async def test_agenda_only_extraction_still_schedules_the_agenda_document(
+    async def test_agenda_only_extraction_rewrites_the_agenda_document(
         self, boundaries: Boundaries
     ) -> None:
-        # An open loop closing with no new durable fact and no journal line
-        # must not silently drop the agenda update.
+        # An open loop with no new durable fact and no journal line must still
+        # land as a real row and reach the rendered agenda.
         boundaries.extract_memories.return_value = ExtractedMemoryBatch(
-            agenda_updates=["GAIA owes the user the Q3 draft"]
+            agenda_updates=[AgendaUpdate(item="GAIA owes the user the Q3 draft", resolved=False)]
         )
+        boundaries.reconcile.side_effect = lambda _user, facts, embeddings: [
+            make_reconciled(fact, embedding=embedding) for fact, embedding in zip(facts, embeddings)
+        ]
         await retain(
             USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
         )
-        boundaries.schedule_consolidation.assert_awaited_once()
-        assert boundaries.schedule_consolidation.await_args.kwargs["agenda_updates"] == [
+        assert [record.content for record in boundaries.inserted_records] == [
             "GAIA owes the user the Q3 draft"
         ]
+        boundaries.render_agenda_document.assert_awaited_once_with(USER)
         boundaries.schedule_vfs_sync.assert_called_once_with(USER)
 
     async def test_journal_only_extraction_is_persisted(self, boundaries: Boundaries) -> None:
@@ -1295,7 +1360,7 @@ class TestRetain:
         boundaries.extract_memories.return_value = ExtractedMemoryBatch(
             facts=[fact],
             episode_entries=["respond to customer X"],
-            agenda_updates=["resolve ticket Y"],
+            agenda_updates=[AgendaUpdate(item="resolve ticket Y", resolved=False)],
         )
         boundaries.reconcile.return_value = [make_reconciled(fact, embedding=[1.0])]
         result = await retain(
@@ -1303,11 +1368,15 @@ class TestRetain:
         )
         assert result.episode_entries == 0
         boundaries.append_episode_entries.assert_not_awaited()
-        assert boundaries.schedule_consolidation.await_args.kwargs["agenda_updates"] == []
+        assert [record.content for record in boundaries.inserted_records] == [
+            "the user runs a startup"
+        ]
+        boundaries.render_agenda_document.assert_not_awaited()
 
     async def test_email_with_no_facts_writes_nothing(self, boundaries: Boundaries) -> None:
         boundaries.extract_memories.return_value = ExtractedMemoryBatch(
-            episode_entries=["respond to customer X"], agenda_updates=["resolve ticket Y"]
+            episode_entries=["respond to customer X"],
+            agenda_updates=[AgendaUpdate(item="resolve ticket Y", resolved=False)],
         )
         result = await retain(
             USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.EMAIL
@@ -1390,3 +1459,109 @@ class TestRetain:
         assert user_id == USER
         assert reconcile_facts == facts
         assert embeddings == [[0.0, 0.5], [1.0, 0.5]]
+
+
+@pytest.mark.unit
+class TestShelfLifeRouting:
+    """A fact's shelf_life decides which store it lands in, not just its expiry."""
+
+    async def test_a_journal_shelf_life_fact_never_reaches_the_fact_store(
+        self, boundaries: Boundaries
+    ) -> None:
+        gaia_output = make_fact(
+            "GAIA recommended Roscioli, Armando al Pantheon and Da Enzo",
+            shelf_life=MemoryShelfLife.JOURNAL,
+        )
+        user_fact = make_fact("sam's anniversary is October 19", shelf_life=MemoryShelfLife.DURABLE)
+        boundaries.extract_memories.return_value = ExtractedMemoryBatch(
+            facts=[gaia_output, user_fact]
+        )
+        boundaries.reconcile.side_effect = lambda _user, facts, embeddings: [
+            make_reconciled(fact, embedding=embedding) for fact, embedding in zip(facts, embeddings)
+        ]
+
+        await retain(
+            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+        )
+
+        assert [record.content for record in boundaries.inserted_records] == [
+            "sam's anniversary is October 19"
+        ]
+        journaled = boundaries.append_episode_entries.await_args.args[2]
+        assert [entry["text"] for entry in journaled] == [
+            "GAIA recommended Roscioli, Armando al Pantheon and Da Enzo"
+        ]
+
+    async def test_a_task_shelf_life_fact_becomes_an_agenda_row(
+        self, boundaries: Boundaries
+    ) -> None:
+        commitment = make_fact(
+            "sam owes the landlord a signed lease by March 3",
+            shelf_life=MemoryShelfLife.TASK,
+            category_path="work",
+        )
+        boundaries.extract_memories.return_value = ExtractedMemoryBatch(facts=[commitment])
+        boundaries.reconcile.side_effect = lambda _user, facts, embeddings: [
+            make_reconciled(fact, embedding=embedding) for fact, embedding in zip(facts, embeddings)
+        ]
+
+        await retain(
+            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+        )
+
+        assert len(boundaries.inserted_records) == 1
+        row = boundaries.inserted_records[0]
+        assert row.content == "sam owes the landlord a signed lease by March 3"
+        assert row.category_path == AGENDA_CATEGORY_PATH
+        assert row.forget_after is not None
+
+    async def test_agenda_updates_are_persisted_as_memory_rows(
+        self, boundaries: Boundaries
+    ) -> None:
+        boundaries.extract_memories.return_value = ExtractedMemoryBatch(
+            agenda_updates=[AgendaUpdate(item="ship the billing migration", resolved=False)]
+        )
+        boundaries.reconcile.side_effect = lambda _user, facts, embeddings: [
+            make_reconciled(fact, embedding=embedding) for fact, embedding in zip(facts, embeddings)
+        ]
+
+        await retain(
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source_type=MemorySourceType.CONVERSATION,
+            source_id="conv-7",
+        )
+
+        assert [record.content for record in boundaries.inserted_records] == [
+            "ship the billing migration"
+        ]
+        row = boundaries.inserted_records[0]
+        assert row.category_path == AGENDA_CATEGORY_PATH
+        assert row.source_id == "conv-7"
+        assert row.forget_after is not None
+
+    async def test_a_resolved_agenda_update_forgets_its_open_row(
+        self, boundaries: Boundaries
+    ) -> None:
+        open_row = make_row(content="ship the billing migration", category_path="agenda")
+        boundaries.extract_memories.return_value = ExtractedMemoryBatch(
+            agenda_updates=[AgendaUpdate(item="ship the billing migration", resolved=True)]
+        )
+        boundaries.get_memories_by_ids.return_value = [open_row]
+
+        with (
+            patch.object(
+                ingestion.chroma_store,
+                "query_similar",
+                AsyncMock(return_value=[(str(open_row.id), 0.99)]),
+            ),
+            patch.object(ingestion, "forget_memory", AsyncMock(return_value=True)) as forget,
+        ):
+            await retain(
+                USER,
+                [{"role": "user", "content": "hi"}],
+                source_type=MemorySourceType.CONVERSATION,
+            )
+
+        assert forget.await_args.args[:2] == (USER, str(open_row.id))
+        assert not boundaries.inserted_records

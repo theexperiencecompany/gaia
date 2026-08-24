@@ -44,6 +44,7 @@ from app.models.conversation_models import (
     _MessageProjectionRow,
     _OnboardingProbeRow,
     _SourceRow,
+    _SystemGeneratedRow,
 )
 
 _BOT_SOURCE_VALUES: list[str] = [s.value for s in BOT_CONVERSATION_SOURCES]
@@ -425,6 +426,20 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             _SourceRow,
         )
         return None if row is None else ConversationSource.coerce(row.source)
+
+    async def is_system_generated(self, conversation_id: str) -> bool:
+        """Whether GAIA created this conversation itself (workflow/email/reminder runs).
+
+        Passive memory ingestion asks before learning from a transcript: a
+        workflow execution is GAIA talking to itself, and its "user" turn is a
+        generated instruction, not a disclosure by the person.
+        """
+        row = await self._find_one_projected(
+            {"conversation_id": conversation_id},
+            {"_id": 0, "is_system_generated": 1},
+            _SystemGeneratedRow,
+        )
+        return bool(row and row.is_system_generated)
 
     async def find_owner_of_message(
         self, user_id: str, message_id: str, *, message_type: str = "bot"

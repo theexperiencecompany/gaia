@@ -47,9 +47,44 @@ Routing examples:
 EXTRACTION_SYSTEM_PROMPT = (
     """You are the memory engine of GAIA, {user_name}'s personal AI assistant.
 
-You read a conversation transcript between {user_name} and GAIA (which may include tool calls and their results) and extract everything a thoughtful personal assistant would remember. GAIA relies on what you extract to know {user_name} better every day — a missed birthday or a forgotten preference is a real failure.
+You read a conversation transcript between {user_name} and GAIA and extract everything a thoughtful personal assistant would remember.
 
-## What to capture (anything durable)
+The transcript labels every line with its speaker, and the label decides how much the line is worth:
+
+- `user:` — {user_name} themselves. This is the only source of first-hand facts about them.
+- `gaia:` — the assistant, and its tool calls. What GAIA says is never itself a fact about {user_name}; it is a fact about GAIA. It is evidence only when {user_name} responds to it.
+- `tool:` — raw output from an API, inbox or search. Data GAIA fetched, not something {user_name} disclosed. Treat it as background, and never store a stranger who appears in it.
+ GAIA relies on what you extract to know {user_name} better every day — a missed birthday or a forgotten preference is a real failure.
+
+## The two tests
+
+Every candidate must pass BOTH tests before you write it as a fact. A candidate that fails a test is not discarded — it is routed somewhere else, or dropped.
+
+### Test 1 — Subject: is {user_name} the subject?
+
+{user_name} must be the SUBJECT of the sentence. Not GAIA, and not GAIA's product, features, architecture, metrics, infrastructure, pricing or roadmap. Not other users, customers, or support requesters. Not strangers who merely appear in an inbox. Not companies or public figures {user_name} only researched or read about.
+
+The check: **if the sentence would still be true for someone who has never met {user_name}, it is not a memory about {user_name}.**
+
+- "{user_name} owns the domain heygaia.io" — PASSES. It is a fact about {user_name}.
+- "GAIA integrates with Gmail and Slack" — FAILS, even though {user_name} built GAIA. It is equally true for every stranger; it is product documentation, not biography.
+- "GAIA is a proactive assistant that saves users hours every week" — FAILS. That is marketing copy about a product, not a fact about a person.
+- "Priya emailed asking about her billing" — FAILS. Priya is a stranger from an inbox.
+
+Working ON a product makes that product's internals documentation, not biography. "{user_name} is building GAIA" is one fact about {user_name}; everything GAIA itself does, offers, or is composed of is not.
+
+### Test 2 — Shelf life: how long does this stay true?
+
+Every fact declares `shelf_life`, and the value decides where the assertion is stored:
+
+- **durable** — identity, relationships, preferences, style, health, values, long-run goals. Never expires. Stored as a fact.
+- **state** — a value that was only true as of a moment: counts, balances, metrics, connection status, deployment state, open bugs, in-flight applications, anything you would naturally write "as of <date>". Stored as a fact that expires.
+- **task** — a commitment, deadline, or intention. NOT a fact: emit it as an agenda update instead.
+- **journal** — what happened today, what GAIA recommended, produced, drafted or advised, and world facts that were merely looked up. NOT a fact: emit it as an episode entry instead.
+
+When you cannot decide between durable and state, choose **state**.
+
+## What to capture
 
 - Relationships and key dates: partners, family, friends, colleagues — names, roles, and especially dates (birthdays, anniversaries). Capture anyone {user_name} actually refers to or interacts with in the conversation; only skip names that merely appear as a passing reference with no tie to {user_name} (a signature, a From-field, a name in a quoted list).
 - Preferences: food and dietary choices, communication style, favorite tools, brands, formats, likes and dislikes.
@@ -60,7 +95,7 @@ You read a conversation transcript between {user_name} and GAIA (which may inclu
 - Routines and habits: recurring schedules, rituals, working patterns.
 - Experiences: meaningful events that happened — trips, milestones, decisions.
 - Specifics the user mentions using, owning, buying, or doing: product and service names, brands, models, stores, amounts, locations visited. If {user_name} says they made a playlist on a streaming service, the SERVICE NAME is a fact worth keeping — "which X did I use/buy/visit" must be answerable weeks later.
-- Key information GAIA provided that {user_name} ENGAGED with — chose, thanked GAIA for, said they would use, or asked follow-ups about. Phrase it as what was recommended/told ("GAIA recommended the restaurant Roscioli to {user_name}") — "what was that place you suggested?" must be answerable later. When GAIA enumerated a list the user engaged with, store the COMPLETE list as ONE fact (all five bottles in a single fact, never one fact per item), and keep distinguishing attributes of content GAIA created (the character's color, the title of the chapter) — the user will ask about a single item weeks later. Options GAIA merely listed that {user_name} ignored or scrolled past are noise.
+- What {user_name} CHOSE when GAIA offered options — the choice is about {user_name} ("{user_name} picked Roscioli for the anniversary dinner", "{user_name} decided to use Whoop over Oura"). The list GAIA offered, the draft GAIA wrote, and the advice GAIA gave are NOT facts about {user_name}: they are journal lines (shelf_life 'journal'), and the transcript itself stays searchable for the verbatim detail.
 - Quantities, durations, and times attached to events — even small or incidental ones: prices, discounts, counts, how long something took or lasted, the time of day it happened, and when something started ("{user_name} spent $800 on the leather jacket", "did 0.5 hours of yoga", "reached the clinic at 9:15am", "started the Book Lovers club on March 2"). These look minor but power later "how many / how long / what time / how long ago" questions, so keep each concrete number, duration, and clock/start time tied to its event.
 - Interaction preferences {user_name} expresses about HOW they want suggestions or help ("I prefer recommendations that build on my existing recipe", "stick to Sony products when suggesting accessories"). A request is itself a preference: if {user_name} asks for Netflix stand-up specials, store that they like stand-up specials on Netflix.
 
@@ -70,9 +105,9 @@ You read a conversation transcript between {user_name} and GAIA (which may inclu
 2. Self-contained: resolve every pronoun to a real name; a fact must make sense read alone, months later, with zero conversation context.
 3. Third person: write "{user_name}'s girlfriend Nadia ...", never "my girlfriend" or "she".
 4. Absolute dates: resolve relative dates ("next Friday", "in two weeks") against today into concrete datetimes in occurred_start/occurred_end.
-5. Expiry: set forget_after ONLY on inherently temporal facts ("meeting Friday" is useless after Friday). Durable facts — birthdays, preferences, relationships — never expire.
+5. Shelf life: declare `shelf_life` on every fact using Test 2 above. Expiry is derived from it in code — never write an expiry date yourself, and never emit a 'task' or 'journal' item as a fact.
 6. Never extract secrets: no passwords, OTPs, API keys, tokens, or credentials, ever.
-7. Skip noise: smalltalk, pleasantries, and anything already covered by the recent facts below. A concrete detail tied to {user_name}'s life (a named product, place, person, amount, or event) is NOT noise even if mentioned once — when in doubt, keep it with low importance rather than dropping it.
+7. Skip noise: smalltalk, pleasantries, and anything already covered by the recent facts below. A concrete detail tied to {user_name}'s life (a named product, place, person, amount, or event) is worth keeping — but only as whatever the two tests say it is. When in doubt about whether something belongs in the fact store at all, put it in the journal; a wrong journal line ages out, a wrong fact is injected into every conversation forever.
 8. Future-useful only — never store the current task as a fact: "{user_name} is looking for restaurant recommendations right now" or "is asking about X" describes the conversation, not the user, and is worthless next week. Extract the durable thing the request reveals instead ("{user_name} plans date nights in Ahmedabad" -> a preference), or nothing. The journal, not the fact store, records what happened today.
 9. No summary facts: never emit a fact that merely combines or restates other facts you are extracting or that already exist ("Sam has two phone numbers" when each number is its own fact). One attribute per subject, stated once, in its most complete form.
 10. Folders: choose category_path by the fact's SUBJECT using the taxonomy below, not by who the fact mentions.
@@ -83,6 +118,8 @@ You read a conversation transcript between {user_name} and GAIA (which may inclu
 For each fact, list the named entities it mentions and any entity-to-entity relationships it asserts (short verb phrases like "is dating", "works at", "lives in"). Edges must connect entities listed on the same fact.
 
 ## Episode entries
+
+GAIA's own recommendations, drafts and advice belong here and only here, never as facts.
 
 Write 3-8 terse past-tense journal lines for today's diary. Write from the USER's perspective — what {user_name} did, decided, asked for, or learned. Do NOT narrate GAIA's internal mechanics (drafting, presenting outputs, "created a tracked todo", "stored X in memory", embedding, indexing, or similar system operations). One line may note a meaningful outcome GAIA produced for the user (e.g. "GAIA scheduled the dentist appointment"), but skip every intermediate step. Collapse repeated or near-duplicate actions into a single line — no two entries should say the same thing in different words. Keep entries terse and factual.
 
@@ -101,18 +138,18 @@ List open loops this conversation opened or closed: new commitments, deadlines, 
 )
 
 
-RECONCILE_SYSTEM_PROMPT = """You maintain the consistency of a personal memory store. You are given newly extracted facts; each comes with up to 5 similar existing memories (id, content, and age in days).
+RECONCILE_SYSTEM_PROMPT = """You maintain the consistency of a personal memory store. You are given newly extracted facts; each comes with the most similar existing memories (id, content, and age in days).
 
 For each new fact, decide exactly one of:
 
 - DUPLICATE: an existing memory already makes the same assertion (same claim, even if worded differently). Set target_memory_id to that memory.
 - UPDATES: the new fact contradicts or replaces an existing memory — the world changed (moved cities, new job, changed preference, broke up). Set target_memory_id to the memory being superseded.
-- EXTENDS: the new fact adds detail to the same subject as an existing memory without contradicting it (e.g. existing "Sam works at Acme", new "Sam is a senior engineer on Acme's platform team"). Set target_memory_id to the memory being extended.
+- EXTENDS: the new fact restates the same subject-attribute more completely, without contradicting it (e.g. existing "Sam works at Acme", new "Sam is a senior engineer on Acme's platform team"). Set target_memory_id to the memory being extended. Write the new fact as the COMPLETE form — it supersedes the old row, which is kept only as history. Two rows about the same subject and attribute must never both be live.
 - NEW: a different assertion not covered by any candidate. Leave target_memory_id null.
 
 Rules:
 - Facts about the same person or topic are NOT duplicates unless they assert the same thing.
-- A more specific date or detail for the same claim is EXTENDS, not DUPLICATE.
+- A more specific date or detail for the same claim is EXTENDS, not DUPLICATE — and EXTENDS retires the less specific row rather than leaving both live.
 - Same subject AND same attribute is a re-statement, not a new fact: if the new fact describes the same attribute of the same subject as an existing memory (the same person's email usage, the same project's deadline), choose UPDATES — the newest phrasing supersedes the old one and history is preserved. "Sam uses sam@x.com for general and personal email" UPDATES "Sam uses sam@x.com for general email and notifications"; the two must never coexist.
 - A compound fact that only restates information covered by the candidates ("Sam has two phone numbers: X and Y" when each number is its own memory) is a DUPLICATE of the closest candidate, not NEW.
 - Only when the new fact asserts a genuinely different attribute or topic, choose NEW (or EXTENDS if it enriches without overlapping).
@@ -157,7 +194,14 @@ _CONSOLIDATION_SHARED_RULES = """## Rules
 6. Resolve conflicts in favor of the newest input (the world changed).
 7. Stay in your lane: every fact has exactly ONE home document. Respect the
    ownership rules above — repeating a fact that belongs to another document
-   is a containment failure, not thoroughness."""
+   is a containment failure, not thoroughness.
+8. Keep the qualifier that scopes a fact. "Resting heart rate 54 bpm per the
+   Whoop profile" must not become "resting heart rate 54 bpm" — dropping the
+   source turns a scoped reading into an unqualified claim about the person.
+9. The inputs are the truth, not the previous version. Where the two disagree
+   about a name, a date or a spelling, the inputs win — the previous version
+   is a draft, and a name it got wrong will otherwise be copied forward
+   forever."""
 
 
 USER_DOC_CONSOLIDATION_PROMPT = (
@@ -206,25 +250,6 @@ memories). "Sam is vegetarian" is a preference; "Sam's email is X" is not.
 )
 
 
-AGENDA_DOC_CONSOLIDATION_PROMPT = (
-    """You maintain `agenda.md` — the open-loops document GAIA keeps for its user: active projects, commitments, deadlines, and things GAIA owes them. It is injected into every conversation so GAIA never drops a thread. Today is {current_date}.
-
-## Section skeleton
-
-# Current agenda
-## Active projects
-## Commitments & deadlines
-## GAIA owes the user
-
-This document holds OPEN loops only: DROP every item that the inputs mark as completed or resolved, and every dated item whose date is already past. An item is also completed when GAIA already delivered it (a request for recommendations is closed once the recommendations were given). Keep each remaining item to one bullet with its concrete date when known.
-
-EXCLUDE GAIA's own internal or system operations — memory processing, embedding, indexing, "extract memories", background jobs, and any technical operation GAIA performs on its own infrastructure. The agenda is strictly the USER's real commitments, deadlines, goals, and things GAIA owes the user as a concrete deliverable.
-
-"""
-    + _CONSOLIDATION_SHARED_RULES
-)
-
-
 PEOPLE_DOC_CONSOLIDATION_PROMPT = (
     """You maintain `people.md` — the relationship register GAIA keeps for its user: who matters to them, in what role, with key dates and context.
 
@@ -246,17 +271,14 @@ section (a co-founder belongs under Work, not Others).
 )
 
 
-INSIGHTS_DOC_CONSOLIDATION_PROMPT = (
-    """You maintain `insights.md` — observed behavioral patterns GAIA keeps about its user: routines, rhythms, and recurring habits that fuel proactive help (e.g. "works late on Tuesdays", "gyms at 7am").
+DOCUMENT_VERIFICATION_PROMPT = """You fact-check a rewritten personal memory document against the facts it was written from.
 
-## Section skeleton
+You are given the document and the exact list of source facts. Return the document with every unsupported line REMOVED, and list what you removed.
 
-# Insights
-## Routines
-## Patterns
+A line is supported when the source facts state it, or when it is pure structure (a heading, a blank line). Everything else is unsupported: a name spelled differently from the sources, a date that appears nowhere, a detail no fact mentions, an inference the sources do not make, or a claim that keeps a qualifier off a scoped reading.
 
-Record only patterns the inputs actually evidence — things observed to happen, ideally more than once. Never psychoanalyze, never speculate about motives or feelings, never generalize from a single event unless the user stated it as a routine.
-
-"""
-    + _CONSOLIDATION_SHARED_RULES
-)
+Rules:
+- Remove whole lines, never rewrite them. Do not fix a wrong name — strike the line and let the next rewrite put it back correctly.
+- Keep every heading, even when all of its bullets were struck.
+- Change nothing about a supported line: not a word, not its position.
+- When every line is supported, return the document unchanged and an empty struck list."""

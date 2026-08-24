@@ -32,11 +32,6 @@ export const CORE_DOCUMENTS: {
     fileName: "people.md",
     description: "People in your life — names, roles, and key dates",
   },
-  {
-    docType: "insights_md",
-    fileName: "insights.md",
-    description: "Patterns GAIA has noticed about your habits",
-  },
 ];
 
 /**

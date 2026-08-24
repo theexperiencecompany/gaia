@@ -7,10 +7,13 @@ from app.agents.core.nodes.memory_node import (
     MAX_TOOL_OUTPUT_SIZE,
     _check_worth_learning,
     _format_messages_for_user_memory,
+    _messages_to_ingest,
     _store_user_memory_background,
     memory_node,
 )
 from app.utils.multimodal import extract_text_content
+
+NODE = "app.agents.core.nodes.memory_node"
 
 
 class TestCheckWorthLearning:
@@ -83,14 +86,14 @@ class TestFormatMessagesForUserMemory:
         ]
         formatted = _format_messages_for_user_memory(msgs)
         assert len(formatted) == 1
-        assert formatted[0]["role"] == "assistant"
-        assert formatted[0]["content"] == "[TOOL CALL: search({'q': 'test'})]"
+        assert formatted[0]["role"] == "gaia"
+        assert formatted[0]["content"] == "[CALLED TOOL: search({'q': 'test'})]"
 
     def test_formats_ai_content(self):
         msgs = [AIMessage(content="here is your answer")]
         formatted = _format_messages_for_user_memory(msgs)
         assert len(formatted) == 1
-        assert formatted[0] == {"role": "assistant", "content": "here is your answer"}
+        assert formatted[0] == {"role": "gaia", "content": "here is your answer"}
 
     def test_truncates_tool_outputs(self):
         long_content = "x" * 600
@@ -98,14 +101,8 @@ class TestFormatMessagesForUserMemory:
         formatted = _format_messages_for_user_memory(msgs)
         assert len(formatted) == 1
         output = formatted[0]["content"]
-        # Format is: [TOOL RESULT: <content[:MAX]>... [truncated]]
-        # The trailing ] closes the [TOOL RESULT: wrapper.
-        assert "... [truncated]" in output
-        prefix = "[TOOL RESULT: "
-        # Strip the outer [TOOL RESULT: ... ] wrapper to get the raw content string
-        inner = output[len(prefix) : -1]  # -1 removes the closing ]
-        assert inner.endswith("... [truncated]")
-        raw_content = inner[: -len("... [truncated]")]
+        assert output.endswith("... [truncated]")
+        raw_content = output[: -len("... [truncated]")]
         assert len(raw_content) == MAX_TOOL_OUTPUT_SIZE
 
     def test_skips_system_messages(self):
@@ -252,3 +249,148 @@ class TestMemoryNode:
 
         # If we reach here, the exception was swallowed correctly
         mock_engine.retain.assert_awaited_once()
+
+
+@pytest.mark.unit
+class TestExtractorInput:
+    """What the extractor is shown: three roles, and only what is new."""
+
+    @staticmethod
+    def _thread() -> list[AIMessage | HumanMessage | ToolMessage]:
+        return [
+            HumanMessage(content="my anniversary is October 19", id="m1"),
+            AIMessage(
+                content="",
+                tool_calls=[{"id": "tc1", "name": "add_memory", "args": {"content": "x"}}],
+                id="m2",
+            ),
+            ToolMessage(content="Memory stored", tool_call_id="tc1", id="m3"),
+            AIMessage(content="Noted — I have saved that.", id="m4"),
+        ]
+
+    def test_gaia_tool_calls_and_tool_results_are_three_distinct_roles(self) -> None:
+        formatted = _format_messages_for_user_memory(self._thread())
+
+        roles = [entry["role"] for entry in formatted]
+        assert set(roles) == {"user", "gaia", "tool"}
+        assert roles[0] == "user"
+        assert roles[-1] == "gaia"
+
+    def test_a_tool_result_is_never_labelled_as_something_gaia_said(self) -> None:
+        formatted = _format_messages_for_user_memory(self._thread())
+
+        tool_entries = [entry for entry in formatted if entry["role"] == "tool"]
+        assert len(tool_entries) == 1
+        assert "Memory stored" in tool_entries[0]["content"]
+
+
+@pytest.mark.unit
+class TestDeltaIngestion:
+    """A growing thread is extracted once, not re-extracted every turn."""
+
+    @staticmethod
+    def _config(thread_id: str = "t1") -> dict[str, object]:
+        return {"configurable": {"user_id": "u1", "thread_id": thread_id, "user_name": "Sam"}}
+
+    async def test_the_first_run_ingests_the_whole_thread(self) -> None:
+        messages = [HumanMessage(content="my anniversary is October 19", id="m1")]
+
+        with patch(f"{NODE}.get_cache", AsyncMock(return_value=None)):
+            to_ingest, context_count = await _messages_to_ingest("u1", "t1", messages)
+
+        assert to_ingest == messages
+        assert context_count == 0
+
+    async def test_a_second_run_only_sees_what_arrived_since(self) -> None:
+        messages = [
+            HumanMessage(content="my anniversary is October 19", id="m1"),
+            AIMessage(content="Noted.", id="m2"),
+            HumanMessage(content="I also moved to Bangalore last week", id="m3"),
+        ]
+
+        with patch(f"{NODE}.get_cache", AsyncMock(return_value="m2")):
+            to_ingest, context_count = await _messages_to_ingest("u1", "t1", messages)
+
+        assert [message.id for message in to_ingest[context_count:]] == ["m3"]
+        assert [message.id for message in to_ingest[:context_count]] == ["m1", "m2"]
+
+    async def test_an_unknown_mark_falls_back_to_the_whole_thread(self) -> None:
+        messages = [HumanMessage(content="hello there", id="m9")]
+
+        with patch(f"{NODE}.get_cache", AsyncMock(return_value="a-message-that-was-pruned")):
+            to_ingest, context_count = await _messages_to_ingest("u1", "t1", messages)
+
+        assert to_ingest == messages
+        assert context_count == 0
+
+    async def test_the_mark_advances_only_after_a_successful_ingestion(self) -> None:
+        messages = [HumanMessage(content="my anniversary is October 19", id="m1")]
+
+        with (
+            patch(f"{NODE}.memory_engine") as engine,
+            patch(f"{NODE}.get_cache", AsyncMock(return_value=None)),
+            patch(f"{NODE}.set_cache", AsyncMock(return_value=True)) as set_mark,
+        ):
+            engine.retain = AsyncMock(side_effect=RuntimeError("pg down"))
+            await _store_user_memory_background(
+                messages=messages,
+                user_id="u1",
+                session_id="t1",
+                extraction_prompt=None,
+                subagent_id=None,
+                user_name="Sam",
+            )
+
+        set_mark.assert_not_awaited()
+
+
+@pytest.mark.unit
+class TestSystemGeneratedConversations:
+    """GAIA talking to itself is not the user disclosing anything."""
+
+    @staticmethod
+    async def _ingest(*, system_generated: bool) -> AsyncMock:
+        engine = MagicMock()
+        engine.retain = AsyncMock(return_value=None)
+        with (
+            patch(
+                f"{NODE}.conversation_repository.is_system_generated",
+                AsyncMock(return_value=system_generated),
+            ),
+            patch(f"{NODE}.memory_engine", engine),
+            patch(f"{NODE}.get_cache", AsyncMock(return_value=None)),
+            patch(f"{NODE}.set_cache", AsyncMock(return_value=True)),
+        ):
+            await _store_user_memory_background(
+                messages=[HumanMessage(content="Run the daily digest workflow now", id="m1")],
+                user_id="u1",
+                session_id="t1",
+                extraction_prompt=None,
+                subagent_id=None,
+                user_name="Sam",
+                conversation_id="c1",
+            )
+        return engine.retain
+
+    async def test_a_system_generated_conversation_is_not_ingested(self) -> None:
+        retain = await self._ingest(system_generated=True)
+        retain.assert_not_awaited()
+
+    async def test_an_ordinary_conversation_is_ingested(self) -> None:
+        retain = await self._ingest(system_generated=False)
+        retain.assert_awaited_once()
+
+    async def test_the_conversation_id_reaches_the_background_task(self) -> None:
+        state = {"messages": [HumanMessage(content="my anniversary is October 19")]}
+        config = {"configurable": {"user_id": "u1", "thread_id": "t1", "conversation_id": "c1"}}
+
+        with (
+            patch(f"{NODE}._store_user_memory_background", new_callable=AsyncMock) as background,
+            patch(
+                f"{NODE}.spawn_background_task",
+                side_effect=lambda coro, **kw: coro.close() or MagicMock(),
+            ),
+        ):
+            await memory_node(state, config, MagicMock())
+
+        assert background.call_args.kwargs["conversation_id"] == "c1"

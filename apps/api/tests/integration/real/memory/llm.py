@@ -17,8 +17,14 @@ from typing import Any
 from langchain_core.messages import BaseMessage
 from pydantic import BaseModel
 
-from app.constants.memory import MemoryEntityType, MemoryKind, ReconcileOutcome
+from app.constants.memory import (
+    MemoryEntityType,
+    MemoryKind,
+    MemoryShelfLife,
+    ReconcileOutcome,
+)
 from app.memory.schemas import (
+    AgendaUpdate,
     ExtractedEdge,
     ExtractedEntity,
     ExtractedFact,
@@ -105,6 +111,7 @@ def make_fact(
     *,
     category: str = "general",
     kind: MemoryKind = MemoryKind.FACT,
+    shelf_life: MemoryShelfLife = MemoryShelfLife.DURABLE,
     importance: float = 0.6,
     entities: list[tuple[str, str]] | None = None,
     edges: list[tuple[str, str, str]] | None = None,
@@ -114,6 +121,7 @@ def make_fact(
     return ExtractedFact(
         content=content,
         kind=kind,
+        shelf_life=shelf_life,
         category_path=category,
         importance=importance,
         entities=[
@@ -132,11 +140,15 @@ def make_batch(
     facts: list[ExtractedFact] | None = None,
     entries: list[str] | None = None,
     agenda: list[str] | None = None,
+    resolved_agenda: list[str] | None = None,
 ) -> ExtractedMemoryBatch:
     return ExtractedMemoryBatch(
         facts=facts or [],
         episode_entries=entries or [],
-        agenda_updates=agenda or [],
+        agenda_updates=[
+            *(AgendaUpdate(item=item, resolved=False) for item in agenda or []),
+            *(AgendaUpdate(item=item, resolved=True) for item in resolved_agenda or []),
+        ],
     )
 
 

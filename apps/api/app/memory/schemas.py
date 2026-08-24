@@ -11,7 +11,12 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.constants.memory import MemoryEntityType, MemoryKind, ReconcileOutcome
+from app.constants.memory import (
+    MemoryEntityType,
+    MemoryKind,
+    MemoryShelfLife,
+    ReconcileOutcome,
+)
 
 
 class ExtractedEntity(BaseModel):
@@ -47,7 +52,7 @@ class ExtractedEdge(BaseModel):
 
 
 class ExtractedFact(BaseModel):
-    """One atomic, durable fact extracted from the conversation."""
+    """One atomic assertion extracted from the conversation, with its shelf life."""
 
     content: str = Field(
         description=(
@@ -63,6 +68,21 @@ class ExtractedFact(BaseModel):
             "'fact' for stable knowledge about the user and their world "
             "(preferences, relationships, identity mappings, context); "
             "'experience' for something that happened (an event, a trip, a decision made)."
+        )
+    )
+    shelf_life: MemoryShelfLife = Field(
+        description=(
+            "How long this assertion stays true. 'durable': identity, "
+            "relationships, preferences, style, health, values, long-run goals "
+            "— never expires. 'state': a value that was only true as of a "
+            "moment (counts, balances, metrics, connection status, deployment "
+            "state, open bugs, in-flight applications, anything you would write "
+            "'as of <date>') — expires. 'task': a commitment, deadline or "
+            "intention — becomes an agenda item, never a plain fact. 'journal': "
+            "what happened today, anything GAIA itself recommended, produced, "
+            "drafted or advised, or a world fact merely looked up — becomes a "
+            "journal line, never a fact. When torn between durable and state, "
+            "choose state."
         )
     )
     category_path: str = Field(
@@ -96,15 +116,6 @@ class ExtractedFact(BaseModel):
         default=None,
         description="When the described event ends/ended, if it spans time. Usually null.",
     )
-    forget_after: datetime | None = Field(
-        default=None,
-        description=(
-            "Set ONLY for inherently temporal facts that become useless after a "
-            "point in time (e.g. 'has a dentist appointment Friday' expires after "
-            "Friday). Null for everything durable — birthdays, preferences, and "
-            "relationships never expire."
-        ),
-    )
     importance: float = Field(
         ge=0.0,
         le=1.0,
@@ -113,6 +124,27 @@ class ExtractedFact(BaseModel):
             "(partner, job, home city, health), 0.6-0.8 stable preferences and "
             "recurring context, 0.3-0.5 incidental but worth keeping."
         ),
+    )
+
+
+class AgendaUpdate(BaseModel):
+    """One open loop this conversation opened or closed."""
+
+    item: str = Field(
+        description=(
+            "The open loop itself, phrased as the commitment — 'Sam owes the "
+            "landlord a signed lease by March 3', not 'Sam mentioned the lease'. "
+            "Self-contained and in third person, like a fact. When closing an "
+            "item, phrase it as the ORIGINAL commitment so it can be matched "
+            "against what is already on the agenda."
+        )
+    )
+    resolved: bool = Field(
+        description=(
+            "True when this conversation CLOSED the loop (it was delivered, "
+            "cancelled, or otherwise finished) — the matching agenda item is "
+            "then retired. False when it opens or restates an open loop."
+        )
     )
 
 
@@ -132,7 +164,7 @@ class ExtractedMemoryBatch(BaseModel):
             "for Friday 3pm'."
         ),
     )
-    agenda_updates: list[str] = Field(
+    agenda_updates: list[AgendaUpdate] = Field(
         default_factory=list,
         description=(
             "Open loops opened or closed in this conversation — new commitments, "
@@ -187,6 +219,21 @@ class ConsolidatedDocument(BaseModel):
             "section skeleton and rules in the system prompt. No code fences, "
             "no commentary — the document body only."
         )
+    )
+
+
+class VerifiedDocument(BaseModel):
+    """A consolidated document with unsupported lines struck out."""
+
+    content: str = Field(
+        description=(
+            "The document with every unsupported line removed and every "
+            "supported line left byte-identical. Headings are always kept."
+        )
+    )
+    struck: list[str] = Field(
+        default_factory=list,
+        description="The lines that were removed. Empty when everything was supported.",
     )
 
 
