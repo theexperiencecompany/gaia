@@ -138,8 +138,14 @@ def plan_merge(
 
 
 def dm_channel_of(canonical_key: str) -> str:
-    """The canonical key's channel component — the platform user id."""
-    return canonical_key.rsplit(":", 1)[-1]
+    """The canonical key's channel component — everything after the last colon.
+
+    ``build_session_key`` lays the key out as ``platform:user:channel``, so the
+    channel is the final segment. No maxsplit: taking ``[-1]`` makes every split
+    bound produce the same answer, and a bound that changes nothing reads as if
+    it were load-bearing.
+    """
+    return canonical_key.split(":")[-1]
 
 
 async def _build_merges(legacy_sessions: list[BotSessionDocument]) -> list[SessionMerge]:
