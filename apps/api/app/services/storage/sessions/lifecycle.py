@@ -116,7 +116,7 @@ async def provision_user_workspace(user_id: str, connected_ids: set[str] | None 
     await materialize_user_integrations(user_id, connected_ids or set())
 
     # Late-bound for the same reason (workspace_areas -> account_fs -> storage).
-    from app.services.workspace_areas import all_areas
+    from app.services.workspace_areas import all_areas  # noqa: PLC0415 -- deferred
 
     for area in all_areas():
         area.schedule_sync(user_id)

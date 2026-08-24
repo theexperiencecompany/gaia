@@ -284,6 +284,16 @@ async def start_platform_connect(
             action_link=f"https://wa.me/{whatsapp_number}" if whatsapp_number else None,
         )
 
+    # Only unconfigured-OAuth platforms (discord/slack without client ids) get here.
+    if platform in (Platform.DISCORD.value, Platform.SLACK.value):
+        raise create_error(
+            message=f"{platform} connect is not configured",
+            fix="Connect this platform from the GAIA settings page once OAuth is set up",
+            status_code=501,
+        )
+
+    # iMessage manual flow: Photon's shared pool only delivers to registered
+
     # iMessage manual flow: Photon's shared pool only delivers to registered
     # numbers, so the user's phone must be allowlisted before they can text.
     if not phone:
@@ -311,13 +321,6 @@ async def start_platform_connect(
         ),
         action_link=redirect_deep_link(photon_user.id),
         contact_number=photon_user.assignedPhoneNumber,
-    )
-
-    # Unconfigured OAuth platforms (discord/slack without client ids) fall through.
-    raise create_error(
-        message=f"{platform} connect is not configured",
-        fix="Connect this platform from the GAIA settings page once OAuth is set up",
-        status_code=501,
     )
 
 

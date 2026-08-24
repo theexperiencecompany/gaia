@@ -179,6 +179,9 @@ async def disconnect_platform(
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> DisconnectPlatformResponse:
     """Disconnect a platform from user account."""
+    # evlog-map-disable-next-line audit -- the unlink is audited inside
+    # platform_link_service.disconnect_platform_account, shared with the agent
+    # tool path so every entry point produces one identical audit trail.
     if not current_user:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
