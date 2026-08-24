@@ -32,6 +32,7 @@ from app.constants.llm import (
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
+    DEFAULT_PROVIDER_PIN,
     MONTHLY_BUDGET_TTL_SECONDS,
     OPENROUTER_REASONING,
     PAID_MODEL_NAME,
@@ -84,12 +85,15 @@ async def _resolve(
 
 
 class TestPlanRouting:
-    async def test_free_gets_the_default_model_unpinned(self) -> None:
+    async def test_free_gets_the_default_model_pinned_to_one_upstream(self) -> None:
+        """The prefix cache is per upstream, so an unpinned pool reshuffles a
+        conversation onto providers holding none of its chain — measured as
+        zero-cache reads on structurally intact, full-size requests."""
         resolved = await _resolve(PlanType.FREE)
 
         assert resolved.provider == DEFAULT_LLM_PROVIDER
         assert resolved.model == DEFAULT_MODEL_NAME
-        assert resolved.provider_pin is None
+        assert resolved.provider_pin == DEFAULT_PROVIDER_PIN
 
     async def test_paid_gets_the_paid_model_with_no_routing_pin(self) -> None:
         """No `only` pin, deliberately: the session_id sticky-routing key keeps a
@@ -159,7 +163,9 @@ class TestMonthlyEconomicGuard:
         resolved = await _resolve(PlanType.PRO, over_budget=True)
 
         assert resolved.model == DEFAULT_MODEL_NAME
-        assert resolved.provider_pin is None
+        # Degrading the model must not also un-pin the upstream: a degraded turn
+        # still belongs to a conversation whose chain lives on one provider.
+        assert resolved.provider_pin == DEFAULT_PROVIDER_PIN
 
     async def test_the_degraded_user_keeps_their_paid_tier(self) -> None:
         """Only the model degrades — every other pro entitlement stays intact, so
@@ -708,3 +714,22 @@ class TestRebindOntoAFallbackLane:
         paid = self._paid()
 
         assert paid.rebind(dict(paid.binding_keys())) == dict(paid.binding_keys())
+
+
+class TestUpstreamPinReachesTheWire:
+    async def test_the_pin_is_emitted_as_a_binding_key(self) -> None:
+        """``model_kwargs`` is what langchain_openrouter spreads into the request
+        body, so the pin only routes anything if it lands in the binding keys."""
+        resolved = await _resolve(PlanType.FREE)
+
+        assert resolved.binding_keys()["model_kwargs"] == DEFAULT_PROVIDER_PIN
+
+    async def test_the_pin_allows_fallbacks_rather_than_pinning_hard(self) -> None:
+        """`only` would make one upstream a single point of failure; `order` plus
+        allow_fallbacks is deterministic while it is healthy and still degrades to
+        the rest of the pool during an outage."""
+        routing = DEFAULT_PROVIDER_PIN["provider"]
+
+        assert routing["order"] == ["relace"]
+        assert routing["allow_fallbacks"] is True
+        assert "only" not in routing
