@@ -122,6 +122,9 @@ async def _post_workflow_message(
         conversation_id = await BotService.get_or_create_session(
             platform=source.value,
             platform_user_id=platform_user_id,
+            # No channel: this delivery goes to the user's DM, the only destination
+            # publish_outbound_message can resolve from the platform link. See
+            # BotService.build_session_key for how a DM keys.
             channel_id=None,
             user=user,
         )
