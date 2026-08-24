@@ -259,26 +259,16 @@ class TestDisconnectPlatform:
         )
 
     @pytest.mark.asyncio
-    async def test_disconnect_no_existing_entry(self, client: AsyncClient) -> None:
-        """When platform_entry is None, skip cache deletion."""
-        with (
-            patch(
-                "app.api.v1.endpoints.platform_links.PlatformLinkService.get_linked_platforms",
-                new_callable=AsyncMock,
-                return_value={},
-            ),
-            patch(
-                "app.api.v1.endpoints.platform_links.PlatformLinkService.unlink_account",
-                new_callable=AsyncMock,
-                return_value={"status": "disconnected", "platform": "discord"},
-            ),
-            patch("app.services.platform_link_service.redis_cache") as mock_cache,
+    async def test_disconnect_no_existing_entry_returns_404(self, client: AsyncClient) -> None:
+        """Disconnecting a never-linked platform is an error, not a silent no-op."""
+        with patch(
+            "app.services.platform_link_service.PlatformLinkService.get_linked_platforms",
+            new_callable=AsyncMock,
+            return_value={},
         ):
-            mock_cache.client = AsyncMock()
             resp = await client.delete(f"{BASE}/discord")
 
-        assert resp.status_code == 200
-        mock_cache.client.delete.assert_not_called()
+        assert resp.status_code == 404
 
     @pytest.mark.asyncio
     async def test_unlink_not_found(self, client: AsyncClient) -> None:

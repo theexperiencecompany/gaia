@@ -331,7 +331,15 @@ async def disconnect_platform_account(user_id: str, platform: str) -> Disconnect
     # Read platform_user_id before unlinking so we can clear the bot auth cache
     existing = await PlatformLinkService.get_linked_platforms(user_id)
     entry = existing.get(platform)
-    platform_user_id = entry["platformUserId"] if entry else None
+    if entry is None:
+        # A no-op "disconnected" would lie to the caller (the agent would tell
+        # the user something that was never linked is now gone).
+        raise create_error(
+            message=f"No {platform} account is linked",
+            fix="Check account/linked-accounts for what is actually connected",
+            status_code=404,
+        )
+    platform_user_id = entry["platformUserId"]
 
     try:
         result = await PlatformLinkService.unlink_account(user_id, platform)
