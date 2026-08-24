@@ -1082,12 +1082,28 @@ class TestMemoryLaneProviderSelection:
     ) -> None:
         mock_ainvoke.return_value = _Extracted(fact="from-gemini")
         structured = mock_memory_llm.return_value.with_structured_output.return_value
+        config = RunnableConfig(configurable={"user_id": "u1"})
 
-        result = await ainvoke_structured_gemini(_Extracted, "transcript", label="memory:extract")
+        result = await ainvoke_structured_gemini(
+            _Extracted,
+            "transcript",
+            label="memory:extract",
+            temperature=0.4,
+            config=config,
+            timeout=9.0,
+        )
 
         assert result.fact == "from-gemini"
-        assert mock_ainvoke.await_args.args[0] is structured
-        assert "fallback" not in mock_ainvoke.await_args.kwargs
+        # The handover is the whole call: a dropped argument silently
+        # re-defaults it on the lane that actually runs.
+        assert mock_memory_llm.call_args.kwargs["temperature"] == 0.4
+        assert mock_memory_llm.return_value.with_structured_output.call_args.args[0] is _Extracted
+        assert mock_ainvoke.await_args.args == (structured, "transcript")
+        assert mock_ainvoke.await_args.kwargs == {
+            "config": config,
+            "label": "memory:extract",
+            "timeout": 9.0,
+        }
 
     @patch("app.agents.llm.client.ainvoke_structured", new_callable=AsyncMock)
     @patch("app.agents.llm.client.get_memory_llm")
@@ -1103,11 +1119,28 @@ class TestMemoryLaneProviderSelection:
         """Delegates to ainvoke_structured, whose LLMNotConfiguredError names
         the fix — extraction's callers catch exactly that type."""
         mock_structured.return_value = _Extracted(fact="delegated")
+        config = RunnableConfig(configurable={"user_id": "u1"})
 
-        result = await ainvoke_structured_gemini(_Extracted, "transcript", label="memory:extract")
+        result = await ainvoke_structured_gemini(
+            _Extracted,
+            "transcript",
+            label="memory:extract",
+            temperature=0.4,
+            config=config,
+            timeout=9.0,
+        )
 
         assert result.fact == "delegated"
         mock_memory_llm.assert_not_called()
+        # The handover is the whole call: a dropped argument silently
+        # re-defaults it on the lane that actually runs.
+        assert mock_structured.await_args.args == (_Extracted, "transcript")
+        assert mock_structured.await_args.kwargs == {
+            "label": "memory:extract",
+            "temperature": 0.4,
+            "config": config,
+            "timeout": 9.0,
+        }
 
     @patch("app.agents.llm.client.get_memory_llm")
     @patch("app.agents.llm.client.get_helper_llm")
