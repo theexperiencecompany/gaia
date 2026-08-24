@@ -91,9 +91,20 @@ TAIL_VOLATILE_SLOTS: frozenset[PromptSlot] = frozenset(
 #: Providers on the OpenAI wire format. They apply every system message wherever
 #: it appears (DeepSeek included — the earliest wins on a directive conflict,
 #: which keeps the static prompt's authority), so the tail layout is safe on
-#: them. Gemini is not on this list and never can be: ``langchain-google-genai``
-#: promotes only a LEADING contiguous run of system messages to
-#: ``system_instruction`` and silently DROPS every one after that.
+#: them.
+#:
+#: Gemini stays off this list, but NOT for the reason recorded here before:
+#: that comment said ``langchain-google-genai`` "silently DROPS" system
+#: messages after the first run, and on 4.2.0 it does not — ``_parse_chat_history``
+#: collects every SystemMessage into ``system_instruction`` whatever its
+#: position (verified: a trailing memory block arrives intact). Content loss is
+#: not the risk.
+#:
+#: The real reason is caching, and it points the same way. Because every system
+#: message merges into ``system_instruction``, moving the volatile slots behind
+#: the conversation would fold per-turn bytes into the one block Gemini caches
+#: rather than out of it — the opposite of what the tail layout achieves on the
+#: OpenAI wire, where the volatile slots leave the prefix entirely.
 TAIL_VOLATILE_PROVIDERS: frozenset[LLMProviderName] = frozenset(
     {LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM}
 )

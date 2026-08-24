@@ -75,14 +75,17 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
         dropped_system = 0
         dropped_time = 0
         slot_order = request_slot_order(agent_configurable(config).get("provider"))
+        kept_by_slot: dict[PromptSlot, list[AnyMessage]] = {}
         for slot in slot_order:
             group = by_slot.get(slot)
             if not group:
                 continue
             if slot not in SINGLETON_SLOTS:
                 kept.extend(group)
+                kept_by_slot[slot] = group
                 continue
             kept.append(group[-1])
+            kept_by_slot[slot] = [group[-1]]
             for stale in group[:-1]:
                 if slot is PromptSlot.TIME:
                     dropped_time += 1
@@ -97,10 +100,17 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
         # find which slot moved was to guess. Comparing these across two
         # consecutive requests names the culprit directly. Hashes, never
         # content: these carry user data.
+        # Built from ``kept_by_slot``, not ``by_slot``: a singleton slot sends
+        # only its LAST message, so hashing the whole group moves the digest
+        # when a stale copy differs even though the sent bytes are identical —
+        # a false "this slot churned" in precisely the stacked-slot case this
+        # field exists to diagnose.
         slot_text = {
-            slot.name.lower(): "\x00".join(extract_text_content(m.content) for m in by_slot[slot])
+            slot.name.lower(): "\x00".join(
+                extract_text_content(m.content) for m in kept_by_slot[slot]
+            )
             for slot in slot_order
-            if by_slot.get(slot)
+            if slot in kept_by_slot
         }
         slot_digests = {
             name: hashlib.blake2b(text.encode(), digest_size=4).hexdigest()

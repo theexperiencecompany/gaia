@@ -100,11 +100,13 @@ class TestManageSystemPrompts:
         """Kept system messages must appear BEFORE any human/ai message for
         providers that only promote a leading system run (Gemini).
 
-        ``langchain-google-genai``'s ``_parse_chat_history`` silently drops any
-        ``SystemMessage`` that appears after a non-system message in the list
-        — so leaving system messages in their original position would wipe
-        out the system prompt and destroy implicit caching. The node
-        rewrites the list as ``[static, dynamic, ...non_system...]``.
+        On 4.2.0 ``langchain-google-genai``'s ``_parse_chat_history`` collects
+        every ``SystemMessage`` into ``system_instruction`` whatever its
+        position, so this is no longer about content loss (an older comment
+        here claimed it was). It is about keeping ONE canonical order: the node
+        rewrites the list as ``[static, dynamic, ...non_system...]`` so the
+        cached prefix is the same bytes every turn rather than depending on
+        where a hook happened to append.
         """
         msgs = [
             _static("old prompt"),
@@ -283,6 +285,22 @@ class TestPromptPruningWideEvent:
         assert all(len(d) == 8 for d in pruning["slot_digests"].values()), (
             f"expected 8-hex-char digests, got {pruning['slot_digests']}"
         )
+
+    def test_a_pruned_stale_message_does_not_move_the_digest(self) -> None:
+        """The digest must fingerprint what is SENT, not what arrives.
+
+        A singleton slot keeps only its last message; the rest are pruned and
+        never reach the model. Hashing the whole group makes the digest move
+        when a stale copy differs even though the sent bytes are identical —
+        a false "this slot churned" in exactly the case the field exists to
+        diagnose, since a stacked slot IS the pruning case.
+        """
+        fresh = _dynamic("the context that is actually sent")
+        first = self._pruning_for([_static("p"), _dynamic("stale one"), fresh])
+        again = self._pruning_for([_static("p"), _dynamic("stale TWO, different"), fresh])
+
+        assert first["slot_digests"]["dynamic_stable"] == again["slot_digests"]["dynamic_stable"]
+        assert first["slot_chars"]["dynamic_stable"] == len("the context that is actually sent")
 
     def test_the_digests_never_carry_the_content_itself(self) -> None:
         """These fields ship to the log pipeline on every model call, and slot
