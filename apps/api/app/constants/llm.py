@@ -187,35 +187,13 @@ DEFAULT_MODEL_NAME = "deepseek/deepseek-v4-flash-0731"
 # than its real rate, so its appearance is an alertable bug, not a benign
 # default — both metering routes log it loudly.
 UNKNOWN_MODEL_NAME = "unknown"
-# Deterministic upstream for the default DeepSeek lane.
-#
-# The prefix cache is PER UPSTREAM: each provider serving this model keeps its
-# own store, so a request that lands on a different provider than the one
-# holding the conversation's warm chain reads zero cached tokens even though the
-# prompt is byte-identical. Prod telemetry (7d) shows exactly that signature —
-# 98% of the zero-cache warm calls sent a full-size, structurally intact request
-# (kept_static true in 1599/1599 prompt-pruning records), which a broken prefix
-# cannot explain but a cold upstream can.
-#
-# `session_id` sticky routing alone is best-effort and does not hold the chain:
-# it lapses on inactivity and is not honoured on every request, so the pool
-# reshuffles mid-conversation. `order` + `allow_fallbacks` is deterministic while
-# the preferred upstream is healthy and still degrades to the rest of the pool
-# during an outage, which `only` would not.
-#
-# Relace is the preferred upstream: cheapest input on the pool ($0.04/M vs a
-# $0.04-$0.44 spread), cache reads at $0.008/M, 1M context, tool calling
-# supported, ~99.8% uptime, and a measured ~80% cache hit rate. NOTE that
-# OpenRouter's endpoints API reports `supports_implicit_caching: false` for it —
-# that flag does NOT mean "never caches", as the measured hit rate shows; do not
-# re-derive a provider's caching behaviour from it.
-#
-# Supersedes the earlier reading that the first-party `only` pin is simply
-# "worse" (measured 64-66%). That A/B ran while the executor's tools array was
-# still being rebuilt mid-conversation, which shifts every downstream token and
-# suppresses the hit rate on ANY upstream — so it measured the churn, not the
-# pin. Re-run that comparison only against a stable tools array.
-DEFAULT_PROVIDER_PIN: dict[str, Any] = {"provider": {"order": ["relace"], "allow_fallbacks": True}}
+# No explicit provider routing for the default DeepSeek lane: OpenRouter's
+# default (price- and availability-weighted) routing + the session_id sticky
+# key on every request measured BEST on the real full graph (82.2% total,
+# 83-88% steady-state). The first-party `only` pin was measured WORSE on the
+# real graph (64-66%: the pinned upstream's cache state is colder and the
+# conversation's segments still intermittently fail to join), even though it
+# is rock-stable in isolation — the isolation is not the graph.
 # A separate id for the auxiliary one-shot calls (memory pipeline, follow-ups,
 # vision, …). This is NOT the same model as the default: OpenRouter serves the
 # bare id as the ORIGINAL V4 Flash release ("0423", created Apr 2026), while

@@ -28,7 +28,6 @@ from app.constants.llm import (
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
-    DEFAULT_PROVIDER_PIN,
     DEV_MODEL_OPTIONS,
     MODEL_FIELD_ID,
     MODEL_KWARGS_FIELD_ID,
@@ -195,11 +194,7 @@ def _default_lane() -> ModelLane:
         provider=LLMProviderName(DEFAULT_LLM_PROVIDER),
         model=DEFAULT_MODEL_NAME,
         reasoning=OPENROUTER_REASONING,
-        # The prefix cache is per upstream, so an unpinned pool reshuffles a
-        # conversation onto providers that hold none of its chain — see
-        # DEFAULT_PROVIDER_PIN. ``fallback()`` drops this, which is what keeps an
-        # OpenRouter-wire pin off the Gemini lane.
-        provider_pin=DEFAULT_PROVIDER_PIN,
+        provider_pin=None,
         max_input_tokens=DEFAULT_MAX_TOKENS,
     )
 
