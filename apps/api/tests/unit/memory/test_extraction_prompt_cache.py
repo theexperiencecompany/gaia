@@ -83,9 +83,29 @@ class TestTheCacheablePrefixSurvivesMemoryGrowth:
             "the folder tree left the system prompt but never arrived in the tail"
         )
 
+    async def test_a_user_with_no_folders_yet_still_gets_a_readable_section(self):
+        """A brand-new user has an empty tree. The section still has to say so
+        in words: the model reads it to decide where to file that user's very
+        first fact, and an empty heading — or the literal "None" — is what it
+        would otherwise be filing against."""
+        tail = str((await _messages_for(""))[-1].content)
+
+        assert tail.endswith("## Existing memory folders\n\n(no folders yet)"), (
+            f"the empty-tree placeholder did not render as written, got: {tail[-60:]!r}"
+        )
+
     async def test_the_folder_guidance_stays_in_the_stable_prompt(self):
         """Only the mutable tree moves; the instructions on how to use it are
         byte-stable and belong in the cached prefix."""
         messages = await _messages_for("relationships")
 
         assert "category_path" in str(messages[0].content)
+
+    async def test_the_stable_prompt_is_still_personalised_to_the_user(self):
+        """The prompt names the user throughout, and the extracted facts are
+        written in the third person about them. Losing the name leaves the
+        model extracting facts about "None"."""
+        messages = await _messages_for("relationships")
+
+        assert "Aryan" in str(messages[0].content)
+        assert "None's" not in str(messages[0].content)

@@ -98,9 +98,7 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
         # consecutive requests names the culprit directly. Hashes, never
         # content: these carry user data.
         slot_text = {
-            slot.name.lower(): "\x00".join(
-                extract_text_content(getattr(m, "content", "")) for m in by_slot[slot]
-            )
+            slot.name.lower(): "\x00".join(extract_text_content(m.content) for m in by_slot[slot])
             for slot in slot_order
             if by_slot.get(slot)
         }
@@ -114,45 +112,11 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
         # them. Characters, not tokens — this node has no tokenizer, and ~4 chars
         # per token is close enough to rank the slots.
         slot_chars = {name: len(text) for name, text in slot_text.items()}
-        # Per-MESSAGE digests for the conversation, because the slot-level digest
-        # cannot answer the question that matters here. The conversation is meant
-        # to grow append-only: turn N+1 should begin with turn N's history byte
-        # for byte, so the cached prefix extends through it. A slot digest always
-        # differs once a message is appended, which looks identical to a message
-        # having been REWRITTEN — and only the second one destroys the cache.
-        # Comparing these lists across two requests separates the two: a changed
-        # digest at an existing index is a mutation, a longer list is just growth.
-        # tool_calls are part of the digest, not just the text. filter_messages_node
-        # rewrites an AI message's tool_calls down to the ANSWERED ones
-        # (filter_messages.py:59), which leaves the text untouched — so a
-        # content-only hash would call that message unchanged while the bytes on
-        # the wire moved. That is the one mutation most likely to be truncating
-        # the cache here, and it would have been invisible.
-        # Each entry is "<type>:<digest>". The type matters: a digest that changes
-        # at an existing index can mean the message was REWRITTEN in place, or
-        # that an earlier message was REMOVED and everything shifted up. Those
-        # look identical to a bare list of hashes and need opposite fixes, so the
-        # type makes the shift visible.
-        conversation_digests = [
-            f"{type(m).__name__[:4]}:"
-            + hashlib.blake2b(
-                (
-                    extract_text_content(getattr(m, "content", ""))
-                    + "\x00"
-                    + ",".join(
-                        str(tc.get("id", "")) for tc in (getattr(m, "tool_calls", None) or [])
-                    )
-                ).encode(),
-                digest_size=3,
-            ).hexdigest()
-            for m in by_slot.get(PromptSlot.CONVERSATION, [])
-        ]
 
         log.set(
             prompt_pruning={
                 "slot_digests": slot_digests,
                 "slot_chars": slot_chars,
-                "conversation_digests": conversation_digests,
                 "messages_in": len(messages),
                 "messages_out": len(kept),
                 "dropped_system_prompts": dropped_system,

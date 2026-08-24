@@ -3,7 +3,7 @@
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 import pytest
@@ -757,6 +757,93 @@ class TestBindSessionId:
         _bind_session_id(llm, {"provider": provider, "session_id": "conv-1"})
 
         llm.bind.assert_called_once_with(session_id="conv-1")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("agent", ["comms_agent", "executor_agent"])
+    async def test_a_real_model_call_carries_the_agent_s_own_key(self, agent: str) -> None:
+        """``_bind_session_id`` being correct is worth nothing if ``create_agent``
+        does not hand it the agent's name. This drives the actual model node and
+        reads the key that reached the runnable, so dropping the argument at the
+        call site is caught rather than only the helper being right in isolation.
+        """
+        from app.override.langgraph_bigtool.create_agent import create_agent
+
+        llm = _make_llm()
+        bound = llm.with_config.return_value.bind_tools.return_value
+        # Binding the session id returns a NEW runnable, and that is the one the
+        # call is actually made on — so it has to stay the configured double.
+        bound.bind.return_value = bound
+        builder = create_agent(
+            llm, _make_tool_registry(dummy_tool_a), disable_retrieve_tools=True, agent_name=agent
+        )
+
+        await builder.nodes["agent"].runnable.afunc(  # type: ignore[union-attr]
+            _make_state(messages=[HumanMessage(content="hi")]),
+            _make_config(provider=LLMProviderName.OPENROUTER, session_id="conv-1"),
+            store=MagicMock(),
+        )
+
+        assert bound.bind.call_args.kwargs["session_id"] == f"conv-1-{agent}"
+
+    def test_the_sync_model_path_carries_the_agent_s_key_too(self) -> None:
+        """There are two model call sites — sync and async — and they drift
+        independently. The async one above is the production path; this one
+        exists so a fix applied to only one of them is caught here rather than
+        as an unexplained cache gap on whichever lane still runs sync."""
+        from app.override.langgraph_bigtool.create_agent import create_agent
+
+        llm = _make_llm()
+        bound = llm.with_config.return_value.bind_tools.return_value
+        bound.bind.return_value = bound
+        builder = create_agent(
+            llm,
+            _make_tool_registry(dummy_tool_a),
+            disable_retrieve_tools=True,
+            agent_name="comms_agent",
+        )
+
+        builder.nodes["agent"].runnable.func(  # type: ignore[union-attr]
+            _make_state(messages=[HumanMessage(content="hi")]),
+            _make_config(provider=LLMProviderName.OPENROUTER, session_id="conv-1"),
+            store=MagicMock(),
+        )
+
+        assert bound.bind.call_args.kwargs["session_id"] == "conv-1-comms_agent"
+
+    def test_each_agent_class_gets_its_own_key_on_the_same_conversation(self) -> None:
+        """The fix this parameter exists for. comms, the executor and each
+        subagent run inside ONE conversation but send completely different
+        system prompts, so sharing the conversation's bare key put them all in
+        one routing chain where they evicted each other. The key has to differ
+        per agent, or the eviction comes straight back."""
+        from app.override.langgraph_bigtool.create_agent import _bind_session_id
+
+        keys = []
+        for agent in ("comms_agent", "executor_agent", "gmail_agent"):
+            llm = MagicMock()
+            _bind_session_id(
+                llm, {"provider": LLMProviderName.OPENROUTER, "session_id": "conv-1"}, agent
+            )
+            keys.append(llm.bind.call_args.kwargs["session_id"])
+
+        assert keys == ["conv-1-comms_agent", "conv-1-executor_agent", "conv-1-gmail_agent"]
+        assert len(set(keys)) == len(keys)
+
+    def test_the_conversation_still_separates_two_agents_of_the_same_name(self) -> None:
+        """The agent name narrows the key, it must not replace the conversation:
+        two users' comms agents must never land in one chain."""
+        from app.override.langgraph_bigtool.create_agent import _bind_session_id
+
+        first, second = MagicMock(), MagicMock()
+        _bind_session_id(
+            first, {"provider": LLMProviderName.OPENROUTER, "session_id": "conv-1"}, "comms_agent"
+        )
+        _bind_session_id(
+            second, {"provider": LLMProviderName.OPENROUTER, "session_id": "conv-2"}, "comms_agent"
+        )
+
+        assert first.bind.call_args.kwargs["session_id"] == "conv-1-comms_agent"
+        assert second.bind.call_args.kwargs["session_id"] == "conv-2-comms_agent"
 
     def test_gemini_is_left_alone(self) -> None:
         """session_id is an OpenRouter routing hint. Gemini has no stickiness to
