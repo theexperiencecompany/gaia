@@ -1,11 +1,21 @@
 name: gaia-selfhost
 
+# Self-host ships without Loki or any log shipper — container json-file logs
+# are the ONLY record of what happened. Cap them per service so a chatty
+# container can't fill the host disk: 10 MB x 3 rotated files = 30 MB max.
+x-default-logging: &default_logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # ─── Infrastructure ───
 
   chromadb:
     image: chromadb/chroma:1.5.1
     container_name: chromadb
+    logging: *default_logging
     volumes:
       - chroma_data:/chroma/chroma
     environment:
@@ -27,6 +37,7 @@ services:
   postgres:
     image: postgres:18-alpine
     container_name: postgres
+    logging: *default_logging
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres # pragma: allowlist secret
@@ -34,7 +45,8 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql
     ports:
-      - "${POSTGRES_HOST_PORT:-5432}:5432"
+      # No-auth credentials below — publish to localhost only.
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
     restart: on-failure
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]
@@ -47,8 +59,14 @@ services:
   redis:
     image: redis:8-alpine
     container_name: redis
+    logging: *default_logging
+    # AOF persistence on. Redis carries the ARQ task queue — reminders,
+    # workflows, background jobs. Without AOF a crash or recreate silently
+    # drops every queued job (the snapshot default can lose minutes of writes).
+    command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "${REDIS_HOST_PORT:-6379}:6379"
+      # No-auth by default and holds the queue + sessions — localhost only.
+      - "127.0.0.1:${REDIS_HOST_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     restart: on-failure
@@ -63,11 +81,15 @@ services:
   mongo:
     image: mongo:8
     container_name: mongo
+    logging: *default_logging
     volumes:
       - mongo_data:/data/db
     restart: on-failure
     ports:
-      - "${MONGO_HOST_PORT:-27017}:27017"
+      # No-auth by default — publish to localhost only. Mongo holds users,
+      # sessions, provider credentials, and the instance secret; exposure here
+      # is total data loss on any reachable host.
+      - "127.0.0.1:${MONGO_HOST_PORT:-27017}:27017"
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
@@ -79,6 +101,7 @@ services:
   rabbitmq:
     image: rabbitmq:4.1.8-management
     container_name: rabbitmq
+    logging: *default_logging
     ports:
       - "${RABBITMQ_HOST_PORT:-5672}:5672"
       - "${RABBITMQ_MGMT_PORT:-15672}:15672"
@@ -97,6 +120,7 @@ services:
 
   gaia-backend:
     container_name: gaia-backend
+    logging: *default_logging
     build:
       context: ../..
       dockerfile: apps/api/Dockerfile
@@ -116,6 +140,10 @@ services:
       # JuiceFS is a FUSE mount; E2B's inotify watcher cannot watch a FUSE
       # filesystem, so artifact detection must tail the JuiceFS .accesslog.
       ARTIFACT_DETECTION_MODE: accesslog
+      # Persist the fastembed ONNX model cache. Without this, ~1.85GB is
+      # re-downloaded from Hugging Face on every container recreate (the model
+      # loads lazily on first memory use).
+      MEMORY_MODEL_CACHE_DIR: /models
     ports:
       - "${API_HOST_PORT:-8000}:8000"
     # JuiceFS mounts via FUSE inside the container, which requires the mount
@@ -136,6 +164,7 @@ services:
       # Persist JuiceFS's local chunk cache so reads don't re-fetch from the
       # object store on every restart.
       - juicefs_cache:/var/cache/juicefs
+      - models_cache:/models
     restart: on-failure
     tty: true
     stdin_open: true
@@ -160,6 +189,7 @@ services:
 
   gaia-web:
     container_name: gaia-web
+    logging: *default_logging
     image: ${GAIA_WEB_IMAGE:-ghcr.io/theexperiencecompany/gaia-web:latest}
     build:
       context: ../..
@@ -194,6 +224,7 @@ services:
 
   arq_worker:
     container_name: arq_worker
+    logging: *default_logging
     build:
       context: ../..
       dockerfile: apps/api/Dockerfile
@@ -208,6 +239,10 @@ services:
       # needs the same JuiceFS mount as the backend.
       JUICEFS_HOST_MOUNT_PATH: /mnt/jfs
       ARTIFACT_DETECTION_MODE: accesslog
+      # Same persistent fastembed cache as gaia-backend — the worker loads its
+      # own copy of the ONNX model, and without the volume it re-downloads
+      # ~1.85GB on every recreate.
+      MEMORY_MODEL_CACHE_DIR: /models
     # Python deps are installed system-wide via UV_PROJECT_ENVIRONMENT=/usr/local
     # in the API Dockerfile, so call python directly. `uv run` would try to
     # rewrite /app/uv.lock and fail (Permission denied) under the non-root
@@ -226,6 +261,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - juicefs_cache:/var/cache/juicefs
+      - models_cache:/models
     depends_on:
       redis:
         condition: service_healthy
@@ -233,9 +269,19 @@ services:
         condition: service_healthy
     networks:
       - gaia_network
+    healthcheck:
+      # Minimal liveness probe — better than nothing for a worker with no
+      # listening port. The entrypoint exec's into arq, so PID 1 must still be
+      # the worker process. (pgrep isn't in the runtime image, and a shell
+      # `pgrep -f arq` would match its own wrapper's command line anyway.)
+      test: ["CMD", "grep", "-aq", "arq", "/proc/1/cmdline"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   seed-models:
     container_name: seed-models
+    logging: *default_logging
     build:
       context: ../..
       dockerfile: apps/api/Dockerfile
@@ -262,6 +308,7 @@ volumes:
   mongo_data:
   rabbitmq_data:
   juicefs_cache:
+  models_cache:
 
 networks:
   gaia_network:

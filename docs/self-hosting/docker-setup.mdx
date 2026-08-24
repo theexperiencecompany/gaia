@@ -127,18 +127,20 @@ The self-host Compose file includes the following services:
   </Accordion>
 
   <Accordion icon="database" title="Databases">
-    **PostgreSQL** (Port: 5432)
+    **PostgreSQL** (Port: 127.0.0.1:5432)
     - Stores agent state (LangGraph checkpoints) and application data
     - User: postgres, Password: postgres, DB: langgraph
 
-    **MongoDB** (Port: 27017)
+    **MongoDB** (Port: 127.0.0.1:27017)
     - Primary document store: users, chats, settings, provider credentials
 
-    **Redis** (Port: 6379)
+    **Redis** (Port: 127.0.0.1:6379)
     - Caching, sessions, task queue backend
 
     **ChromaDB** (Port: 8080 → 8000)
     - Vector database for embeddings
+
+    PostgreSQL, MongoDB, and Redis ship without authentication, so their host ports publish to loopback only — see [Networking](#networking).
 
   </Accordion>
 
@@ -308,6 +310,7 @@ docker compose -f docker-compose.selfhost.yml ps
 - `mongo` — `mongosh ping`
 - `chromadb` — TCP connection check
 - `rabbitmq` — `rabbitmqctl status`
+- `arq_worker` — liveness probe on the worker process (PID 1 must still be arq)
 
 ## Networking
 
@@ -318,6 +321,14 @@ Services communicate through the `gaia_network` bridge network:
 # - gaia-backend → mongo:27017, redis:6379, postgres:5432, chromadb:8000, rabbitmq:5672
 # - gaia-web → gaia-backend:8000
 ```
+
+<Warning>
+PostgreSQL, MongoDB, and Redis publish to `127.0.0.1` on the host. They run without authentication by default, and between them they hold every user, session, provider credential, and the instance secret — an exposed port is remote total data loss. Do not republish these ports to `0.0.0.0` or strip the `127.0.0.1:` prefix from the Compose file. To reach a datastore from another machine, use an SSH tunnel instead:
+
+```bash
+ssh -L 5432:127.0.0.1:5432 user@your-server
+```
+</Warning>
 
 The backend and worker also get `extra_hosts: host.docker.internal:host-gateway`, which maps `host.docker.internal` to the host machine. This is how containers reach services running directly on your host — most notably a local Ollama at `http://host.docker.internal:11434`.
 
@@ -336,14 +347,107 @@ Data is persisted using Docker volumes (prefixed `gaia-selfhost_`):
 | `gaia-selfhost_redis_data`  | Redis data        |
 | `gaia-selfhost_chroma_data` | ChromaDB vectors  |
 | `gaia-selfhost_rabbitmq_data` | RabbitMQ messages |
+| `gaia-selfhost_juicefs_cache` | JuiceFS local chunk cache (speed only, safe to delete) |
+| `gaia-selfhost_models_cache` | fastembed ONNX model cache (~1.85 GB, safe to delete — re-downloads) |
+
+<Warning>
+Never reclaim disk space with `docker system prune --volumes` (or `docker volume prune`, or a routine `docker compose down -v`): the `--volumes` flag deletes every named volume above — the entire state of your instance, including users, sessions, provider credentials, and chats. Plain `docker system prune` (no flags) leaves volumes alone; it only removes stopped containers, dangling images, and build cache.
+</Warning>
+
+## Backups
+
+Two stores hold data you cannot rebuild:
+
+- **MongoDB** — users, sessions, chats, settings, provider credentials (encrypted at rest), and the [instance secret](#day-2-operations). Lose it and every login and stored provider key is gone with it.
+- **PostgreSQL** — agent and conversation state (LangGraph checkpoints).
+
+Redis (queue + cache), ChromaDB (vectors are re-embeddable from source content), RabbitMQ (transient messages), and the JuiceFS workspace (file bytes already live in your object store) are lower-stakes.
+
+### Back up MongoDB
+
+The database tools ship inside the mongo container. Dump to a gzip archive and redirect it to a file on the host:
 
 ```bash
-# Backup a volume
-docker run --rm -v gaia-selfhost_pgdata:/data -v $(pwd):/backup alpine tar czf /backup/postgres-backup.tar.gz -C /data .
-
-# Restore a volume
-docker run --rm -v gaia-selfhost_pgdata:/data -v $(pwd):/backup alpine tar xzf /backup/postgres-backup.tar.gz -C /data
+mkdir -p backups
+docker compose -f docker-compose.selfhost.yml exec mongo mongodump --archive --gzip > backups/mongo-$(date +%F).gz
 ```
+
+For a fully consistent snapshot, stop the writers first so nothing changes mid-dump:
+
+```bash
+docker compose -f docker-compose.selfhost.yml stop gaia-backend arq_worker
+docker compose -f docker-compose.selfhost.yml exec mongo mongodump --archive --gzip > backups/mongo-$(date +%F).gz
+docker compose -f docker-compose.selfhost.yml start gaia-backend arq_worker
+```
+
+### Back up PostgreSQL
+
+`pg_dump` produces a consistent snapshot on its own — safe against a live stack:
+
+```bash
+docker compose -f docker-compose.selfhost.yml exec postgres pg_dump -U postgres -d langgraph > backups/postgres-$(date +%F).sql
+```
+
+### Restore MongoDB
+
+`--drop` replaces existing collections so you don't merge stale and restored state; `-T` disables the pseudo-terminal so the redirected archive reaches `mongorestore`'s stdin:
+
+```bash
+docker compose -f docker-compose.selfhost.yml exec -T mongo mongorestore --archive --gzip --drop < backups/mongo-2026-08-24.gz
+```
+
+Restart the app containers afterwards so sessions re-issue against the restored data.
+
+### Restore PostgreSQL
+
+Start from an empty schema so the restore doesn't collide with existing tables:
+
+```bash
+docker compose -f docker-compose.selfhost.yml exec postgres psql -U postgres -d langgraph -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'
+cat backups/postgres-2026-08-24.sql | docker compose -f docker-compose.selfhost.yml exec -T postgres psql -U postgres -d langgraph
+```
+
+<Warning>
+A Mongo backup decrypts your provider credentials — it contains the instance secret that protects them. Store backups with the same care as `.env` files: off-host, access-controlled, never in a public bucket.
+</Warning>
+
+## Day-2 Operations
+
+### Memory sizing
+
+The stack boots within the stated minimums, but steady-state use needs more headroom: the local embedding model (fastembed ONNX) loads lazily into **both** `gaia-backend` and `arq_worker` at roughly 1.8 GB resident each — two independent copies, since each process keeps its own singleton — on top of Postgres, MongoDB, Redis, ChromaDB, and RabbitMQ. Plan for a realistic floor of **~8 GB RAM** once memory features are in use; on smaller hosts the failure mode is OOM kills around the first embedding load, not at boot.
+
+### Upgrades
+
+```bash
+# from the repo root
+git pull
+cd infra/docker
+docker compose -f docker-compose.selfhost.yml build
+docker compose -f docker-compose.selfhost.yml up -d
+```
+
+Named volumes survive the rebuild. After upgrading, watch for vector-index failures: an embedding-model bump makes previously stored vectors stale, and indexing failures are logged (and flagged for later reindexing) rather than taking writes down:
+
+```bash
+docker compose -f docker-compose.selfhost.yml logs -f gaia-backend arq_worker | grep -Ei 'index_failed|memory_embedding_failed'
+```
+
+If the model catalogue changed in the new version, re-run the one-shot seeder (`--force-recreate` because it normally runs exactly once and then sits exited):
+
+```bash
+docker compose -f docker-compose.selfhost.yml up --force-recreate seed-models
+```
+
+### The instance secret
+
+On first boot GAIA generates a root secret and persists it inside MongoDB (the `instance_settings` collection). Everything sensitive derives from it: local session tokens and the encryption keys for stored provider credentials. **If that Mongo data is lost, every session is invalidated and every stored provider credential becomes undecryptable** — there is no recovery without the secret.
+
+`INSTANCE_SECRET` in `apps/api/.env` overrides the stored value unconditionally. Treat it as a break-glass override:
+
+- If you ever plan to manage the secret through the environment, pin `INSTANCE_SECRET` **before** storing any provider credentials — the value must match whatever encrypted them.
+- Never set a fresh random value on an instance whose credentials were encrypted under a different secret: that orphans every ciphertext.
+- The only copy of an auto-generated secret lives in your MongoDB backups. Keep [backups](#backups) current and protected before any maintenance that could touch the database.
 
 ## Troubleshooting
 
