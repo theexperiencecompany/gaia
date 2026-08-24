@@ -27,26 +27,38 @@ Deliberately NOT fixed in ``add_usage``: the same function is what
 ``UsageMetadataCallbackHandler`` uses to total usage *across* calls, which must
 keep adding.
 
-The wrapper drives the upstream generator with ``run_manager=None`` and fires
-``on_llm_new_token`` itself, so streamed chunks and the merged message carry the
-same normalised numbers rather than disagreeing. ``run_manager`` is used for
-nothing else in either upstream generator (langchain-openrouter 0.2.3).
+Normalising the chunk is the whole fix: ``BaseChatModel`` fires
+``on_llm_new_token`` itself, with the chunk this wrapper just yielded, so the
+streamed view and the merged message agree without the wrapper touching
+callbacks. ``run_manager`` stays in the signature because it is part of the
+method langchain declares, but langchain-core 1.4.8 never passes it — all four
+call sites (``stream``, ``astream``, ``_generate_with_cache``,
+``_agenerate_with_cache``) invoke ``_stream``/``_astream`` as
+``(messages, stop=stop, **kwargs)``. An earlier version of this patch fired the
+callback itself under ``if run_manager:``; that branch was verified to execute
+zero times across all four entry points and has been removed.
 """
 
-from collections.abc import AsyncIterator, Iterator, Mapping
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping
 from typing import Any, cast
 
 from langchain_core.callbacks import (
     AsyncCallbackManagerForLLMRun,
     CallbackManagerForLLMRun,
 )
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.messages.ai import UsageMetadata
 from langchain_core.outputs import ChatGenerationChunk
 from langchain_openrouter import ChatOpenRouter
 
-_ORIGINAL_STREAM = ChatOpenRouter._stream
-_ORIGINAL_ASTREAM = ChatOpenRouter._astream
+from shared.py.wide_events import log
+
+#: The generators being wrapped, typed as the pass-throughs this module treats
+#: them as: it hands them whatever it was handed. Spelling the parameters out
+#: instead would make mypy map an ``object``-typed ``**kwargs`` onto the
+#: concrete ``run_manager`` slot these calls deliberately leave empty.
+_ORIGINAL_STREAM: Callable[..., Iterator[ChatGenerationChunk]] = ChatOpenRouter._stream
+_ORIGINAL_ASTREAM: Callable[..., AsyncIterator[ChatGenerationChunk]] = ChatOpenRouter._astream
 
 
 def _delta(previous: Mapping[str, Any], current: Mapping[str, Any]) -> dict[str, Any]:
@@ -71,19 +83,23 @@ def _delta(previous: Mapping[str, Any], current: Mapping[str, Any]) -> dict[str,
 
 
 def _normalise(
-    chunk: ChatGenerationChunk, previous: UsageMetadata | None
-) -> tuple[ChatGenerationChunk, UsageMetadata | None]:
+    chunk: ChatGenerationChunk, previous: Mapping[str, Any]
+) -> tuple[ChatGenerationChunk, Mapping[str, Any]]:
     """Replace a chunk's cumulative usage with the delta since ``previous``.
 
+    ``previous`` is the last snapshot seen, empty before the first one — an
+    empty mapping subtracts to itself, so the first frame's delta is the frame.
     Returns the chunk to emit and the snapshot to subtract from next time.
     Chunks carrying no usage pass through untouched.
     """
     message = chunk.message
-    usage = getattr(message, "usage_metadata", None)
+    # Only an AI message can carry usage, and every AIMessageChunk defines the
+    # field (defaulting to None) — so this narrows rather than probing.
+    usage = message.usage_metadata if isinstance(message, AIMessage) else None
     if not usage:
         return chunk, previous
 
-    delta = cast(UsageMetadata, _delta(previous or {}, usage))
+    delta = cast(UsageMetadata, _delta(previous, usage))
     normalised = ChatGenerationChunk(
         message=message.model_copy(update={"usage_metadata": delta}),
         generation_info=chunk.generation_info,
@@ -91,10 +107,27 @@ def _normalise(
     return normalised, usage
 
 
-def _token_callback_kwargs(chunk: ChatGenerationChunk) -> dict[str, Any]:
-    """The ``on_llm_new_token`` keyword arguments upstream would have passed."""
-    logprobs = (chunk.generation_info or {}).get("logprobs")
-    return {"logprobs": logprobs} if logprobs else {}
+def _warn_if_langchain_starts_passing_a_run_manager(run_manager: object) -> None:
+    """Loud if langchain ever hands these wrappers a run_manager of their own.
+
+    It does not today: langchain-core 1.4.8 invokes ``_stream``/``_astream`` as
+    ``(messages, stop=stop, **kwargs)`` from all four call sites (``stream``,
+    ``astream``, ``_generate_with_cache``, ``_agenerate_with_cache``) and fires
+    ``on_llm_new_token`` itself with the chunk yielded here — which is why
+    normalising the chunk is the entire fix.
+
+    If a future version starts passing one, this wrapper would have to forward
+    it (or fire the callback itself), because upstream would otherwise report
+    the raw cumulative snapshot while the merged message reports the delta. A
+    silent divergence between the streamed numbers and the billed ones is the
+    exact failure this patch exists to prevent, so it is a warning, not a
+    comment: ``log.warning`` puts it on the wide event's ``warnings[]``.
+    """
+    if run_manager is not None:
+        log.warning(
+            "openrouter usage patch received a run_manager it does not forward",
+            run_manager_type=type(run_manager).__name__,
+        )
 
 
 def _stream(
@@ -105,13 +138,10 @@ def _stream(
     **kwargs: object,
 ) -> Iterator[ChatGenerationChunk]:
     """``ChatOpenRouter._stream`` with cumulative usage snapshots turned into deltas."""
-    previous: UsageMetadata | None = None
-    for chunk in _ORIGINAL_STREAM(self, messages, stop=stop, run_manager=None, **kwargs):
+    _warn_if_langchain_starts_passing_a_run_manager(run_manager)
+    previous: Mapping[str, Any] = {}
+    for chunk in _ORIGINAL_STREAM(self, messages, stop=stop, **kwargs):
         normalised, previous = _normalise(chunk, previous)
-        if run_manager:
-            run_manager.on_llm_new_token(
-                token=normalised.text, chunk=normalised, **_token_callback_kwargs(normalised)
-            )
         yield normalised
 
 
@@ -123,13 +153,10 @@ async def _astream(
     **kwargs: object,
 ) -> AsyncIterator[ChatGenerationChunk]:
     """``ChatOpenRouter._astream`` with cumulative usage snapshots turned into deltas."""
-    previous: UsageMetadata | None = None
-    async for chunk in _ORIGINAL_ASTREAM(self, messages, stop=stop, run_manager=None, **kwargs):
+    _warn_if_langchain_starts_passing_a_run_manager(run_manager)
+    previous: Mapping[str, Any] = {}
+    async for chunk in _ORIGINAL_ASTREAM(self, messages, stop=stop, **kwargs):
         normalised, previous = _normalise(chunk, previous)
-        if run_manager:
-            await run_manager.on_llm_new_token(
-                token=normalised.text, chunk=normalised, **_token_callback_kwargs(normalised)
-            )
         yield normalised
 
 
