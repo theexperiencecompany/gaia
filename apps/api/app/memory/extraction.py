@@ -25,6 +25,7 @@ from app.constants.memory import (
 from app.memory.prompts import (
     CATEGORIZE_SYSTEM_PROMPT,
     EPISODE_SUMMARY_SYSTEM_PROMPT,
+    EXTRACTION_FOLDER_TREE_BLOCK,
     EXTRACTION_SYSTEM_PROMPT,
     RECONCILE_SYSTEM_PROMPT,
 )
@@ -160,12 +161,10 @@ async def extract_memories(
     journal_section = (
         "\n".join(f"- {line}" for line in journaled_today) if journaled_today else "(empty)"
     )
-    system_prompt = EXTRACTION_SYSTEM_PROMPT.format(
-        user_name=user_name,
-        folder_tree=folder_tree or "(no folders yet)",
-    )
+    system_prompt = EXTRACTION_SYSTEM_PROMPT.format(user_name=user_name)
     # The volatile context (today's date, recently stored facts, today's
-    # journal) rides in a TRAILING message, NOT inside the system prompt.
+    # journal, the folder tree) rides in a TRAILING message, NOT inside the
+    # system prompt.
     # The memory lane's cache is a byte-prefix cache: with the facts/journal
     # churning inside the system prompt the prefix broke there and the whole
     # (append-only) transcript re-sent uncached every turn — measured ~41%
@@ -176,7 +175,8 @@ async def extract_memories(
         f"Today is {current_date:%A, %d %B %Y}.\n"
         f"## Recently stored facts (do NOT re-extract these)\n{recent_facts_section}\n"
         "## Today's journal so far (do NOT repeat these events, even reworded)\n"
-        f"{journal_section}{hints_section}"
+        f"{journal_section}{hints_section}\n"
+        + EXTRACTION_FOLDER_TREE_BLOCK.format(folder_tree=folder_tree or "(no folders yet)")
     )
 
     result = await _invoke_structured(

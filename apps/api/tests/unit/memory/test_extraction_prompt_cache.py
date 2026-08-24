@@ -1,0 +1,91 @@
+"""The extraction request's cacheable prefix must not move when memory grows.
+
+The memory lane is billed against a byte-prefix cache: a request resumes from
+cache only up to the first byte that differs from the previous one. Extraction
+sends [system prompt, transcript, volatile tail] and the transcript is by far
+the largest part (~9.8k of ~11.3k tokens in production), so it only ever gets
+cached if everything ahead of it is byte-identical between calls.
+
+The folder tree used to sit at the very end of the system prompt, immediately
+ahead of the transcript. It grows as the user's memory accumulates, so filing a
+fact into a new folder moved the boundary and the whole transcript re-sent at
+full price behind it. It now rides the trailing volatile message instead.
+
+These assert on the assembled messages rather than on a hit rate, because the
+hit rate is a provider-side number we cannot observe in a unit test.
+"""
+
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from app.memory.extraction import extract_memories
+from app.memory.schemas import ExtractedMemoryBatch
+
+pytestmark = pytest.mark.unit
+
+_WHEN = datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
+_TRANSCRIPT = [
+    {"role": "user", "content": "my sister Priya's birthday is in March"},
+    {"role": "assistant", "content": "Noted."},
+]
+
+
+async def _messages_for(folder_tree: str, recent_facts: list[str] | None = None):
+    """The messages one extraction call would send, for a given memory state."""
+    with patch(
+        "app.memory.extraction._invoke_structured",
+        new=AsyncMock(return_value=ExtractedMemoryBatch()),
+    ) as invoke:
+        await extract_memories(
+            _TRANSCRIPT,
+            user_id="u1",
+            user_name="Aryan",
+            folder_tree=folder_tree,
+            recent_facts=recent_facts or [],
+            current_date=_WHEN,
+        )
+    return invoke.await_args.args[1]
+
+
+def _prefix_through_transcript(messages) -> str:
+    """Everything up to and including the transcript — the part that must be
+    byte-identical between calls for the transcript to stay cached."""
+    return "".join(str(m.content) for m in messages[:2])
+
+
+class TestTheCacheablePrefixSurvivesMemoryGrowth:
+    async def test_a_new_folder_does_not_move_the_prefix(self):
+        """Filing one fact into a new folder must not re-send the transcript."""
+        before = await _messages_for("relationships\npreferences")
+        after = await _messages_for("relationships\npreferences\nwork/gaia")
+
+        assert _prefix_through_transcript(before) == _prefix_through_transcript(after), (
+            "the folder tree moved the cacheable prefix, so the whole transcript "
+            "re-sends uncached whenever the user's memory gains a folder"
+        )
+
+    async def test_newly_stored_facts_do_not_move_the_prefix(self):
+        """Same guarantee for the other per-call input that grows."""
+        before = await _messages_for("relationships", recent_facts=["likes oat milk"])
+        after = await _messages_for(
+            "relationships", recent_facts=["likes oat milk", "sister is Priya"]
+        )
+
+        assert _prefix_through_transcript(before) == _prefix_through_transcript(after)
+
+    async def test_the_folder_tree_is_still_actually_sent(self):
+        """Moving it must not drop it: the model still files facts by folder."""
+        messages = await _messages_for("relationships\nwork/gaia")
+
+        assert "work/gaia" in str(messages[-1].content), (
+            "the folder tree left the system prompt but never arrived in the tail"
+        )
+
+    async def test_the_folder_guidance_stays_in_the_stable_prompt(self):
+        """Only the mutable tree moves; the instructions on how to use it are
+        byte-stable and belong in the cached prefix."""
+        messages = await _messages_for("relationships")
+
+        assert "category_path" in str(messages[0].content)

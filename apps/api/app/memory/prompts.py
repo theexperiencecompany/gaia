@@ -92,13 +92,17 @@ List open loops this conversation opened or closed: new commitments, deadlines, 
 
 """
     + _FOLDER_GUIDANCE
-    + """
-
-## Existing memory folders
-
-{folder_tree}
-"""
 )
+
+#: The user's folder tree, which grows as memory accumulates. It rides the
+#: TRAILING volatile message, not the system prompt: the memory lane's cache is
+#: a byte-prefix cache, and this sat at the very end of the system prompt —
+#: directly ahead of the transcript — so every new folder moved the cache
+#: boundary and the whole transcript re-sent uncached behind it. The folder
+#: GUIDANCE above is stable and stays in the prompt; only the tree moves.
+EXTRACTION_FOLDER_TREE_BLOCK = """## Existing memory folders
+
+{folder_tree}"""
 
 
 RECONCILE_SYSTEM_PROMPT = """You maintain the consistency of a personal memory store. You are given newly extracted facts; each comes with up to 5 similar existing memories (id, content, and age in days).
