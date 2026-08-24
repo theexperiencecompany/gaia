@@ -54,10 +54,22 @@ _TRANSCRIPT_TRUNCATION_MARKER = "\n[... transcript truncated ...]\n"
 # see ``ainvoke_structured``; without it the pipeline's real COGS would land in
 # nobody's budget.
 def _silent_config(user_id: str) -> RunnableConfig:
-    return {
+    config: RunnableConfig = {
         **silent_metered_config(user_id),
         "tags": ["memory_internal"],
     }
+    # The memory family's own sticky-routing chain, per user. On the aux lane
+    # the sticky session is what keeps consecutive extractions landing on the
+    # upstream that already holds this user's transcript prefixes — without it
+    # every call routes independently and the append-only transcript re-sends
+    # cold. Per USER, not per conversation: one upstream then holds all of a
+    # user's memory-call prefixes, and the "-aux" suffix the runnable adds
+    # keeps this chain from ever re-pinning a conversation's.
+    config["configurable"] = {
+        **config.get("configurable", {}),
+        "session_id": f"memory-{user_id}",
+    }
+    return config
 
 
 # Provider failures and malformed structured output both degrade to None so the

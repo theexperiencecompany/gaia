@@ -523,6 +523,13 @@ def memory_lane_available() -> bool:
     return bool(settings.GAIA_SIM_MODE or settings.GOOGLE_API_KEY)
 
 
+def aux_lane_available() -> bool:
+    """Whether the aux (OpenRouter) lane can serve a call — the mirror of
+    :func:`memory_lane_available` for the other side of the memory pipeline's
+    provider choice."""
+    return bool(settings.GAIA_SIM_MODE or settings.OPENROUTER_API_KEY)
+
+
 def get_memory_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
     """The factory for every memory-pipeline call (extraction, categorization,
     reconciliation, consolidation).
@@ -1003,6 +1010,12 @@ async def ainvoke_structured(
     )
 
 
+def _memory_structured_runnable(schema: type[_StructuredT], temperature: float) -> Runnable:
+    """The direct-Gemini structured runnable the memory pipeline falls back to
+    — the counterpart of :func:`_aux_structured_runnable` for the other lane."""
+    return get_memory_llm(temperature=temperature).with_structured_output(schema)
+
+
 async def ainvoke_structured_gemini(
     schema: type[_StructuredT],
     prompt: LanguageModelInput,
@@ -1012,36 +1025,66 @@ async def ainvoke_structured_gemini(
     config: RunnableConfig | None = None,
     timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS,
 ) -> _StructuredT:
-    """The structured one-shot call for the memory pipeline, on direct Gemini.
+    """The structured one-shot call for the memory pipeline: aux lane primary,
+    direct Gemini as the fallback.
 
     Same contract as :func:`ainvoke_structured` (retry + fallback, metering via
-    :func:`ainvoke_llm`, validated ``schema`` output) but PREFERRING
-    :func:`get_memory_llm` — a DIFFERENT provider from the graph's OpenRouter
-    lane, deliberately. The memory extraction is a background task that
-    overlaps the graph's next-turn requests; concurrent requests on the same
-    provider's cache store wipe each other's cached chains mid-read (measured:
-    the comms chain collapses to ~0 under a concurrent alias-lane extraction
-    and holds ~99.5% under a concurrent Gemini extraction). A different
-    provider has no shared cache store, so the overlap is harmless.
+    :func:`ainvoke_llm`, validated ``schema`` output). The preference order is
+    measured, both halves. Gemini flash-lite's implicit cache never extends
+    past tools+system into the contents: identical 4.6k-token extraction-shaped
+    prompts repeatedly read exactly 3,064 cached tokens — the schema plus the
+    system prompt — so the transcript, the bulk of every extraction call, can
+    never cache there. The aux lane read 98.1% cached on the same shape five
+    seconds after the write, and the cache extends as the transcript appends,
+    which is exactly the access pattern this pipeline produces.
 
-    The isolation is an optimisation, not a requirement: a deployment with only
-    ``OPENROUTER_API_KEY`` (the documented self-host path) runs the whole
-    pipeline on the aux lane instead, and a Gemini outage falls back to it
-    mid-flight. Losing the isolation costs cache hit rate; losing the lane
-    would cost the user every memory they never got."""
-    if not memory_lane_available():
-        return await ainvoke_structured(
-            schema, prompt, label=label, temperature=temperature, config=config, timeout=timeout
+    History: this lane PREFERRED Gemini, because concurrent requests on the
+    same provider's cache store wiped each other's chains (measured, pre
+    per-agent keys: the comms chain collapsed to ~0 under a concurrent
+    alias-lane extraction). The per-agent suffixed sticky sessions now give
+    every lane its own chain on one provider — comms measured +19.2 points
+    with everything else running concurrently — so the reason for the split
+    is gone, and the lane whose cache actually works wins.
+
+    A deployment with only ``GOOGLE_API_KEY`` still extracts memories on
+    Gemini alone, and an aux outage falls back to Gemini mid-flight. Losing a
+    lane costs cache hit rate; losing the call would cost the user every
+    memory they never got."""
+    if not aux_lane_available():
+        if not memory_lane_available():
+            # Delegates so the canonical LLMNotConfiguredError (naming the fix)
+            # is the one extraction's callers catch.
+            return await ainvoke_structured(
+                schema,
+                prompt,
+                label=label,
+                temperature=temperature,
+                config=config,
+                timeout=timeout,
+            )
+        return cast(
+            _StructuredT,
+            await ainvoke_llm(
+                _memory_structured_runnable(schema, temperature),
+                prompt,
+                config=config,
+                label=label,
+                timeout=timeout,
+            ),
         )
-    structured = get_memory_llm(temperature=temperature).with_structured_output(schema)
     # Metering lives in ainvoke_llm, which this delegates to — a handler here too
     # would record the same call twice and over-report the user's COGS.
+    fallback: LLMFallback = (
+        (lambda: _memory_structured_runnable(schema, temperature))
+        if memory_lane_available()
+        else None
+    )
     return cast(
         _StructuredT,
         await ainvoke_llm(
-            structured,
+            _aux_structured_runnable(schema, temperature, config),
             prompt,
-            fallback=lambda: _aux_structured_runnable(schema, temperature, config),
+            fallback=fallback,
             config=config,
             label=label,
             timeout=timeout,

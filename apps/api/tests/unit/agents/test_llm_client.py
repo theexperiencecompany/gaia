@@ -1001,56 +1001,31 @@ class _Extracted(BaseModel):
 
 
 class TestMemoryLaneProviderSelection:
-    """The direct-Gemini memory lane is a cache-isolation optimisation, not a
-    requirement. A deployment with only OPENROUTER_API_KEY — the documented
-    self-host path — must still extract memories, and a Gemini outage must not
-    silently drop every extraction for its duration."""
-
-    @patch("app.agents.llm.client.ainvoke_structured", new_callable=AsyncMock)
-    @patch("app.agents.llm.client.get_memory_llm")
-    @patch("app.agents.llm.client.memory_lane_available", return_value=False)
-    async def test_falls_back_to_the_aux_lane_when_google_is_unconfigured(
-        self, mock_available: MagicMock, mock_memory_llm: MagicMock, mock_aux: AsyncMock
-    ) -> None:
-        mock_aux.return_value = _Extracted(fact="from-aux")
-        config = RunnableConfig(configurable={"user_id": "u1"})
-
-        result = await ainvoke_structured_gemini(
-            _Extracted,
-            "transcript",
-            label="memory:extract",
-            temperature=0.4,
-            config=config,
-            timeout=9.0,
-        )
-
-        assert result.fact == "from-aux"
-        mock_memory_llm.assert_not_called()
-        # The handover is the whole call, not just the schema: a dropped
-        # argument here silently re-defaults it on the lane that actually runs.
-        assert mock_aux.await_args.args[0] is _Extracted
-        assert mock_aux.await_args.args[1] == "transcript"
-        assert mock_aux.await_args.kwargs == {
-            "label": "memory:extract",
-            "temperature": 0.4,
-            "config": config,
-            "timeout": 9.0,
-        }
+    """The memory pipeline PREFERS the aux (OpenRouter) lane and keeps direct
+    Gemini as the fallback. Measured, both halves: Gemini's implicit cache
+    never extends past tools+system into the contents (identical 4.6k prompts
+    repeatedly read exactly 3,064 cached — the schema + system prompt), while
+    the aux lane reads 98.1%% cached on the same shape and keeps extending as
+    the transcript appends. The Gemini preference existed for cache isolation
+    from the graph's chains; the per-agent sticky session keys now provide that
+    isolation on one provider, so the reason for the split is gone and the lane
+    with a working cache wins."""
 
     @patch("app.agents.llm.client._aux_structured_runnable")
     @patch("app.agents.llm.client.ainvoke_llm", new_callable=AsyncMock)
     @patch("app.agents.llm.client.get_memory_llm")
     @patch("app.agents.llm.client.memory_lane_available", return_value=True)
-    async def test_gemini_is_preferred_and_carries_an_aux_fallback(
+    @patch("app.agents.llm.client.aux_lane_available", create=True, return_value=True)
+    async def test_the_aux_lane_is_preferred_and_carries_a_gemini_fallback(
         self,
+        mock_aux_available: MagicMock,
         mock_available: MagicMock,
         mock_memory_llm: MagicMock,
         mock_ainvoke: AsyncMock,
         mock_aux_runnable: MagicMock,
     ) -> None:
-        mock_ainvoke.return_value = _Extracted(fact="from-gemini")
+        mock_ainvoke.return_value = _Extracted(fact="from-aux")
         config = RunnableConfig(configurable={"user_id": "u1"})
-        structured = mock_memory_llm.return_value.with_structured_output.return_value
 
         result = await ainvoke_structured_gemini(
             _Extracted,
@@ -1061,45 +1036,106 @@ class TestMemoryLaneProviderSelection:
             timeout=9.0,
         )
 
-        assert result.fact == "from-gemini"
-        mock_memory_llm.assert_called_once()
-        assert mock_memory_llm.call_args.kwargs["temperature"] == 0.4
-        assert mock_memory_llm.return_value.with_structured_output.call_args.args[0] is _Extracted
+        assert result.fact == "from-aux"
         # The handover is the whole call, not just the runnable: a dropped
         # argument here silently re-defaults it on the lane that actually runs.
-        assert mock_ainvoke.await_args.args == (structured, "transcript")
+        assert mock_ainvoke.await_args.args == (mock_aux_runnable.return_value, "transcript")
+        assert mock_aux_runnable.call_args.args == (_Extracted, 0.4, config)
         kwargs = dict(mock_ainvoke.await_args.kwargs)
         fallback = kwargs.pop("fallback")
         assert kwargs == {"config": config, "label": "memory:extract", "timeout": 9.0}
-        # A Gemini outage has somewhere to go: ainvoke_llm gets a real fallback
-        # factory instead of the None that dropped every extraction — and the
-        # aux runnable it builds carries this call's schema, temperature and
-        # config rather than a defaulted set.
-        assert fallback() is mock_aux_runnable.return_value
-        assert mock_aux_runnable.call_args.args == (_Extracted, 0.4, config)
+        # An aux outage has somewhere to go: the fallback factory builds the
+        # Gemini structured runnable with this call's schema and temperature.
+        mock_memory_llm.assert_not_called()
+        assert fallback() is mock_memory_llm.return_value.with_structured_output.return_value
+        assert mock_memory_llm.call_args.kwargs["temperature"] == 0.4
+        assert mock_memory_llm.return_value.with_structured_output.call_args.args[0] is _Extracted
 
-    @patch("app.agents.llm.client.get_helper_llm")
-    @patch("app.agents.llm.client.get_memory_llm")
-    @patch("app.agents.llm.client.memory_lane_available", return_value=True)
-    async def test_gemini_outage_is_served_by_the_aux_lane(
+    @patch("app.agents.llm.client._aux_structured_runnable")
+    @patch("app.agents.llm.client.ainvoke_llm", new_callable=AsyncMock)
+    @patch("app.agents.llm.client.memory_lane_available", return_value=False)
+    @patch("app.agents.llm.client.aux_lane_available", create=True, return_value=True)
+    async def test_no_gemini_at_all_means_aux_with_no_fallback(
         self,
+        mock_aux_available: MagicMock,
         mock_available: MagicMock,
-        mock_memory_llm: MagicMock,
-        mock_helper: MagicMock,
+        mock_ainvoke: AsyncMock,
+        mock_aux_runnable: MagicMock,
     ) -> None:
-        failing = NonCallableMagicMock()
-        failing.with_retry = MagicMock(return_value=failing)
-        failing.ainvoke = AsyncMock(side_effect=ConnectionError("gemini down"))
-        mock_memory_llm.return_value.with_structured_output.return_value = failing
-
-        aux = NonCallableMagicMock()
-        aux.with_retry = MagicMock(return_value=aux)
-        aux.ainvoke = AsyncMock(return_value=_Extracted(fact="from-aux"))
-        mock_helper.return_value.model_copy.return_value.with_structured_output.return_value = aux
+        mock_ainvoke.return_value = _Extracted(fact="from-aux")
 
         result = await ainvoke_structured_gemini(_Extracted, "transcript", label="memory:extract")
 
         assert result.fact == "from-aux"
+        assert mock_ainvoke.await_args.kwargs["fallback"] is None
+
+    @patch("app.agents.llm.client.ainvoke_llm", new_callable=AsyncMock)
+    @patch("app.agents.llm.client.get_memory_llm")
+    @patch("app.agents.llm.client.memory_lane_available", return_value=True)
+    @patch("app.agents.llm.client.aux_lane_available", create=True, return_value=False)
+    async def test_without_the_aux_lane_gemini_still_serves_alone(
+        self,
+        mock_aux_available: MagicMock,
+        mock_available: MagicMock,
+        mock_memory_llm: MagicMock,
+        mock_ainvoke: AsyncMock,
+    ) -> None:
+        mock_ainvoke.return_value = _Extracted(fact="from-gemini")
+        structured = mock_memory_llm.return_value.with_structured_output.return_value
+
+        result = await ainvoke_structured_gemini(_Extracted, "transcript", label="memory:extract")
+
+        assert result.fact == "from-gemini"
+        assert mock_ainvoke.await_args.args[0] is structured
+        assert "fallback" not in mock_ainvoke.await_args.kwargs
+
+    @patch("app.agents.llm.client.ainvoke_structured", new_callable=AsyncMock)
+    @patch("app.agents.llm.client.get_memory_llm")
+    @patch("app.agents.llm.client.memory_lane_available", return_value=False)
+    @patch("app.agents.llm.client.aux_lane_available", create=True, return_value=False)
+    async def test_neither_lane_configured_surfaces_the_canonical_not_configured(
+        self,
+        mock_aux_available: MagicMock,
+        mock_available: MagicMock,
+        mock_memory_llm: MagicMock,
+        mock_structured: AsyncMock,
+    ) -> None:
+        """Delegates to ainvoke_structured, whose LLMNotConfiguredError names
+        the fix — extraction's callers catch exactly that type."""
+        mock_structured.return_value = _Extracted(fact="delegated")
+
+        result = await ainvoke_structured_gemini(_Extracted, "transcript", label="memory:extract")
+
+        assert result.fact == "delegated"
+        mock_memory_llm.assert_not_called()
+
+    @patch("app.agents.llm.client.get_memory_llm")
+    @patch("app.agents.llm.client.get_helper_llm")
+    @patch("app.agents.llm.client.memory_lane_available", return_value=True)
+    @patch("app.agents.llm.client.aux_lane_available", create=True, return_value=True)
+    async def test_an_aux_outage_is_served_by_gemini(
+        self,
+        mock_aux_available: MagicMock,
+        mock_available: MagicMock,
+        mock_helper: MagicMock,
+        mock_memory_llm: MagicMock,
+    ) -> None:
+        failing = NonCallableMagicMock()
+        failing.with_retry = MagicMock(return_value=failing)
+        failing.bind = MagicMock(return_value=failing)
+        failing.ainvoke = AsyncMock(side_effect=ConnectionError("aux down"))
+        mock_helper.return_value.model_copy.return_value.with_structured_output.return_value = (
+            failing
+        )
+
+        gemini = NonCallableMagicMock()
+        gemini.with_retry = MagicMock(return_value=gemini)
+        gemini.ainvoke = AsyncMock(return_value=_Extracted(fact="from-gemini"))
+        mock_memory_llm.return_value.with_structured_output.return_value = gemini
+
+        result = await ainvoke_structured_gemini(_Extracted, "transcript", label="memory:extract")
+
+        assert result.fact == "from-gemini"
 
 
 # ---------------------------------------------------------------------------
