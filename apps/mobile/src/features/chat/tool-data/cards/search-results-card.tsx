@@ -1,17 +1,11 @@
 import type { ImageResult, SearchResults, WebResult } from "@gaia/shared";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Image, Linking, Pressable, ScrollView, View } from "react-native";
-import Animated, {
-  FadeInRight,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from "react-native-reanimated";
+import Animated, { FadeInRight } from "react-native-reanimated";
 import { Search01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { PulsingDot } from "@/features/chat/components/streaming/pulsing";
 import {
   FaviconImage,
   NewsResultCard,
@@ -206,32 +200,6 @@ function ImageResults({ images }: { images: ImageResult[] }) {
 // the chat bubble shows progress instead of disappearing mid-stream.
 // ---------------------------------------------------------------------------
 
-function PulsingDot() {
-  const opacity = useSharedValue(1);
-
-  useEffect(() => {
-    opacity.value = withRepeat(
-      withSequence(
-        withTiming(0.25, { duration: 600 }),
-        withTiming(1, { duration: 600 }),
-      ),
-      -1,
-      false,
-    );
-  }, [opacity]);
-
-  const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
-
-  return (
-    <Animated.View
-      style={[
-        animatedStyle,
-        { width: 6, height: 6, borderRadius: 3, backgroundColor: "#00bbff" },
-      ]}
-    />
-  );
-}
-
 function SearchRunningCard({ data }: { data: SearchResults }) {
   const queryText = data.query;
   const progressText = data.progress ?? "Searching the web...";
@@ -241,7 +209,7 @@ function SearchRunningCard({ data }: { data: SearchResults }) {
       <ToolCardHeader
         icon={Search01Icon}
         title="Web Search"
-        trailing={<PulsingDot />}
+        trailing={<PulsingDot size={6} color="#00bbff" />}
       />
       {!!queryText && (
         <ToolCardInner dense className="mb-2">

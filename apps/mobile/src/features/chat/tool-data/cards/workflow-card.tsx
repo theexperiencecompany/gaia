@@ -20,6 +20,11 @@ import { cronToHumanReadable } from "@/features/workflows/utils/cronUtils";
 // WorkflowCreatedCard. Same color tokens, same icon mapping.
 // ---------------------------------------------------------------------------
 
+// Amber tint used as the draft affordance — no amber token exists in
+// @/lib/design-tokens (colors.warning is yellow-500), so the web amber/10
+// value is kept as an explicit constant.
+const AMBER_TINT = "rgba(251,191,36,0.10)";
+
 interface TriggerDisplay {
   label: string;
   icon: React.ReactNode;
@@ -122,8 +127,12 @@ export function WorkflowDraftCard({ data }: { data: WorkflowDraftData }) {
       android_ripple={{ color: "rgba(255,255,255,0.05)" }}
       className="mx-4 my-1 rounded-2xl bg-zinc-800 p-4"
     >
-      {/* Dashed warning ring — matches web's border-dashed border-warning/40 */}
-      <View className="absolute inset-0 rounded-2xl border border-dashed border-amber-500/40" />
+      {/* Amber tonal fill — draft affordance (replaces web's dashed border) */}
+      <View
+        className="absolute inset-0 rounded-2xl"
+        style={{ backgroundColor: AMBER_TINT }}
+        pointerEvents="none"
+      />
 
       {/* "Draft" badge — top-right pill */}
       <View className="absolute -top-2 right-3 self-start rounded-full bg-amber-500/20 px-2 py-0.5">

@@ -1,4 +1,8 @@
-import type { StreamToolOutput, ToolDataEntry } from "@gaia/shared/chat";
+import type {
+  ChatStreamEvent,
+  StreamToolOutput,
+  ToolDataEntry,
+} from "@gaia/shared/chat";
 import { parseChatStreamEvent } from "@gaia/shared/chat";
 import { createSSEConnection, type SSEEvent } from "@/lib/sse-client";
 import type {
@@ -12,7 +16,16 @@ import type {
 const STREAM_STALL_TIMEOUT_MS = 45_000;
 
 export interface StreamCallbacks {
-  onChunk: (text: string) => void;
+  /**
+   * Called for EVERY parsed stream event, before the granular callbacks
+   * below. This is how consumers fold events into a TurnAccumulator via
+   * applyStreamEvent (@gaia/shared/chat) — including frames with no granular
+   * callback of their own (reasoning, subagent_start/end, todo_progress).
+   */
+  onStreamEvent?: (event: ChatStreamEvent) => void;
+  /** Called for each response text delta. Optional — accumulator consumers
+   *  derive text from acc.responseText instead. */
+  onChunk?: (text: string) => void;
   onConversationCreated?: (
     conversationId: string,
     userMessageId: string,
@@ -125,6 +138,9 @@ function handleParsedStreamEvent(
   parsed: ReturnType<typeof parseChatStreamEvent>[number],
   callbacks: StreamCallbacks,
 ): boolean {
+  // Fold into the consumer's accumulator first — the reducer decides what
+  // each event contributes to message state (it ignores lifecycle frames).
+  callbacks.onStreamEvent?.(parsed);
   switch (parsed.type) {
     case "done":
       callbacks.onDone();
@@ -170,7 +186,7 @@ function handleParsedStreamEvent(
       }
       return false;
     case "response":
-      callbacks.onChunk(parsed.chunk);
+      callbacks.onChunk?.(parsed.chunk);
       return false;
     case "unknown":
       // Legacy image_data/status shape in the raw payload.
@@ -179,7 +195,9 @@ function handleParsedStreamEvent(
       return false;
     default:
       // keepalive, token_usage, main_response_complete,
-      // conversation_description, todo_progress — intentionally ignored.
+      // conversation_description — intentionally ignored. reasoning,
+      // subagent_start, subagent_end and todo_progress are forwarded via
+      // onStreamEvent above; the turn accumulator owns their state.
       return false;
   }
 }

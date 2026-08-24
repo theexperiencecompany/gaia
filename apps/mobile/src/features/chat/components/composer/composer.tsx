@@ -21,6 +21,7 @@ import {
   Wrench01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { colors } from "@/lib/design-tokens";
 import { haptics } from "@/lib/haptics";
 import { useResponsive } from "@/lib/responsive";
 import type { AttachmentFile } from "./attachment-preview";
@@ -287,7 +288,7 @@ export function Composer({
             marginHorizontal: spacing.xs,
             marginBottom: spacing.xs,
             borderRadius: moderateScale(12, 0.5),
-            backgroundColor: "#1a1a1a",
+            backgroundColor: colors.secondaryBg,
             overflow: "hidden",
           }}
         >
@@ -303,7 +304,7 @@ export function Composer({
                 borderBottomColor: "rgba(255,255,255,0.05)",
               }}
             >
-              <Text style={{ color: "#ffffff", fontSize: fontSize.sm }}>
+              <Text style={{ color: colors.white, fontSize: fontSize.sm }}>
                 /{command}
               </Text>
             </PressableFeedback>
@@ -313,7 +314,7 @@ export function Composer({
 
       <View
         style={{
-          backgroundColor: "#27272a",
+          backgroundColor: colors.zinc800,
           borderRadius: moderateScale(20, 0.5),
         }}
       >
@@ -346,13 +347,13 @@ export function Composer({
               <AppIcon
                 icon={LinkBackwardIcon}
                 size={iconSize.sm}
-                color="#a1a1aa"
+                color={colors.zinc400}
               />
               <View style={{ flex: 1, overflow: "hidden" }}>
                 <Text
                   style={{
                     fontSize: fontSize.xs,
-                    color: "#a1a1aa",
+                    color: colors.zinc400,
                     fontWeight: "600",
                     marginBottom: 2,
                   }}
@@ -362,7 +363,7 @@ export function Composer({
                 <Text
                   style={{
                     fontSize: fontSize.sm,
-                    color: "#e4e4e7",
+                    color: colors.zinc200,
                   }}
                   numberOfLines={1}
                 >
@@ -387,7 +388,7 @@ export function Composer({
                 <AppIcon
                   icon={Cancel01Icon}
                   size={iconSize.sm - 2}
-                  color="#a1a1aa"
+                  color={colors.zinc400}
                 />
               </PressableFeedback>
             )}
@@ -434,104 +435,101 @@ export function Composer({
           />
         )}
 
-        {/* Two-row composer: input on top, toolbar below — reserves space for
-            tools / voice / future affordances. Web-style density. */}
-        <TextInput
-          ref={inputRef}
-          style={{
-            paddingHorizontal: 16,
-            paddingTop: 14,
-            paddingBottom: 6,
-            fontSize: fontSize.base,
-            lineHeight: Math.round(fontSize.base * 1.35),
-            color: "#ffffff",
-            minHeight: 36,
-            maxHeight: maxInputHeight,
-            ...(inputHeight > 0 && {
-              height: Math.min(inputHeight, maxInputHeight),
-            }),
-          }}
-          placeholder={placeholder}
-          placeholderTextColor="#71717a"
-          value={message}
-          onChangeText={handleTextChange}
-          onContentSizeChange={handleContentSizeChange}
-          multiline
-          maxLength={4000}
-          textAlignVertical="top"
-        />
-
+        {/* Single-row composer: [plus] [tools] [input] [send] — toolbar merged
+            into the pill to keep the composer compact. */}
         <View
           style={{
             flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-            paddingHorizontal: 10,
-            paddingBottom: 10,
-            paddingTop: 6,
-            gap: 8,
+            alignItems: "flex-end",
+            paddingHorizontal: 6,
+            paddingBottom: 6,
           }}
         >
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <Animated.View style={plusAnimatedStyle}>
-              <Pressable
-                onPress={handlePlusPress}
-                hitSlop={8}
-                onPressIn={() => {
-                  plusScale.value = withSpring(0.92, {
-                    damping: 15,
-                    stiffness: 400,
-                  });
-                }}
-                onPressOut={() => {
-                  plusScale.value = withSpring(1, {
-                    damping: 15,
-                    stiffness: 400,
-                  });
-                }}
-                style={{
-                  width: 36,
-                  height: 36,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <AppIcon
-                  icon={PlusSignIcon}
-                  size={iconSize.md}
-                  color="#a1a1aa"
-                />
-              </Pressable>
-            </Animated.View>
-
+          <Animated.View style={plusAnimatedStyle}>
             <Pressable
-              onPress={() => {
-                haptics.light();
-                dismissKeyboard();
-                slashCommandRef.current?.open();
-              }}
+              onPress={handlePlusPress}
               hitSlop={6}
+              onPressIn={() => {
+                plusScale.value = withSpring(0.92, {
+                  damping: 15,
+                  stiffness: 400,
+                });
+              }}
+              onPressOut={() => {
+                plusScale.value = withSpring(1, {
+                  damping: 15,
+                  stiffness: 400,
+                });
+              }}
               style={{
-                width: 32,
-                height: 32,
+                width: 36,
+                height: 36,
                 alignItems: "center",
                 justifyContent: "center",
               }}
-              android_ripple={{
-                color: "rgba(255,255,255,0.08)",
-                radius: 16,
-              }}
-              accessibilityLabel="Tools"
+              accessibilityLabel="Add attachment"
             >
-              <AppIcon icon={Wrench01Icon} size={20} color="#a1a1aa" />
+              <AppIcon
+                icon={PlusSignIcon}
+                size={iconSize.md}
+                color={colors.zinc400}
+              />
             </Pressable>
-          </View>
+          </Animated.View>
+
+          <Pressable
+            onPress={() => {
+              haptics.light();
+              dismissKeyboard();
+              slashCommandRef.current?.open();
+            }}
+            hitSlop={6}
+            style={{
+              width: 32,
+              height: 36,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            android_ripple={{
+              color: "rgba(255,255,255,0.08)",
+              radius: 16,
+            }}
+            accessibilityLabel="Tools"
+          >
+            <AppIcon
+              icon={Wrench01Icon}
+              size={20}
+              color={
+                selectedTool || selectedWorkflow ? colors.brand : colors.zinc400
+              }
+            />
+          </Pressable>
+
+          <TextInput
+            ref={inputRef}
+            style={{
+              flex: 1,
+              paddingHorizontal: 8,
+              paddingTop: 8,
+              paddingBottom: 7,
+              fontSize: fontSize.base,
+              lineHeight: Math.round(fontSize.base * 1.35),
+              color: colors.white,
+              minHeight: 36,
+              maxHeight: maxInputHeight,
+              ...(inputHeight > 0 && {
+                height: Math.min(inputHeight, maxInputHeight),
+              }),
+            }}
+            placeholder={placeholder}
+            placeholderTextColor={colors.zinc500}
+            value={message}
+            onChangeText={handleTextChange}
+            onContentSizeChange={handleContentSizeChange}
+            multiline
+            maxLength={4000}
+            textAlignVertical="top"
+          />
 
           <Animated.View style={sendAnimatedStyle}>
             <Pressable
@@ -545,7 +543,7 @@ export function Composer({
                 backgroundColor: isStreaming
                   ? "rgba(63,63,70,0.8)"
                   : hasContent
-                    ? "#00bbff"
+                    ? colors.brand
                     : "rgba(63,63,70,0.6)",
                 alignItems: "center",
                 justifyContent: "center",
@@ -557,7 +555,7 @@ export function Composer({
                     width: 10,
                     height: 10,
                     borderRadius: 2,
-                    backgroundColor: "#e4e4e7",
+                    backgroundColor: colors.zinc200,
                   }}
                 />
               ) : (
@@ -565,7 +563,7 @@ export function Composer({
                   icon={ArrowUp02Icon}
                   size={iconSize.sm}
                   strokeWidth={2.5}
-                  color={hasContent ? "#000000" : "#71717a"}
+                  color={hasContent ? colors.black : colors.zinc500}
                 />
               )}
             </Pressable>

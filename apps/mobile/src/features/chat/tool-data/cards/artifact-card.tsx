@@ -89,10 +89,10 @@ function ArtifactRow({ artifact }: { artifact: ArtifactData }) {
   };
 
   return (
-    // Mirrors web `border border-zinc-700/80 bg-zinc-900/70` standalone card.
+    // Tonal separation: bg-zinc-900 row inside the zinc-800 chat surface.
     <Pressable
       onPress={open}
-      className="rounded-2xl border border-zinc-700 bg-zinc-900 p-3.5"
+      className="rounded-2xl bg-zinc-900 p-3.5"
       android_ripple={{ color: "rgba(255,255,255,0.05)" }}
     >
       <View className="flex-row items-center justify-between gap-3">
