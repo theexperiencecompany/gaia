@@ -125,6 +125,7 @@ describe("evaluateSetupReadiness", () => {
   it("flags each unconfigured item with a setup-URL fix", () => {
     const items = evaluateSetupReadiness(
       {
+        auth_mode: "workos",
         models_seeded: false,
         plans_seeded: false,
         has_admin_account: false,
@@ -151,6 +152,7 @@ describe("evaluateSetupReadiness", () => {
   it("passes when every item is configured", () => {
     const items = evaluateSetupReadiness(
       {
+        auth_mode: "workos",
         models_seeded: true,
         plans_seeded: true,
         has_admin_account: true,
@@ -178,6 +180,47 @@ describe("evaluateSetupReadiness", () => {
     expect(
       items.find((i) => i.label === "LLM provider configured")?.configured,
     ).toBe(true);
+  });
+
+  it("drops the billing item for self-host instances (auth_mode local)", () => {
+    // Self-host never enables billing — the backend pins billing_enabled to
+    // ENV !== "selfhost". Requiring it here warned forever on every install.
+    const items = evaluateSetupReadiness(
+      {
+        auth_mode: "local",
+        models_seeded: true,
+        plans_seeded: true,
+        has_admin_account: true,
+        billing_enabled: false,
+        providers: { openrouter: { configured: true } },
+      },
+      3000,
+    );
+
+    expect(items.find((i) => i.label === "billing enabled")).toBeUndefined();
+    expect(items.every((i) => i.configured)).toBe(true);
+  });
+
+  it("still reports other unconfigured items on a self-host instance", () => {
+    const items = evaluateSetupReadiness(
+      {
+        auth_mode: "local",
+        models_seeded: false,
+        plans_seeded: true,
+        has_admin_account: false,
+        billing_enabled: false,
+        providers: {},
+      },
+      3000,
+    );
+
+    // Billing is gone entirely; the remaining unconfigured items are intact.
+    expect(items.find((i) => i.label === "billing enabled")).toBeUndefined();
+    expect(items.filter((i) => !i.configured).map((i) => i.label)).toEqual([
+      "models seeded",
+      "LLM provider configured",
+      "admin account created",
+    ]);
   });
 });
 
@@ -353,6 +396,7 @@ describe("checkSetupReadiness", () => {
   it("emits one warning-level fail per unconfigured item", async () => {
     stubFetch(async () =>
       okResponse({
+        auth_mode: "workos",
         models_seeded: true,
         plans_seeded: false,
         has_admin_account: true,
@@ -381,6 +425,7 @@ describe("checkSetupReadiness", () => {
   it("passes once every setup item is configured", async () => {
     stubFetch(async () =>
       okResponse({
+        auth_mode: "workos",
         models_seeded: true,
         plans_seeded: true,
         has_admin_account: true,
@@ -397,6 +442,32 @@ describe("checkSetupReadiness", () => {
 
     expect(results).toHaveLength(1);
     expect(results[0]?.state).toBe("ok");
+  });
+
+  it("reports ok on a self-host instance with billing disabled", async () => {
+    // The reported bug: every self-host install showed a permanent
+    // "[warn] Billing enabled is not configured" because the backend sets
+    // billing_enabled = (ENV !== "selfhost").
+    stubFetch(async () =>
+      okResponse({
+        auth_mode: "local",
+        models_seeded: true,
+        plans_seeded: true,
+        has_admin_account: true,
+        billing_enabled: false,
+        providers: { openrouter: { configured: true } },
+      }),
+    );
+
+    const results = await checkSetupReadiness({
+      apiHealthy: true,
+      apiPort: 8000,
+      webPort: 3000,
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]?.state).toBe("ok");
+    expect(results[0]?.label).toBe("Setup readiness");
   });
 
   it("skips when the API health check already failed", async () => {

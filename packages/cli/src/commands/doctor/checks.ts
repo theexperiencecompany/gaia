@@ -131,6 +131,8 @@ export function resolvePort(
 
 /** Subset of the public `/setup/status` payload the CLI cares about. */
 export interface SetupStatusPayload {
+  /** Instance auth tier: "local" marks a self-host install. */
+  auth_mode?: "workos" | "local";
   models_seeded?: boolean;
   plans_seeded?: boolean;
   has_admin_account?: boolean;
@@ -158,21 +160,31 @@ export function evaluateSetupReadiness(
     (p) => p.configured === true,
   );
 
-  return (
-    [
-      { label: "models seeded", configured: payload.models_seeded === true },
-      { label: "plans seeded", configured: payload.plans_seeded === true },
-      { label: "LLM provider configured", configured: anyProviderConfigured },
-      {
-        label: "admin account created",
-        configured: payload.has_admin_account === true,
-      },
-      {
-        label: "billing enabled",
-        configured: payload.billing_enabled === true,
-      },
-    ] as const
-  ).map((item) => ({
+  const items: Array<{ label: string; configured: boolean }> = [
+    { label: "models seeded", configured: payload.models_seeded === true },
+    { label: "plans seeded", configured: payload.plans_seeded === true },
+    { label: "LLM provider configured", configured: anyProviderConfigured },
+    {
+      label: "admin account created",
+      configured: payload.has_admin_account === true,
+    },
+  ];
+
+  // Billing is a hosted-tier concern: the backend pins billing_enabled to
+  // ENV !== "selfhost" and self-host seeds the Free plan unconditionally, so
+  // a local-auth instance can never satisfy this item and would warn forever.
+  // AUTH_MODE=local is the payload's self-host marker (the backend refuses to
+  // boot local auth outside selfhost/dev, and `gaia setup` provisions it for
+  // every selfhost install). Unknown/absent auth_mode keeps the hosted
+  // behavior — warning on unconfigured billing is the safe default there.
+  if (payload.auth_mode !== "local") {
+    items.push({
+      label: "billing enabled",
+      configured: payload.billing_enabled === true,
+    });
+  }
+
+  return items.map((item) => ({
     ...item,
     fix: item.configured ? "" : readinessFix(webPort),
   }));

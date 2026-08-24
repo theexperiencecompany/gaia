@@ -34,10 +34,33 @@ export function parseEnvFileValues(content: string | null): EnvValues {
   return values;
 }
 
+/**
+ * Environment files carry generated machine secrets (AGENT_SECRET et al.), so
+ * they must never be group/world-readable.
+ */
+const ENV_FILE_MODE = 0o600;
+
 function backupIfExists(filePath: string): void {
   if (fs.existsSync(filePath)) {
-    fs.copyFileSync(filePath, `${filePath}.bak`);
+    const backupPath = `${filePath}.bak`;
+    fs.copyFileSync(filePath, backupPath);
+    // copyFileSync lands on default perms; the backup holds the previous
+    // generation of secrets, so it gets the same owner-only bar.
+    fs.chmodSync(backupPath, ENV_FILE_MODE);
   }
+}
+
+/**
+ * Write an env file locked to 0600. `writeFileSync`'s mode option only applies
+ * at creation — a pre-existing file keeps its old mode — so the explicit chmod
+ * also tightens files left world-readable by older CLI versions.
+ */
+function writeFileOwnerOnly(filePath: string, contents: string): void {
+  fs.writeFileSync(filePath, contents, {
+    encoding: "utf-8",
+    mode: ENV_FILE_MODE,
+  });
+  fs.chmodSync(filePath, ENV_FILE_MODE);
 }
 
 export function writeEnvFile(repoPath: string, values: EnvValues): void {
@@ -117,7 +140,7 @@ export function writeEnvFile(repoPath: string, values: EnvValues): void {
     lines.push("");
   }
 
-  fs.writeFileSync(envPath, lines.join("\n"), "utf-8");
+  writeFileOwnerOnly(envPath, lines.join("\n"));
 }
 
 export function writeWebEnvFile(
@@ -168,7 +191,7 @@ export function writeWebEnvFile(
     }
   }
 
-  fs.writeFileSync(webEnvPath, lines.join("\n"), "utf-8");
+  writeFileOwnerOnly(webEnvPath, lines.join("\n"));
 }
 
 const DOCKER_PORT_VAR_MAP: Record<number, string> = {
@@ -217,7 +240,7 @@ export function writeDockerComposeEnv(
   }
 
   lines.push("");
-  fs.writeFileSync(envPath, lines.join("\n"), "utf-8");
+  writeFileOwnerOnly(envPath, lines.join("\n"));
 }
 
 /**
