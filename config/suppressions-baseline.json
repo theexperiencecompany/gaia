@@ -775,6 +775,12 @@
       "hash": "5f441cea3d1c27664ebff2e990082f1a42882db83d3e03ee3d2fcc64867c93f9"
     },
     {
+      "path": "packages/cli/src/commands/up/screen.tsx",
+      "kind": "biome-ignore",
+      "count": 1,
+      "hash": "f3eb66220aa30a45a9d24465b4ea82bfcdaf76bbcc9b988d11ff7ffacdc491e8"
+    },
+    {
       "path": "packages/cli/src/ui/screens/init.tsx",
       "kind": "biome-ignore",
       "count": 1,
