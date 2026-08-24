@@ -1,7 +1,8 @@
 """Instance setup API — first-run status and provider configuration (self-host).
 
 Owns the ``/setup`` surface from ``.agents/plans/selfhost-contracts.md`` (A4):
-a PUBLIC status probe for the web setup wizard and instance-admin-gated
+a status probe for the web setup wizard (public only under AUTH_MODE=local)
+and instance-admin-gated
 management of provider credentials — masked listing, upsert, delete, live
 connectivity test, and setup-step completion tracking in instance settings.
 Every route except ``GET /status`` requires the instance administrator (see
@@ -14,7 +15,6 @@ public. LAN-local endpoints (e.g. a laptop running Ollama) are therefore
 configured via ``OLLAMA_BASE_URL`` server-side, not through this API.
 """
 
-import os
 from typing import Annotated, Any, Literal
 from urllib.parse import urlparse
 
@@ -32,6 +32,7 @@ from app.db.repositories.provider_credentials import provider_credentials_reposi
 from app.models.user_models import AuthenticatedUser
 from app.services.providers.provider_credentials_service import (
     ProviderConfig,
+    _env_fallback,
     delete as delete_provider_config,
     invalidate as invalidate_provider_cache,
     resolve as resolve_provider_config,
@@ -80,7 +81,11 @@ class SetupCompleteBody(BaseModel):
 
 @router.get("/status")
 async def get_setup_status() -> dict[str, Any]:
-    """PUBLIC first-run status for the web setup wizard and desktop CLI."""
+    """First-run status for the web setup wizard and desktop CLI.
+
+    Public only under AUTH_MODE=local (middleware conditionally excludes it
+    there); in workos mode the route requires a session like any other.
+    """
     log.set(operation="setup_status", auth_mode=settings.AUTH_MODE)
     has_admin_account = await local_credentials_repository.any_exists()
     configured = {p: await _is_usably_configured(p) for p in CREDENTIAL_PROVIDERS}
@@ -110,18 +115,10 @@ async def _is_usably_configured(provider: str) -> bool:
     """
     if await stored_credential_exists(provider):
         return True
-    match provider:
-        case "ollama":
-            return bool(os.getenv("OLLAMA_BASE_URL"))
-        case "openrouter":
-            return bool(settings.OPENROUTER_API_KEY)
-        case "gemini":
-            return bool(settings.GOOGLE_API_KEY)
-        case "tavily":
-            return bool(settings.TAVILY_API_KEY)
-        case "custom":
-            return bool(settings.ENV == "development" and settings.DEV_LLM_API_KEY)
-    return False
+    # Env-fallback semantics live in ONE place (the credential service) so
+    # this endpoint can never disagree with what the LLM/search layers
+    # actually resolve (e.g. Ollama's code-default URL is not "configured").
+    return _env_fallback(provider) is not None
 
 
 def _needs_setup(has_admin_account: bool, configured: dict[str, bool]) -> bool:
