@@ -34,7 +34,7 @@ from app.constants.memory import (
     MIN_USER_CONTENT_CHARS,
     MemorySourceType,
 )
-from app.db.redis import get_cache, set_cache
+from app.db.redis import redis_cache
 from app.db.repositories.conversations import conversation_repository
 from app.memory.engine import memory_engine
 from app.models.agent_models import agent_configurable
@@ -140,9 +140,14 @@ async def _messages_to_ingest(
     """
     if not thread_id:
         return messages, 0
-    mark = await get_cache(MEMORY_INGEST_MARK_KEY.format(user_id=user_id, thread_id=thread_id))
-    if not isinstance(mark, str):
+    if not redis_cache.client:
         return messages, 0
+    raw_mark = await redis_cache.client.get(
+        MEMORY_INGEST_MARK_KEY.format(user_id=user_id, thread_id=thread_id)
+    )
+    if raw_mark is None:
+        return messages, 0
+    mark = str(raw_mark)
     for index in range(len(messages) - 1, -1, -1):
         if messages[index].id == mark:
             cut = index + 1
@@ -159,12 +164,12 @@ async def _mark_ingested(user_id: str, thread_id: str | None, messages: list[Any
     Written only after ``retain`` returns, so a failed ingestion is retried on
     the next turn instead of being silently skipped.
     """
-    if not thread_id or not messages or not messages[-1].id:
+    if not thread_id or not messages or not messages[-1].id or not redis_cache.client:
         return
-    await set_cache(
+    await redis_cache.client.set(
         MEMORY_INGEST_MARK_KEY.format(user_id=user_id, thread_id=thread_id),
         messages[-1].id,
-        ttl=MEMORY_INGEST_MARK_TTL,
+        ex=MEMORY_INGEST_MARK_TTL,
     )
 
 

@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -14,6 +15,15 @@ from app.agents.core.nodes.memory_node import (
 from app.utils.multimodal import extract_text_content
 
 NODE = "app.agents.core.nodes.memory_node"
+
+
+def _fake_redis(mark: str | None) -> SimpleNamespace:
+    """A stand-in for ``redis_cache`` holding one high-water mark."""
+    client = SimpleNamespace(
+        get=AsyncMock(return_value=mark),
+        set=AsyncMock(return_value=True),
+    )
+    return SimpleNamespace(client=client)
 
 
 class TestCheckWorthLearning:
@@ -295,7 +305,7 @@ class TestDeltaIngestion:
     async def test_the_first_run_ingests_the_whole_thread(self) -> None:
         messages = [HumanMessage(content="my anniversary is October 19", id="m1")]
 
-        with patch(f"{NODE}.get_cache", AsyncMock(return_value=None)):
+        with patch(f"{NODE}.redis_cache", _fake_redis(None)):
             to_ingest, context_count = await _messages_to_ingest("u1", "t1", messages)
 
         assert to_ingest == messages
@@ -308,7 +318,7 @@ class TestDeltaIngestion:
             HumanMessage(content="I also moved to Bangalore last week", id="m3"),
         ]
 
-        with patch(f"{NODE}.get_cache", AsyncMock(return_value="m2")):
+        with patch(f"{NODE}.redis_cache", _fake_redis("m2")):
             to_ingest, context_count = await _messages_to_ingest("u1", "t1", messages)
 
         assert [message.id for message in to_ingest[context_count:]] == ["m3"]
@@ -317,7 +327,7 @@ class TestDeltaIngestion:
     async def test_an_unknown_mark_falls_back_to_the_whole_thread(self) -> None:
         messages = [HumanMessage(content="hello there", id="m9")]
 
-        with patch(f"{NODE}.get_cache", AsyncMock(return_value="a-message-that-was-pruned")):
+        with patch(f"{NODE}.redis_cache", _fake_redis("a-message-that-was-pruned")):
             to_ingest, context_count = await _messages_to_ingest("u1", "t1", messages)
 
         assert to_ingest == messages
@@ -328,8 +338,7 @@ class TestDeltaIngestion:
 
         with (
             patch(f"{NODE}.memory_engine") as engine,
-            patch(f"{NODE}.get_cache", AsyncMock(return_value=None)),
-            patch(f"{NODE}.set_cache", AsyncMock(return_value=True)) as set_mark,
+            patch(f"{NODE}.redis_cache", _fake_redis(None)) as fake_redis,
         ):
             engine.retain = AsyncMock(side_effect=RuntimeError("pg down"))
             await _store_user_memory_background(
@@ -341,7 +350,7 @@ class TestDeltaIngestion:
                 user_name="Sam",
             )
 
-        set_mark.assert_not_awaited()
+        fake_redis.client.set.assert_not_awaited()
 
 
 @pytest.mark.unit
@@ -358,8 +367,7 @@ class TestSystemGeneratedConversations:
                 AsyncMock(return_value=system_generated),
             ),
             patch(f"{NODE}.memory_engine", engine),
-            patch(f"{NODE}.get_cache", AsyncMock(return_value=None)),
-            patch(f"{NODE}.set_cache", AsyncMock(return_value=True)),
+            patch(f"{NODE}.redis_cache", _fake_redis(None)),
         ):
             await _store_user_memory_background(
                 messages=[HumanMessage(content="Run the daily digest workflow now", id="m1")],
