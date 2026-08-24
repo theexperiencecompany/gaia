@@ -13,11 +13,17 @@ export type ApprovalUpdateHandler = (
 ) => void | Promise<void>;
 
 /**
- * Fired when the backend retracts the assistant message currently on screen —
- * its text turned out to be a preamble to a handoff, and the real reply is the
- * next message.
+ * Fired when one assistant message ends.
+ *
+ * `discarded` means the backend has retracted the text that message streamed —
+ * it turned out to be a preamble to a handoff, or a draft the style guard is
+ * replacing — and the real reply is the next message. A kept boundary is just
+ * as load-bearing: it is the point at which streamed text becomes final, and
+ * therefore the last point at which a retraction can still take it back.
  */
-export type DiscardMessageHandler = () => void | Promise<void>;
+export type MessageBoundaryHandler = (
+  discarded: boolean,
+) => void | Promise<void>;
 
 /**
  * Fired when the backend has something to tell the user that is NOT part of the

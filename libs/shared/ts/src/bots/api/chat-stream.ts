@@ -17,15 +17,15 @@ import { wideLog } from "../utils/wide-events";
 import type {
   ApprovalUpdateHandler,
   ChatStreamClient,
-  DiscardMessageHandler,
   MessageBoundary,
+  MessageBoundaryHandler,
   NoticeHandler,
 } from "./chat-stream.types";
 
 export type {
   ApprovalUpdateHandler,
   ChatStreamClient,
-  DiscardMessageHandler,
+  MessageBoundaryHandler,
   NoticeHandler,
 } from "./chat-stream.types";
 
@@ -56,7 +56,7 @@ export async function streamChat(
   onError: (error: Error) => void | Promise<void>,
   endpoint: string,
   onApprovalUpdate?: ApprovalUpdateHandler,
-  onDiscardMessage?: DiscardMessageHandler,
+  onMessageBoundary?: MessageBoundaryHandler,
   onNotice?: NoticeHandler,
   maxRetries = 2,
 ): Promise<string> {
@@ -74,7 +74,7 @@ export async function streamChat(
         attempt > 0,
         endpoint,
         onApprovalUpdate,
-        onDiscardMessage,
+        onMessageBoundary,
         onNotice,
       );
     } catch (error: unknown) {
@@ -155,7 +155,7 @@ async function streamChatOnce(
   retried: boolean,
   endpoint: string,
   onApprovalUpdate?: ApprovalUpdateHandler,
-  onDiscardMessage?: DiscardMessageHandler,
+  onMessageBoundary?: MessageBoundaryHandler,
   onNotice?: NoticeHandler,
 ): Promise<string> {
   let fullText = "";
@@ -261,12 +261,17 @@ async function streamChatOnce(
           await onChunk(frame.text);
         }
         if (frame.message_boundary) {
-          if (frame.message_boundary.discarded) {
+          const { discarded } = frame.message_boundary;
+          if (discarded) {
             pendingText = "";
-            await onDiscardMessage?.();
           } else {
             keepPendingText();
           }
+          // Both halves are announced. A kept boundary is what tells a
+          // streaming platform its message is final and may now be split into
+          // bubbles — do it any earlier and a retraction arriving next has
+          // nothing left it can take back.
+          await onMessageBoundary?.(discarded);
         }
       };
 
@@ -436,7 +441,10 @@ async function streamChatOnce(
         true,
         endpoint,
         onApprovalUpdate,
-        onDiscardMessage,
+        onMessageBoundary,
+        // Dropped here until now: a stale session token cost the retried
+        // attempt every rate-limit notice it produced.
+        onNotice,
       );
     }
 

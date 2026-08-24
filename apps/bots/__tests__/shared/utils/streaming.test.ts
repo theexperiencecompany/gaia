@@ -38,7 +38,14 @@ function body(word: string, sentences: number): string {
  * A scripted stream step: text to emit, a message boundary from the API, or an
  * out-of-band notice (the rate-limit warning).
  */
-type StreamStep = string | { discardAfter: true } | { notice: string };
+type StreamStep =
+  | string
+  | { boundary: { discarded: boolean } }
+  | { notice: string };
+
+/** The style guard's retraction frame, and the kept boundary that ends a message. */
+const DISCARDED = { boundary: { discarded: true } } as const;
+const KEPT = { boundary: { discarded: false } } as const;
 
 function streamingGaia(
   chunks: StreamStep[],
@@ -54,7 +61,7 @@ function streamingGaia(
       ) => void | Promise<void>,
       _onError: unknown,
       onApproval?: (data: ApprovalRequestData) => void | Promise<void>,
-      onDiscard?: () => void | Promise<void>,
+      onBoundary?: (discarded: boolean) => void | Promise<void>,
       onNotice?: (text: string) => void | Promise<void>,
     ) => {
       // Mirrors chat-stream.ts: streamed text only joins `fullText` once its
@@ -62,14 +69,23 @@ function streamingGaia(
       // platforms that render from `fullText` alone.
       let full = "";
       let pendingText = "";
+      const keepPendingText = (): void => {
+        if (!pendingText) return;
+        full = full ? `${full}${BREAK}${pendingText}` : pendingText;
+        pendingText = "";
+      };
       for (const [i, step] of chunks.entries()) {
         if (typeof step !== "string") {
           if ("notice" in step) {
             await onNotice?.(step.notice);
             continue;
           }
-          pendingText = "";
-          await onDiscard?.();
+          if (step.boundary.discarded) {
+            pendingText = "";
+          } else {
+            keepPendingText();
+          }
+          await onBoundary?.(step.boundary.discarded);
           continue;
         }
         pendingText += step;
@@ -88,7 +104,7 @@ function streamingGaia(
           } as ApprovalRequestData);
         }
       }
-      full += pendingText;
+      keepPendingText();
       await onDone(full, "conv-test");
       return full;
     },
@@ -480,7 +496,7 @@ describe("handleStreamingChat delivery", () => {
     // preamble followed by a second message repeating it.
     const { bubbles, newMessages } = await deliver("telegram", [
       "yeah, i can set all that up. let me get the tasks created",
-      { discardAfter: true },
+      DISCARDED,
       "yeah, all of it's being set up now.",
     ]);
 
@@ -488,6 +504,110 @@ describe("handleStreamingChat delivery", () => {
     expect(bubbles).toEqual([
       renderForPlatform("yeah, all of it's being set up now.", "telegram"),
     ]);
+  });
+
+  describe("a style-guard regeneration delivers only the rewrite", () => {
+    // Live on Telegram this shipped the reply TWICE. The draft's segments were
+    // sealed as their own messages while it was still streaming, so the
+    // retraction — which can only reopen the ONE bubble still being edited —
+    // left every sealed draft bubble on screen and the rewrite streamed into
+    // fresh ones underneath: 9 draft bubbles + 10 rewrite bubbles = 19 messages.
+    const DRAFT: StreamStep[] = [
+      "Hey — I've gone ahead and looked at all of this for you.",
+      BREAK,
+      "First, the calendar: you have three meetings tomorrow.\n\n" +
+        "Second, the inbox: forty-two unread, eight of them flagged.",
+      BREAK,
+      "Let me know if you want me to reschedule anything at all.",
+    ];
+    const REWRITE: StreamStep[] = [
+      "looked at all of it, here's where things stand for you.",
+      BREAK,
+      "three meetings tomorrow, and 42 unread with 8 of them flagged.",
+    ];
+    const REWRITE_BUBBLES = [
+      "looked at all of it, here's where things stand for you.",
+      "three meetings tomorrow, and 42 unread with 8 of them flagged.",
+    ].map((bubble) => renderForPlatform(bubble, "telegram"));
+
+    it("when the rewrite ends with a kept boundary", async () => {
+      const { bubbles, newMessages } = await deliver("telegram", [
+        ...DRAFT,
+        DISCARDED,
+        ...REWRITE,
+        KEPT,
+      ]);
+
+      expect(bubbles).toEqual(REWRITE_BUBBLES);
+      // The first rewrite bubble replaced the draft's live bubble in place, so
+      // only the second one needed a message of its own.
+      expect(newMessages).toBe(1);
+    });
+
+    it("when the stream ends without a boundary", async () => {
+      const { bubbles } = await deliver("telegram", [
+        ...DRAFT,
+        DISCARDED,
+        ...REWRITE,
+      ]);
+
+      expect(bubbles).toEqual(REWRITE_BUBBLES);
+    });
+  });
+
+  describe("a kept boundary delivers exactly what the stream end would", () => {
+    const PARAGRAPHS =
+      "First paragraph, long enough to stand on its own as a bubble.\n\n" +
+      "Second paragraph, also long enough to stand on its own here.\n\n" +
+      "Third paragraph, which is likewise long enough to be a bubble.";
+    const PARAGRAPH_BUBBLES = [
+      "First paragraph, long enough to stand on its own as a bubble.",
+      "Second paragraph, also long enough to stand on its own here.",
+      "Third paragraph, which is likewise long enough to be a bubble.",
+    ].map((bubble) => renderForPlatform(bubble, "telegram"));
+
+    it("segments a multi-paragraph reply at the boundary", async () => {
+      const { bubbles } = await deliver("telegram", [PARAGRAPHS, KEPT]);
+      expect(bubbles).toEqual(PARAGRAPH_BUBBLES);
+    });
+
+    it("segments the same reply when no boundary ever arrives", async () => {
+      const { bubbles } = await deliver("telegram", [PARAGRAPHS]);
+      expect(bubbles).toEqual(PARAGRAPH_BUBBLES);
+    });
+
+    it("splits a sentinel reply into the same bubbles at the boundary", async () => {
+      const { bubbles } = await deliver("telegram", [
+        "Hey there.",
+        BREAK,
+        "I checked your calendar.",
+        BREAK,
+        "You are free at 3pm.",
+        KEPT,
+      ]);
+
+      expect(bubbles).toEqual([
+        renderForPlatform("Hey there.", "telegram"),
+        renderForPlatform("I checked your calendar.", "telegram"),
+        renderForPlatform("You are free at 3pm.", "telegram"),
+      ]);
+    });
+  });
+
+  it("caps the live preview at the platform limit, then delivers the overflow", async () => {
+    // The preview holds a whole in-flight message now, so it can outgrow the
+    // 4096-char limit long before the boundary that splits it. An oversized
+    // edit is rejected outright, which would freeze the bubble on whatever it
+    // last showed — so the preview is capped, and the rest goes out at the
+    // boundary.
+    const text = body("Alpha", 200);
+    const { bubbles, writes } = await deliver("telegram", [text, KEPT]);
+
+    for (const write of writes) {
+      expect(write.length).toBeLessThanOrEqual(PLATFORM_LIMITS.telegram);
+    }
+    expect(bubbles.length).toBeGreaterThan(1);
+    expect(words(bubbles.join(" "))).toBe(words(text));
   });
 
   it("never truncates, on any platform", async () => {
@@ -528,7 +648,7 @@ describe("a rate-limit notice", () => {
     const { bubbles } = await deliver("telegram", [
       "let me get that set up",
       { notice: NOTICE },
-      { discardAfter: true },
+      DISCARDED,
       "all set.",
     ]);
 

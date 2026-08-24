@@ -39,7 +39,7 @@ async function drive(sseBody: string) {
   const onDone = vi.fn();
   const onError = vi.fn();
   const onApproval = vi.fn();
-  const onDiscard = vi.fn();
+  const onBoundary = vi.fn();
   const onNotice = vi.fn();
   await streamChat(
     makeDeps(sseBody),
@@ -49,10 +49,10 @@ async function drive(sseBody: string) {
     onError,
     "/api/v1/bot/chat-stream",
     onApproval,
-    onDiscard,
+    onBoundary,
     onNotice,
   );
-  return { onChunk, onDone, onError, onDiscard, onNotice };
+  return { onChunk, onDone, onError, onBoundary, onNotice };
 }
 
 function frames(...payloads: object[]): string {
@@ -135,7 +135,7 @@ describe("streamChat — a chunk carrying several frames", () => {
     // chunk is async — every handler may await — so `end` used to fire mid-loop
     // and flip the done flag, and every frame after the first `await` was
     // dropped on the floor: the notice, the boundary, and the rest of the text.
-    const { onChunk, onNotice, onDiscard, onDone } = await drive(
+    const { onChunk, onNotice, onBoundary, onDone } = await drive(
       frames(
         { text: "one" },
         { notice: { text: NOTICE } },
@@ -149,7 +149,9 @@ describe("streamChat — a chunk carrying several frames", () => {
 
     expect(onChunk.mock.calls.flat()).toEqual(["one", "two", "three"]);
     expect(onNotice).toHaveBeenCalledTimes(1);
-    expect(onDiscard).toHaveBeenCalledTimes(1);
+    // Both boundaries are announced: the retraction, and the kept one that
+    // tells a bot its message is final and may now be split into bubbles.
+    expect(onBoundary.mock.calls.flat()).toEqual([true, false]);
     expect(onDone).toHaveBeenCalledWith("three", "c1");
   });
 });
