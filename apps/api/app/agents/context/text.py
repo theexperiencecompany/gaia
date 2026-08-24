@@ -4,6 +4,8 @@ Separated from the sections that place it so a wording change is a diff a
 reviewer can read without also reading the fetch logic around it.
 """
 
+from typing import Final, NamedTuple
+
 #: Sections within the stable block are single lines or short line groups, so
 #: they read as one block. Volatile sections are paragraphs and get a blank line.
 STABLE_SECTION_JOIN = "\n"
@@ -35,9 +37,33 @@ EXECUTOR_CONNECTED_INTEGRATIONS_HEADER = (
     "handoff subagent_id. If the user asks for a provider that is NOT listed here, STILL do the "
     "handoff: the handoff is what shows the user the connect card. Telling the user to connect "
     "WITHOUT handing off leaves them hunting for a button that was never rendered. Built-in "
-    "subagents (reminders, todos, gaia_knowledge_guide, docgen) are always available and are "
-    "not listed here:"
+    "subagents (reminders, todos, gaia_knowledge_guide, docgen) are always available; one is "
+    "listed below only where a connected account could be mistaken for it:"
 )
+
+
+class BuiltinOverlap(NamedTuple):
+    """A built-in subagent whose job a connected provider gets mistaken for."""
+
+    subagent_id: str
+    description: str
+    provider_ids: frozenset[str]
+
+
+#: Built-ins the manifest must spell out when one of these providers is connected.
+#: Left implicit, the built-in appears nowhere in the list and the agent reads "the
+#: user's todo list" as whichever task product it can see — which is how an executor
+#: filed eight GAIA todos as "8 tasks created (Todoist)".
+BUILTIN_CAPABILITY_OVERLAPS: Final[tuple[BuiltinOverlap, ...]] = (
+    BuiltinOverlap(
+        subagent_id="todos",
+        description="Todos: GAIA's own todo list",
+        provider_ids=frozenset({"todoist", "googletasks"}),
+    ),
+)
+
+#: Renders to ``- Todos: GAIA's own todo list, not Todoist (todos)``.
+BUILTIN_OVERLAP_LINE: Final[str] = "- {description}, not {providers} ({subagent_id})"
 
 MEMORY_RECALL_HEADER = (
     "Based on our previous conversations (bracketed dates say when "

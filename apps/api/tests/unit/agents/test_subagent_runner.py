@@ -1,5 +1,7 @@
 """Unit tests for subagent_runner.py and subagent_helpers.py."""
 
+from contextlib import contextmanager
+import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -14,6 +16,10 @@ import pytest
 from app.agents.context.assemble import AssembledContext
 from app.agents.context.slots import PromptSlot
 from app.agents.context.tiers import AgentTier
+from app.agents.core.background import redis_writer as rw, session as sess
+from app.agents.core.background.executor_capture import drain_executor_tool_data
+from app.agents.core.background.redis_writer import make_redis_stream_writer
+from app.agents.core.background.session import RunKind, StreamSession, create_session
 from app.agents.core.graph_manager import GraphUnavailableError
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
@@ -996,3 +1002,161 @@ class TestCreateSubagentSystemMessage:
 
         assert isinstance(result, SystemMessage)
         assert result.content == "Test prompt"
+
+
+# ---------------------------------------------------------------------------
+# reasoning: streamed per delta, persisted per block
+# ---------------------------------------------------------------------------
+
+
+def _thinking(text: str) -> AIMessageChunk:
+    return AIMessageChunk(content="", additional_kwargs={"reasoning_content": text})
+
+
+@contextmanager
+def _real_stream_writer(stream_id: str = "s-reasoning"):
+    """Drive the run through the REAL redis stream writer over a live session.
+
+    The split under test lives between the publish and the collector, so a
+    MagicMock writer cannot see it: the SSE frames and the persisted entries have
+    to come off the same run.
+    """
+    sess._sessions.clear()
+    session = create_session(stream_id, RunKind.QUEUED)
+    with patch.object(rw, "stream_manager") as stream_manager:
+        stream_manager.publish_chunk = AsyncMock()
+        yield make_redis_stream_writer(stream_id), stream_manager, session
+    sess._sessions.clear()
+
+
+def _published_reasoning(stream_manager: MagicMock) -> list[str]:
+    frames = [
+        json.loads(call[0][1].removeprefix("data: "))
+        for call in stream_manager.publish_chunk.call_args_list
+    ]
+    return [frame["reasoning"]["content"] for frame in frames if "reasoning" in frame]
+
+
+def _collected_reasoning(session: StreamSession) -> list[str]:
+    return [evt["reasoning"]["content"] for evt in session.tool_events if "reasoning" in evt]
+
+
+class TestReasoningStreamsPerDeltaButPersistsPerBlock:
+    """The live stream must stay token by token — that is what makes thinking
+    visible as it happens. What must not stay per token is the SAVE: every
+    published event is also appended to the stream session, which is persisted
+    verbatim, and one prod conversation ended up carrying ~22k reasoning entries.
+    So the publish is untouched and the collector coalesces each contiguous run
+    of thinking into one entry."""
+
+    @pytest.mark.asyncio
+    async def test_four_deltas_stream_as_four_frames_and_persist_as_two_entries(self):
+        with _real_stream_writer() as (writer, stream_manager, session):
+
+            async def _fake_astream(*args, **kwargs):
+                yield ("messages", (_thinking("a"), {}))
+                yield ("messages", (_thinking("b"), {}))
+                yield ("messages", (_thinking("c"), {}))
+                yield ("updates", {"agent": {"messages": []}})
+                yield ("messages", (_thinking("d"), {}))
+
+            mock_graph = MagicMock()
+            mock_graph.astream = _fake_astream
+            ctx = _make_ctx(subagent_graph=mock_graph)
+
+            with (
+                patch("app.agents.core.subagents.subagent_runner.log"),
+                patch(
+                    "app.agents.core.subagents.subagent_runner.extract_tool_entries_from_update",
+                    new_callable=AsyncMock,
+                    return_value=[("tc-1", {"name": "web_search"})],
+                ),
+            ):
+                await execute_subagent_stream(ctx, stream_writer=writer)
+
+            # Liveness: every delta reached the client, in order.
+            assert _published_reasoning(stream_manager) == ["a", "b", "c", "d"]
+            # Persistence: the tool call is the only boundary, so two blocks.
+            assert _collected_reasoning(session) == ["abc", "d"]
+
+    @pytest.mark.asyncio
+    async def test_the_entries_that_reach_tool_data_are_two_as_well(self):
+        """What is persisted is the DRAINED shape, not the raw collector — the
+        entry count has to survive absorb_collector_event too."""
+        with _real_stream_writer() as (writer, _stream_manager, _session):
+
+            async def _fake_astream(*args, **kwargs):
+                yield ("messages", (_thinking("a"), {}))
+                yield ("messages", (_thinking("b"), {}))
+                yield ("messages", (_thinking("c"), {}))
+                yield ("updates", {"agent": {"messages": []}})
+                yield ("messages", (_thinking("d"), {}))
+
+            mock_graph = MagicMock()
+            mock_graph.astream = _fake_astream
+            ctx = _make_ctx(subagent_graph=mock_graph)
+
+            with (
+                patch("app.agents.core.subagents.subagent_runner.log"),
+                patch(
+                    "app.agents.core.subagents.subagent_runner.extract_tool_entries_from_update",
+                    new_callable=AsyncMock,
+                    return_value=[("tc-1", {"name": "web_search"})],
+                ),
+            ):
+                await execute_subagent_stream(ctx, stream_writer=writer)
+
+            reasoning_entries = [
+                entry["data"]["reasoning"]
+                for entry in drain_executor_tool_data("s-reasoning")
+                if entry.get("tool_category") == "reasoning"
+            ]
+
+        assert reasoning_entries == ["abc", "d"]
+
+    @pytest.mark.asyncio
+    async def test_thinking_with_no_tool_after_it_is_one_entry_not_dropped(self):
+        with _real_stream_writer() as (writer, stream_manager, session):
+
+            async def _fake_astream(*args, **kwargs):
+                yield ("messages", (_thinking("no tool "), {}))
+                yield ("messages", (_thinking("followed this"), {}))
+
+            mock_graph = MagicMock()
+            mock_graph.astream = _fake_astream
+            ctx = _make_ctx(subagent_graph=mock_graph)
+
+            with patch("app.agents.core.subagents.subagent_runner.log"):
+                await execute_subagent_stream(ctx, stream_writer=writer)
+
+            assert _published_reasoning(stream_manager) == ["no tool ", "followed this"]
+            assert _collected_reasoning(session) == ["no tool followed this"]
+
+    @pytest.mark.asyncio
+    async def test_a_run_that_parks_on_an_approval_keeps_its_thinking(self):
+        with _real_stream_writer() as (writer, _stream_manager, session):
+
+            async def _fake_astream(*args, **kwargs):
+                yield ("messages", (_thinking("this one "), {}))
+                yield ("messages", (_thinking("needs a human"), {}))
+                yield ("updates", {"__interrupt__": ()})
+
+            mock_graph = MagicMock()
+            mock_graph.astream = _fake_astream
+            ctx = _make_ctx(subagent_graph=mock_graph)
+
+            with patch("app.agents.core.subagents.subagent_runner.log"):
+                await execute_subagent_stream(ctx, stream_writer=writer)
+
+            assert _collected_reasoning(session) == ["this one needs a human"]
+
+    @pytest.mark.asyncio
+    async def test_two_subagents_thinking_on_one_stream_never_merge(self):
+        """Merging on adjacency alone would splice one subagent's thinking into
+        another's block, and the block carries the subagent_id that nests it."""
+        with _real_stream_writer() as (writer, _stream_manager, session):
+            writer({"reasoning": {"content": "alpha ", "subagent_id": "sub-1"}})
+            writer({"reasoning": {"content": "beta", "subagent_id": "sub-2"}})
+            writer({"reasoning": {"content": " more", "subagent_id": "sub-2"}})
+
+            assert _collected_reasoning(session) == ["alpha ", "beta more"]

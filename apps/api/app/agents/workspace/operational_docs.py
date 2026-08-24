@@ -240,8 +240,10 @@ the UI; you can mutate them through the todo tools when explicitly asked
 This is NOT GAIA's tracked todos (institutional memory). Those live at
 `/workspace/gaia-tasks/` with a canvas + log — see the `tracked-todos` doc.
 When the user asks "what are my todos / add to my todo list / show my tasks",
-they mean this list or their external provider (Todoist, Google Tasks, Notion,
-Reminders), never tracked todos.
+they mean this list, never tracked todos and never a connected task provider —
+a todo here is GAIA's own and lives nowhere else, so never report it as Todoist,
+Google Tasks, or Notion. Only an explicit "add it to my <provider>" goes to that
+provider's subagent.
 """
 
 
