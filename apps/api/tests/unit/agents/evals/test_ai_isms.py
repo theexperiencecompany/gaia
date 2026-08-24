@@ -264,6 +264,22 @@ def test_a_mid_reply_question_is_not_a_closing_hook(text: str) -> None:
     assert score_reply(text).closing_hook == 0
 
 
+@pytest.mark.parametrize("text", ["", "   \n  "])
+def test_closing_hook_is_never_true_for_blank_text(text: str) -> None:
+    """``has_closing_hook``'s own early-out (no non-blank lines at all) must
+    return False, not the empty-input-is-a-hook inversion a mutant would."""
+    assert score_reply(text).closing_hook == 0
+
+
+def test_closing_hook_rejoins_the_sentinel_before_finding_the_last_line() -> None:
+    """``has_closing_hook`` re-splits the sentinel into a real newline before
+    it looks at the last line. If the replacement text were anything other
+    than a bare newline, the offer's leading word boundary would be glued to
+    the extra characters and the offer regex would stop matching."""
+    text = "prefix<NEW_MESSAGE_BREAK>want me to draft that? that's the only move that matters."
+    assert score_reply(text).closing_hook == 1
+
+
 def test_counts_the_bold_led_listicle_template() -> None:
     numbered = "1. **buy resend**\n2. **email churned users**\n3. **record the video**"
     headed = (
@@ -332,6 +348,23 @@ class TestViolationSnippets:
         text = "the numbers are in<NEW_MESSAGE_BREAK>want me to draft that? that's the only real move here."
         assert violation_snippets(text) == {
             "closing_hook": ["want me to draft that? that's the only"]
+        }
+
+    def test_closing_hook_snippet_spans_two_lines_when_justification_trails(self) -> None:
+        """The reflexive shape can split across the offer's own line and the
+        very next non-blank line (``non_blank_lines[-2]`` / ``[-1]``, exactly
+        two lines, no more). Both fragments come back, offer first, so the
+        correction note quotes the whole reflexive pair rather than just the
+        offer or just the justification."""
+        text = (
+            "should i pull up the win-back drafts right now?\n\n"
+            "that's the thing that actually gets this moving."
+        )
+        assert violation_snippets(text) == {
+            "closing_hook": [
+                "should i pull up the win-back drafts right now?",
+                "that's the thing that",
+            ]
         }
 
     def test_a_plain_offer_yields_no_closing_hook_snippet(self) -> None:
