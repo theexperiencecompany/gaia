@@ -347,6 +347,16 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
             description="Register a phone number on the GAIA iMessage pool",
         ),
     ),
+    "account_platform_connect": TieredRateLimits(
+        # Abuse guard: minting link credentials from chat. Conservative —
+        # connecting a platform is rare; even 5/day is far above real use.
+        free=RateLimitConfig(day=5, month=25),
+        pro=RateLimitConfig(day=10, month=50),
+        info=FeatureInfo(
+            title="Platform Connect",
+            description="Generate platform connection links from chat",
+        ),
+    ),
 }
 
 
