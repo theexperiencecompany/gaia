@@ -18,7 +18,11 @@ from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, HumanMessage
-from langchain_core.runnables import RunnableConfig, RunnableLambda
+from langchain_core.runnables import (
+    RunnableBinding,
+    RunnableConfig,
+    RunnableLambda,
+)
 from langchain_openrouter import ChatOpenRouter
 from pydantic import BaseModel, SecretStr
 import pytest
@@ -617,7 +621,17 @@ class TestFallbackHandover:
 
     @staticmethod
     def _bindable_runnable(result: Any) -> NonCallableMagicMock:
-        runnable = NonCallableMagicMock()
+        """A fallback double that reports as OpenRouter-wire.
+
+        ``_resolve_fallback`` binds the sticky key only onto a runnable whose
+        underlying client is OpenRouter (a Google client raises on the unknown
+        kwarg), and it decides that by walking the real wrapper chain — which a
+        bare mock has none of. ``spec`` makes the double a RunnableBinding
+        wrapping a real ChatOpenRouter, so these tests exercise the same branch
+        production takes instead of silently landing in the "not sticky" one.
+        """
+        runnable = NonCallableMagicMock(spec=RunnableBinding)
+        runnable.bound = ChatOpenRouter(model="m", api_key="k")
         runnable.with_retry = MagicMock(return_value=runnable)
         runnable.bind = MagicMock(return_value=runnable)
         runnable.ainvoke = AsyncMock(return_value=result)
@@ -2016,3 +2030,98 @@ class TestTheInvokeTimeoutIsEnforced:
                 timeout=0.05,
                 meter_auxiliary=False,
             )
+
+
+class TestTheStickyKeyNeverReachesANonOpenRouterFallback:
+    """``session_id`` is OpenRouter's sticky-routing hint. Binding it onto a
+    Google client raises ``ValidationError`` (GenerateContentConfig forbids
+    extra fields) BEFORE the request leaves the process — so a cross-provider
+    fallback that inherits the primary's routing param does not degrade, it
+    dies, taking the outage path down with it.
+
+    Reachable two ways: the graph lane falls OpenRouter -> Gemini by
+    PROVIDER_PRIORITY, and the memory lane's fallback is Gemini by design.
+    Verified live against the real API: the memory fallback failed with
+    "session_id: Extra inputs are not permitted".
+    """
+
+    @staticmethod
+    def _non_openrouter_fallback(result: AIMessage) -> NonCallableMagicMock:
+        """A fallback shaped like production's but on another provider.
+
+        Structurally a RunnableBinding around a non-OpenRouter chat model —
+        the shape ``with_structured_output``/``bind_tools`` produce. A REAL
+        ChatGoogleGenerativeAI would be higher fidelity but pulls in gRPC,
+        which segfaults mutmut's forking workers and takes this module's
+        mutation gate down with it; the real client is covered by the live
+        probe in the commit message instead.
+        """
+        from tests.helpers import create_fake_llm
+
+        runnable = NonCallableMagicMock(spec=RunnableBinding)
+        runnable.bound = create_fake_llm(["ok"])
+        runnable.with_retry = MagicMock(return_value=runnable)
+        runnable.bind = MagicMock(return_value=runnable)
+        runnable.ainvoke = AsyncMock(return_value=result)
+        return runnable
+
+    def test_an_openrouter_runnable_is_recognised_through_its_wrappers(self) -> None:
+        """The predicate must see through with_structured_output/bind_tools —
+        a fallback is never a bare client."""
+        from app.agents.llm.client import _is_openrouter_wire
+
+        client = ChatOpenRouter(model="m", api_key="k")
+
+        assert _is_openrouter_wire(client) is True
+        assert _is_openrouter_wire(client.bind_tools([])) is True
+        assert _is_openrouter_wire(client.with_structured_output(_Extracted)) is True
+
+    def test_another_provider_is_not_mistaken_for_openrouter(self) -> None:
+        from app.agents.llm.client import _is_openrouter_wire
+        from tests.helpers import create_fake_llm
+
+        other = create_fake_llm(["ok"])
+
+        assert _is_openrouter_wire(other) is False
+        assert _is_openrouter_wire(other.bind()) is False
+
+    def test_the_walk_terminates_on_a_self_generating_object(self) -> None:
+        from app.agents.llm.client import _is_openrouter_wire
+
+        """A mock invents a fresh child for every attribute access, so an
+        open-ended walk never converges — it hung this file's suite for eight
+        minutes. The walk follows only the two real wrapper types, bounded."""
+        assert _is_openrouter_wire(NonCallableMagicMock()) is False
+
+    async def test_a_gemini_fallback_is_invoked_without_the_sticky_key(self) -> None:
+        """The regression itself: a real Gemini structured runnable as the
+        fallback, a session on the config, and the call must reach the model
+        rather than raising on an unsupported argument."""
+        primary = TestAinvokeLlm._runnable(side_effect=ConnectionError("aux down"))
+        fallback = self._non_openrouter_fallback(AIMessage(content="ok"))
+
+        await ainvoke_llm(
+            primary,
+            [HumanMessage(content="hi")],
+            fallback=fallback,
+            config=RunnableConfig(configurable={"user_id": "u1", "session_id": "memory-u1"}),
+        )
+
+        fallback.ainvoke.assert_awaited()
+        fallback.bind.assert_not_called()
+
+    async def test_an_openrouter_fallback_still_gets_its_sticky_key(self) -> None:
+        """The gate must not disarm the behaviour it guards: a same-wire
+        fallback still lands back on the conversation's provider."""
+        primary = TestAinvokeLlm._runnable(side_effect=ConnectionError("provider down"))
+        fallback = TestFallbackHandover._bindable_runnable(AIMessage(content="ok"))
+
+        await ainvoke_llm(
+            primary,
+            [HumanMessage(content="hi")],
+            fallback=fallback,
+            config=RunnableConfig(configurable={"user_id": "u1", "session_id": "conv-1"}),
+            meter_auxiliary=False,
+        )
+
+        assert fallback.bind.call_args.kwargs == {"session_id": "conv-1"}

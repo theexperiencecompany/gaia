@@ -8,7 +8,12 @@ from langchain_core.language_models.chat_models import (
     BaseChatModel,
 )
 from langchain_core.messages import AIMessage
-from langchain_core.runnables import Runnable, RunnableConfig
+from langchain_core.runnables import (
+    Runnable,
+    RunnableBinding,
+    RunnableConfig,
+    RunnableSequence,
+)
 from langchain_core.runnables.utils import ConfigurableField
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openrouter import ChatOpenRouter
@@ -594,6 +599,40 @@ def _materialize_fallback(fallback: LLMFallback) -> Runnable | None:
     return fallback() if callable(fallback) and not isinstance(fallback, Runnable) else fallback
 
 
+#: How many wrapper hops to follow looking for the underlying client. Two is
+#: what production builds (sequence -> binding -> model); the margin absorbs a
+#: future wrapper without ever letting the walk run away.
+_WIRE_WALK_MAX_HOPS = 6
+
+
+def _is_openrouter_wire(runnable: Runnable) -> bool:
+    """Whether ``runnable`` ultimately calls an OpenRouter-wire client.
+
+    Decides who may receive ``session_id``, which only OpenRouter understands.
+    A fallback is never a bare client — it arrives wrapped by ``bind_tools`` or
+    ``with_structured_output`` — so the wrappers are walked rather than
+    type-checked: ``RunnableSequence`` exposes ``steps``, a binding exposes
+    ``bound``.
+    """
+    node: Any = runnable
+    # Bounded, and only through the two wrappers LangChain actually builds:
+    # ``bind_tools``/``bind`` yield a RunnableBinding, ``with_structured_output``
+    # a RunnableSequence whose first step is the model. Walking arbitrary
+    # attributes instead would not terminate on an object that generates them
+    # on access (a MagicMock does), and this runs on the failure path where a
+    # hang costs the call it exists to save.
+    for _ in range(_WIRE_WALK_MAX_HOPS):
+        if isinstance(node, ChatOpenRouter):
+            return True
+        if isinstance(node, RunnableBinding):
+            node = node.bound
+        elif isinstance(node, RunnableSequence):
+            node = node.first
+        else:
+            return False
+    return False
+
+
 def _resolve_fallback(
     fallback: LLMFallback,
     label: str,
@@ -607,6 +646,14 @@ def _resolve_fallback(
     # runnable so the fallback's requests stay on the conversation's provider —
     # the config-based value is dropped before the wire, while a bind survives
     # bind_tools and reaches the request params.
+    #
+    # ONLY onto an OpenRouter-wire fallback. A fallback is a DIFFERENT provider
+    # by construction, and Google's client rejects unknown kwargs before the
+    # request leaves the process (``GenerateContentConfig`` forbids extra
+    # fields), so binding there does not degrade the call — it raises, and the
+    # outage path dies with it. Reachable on both lanes: the graph falls
+    # OpenRouter -> Gemini by ``PROVIDER_PRIORITY``, and the memory pipeline's
+    # fallback is Gemini by design.
     resolved = _materialize_fallback(fallback)
     if resolved is None:
         raise primary_error
@@ -615,7 +662,7 @@ def _resolve_fallback(
         llm={"label": label, "error_type": type(primary_error).__name__, "fell_back": True},
         error=str(primary_error),
     )
-    if session_id:
+    if session_id and _is_openrouter_wire(resolved):
         resolved = resolved.bind(session_id=session_id)
     return with_llm_retry(resolved)
 
