@@ -466,14 +466,18 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
                             yield f"data: {json.dumps({'keepalive': True})}\n\n"
                             continue
 
-                        # Surface rate-limit cards (web-only UI) to bots as a short
-                        # text notice, before the web-only fields are dropped below.
-                        # Non-terminal: the agent's partial reply still streams, so
-                        # pad with blank lines on both sides to keep the notice on its
-                        # own paragraph rather than running into adjacent agent text.
+                        # Surface rate-limit cards (web-only UI) to bots as a
+                        # dedicated notice frame the client delivers out of band,
+                        # before the web-only fields are dropped below.
+                        #
+                        # Its own frame, not a {"text"} one: text belongs to the
+                        # assistant message in flight, so a notice sent that way
+                        # was dropped whenever that message was discarded (a
+                        # handoff preamble, a rewritten draft) — the user hit a
+                        # limit and was told nothing.
                         rate_limit_notice = await _bot_rate_limit_notice(data, user_id)
                         if rate_limit_notice is not None:
-                            payload = json.dumps({"text": f"\n\n{rate_limit_notice}\n\n"})
+                            payload = json.dumps({"notice": {"text": rate_limit_notice}})
                             yield f"data: {payload}\n\n"
                             continue
 

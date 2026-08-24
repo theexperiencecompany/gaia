@@ -77,7 +77,7 @@ def _fired_detectors(score: AiIsmScore) -> list[str]:
     return sorted(detector for detector in STYLE_GUARD_RULES if getattr(score, detector))
 
 
-class StyleGuardMiddleware(AgentMiddleware):  # type: ignore[type-arg]
+class StyleGuardMiddleware(AgentMiddleware):
     """Rewrite a comms reply that scores dirty against the AI-ism detectors.
 
     Comms tier only — it is registered by ``create_comms_middleware`` and

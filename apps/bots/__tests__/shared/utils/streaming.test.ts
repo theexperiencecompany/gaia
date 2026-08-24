@@ -34,8 +34,11 @@ function body(word: string, sentences: number): string {
  * `chatStream` and `createLinkToken`, so implementing the whole client would be
  * noise, but the cast stays explicit instead of disabling the lint rule.
  */
-/** A scripted stream step: text to emit, or a message boundary from the API. */
-type StreamStep = string | { discardAfter: true };
+/**
+ * A scripted stream step: text to emit, a message boundary from the API, or an
+ * out-of-band notice (the rate-limit warning).
+ */
+type StreamStep = string | { discardAfter: true } | { notice: string };
 
 function streamingGaia(
   chunks: StreamStep[],
@@ -52,6 +55,7 @@ function streamingGaia(
       _onError: unknown,
       onApproval?: (data: ApprovalRequestData) => void | Promise<void>,
       onDiscard?: () => void | Promise<void>,
+      onNotice?: (text: string) => void | Promise<void>,
     ) => {
       // Mirrors chat-stream.ts: streamed text only joins `fullText` once its
       // message is confirmed kept, so a discarded preamble never reaches the
@@ -60,6 +64,10 @@ function streamingGaia(
       let pendingText = "";
       for (const [i, step] of chunks.entries()) {
         if (typeof step !== "string") {
+          if ("notice" in step) {
+            await onNotice?.(step.notice);
+            continue;
+          }
           pendingText = "";
           await onDiscard?.();
           continue;
@@ -493,5 +501,42 @@ describe("handleStreamingChat delivery", () => {
       const { writes } = await deliver(platform, [body("Alpha", 200), BREAK]);
       expect(writes.join(" ")).not.toContain("(truncated)");
     }
+  });
+});
+
+describe("a rate-limit notice", () => {
+  const NOTICE = "You've reached your chat limit. Please try again later.";
+
+  it("is posted as its own message, not folded into the reply", async () => {
+    const { bubbles } = await deliver("telegram", [
+      "here's what I found",
+      { notice: NOTICE },
+      " and that's all of it.",
+    ]);
+
+    expect(bubbles).toContain(NOTICE);
+    expect(bubbles.filter((b) => b.includes(NOTICE))).toHaveLength(1);
+    expect(
+      bubbles.find((b) => b.includes("here's what I found")),
+    ).not.toContain(NOTICE);
+  });
+
+  it("survives the assistant message it arrived during being retracted", async () => {
+    // The bug this frame exists for: the notice used to ride the stream as
+    // reply text, so a discarded message took it with it — the user hit a wall
+    // and was told nothing.
+    const { bubbles } = await deliver("telegram", [
+      "let me get that set up",
+      { notice: NOTICE },
+      { discardAfter: true },
+      "all set.",
+    ]);
+
+    expect(bubbles).toContain(NOTICE);
+    expect(bubbles).toContain("all set.");
+    // The reply landed in its own message rather than overwriting the notice.
+    expect(bubbles.indexOf("all set.")).toBeGreaterThan(
+      bubbles.indexOf(NOTICE),
+    );
   });
 });

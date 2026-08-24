@@ -343,6 +343,14 @@ async function _handleStream(
     await enqueue(async () => {
       if (!pending && !shownText) return;
       pending = "";
+      // A SEALED bubble holds something that is not the retracted text — an
+      // approval prompt or a rate-limit notice, posted out of band. Reopening
+      // it would hand the replacement reply that message to overwrite, and the
+      // question the user still has to answer would disappear under it.
+      if (bubbleSealed) {
+        logger.info("bubble_discarded", { chars: 0, sealed: true });
+        return;
+      }
       bubbleSealed = false;
       bubbleProvisional = true;
       logger.info("bubble_discarded", { chars: shownText.length });
@@ -555,6 +563,7 @@ async function runStreamingChat(
   let firstChunkMs: number | null = null;
   let chunkCount = 0;
   let discardedMessages = 0;
+  let notices = 0;
   let conversationId = "";
 
   analytics?.client.capture(analytics.distinctId, BOT_EVENTS.MESSAGE_RECEIVED, {
@@ -637,6 +646,14 @@ async function runStreamingChat(
         discardedMessages += 1;
         await discardMessage();
       },
+      // A rate-limit notice is about the turn, not part of it. Out-of-band for
+      // the same reason the approval prompt is: it must survive the assistant
+      // message it arrived during being retracted, and it must reach a
+      // non-streaming platform that renders nothing until the stream ends.
+      async (text: string) => {
+        notices += 1;
+        await deliverOutOfBand(text);
+      },
     );
 
   try {
@@ -655,6 +672,7 @@ async function runStreamingChat(
       ttfb_ms: firstChunkMs ?? undefined,
       chunk_count: chunkCount,
       discarded_messages: discardedMessages,
+      notices_delivered: notices,
       response_length: responseLength,
       conversation_id: conversationId || undefined,
     });

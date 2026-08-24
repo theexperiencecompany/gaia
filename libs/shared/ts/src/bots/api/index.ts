@@ -20,6 +20,7 @@ import { wideLog } from "../utils/wide-events";
 import {
   type ApprovalUpdateHandler,
   type DiscardMessageHandler,
+  type NoticeHandler,
   streamChat,
 } from "./chat-stream";
 import {
@@ -173,6 +174,7 @@ export class GaiaClient {
     onError: (error: Error) => void | Promise<void>,
     onApprovalUpdate?: ApprovalUpdateHandler,
     onDiscardMessage?: DiscardMessageHandler,
+    onNotice?: NoticeHandler,
   ): Promise<string> {
     return streamChat(
       {
@@ -188,6 +190,7 @@ export class GaiaClient {
       "/api/v1/bot/chat-stream",
       onApprovalUpdate,
       onDiscardMessage,
+      onNotice,
     );
   }
 

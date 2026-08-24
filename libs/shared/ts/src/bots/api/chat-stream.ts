@@ -29,6 +29,18 @@ export type ApprovalUpdateHandler = (
 export type DiscardMessageHandler = () => void | Promise<void>;
 
 /**
+ * Fired when the backend has something to tell the user that is NOT part of the
+ * assistant's reply — currently the rate-limit notice, which the web renders as
+ * a card the bots drop.
+ *
+ * It gets its own frame rather than riding the stream as text because text
+ * belongs to whichever assistant message is in flight: a discarded message (a
+ * handoff preamble, a rewritten draft) took the notice down with it, and the
+ * user hit a limit and was told nothing.
+ */
+export type NoticeHandler = (text: string) => void | Promise<void>;
+
+/**
  * The slice of {@link GaiaClient} the streamer needs: the HTTP client, auth
  * header builder, and session-token storage. Passed as an explicit deps object
  * so the streaming logic stays decoupled from the client's private internals.
@@ -68,6 +80,7 @@ export async function streamChat(
   endpoint: string,
   onApprovalUpdate?: ApprovalUpdateHandler,
   onDiscardMessage?: DiscardMessageHandler,
+  onNotice?: NoticeHandler,
   maxRetries = 2,
 ): Promise<string> {
   let lastError: Error | null = null;
@@ -85,6 +98,7 @@ export async function streamChat(
         endpoint,
         onApprovalUpdate,
         onDiscardMessage,
+        onNotice,
       );
     } catch (error: unknown) {
       lastError = error instanceof Error ? error : new Error(String(error));
@@ -139,6 +153,7 @@ interface SseFrame {
   error?: string;
   session_token?: string;
   approval?: ApprovalRequestData;
+  notice?: { text: string };
   text?: string;
   message_boundary?: MessageBoundary;
   done?: boolean;
@@ -170,6 +185,7 @@ async function streamChatOnce(
   endpoint: string,
   onApprovalUpdate?: ApprovalUpdateHandler,
   onDiscardMessage?: DiscardMessageHandler,
+  onNotice?: NoticeHandler,
 ): Promise<string> {
   let fullText = "";
   // Text streamed since the last message boundary. It only joins `fullText`
@@ -256,6 +272,33 @@ async function streamChatOnce(
         if (inactivityTimer) clearTimeout(inactivityTimer);
       };
 
+      // The frames that carry content: none of them ends the stream, so they
+      // are applied in order and the caller keeps reading. Kept apart from the
+      // terminal frames below so each half stays readable as it grows.
+      const applyFrameUpdate = async (frame: SseFrame): Promise<void> => {
+        if (frame.session_token) {
+          deps.storeSessionToken(ctx, frame.session_token);
+        }
+        if (frame.approval) {
+          await onApprovalUpdate?.(frame.approval);
+        }
+        if (frame.notice) {
+          await onNotice?.(frame.notice.text);
+        }
+        if (frame.text) {
+          pendingText += frame.text;
+          await onChunk(frame.text);
+        }
+        if (frame.message_boundary) {
+          if (frame.message_boundary.discarded) {
+            pendingText = "";
+            await onDiscardMessage?.();
+          } else {
+            keepPendingText();
+          }
+        }
+      };
+
       // Applies one parsed SSE frame's side effects. Returns true once the
       // stream is complete (done or error), signalling the caller to resolve.
       const handleFrame = async (frame: SseFrame): Promise<boolean> => {
@@ -274,26 +317,7 @@ async function streamChatOnce(
           await onError(new Error(frame.error));
           return true;
         }
-        if (frame.session_token) {
-          deps.storeSessionToken(ctx, frame.session_token);
-        }
-        if (frame.approval) {
-          await onApprovalUpdate?.(frame.approval);
-          return false;
-        }
-        if (frame.text) {
-          pendingText += frame.text;
-          await onChunk(frame.text);
-        }
-        if (frame.message_boundary) {
-          if (frame.message_boundary.discarded) {
-            pendingText = "";
-            await onDiscardMessage?.();
-          } else {
-            keepPendingText();
-          }
-          return false;
-        }
+        await applyFrameUpdate(frame);
         if (frame.done) {
           finish();
           keepPendingText();
@@ -326,7 +350,16 @@ async function streamChatOnce(
         }
       };
 
-      stream.on("data", async (rawChunk: Buffer) => {
+      // Frames already received but not yet applied. Processing a chunk is
+      // async (every handler may await), so it yields — and `end` fires on the
+      // very next tick when the response arrives in one piece, which is the
+      // normal case for a short reply. Without something to wait on, `end`
+      // flipped `finished` mid-loop and every frame after the first `await` was
+      // silently dropped: an approval prompt, a rate-limit notice or a message
+      // boundary sharing a TCP chunk with the text before it simply vanished.
+      let draining: Promise<void> = Promise.resolve();
+
+      const drainChunk = async (rawChunk: Buffer): Promise<void> => {
         if (finished) return;
         try {
           resetInactivityTimer(resolve);
@@ -348,9 +381,14 @@ async function streamChatOnce(
             resolve();
           }
         }
+      };
+
+      stream.on("data", (rawChunk: Buffer) => {
+        draining = draining.then(() => drainChunk(rawChunk));
       });
 
       stream.on("end", async () => {
+        await draining;
         if (inactivityTimer) clearTimeout(inactivityTimer);
         try {
           if (!finished) {

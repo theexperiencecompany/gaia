@@ -880,7 +880,12 @@ class TestBotChatStreamBody:
     ):
         """The web-only rate-limit card is the one frame the translator must
         convert, not drop — and it is minted for the RESOLVED user, so the
-        checkout link inside it attributes to their account."""
+        checkout link inside it attributes to their account.
+
+        It converts to a typed ``notice`` frame, never to reply text: text
+        belongs to the assistant message in flight, so a notice sent that way
+        went down with any message that got discarded (a handoff preamble, a
+        rewritten draft) and the user hit a wall in silence."""
 
         async def walled() -> AsyncGenerator[str, None]:
             yield (
@@ -902,8 +907,8 @@ class TestBotChatStreamBody:
             },
             "uid1",
         )
-        # The notice rides as its own text frame, blank-padded on both sides.
-        assert '"text": "\\n\\nupgrade-link-notice\\n\\n"' in body
+        assert 'data: {"notice": {"text": "upgrade-link-notice"}}' in body
+        assert 'data: {"text"' not in body
 
     async def test_a_non_rate_limit_card_yields_no_notice_frame(self, client: AsyncClient):
         async def other_card() -> AsyncGenerator[str, None]:
@@ -917,7 +922,7 @@ class TestBotChatStreamBody:
         mint.assert_awaited_once_with(
             {"tool_data": {"tool_name": "memory_data", "data": {}}}, "uid1"
         )
-        assert '"text": "\\n\\n' not in body
+        assert '"notice"' not in body
 
     async def test_the_session_token_is_the_first_thing_the_bot_receives(self, client: AsyncClient):
         """The bot stores this to authenticate follow-up calls for the turn."""
