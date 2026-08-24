@@ -166,6 +166,19 @@ class TestCompleteTrackedTodo:
         mock_deps.mark.assert_awaited_once_with(TODO_ID)
         mock_deps.sync.assert_called_once_with(USER_ID)
 
+    async def test_missing_vfs_path_falls_back_to_derived_workspace_label(
+        self, mock_repo, mock_deps
+    ):
+        """A doc with no stored label must get the derived /workspace-scoped one —
+        never None, and never a label derived from the wrong id."""
+        mock_repo.get.return_value = _todo_doc(vfs_path=None)
+
+        ok = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done")
+
+        assert ok is True
+        update = mock_repo.update.await_args.kwargs["update"]
+        assert update.vfs_path == f"/workspace/gaia-tasks/archive/{TODO_ID}"
+
 
 class TestGetActiveTrackedSummary:
     async def test_empty_string_without_docs(self, mock_repo):
