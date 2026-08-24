@@ -88,7 +88,7 @@ async def create_support_ticket(
 
         # Return confirmation message
         ticket_type_display = (
-            "feature request" if type == SupportRequestType.FEATURE else "support ticket"
+            "feature request" if ticket_type == SupportRequestType.FEATURE else "support ticket"
         )
         return f"I've prepared a {ticket_type_display} draft for you to review. Please check the details and click 'Submit Ticket' when you're ready to send it to our support team."
 

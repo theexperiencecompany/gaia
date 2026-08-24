@@ -303,7 +303,9 @@ class UpdateReminderRequest(BaseModel):
     @field_validator("repeat")
     @classmethod
     def check_repeat_cron(cls, v: str | None) -> str | None:
-        from app.utils.cron_utils import validate_cron_expression  # noqa: PLC0415 -- validato
+        from app.utils.cron_utils import (  # noqa: PLC0415 -- keeps croniter off this module's import path; only needed when a repeat cron actually validates
+            validate_cron_expression,
+        )
 
         if v is not None and not validate_cron_expression(v):
             raise ValueError(f"Invalid cron expression: {v}")
@@ -327,8 +329,6 @@ class UpdateReminderRequest(BaseModel):
     @field_validator("stop_after")
     @classmethod
     def check_stop_after_future(cls, v: datetime | None) -> datetime | None:
-        from datetime import datetime  # noqa: PLC0415 -- validator-local re-import of
-
         if v is not None:
             # Ensure timezone-aware datetime
             if v.tzinfo is None:

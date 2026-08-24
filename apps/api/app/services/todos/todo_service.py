@@ -308,7 +308,7 @@ class TodoService:
             existing = await todo_repository.get(todo_id, user_id=user_id)
             if existing and existing.vfs_path:
                 try:
-                    from app.services.tracked_todo_service import (  # noqa: PLC0415 -- breaks c
+                    from app.services.tracked_todo_service import (  # noqa: PLC0415 -- tracked_todo_service imports this module at module level, so a top-level import back would be circular
                         tracked_todo_service,
                     )
 

@@ -1023,7 +1023,9 @@ class MCPClient:
         corrupts retrieve_tools for the other integration via the
         chroma:indexed:{namespace} cache.
         """
-        from app.config.oauth_config import get_integration_by_id  # noqa: PLC0415 -- heavy oa
+        from app.config.oauth_config import (  # noqa: PLC0415 -- oauth_config transitively imports the langchain tool subgraphs, far too heavy on this module's import path
+            get_integration_by_id,
+        )
 
         integration = get_integration_by_id(integration_id)
         namespace = (

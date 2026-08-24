@@ -282,7 +282,9 @@ async def hybrid_search_todos(
         )
 
         # Get traditional search results
-        from app.services.todos.todo_service import search_todos  # noqa: PLC0415 -- breaks c
+        from app.services.todos.todo_service import (  # noqa: PLC0415 -- todo_service imports this module at module level, so a top-level import back would be circular
+            search_todos,
+        )
 
         traditional_results = await search_todos(query, user_id)
 
