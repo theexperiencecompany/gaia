@@ -4,3 +4,4 @@
 # identifier falls below the rule's entropy bar); this entry silences the
 # original single-line commit already on the branch.
 fa4d4185200a547d33ff265635d244ec70a349fc:apps/api/app/api/v1/middleware/auth.py:generic-api-key:276
+apps/api/tests/unit/db/repositories/test_bot_sessions.py:generic-api-key
