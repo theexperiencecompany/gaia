@@ -296,11 +296,13 @@ HELPER_MAX_OUTPUT_TOKENS = 8_000
 # Default reasoning effort for OpenRouter thinking models (executor + subagents),
 # passed to ChatOpenRouter's native `reasoning` field.
 OPENROUTER_REASONING: dict[str, Any] = {"effort": "medium"}
-# Comms-specific reasoning: "low" instead of the executor's "medium". Comms is
-# mostly routing/ack work, so the reasoning budget is most useful for the executor's
-# tool selection. GLM 5.2 also documents "high"/"xhigh" efforts — revisit these
-# levels if comms routing or executor tool-selection quality needs more headroom.
-COMMS_REASONING: dict[str, Any] = {"effort": "low"}
+# Reasoning effort for a PAID comms turn. Its own constant rather than a reuse of
+# OPENROUTER_REASONING because it is the knob that raises paid comms further
+# (GLM 5.2 also documents "high"/"xhigh"); the executor's default must not move
+# with it. It sat at "low" while free comms inherited "medium" from the client
+# default, so a paying user's front-door agent thought LESS than a free user's.
+# Floor: paid comms is never thinner than free comms.
+PAID_COMMS_REASONING: dict[str, Any] = {"effort": "medium"}
 
 # Output cap for the env-defined custom dev provider (the "custom" entry below;
 # endpoint/key/model all come from the DEV_LLM_* settings). 64k fits under the
@@ -319,7 +321,7 @@ OPENROUTER_APP_CATEGORIES = ["personal-agent", "general-chat"]
 # DEV-ONLY model menu (ENV=development). The dev chat-header selector sends one of
 # these stable ids per role (comms / executor); the backend pins the matching model.
 # `reasoning` flags whether the model is an OpenRouter reasoning model — effort is
-# applied per-role at override time (comms -> COMMS_REASONING, executor ->
+# applied per-role at override time (comms -> PAID_COMMS_REASONING, executor ->
 # OPENROUTER_REASONING). Gemini models route direct via the "gemini" provider and
 # ignore OpenRouter `model_kwargs`/`reasoning`. This menu is NEVER used in production.
 DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {

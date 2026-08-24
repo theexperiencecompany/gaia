@@ -28,12 +28,12 @@ from app.agents.llm.types import LLMProviderName
 from app.config.rate_limits import RateLimitPeriod
 from app.constants.cache import COST_BUDGET_NOTIFIED_KEY
 from app.constants.llm import (
-    COMMS_REASONING,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
     MONTHLY_BUDGET_TTL_SECONDS,
     OPENROUTER_REASONING,
+    PAID_COMMS_REASONING,
     PAID_MODEL_NAME,
     PAID_MODEL_PROVIDER,
     PRO_MONTHLY_COST_BUDGET_USD,
@@ -418,17 +418,20 @@ class TestDegradeNotice:
 
 
 class TestReasoningPerRole:
-    """Characterization of today's effort split, NOT an endorsement.
+    """The per-tier effort policy, asserted on the literal effort strings.
 
-    A free comms turn resolves ``medium`` because it never set the key and
-    inherited the client default; a paid comms turn explicitly set ``low``. Free
-    therefore out-thinks pro. That is a deliberate open non-decision — these
-    tests exist so the refactor cannot change it by accident. If tier policy is
-    revisited, change them consciously.
+    Paid comms ran at ``low`` while free comms inherited the client default
+    ``medium``, so a paying user's front-door agent thought LESS than a free
+    one's. These assert the values, not the constants: a test that reads the
+    constant back cannot catch the constant being wrong.
     """
 
-    async def test_paid_comms_uses_the_lower_comms_effort(self) -> None:
-        assert (await _resolve(PlanType.PRO, AgentRole.COMMS)).reasoning == COMMS_REASONING
+    async def test_paid_comms_is_never_thinner_than_free_comms(self) -> None:
+        paid = await _resolve(PlanType.PRO, AgentRole.COMMS)
+        free = await _resolve(PlanType.FREE, AgentRole.COMMS)
+
+        assert paid.reasoning == {"effort": "medium"}
+        assert free.reasoning == {"effort": "medium"}
 
     async def test_paid_executor_keeps_the_client_default_effort(self) -> None:
         assert (await _resolve(PlanType.PRO, AgentRole.EXECUTOR)).reasoning == OPENROUTER_REASONING
@@ -462,7 +465,7 @@ class TestDevOverride:
 
     async def test_a_reasoning_dev_model_gets_the_asking_roles_effort(self) -> None:
         """A dev pick is a PAID lane by definition — it is an explicit choice, not
-        plan routing — so comms gets the lower comms effort and the executor the
+        plan routing — so comms gets the paid comms effort and the executor the
         client default, exactly as a paid turn does."""
         option = dev_option_for("minimax-m3", use_defaults=False)
         assert option is not None
@@ -470,7 +473,7 @@ class TestDevOverride:
         comms, _ = await resolve_lane(USER, AgentRole.COMMS, dev_option=option)
         executor, _ = await resolve_lane(USER, AgentRole.EXECUTOR, dev_option=option)
 
-        assert comms.reasoning == COMMS_REASONING
+        assert comms.reasoning == PAID_COMMS_REASONING
         assert executor.reasoning == OPENROUTER_REASONING
 
     async def test_a_dev_model_keeps_its_own_provider_routing_pin(self) -> None:
@@ -622,7 +625,7 @@ class TestFallback:
         paid = ModelLane(
             provider="openrouter",
             model=PAID_MODEL_NAME,
-            reasoning=COMMS_REASONING,
+            reasoning=PAID_COMMS_REASONING,
             provider_pin=_A_ROUTING_PIN,
             max_input_tokens=DEFAULT_MAX_TOKENS,
         )
@@ -668,7 +671,7 @@ class TestRebindOntoAFallbackLane:
         return ModelLane(
             provider=LLMProviderName.OPENROUTER,
             model=PAID_MODEL_NAME,
-            reasoning=COMMS_REASONING,
+            reasoning=PAID_COMMS_REASONING,
             provider_pin=_A_ROUTING_PIN,
             max_input_tokens=DEFAULT_MAX_TOKENS,
         )
