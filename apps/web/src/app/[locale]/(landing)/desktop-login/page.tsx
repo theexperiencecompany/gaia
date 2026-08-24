@@ -1,4 +1,4 @@
-import { getSetupStatusServer } from "@/features/auth/api/serverSetupStatusApi";
+import { resolveInstanceAuthMode } from "@/features/auth/api/serverSetupStatusApi";
 
 import { DesktopLoginClient } from "./desktop-login-client";
 
@@ -9,22 +9,13 @@ export const dynamic = "force-dynamic";
 /**
  * Desktop Login Page
  *
- * Probes the instance's public `GET /setup/status` to detect AUTH_MODE=local
- * (self-host): those instances mount no WorkOS OAuth routes, so the desktop
- * browser-handoff URL (`/oauth/login/workos/desktop`) would dead-end. Self-host
- * visitors get an honest "use your browser" state instead. Hosted instances
- * reject the probe pre-auth (or don't mount it), which resolves to `null` —
- * the classic WorkOS flow renders unchanged.
+ * Detects an AUTH_MODE=local instance (self-host) via
+ * `resolveInstanceAuthMode`: those instances mount no WorkOS OAuth routes, so
+ * the desktop browser-handoff URL (`/oauth/login/workos/desktop`) would
+ * dead-end. Self-host visitors get an honest "use your browser" state instead;
+ * hosted instances render the classic WorkOS flow unchanged.
  */
 export default async function DesktopLoginPage() {
-  // Self-host sets AUTH_MODE on the container — env-first avoids any
-  // dependency on a runtime cross-container fetch for a value that is
-  // static per instance. Hosted (no env) falls back to the live probe.
-  const envAuthMode = process.env.AUTH_MODE as "workos" | "local" | undefined;
-  const setupStatus = envAuthMode
-    ? { auth_mode: envAuthMode }
-    : await getSetupStatusServer();
-  return (
-    <DesktopLoginClient isSelfHosted={setupStatus?.auth_mode === "local"} />
-  );
+  const isSelfHosted = (await resolveInstanceAuthMode()) === "local";
+  return <DesktopLoginClient isSelfHosted={isSelfHosted} />;
 }

@@ -39,3 +39,33 @@ export async function getSetupStatusServer(): Promise<SetupStatus | null> {
     return null;
   }
 }
+
+/** Auth modes an instance can run (mirrors `SetupStatus["auth_mode"]`). */
+export type InstanceAuthMode = SetupStatus["auth_mode"];
+
+/**
+ * Resolve the instance's auth mode for server-rendered auth pages.
+ *
+ * Self-host sets a static AUTH_MODE on the web container — reading it first
+ * avoids a runtime cross-container fetch for a value that cannot change
+ * without a restart. Hosted instances have no AUTH_MODE and fall back to the
+ * live `GET /setup/status` probe; an unreachable probe resolves to "workos",
+ * the classic hosted behavior.
+ *
+ * The env value is validated before being trusted — a typo'd value must never
+ * silently render the WorkOS path on a self-host instance, so it warns and
+ * defers to the probe instead.
+ */
+export async function resolveInstanceAuthMode(): Promise<InstanceAuthMode> {
+  const envAuthMode = process.env.AUTH_MODE;
+  if (envAuthMode) {
+    if (envAuthMode === "workos" || envAuthMode === "local") {
+      return envAuthMode;
+    }
+    console.error(
+      `[auth] Ignoring invalid AUTH_MODE "${envAuthMode}" (expected "workos" or "local")`,
+    );
+  }
+  const setupStatus = await getSetupStatusServer();
+  return setupStatus?.auth_mode ?? "workos";
+}

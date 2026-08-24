@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 import { RedirectLoader } from "@/components/shared/RedirectLoader";
-import { getSetupStatusServer } from "@/features/auth/api/serverSetupStatusApi";
+import { resolveInstanceAuthMode } from "@/features/auth/api/serverSetupStatusApi";
 import { AuthShell } from "@/features/auth/components/AuthShell";
 import { LoginForm } from "@/features/auth/components/LoginForm";
 import { apiauth } from "@/lib/api/client";
@@ -34,14 +34,8 @@ export default async function LoginPage({
 
   // Self-host instances run local email/password auth; everything else keeps
   // the classic WorkOS OAuth redirect.
-  // Self-host sets AUTH_MODE on the container — env-first avoids any
-  // dependency on a runtime cross-container fetch for a value that is
-  // static per instance. Hosted (no env) falls back to the live probe.
-  const envAuthMode = process.env.AUTH_MODE as "workos" | "local" | undefined;
-  const setupStatus = envAuthMode
-    ? { auth_mode: envAuthMode }
-    : await getSetupStatusServer();
-  if (setupStatus?.auth_mode === "local") {
+  const authMode = await resolveInstanceAuthMode();
+  if (authMode === "local") {
     return (
       <AuthShell
         title="Welcome back"

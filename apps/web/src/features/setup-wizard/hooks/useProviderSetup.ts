@@ -2,14 +2,12 @@
 
 import { useCallback, useMemo, useState } from "react";
 import {
+  CUSTOM_PRESETS,
+  type CustomPreset,
   type ProviderConfigBody,
   providersApi,
 } from "@/features/settings/api/providersApi";
-import {
-  CUSTOM_PRESETS,
-  type CustomPreset,
-  type ProviderCardConfig,
-} from "../constants";
+import type { ProviderCardConfig } from "../constants";
 
 export type ProviderSetupPhase = "saving" | "testing";
 

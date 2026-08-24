@@ -15,6 +15,8 @@ import { useEffect, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import {
   type CredentialProvider,
+  CUSTOM_PRESETS,
+  type CustomPreset,
   type ProviderConfigBody,
   type ProviderTestResult,
   providerFaviconUrl,
@@ -95,29 +97,12 @@ const PROVIDER_ROWS: ProviderRow[] = [
   },
 ];
 
-// Preset gateways for the custom lane — paste an API key and go.
-const CUSTOM_PRESETS = [
-  {
-    id: "opencode",
-    label: "OpenCode",
-    baseUrl: "https://opencode.ai/zen/go/v1",
-    model: "deepseek-v4-flash",
-  },
-  {
-    id: "nous",
-    label: "Nous",
-    baseUrl: "https://inference-api.nousresearch.com/v1",
-    model: "",
-  },
-] as const;
-
-type CustomPresetId = (typeof CUSTOM_PRESETS)[number]["id"] | "manual";
+// Preset gateways for the custom lane come from the shared catalog in
+// providersApi (CUSTOM_PRESETS) — paste an API key and go.
+type CustomPresetId = CustomPreset["key"] | "manual";
 
 const PRESET_CHIPS: ReadonlyArray<{ id: CustomPresetId; label: string }> = [
-  ...CUSTOM_PRESETS.map((p) => ({
-    id: p.id as CustomPresetId,
-    label: p.label,
-  })),
+  ...CUSTOM_PRESETS.map((p) => ({ id: p.key, label: p.label })),
   { id: "manual", label: "Manual" },
 ];
 
@@ -194,7 +179,7 @@ function ConfigureProviderModal({
     setBaseUrl(stored?.base_url || row.defaultBaseUrl || "");
     setModel(row.showModelField ? stored?.model || row.defaultModel || "" : "");
     setPreset(
-      CUSTOM_PRESETS.find((p) => p.baseUrl === stored?.base_url)?.id ??
+      CUSTOM_PRESETS.find((p) => p.baseUrl === stored?.base_url)?.key ??
         "manual",
     );
     setTestResult(null);
@@ -214,10 +199,10 @@ function ConfigureProviderModal({
     setPreset(id);
     setTestResult(null);
     if (id === "manual") return;
-    const match = CUSTOM_PRESETS.find((p) => p.id === id);
+    const match = CUSTOM_PRESETS.find((p) => p.key === id);
     if (!match) return;
     setBaseUrl(match.baseUrl);
-    setModel(match.model);
+    setModel(match.defaultModel);
   };
 
   const buildBody = (): ProviderConfigBody => {

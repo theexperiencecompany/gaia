@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 import { RedirectLoader } from "@/components/shared/RedirectLoader";
-import { getSetupStatusServer } from "@/features/auth/api/serverSetupStatusApi";
+import { resolveInstanceAuthMode } from "@/features/auth/api/serverSetupStatusApi";
 import { AuthShell } from "@/features/auth/components/AuthShell";
 import { SignupForm } from "@/features/auth/components/SignupForm";
 import { apiauth } from "@/lib/api/client";
@@ -29,14 +29,8 @@ export const metadata: Metadata = generatePageMetadata({
 // Self-host instances run local email/password auth; everything else keeps
 // the classic WorkOS OAuth redirect.
 export default async function SignupPage() {
-  // Self-host sets AUTH_MODE on the container — env-first avoids any
-  // dependency on a runtime cross-container fetch for a value that is
-  // static per instance. Hosted (no env) falls back to the live probe.
-  const envAuthMode = process.env.AUTH_MODE as "workos" | "local" | undefined;
-  const setupStatus = envAuthMode
-    ? { auth_mode: envAuthMode }
-    : await getSetupStatusServer();
-  if (setupStatus?.auth_mode === "local") {
+  const authMode = await resolveInstanceAuthMode();
+  if (authMode === "local") {
     return (
       <AuthShell
         title="Create your account"

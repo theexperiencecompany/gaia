@@ -17,6 +17,39 @@ export const SETUP_PROVIDER_KEYS = [
   "tavily",
 ] as const satisfies readonly CredentialProvider[];
 
+/**
+ * OpenAI-compatible preset gateways surfaced as chips inside the "custom"
+ * lane — paste an API key and go. Single catalog shared by Settings and the
+ * setup wizard (mirrors the opencode/nous entries of PRESETS in
+ * app/constants/providers.py; the backend stays the source of truth).
+ */
+export interface CustomPreset {
+  /** Gateway id sent as `preset` on ProviderConfigBody. */
+  key: "opencode" | "nous";
+  label: string;
+  baseUrl: string;
+  /** Empty ⇒ fetched from the endpoint at configure time. */
+  defaultModel: string;
+  faviconDomain: string;
+}
+
+export const CUSTOM_PRESETS: readonly CustomPreset[] = [
+  {
+    key: "opencode",
+    label: "OpenCode",
+    baseUrl: "https://opencode.ai/zen/go/v1",
+    defaultModel: "deepseek-v4-flash",
+    faviconDomain: "opencode.ai",
+  },
+  {
+    key: "nous",
+    label: "Nous Research",
+    baseUrl: "https://inference-api.nousresearch.com/v1",
+    defaultModel: "",
+    faviconDomain: "nousresearch.com",
+  },
+];
+
 export interface ProviderStatus {
   configured: boolean;
 }
@@ -36,8 +69,8 @@ export interface ProviderConfigBody {
   api_key?: string;
   base_url?: string;
   model?: string;
-  /** Gateway preset for the custom lane ("opencode" | "nous"); null clears it. */
-  preset?: string | null;
+  /** Gateway preset for the custom lane; null clears it. */
+  preset?: CustomPreset["key"] | null;
 }
 
 export interface ProviderTestResult {
