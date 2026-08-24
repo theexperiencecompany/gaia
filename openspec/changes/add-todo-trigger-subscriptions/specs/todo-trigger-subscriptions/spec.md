@@ -34,19 +34,31 @@ On condition-validation failure, the system SHALL first attempt deterministic re
 - **THEN** the subscription is rejected and alternatives are surfaced; no approximating condition is stored
 
 ### Requirement: Fired triggers fan out to subscribed todos
-When a Composio trigger fires, the dispatch pipeline SHALL evaluate active todo subscriptions for the firing trigger before any no-matching-workflow short-circuit. For each matching todo whose conditions pass and whose cooldown has elapsed, the system SHALL enqueue execution of that todo through the existing tracked-todo execution path, stamped with a distinct `todo_trigger` origin so analytics, budget gating, and rate limiting treat it as trigger-caused work.
+When a Composio trigger fires, the dispatch pipeline SHALL evaluate active todo subscriptions for the firing trigger before any no-matching-workflow short-circuit. For each matching todo whose conditions pass and whose cooldown has elapsed, the system SHALL perform the subscription's action, stamped with a distinct `todo_trigger` origin so analytics, budget gating, and rate limiting treat it as trigger-caused work. Actions:
+- `execute` — enqueue execution through the existing tracked-todo execution path with the triggering payload in context.
+- `notify` — send a notification (reusing the maintenance-sweep deep-link pattern) without executing; no state change.
+- `complete` — mark the todo completed (idempotent completion path) and tear down its subscriptions.
+- `unblock` — remove the matching blocking label (`waiting-for-reply`, `waiting-for-approval`, or `blocked`); if none of the blocking labels is present, the action degrades to `notify`.
 
 #### Scenario: Reply arrives in watched thread
-- **WHEN** a Gmail message arrives whose `thread_id` matches a subscribed waiting-todo's condition
+- **WHEN** a Gmail message arrives whose `thread_id` matches a subscribed waiting-todo's condition under an `execute` action
 - **THEN** the todo executes immediately with the triggering payload in its context
 
 #### Scenario: Event matches no workflow but matches a todo
 - **WHEN** a fired trigger has no matching workflow but has a matching todo subscription
-- **THEN** the todo still executes (the event must not be dropped)
+- **THEN** the subscription's action still runs (the event must not be dropped)
 
 #### Scenario: Cooldown suppresses repeat fires
 - **WHEN** a second qualifying event arrives for the same subscription within its cooldown
-- **THEN** the todo does not execute again
+- **THEN** the action does not run again
+
+#### Scenario: Complete action on matching event
+- **WHEN** a qualifying event matches a subscription with action `complete`
+- **THEN** the todo is marked completed through the idempotent completion path and its subscriptions are torn down
+
+#### Scenario: Unblock action with no blocking label
+- **WHEN** a qualifying event matches a subscription with action `unblock` but the todo carries no blocking label
+- **THEN** the user receives a notification instead, and the todo's state is unchanged
 
 ### Requirement: Subscriptions share trigger lifecycle with workflows
 Subscription teardown SHALL use the same reference-counted Composio trigger deletion as workflows — a Composio trigger instance MUST NOT be deleted while any workflow or todo still references it. Completing, archiving, or failing a todo SHALL tear down its subscriptions. OAuth reconnect resync SHALL re-register active todo subscriptions alongside workflow triggers, and connection-expiry SHALL pause or block affected subscriptions rather than leave them silently dead.
@@ -60,11 +72,15 @@ Subscription teardown SHALL use the same reference-counted Composio trigger dele
 - **THEN** its subscriptions are unregistered and their refcounts updated
 
 ### Requirement: Self-wiring thread subscriptions
-When GAIA sends an outbound email or Slack message on behalf of a tracked todo, it MAY automatically arm a subscription on that todo: capturing the sent message's thread identifier (Gmail) or channel identifier (Slack) as a subscription condition and adding the appropriate blocking label. Auto-armed subscriptions go through the same validation path as explicit ones.
+When GAIA sends an outbound email or Slack message on behalf of a tracked todo that is still active, it SHALL automatically arm a subscription on that todo: capturing the sent message's thread identifier (Gmail) or channel identifier (Slack) as a subscription condition and adding the appropriate blocking label. Sends not made on behalf of a tracked todo MUST NOT arm subscriptions. Auto-armed subscriptions go through the same validation path as explicit ones.
 
 #### Scenario: Todo sends follow-up email
 - **WHEN** a tracked todo's execution sends an email via Gmail
 - **THEN** the todo gains a subscription matching replies to that exact thread and a `waiting-for-reply` label, requiring no manual configuration
+
+#### Scenario: Regular chat email send
+- **WHEN** GAIA sends an email during ordinary conversation with no originating tracked todo
+- **THEN** no subscription is armed
 
 ## ADDED Requirements
 

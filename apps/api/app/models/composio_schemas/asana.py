@@ -13,10 +13,6 @@ class AsanaTaskCreatedPayload(BaseModel):
     """Payload for ASANA_TASK_CREATED."""
 
     created_at: str | None = Field(None, description="Timestamp of the event")
-    project_gid: str | None = Field(
-        None, description="GID of the project the task was added to"
-    )
+    project_gid: str | None = Field(None, description="GID of the project the task was added to")
     task_gid: str | None = Field(None, description="GID of the created task")
-    user_gid: str | None = Field(
-        None, description="GID of the user who created the task"
-    )
+    user_gid: str | None = Field(None, description="GID of the user who created the task")

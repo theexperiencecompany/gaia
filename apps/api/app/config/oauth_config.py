@@ -1566,7 +1566,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                     name="Task Trigger",
                     description="Triggered when a new task is created in a monitored project.",
                     config_schema={
-                        "project_id": TriggerConfigFieldSchema(
+                        "project_gid": TriggerConfigFieldSchema(
                             type="string",
                             description="Asana GID of the project to monitor (required).",
                             default="",

@@ -13,7 +13,7 @@
 ## 3. Registration lifecycle
 
 - [ ] 3.1 Register subscriptions via existing handler `register()` path; store returned Composio trigger instance IDs on the subscription
-- [ ] 3.2 Extend trigger refcounting: `count_trigger_references` / `get_triggers_safe_to_delete` count todo references alongside workflows
+- [ ] 3.2 Extend trigger refcounting: `count_trigger_references` / `get_triggers_safe_to_delete` count todo references alongside workflows, with an `excluding_todo_id` exclusion (mirroring `excluding_workflow_id`) so a todo being deleted does not count its own subscription — or teardown MUST delete the todo's subscriptions before counting
 - [ ] 3.3 Teardown on terminal states: completing/archiving/failing a todo unregisters its subscriptions
 - [ ] 3.4 Include active todo subscriptions in OAuth reconnect resync and connection-expiry pause (paused → `blocked` label decision documented)
 - [ ] 3.5 Contract/integration tests: workflow-delete-while-todo-subscribed keeps Composio trigger; todo-delete releases it
@@ -23,8 +23,9 @@
 - [ ] 4.1 Tap `TriggerHandler.process_event` before the no-workflow early return; resolve subscribed todos by trigger instance ID
 - [ ] 4.2 Condition evaluation in spawned task against typed payload models; AND-chain semantics; cooldown check via Redis key
 - [ ] 4.3 Enqueue execution through `execute_tracked_todo` stamped `todo_trigger` origin; route through daily cost-budget gate
-- [ ] 4.4 Optional LLM relevance tier: small silent call comparing payload vs canvas Key Details, cooldown-gated, behind a feature flag
-- [ ] 4.5 Unit + integration tests: thread-match executes todo; no-workflow event still fires todo; cooldown suppresses repeat; budget gate blocks
+- [ ] 4.4 Implement the remaining actions per spec: `notify` (deep-link notification, no state change), `complete` (idempotent completion + teardown), `unblock` (remove blocking label; degrade to notify when none present)
+- [ ] 4.5 Optional LLM relevance tier: small silent call comparing payload vs canvas Key Details, cooldown-gated, behind a feature flag
+- [ ] 4.6 Unit + integration tests: thread-match executes todo; no-workflow event still fires todo; cooldown suppresses repeat; each of the four actions behaves per spec; budget gate blocks
 
 ## 5. Agent tool surface
 

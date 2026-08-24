@@ -37,7 +37,7 @@ Field-name fuzzy match + operator-for-type table fixes most failures free; ambig
 *Alternative*: open-ended agent repair loop — rejected; unbounded cost and silent-intent-drift risk.
 
 ### Execution: reuse `execute_tracked_todo`, stamped as a new origin
-The Redis lock already prevents double-fire mid-execution; backoff/retry/canvas logging come free. Stamp context with `trigger_type: "todo_trigger"` so budget gating, rate limits, and analytics attribute correctly (unstamped contexts default to `manual` in `execute_workflow_by_id`'s convention).
+The Redis lock already prevents double-fire mid-execution; backoff/retry/canvas logging come free. Stamp context with `trigger_type: "todo_trigger"` so budget gating, rate limits, and analytics attribute correctly. `execute_tracked_todo` currently accepts its ARQ `ctx` without forwarding it to `_execute_todo_with_retry`, so implementation MUST add an explicit context handoff into the retry helper and a contract test asserting `trigger_type: "todo_trigger"` reaches gating/analytics.
 *Alternative*: run through workflow queueing — rejected; wrong execution record surface and mislabeled analytics.
 
 ### Teardown: extend refcounting to count todo references
