@@ -162,21 +162,27 @@ async def extract_memories(
         "\n".join(f"- {line}" for line in journaled_today) if journaled_today else "(empty)"
     )
     system_prompt = EXTRACTION_SYSTEM_PROMPT.format(user_name=user_name)
-    # The volatile context (today's date, recently stored facts, today's
-    # journal, the folder tree) rides in a TRAILING message, NOT inside the
-    # system prompt.
-    # The memory lane's cache is a byte-prefix cache: with the facts/journal
+    # The volatile context (today's date, the journal, the folder tree, the
+    # recently stored facts) rides in a TRAILING message, NOT inside the system
+    # prompt: the memory lane's cache is a byte-prefix cache, and with these
     # churning inside the system prompt the prefix broke there and the whole
-    # (append-only) transcript re-sent uncached every turn — measured ~41%
-    # hit on the lane. With them moved to the tail, the cached prefix extends
-    # through the stable template + the transcript and only this small tail
-    # re-sends uncached.
+    # (append-only) transcript re-sent uncached every turn — measured ~41% hit
+    # on the lane.
+    #
+    # WITHIN the tail, order is by churn rate, slowest first, because the tail
+    # is over half of a real extraction call (measured live: the cached prefix
+    # stops at system+transcript, ~47%). The date is stable all day; the
+    # journal only APPENDS during a day; the folder tree gains a line rarely;
+    # the recent-facts window ROLLS on every ingestion and the hints are
+    # per-run. With the rolling window ahead of the journal, one new fact
+    # re-sent the whole journal on every extraction.
     volatile_context = (
         f"Today is {current_date:%A, %d %B %Y}.\n"
-        f"## Recently stored facts (do NOT re-extract these)\n{recent_facts_section}\n"
         "## Today's journal so far (do NOT repeat these events, even reworded)\n"
-        f"{journal_section}{hints_section}\n"
+        f"{journal_section}\n"
         + EXTRACTION_FOLDER_TREE_BLOCK.format(folder_tree=folder_tree or "(no folders yet)")
+        + f"\n## Recently stored facts (do NOT re-extract these)\n{recent_facts_section}"
+        + hints_section
     )
 
     result = await _invoke_structured(

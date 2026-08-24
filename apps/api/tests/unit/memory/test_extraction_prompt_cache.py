@@ -32,7 +32,11 @@ _TRANSCRIPT = [
 ]
 
 
-async def _messages_for(folder_tree: str, recent_facts: list[str] | None = None):
+async def _messages_for(
+    folder_tree: str,
+    recent_facts: list[str] | None = None,
+    journaled_today: list[str] | None = None,
+):
     """The messages one extraction call would send, for a given memory state."""
     with patch(
         "app.memory.extraction._invoke_structured",
@@ -44,6 +48,7 @@ async def _messages_for(folder_tree: str, recent_facts: list[str] | None = None)
             user_name="Aryan",
             folder_tree=folder_tree,
             recent_facts=recent_facts or [],
+            journaled_today=journaled_today,
             current_date=_WHEN,
         )
     return invoke.await_args.args[1]
@@ -75,6 +80,52 @@ class TestTheCacheablePrefixSurvivesMemoryGrowth:
 
         assert _prefix_through_transcript(before) == _prefix_through_transcript(after)
 
+    async def test_the_tail_itself_caches_through_the_journal_while_facts_churn(self):
+        """The tail is over half of a real extraction call (measured live:
+        cached tokens stop at system+transcript, ~47%, and everything behind is
+        tail). Within the tail, churn rates differ wildly: the journal only
+        APPENDS during a day, while the recent-facts window ROLLS on every
+        ingestion. Byte-prefix caches reward putting the append-only part
+        first — with the rolling window ahead of the journal, one new fact
+        re-sends the whole journal on every single extraction, forever.
+
+        Between two consecutive extractions where the journal appended and the
+        facts rolled, the tails must share a byte prefix that still contains
+        the whole earlier journal.
+        """
+        journal = ["went for a run", "met Priya for lunch"]
+        before = str(
+            (
+                await _messages_for(
+                    "relationships",
+                    recent_facts=["fact one", "fact two"],
+                    journaled_today=journal,
+                )
+            )[-1].content
+        )
+        after = str(
+            (
+                await _messages_for(
+                    "relationships",
+                    # the window rolled: oldest dropped, newest arrived
+                    recent_facts=["fact two", "fact three"],
+                    journaled_today=[*journal, "shipped the release"],
+                )
+            )[-1].content
+        )
+
+        shared = 0
+        for a, b in zip(before, after):
+            if a != b:
+                break
+            shared += 1
+        common = before[:shared]
+        assert "went for a run" in common and "met Priya for lunch" in common, (
+            "the rolling facts window sits ahead of the append-only journal, so "
+            f"the shared tail prefix ends before the journal (only {shared} chars "
+            "survive) and the whole journal re-sends on every extraction"
+        )
+
     async def test_the_folder_tree_is_still_actually_sent(self):
         """Moving it must not drop it: the model still files facts by folder."""
         messages = await _messages_for("relationships\nwork/gaia")
@@ -90,8 +141,8 @@ class TestTheCacheablePrefixSurvivesMemoryGrowth:
         would otherwise be filing against."""
         tail = str((await _messages_for(""))[-1].content)
 
-        assert tail.endswith("## Existing memory folders\n\n(no folders yet)"), (
-            f"the empty-tree placeholder did not render as written, got: {tail[-60:]!r}"
+        assert "## Existing memory folders\n\n(no folders yet)" in tail, (
+            f"the empty-tree placeholder did not render as written, got: {tail[-120:]!r}"
         )
 
     async def test_the_folder_guidance_stays_in_the_stable_prompt(self):
