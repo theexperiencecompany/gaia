@@ -111,7 +111,7 @@ def _format_messages_for_user_memory(
                     formatted.append(
                         {
                             "role": _ROLE_GAIA,
-                            "content": f"[CALLED TOOL: {call['name']}({call.get('args', {})})]",
+                            "content": f"[CALLED TOOL: {call['name']}({call['args']})]",
                         }
                     )
             elif msg.content:

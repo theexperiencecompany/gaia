@@ -74,8 +74,12 @@ def announces_tool_call(chunk: AIMessage) -> bool:
     Complete on an ``AIMessage`` (``tool_calls``), still assembling on an
     ``AIMessageChunk`` (``tool_call_chunks``) — both mean the model is handing
     off, so whatever text rides along is narration, not a reply.
+
+    Only the second read needs ``getattr``: every AIMessage carries
+    ``tool_calls`` (it defaults to []), while ``tool_call_chunks`` exists on the
+    chunk subclass alone.
     """
-    return bool(getattr(chunk, "tool_calls", None) or getattr(chunk, "tool_call_chunks", None))
+    return bool(chunk.tool_calls or getattr(chunk, "tool_call_chunks", None))
 
 
 def _flush_held_messages(complete_message: str, held: dict[str, str]) -> str:
