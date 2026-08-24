@@ -312,11 +312,12 @@ class TestSignup:
         assert credential_store.store == {}
         assert patched_repos.created == []
 
-    async def test_signup_claims_existing_user_without_credential(
+    async def test_signup_refuses_existing_identity_claim(
         self, patched_repos, credential_store, _instance_secret
     ):
         """A pre-existing user row (e.g. from a WorkOS era on the same DB) is
-        claimed, not duplicated: the credential attaches to its id."""
+        NOT claimable by knowing its email — that would hand the identity to
+        an attacker. Signup is refused; no credential is attached."""
         existing = UserDocument.model_validate({"id": str(ObjectId()), "email": "adopted@gaia.dev"})
         patched_repos.by_email["adopted@gaia.dev"] = existing
 
@@ -328,10 +329,10 @@ class TestSignup:
                 json={"email": "adopted@gaia.dev", "password": TEST_PASSWORD},
             )
 
-        assert response.status_code == 201, response.text
-        assert patched_repos.created == []  # no duplicate user row
-        assert existing.id in credential_store.store
-        assert response.json()["user"]["user_id"] == existing.id
+        assert response.status_code == 403, response.text
+        assert response.json()["detail"]["error_code"] == "registration_closed"
+        assert credential_store.store == {}  # nothing attached to the identity
+        assert patched_repos.created == []
 
     async def test_signup_normalizes_email_to_lowercase(
         self, patched_repos, credential_store, _instance_secret
@@ -603,20 +604,30 @@ class TestSessionCookies:
         assert f"Max-Age={30 * 24 * 3600}" in cookie
         assert "Secure" not in cookie
 
-    async def test_session_cookie_is_secure_in_production(
-        self, patched_repos, credential_store, _instance_secret, monkeypatch
+    async def test_session_cookie_is_secure_when_request_is_https(
+        self, patched_repos, credential_store, _instance_secret
     ):
-        monkeypatch.setattr(settings, "ENV", "production")
+        """Secure follows the request's ACTUAL transport (X-Forwarded-Proto),
+        not ENV — a self-host instance behind a TLS proxy must mark the cookie
+        Secure, while plain-HTTP LAN instances must stay login-able."""
         app = _build_router_app()
         client = await _client(app)
         async with client:
-            response = await client.post(
+            plain = await client.post(
                 "/api/v1/auth/signup",
-                json={"email": "admin@example.com", "password": TEST_PASSWORD},
+                json={"email": "admin@gaia.dev", "password": TEST_PASSWORD},
+            )
+            # Registration closes after the first account — reset the store so
+            # the second signup exercises the cookie path again.
+            credential_store.store.clear()
+            tls = await client.post(
+                "/api/v1/auth/signup",
+                json={"email": "tls@gaia.dev", "password": TEST_PASSWORD},
+                headers={"X-Forwarded-Proto": "https"},
             )
 
-        assert response.status_code == 201, response.text
-        assert "Secure" in response.headers["set-cookie"]
+        assert "Secure" not in plain.headers.get("set-cookie", "")
+        assert "Secure" in tls.headers.get("set-cookie", "")
 
     async def test_cleared_cookie_keeps_flags_in_non_production(
         self, _instance_secret, monkeypatch

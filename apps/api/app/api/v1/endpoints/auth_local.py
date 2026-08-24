@@ -57,13 +57,25 @@ def _client_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
 
 
-def _set_session_cookie(response: JSONResponse, token: str) -> None:
-    """Cookie options mirror the WorkOS session cookie in middleware/auth.py."""
+def _set_session_cookie(
+    response: JSONResponse, token: str, *, request: Request | None = None
+) -> None:
+    """Cookie options mirror the WorkOS session cookie in middleware/auth.py.
+
+    ``Secure`` follows the request's actual transport (X-Forwarded-Proto /
+    scheme), not ENV: a self-host instance behind a TLS proxy must mark the
+    cookie Secure, while a plain-HTTP LAN instance must not (browsers drop
+    Secure cookies over http, which would break login entirely).
+    """
+    secure = False
+    if request is not None:
+        forwarded = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
+        secure = forwarded == "https" or request.url.scheme == "https"
     response.set_cookie(
         key=LOCAL_SESSION_COOKIE,
         value=token,
         httponly=True,
-        secure=settings.ENV == "production",
+        secure=secure,
         samesite="lax",
         max_age=SESSION_TTL_SECONDS,
         path="/",
@@ -154,9 +166,10 @@ async def signup(request: Request, body: SignupRequest) -> JSONResponse:
     zero credentials, but Mongo lets precisely one insert land and the loser
     deterministically gets 403 — its half-created user row is removed again.
 
-    A pre-existing user row with the same email (e.g. from a WorkOS era on this
-    database) is claimed rather than duplicated: its credential is attached to
-    the existing id.
+    A pre-existing user row with the same email is NOT claimed — knowledge of
+    an email address is not proof of ownership, and a migrated WorkOS-era row
+    must not be attachable by an attacker (Greptile finding). Such signups are
+    refused as closed; only brand-new user rows can become the admin.
     """
     email = str(body.email)
     log.set(operation="local_signup", email=email, client_ip=_client_ip(request))
@@ -165,20 +178,24 @@ async def signup(request: Request, body: SignupRequest) -> JSONResponse:
     if await local_credentials_repository.any_exists():
         _registration_closed(email)
 
-    user = await user_repository.get_by_email(email)
-    created_user = False
-    if user is None:
-        user = await user_repository.create(
-            UserDocument(
-                email=email,
-                # Hosted signups always carry a WorkOS profile name; self-host
-                # name is optional. Default to the email local-part so the
-                # display name (greetings, founder letter, holo card) never
-                # has to handle null.
-                name=body.name or email.split("@", 1)[0],
-            )
+    if await user_repository.get_by_email(email) is not None:
+        # Email already belongs to an existing (e.g. WorkOS-era) identity.
+        # Attaching a credential to it would hand that identity to whoever
+        # knows the address — knowledge of an email is not ownership proof
+        # (Greptile finding). Refuse; only brand-new rows can become admin.
+        _registration_closed(email)
+
+    user = await user_repository.create(
+        UserDocument(
+            email=email,
+            # Hosted signups always carry a WorkOS profile name; self-host
+            # name is optional. Default to the email local-part so the
+            # display name (greetings, founder letter, holo card) never
+            # has to handle null.
+            name=body.name or email.split("@", 1)[0],
         )
-        created_user = True
+    )
+    created_user = True
 
     password_hash = bcrypt.hashpw(
         body.password.encode(), bcrypt.gensalt(rounds=_BCRYPT_ROUNDS)
@@ -196,7 +213,7 @@ async def signup(request: Request, body: SignupRequest) -> JSONResponse:
     log.audit("account created", actor=user.id, mode="local")
 
     response = JSONResponse(status_code=201, content={"user": _user_payload(user)})
-    _set_session_cookie(response, token)
+    _set_session_cookie(response, token, request=request)
     log.set(outcome="success")
     return response
 
@@ -242,7 +259,7 @@ async def login(request: Request, body: LoginRequest) -> JSONResponse:
     log.audit("logged in", actor=user.id, mode="local")
 
     response = JSONResponse(content={"user": _user_payload(user)})
-    _set_session_cookie(response, token)
+    _set_session_cookie(response, token, request=request)
     log.set(outcome="success")
     return response
 

@@ -9,8 +9,10 @@ Every route except ``GET /status`` requires the instance administrator (see
 ``provider_credentials_service``; this module never stores or logs raw keys.
 """
 
+import ipaddress
 import os
 from typing import Annotated, Any, Literal
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
 import httpx
@@ -205,6 +207,7 @@ async def test_provider(
         config = stored
     else:
         base_url, model = _apply_preset(body.preset, body.base_url, body.model)
+        _assert_url_safe(base_url)
         config = ProviderConfig(
             api_key=body.api_key,
             base_url=base_url,
@@ -214,6 +217,35 @@ async def test_provider(
     ok, detail, models = await _probe(provider, config)
     log.info("Provider connectivity tested", provider=provider, ok=ok)
     return {"ok": ok, "detail": detail, "models": models}
+
+
+def _assert_url_safe(base_url: str | None) -> None:
+    """Block caller-supplied probe URLs that are not plain public http(s).
+
+    First-time tests forward an administrator-supplied base URL to the
+    backend's HTTP client — without this guard that is an internal-network
+    probing primitive (cloud metadata IP, sibling containers, etc.). Stored
+    credentials bypass the check by construction: they were accepted at save
+    time and belong to the instance, not to a single request.
+    """
+    if not base_url:
+        return
+    parsed = urlparse(base_url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise HTTPException(status_code=422, detail="base_url must be an http(s) URL")
+    if parsed.username or parsed.password or (parsed.port and parsed.port in (0, 1)):
+        raise HTTPException(status_code=422, detail="base_url must not embed credentials")
+
+    try:
+        addr = ipaddress.ip_address(parsed.hostname)
+    except ValueError:
+        addr = None
+    if addr is not None and (
+        addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved
+    ):
+        raise HTTPException(status_code=422, detail="base_url must be a public address")
+    if parsed.hostname in ("169.254.169.254", "metadata.google.internal"):
+        raise HTTPException(status_code=422, detail="base_url must be a public address")
 
 
 async def _probe(provider: str, config: ProviderConfig) -> tuple[bool, str, list[str]]:
