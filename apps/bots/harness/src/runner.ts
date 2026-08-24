@@ -100,6 +100,21 @@ export async function linkDevUser(
   };
 }
 
+/**
+ * Keeps the booted adapter — and with it the real outbound RabbitMQ consumer —
+ * alive for `settleMs` after a turn's reply stream closes, so deliveries the
+ * backend publishes *after* the stream are recorded in that turn's events.
+ *
+ * A handoff turn is exactly this shape: the SSE stream ends on the preamble
+ * ("one sec"), and the executor's narrated answer is published to the platform
+ * queue seconds later. Shutting down in between does not lose the message — it
+ * strands it in the durable queue for whichever `gaia-sim` boots next.
+ */
+function settle(settleMs: number): Promise<void> {
+  if (settleMs <= 0) return Promise.resolve();
+  return new Promise((resolve) => setTimeout(resolve, settleMs));
+}
+
 /** Boots a HarnessAdapter emulating `platform`, targeting `apiUrl`. */
 async function bootAdapter(
   platform: PlatformName,
@@ -132,13 +147,16 @@ export async function sendOneShot(params: {
   email: string;
   message: string;
   channelId?: string;
+  /** See {@link settle} — 0 (the default) shuts down as soon as the stream ends. */
+  settleMs?: number;
 }): Promise<SendResult> {
-  const { apiUrl, emulate, email, message, channelId } = params;
+  const { apiUrl, emulate, email, message, channelId, settleMs = 0 } = params;
   const user = await linkDevUser(apiUrl, email, emulate);
   const transcript = new TranscriptRecorder(emulate);
   const adapter = await bootAdapter(emulate, apiUrl, transcript);
   try {
     await adapter.simulateMessage(user.platformUserId, message, { channelId });
+    await settle(settleMs);
   } finally {
     await adapter.shutdown("harness").catch(() => undefined);
   }
@@ -161,6 +179,7 @@ export interface ScenarioResult {
 export async function runScenario(
   scenario: Scenario,
   apiUrl: string,
+  settleMsOverride?: number,
 ): Promise<ScenarioResult> {
   if (!isEmulatablePlatform(scenario.emulate)) {
     throw new Error(
@@ -179,6 +198,9 @@ export async function runScenario(
       await adapter.simulateMessage(user.platformUserId, turn.send, {
         channelId: turn.channelId,
       });
+      // Settle BEFORE slicing: a late outbound delivery belongs to the turn
+      // that caused it, and its assertions must be able to see it.
+      await settle(turn.settleMs ?? settleMsOverride ?? scenario.settleMs ?? 0);
       const turnEvents = transcript.getEvents().slice(before);
       for (const assertion of turn.expect ?? []) {
         for (const failure of evaluateAssertion(turnEvents, assertion)) {
