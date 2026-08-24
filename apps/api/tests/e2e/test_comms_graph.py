@@ -100,10 +100,14 @@ class TestCommsToolSurface:
     async def test_a_rejected_tool_still_lets_the_turn_finish(self):
         """The user must get an answer even when the model reached for something
         it does not have."""
-        async with comms_graph([call("plan_tasks", {}, id="c1"), "Let me delegate that."]) as graph:
+        # The reply is deliberately clean of AI-isms: the style guard sends a
+        # dirty comms draft back for a rewrite, and the scripted model cycles
+        # its responses, so a reply carrying a tell (this one used to open with
+        # "Let me ...") desynchronises the script and tests nothing.
+        async with comms_graph([call("plan_tasks", {}, id="c1"), "delegating that now."]) as graph:
             run = await run_graph(graph, "do the thing")
 
-        assert "Let me delegate that." in run.final_text()
+        assert "delegating that now." in run.final_text()
 
 
 class TestMemoryTools:
@@ -142,6 +146,38 @@ class TestReplyShape:
 
         assert run.final_text().replace(NEW_MESSAGE_BREAKER, "")
         assert "Empty response" in run.final_text()
+
+
+class TestStyleGuard:
+    """The comms tier scores its own draft and rewrites it once.
+
+    Proved here, through the compiled graph, rather than only against the
+    middleware in isolation: the guard sits inside ``wrap_model_call``, so
+    whether it actually runs depends on the middleware stack the graph builder
+    assembles and on the bridge that chains those wrappers. A unit test of the
+    middleware passes either way.
+    """
+
+    async def test_a_draft_carrying_ai_isms_is_regenerated_before_it_is_delivered(self):
+        dirty = "it's not a feature, it's a switching cost — want me to draft that?"
+        clean = "that's a switching cost. i can draft it."
+
+        async with comms_graph([AIMessage(content=dirty), AIMessage(content=clean)]) as graph:
+            run = await run_graph(graph, "why does it matter?")
+
+        assert run.final_text() == f"{clean}{NEW_MESSAGE_BREAKER}"
+        assert dirty not in run.final_text()
+
+    async def test_a_clean_draft_is_delivered_on_the_first_call(self):
+        """The guard must cost an already-clean reply nothing. The scripted
+        model cycles its responses, so a second call would deliver the WRONG
+        text here — which is exactly what makes this assertion falsifiable."""
+        async with comms_graph(
+            [AIMessage(content="that's a switching cost."), AIMessage(content="second call")]
+        ) as graph:
+            run = await run_graph(graph, "why does it matter?")
+
+        assert run.final_text() == f"that's a switching cost.{NEW_MESSAGE_BREAKER}"
 
 
 class TestEndOfTurnHooks:

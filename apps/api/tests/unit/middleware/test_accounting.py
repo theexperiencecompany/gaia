@@ -20,7 +20,6 @@ import pytest
 from app.agents.middleware import accounting
 from app.agents.middleware.accounting import (
     LLMAccountingMiddleware,
-    _current_config,
     _latest_ai_message,
 )
 from app.config.rate_limits import (
@@ -88,7 +87,7 @@ def _accounting_env(config: dict[str, Any] = CONFIG):
     # patch them there so these tests exercise the middleware against a fixed
     # price and no real Redis/Mongo.
     return (
-        patch.object(accounting, "_current_config", lambda: config),
+        patch.object(accounting, "current_run_config", lambda: config),
         patch.object(llm_metering, "calculate_token_cost", _fixed_cost),
         patch.object(llm_metering, "record_model_call_usage", AsyncMock()),
     )
@@ -128,13 +127,6 @@ def test_latest_ai_message_is_none_without_any_ai_message() -> None:
 def test_latest_ai_message_tolerates_empty_and_none_histories() -> None:
     assert _latest_ai_message([]) is None
     assert _latest_ai_message(cast(Any, None)) is None
-
-
-# --- _current_config ---------------------------------------------------------- #
-
-
-def test_current_config_is_empty_outside_a_graph_run() -> None:
-    assert _current_config() == {}
 
 
 # --- the emitted model context ------------------------------------------------ #
@@ -226,7 +218,7 @@ async def test_cached_tokens_are_passed_to_the_pricing_call_not_discarded() -> N
 
     mw = LLMAccountingMiddleware(agent_name="a")
     with (
-        patch.object(accounting, "_current_config", lambda: CONFIG),
+        patch.object(accounting, "current_run_config", lambda: CONFIG),
         patch.object(llm_metering, "calculate_token_cost", spy),
         patch.object(llm_metering, "record_model_call_usage", AsyncMock()),
     ):
@@ -246,7 +238,7 @@ async def test_a_pricing_failure_is_logged_and_charged_as_zero() -> None:
 
     mw = LLMAccountingMiddleware(agent_name="a")
     with (
-        patch.object(accounting, "_current_config", lambda: CONFIG),
+        patch.object(accounting, "current_run_config", lambda: CONFIG),
         patch.object(llm_metering, "calculate_token_cost", broken),
         patch.object(llm_metering, "record_model_call_usage", AsyncMock()),
     ):
@@ -261,7 +253,7 @@ async def test_a_pricing_failure_is_logged_and_charged_as_zero() -> None:
 
 async def test_a_turn_with_no_model_response_emits_nothing() -> None:
     mw = LLMAccountingMiddleware(agent_name="a")
-    with patch.object(accounting, "_current_config", lambda: CONFIG):
+    with patch.object(accounting, "current_run_config", lambda: CONFIG):
         assert (
             await mw.aafter_model(
                 cast(AgentState[Any], {"messages": [HumanMessage(content="h")]}), None
@@ -400,7 +392,7 @@ async def test_budget_wrapup_notice_injected_once_when_spend_crosses_threshold()
     captured, handler = _recording_handler()
 
     with (
-        patch.object(accounting, "_current_config", lambda: CONFIG),
+        patch.object(accounting, "current_run_config", lambda: CONFIG),
         patch.object(accounting, "get_budget_stop_reason", AsyncMock(return_value=check)),
     ):
         await mw.awrap_model_call(_model_request(), handler)
@@ -432,7 +424,7 @@ async def test_budget_wrapup_notice_not_injected_below_threshold() -> None:
     captured, handler = _recording_handler()
 
     with (
-        patch.object(accounting, "_current_config", lambda: CONFIG),
+        patch.object(accounting, "current_run_config", lambda: CONFIG),
         patch.object(accounting, "get_budget_stop_reason", AsyncMock(return_value=check)),
     ):
         await mw.awrap_model_call(_model_request(), handler)
@@ -452,7 +444,7 @@ async def test_hard_wall_stop_short_circuits_and_skips_the_wrapup_notice() -> No
     handler = AsyncMock()
 
     with (
-        patch.object(accounting, "_current_config", lambda: CONFIG),
+        patch.object(accounting, "current_run_config", lambda: CONFIG),
         patch.object(accounting, "get_budget_stop_reason", AsyncMock(return_value=check)),
     ):
         response = await mw.awrap_model_call(_model_request(), handler)
@@ -483,7 +475,7 @@ async def test_the_wall_is_checked_against_the_callers_user_plan_and_request_tre
     mw = LLMAccountingMiddleware(agent_name="a")
     _captured, handler = _recording_handler()
     with (
-        patch.object(accounting, "_current_config", lambda: config),
+        patch.object(accounting, "current_run_config", lambda: config),
         patch.object(accounting, "get_budget_stop_reason", spy),
     ):
         await mw.awrap_model_call(_model_request(), handler)
@@ -499,7 +491,7 @@ async def test_a_budget_check_failure_fails_open_and_still_runs_the_model() -> N
     broken = AsyncMock(side_effect=RuntimeError("redis down"))
 
     with (
-        patch.object(accounting, "_current_config", lambda: CONFIG),
+        patch.object(accounting, "current_run_config", lambda: CONFIG),
         patch.object(accounting, "get_budget_stop_reason", broken),
     ):
         response = await mw.awrap_model_call(_model_request(), handler)
@@ -524,7 +516,7 @@ async def _run_stopped_call(check: BudgetCheck, reset_at: datetime) -> tuple[lis
 
     mw = LLMAccountingMiddleware(agent_name="a")
     with (
-        patch.object(accounting, "_current_config", lambda: CONFIG),
+        patch.object(accounting, "current_run_config", lambda: CONFIG),
         patch.object(accounting, "get_budget_stop_reason", AsyncMock(return_value=check)),
         patch.object(accounting, "get_stream_writer", lambda: frames.append),
         patch.object(accounting, "get_reset_time", _reset),
@@ -574,7 +566,7 @@ async def test_a_missing_stream_writer_never_breaks_the_stop() -> None:
     mw = LLMAccountingMiddleware(agent_name="a")
     check = BudgetCheck("Daily cap reached.", 999.0, PlanType.FREE)
     with (
-        patch.object(accounting, "_current_config", lambda: CONFIG),
+        patch.object(accounting, "current_run_config", lambda: CONFIG),
         patch.object(accounting, "get_budget_stop_reason", AsyncMock(return_value=check)),
         patch.object(accounting, "get_stream_writer", _no_writer),
     ):
@@ -659,7 +651,7 @@ def test_the_default_recursion_limit_is_the_shipped_constant() -> None:
 
 def test_sync_pre_hook_records_the_start_timestamp() -> None:
     mw = LLMAccountingMiddleware(agent_name="a")
-    with patch.object(accounting, "_current_config", lambda: CONFIG):
+    with patch.object(accounting, "current_run_config", lambda: CONFIG):
         assert mw.before_model({"messages": []}, None) is None
     assert "conv-1" in mw._start_ts
 
@@ -667,7 +659,7 @@ def test_sync_pre_hook_records_the_start_timestamp() -> None:
 def test_sync_post_hook_advances_the_step_and_emits_the_high_water_mark() -> None:
     limit = 5  # cap = 4
     mw = LLMAccountingMiddleware(agent_name="a", recursion_limit=limit)
-    with patch.object(accounting, "_current_config", lambda: CONFIG):
+    with patch.object(accounting, "current_run_config", lambda: CONFIG):
         for _ in range(_hwm_cap(limit)):
             assert mw.after_model({"messages": []}, None) is None
 
@@ -680,14 +672,14 @@ def test_sync_post_hook_advances_the_step_and_emits_the_high_water_mark() -> Non
 
 def test_sync_post_hook_stays_silent_below_the_cap() -> None:
     mw = LLMAccountingMiddleware(agent_name="a", recursion_limit=10)
-    with patch.object(accounting, "_current_config", lambda: CONFIG):
+    with patch.object(accounting, "current_run_config", lambda: CONFIG):
         mw.after_model({"messages": []}, None)
     assert _hwm_events() == []
 
 
 def test_a_tiny_recursion_limit_still_yields_a_usable_cap_on_the_sync_path() -> None:
     mw = LLMAccountingMiddleware(agent_name="a", recursion_limit=1)
-    with patch.object(accounting, "_current_config", lambda: CONFIG):
+    with patch.object(accounting, "current_run_config", lambda: CONFIG):
         mw.after_model({"messages": []}, None)
 
     events = _hwm_events()
@@ -698,7 +690,7 @@ def test_a_tiny_recursion_limit_still_yields_a_usable_cap_on_the_sync_path() -> 
 def test_sync_high_water_mark_is_emitted_only_once_per_thread() -> None:
     limit = 5
     mw = LLMAccountingMiddleware(agent_name="a", recursion_limit=limit)
-    with patch.object(accounting, "_current_config", lambda: CONFIG):
+    with patch.object(accounting, "current_run_config", lambda: CONFIG):
         for _ in range(_hwm_cap(limit) + 4):
             mw.after_model({"messages": []}, None)
     assert len(_hwm_events()) == 1
@@ -706,7 +698,7 @@ def test_sync_high_water_mark_is_emitted_only_once_per_thread() -> None:
 
 def test_sync_and_async_paths_share_one_step_counter() -> None:
     mw = LLMAccountingMiddleware(agent_name="a", recursion_limit=10)
-    with patch.object(accounting, "_current_config", lambda: CONFIG):
+    with patch.object(accounting, "current_run_config", lambda: CONFIG):
         mw.after_model({"messages": []}, None)
         mw.after_model({"messages": []}, None)
     assert mw._step_counts["conv-1"] == 2

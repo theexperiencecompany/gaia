@@ -223,6 +223,39 @@ class TestStyleGuardRegeneration:
         assert fields["violations_after"] == 0
         assert sorted(fields["detectors"]) == ["closing_hook", "em_dash", "negation_antithesis"]
 
+    async def test_an_empty_rewrite_keeps_the_draft_text_instead_of_ending_in_silence(
+        self, emitted_frames: list[dict[str, Any]], interactive_run: RunnableConfig
+    ) -> None:
+        """The second call can come back with nothing — truncated, refused, or
+        dropped by the provider. The draft is already retracted and cannot be
+        un-retracted, so returning the empty rewrite would end the turn in
+        silence AND persist an empty reply."""
+        handler = _ScriptedHandler(_draft(DIRTY_DRAFT, "m1"), _draft("", "m2"))
+
+        with patch("app.agents.middleware.style_guard.log") as logger:
+            response = await StyleGuardMiddleware().awrap_model_call(_request(), handler)
+
+        assert response.result[0].text == DIRTY_DRAFT
+        assert logger.error.called, "an empty rewrite is a failure, not a quiet fallback"
+
+    async def test_a_rewrite_that_chose_to_call_a_tool_is_returned_untouched(
+        self, emitted_frames: list[dict[str, Any]], interactive_run: RunnableConfig
+    ) -> None:
+        """Carrying tool calls means the model decided to act rather than
+        answer. Substituting the draft's text would strand the work it asked
+        for; the graph's own preamble handling covers the text it rode in on."""
+        acting = AIMessage(
+            content="",
+            id="m2",
+            tool_calls=[{"name": "call_executor", "args": {"task": "x"}, "id": "c1"}],
+        )
+        handler = _ScriptedHandler(_draft(DIRTY_DRAFT, "m1"), acting)
+
+        response = await StyleGuardMiddleware().awrap_model_call(_request(), handler)
+
+        assert response.result[0].tool_calls[0]["id"] == "c1"
+        assert response.result[0].text == ""
+
     async def test_the_retracted_draft_is_charged_to_the_user_budget(
         self, emitted_frames: list[dict[str, Any]], interactive_run: RunnableConfig
     ) -> None:

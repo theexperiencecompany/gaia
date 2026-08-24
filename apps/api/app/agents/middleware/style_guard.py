@@ -128,12 +128,35 @@ class StyleGuardMiddleware(AgentMiddleware):
             )
         )
         rewrite = retry.result[0] if retry.result else None
-        if not isinstance(rewrite, AIMessage):
-            # The handler owes an AIMessage; without one there is nothing to
-            # deliver in place of the draft the client was told to drop.
-            raise ValueError("Style guard rewrite returned no AI message")
+        rewritten_text = (
+            extract_text_content(rewrite.content) if isinstance(rewrite, AIMessage) else ""
+        )
+        # A rewrite that carries tool calls is the model choosing to act rather
+        # than answer. It stands as-is: the graph's own preamble handling covers
+        # a tool-call message whose text the user must not keep.
+        rewrite_is_usable = bool(
+            rewritten_text.strip() or (isinstance(rewrite, AIMessage) and rewrite.tool_calls)
+        )
+        if not rewrite_is_usable:
+            # The second call came back with nothing — truncated, refused, or
+            # dropped by the provider. The draft is already retracted and cannot
+            # be un-retracted, so returning the empty rewrite would end the turn
+            # in silence and persist an empty reply. The draft's text goes out
+            # under the rewrite's id instead: the turn keeps a real answer, the
+            # thread's history stays coherent, and the failure is loud.
+            log.error(
+                f"{LogTag.AGENT} Style guard rewrite came back empty; keeping the draft text",
+                agent_name="comms_agent",
+                violations_before=before.total_violations,
+            )
+            rewrite = AIMessage(
+                content=draft.content,
+                id=rewrite.id if isinstance(rewrite, AIMessage) else draft.id,
+            )
+            retry = ModelResponse(result=[rewrite])
+            rewritten_text = text
 
-        after = score_reply(extract_text_content(rewrite.content))
+        after = score_reply(rewritten_text)
         retracted_cost = await self._charge_retracted_draft(draft, configurable)
         log.set_ns(
             "style_guard",
