@@ -31,6 +31,7 @@ from app.services.notification_service import NotificationService
 from app.services.system_workflows.definitions.calendar import CALENDAR_SYSTEM_WORKFLOWS
 from app.services.system_workflows.definitions.gmail import GMAIL_SYSTEM_WORKFLOWS
 from app.services.user_service import get_user_by_id
+from app.services.workflow.scheduler import workflow_scheduler
 from app.services.workflow.service import WorkflowService
 from app.services.workflow.trigger_service import TriggerService
 from app.utils.workflow_utils import ensure_trigger_config_object
@@ -201,7 +202,9 @@ async def _notify_workflows_provisioned(
 async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bool:
     """Re-apply the original definition to a system workflow document.
 
-    Restores: title, description, steps, trigger_config.
+    Restores: title, description, prompt, steps, trigger_config. Schedule
+    triggers get the profile timezone stamped and next_run recomputed (same as
+    provisioning), and an activated workflow is re-armed with a queued fire.
     Preserves: _id, user_id, activated state, execution stats, created_at.
     Returns False if the workflow is not found or not resettable.
     """
@@ -228,6 +231,16 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
 
     request = factory()
     trigger_config = ensure_trigger_config_object(request.trigger_config)
+
+    # Factories can't know the user, so scheduled definitions carry no timezone —
+    # stamp the profile timezone and recompute next_run from the cron, exactly as
+    # the provisioning and activation paths do.
+    if trigger_config.type == TriggerType.SCHEDULE:
+        if not trigger_config.timezone:
+            user = await get_user_by_id(user_id) or {}
+            trigger_config.timezone = (user.get("timezone") or "").strip() or "UTC"
+        if trigger_config.cron_expression:
+            trigger_config.update_next_run(user_timezone=trigger_config.timezone)
 
     old_trigger_ids: list[str] = existing.trigger_config.composio_trigger_ids or []
     trigger_name: str | None = existing.trigger_config.trigger_name
@@ -283,10 +296,33 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
         workflow_id,
         title=request.title,
         description=request.description or "",
+        prompt=request.prompt,
         steps=request.steps or [],
         trigger_config=trigger_config,
         composio_trigger_ids=new_trigger_ids,
     )
+
+    # Reset preserves liveness — an activated schedule workflow needs a queued
+    # fire for the recomputed next_run or it never runs again. A failed re-arm
+    # must fail the reset: reporting success here would leave a workflow that
+    # looks reset but never fires (retrying the reset re-arms it).
+    if (
+        existing.activated
+        and trigger_config.type == TriggerType.SCHEDULE
+        and trigger_config.next_run
+    ):
+        armed = await workflow_scheduler.schedule_workflow_execution(
+            workflow_id,
+            trigger_config.next_run,
+            repeat=trigger_config.cron_expression,
+        )
+        if not armed:
+            log.error(
+                f"{LogTag.WORKFLOW} Reset applied but re-arming the schedule failed",
+                workflow_id=workflow_id,
+                user_id=user_id,
+            )
+            return False
 
     log.info(
         f"{LogTag.WORKFLOW} Reset system workflow to default for user",

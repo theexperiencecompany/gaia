@@ -362,7 +362,7 @@ class TestGetResetTime:
 
         with patch("app.config.rate_limits.datetime") as mock_dt:
             mock_dt.now.return_value = fake_now
-            mock_dt.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
+            mock_dt.side_effect = datetime
 
             result = get_reset_time(RateLimitPeriod.DAY)
 
@@ -374,7 +374,7 @@ class TestGetResetTime:
 
         with patch("app.config.rate_limits.datetime") as mock_dt:
             mock_dt.now.return_value = fake_now
-            mock_dt.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
+            mock_dt.side_effect = datetime
 
             result = get_reset_time(RateLimitPeriod.MONTH)
 
@@ -386,7 +386,7 @@ class TestGetResetTime:
 
         with patch("app.config.rate_limits.datetime") as mock_dt:
             mock_dt.now.return_value = fake_now
-            mock_dt.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
+            mock_dt.side_effect = datetime
 
             result = get_reset_time(RateLimitPeriod.MONTH)
 
@@ -399,7 +399,7 @@ class TestGetResetTime:
 
         with patch("app.config.rate_limits.datetime") as mock_dt:
             mock_dt.now.return_value = fake_now
-            mock_dt.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
+            mock_dt.side_effect = datetime
 
             result = get_reset_time(RateLimitPeriod.DAY)
 
@@ -411,7 +411,7 @@ class TestGetResetTime:
 
         with patch("app.config.rate_limits.datetime") as mock_dt:
             mock_dt.now.return_value = fake_now
-            mock_dt.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
+            mock_dt.side_effect = datetime
 
             result = get_reset_time(RateLimitPeriod.MONTH)
 
@@ -423,7 +423,7 @@ class TestGetResetTime:
 
         with patch("app.config.rate_limits.datetime") as mock_dt:
             mock_dt.now.return_value = fake_now
-            mock_dt.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
+            mock_dt.side_effect = datetime
 
             result = get_reset_time(RateLimitPeriod.DAY)
 
@@ -562,3 +562,12 @@ class TestGetFeatureInfo:
         assert isinstance(result, FeatureInfo)
         assert result.title == ""
         assert result.description == "Usage for "
+
+
+@pytest.mark.unit
+class TestActivityPolicy:
+    def test_trigger_workflow_executions_never_counts_as_activity(self) -> None:
+        """System-driven fires are not user actions: counting them let a user's
+        own automation keep them "active" forever (masking the dormancy sweep)
+        and inflated the activity heatmap with runs nobody performed."""
+        assert FEATURE_LIMITS["trigger_workflow_executions"].counts_as_activity is False

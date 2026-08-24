@@ -1,27 +1,36 @@
-"""Unit tests for model pricing configuration.
+"""Model pricing: the in-code rate card and token cost arithmetic.
 
-Tests cover:
-- ModelPricing NamedTuple construction
-- DEFAULT_PRICING fallback values
-- get_model_pricing: exact match, missing pricing fields, model not found, exceptions
-- calculate_token_cost: correct arithmetic, rounding, zero tokens, large values
+Regression anchor: in production, ``gemini-3.1-flash-lite`` (the vision and
+memory model) was priced at DEFAULT_PRICING — ~10x its real input rate —
+because its row was missing from the prod ``ai_models`` Mongo collection and
+nothing enforced the seed. Pricing now ships in code (``MODEL_PRICING``), so a
+runtime-referenced model without a rate fails this suite instead of silently
+distorting COGS in prod.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from contextlib import AbstractContextManager
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from app.config.model_pricing import (
-    AUX_MODEL_PRICING,
     DEFAULT_PRICING,
+    MODEL_PRICING,
     ModelPricing,
     calculate_token_cost,
     get_model_pricing,
 )
-from app.constants.llm import AUX_MODEL_NAME, DEFAULT_MODEL_NAME
+from app.constants.llm import (
+    AUX_MODEL_NAME,
+    DEFAULT_MODEL_NAME,
+    MEMORY_MODEL_NAME,
+    OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT,
+    PAID_MODEL_NAME,
+    VISION_MODEL_NAME,
+)
 from shared.py.wide_events import log
 
-# `log.reset()` between tests -- the fallback-logging tests below assert on
+# `log.reset()` between tests -- the fallback-logging test below asserts on
 # `log.get()["errors"]`, which otherwise accumulates across the module.
 pytestmark = pytest.mark.usefixtures("_fresh_wide_event")
 
@@ -31,263 +40,113 @@ def _fresh_wide_event() -> None:
     log.reset()
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+# Every model id the runtime actually meters: the graph lane on both tiers, the
+# aux one-shot alias, and the memory/vision model. A new runtime model constant
+# belongs in MODEL_PRICING — the coverage test below is what turns a forgotten
+# rate into a red build instead of a prod log line.
+RUNTIME_MODEL_IDS = sorted(
+    {DEFAULT_MODEL_NAME, PAID_MODEL_NAME, AUX_MODEL_NAME, MEMORY_MODEL_NAME, VISION_MODEL_NAME}
+)
 
 
-def _make_model(
-    *,
-    pricing_per_1k_input_tokens: float | None = 0.01,
-    pricing_per_1k_output_tokens: float | None = 0.03,
-    pricing_per_1k_cached_input_tokens: float | None = None,
-) -> MagicMock:
-    """Create a mock ModelConfig with optional pricing attributes."""
-    model = MagicMock()
-    model.pricing_per_1k_input_tokens = pricing_per_1k_input_tokens
-    model.pricing_per_1k_output_tokens = pricing_per_1k_output_tokens
-    model.pricing_per_1k_cached_input_tokens = pricing_per_1k_cached_input_tokens
-    return model
-
-
-# ---------------------------------------------------------------------------
-# Tests: ModelPricing NamedTuple
-# ---------------------------------------------------------------------------
-
-
-class TestModelPricing:
-    """Tests for the ModelPricing NamedTuple."""
-
+class TestModelPricingShape:
     def test_construction(self) -> None:
-        pricing = ModelPricing(input_cost_per_1k=0.005, output_cost_per_1k=0.015)
-        assert pricing.input_cost_per_1k == pytest.approx(0.005)
-        assert pricing.output_cost_per_1k == pytest.approx(0.015)
+        pricing = ModelPricing(input_cost_per_1k=0.01, output_cost_per_1k=0.03)
 
-    def test_is_tuple(self) -> None:
-        pricing = ModelPricing(input_cost_per_1k=0.001, output_cost_per_1k=0.002)
-        assert isinstance(pricing, tuple)
-        assert pricing[0] == pytest.approx(0.001)
-        assert pricing[1] == pytest.approx(0.002)
+        assert pricing.input_cost_per_1k == 0.01
+        assert pricing.output_cost_per_1k == 0.03
+        assert pricing.cached_input_cost_per_1k == 0.0
 
-    def test_equality(self) -> None:
-        a = ModelPricing(input_cost_per_1k=0.01, output_cost_per_1k=0.02)
-        b = ModelPricing(input_cost_per_1k=0.01, output_cost_per_1k=0.02)
-        assert a == b
-
-    def test_inequality(self) -> None:
-        a = ModelPricing(input_cost_per_1k=0.01, output_cost_per_1k=0.02)
-        b = ModelPricing(input_cost_per_1k=0.01, output_cost_per_1k=0.03)
-        assert a != b
+    def test_default_pricing_values(self) -> None:
+        assert DEFAULT_PRICING.input_cost_per_1k == 0.001
+        assert DEFAULT_PRICING.output_cost_per_1k == 0.002
+        assert DEFAULT_PRICING.cached_input_cost_per_1k == 0.00025
 
 
-# ---------------------------------------------------------------------------
-# Tests: DEFAULT_PRICING
-# ---------------------------------------------------------------------------
+class TestEveryRuntimeModelIsPriced:
+    """The drift-proofing this refactor exists for."""
 
+    @pytest.mark.parametrize("model_id", RUNTIME_MODEL_IDS)
+    def test_a_referenced_model_never_falls_back_to_default_pricing(self, model_id: str) -> None:
+        """DEFAULT_PRICING is ~10x the real rate of the cheap models; a runtime
+        model resolving to it means its COGS numbers are fiction."""
+        assert get_model_pricing(model_id) is not DEFAULT_PRICING
 
-class TestDefaultPricing:
-    """Tests for the default fallback pricing constant."""
+    def test_the_memory_and_vision_model_carries_its_real_rate(self) -> None:
+        """The exact production regression: gemini-3.1-flash-lite priced at
+        $0.001/1k input instead of $0.0001, with no database row to depend on."""
+        pricing = get_model_pricing("gemini-3.1-flash-lite")
 
-    def test_default_values(self) -> None:
-        assert DEFAULT_PRICING.input_cost_per_1k == pytest.approx(0.001)
-        assert DEFAULT_PRICING.output_cost_per_1k == pytest.approx(0.002)
+        assert pricing.input_cost_per_1k == 0.0001
+        assert pricing.output_cost_per_1k == 0.0004
+        assert pricing.cached_input_cost_per_1k == 0.000025
 
-    def test_default_is_model_pricing(self) -> None:
-        assert isinstance(DEFAULT_PRICING, ModelPricing)
+    def test_the_default_model_carries_its_real_rate(self) -> None:
+        pricing = get_model_pricing(DEFAULT_MODEL_NAME)
 
+        assert pricing.input_cost_per_1k == 0.00014
+        assert pricing.output_cost_per_1k == 0.00028
+        assert pricing.cached_input_cost_per_1k == 0.000028
 
-# ---------------------------------------------------------------------------
-# Tests: get_model_pricing
-# ---------------------------------------------------------------------------
+    def test_an_unknown_model_still_gets_the_loud_default(self) -> None:
+        assert get_model_pricing("some-model-nobody-registered") == DEFAULT_PRICING
 
+    def test_the_fallback_logs_the_mispricing(self) -> None:
+        """DEFAULT_PRICING is not the model's real rate, so serving it must
+        never pass quietly — the error line is what surfaced the prod bug.
+        Asserted exactly: the message is what an operator greps for, and the
+        model_name field is what tells them WHICH model is mispriced."""
+        with patch("app.config.model_pricing.log") as mock_log:
+            get_model_pricing("some-model-nobody-registered")
 
-class TestGetModelPricing:
-    """Tests for get_model_pricing — model lookup and fallback behavior."""
+        mock_log.error.assert_called_once()
+        args, kwargs = mock_log.error.call_args
+        assert args[0].endswith("model missing from pricing table — priced at DEFAULT_PRICING")
+        assert kwargs == {"model_name": "some-model-nobody-registered"}
 
-    @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
-    async def test_exact_match_returns_model_pricing(self, mock_get_model: AsyncMock) -> None:
-        model = _make_model(
-            pricing_per_1k_input_tokens=0.01,
-            pricing_per_1k_output_tokens=0.03,
-        )
-        mock_get_model.return_value = model
+    def test_a_known_model_does_not_log(self) -> None:
+        get_model_pricing(DEFAULT_MODEL_NAME)
 
-        result = await get_model_pricing("gpt-4o")
+        assert not log.get().get("errors", [])
 
-        # cached defaults to 25% of input when not set in DB
-        assert result == ModelPricing(
-            input_cost_per_1k=0.01,
-            output_cost_per_1k=0.03,
-            cached_input_cost_per_1k=0.0025,
-        )
-        mock_get_model.assert_awaited_once_with("gpt-4o")
+    def test_the_onboarding_declaration_matches_the_rate_card(self) -> None:
+        """OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT is the model-onboarding gate's one
+        place of declaration; every id in it must also carry a rate, and the
+        default model stays declared text-only (its tool media routes through
+        the caption fallback — flipping this to True without the live gate run
+        would 400 real turns mid-stream)."""
+        assert OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT == {DEFAULT_MODEL_NAME: False}
+        assert set(OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT) <= set(MODEL_PRICING)
 
-    @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
-    async def test_model_not_found_returns_default(self, mock_get_model: AsyncMock) -> None:
-        mock_get_model.return_value = None
-
-        result = await get_model_pricing("unknown-model")
-
-        assert result == DEFAULT_PRICING
-
-    @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
-    async def test_model_not_found_logs_the_mispricing(self, mock_get_model: AsyncMock) -> None:
-        # DEFAULT_PRICING is ~11x the real rate for our default model, so a model id
-        # silently missing from the catalog must never fall back without a trace.
-        mock_get_model.return_value = None
-
-        await get_model_pricing("unknown-model")
-
-        errors = log.get()["errors"]
-        assert any(
-            "missing from pricing catalog" in e["msg"] and e.get("model_name") == "unknown-model"
-            for e in errors
-        )
-
-    @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
-    async def test_known_model_does_not_log_an_error(self, mock_get_model: AsyncMock) -> None:
-        mock_get_model.return_value = _make_model()
-
-        await get_model_pricing("gpt-4o")
-
-        assert "errors" not in log.get()
-
-    @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
-    async def test_model_missing_input_pricing_returns_default(
-        self, mock_get_model: AsyncMock
-    ) -> None:
-        model = _make_model(
-            pricing_per_1k_input_tokens=None,
-            pricing_per_1k_output_tokens=0.03,
-        )
-        mock_get_model.return_value = model
-
-        result = await get_model_pricing("gpt-4o")
-
-        assert result == DEFAULT_PRICING
-
-    @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
-    async def test_model_missing_output_pricing_returns_default(
-        self, mock_get_model: AsyncMock
-    ) -> None:
-        model = _make_model(
-            pricing_per_1k_input_tokens=0.01,
-            pricing_per_1k_output_tokens=None,
-        )
-        mock_get_model.return_value = model
-
-        result = await get_model_pricing("gpt-4o")
-
-        assert result == DEFAULT_PRICING
-
-    @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
-    async def test_model_missing_both_pricing_fields_returns_default(
-        self, mock_get_model: AsyncMock
-    ) -> None:
-        model = _make_model(
-            pricing_per_1k_input_tokens=None,
-            pricing_per_1k_output_tokens=None,
-        )
-        mock_get_model.return_value = model
-
-        result = await get_model_pricing("gpt-4o")
-
-        assert result == DEFAULT_PRICING
-
-    @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
-    async def test_exception_returns_default(self, mock_get_model: AsyncMock) -> None:
-        mock_get_model.side_effect = RuntimeError("db connection failed")
-
-        result = await get_model_pricing("gpt-4o")
-
-        assert result == DEFAULT_PRICING
-
-    @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
-    async def test_pricing_values_cast_to_float(self, mock_get_model: AsyncMock) -> None:
-        """Ensure integer or Decimal-like pricing values are cast to float."""
-        model = MagicMock()
-        model.pricing_per_1k_input_tokens = 1  # int
-        model.pricing_per_1k_output_tokens = 2  # int
-        model.pricing_per_1k_cached_input_tokens = None
-        mock_get_model.return_value = model
-
-        result = await get_model_pricing("model-x")
-
-        assert result == ModelPricing(
-            input_cost_per_1k=1.0,
-            output_cost_per_1k=2.0,
-            cached_input_cost_per_1k=0.25,  # 25% of input
-        )
-        assert isinstance(result.input_cost_per_1k, float)
-        assert isinstance(result.output_cost_per_1k, float)
-        assert isinstance(result.cached_input_cost_per_1k, float)
-
-    @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
-    async def test_zero_pricing_is_valid(self, mock_get_model: AsyncMock) -> None:
-        """Zero cost should NOT fall back to default — 0 is a valid price."""
-        model = _make_model(
-            pricing_per_1k_input_tokens=0.0,
-            pricing_per_1k_output_tokens=0.0,
-        )
-        mock_get_model.return_value = model
-
-        result = await get_model_pricing("free-model")
-
-        assert result == ModelPricing(
-            input_cost_per_1k=0.0,
-            output_cost_per_1k=0.0,
-            cached_input_cost_per_1k=0.0,
-        )
-
-    @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
-    async def test_model_without_pricing_attributes_returns_default(
-        self, mock_get_model: AsyncMock
-    ) -> None:
-        """Model object that lacks pricing attributes entirely (getattr returns None)."""
-        model = MagicMock(spec=[])  # spec=[] means no attributes
-        mock_get_model.return_value = model
-
-        result = await get_model_pricing("barebones-model")
-
-        assert result == DEFAULT_PRICING
+    def test_no_table_entry_accidentally_equals_the_fallback(self) -> None:
+        """An entry equal to DEFAULT_PRICING is indistinguishable from a missing
+        one — someone pasted the fallback instead of the real rate."""
+        for model_id, pricing in MODEL_PRICING.items():
+            assert pricing != DEFAULT_PRICING, model_id
 
 
 class TestAuxModelPricing:
-    """Tests for the aux-lane pricing — a separate model id under
-    AUX_MODEL_NAME ("V4 Flash 0423", not the "0731" revision the graph runs),
-    priced at its OWN published rate. The two ids carry different OpenRouter
-    rate cards, and 0423 is the CHEAPER of the two, so pricing the aux lane at
-    the default's rate would over-count aux COGS by ~2.2x."""
+    """The aux lane runs a separate model id under AUX_MODEL_NAME ("V4 Flash
+    0423", not the "0731" revision the graph runs) with its OWN published rate.
+    The two ids carry different OpenRouter rate cards, and 0423 is the CHEAPER
+    of the two, so pricing the aux lane at the default's rate would over-count
+    aux COGS by ~2.2x."""
 
-    @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
-    async def test_aux_model_priced_at_its_own_rate(self, mock_get_model: AsyncMock) -> None:
-        result = await get_model_pricing(AUX_MODEL_NAME)
+    def test_aux_model_priced_at_its_own_rate(self) -> None:
+        pricing = get_model_pricing(AUX_MODEL_NAME)
 
-        assert result == AUX_MODEL_PRICING
-        # The alias is an internal routing id, not a catalog entry — no lookup.
-        mock_get_model.assert_not_awaited()
+        assert pricing.input_cost_per_1k == 0.00006426
+        assert pricing.output_cost_per_1k == 0.00012852
 
-    @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
-    async def test_aux_rate_differs_from_default_rate(self, mock_get_model: AsyncMock) -> None:
-        mock_get_model.return_value = _make_model(
-            pricing_per_1k_input_tokens=0.00014,
-            pricing_per_1k_output_tokens=0.00028,
-            pricing_per_1k_cached_input_tokens=0.000028,
-        )
+    def test_aux_rate_differs_from_default_rate(self) -> None:
+        aux = get_model_pricing(AUX_MODEL_NAME)
+        default = get_model_pricing(DEFAULT_MODEL_NAME)
 
-        default_pricing = await get_model_pricing(DEFAULT_MODEL_NAME)
+        assert aux != default
+        assert aux.input_cost_per_1k < default.input_cost_per_1k
 
-        # Different release, different rate card: 0423 is CHEAPER than the 0731
-        # the graph runs, so normalizing the aux lane to the default's rate
-        # would over-count its spend.
-        assert default_pricing != AUX_MODEL_PRICING
-        assert AUX_MODEL_PRICING.input_cost_per_1k < default_pricing.input_cost_per_1k
-
-    @patch("app.config.model_pricing.get_model_pricing", new_callable=AsyncMock)
-    async def test_aux_spend_meters_at_aux_rate_end_to_end(self, mock_pricing: AsyncMock) -> None:
-        mock_pricing.return_value = AUX_MODEL_PRICING
-
-        result = await calculate_token_cost(
+    def test_aux_spend_meters_at_aux_rate_end_to_end(self) -> None:
+        result = calculate_token_cost(
             AUX_MODEL_NAME, input_tokens=100_000, output_tokens=2_000, cached_tokens=80_000
         )
 
@@ -301,219 +160,77 @@ class TestAuxModelPricing:
         assert result["total_cost"] == pytest.approx(0.00257)
 
 
-# ---------------------------------------------------------------------------
-# Tests: calculate_token_cost
-# ---------------------------------------------------------------------------
+def _with_rate(pricing: ModelPricing) -> AbstractContextManager[MagicMock]:
+    """Patch the table lookup so arithmetic is asserted against a known rate."""
+    return patch("app.config.model_pricing.get_model_pricing", MagicMock(return_value=pricing))
 
 
 class TestCalculateTokenCost:
-    """Tests for calculate_token_cost — arithmetic and rounding."""
+    """Arithmetic and rounding, isolated from the table via a patched rate."""
 
-    @patch("app.config.model_pricing.get_model_pricing", new_callable=AsyncMock)
-    async def test_basic_cost_calculation(self, mock_pricing: AsyncMock) -> None:
-        mock_pricing.return_value = ModelPricing(
-            input_cost_per_1k=0.01,
-            output_cost_per_1k=0.03,
-        )
+    def test_basic_cost_calculation(self) -> None:
+        with _with_rate(ModelPricing(input_cost_per_1k=0.01, output_cost_per_1k=0.03)):
+            result = calculate_token_cost("any-model", input_tokens=1000, output_tokens=500)
 
-        result = await calculate_token_cost("gpt-4o", input_tokens=1000, output_tokens=500)
-
-        # input: (1000/1000) * 0.01 = 0.01
-        # output: (500/1000) * 0.03 = 0.015
-        # total: 0.025
         assert result["input_cost"] == pytest.approx(0.01)
         assert result["output_cost"] == pytest.approx(0.015)
         assert result["total_cost"] == pytest.approx(0.025)
 
-    @patch("app.config.model_pricing.get_model_pricing", new_callable=AsyncMock)
-    async def test_zero_tokens(self, mock_pricing: AsyncMock) -> None:
-        mock_pricing.return_value = ModelPricing(
-            input_cost_per_1k=0.01,
-            output_cost_per_1k=0.03,
-        )
+    def test_zero_tokens_cost_nothing(self) -> None:
+        with _with_rate(ModelPricing(input_cost_per_1k=0.01, output_cost_per_1k=0.03)):
+            result = calculate_token_cost("any-model", input_tokens=0, output_tokens=0)
 
-        result = await calculate_token_cost("gpt-4o", input_tokens=0, output_tokens=0)
+        assert result["total_cost"] == 0.0
 
-        assert result["input_cost"] == pytest.approx(0.0)
-        assert result["output_cost"] == pytest.approx(0.0)
-        assert result["total_cost"] == pytest.approx(0.0)
+    def test_rounding_to_six_decimals(self) -> None:
+        with _with_rate(ModelPricing(input_cost_per_1k=0.0000015, output_cost_per_1k=0.0)):
+            result = calculate_token_cost("any-model", input_tokens=1, output_tokens=0)
 
-    @patch("app.config.model_pricing.get_model_pricing", new_callable=AsyncMock)
-    async def test_only_input_tokens(self, mock_pricing: AsyncMock) -> None:
-        mock_pricing.return_value = ModelPricing(
-            input_cost_per_1k=0.01,
-            output_cost_per_1k=0.03,
-        )
+        # (1/1000) * 0.0000015 = 0.0000000015 -> rounds to 0.0
+        assert result["input_cost"] == 0.0
 
-        result = await calculate_token_cost("gpt-4o", input_tokens=2500, output_tokens=0)
+    def test_large_token_count(self) -> None:
+        with _with_rate(ModelPricing(input_cost_per_1k=0.001, output_cost_per_1k=0.002)):
+            result = calculate_token_cost(
+                "any-model", input_tokens=1_000_000, output_tokens=1_000_000
+            )
 
-        # input: (2500/1000) * 0.01 = 0.025
-        assert result["input_cost"] == pytest.approx(0.025)
-        assert result["output_cost"] == pytest.approx(0.0)
-        assert result["total_cost"] == pytest.approx(0.025)
+        assert result["input_cost"] == pytest.approx(1.0)
+        assert result["output_cost"] == pytest.approx(2.0)
+        assert result["total_cost"] == pytest.approx(3.0)
 
-    @patch("app.config.model_pricing.get_model_pricing", new_callable=AsyncMock)
-    async def test_only_output_tokens(self, mock_pricing: AsyncMock) -> None:
-        mock_pricing.return_value = ModelPricing(
-            input_cost_per_1k=0.01,
-            output_cost_per_1k=0.03,
-        )
+    def test_result_keys(self) -> None:
+        with _with_rate(DEFAULT_PRICING):
+            result = calculate_token_cost("any-model", input_tokens=10, output_tokens=10)
 
-        result = await calculate_token_cost("gpt-4o", input_tokens=0, output_tokens=3000)
+        assert set(result) == {"input_cost", "cached_input_cost", "output_cost", "total_cost"}
 
-        # output: (3000/1000) * 0.03 = 0.09
-        assert result["input_cost"] == pytest.approx(0.0)
-        assert result["output_cost"] == pytest.approx(0.09)
-        assert result["total_cost"] == pytest.approx(0.09)
+    def test_cached_tokens_billed_at_discounted_rate(self) -> None:
+        with _with_rate(
+            ModelPricing(
+                input_cost_per_1k=0.01, output_cost_per_1k=0.0, cached_input_cost_per_1k=0.001
+            )
+        ):
+            result = calculate_token_cost(
+                "any-model", input_tokens=1000, output_tokens=0, cached_tokens=600
+            )
 
-    @patch("app.config.model_pricing.get_model_pricing", new_callable=AsyncMock)
-    async def test_rounding_precision(self, mock_pricing: AsyncMock) -> None:
-        """Ensure costs are rounded to 6 decimal places."""
-        mock_pricing.return_value = ModelPricing(
-            input_cost_per_1k=0.000001,
-            output_cost_per_1k=0.000002,
-        )
+        # uncached 400 @ 0.01/1k = 0.004; cached 600 @ 0.001/1k = 0.0006
+        assert result["input_cost"] == pytest.approx(0.004)
+        assert result["cached_input_cost"] == pytest.approx(0.0006)
+        assert result["total_cost"] == pytest.approx(0.0046)
 
-        result = await calculate_token_cost("cheap-model", input_tokens=1, output_tokens=1)
+    def test_cached_tokens_never_exceed_input_tokens(self) -> None:
+        """A provider reporting more cached than prompt tokens must not produce a
+        negative uncached cost."""
+        with _with_rate(
+            ModelPricing(
+                input_cost_per_1k=0.01, output_cost_per_1k=0.0, cached_input_cost_per_1k=0.001
+            )
+        ):
+            result = calculate_token_cost(
+                "any-model", input_tokens=100, output_tokens=0, cached_tokens=500
+            )
 
-        # input: (1/1000) * 0.000001 = 0.000000001 -> rounds to 0.0
-        # output: (1/1000) * 0.000002 = 0.000000002 -> rounds to 0.0
-        assert result["input_cost"] == pytest.approx(0.0)
-        assert result["output_cost"] == pytest.approx(0.0)
-        assert result["total_cost"] == pytest.approx(0.0)
-
-    @patch("app.config.model_pricing.get_model_pricing", new_callable=AsyncMock)
-    async def test_large_token_count(self, mock_pricing: AsyncMock) -> None:
-        mock_pricing.return_value = ModelPricing(
-            input_cost_per_1k=0.01,
-            output_cost_per_1k=0.03,
-        )
-
-        result = await calculate_token_cost("gpt-4o", input_tokens=1_000_000, output_tokens=500_000)
-
-        # input: (1_000_000 / 1000) * 0.01 = 10.0
-        # output: (500_000 / 1000) * 0.03 = 15.0
-        assert result["input_cost"] == pytest.approx(10.0)
-        assert result["output_cost"] == pytest.approx(15.0)
-        assert result["total_cost"] == pytest.approx(25.0)
-
-    @patch("app.config.model_pricing.get_model_pricing", new_callable=AsyncMock)
-    async def test_result_keys(self, mock_pricing: AsyncMock) -> None:
-        """Verify the returned dict has exactly the expected keys."""
-        mock_pricing.return_value = DEFAULT_PRICING
-
-        result = await calculate_token_cost("any-model", input_tokens=100, output_tokens=50)
-
-        assert set(result.keys()) == {
-            "input_cost",
-            "cached_input_cost",
-            "output_cost",
-            "total_cost",
-        }
-
-    @patch("app.config.model_pricing.get_model_pricing", new_callable=AsyncMock)
-    async def test_cached_tokens_billed_at_discounted_rate(self, mock_pricing: AsyncMock) -> None:
-        """Cached tokens are billed at ``cached_input_cost_per_1k``, not free."""
-        mock_pricing.return_value = ModelPricing(
-            input_cost_per_1k=0.10,
-            output_cost_per_1k=0.40,
-            cached_input_cost_per_1k=0.025,
-        )
-
-        result = await calculate_token_cost(
-            "gemini-3.1-flash-lite",
-            input_tokens=15000,
-            output_tokens=100,
-            cached_tokens=12000,
-        )
-
-        # uncached input: (15000 - 12000) / 1000 * 0.10 = 0.30
-        # cached input:   12000 / 1000 * 0.025          = 0.30
-        # output:         100 / 1000 * 0.40             = 0.04
-        assert result["input_cost"] == pytest.approx(0.30)
-        assert result["cached_input_cost"] == pytest.approx(0.30)
-        assert result["output_cost"] == pytest.approx(0.04)
-        assert result["total_cost"] == pytest.approx(0.64)
-
-    @patch("app.config.model_pricing.get_model_pricing", new_callable=AsyncMock)
-    async def test_cached_tokens_default_zero_billed_as_full(self, mock_pricing: AsyncMock) -> None:
-        """When ``cached_tokens`` is omitted, all input is billed at full rate."""
-        mock_pricing.return_value = ModelPricing(
-            input_cost_per_1k=0.10,
-            output_cost_per_1k=0.40,
-            cached_input_cost_per_1k=0.025,
-        )
-
-        result = await calculate_token_cost(
-            "gemini-3.1-flash-lite",
-            input_tokens=15000,
-            output_tokens=100,
-        )
-
-        assert result["input_cost"] == pytest.approx(1.5)
-        assert result["cached_input_cost"] == pytest.approx(0.0)
-        assert result["total_cost"] == pytest.approx(1.54)
-
-    @patch("app.config.model_pricing.get_model_pricing", new_callable=AsyncMock)
-    async def test_cached_clamped_to_input(self, mock_pricing: AsyncMock) -> None:
-        """If a buggy caller passes cached > input, clamp instead of crashing."""
-        mock_pricing.return_value = ModelPricing(
-            input_cost_per_1k=0.10,
-            output_cost_per_1k=0.40,
-            cached_input_cost_per_1k=0.025,
-        )
-
-        result = await calculate_token_cost(
-            "m", input_tokens=1000, output_tokens=0, cached_tokens=9999
-        )
-
-        # cached clamped to 1000, uncached = 0
-        assert result["input_cost"] == pytest.approx(0.0)
-        assert result["cached_input_cost"] == pytest.approx(0.025)
-
-    @patch("app.config.model_pricing.get_model_pricing", new_callable=AsyncMock)
-    async def test_total_equals_sum_of_parts(self, mock_pricing: AsyncMock) -> None:
-        mock_pricing.return_value = ModelPricing(
-            input_cost_per_1k=0.015,
-            output_cost_per_1k=0.045,
-        )
-
-        result = await calculate_token_cost("gpt-4o", input_tokens=3333, output_tokens=7777)
-
-        expected_input = round((3333 / 1000) * 0.015, 6)
-        expected_output = round((7777 / 1000) * 0.045, 6)
-        expected_total = round(expected_input + expected_output, 6)
-
-        assert result["input_cost"] == expected_input
-        assert result["output_cost"] == expected_output
-        assert result["total_cost"] == expected_total
-
-    @patch("app.config.model_pricing.get_model_pricing", new_callable=AsyncMock)
-    async def test_fractional_tokens(self, mock_pricing: AsyncMock) -> None:
-        """Token counts less than 1000 should produce fractional costs."""
-        mock_pricing.return_value = ModelPricing(
-            input_cost_per_1k=0.01,
-            output_cost_per_1k=0.03,
-        )
-
-        result = await calculate_token_cost("gpt-4o", input_tokens=100, output_tokens=200)
-
-        # input: (100/1000) * 0.01 = 0.001
-        # output: (200/1000) * 0.03 = 0.006
-        assert result["input_cost"] == pytest.approx(0.001)
-        assert result["output_cost"] == pytest.approx(0.006)
-        assert result["total_cost"] == pytest.approx(0.007)
-
-    @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
-    async def test_end_to_end_with_default_pricing(self, mock_get_model: AsyncMock) -> None:
-        """Full integration: unknown model falls back to DEFAULT_PRICING."""
-        mock_get_model.return_value = None
-
-        result = await calculate_token_cost("unknown-model", input_tokens=5000, output_tokens=2000)
-
-        # DEFAULT_PRICING: input=0.001, output=0.002
-        # input: (5000/1000) * 0.001 = 0.005
-        # output: (2000/1000) * 0.002 = 0.004
-        assert result["input_cost"] == pytest.approx(0.005)
-        assert result["output_cost"] == pytest.approx(0.004)
-        assert result["total_cost"] == pytest.approx(0.009)
+        assert result["input_cost"] == 0.0
+        assert result["cached_input_cost"] == pytest.approx(0.0001)

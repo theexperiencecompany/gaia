@@ -1086,6 +1086,7 @@ class TestTheLaneTheRunResolves:
             "execution_mode": "interactive",
             "source": "web",
             "user_messages": recent_user_messages(request.messages, request.message),
+            "user_request": request.message,
             "user_preferences": None,
             "writing_style": None,
             "langfuse_trace_id": "trace-1",

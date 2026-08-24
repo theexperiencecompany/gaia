@@ -512,6 +512,72 @@ class TestLazyLoaderReset:
         ll.reset()
         assert ll._instance is None
 
+    def test_reset_async_loader_inside_a_running_loop_fails_loud(self):
+        """Inside a running loop a sync clear races any in-flight aget() —
+        fail loud instead of resetting something the initializer overwrites."""
+
+        async def loader():
+            return 1
+
+        async def scenario():
+            ll = LazyLoader(loader, strategy=MissingKeyStrategy.SILENT)
+            ll._instance = "cached"
+            ll._is_configured = True
+            with pytest.raises(RuntimeError) as exc_info:
+                ll.reset()
+            # Exact message: it is the migration instruction for callers.
+            assert str(exc_info.value) == (
+                f"reset() for async provider '{ll.provider_name}' called inside a "
+                "running event loop, where it could be overwritten by an in-flight "
+                "initialization — await areset() instead, which takes the async lock"
+            )
+            # Fail loud must not half-reset behind the caller's back.
+            assert ll._instance == "cached"
+            assert ll._is_configured is True
+
+        asyncio.run(scenario())
+
+    async def test_areset_cannot_be_overwritten_by_an_in_flight_initialization(self):
+        """The awaited reset takes the async lock, so an initialization that is
+        still inside loader_func cannot repopulate the instance after it."""
+        gate = asyncio.Event()
+        release = asyncio.Event()
+
+        async def loader():
+            gate.set()
+            await release.wait()
+            return 1
+
+        ll = LazyLoader(loader, strategy=MissingKeyStrategy.SILENT)
+        init_task = asyncio.create_task(ll.aget())
+        await gate.wait()  # loader_func running, holding _async_lock
+
+        reset_task = asyncio.create_task(ll.areset())
+        await asyncio.sleep(0)  # let areset block on the held lock
+        assert not reset_task.done()  # it did NOT barge in and clear early
+
+        release.set()
+        await asyncio.gather(init_task, reset_task)
+
+        # The initializer ran to completion, but the reset happened AFTER it:
+        # nothing survived.
+        assert ll._instance is None
+        assert ll._is_configured is False
+        assert not ll.is_initialized()
+
+    def test_reset_async_loader_without_a_loop_takes_the_async_lock(self):
+        """No running loop: the reset goes through areset(), which demands the
+        provider's async lock."""
+
+        async def loader():
+            return 1
+
+        ll = LazyLoader(loader, strategy=MissingKeyStrategy.SILENT)
+        ll._async_lock = None
+        ll._instance = "cached"
+        with pytest.raises(RuntimeError, match="Async lock not initialized"):
+            ll.reset()
+
     def test_reset_global_context(self):
         loader = LazyLoader(
             lambda: None,

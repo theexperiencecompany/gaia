@@ -433,6 +433,7 @@ class TestWorkflowsTriggersAndSystem:
             wf.id,
             title="Fresh",
             description="fresh desc",
+            prompt="fresh prompt",
             steps=[WorkflowStep(title="s2", category="notion", description="d2")],
             trigger_config=TriggerConfig(
                 type=TriggerType.SCHEDULE, enabled=True, cron_expression="0 9 * * *"
@@ -442,6 +443,7 @@ class TestWorkflowsTriggersAndSystem:
         assert updated is not None
         assert updated.title == "Fresh"
         assert updated.description == "fresh desc"
+        assert updated.prompt == "fresh prompt"
         assert [s.title for s in updated.steps] == ["s2"]
         assert updated.trigger_config.type == TriggerType.SCHEDULE
         assert updated.trigger_config.composio_trigger_ids == ["t1"]

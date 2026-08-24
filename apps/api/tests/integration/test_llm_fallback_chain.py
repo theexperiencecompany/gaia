@@ -33,7 +33,6 @@ from app.agents.llm.client import (
 from app.config.model_pricing import (
     DEFAULT_PRICING,
     ModelPricing,
-    calculate_token_cost,
     get_model_pricing,
 )
 from app.config.settings import settings
@@ -238,77 +237,19 @@ class TestCreateConfigurableLLM:
 
 @pytest.mark.integration
 class TestModelPricing:
-    """Test model pricing lookup and token cost calculation."""
+    """Pricing resolves from the in-code table — no database involved."""
 
-    async def test_get_model_pricing_returns_default_on_missing_model(self) -> None:
-        """When model_service returns None, DEFAULT_PRICING is used."""
-        with patch(
-            "app.config.model_pricing.get_model_by_id",
-            new_callable=AsyncMock,
-            return_value=None,
-        ):
-            pricing = await get_model_pricing("nonexistent-model")
+    async def test_get_model_pricing_returns_default_on_unknown_model(self) -> None:
+        assert get_model_pricing("nonexistent-model") == DEFAULT_PRICING
 
-        assert pricing == DEFAULT_PRICING
-
-    async def test_get_model_pricing_returns_model_data(self) -> None:
-        """When model_service returns a model with pricing, those values are used."""
-        mock_model = MagicMock()
-        mock_model.pricing_per_1k_input_tokens = 0.005
-        mock_model.pricing_per_1k_output_tokens = 0.015
-        # Explicitly set cached pricing to None so production derives it from
-        # the DEFAULT_CACHED_INPUT_FRACTION (0.25 * input_cost = 0.00125).
-        mock_model.pricing_per_1k_cached_input_tokens = None
-
-        with patch(
-            "app.config.model_pricing.get_model_by_id",
-            new_callable=AsyncMock,
-            return_value=mock_model,
-        ):
-            pricing = await get_model_pricing("gpt-4o")
+    async def test_get_model_pricing_returns_the_tables_rate(self) -> None:
+        pricing = get_model_pricing("gemini-3.1-flash-lite")
 
         assert pricing == ModelPricing(
-            input_cost_per_1k=0.005,
-            output_cost_per_1k=0.015,
-            cached_input_cost_per_1k=0.005 * 0.25,
+            input_cost_per_1k=0.0001,
+            output_cost_per_1k=0.0004,
+            cached_input_cost_per_1k=0.000025,
         )
-
-    async def test_get_model_pricing_handles_exception_gracefully(self) -> None:
-        """On exception from the model service, DEFAULT_PRICING is returned."""
-        with patch(
-            "app.config.model_pricing.get_model_by_id",
-            new_callable=AsyncMock,
-            side_effect=Exception("db error"),
-        ):
-            pricing = await get_model_pricing("gpt-4o")
-
-        assert pricing == DEFAULT_PRICING
-
-    async def test_calculate_token_cost_arithmetic(self) -> None:
-        """Verify token cost calculation is correct for known inputs."""
-        with patch(
-            "app.config.model_pricing.get_model_pricing",
-            new_callable=AsyncMock,
-            return_value=ModelPricing(input_cost_per_1k=0.01, output_cost_per_1k=0.03),
-        ):
-            cost = await calculate_token_cost("test-model", input_tokens=2000, output_tokens=1000)
-
-        assert cost["input_cost"] == 0.02  # 2000/1000 * 0.01
-        assert cost["output_cost"] == 0.03  # 1000/1000 * 0.03
-        assert cost["total_cost"] == 0.05
-
-    async def test_calculate_token_cost_zero_tokens(self) -> None:
-        """Zero tokens should yield zero cost."""
-        with patch(
-            "app.config.model_pricing.get_model_pricing",
-            new_callable=AsyncMock,
-            return_value=DEFAULT_PRICING,
-        ):
-            cost = await calculate_token_cost("test-model", input_tokens=0, output_tokens=0)
-
-        assert cost["input_cost"] == 0.0
-        assert cost["output_cost"] == 0.0
-        assert cost["total_cost"] == 0.0
 
 
 @pytest.mark.integration

@@ -18,6 +18,7 @@ from app.models.trigger_config import TriggerOption, TriggerOptionGroup
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.tracked_todo_service import tracked_todo_service
+from app.services.triggers.batching import buffer_trigger_event, coalesce_window_seconds
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.utils.exceptions import TriggerRegistrationError
 from shared.py.wide_events import TriggerContext, log
@@ -416,10 +417,7 @@ class TriggerHandler(ABC):
             # trigger_type stamp is what lets the worker tell this run apart
             # from a user's manual "run now" (unstamped, it defaulted to
             # "manual" and was mislabeled in analytics and origin handling).
-            context: dict[str, Any] = {
-                "trigger_data": data,
-                "trigger_type": TriggerType.INTEGRATION.value,
-            }
+            context: dict[str, Any] = {"trigger_type": TriggerType.INTEGRATION.value}
             if workflow.user_id not in signal_context_by_user:
                 try:
                     signal_context_by_user[
@@ -436,10 +434,20 @@ class TriggerHandler(ABC):
             if todos_context:
                 context["tracked_todos_context"] = todos_context
 
+            # A poll-based trigger fires once per item Composio found, so its
+            # events are batched into one run instead of one run each. Triggers
+            # with no declared interval stay immediate — a meeting reminder held
+            # back for its window is a missed meeting.
+            window_seconds = coalesce_window_seconds(workflow.trigger_config)
+            if window_seconds > 0 and await buffer_trigger_event(
+                workflow.id, workflow.user_id, data, window_seconds, context
+            ):
+                return True
+
             await WorkflowQueueService.queue_workflow_execution(
                 workflow.id,
                 workflow.user_id,
-                context=context,
+                context={**context, "trigger_data": data},
             )
             log.info(
                 "trigger_workflow_queued",

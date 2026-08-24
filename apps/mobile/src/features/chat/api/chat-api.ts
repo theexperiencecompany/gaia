@@ -83,6 +83,12 @@ export interface Message {
   pinned?: boolean;
   metadata?: Record<string, unknown>;
   replyToMessage?: ReplyToMessageData | null;
+  /**
+   * Set when the turn producing this message failed. The streamed text (if
+   * any) is preserved alongside it — mirrors web's FailedResponse, which shows
+   * the partial bubble plus a retry affordance instead of wiping the text.
+   */
+  error?: string;
 }
 
 export interface ConversationDetail {

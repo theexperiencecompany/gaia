@@ -145,6 +145,7 @@ async def _core_agent_logic(
         execution_mode=execution_mode,
         source=source,
         user_messages=recent_user_messages(request.messages, request.message),
+        user_request=request.message,
         user_preferences=user_preferences,
         writing_style=writing_style,
         langfuse_trace_id=langfuse_trace_id,

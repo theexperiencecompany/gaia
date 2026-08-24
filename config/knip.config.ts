@@ -345,7 +345,14 @@ const config: KnipConfig = {
 
     // ── Mobile App ───────────────────────────────────────────────────
     "apps/mobile": {
-      entry: ["metro.config.js", "src/**/*.{ts,tsx}", "app/**/*.{ts,tsx}"],
+      entry: [
+        "metro.config.js",
+        "vitest.config.ts",
+        "src/**/*.{ts,tsx}",
+        "app/**/*.{ts,tsx}",
+      ],
+      // Tests are not live references — see apps/bots note.
+      project: ["**/*.{ts,tsx}", "!src/**/*.test.ts"],
       ignoreDependencies: [
         "metro-minify-terser",
         // Metro/Expo build config deps (used in metro.config.js / app.json).
