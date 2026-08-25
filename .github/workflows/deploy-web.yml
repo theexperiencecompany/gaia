@@ -249,10 +249,24 @@ jobs:
           echo "### ❌ Preview deploy failed" >> "$GITHUB_STEP_SUMMARY"
           echo "Check token scopes and that Workers Gradual Rollouts / Versions is enabled for this worker." >> "$GITHUB_STEP_SUMMARY"
 
+      # Post as the "Cloudflare Deployment" GitHub App (its avatar is the
+      # Cloudflare logo) when its credentials are configured; the default
+      # workflow token always renders as github-actions[bot] and cannot be
+      # renamed. Without the secrets the step is skipped and the comment falls
+      # back to the default token, so the preview comment never goes missing.
+      - name: Mint a Cloudflare Deployment app token
+        id: cf_app_token
+        if: success() && vars.CLOUDFLARE_DEPLOYMENT_APP_ID != ''
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.CLOUDFLARE_DEPLOYMENT_APP_ID }}
+          private-key: ${{ secrets.CLOUDFLARE_DEPLOYMENT_APP_PRIVATE_KEY }}
+
       - name: Comment PR with preview URL
         if: success()
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         with:
+          github-token: ${{ steps.cf_app_token.outputs.token || secrets.GITHUB_TOKEN }}
           script: |
             // One persistent comment per PR, found by a hidden marker and
             // updated in place on every deploy, so the thread never fills up
