@@ -1,7 +1,7 @@
 /**
  * Asana Trigger Settings
  *
- * UI configuration for Asana triggers: project and workspace IDs.
+ * UI configuration for Asana triggers.
  */
 
 "use client";
@@ -9,6 +9,7 @@
 import { Input } from "@heroui/input";
 
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+
 import { TriggerConnectionPrompt } from "../components/TriggerConnectionPrompt";
 import {
   TriggerSettingRow,
@@ -19,11 +20,11 @@ import type { TriggerConfig } from "../types";
 
 interface AsanaTriggerData {
   trigger_name: string;
-  project_id?: string;
+  project_gid?: string;
   workspace_id?: string;
 }
 
-export interface AsanaConfig extends TriggerConfig {
+interface AsanaConfig extends TriggerConfig {
   trigger_name?: string;
   trigger_data?: AsanaTriggerData;
 }
@@ -66,24 +67,15 @@ export function AsanaSettings({
 
   return (
     <TriggerSettingsCard>
-      <TriggerSettingRow label="Project ID" hint="Leave empty for all projects">
-        <Input
-          aria-label="Project ID"
-          placeholder="Enter project ID"
-          value={triggerData?.project_id || ""}
-          onValueChange={(val) => updateTriggerData({ project_id: val })}
-          className="w-full"
-        />
-      </TriggerSettingRow>
       <TriggerSettingRow
-        label="Workspace ID"
-        hint="Leave empty for all workspaces"
+        label="Project GID"
+        hint="Required — Asana GID of the project to monitor"
       >
         <Input
-          aria-label="Workspace ID"
-          placeholder="Enter workspace ID"
-          value={triggerData?.workspace_id || ""}
-          onValueChange={(val) => updateTriggerData({ workspace_id: val })}
+          aria-label="Project GID"
+          placeholder="Enter project GID (e.g. 1213430481840948)"
+          value={triggerData?.project_gid || ""}
+          onValueChange={(val) => updateTriggerData({ project_gid: val })}
           className="w-full"
         />
       </TriggerSettingRow>

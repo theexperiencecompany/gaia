@@ -1,7 +1,8 @@
 /**
  * Notion Trigger Settings
  *
- * UI configuration for Notion triggers: database and page selection.
+ * UI configuration for Notion triggers: database selection for new-page
+ * triggers, page selection for page-update triggers.
  */
 
 "use client";
@@ -45,7 +46,9 @@ export function NotionSettings({
   const triggerSlug = config.trigger_name || "";
 
   const isDbTrigger = triggerSlug === "notion_new_page_in_db";
-  const isPageTrigger = triggerSlug === "notion_page_updated";
+  const isPageTrigger =
+    triggerSlug === "notion_page_updated" ||
+    triggerSlug === "notion_page_content_updated";
 
   // Fetch databases for database trigger
   const {
