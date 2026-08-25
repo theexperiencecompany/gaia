@@ -95,6 +95,73 @@ const PROVIDER_ROWS: ProviderRow[] = [
     showModelField: false,
     connectionTestable: false,
   },
+  // Tool / integration keys below mirror the tavily card shape: a single
+  // credential, no endpoint or model, and no live probe (the test endpoint
+  // only knows LLM wires).
+  {
+    key: "composio",
+    label: "Composio",
+    description:
+      "Integration platform for Gmail, Calendar, Slack, and 200+ tools.",
+    faviconDomain: "composio.dev",
+    needsBaseUrl: false,
+    showModelField: false,
+    connectionTestable: false,
+  },
+  {
+    key: "e2b",
+    label: "E2B Sandbox",
+    description: "Code execution sandbox for the agent's bash/code tools.",
+    faviconDomain: "e2b.dev",
+    needsBaseUrl: false,
+    showModelField: false,
+    connectionTestable: false,
+  },
+  {
+    key: "openai",
+    label: "OpenAI",
+    description: "Used for voice-note transcription (Whisper).",
+    faviconDomain: "openai.com",
+    needsBaseUrl: false,
+    showModelField: false,
+    connectionTestable: false,
+  },
+  {
+    key: "resend",
+    label: "Resend Email",
+    description: "Outbound email for notifications and reminders.",
+    faviconDomain: "resend.com",
+    needsBaseUrl: false,
+    showModelField: false,
+    connectionTestable: false,
+  },
+  {
+    key: "cloudinary",
+    label: "Cloudinary",
+    description: "Image upload and storage for chat media.",
+    faviconDomain: "cloudinary.com",
+    needsBaseUrl: false,
+    showModelField: false,
+    connectionTestable: false,
+  },
+  {
+    key: "google_oauth",
+    label: "Google OAuth",
+    description: "Google account integration (Gmail, Calendar).",
+    faviconDomain: "accounts.google.com",
+    needsBaseUrl: false,
+    showModelField: false,
+    connectionTestable: false,
+  },
+  {
+    key: "firecrawl",
+    label: "Firecrawl",
+    description: "Advanced web scraping and crawling.",
+    faviconDomain: "firecrawl.dev",
+    needsBaseUrl: false,
+    showModelField: false,
+    connectionTestable: false,
+  },
 ];
 
 // Preset gateways for the custom lane come from the shared catalog in
@@ -430,7 +497,7 @@ export function ProvidersSettings() {
 
   return (
     <SettingsPage>
-      <SettingsSection description="Connect the AI backends GAIA uses for chat, reasoning, and search.">
+      <SettingsSection description="Connect the AI providers, tools, and integrations GAIA runs on.">
         {PROVIDER_ROWS.map((row) => {
           const configured = status?.providers?.[row.key]?.configured === true;
 

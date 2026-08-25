@@ -19,6 +19,7 @@ import {
   LLM_PROVIDER_CARDS,
   MOTION_FADE_UP,
   SEARCH_PROVIDER_CARD,
+  TOOL_PROVIDER_CARDS,
 } from "../../constants";
 
 const ConnectedAppsCount = nextDynamic(() => import("./ConnectedAppsCount"), {
@@ -31,7 +32,7 @@ interface DoneStepProps {
 
 function providerLabel(key: string): string {
   return (
-    [...LLM_PROVIDER_CARDS, SEARCH_PROVIDER_CARD].find(
+    [...LLM_PROVIDER_CARDS, SEARCH_PROVIDER_CARD, ...TOOL_PROVIDER_CARDS].find(
       (card) => card.key === key,
     )?.label ?? key
   );
@@ -53,6 +54,10 @@ export function DoneStep({ status }: DoneStepProps) {
   const searchConfigured = isProviderConfigured(
     status,
     SEARCH_PROVIDER_CARD.key,
+  );
+
+  const connectedTools = TOOL_PROVIDER_CARDS.filter((card) =>
+    isProviderConfigured(status, card.key),
   );
 
   return (
@@ -77,6 +82,15 @@ export function DoneStep({ status }: DoneStepProps) {
                 : "Skipped"
             }
             done={searchConfigured}
+          />
+          <SummaryRow
+            label="Tool keys"
+            value={
+              connectedTools.length > 0
+                ? connectedTools.map((card) => card.label).join(", ")
+                : "None yet"
+            }
+            done={null}
           />
           <SummaryRow
             label="Connected accounts"

@@ -115,7 +115,20 @@ class TestStatus:
             "providers",
             "plans_seeded",
         }
-        assert set(body["providers"]) == {"openrouter", "gemini", "ollama", "custom", "tavily"}
+        assert set(body["providers"]) == {
+            "openrouter",
+            "gemini",
+            "ollama",
+            "custom",
+            "tavily",
+            "composio",
+            "e2b",
+            "openai",
+            "resend",
+            "cloudinary",
+            "google_oauth",
+            "firecrawl",
+        }
         assert all(set(v) == {"configured"} for v in body["providers"].values())
 
     async def test_status_has_no_auth_dependency(self) -> None:

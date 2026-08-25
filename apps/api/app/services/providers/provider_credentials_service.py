@@ -250,6 +250,58 @@ def _env_fallback(provider: str) -> ProviderConfig | None:
             model=settings.DEV_LLM_MODEL,
             preset=None,
         )
+    # Tool / integration keys below — single api_key lanes like tavily, except
+    # where the service needs a multi-variable set to actually work (cloudinary,
+    # google_oauth): those resolve only when EVERY variable is present, so a
+    # half-set env never reports the provider as configured.
+    if provider == "composio":
+        if not settings.COMPOSIO_KEY:
+            return None
+        return ProviderConfig(api_key=settings.COMPOSIO_KEY, base_url=None, model=None, preset=None)
+    if provider == "e2b":
+        if not settings.E2B_API_KEY:
+            return None
+        return ProviderConfig(api_key=settings.E2B_API_KEY, base_url=None, model=None, preset=None)
+    if provider == "openai":
+        # Voice-note transcription (Whisper) key.
+        if not settings.OPENAI_API_KEY:
+            return None
+        return ProviderConfig(
+            api_key=settings.OPENAI_API_KEY, base_url=None, model=None, preset=None
+        )
+    if provider == "resend":
+        if not settings.RESEND_API_KEY:
+            return None
+        return ProviderConfig(
+            api_key=settings.RESEND_API_KEY, base_url=None, model=None, preset=None
+        )
+    if provider == "cloudinary":
+        # Uploads need all three: cloud name + key + secret ship together.
+        if not (
+            settings.CLOUDINARY_CLOUD_NAME
+            and settings.CLOUDINARY_API_KEY
+            and settings.CLOUDINARY_API_SECRET
+        ):
+            return None
+        return ProviderConfig(
+            api_key=settings.CLOUDINARY_API_KEY, base_url=None, model=None, preset=None
+        )
+    if provider == "google_oauth":
+        # The client id/secret pair only works as a pair.
+        if not (settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET):
+            return None
+        return ProviderConfig(
+            api_key=settings.GOOGLE_CLIENT_SECRET,
+            base_url=None,
+            model=None,
+            preset=None,
+        )
+    if provider == "firecrawl":
+        if not settings.FIRECRAWL_API_KEY:
+            return None
+        return ProviderConfig(
+            api_key=settings.FIRECRAWL_API_KEY, base_url=None, model=None, preset=None
+        )
     return None
 
 

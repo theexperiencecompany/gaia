@@ -47,8 +47,10 @@ router = APIRouter(tags=["Setup"])
 # Doc key under which wizard progress is persisted in instance settings.
 SETUP_DOC_KEY = "setup"
 
-# Providers that constitute a working LLM lane for ``needs_setup`` — every
-# credential provider except Tavily (a tool key, not an LLM).
+# Providers that constitute a working LLM lane for ``needs_setup`` — NOT every
+# credential provider: tavily (search) plus the composio/e2b/openai/resend/
+# cloudinary/google_oauth/firecrawl tool & integration keys are configured
+# here too but cannot serve chat.
 _LLM_PROVIDER_KEYS = ("openrouter", "gemini", "ollama", "custom")
 
 # Providers whose outbound traffic targets a caller-configurable base_url — the

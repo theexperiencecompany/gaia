@@ -15,7 +15,7 @@ import { ArrowRight02Icon, Cancel01Icon } from "@icons";
 import * as m from "motion/react-m";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { SETUP_PROVIDER_KEYS } from "@/features/settings/api/providersApi";
+import { LLM_PROVIDER_KEYS } from "@/features/settings/api/providersApi";
 import {
   isProviderConfigured,
   useSetupStatus,
@@ -58,8 +58,8 @@ export function SetupChecklistCard() {
   const items = useMemo<ChecklistItem[]>(() => {
     if (!status) return [];
     const list: ChecklistItem[] = [];
-    const hasLlm = SETUP_PROVIDER_KEYS.some(
-      (key) => key !== "tavily" && isProviderConfigured(status, key),
+    const hasLlm = LLM_PROVIDER_KEYS.some((key) =>
+      isProviderConfigured(status, key),
     );
     if (!hasLlm) {
       list.push({

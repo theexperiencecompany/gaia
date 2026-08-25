@@ -63,6 +63,7 @@ from app.constants.llm import (
     VISION_MODEL_NAME,
 )
 from app.constants.log_tags import LogTag
+from app.constants.providers import CREDENTIAL_PROVIDERS
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.agent_models import agent_configurable
 from app.services.llm_metering import (
@@ -149,9 +150,10 @@ PROVIDER_PRIORITY: dict[int, LLMProviderName] = {
 #   working.
 # ---------------------------------------------------------------------------
 
-# Everything with a resolvable credential, including tavily (no LLM lane, but
-# its availability reads through the same snapshot) — mirrors CREDENTIAL_PROVIDERS.
-_RUNTIME_CONFIG_PROVIDERS: tuple[str, ...] = ("openrouter", "gemini", "ollama", "custom", "tavily")
+# Everything with a resolvable credential — the canonical credential-provider
+# set from app/constants/providers.py, including tavily and the tool/integration
+# keys (no LLM lane, but their availability reads through the same snapshot).
+_RUNTIME_CONFIG_PROVIDERS: tuple[str, ...] = CREDENTIAL_PROVIDERS
 
 _runtime_configs: dict[str, ProviderConfig | None] = {}
 

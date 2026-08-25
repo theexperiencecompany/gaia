@@ -175,7 +175,9 @@ export function SetupWizard() {
               {step.id === "search" && (
                 <SearchStep status={status} onSaved={refreshStatus} />
               )}
-              {step.id === "integrations" && <IntegrationsStep />}
+              {step.id === "integrations" && (
+                <IntegrationsStep status={status} onSaved={refreshStatus} />
+              )}
               {step.id === "done" && <DoneStep status={status} />}
             </m.div>
           </AnimatePresence>

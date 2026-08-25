@@ -56,6 +56,56 @@ PRESETS: dict[str, ProviderPreset] = {
         "favicon_domain": "nousresearch.com",
         "needs_base_url": False,
     },
+    # Tool / integration keys — no LLM endpoint, single-credential cards.
+    "composio": {
+        "label": "Composio",
+        "base_url": "",
+        "default_model": "",
+        "favicon_domain": "composio.dev",
+        "needs_base_url": False,
+    },
+    "e2b": {
+        "label": "E2B Sandbox",
+        "base_url": "",
+        "default_model": "",
+        "favicon_domain": "e2b.dev",
+        "needs_base_url": False,
+    },
+    "openai": {
+        "label": "OpenAI",
+        "base_url": "",
+        "default_model": "",
+        "favicon_domain": "openai.com",
+        "needs_base_url": False,
+    },
+    "resend": {
+        "label": "Resend Email",
+        "base_url": "",
+        "default_model": "",
+        "favicon_domain": "resend.com",
+        "needs_base_url": False,
+    },
+    "cloudinary": {
+        "label": "Cloudinary",
+        "base_url": "",
+        "default_model": "",
+        "favicon_domain": "cloudinary.com",
+        "needs_base_url": False,
+    },
+    "google_oauth": {
+        "label": "Google OAuth",
+        "base_url": "",
+        "default_model": "",
+        "favicon_domain": "accounts.google.com",
+        "needs_base_url": False,
+    },
+    "firecrawl": {
+        "label": "Firecrawl",
+        "base_url": "",
+        "default_model": "",
+        "favicon_domain": "firecrawl.dev",
+        "needs_base_url": False,
+    },
 }
 
 # Credential-store providers. "custom" covers OpenCode/Nous/any OpenAI-compatible
@@ -66,6 +116,13 @@ CREDENTIAL_PROVIDERS: tuple[str, ...] = (
     "ollama",
     "custom",
     "tavily",
+    "composio",
+    "e2b",
+    "openai",
+    "resend",
+    "cloudinary",
+    "google_oauth",
+    "firecrawl",
 )
 
 FAVICON_URL_TEMPLATE = "https://www.google.com/s2/favicons?domain={domain}&sz=128"

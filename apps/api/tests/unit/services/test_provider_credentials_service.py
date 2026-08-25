@@ -92,6 +92,16 @@ def clean_state(monkeypatch):
         "DEV_LLM_BASE_URL",
         "DEV_LLM_API_KEY",
         "DEV_LLM_MODEL",
+        "COMPOSIO_KEY",
+        "E2B_API_KEY",
+        "OPENAI_API_KEY",
+        "RESEND_API_KEY",
+        "CLOUDINARY_CLOUD_NAME",
+        "CLOUDINARY_API_KEY",
+        "CLOUDINARY_API_SECRET",
+        "GOOGLE_CLIENT_ID",
+        "GOOGLE_CLIENT_SECRET",
+        "FIRECRAWL_API_KEY",
         "INSTANCE_SECRET",
     ):
         monkeypatch.setattr(settings, field, None)
@@ -313,6 +323,76 @@ class TestResolvePrecedenceAndFallbacks:
 
     async def test_unknown_provider_is_none(self, repo) -> None:
         assert await resolve("not-a-provider") is None
+
+
+class TestToolProviderEnvFallbacks:
+    """The tool/integration credential lanes: single-key providers resolve from
+    their one env var; the multi-variable pairs (cloudinary, google_oauth)
+    resolve ONLY when every variable is present — a half-set env must never
+    report the provider as configured."""
+
+    @pytest.mark.parametrize(
+        ("provider", "field", "value"),
+        [
+            ("composio", "COMPOSIO_KEY", "ck-test"),
+            ("e2b", "E2B_API_KEY", "e2b-test"),
+            ("openai", "OPENAI_API_KEY", "sk-oai-test"),
+            ("resend", "RESEND_API_KEY", "re-test"),
+            ("firecrawl", "FIRECRAWL_API_KEY", "fc-test"),
+        ],
+    )
+    async def test_single_key_env_fallback(self, repo, provider, field, value) -> None:
+        setattr(settings, field, value)
+
+        config = await resolve(provider)
+
+        assert config is not None and config["api_key"] == value
+
+    async def test_cloudinary_resolves_with_all_three_fields(self, repo) -> None:
+        settings.CLOUDINARY_CLOUD_NAME = "my-cloud"
+        settings.CLOUDINARY_API_KEY = "cl-key"
+        settings.CLOUDINARY_API_SECRET = "cl-secret"
+
+        config = await resolve("cloudinary")
+
+        assert config is not None and config["api_key"] == "cl-key"
+
+    @pytest.mark.parametrize(
+        ("cloud_name", "key", "secret"),
+        [
+            (None, "cl-key", "cl-secret"),
+            ("my-cloud", None, "cl-secret"),
+            ("my-cloud", "cl-key", None),
+        ],
+    )
+    async def test_cloudinary_partial_env_is_not_configured(
+        self, repo, cloud_name, key, secret
+    ) -> None:
+        settings.CLOUDINARY_CLOUD_NAME = cloud_name
+        settings.CLOUDINARY_API_KEY = key
+        settings.CLOUDINARY_API_SECRET = secret
+
+        assert await resolve("cloudinary") is None
+
+    async def test_google_oauth_pair_resolves_secret_as_key(self, repo) -> None:
+        settings.GOOGLE_CLIENT_ID = "client-id.apps.googleusercontent.com"
+        settings.GOOGLE_CLIENT_SECRET = "GOCSPID-test"
+
+        config = await resolve("google_oauth")
+
+        assert config is not None and config["api_key"] == "GOCSPID-test"
+
+    @pytest.mark.parametrize(
+        ("client_id", "client_secret"),
+        [(None, "GOCSPID-test"), ("client-id", None)],
+    )
+    async def test_google_oauth_half_pair_is_not_configured(
+        self, repo, client_id, client_secret
+    ) -> None:
+        settings.GOOGLE_CLIENT_ID = client_id
+        settings.GOOGLE_CLIENT_SECRET = client_secret
+
+        assert await resolve("google_oauth") is None
 
 
 # ---------------------------------------------------------------------------

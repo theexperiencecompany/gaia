@@ -4,6 +4,8 @@
  * (OAuth redirects away and resumes after the callback), plus the shared
  * connection-state helpers that render Connect/Reconnect labels elsewhere.
  * If the catalog can't load, falls back to a static link to /integrations.
+ * Below the app catalog sit the tool/integration provider keys (composio,
+ * e2b, …) on the same ProviderSetupCard pattern as the search step.
  */
 
 "use client";
@@ -20,11 +22,20 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import { MOTION_FADE_UP } from "../../constants";
+import type { SetupStatus } from "@/features/settings/api/providersApi";
+import { isProviderConfigured } from "@/features/settings/hooks/useSetupStatus";
+import { MOTION_FADE_UP, TOOL_PROVIDER_CARDS } from "../../constants";
+import { ProviderSetupCard } from "../ProviderSetupCard";
 
 const MAX_SUGGESTED = 6;
 
-export function IntegrationsStep() {
+interface IntegrationsStepProps {
+  status: SetupStatus;
+  /** Fired after a tool-key save so the wizard refreshes setup status. */
+  onSaved: () => void;
+}
+
+export function IntegrationsStep({ status, onSaved }: IntegrationsStepProps) {
   const { integrations, isLoading, connectIntegration } = useIntegrations();
 
   const { suggested, connectedCount } = useMemo(() => {
@@ -118,6 +129,24 @@ export function IntegrationsStep() {
             })}
           </div>
         )}
+      </div>
+
+      <div className="w-full rounded-2xl bg-zinc-800 p-4">
+        <p className="mb-1 text-sm font-medium text-zinc-100">Tool keys</p>
+        <p className="mb-3 text-xs text-zinc-500">
+          Optional. Add keys for the tools GAIA can use — every one can also be
+          configured later in Settings.
+        </p>
+        <div className="space-y-2">
+          {TOOL_PROVIDER_CARDS.map((config) => (
+            <ProviderSetupCard
+              key={config.key}
+              config={config}
+              isConfigured={isProviderConfigured(status, config.key)}
+              onSaved={onSaved}
+            />
+          ))}
+        </div>
       </div>
 
       <Button

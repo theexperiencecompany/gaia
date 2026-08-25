@@ -3,8 +3,8 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   type CredentialProvider,
+  LLM_PROVIDER_KEYS,
   providersApi,
-  SETUP_PROVIDER_KEYS,
   type SetupStatus,
 } from "@/features/settings/api/providersApi";
 
@@ -31,7 +31,5 @@ export function isProviderConfigured(
 }
 
 export function isAnyLlmConfigured(status: SetupStatus | undefined): boolean {
-  return SETUP_PROVIDER_KEYS.some((key) =>
-    key === "tavily" ? false : isProviderConfigured(status, key),
-  );
+  return LLM_PROVIDER_KEYS.some((key) => isProviderConfigured(status, key));
 }

@@ -117,6 +117,107 @@ export const SEARCH_PROVIDER_CARD: ProviderCardConfig = {
   hasPresets: false,
 };
 
+/**
+ * Tool / integration keys configured like tavily — a single credential with
+ * no endpoint or model. Not rendered by a wizard step today; exported so the
+ * wizard and Settings share one catalog (mirrors the tail of
+ * CREDENTIAL_PROVIDERS in app/constants/providers.py).
+ */
+export const TOOL_PROVIDER_CARDS: ProviderCardConfig[] = [
+  {
+    key: "composio",
+    label: "Composio",
+    description:
+      "Integration platform for Gmail, Calendar, Slack, and 200+ tools.",
+    faviconDomain: "composio.dev",
+    showApiKey: true,
+    showBaseUrl: false,
+    showModel: false,
+    connectionTestable: false,
+    defaultBaseUrl: "",
+    defaultModel: "",
+    hasPresets: false,
+  },
+  {
+    key: "e2b",
+    label: "E2B Sandbox",
+    description: "Code execution sandbox for the agent's bash/code tools.",
+    faviconDomain: "e2b.dev",
+    showApiKey: true,
+    showBaseUrl: false,
+    showModel: false,
+    connectionTestable: false,
+    defaultBaseUrl: "",
+    defaultModel: "",
+    hasPresets: false,
+  },
+  {
+    key: "openai",
+    label: "OpenAI",
+    description: "Used for voice-note transcription (Whisper).",
+    faviconDomain: "openai.com",
+    showApiKey: true,
+    showBaseUrl: false,
+    showModel: false,
+    connectionTestable: false,
+    defaultBaseUrl: "",
+    defaultModel: "",
+    hasPresets: false,
+  },
+  {
+    key: "resend",
+    label: "Resend Email",
+    description: "Outbound email for notifications and reminders.",
+    faviconDomain: "resend.com",
+    showApiKey: true,
+    showBaseUrl: false,
+    showModel: false,
+    connectionTestable: false,
+    defaultBaseUrl: "",
+    defaultModel: "",
+    hasPresets: false,
+  },
+  {
+    key: "cloudinary",
+    label: "Cloudinary",
+    description: "Image upload and storage for chat media.",
+    faviconDomain: "cloudinary.com",
+    showApiKey: true,
+    showBaseUrl: false,
+    showModel: false,
+    connectionTestable: false,
+    defaultBaseUrl: "",
+    defaultModel: "",
+    hasPresets: false,
+  },
+  {
+    key: "google_oauth",
+    label: "Google OAuth",
+    description: "Google account integration (Gmail, Calendar).",
+    faviconDomain: "accounts.google.com",
+    showApiKey: true,
+    showBaseUrl: false,
+    showModel: false,
+    connectionTestable: false,
+    defaultBaseUrl: "",
+    defaultModel: "",
+    hasPresets: false,
+  },
+  {
+    key: "firecrawl",
+    label: "Firecrawl",
+    description: "Advanced web scraping and crawling.",
+    faviconDomain: "firecrawl.dev",
+    showApiKey: true,
+    showBaseUrl: false,
+    showModel: false,
+    connectionTestable: false,
+    defaultBaseUrl: "",
+    defaultModel: "",
+    hasPresets: false,
+  },
+];
+
 export interface WizardStepMeta {
   id: "account" | "provider" | "search" | "integrations" | "done";
   title: string;
