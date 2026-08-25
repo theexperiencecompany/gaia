@@ -67,7 +67,7 @@ class TestExtendsParentsToRetire:
     def test_a_live_parent_of_a_live_extends_child_is_retired(self) -> None:
         parent = make_row(content="sam works at acme")
         child = make_row(
-            content="sam is a staff engineer at acme",
+            content="sam works at acme as a staff engineer",
             parent_id=parent.id,
             relation_type="extends",
         )
@@ -223,12 +223,17 @@ MANUAL_REASON = "retired by hand (memory-store repair)"
 
 
 def make_args(
-    *, apply: bool = False, retire_ids: list[str] | None = None, state_age_days: int | None = None
+    *,
+    apply: bool = False,
+    retire_ids: list[str] | None = None,
+    state_age_days: int | None = None,
+    extends_containment: float = 0.8,
 ) -> argparse.Namespace:
     return argparse.Namespace(
         apply=apply,
         retire_ids=retire_ids,
         state_age_days=STATE_FACT_TTL_DAYS if state_age_days is None else state_age_days,
+        extends_containment=extends_containment,
     )
 
 
@@ -259,7 +264,7 @@ class TestRepairUserPlan:
     ) -> None:
         parent = make_row(content="sam works at acme")
         child = make_row(
-            content="sam is a staff engineer at acme",
+            content="sam works at acme as a staff engineer",
             parent_id=parent.id,
             relation_type="extends",
         )
@@ -276,7 +281,7 @@ class TestRepairUserPlan:
             f"\n{RULE}\nUser u1: 3 live memories\n{RULE}\n"
             "\nEXTENDS parents still live alongside their child: 1\n"
             f"  - retire {parent.id}: 'sam works at acme'\n"
-            f"      kept  {child.id}: 'sam is a staff engineer at acme'\n"
+            f"      kept  {child.id}: 'sam works at acme as a staff engineer'\n"
             f"\nStale state snapshots older than {STATE_FACT_TTL_DAYS}d: 1\n"
             f"  - forget {stale.id} ({stale.created_at:%Y-%m-%d}): "
             "'Gmail is currently disconnected'\n"
@@ -401,6 +406,85 @@ class TestRunAllUsers:
             assert await _run(args) == 0
 
         assert [call.args for call in repair.await_args_list] == [("u1", args), ("u2", args)]
+
+
+@pytest.mark.unit
+class TestOnlyARestatementRetiresItsParent:
+    """The links being read here were written by the OLD reconciler, whose rule
+    was "more detail about a related claim". So an EXTENDS link means the two
+    rows are topically adjacent, not that the child replaces the parent. On the
+    production store, retiring every linked parent would have deleted "avoid em
+    dashes" in favour of "fluff-free marketing copy"."""
+
+    @staticmethod
+    def _pair(parent_content: str, child_content: str) -> list[MemoryRecord]:
+        parent = make_row(content=parent_content)
+        child = make_row(
+            content=child_content,
+            relation_type="extends",
+            parent_id=parent.id,
+        )
+        return [parent, child]
+
+    def test_a_child_that_restates_the_parent_retires_it(self) -> None:
+        rows = self._pair(
+            "Aryan's startup is not venture-backed.",
+            "Aryan's startup is bootstrapped and not venture-backed.",
+        )
+
+        assert [parent.id for parent, _ in extends_parents_to_retire(rows)] == [rows[0].id]
+
+    def test_a_child_that_only_shares_a_topic_leaves_the_parent_alone(self) -> None:
+        rows = self._pair(
+            "Aryan prefers direct, human-sounding communication, avoiding corporate jargon "
+            "and em dashes.",
+            "Aryan prefers direct, concise, fluff-free communication for marketing copy.",
+        )
+
+        assert extends_parents_to_retire(rows) == []
+
+    def test_the_bar_is_the_callers_containment(self) -> None:
+        rows = self._pair(
+            "Aryan uses PostHog for analytics.",
+            "Aryan uses PostHog for tracking user acquisition and metrics.",
+        )
+
+        assert extends_parents_to_retire(rows, containment=0.9) == []
+        assert len(extends_parents_to_retire(rows, containment=0.5)) == 1
+
+
+@pytest.mark.unit
+class TestALongProfileIsNotASnapshot:
+    """The phrase heuristic reads a snapshot's SHAPE: short, one clock-bound
+    claim. user.md is rebuilt from live rows, so retiring a 600-character
+    biography because it says "currently pursuing" would impoverish the rebuild
+    it is meant to repair."""
+
+    def test_a_short_snapshot_is_still_retired(self) -> None:
+        row = make_row(content="Aryan is currently unable to take screenshots.", age_days=90)
+
+        assert state_rows_to_forget([row], now=NOW) == [row]
+
+    def test_a_long_biography_carrying_the_word_is_kept(self) -> None:
+        biography = (
+            "Aryan Randeriya is a software developer, designer and entrepreneur based in "
+            "India, the founder of The Experience Company, and is currently pursuing a "
+            "B.Tech in Computer Science. " + "He has shipped several products. " * 8
+        )
+        assert len(biography) > 300
+        row = make_row(content=biography, age_days=90)
+
+        assert state_rows_to_forget([row], now=NOW) == []
+
+    def test_a_row_the_extractor_itself_called_state_is_retired_at_any_length(self) -> None:
+        row = make_row(
+            content="Aryan's signup count stands at 2,000. " * 12,
+            age_days=90,
+            shelf_life=MemoryShelfLife.STATE,
+        )
+        assert len(row.content) > 300
+
+        assert state_rows_to_forget([row], now=NOW) == [row]
 
 
 @pytest.mark.unit
