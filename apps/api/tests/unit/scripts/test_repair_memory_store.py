@@ -28,6 +28,7 @@ from app.scripts import repair_memory_store
 from app.scripts.repair_memory_store import (
     _repair_user,
     _run,
+    covers,
     extends_parents_to_retire,
     looks_like_state,
     main,
@@ -67,7 +68,7 @@ class TestExtendsParentsToRetire:
     def test_a_live_parent_of_a_live_extends_child_is_retired(self) -> None:
         parent = make_row(content="sam works at acme")
         child = make_row(
-            content="sam is a staff engineer at acme",
+            content="sam works at acme as a staff engineer",
             parent_id=parent.id,
             relation_type="extends",
         )
@@ -223,12 +224,17 @@ MANUAL_REASON = "retired by hand (memory-store repair)"
 
 
 def make_args(
-    *, apply: bool = False, retire_ids: list[str] | None = None, state_age_days: int | None = None
+    *,
+    apply: bool = False,
+    retire_ids: list[str] | None = None,
+    state_age_days: int | None = None,
+    extends_containment: float = 0.8,
 ) -> argparse.Namespace:
     return argparse.Namespace(
         apply=apply,
         retire_ids=retire_ids,
         state_age_days=STATE_FACT_TTL_DAYS if state_age_days is None else state_age_days,
+        extends_containment=extends_containment,
     )
 
 
@@ -254,12 +260,31 @@ def store() -> Iterator[SimpleNamespace]:
 
 @pytest.mark.unit
 class TestRepairUserPlan:
+    async def test_the_containment_flag_is_what_decides_the_extends_plan(
+        self, store: SimpleNamespace, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        parent = make_row(content="avoid corporate jargon and em dashes")
+        child = make_row(
+            content="avoid fluff in marketing copy",
+            parent_id=parent.id,
+            relation_type="extends",
+        )
+        store.get_all_live_memories.return_value = [parent, child]
+
+        await _repair_user("u1", make_args(extends_containment=1.0))
+        strict = capsys.readouterr().out
+        await _repair_user("u1", make_args(extends_containment=0.0))
+        lax = capsys.readouterr().out
+
+        assert "EXTENDS parents still live alongside their child: 0" in strict
+        assert "EXTENDS parents still live alongside their child: 1" in lax
+
     async def test_the_dry_run_prints_the_whole_plan_and_writes_nothing(
         self, store: SimpleNamespace, capsys: pytest.CaptureFixture[str]
     ) -> None:
         parent = make_row(content="sam works at acme")
         child = make_row(
-            content="sam is a staff engineer at acme",
+            content="sam works at acme as a staff engineer",
             parent_id=parent.id,
             relation_type="extends",
         )
@@ -276,7 +301,7 @@ class TestRepairUserPlan:
             f"\n{RULE}\nUser u1: 3 live memories\n{RULE}\n"
             "\nEXTENDS parents still live alongside their child: 1\n"
             f"  - retire {parent.id}: 'sam works at acme'\n"
-            f"      kept  {child.id}: 'sam is a staff engineer at acme'\n"
+            f"      kept  {child.id}: 'sam works at acme as a staff engineer'\n"
             f"\nStale state snapshots older than {STATE_FACT_TTL_DAYS}d: 1\n"
             f"  - forget {stale.id} ({stale.created_at:%Y-%m-%d}): "
             "'Gmail is currently disconnected'\n"
@@ -404,6 +429,175 @@ class TestRunAllUsers:
 
 
 @pytest.mark.unit
+class TestOnlyARestatementRetiresItsParent:
+    """The links being read here were written by the OLD reconciler, whose rule
+    was "more detail about a related claim". So an EXTENDS link means the two
+    rows are topically adjacent, not that the child replaces the parent. On the
+    production store, retiring every linked parent would have deleted "avoid em
+    dashes" in favour of "fluff-free marketing copy"."""
+
+    @staticmethod
+    def _pair(parent_content: str, child_content: str) -> list[MemoryRecord]:
+        parent = make_row(content=parent_content)
+        child = make_row(
+            content=child_content,
+            relation_type="extends",
+            parent_id=parent.id,
+        )
+        return [parent, child]
+
+    def test_a_child_that_restates_the_parent_retires_it(self) -> None:
+        rows = self._pair(
+            "Aryan's startup is not venture-backed.",
+            "Aryan's startup is bootstrapped and not venture-backed.",
+        )
+
+        assert [parent.id for parent, _ in extends_parents_to_retire(rows)] == [rows[0].id]
+
+    def test_a_child_that_only_shares_a_topic_leaves_the_parent_alone(self) -> None:
+        rows = self._pair(
+            "Aryan prefers direct, human-sounding communication, avoiding corporate jargon "
+            "and em dashes.",
+            "Aryan prefers direct, concise, fluff-free communication for marketing copy.",
+        )
+
+        assert extends_parents_to_retire(rows) == []
+
+    def test_the_bar_is_the_callers_containment(self) -> None:
+        rows = self._pair(
+            "Aryan uses PostHog for analytics.",
+            "Aryan uses PostHog for tracking user acquisition and metrics.",
+        )
+
+        assert extends_parents_to_retire(rows, containment=0.9) == []
+        assert len(extends_parents_to_retire(rows, containment=0.5)) == 1
+
+
+@pytest.mark.unit
+class TestALongProfileIsNotASnapshot:
+    """The phrase heuristic reads a snapshot's SHAPE: short, one clock-bound
+    claim. user.md is rebuilt from live rows, so retiring a 600-character
+    biography because it says "currently pursuing" would impoverish the rebuild
+    it is meant to repair."""
+
+    def test_a_short_snapshot_is_still_retired(self) -> None:
+        row = make_row(content="Aryan is currently unable to take screenshots.", age_days=90)
+
+        assert state_rows_to_forget([row], now=NOW) == [row]
+
+    def test_a_long_biography_carrying_the_word_is_kept(self) -> None:
+        biography = (
+            "Aryan Randeriya is a software developer, designer and entrepreneur based in "
+            "India, the founder of The Experience Company, and is currently pursuing a "
+            "B.Tech in Computer Science. " + "He has shipped several products. " * 8
+        )
+        assert len(biography) > 300
+        row = make_row(content=biography, age_days=90)
+
+        assert state_rows_to_forget([row], now=NOW) == []
+
+    def test_a_row_the_extractor_itself_called_state_is_retired_at_any_length(self) -> None:
+        row = make_row(
+            content="Aryan's signup count stands at 2,000. " * 12,
+            age_days=90,
+            shelf_life=MemoryShelfLife.STATE,
+        )
+        assert len(row.content) > 300
+
+        assert state_rows_to_forget([row], now=NOW) == [row]
+
+
+@pytest.mark.unit
+class TestRunBootstrapsWhatAScriptHasNoLifespanFor:
+    """Outside the API process nobody has registered the lazy providers, so the
+    memory store's Postgres engine has nobody to build it and every query raises
+    ``Provider 'postgresql_engine' not found in registry``. That is exactly how
+    the first production dry run of this script failed."""
+
+    async def test_providers_are_registered_before_the_first_repair(self) -> None:
+        args = make_args()
+        args.user = ["u1"]
+        order: list[str] = []
+
+        async def repair(user_id: str, _args: argparse.Namespace) -> None:
+            order.append(f"repair:{user_id}")
+
+        async def close() -> None:
+            order.append("close")
+
+        with (
+            patch.object(
+                repair_memory_store,
+                "register_lazy_providers",
+                lambda context: order.append(f"register:{context}"),
+            ),
+            patch.object(repair_memory_store, "_repair_user", repair),
+            patch.object(repair_memory_store, "close_postgresql_db", close),
+        ):
+            assert await _run(args) == 0
+
+        assert order == ["register:main_app", "repair:u1", "close"]
+
+    async def test_the_engine_is_disposed_even_when_a_repair_fails(self) -> None:
+        args = make_args()
+        args.user = ["u1"]
+        closed = AsyncMock(return_value=None)
+
+        with (
+            patch.object(repair_memory_store, "register_lazy_providers", lambda context: None),
+            patch.object(
+                repair_memory_store, "_repair_user", AsyncMock(side_effect=RuntimeError("pg down"))
+            ),
+            patch.object(repair_memory_store, "close_postgresql_db", closed),
+        ):
+            with pytest.raises(RuntimeError, match="pg down"):
+                await _run(args)
+
+        closed.assert_awaited_once()
+
+
+@pytest.mark.unit
+class TestWhatCountsAsCoverage:
+    def test_the_share_is_measured_against_the_parents_words_only(self) -> None:
+        # parent: startup, bootstrapped, venture, backed, india (5); child repeats 4.
+        parent = "startup bootstrapped venture backed india"
+        child = "startup bootstrapped venture backed berlin and a great deal more"
+
+        assert covers(parent, child, 0.8) is True
+        assert covers(parent, child, 0.81) is False
+
+    def test_a_parent_made_only_of_filler_is_never_covered(self) -> None:
+        assert covers("it is as it was", "it is as it was", 0.0) is False
+
+    def test_case_and_filler_do_not_count_toward_coverage(self) -> None:
+        assert covers("PostHog Analytics", "posthog analytics", 1.0) is True
+        assert covers("the a an of to", "the a an of to", 0.0) is False
+        assert covers("AI is useful", "useful", 1.0) is True
+
+    def test_two_letter_words_are_filler_and_three_letter_words_are_subject(self) -> None:
+        assert covers("uses AI", "uses", 1.0) is True
+        assert covers("uses zsh", "uses", 1.0) is False
+
+    def test_a_child_that_flips_the_parents_meaning_does_not_cover_it(self) -> None:
+        # "not" is the whole difference between these two claims.
+        assert covers("startup is not venture-backed", "startup is venture-backed", 0.8) is False
+        assert covers("startup is not venture-backed", "startup is not venture-backed", 1.0) is True
+
+    def test_an_apostrophe_keeps_a_contraction_as_one_word(self) -> None:
+        assert covers("doesn't drink", "does not drink", 1.0) is False
+        assert covers("doesn't drink", "doesn't drink", 1.0) is True
+
+
+@pytest.mark.unit
+class TestTheSnapshotLengthBound:
+    def test_the_bound_is_inclusive(self) -> None:
+        exactly = "currently " + "x" * 290
+        assert len(exactly) == 300
+        assert looks_like_state(exactly) is True
+        assert looks_like_state(exactly + "x") is False
+
+
+@pytest.mark.unit
 class TestCommandLine:
     @staticmethod
     def _run_main(argv: list[str]) -> tuple[list[argparse.Namespace], int | str | None]:
@@ -435,6 +629,8 @@ class TestCommandLine:
                 "mem-2",
                 "--state-age-days",
                 "30",
+                "--extends-containment",
+                "0.5",
             ]
         )
 
@@ -444,6 +640,7 @@ class TestCommandLine:
         assert args.apply is True
         assert args.retire_ids == ["mem-1", "mem-2"]
         assert args.state_age_days == 30
+        assert args.extends_containment == 0.5
 
     def test_a_run_without_flags_is_a_dry_run_at_the_default_window(self) -> None:
         captured, _code = self._run_main(["--user", "u1"])
@@ -452,6 +649,40 @@ class TestCommandLine:
         assert args.apply is False
         assert args.retire_ids is None
         assert args.state_age_days == STATE_FACT_TTL_DAYS
+        assert args.extends_containment == 0.8
+
+    @pytest.mark.parametrize("bad", ["-1", "1.5", "nan"])
+    def test_a_containment_outside_zero_to_one_refuses_to_start(
+        self, bad: str, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with (
+            patch(
+                "sys.argv", ["repair_memory_store", "--user", "u1", "--extends-containment", bad]
+            ),
+            pytest.raises(SystemExit) as raised,
+        ):
+            main()
+
+        assert raised.value.code == 2
+        assert f"'{bad}' is not a share between 0.0 and 1.0" in capsys.readouterr().err
+
+    def test_a_containment_that_is_not_a_number_refuses_to_start(self) -> None:
+        with (
+            patch(
+                "sys.argv", ["repair_memory_store", "--user", "u1", "--extends-containment", "half"]
+            ),
+            pytest.raises(SystemExit) as raised,
+        ):
+            main()
+
+        assert raised.value.code == 2
+
+    @pytest.mark.parametrize("edge", ["0", "1"])
+    def test_the_ends_of_the_share_are_allowed(self, edge: str) -> None:
+        captured, code = self._run_main(["--user", "u1", "--extends-containment", edge])
+
+        assert code == 0
+        assert captured[0].extends_containment == float(edge)
 
     def test_a_run_with_no_user_refuses_to_start(self) -> None:
         with patch("sys.argv", ["repair_memory_store"]), pytest.raises(SystemExit) as raised:
@@ -493,4 +724,8 @@ class TestCommandLine:
         assert "--retire-ids RETIRE_IDS Forget this memory id outright (repeatable)." in options
         assert (
             "--state-age-days STATE_AGE_DAYS Age past which a state-like row is retired." in options
+        )
+        assert (
+            "--extends-containment EXTENDS_CONTAINMENT Share of a parent's words its child must "
+            "repeat before the parent is retired." in options
         )

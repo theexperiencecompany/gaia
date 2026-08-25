@@ -39,6 +39,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 from datetime import UTC, datetime, timedelta
+import math
 import re
 import uuid
 
@@ -47,6 +48,8 @@ from app.constants.memory import (
     MemoryRelationType,
     MemoryShelfLife,
 )
+from app.core.provider_registration import register_lazy_providers
+from app.db.postgresql import close_postgresql_db
 from app.memory import pg_store
 from app.memory.consolidation import consolidate, render_agenda_document
 from app.memory.management import forget_memory
@@ -61,23 +64,132 @@ _STATE_PHRASES = re.compile(
     re.IGNORECASE,
 )
 
+# The old reconciler wrote an EXTENDS link for "more detail on a related claim",
+# so a link only means "topically adjacent", not "same fact restated". Retiring
+# every linked parent deleted preferences whose child was vaguer than they were:
+# "avoid em dashes" lost to "fluff-free marketing copy". A parent is only retired
+# when the child actually covers it. Measured on the production store: of 216
+# linked parents, 26 pass at 0.8, and the 190 spared are plainly different facts
+# ("uses nasal spray" vs "dislikes its taste").
+_DEFAULT_EXTENDS_CONTAINMENT = 0.8
+
+# Filler that carries no subject, so it never counts toward coverage. Negation
+# is deliberately absent: "not venture-backed" and "venture-backed" are
+# opposite claims, and the child must repeat the "not" to cover the parent.
+_CONTAINMENT_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "of",
+        "to",
+        "in",
+        "on",
+        "for",
+        "with",
+        "and",
+        "or",
+        "his",
+        "her",
+        "their",
+        "its",
+        "he",
+        "she",
+        "they",
+        "it",
+        "that",
+        "this",
+        "these",
+        "those",
+        "as",
+        "at",
+        "by",
+        "from",
+        "into",
+        "about",
+        "over",
+        "under",
+        "prefers",
+        "wants",
+        "has",
+        "have",
+        "had",
+        "does",
+        "do",
+        "will",
+        "would",
+        "can",
+        "could",
+        "should",
+    }
+)
+
+# The phrase heuristic below reads a snapshot's shape: short, one clock-bound
+# claim. A long biography that merely contains the word "currently" is not that,
+# and retiring it would strip the profile rebuild of its richest source row.
+_MAX_HEURISTIC_STATE_CHARS = 300
+
 _EXTENDS_RETIRE_REASON = "superseded by its EXTENDS child (memory-store repair)"
 _STATE_RETIRE_REASON = "stale state snapshot (memory-store repair)"
 _MANUAL_RETIRE_REASON = "retired by hand (memory-store repair)"
 
 
 def looks_like_state(content: str) -> bool:
-    """Whether a fact reads as a value that was only true as of some moment."""
+    """Whether a fact reads as a value that was only true as of some moment.
+
+    Bounded by length: the phrases mark a snapshot only in a sentence that IS
+    one. A 600-character biography that happens to say "currently pursuing" is a
+    durable profile, and the rebuild derives user.md from rows like it.
+    """
+    if len(content) > _MAX_HEURISTIC_STATE_CHARS:
+        return False
     return _STATE_PHRASES.search(content) is not None
+
+
+def _subject_tokens(content: str) -> set[str]:
+    """The words that carry the claim, lowercased, filler removed."""
+    return {
+        word
+        for word in re.findall(r"[a-z0-9']+", content.lower())
+        if word not in _CONTAINMENT_STOPWORDS and len(word) > 2
+    }
+
+
+def containment_share(raw: str) -> float:
+    """argparse type for --extends-containment: a share, so 0.0 to 1.0 inclusive."""
+    value = float(raw)
+    if math.isnan(value) or not 0.0 <= value <= 1.0:
+        raise argparse.ArgumentTypeError(f"{raw!r} is not a share between 0.0 and 1.0")
+    return value
+
+
+def covers(parent: str, child: str, threshold: float) -> bool:
+    """Whether the child restates the parent rather than merely relating to it."""
+    parent_tokens = _subject_tokens(parent)
+    if not parent_tokens:
+        return False
+    shared = parent_tokens & _subject_tokens(child)
+    return len(shared) / len(parent_tokens) >= threshold
 
 
 def extends_parents_to_retire(
     rows: list[MemoryRecord],
+    *,
+    containment: float = _DEFAULT_EXTENDS_CONTAINMENT,
 ) -> list[tuple[MemoryRecord, MemoryRecord]]:
-    """``(parent, newest child)`` for every live parent of a live EXTENDS child.
+    """``(parent, newest child)`` for every live parent its child truly covers.
 
     Only EXTENDS pairs qualify: an UPDATES child already flipped its parent out
-    of the live set when it was written.
+    of the live set when it was written. A pair whose child does not cover the
+    parent is left alone: that link came from the old reconciler and means the
+    two are related, not that one replaces the other.
     """
     by_id = {row.id: row for row in rows}
     newest_child: dict[uuid.UUID, MemoryRecord] = {}
@@ -89,7 +201,11 @@ def extends_parents_to_retire(
         current = newest_child.get(row.parent_id)
         if current is None or row.created_at > current.created_at:
             newest_child[row.parent_id] = row
-    return [(by_id[parent_id], child) for parent_id, child in newest_child.items()]
+    return [
+        (by_id[parent_id], child)
+        for parent_id, child in newest_child.items()
+        if covers(by_id[parent_id].content, child.content, containment)
+    ]
 
 
 def state_rows_to_forget(
@@ -117,7 +233,7 @@ async def _repair_user(user_id: str, args: argparse.Namespace) -> int:
     rows = await pg_store.get_all_live_memories(user_id)
     print(f"\n{'=' * 78}\nUser {user_id}: {len(rows)} live memories\n{'=' * 78}")
 
-    extends_pairs = extends_parents_to_retire(rows)
+    extends_pairs = extends_parents_to_retire(rows, containment=args.extends_containment)
     print(f"\nEXTENDS parents still live alongside their child: {len(extends_pairs)}")
     for parent, child in extends_pairs:
         print(f"  - retire {parent.id}: {parent.content!r}")
@@ -159,8 +275,21 @@ async def _repair_user(user_id: str, args: argparse.Namespace) -> int:
 
 
 async def _run(args: argparse.Namespace) -> int:
-    for user_id in args.user:
-        await _repair_user(user_id, args)
+    """Bootstrap the providers a script has no lifespan to build, then repair.
+
+    Mongo self-initialises on first collection access, but the memory store's
+    Postgres engine is a lazy provider, and outside the API process nobody has
+    registered it: every query raised ``Provider 'postgresql_engine' not found in
+    registry``. Registration is bookkeeping only (no I/O); the engine itself is
+    built on first use and disposed here so the script exits without a warning
+    about an open pool.
+    """
+    register_lazy_providers("main_app")
+    try:
+        for user_id in args.user:
+            await _repair_user(user_id, args)
+    finally:
+        await close_postgresql_db()
     return 0
 
 
@@ -174,6 +303,12 @@ def main() -> None:
     )
     parser.add_argument(
         "--retire-ids", action="append", help="Forget this memory id outright (repeatable)."
+    )
+    parser.add_argument(
+        "--extends-containment",
+        type=containment_share,
+        default=_DEFAULT_EXTENDS_CONTAINMENT,
+        help="Share of a parent's words its child must repeat before the parent is retired.",
     )
     parser.add_argument(
         "--state-age-days",

@@ -22,6 +22,24 @@ class GoogleDocsDocument(BaseModel):
 
 
 class GoogleDocsPageAddedPayload(BaseModel):
-    """Payload for GOOGLEDOCS_PAGE_ADDED_TRIGGER."""
+    """Payload for GOOGLEDOCS_PAGE_ADDED_TRIGGER.
+
+    Field set verified against Composio triggers_types API (2026-08).
+    """
 
     document: GoogleDocsDocument | None = Field(None, description="The newly added Google document")
+    event_type: str | None = Field(None, description="Type of event that occurred")
+
+
+class GoogleDocsDocumentDeletedPayload(BaseModel):
+    """Payload for GOOGLEDOCS_DOCUMENT_DELETED_TRIGGER."""
+
+    document: GoogleDocsDocument | None = Field(None, description="The deleted Google document")
+    event_type: str | None = Field(None, description="Type of event that occurred")
+
+
+class GoogleDocsDocumentUpdatedPayload(BaseModel):
+    """Payload for GOOGLEDOCS_DOCUMENT_UPDATED_TRIGGER."""
+
+    document: GoogleDocsDocument | None = Field(None, description="The updated Google document")
+    event_type: str | None = Field(None, description="Type of event that occurred")

@@ -49,6 +49,7 @@ exclude = [
   "*/site-packages/*",
   "*/node_modules/*",
   "*/.nx/*",
+  ".claude/skills/seo-geo/scripts/*",
 ]
 ignore_decorators = [
   "@field_validator",
