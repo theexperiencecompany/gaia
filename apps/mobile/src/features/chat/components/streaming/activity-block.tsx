@@ -27,6 +27,7 @@ import {
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { getToolCategoryIcon } from "@/features/chat/utils/tool-icons";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { colors, typography } from "@/lib/design-tokens";
 import { selectionHaptic } from "@/lib/haptics";
 import { useResponsive } from "@/lib/responsive";
@@ -888,7 +889,12 @@ export function ActivityBlock({
   const toggleExpanded = useCallback(() => {
     selectionHaptic();
     setExpanded((v) => !v);
-  }, []);
+    trackEvent(ANALYTICS_EVENTS.CHAT_ACTIVITY_TIMELINE_TOGGLED, {
+      expanded: !expanded,
+      totalCount,
+      elapsedSeconds: seconds,
+    });
+  }, [expanded, totalCount, seconds]);
 
   const liveTitle = useMemo(() => {
     const last = timeline.at(-1);

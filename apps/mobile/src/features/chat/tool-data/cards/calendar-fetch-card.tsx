@@ -1,3 +1,4 @@
+import { formatDateWithRelative, formatTimeRange } from "@gaia/shared";
 import { useRouter } from "expo-router";
 import { Chip, PressableFeedback } from "heroui-native";
 import { useMemo } from "react";
@@ -8,7 +9,6 @@ import {
   ToolCardHeader,
   ToolCardShell,
 } from "@/features/chat/tool-data/primitives";
-import { formatDateWithRelative, formatTimeRange } from "./calendar-shared";
 
 // -- Types --------------------------------------------------------------------
 

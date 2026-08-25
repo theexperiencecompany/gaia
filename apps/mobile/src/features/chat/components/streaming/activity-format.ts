@@ -264,7 +264,7 @@ function enrichGroup(group: EnrichedSubagentGroup): EnrichedSubagentGroup {
   return {
     ...group,
     tool_calls: coalesceReasoning(
-      group.tool_calls.filter((tc) => tc.tool_name !== "spawn_subagent"),
+      group.tool_calls.filter((tc) => !isOriginCall(tc)),
     ),
     nested_subagents: group.nested_subagents.map((nested) =>
       enrichGroup(nested as EnrichedSubagentGroup),

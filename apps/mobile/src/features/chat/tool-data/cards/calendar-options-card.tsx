@@ -1,13 +1,13 @@
+import {
+  bucketDate,
+  formatDateWithRelative,
+  formatTimeRange,
+} from "@gaia/shared";
 import { Button } from "heroui-native";
 import { useState } from "react";
 import { ScrollView, View } from "react-native";
 import { AppIcon, Calendar03Icon, Tick02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import {
-  bucketDate,
-  formatDateWithRelative,
-  formatTimeRange,
-} from "./calendar-shared";
 
 // -- Types --------------------------------------------------------------------
 

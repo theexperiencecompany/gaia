@@ -271,7 +271,19 @@ export {
   WORKFLOW_STATUS_TTL_MS,
   WORKFLOW_WS_EVENTS,
 } from "./todos";
-export { formatToolDueDate, groupEventsByDate } from "./tool-utils";
+export {
+  bucketDate,
+  formatAllDayDate,
+  formatAllDayDateRange,
+  formatDateWithRelative,
+  formatTimedEventDate,
+  formatTimeRange,
+  formatTimeString,
+  formatToolDueDate,
+  getEventDurationText,
+  groupEventsByDate,
+  isDateOnly,
+} from "./tool-utils";
 export type {
   ActivityDay,
   BudgetWindow,
