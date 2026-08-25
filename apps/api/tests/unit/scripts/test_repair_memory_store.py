@@ -404,6 +404,55 @@ class TestRunAllUsers:
 
 
 @pytest.mark.unit
+class TestRunBootstrapsWhatAScriptHasNoLifespanFor:
+    """Outside the API process nobody has registered the lazy providers, so the
+    memory store's Postgres engine has nobody to build it and every query raises
+    ``Provider 'postgresql_engine' not found in registry``. That is exactly how
+    the first production dry run of this script failed."""
+
+    async def test_providers_are_registered_before_the_first_repair(self) -> None:
+        args = make_args()
+        args.user = ["u1"]
+        order: list[str] = []
+
+        async def repair(user_id: str, _args: argparse.Namespace) -> None:
+            order.append(f"repair:{user_id}")
+
+        async def close() -> None:
+            order.append("close")
+
+        with (
+            patch.object(
+                repair_memory_store,
+                "register_lazy_providers",
+                lambda context: order.append(f"register:{context}"),
+            ),
+            patch.object(repair_memory_store, "_repair_user", repair),
+            patch.object(repair_memory_store, "close_postgresql_db", close),
+        ):
+            assert await _run(args) == 0
+
+        assert order == ["register:main_app", "repair:u1", "close"]
+
+    async def test_the_engine_is_disposed_even_when_a_repair_fails(self) -> None:
+        args = make_args()
+        args.user = ["u1"]
+        closed = AsyncMock(return_value=None)
+
+        with (
+            patch.object(repair_memory_store, "register_lazy_providers", lambda context: None),
+            patch.object(
+                repair_memory_store, "_repair_user", AsyncMock(side_effect=RuntimeError("pg down"))
+            ),
+            patch.object(repair_memory_store, "close_postgresql_db", closed),
+        ):
+            with pytest.raises(RuntimeError, match="pg down"):
+                await _run(args)
+
+        closed.assert_awaited_once()
+
+
+@pytest.mark.unit
 class TestCommandLine:
     @staticmethod
     def _run_main(argv: list[str]) -> tuple[list[argparse.Namespace], int | str | None]:

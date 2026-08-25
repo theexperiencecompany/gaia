@@ -47,6 +47,8 @@ from app.constants.memory import (
     MemoryRelationType,
     MemoryShelfLife,
 )
+from app.core.provider_registration import register_lazy_providers
+from app.db.postgresql import close_postgresql_db
 from app.memory import pg_store
 from app.memory.consolidation import consolidate, render_agenda_document
 from app.memory.management import forget_memory
@@ -159,8 +161,21 @@ async def _repair_user(user_id: str, args: argparse.Namespace) -> int:
 
 
 async def _run(args: argparse.Namespace) -> int:
-    for user_id in args.user:
-        await _repair_user(user_id, args)
+    """Bootstrap the providers a script has no lifespan to build, then repair.
+
+    Mongo self-initialises on first collection access, but the memory store's
+    Postgres engine is a lazy provider, and outside the API process nobody has
+    registered it: every query raised ``Provider 'postgresql_engine' not found in
+    registry``. Registration is bookkeeping only (no I/O); the engine itself is
+    built on first use and disposed here so the script exits without a warning
+    about an open pool.
+    """
+    register_lazy_providers("main_app")
+    try:
+        for user_id in args.user:
+            await _repair_user(user_id, args)
+    finally:
+        await close_postgresql_db()
     return 0
 
 
