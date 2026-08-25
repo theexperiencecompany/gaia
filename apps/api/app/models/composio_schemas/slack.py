@@ -18,6 +18,7 @@ class SlackReceiveMessagePayload(BaseModel):
     bot_id: str | None = Field(None, description="ID of the bot that posted")
     channel: str | None = Field(None, description="Channel ID where message was posted")
     channel_type: str | None = Field(None, description="Type of the channel")
+    files: list[dict[str, Any]] | None = Field(None, description="Files uploaded with the message")
     team_id: str | None = Field(None, description="Team ID")
     text: str | None = Field(None, description="Text content of the message")
     ts: str | None = Field(None, description="Timestamp of the message")

@@ -318,6 +318,50 @@ def assert_num_db_calls(expected: int, engine: Any, *, warmup: int = 0) -> Asser
     return AssertNumDbCalls(expected, engine, warmup=warmup)
 
 
+class WideEventRecorder:
+    """Captures every wide event a boundary flushes through the loguru sink.
+
+    ``log.get()`` only ever sees the INNERMOST open boundary, so it cannot read
+    fields a nested ``wide_task`` owns — and a fire-and-forget task that opens
+    its own boundary (memory ingestion, ARQ jobs) is exactly that case. This
+    stands in for the sink instead, so the assertion reads the event the code
+    actually emitted:
+
+        recorder = WideEventRecorder()
+        with patch("shared.py.wide_events._loguru", recorder):
+            await work()
+        assert recorder.event("memory_retain")["memory_ingest"] == {...}
+    """
+
+    def __init__(self) -> None:
+        self.events: list[dict[str, Any]] = []
+        self._ctx: dict[str, Any] = {}
+
+    def bind(self, **kwargs: Any) -> "WideEventRecorder":
+        self._ctx = kwargs
+        return self
+
+    def log(self, level: str, message: str) -> None:
+        self.events.append({**self._ctx, "_message": message})
+
+    def opt(self, **kwargs: Any) -> "WideEventRecorder":
+        return self
+
+    def __getattr__(self, name: str) -> Any:
+        return lambda *a, **k: None
+
+    def event(self, task: str) -> dict[str, Any]:
+        """The single event emitted by the ``wide_task``/``log_context`` named
+        ``task``. Raises if that boundary emitted nothing or emitted twice."""
+        matches = [event for event in self.events if event.get("task") == task]
+        if len(matches) != 1:
+            raise AssertionError(
+                f"expected exactly one {task!r} event, got {len(matches)}; "
+                f"emitted: {[event.get('task') for event in self.events]}"
+            )
+        return matches[0]
+
+
 @asynccontextmanager
 async def captured_wide_event(operation: str = "test") -> AsyncIterator[dict[str, Any]]:
     """Run a block inside a real wide-event boundary, exposing its live fields.

@@ -327,6 +327,8 @@ A bug that ships without a failing-then-passing test is a bug that will come bac
 
 ### After Major Changes
 
+One-shot gate mirror: `mise ci:local` runs the same quality lanes CI runs (pinned versions, per-lane results, logs in `verify-logs/`). Iterate with `mise ci:local --only <lane,…>`, go full with `mise ci:local --all --with-heavy`, machine-readable via `--json`. Lane table: scripts/dev/verify-lanes.json — edit it in the same commit as any workflow lane change. For PR review state: `mise pr:comments` (read-only; unresolved threads + exact resolve/reply syntax). GitHub-side PR state (checks, conflicts, review decision, unresolved count): `mise ci:remote [branch]`, `--watch` to poll.
+
 Always run type-check and lint for every affected layer before considering work complete:
 
 ```bash

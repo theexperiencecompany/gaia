@@ -181,11 +181,50 @@ CORE_CONTEXT_CACHE_KEY = "user:{user_id}:memory:core"
 MEMORY_LIVE_COUNT_CACHE_KEY = "user:{user_id}:memory:live_count"
 MEMORY_LIVE_COUNT_CACHE_TTL = 86_400
 
+# How long a ``state`` fact stays live before the nightly sweep forgets it.
+# State is a value that was only true as of a moment ("18 workflows active",
+# "Gmail is disconnected"); it has no natural expiry date the extractor could
+# name, so ingestion stamps a flat window and the sweep retires it. Two months
+# is long enough that a still-true value gets re-asserted by normal use and
+# short enough that a stale one stops being injected into every prompt.
+STATE_FACT_TTL_DAYS = 60
+
+# Agenda items are facts with ``shelf_life=task``: a commitment with a date is
+# useless long after it, but an undated intention deserves a longer leash than
+# a state value before the sweep drops it.
+AGENDA_ITEM_TTL_DAYS = 90
+# Category folder every agenda item files under (it is also a real folder in
+# the taxonomy the extraction prompt offers).
+AGENDA_CATEGORY_PATH = "agenda"
+# How many agenda items the always-injected block renders. The rest stay
+# searchable; the injected block is a reminder, not the whole backlog. Sized
+# so a real backlog arrives whole (30 items of typical length sit inside the
+# agenda's injection bound below) rather than being cut to a handful: a
+# commitment the agent cannot see is one it silently drops.
+AGENDA_INJECTED_ITEM_CAP = 30
+
 # Reconciliation looks at this many nearest existing memories per new fact.
-RECONCILE_CANDIDATES = 5
+# Sized so a subject-attribute already stated several ways (the same partner's
+# anniversary written five times) still has every live variant in the candidate
+# set — with 5 the older duplicates fell outside the window and reconciliation
+# could only ever supersede the newest of them, so the rest stayed live forever.
+RECONCILE_CANDIDATES = 15
 
 # How many recent facts are shown to the extractor as "do NOT re-extract".
 RECENT_FACTS_LIMIT = 10
+
+# Per-thread high-water mark for passive ingestion: the id of the last message
+# already extracted from. Without it the whole thread was re-sent to the
+# extractor every turn — one production conversation with 152 checkpoints
+# re-extracted the same transcript roughly 76 times.
+MEMORY_INGEST_MARK_KEY = "user:{user_id}:memory:ingested:{thread_id}"
+# The mark only has to outlive the gap between two turns of one conversation.
+# Losing it degrades to a full re-ingest (the old behaviour), never to a lost
+# disclosure, so a generous month is the right side to err on.
+MEMORY_INGEST_MARK_TTL = 30 * 86_400
+# How many already-ingested messages ride along ahead of the delta so a new
+# message that only makes sense in context ("yes, that one") still resolves.
+MEMORY_DELTA_CONTEXT_MESSAGES = 6
 
 # Worth-learning gate for conversational ingestion (memory_node). There is NO
 # message-count or tool-call gating: a single disclosure ("my name is Sam")
@@ -219,12 +258,20 @@ DOCUMENT_HISTORY_LIMIT = 10
 CONSOLIDATION_DEBOUNCE_SECONDS = 120
 CONSOLIDATION_PENDING_KEY = "user:{user_id}:memory:consolidate:pending"
 CONSOLIDATION_PENDING_TTL = 3600
-# How many of the freshest facts feed each core-document rewrite.
-CONSOLIDATION_FACTS_LIMIT = 50
-# insights.md looks back this many days of episode summaries.
-CONSOLIDATION_EPISODE_DAYS = 30
-# Soft cap each consolidation prompt enforces on a core document.
-DOCUMENT_TARGET_MAX_CHARS = 2500
+# Upper bound on how many live facts feed one core-document rewrite. This is a
+# safety valve, not a window: user.md and people.md are re-derived from EVERY
+# live durable fact in their categories, because a rewrite fed only the freshest
+# 50 could never be contradicted by the fact it corrupted — that is how "Khyati
+# Sheth, October 19 2022" became "Khyal Shetal, anniversary Oct 19 2026" in the
+# always-injected document while five live memories still said otherwise.
+CONSOLIDATION_FACTS_LIMIT = 500
+# Hard cap on a core document. Enforced in code after the rewrite (one retry
+# with an explicit trim instruction, then the previous version stands) — the
+# prompt asking nicely was the only enforcement, and agenda.md reached 4,886.
+# Matches the per-document injection bound in CORE_CONTEXT_SECTION_MAX_CHARS:
+# a write cap below the read bound would trim knowledge the prompt had room
+# for, and one above it would write documents that arrive clipped every turn.
+DOCUMENT_TARGET_MAX_CHARS = 4000
 
 # /workspace/memory projection: journal pages older than this are dropped
 # from the on-disk view (Postgres keeps the full history).
@@ -302,6 +349,20 @@ class MemoryKind(StrEnum):
     EXPERIENCE = "experience"
 
 
+class MemoryShelfLife(StrEnum):
+    """How long an extracted assertion stays true — decides where it is stored.
+
+    ``TASK`` and ``JOURNAL`` never reach the memories table: the extractor uses
+    them to route a commitment to the agenda and an event (or something GAIA
+    itself produced) to the journal, instead of freezing either as a fact.
+    """
+
+    DURABLE = "durable"
+    STATE = "state"
+    TASK = "task"
+    JOURNAL = "journal"
+
+
 class MemoryRelationType(StrEnum):
     """How a memory version relates to its parent in the supersession chain."""
 
@@ -337,7 +398,6 @@ class MemoryDocType(StrEnum):
     MEMORY_MD = "memory_md"
     AGENDA_MD = "agenda_md"
     PEOPLE_MD = "people_md"
-    INSIGHTS_MD = "insights_md"
 
 
 # On-disk filenames for the core documents in the /workspace/memory projection.
@@ -346,7 +406,28 @@ MEMORY_DOC_FILENAMES: dict[MemoryDocType, str] = {
     MemoryDocType.MEMORY_MD: "memory.md",
     MemoryDocType.AGENDA_MD: "agenda.md",
     MemoryDocType.PEOPLE_MD: "people.md",
-    MemoryDocType.INSIGHTS_MD: "insights.md",
+}
+
+# Stands in for what a document lost when it overran its budget. Fixed text, so
+# the notice never itself grows with the content it replaces.
+CORE_CONTEXT_TRUNC_MARKER = "\n…[document clipped to bound prompt size]…\n"
+
+# Per-section bounds on the always-injected core-context block. A single
+# head/tail cut over the whole volatile block let an oversized agenda eat the
+# journal instead of itself; each section now carries its own budget, so a
+# runaway section can only truncate itself.
+#
+# These are a runaway backstop, NOT a diet. Memory is the product: the bounds
+# sit above what a healthy document actually is, so the normal case is injected
+# whole and only a document that has genuinely gone wrong is ever clipped.
+# Measured against production (user.md 3,077 / memory.md 3,920 / agenda.md
+# 4,886), the two profile documents land inside their bound untouched and only
+# the agenda — the one that ran away — is bounded, which its item cap
+# (AGENDA_INJECTED_ITEM_CAP) now keeps it under anyway.
+CORE_CONTEXT_SECTION_MAX_CHARS: dict[MemoryDocType, int] = {
+    MemoryDocType.USER_MD: 4_000,
+    MemoryDocType.MEMORY_MD: 4_000,
+    MemoryDocType.AGENDA_MD: 3_000,
 }
 
 

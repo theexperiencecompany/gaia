@@ -13,7 +13,9 @@ import pytest
 from app.agents.core.subagents.builtin_subagents import BUILTIN_SUBAGENTS
 from app.agents.core.subagents.registry import (
     _from_oauth,
+    _third_party_name_matchers,
     all_subagents,
+    foreign_provider_named_in,
     get_subagent_by_id,
 )
 from app.models.mcp_config import ComposioConfig, MCPConfig, SubAgentConfig
@@ -124,9 +126,11 @@ FAKE_INTEGRATIONS = [
 
 
 def _clear_registry_cache() -> None:
-    """`all_subagents()` is `@functools.cache`d. Tests that patch
-    OAUTH_INTEGRATIONS or BUILTIN_SUBAGENTS must clear the cache first."""
+    """`all_subagents()` is `@functools.cache`d, and so is everything derived
+    from it. Tests that patch OAUTH_INTEGRATIONS or BUILTIN_SUBAGENTS must clear
+    the caches first."""
     all_subagents.cache_clear()
+    _third_party_name_matchers.cache_clear()
 
 
 @pytest.fixture(autouse=True)
@@ -136,7 +140,7 @@ def _restore_real_registry_after_each_test():
     rest of the process — every other test in the suite that calls
     all_subagents()/get_subagent_by_id() afterward would see the fake data."""
     yield
-    all_subagents.cache_clear()
+    _clear_registry_cache()
 
 
 # ---------------------------------------------------------------------------
@@ -444,3 +448,49 @@ class TestGetSubagentByIdExtended:
         _clear_registry_cache()
         with patch("app.agents.core.subagents.registry.OAUTH_INTEGRATIONS", []):
             assert get_subagent_by_id("gaia_knowledge_guide_agent") is None
+
+
+@pytest.mark.unit
+class TestForeignProviderNamedIn:
+    """Which third-party provider a task text names, other than its target."""
+
+    def test_the_prod_task_that_filed_gaia_todos_as_todoist_is_flagged(self) -> None:
+        named = foreign_provider_named_in(
+            "Create these 8 separate tasks on Aryan's todo list (Todoist). "
+            "Each one is its own task.",
+            target_id="todos",
+        )
+
+        assert named is not None
+        assert named.id == "todoist"
+
+    def test_the_bare_id_is_matched_as_well_as_the_display_name(self) -> None:
+        named = foreign_provider_named_in("push it to todoist", target_id="todos")
+
+        assert named is not None and named.id == "todoist"
+
+    def test_a_multi_word_provider_name_is_matched(self) -> None:
+        named = foreign_provider_named_in("block it on my Google Calendar", target_id="gmail")
+
+        assert named is not None and named.id == "googlecalendar"
+
+    def test_the_target_naming_itself_is_not_a_mismatch(self) -> None:
+        assert foreign_provider_named_in("archive the Gmail thread", target_id="gmail") is None
+
+    def test_a_provider_name_inside_a_longer_word_is_not_a_match(self) -> None:
+        assert foreign_provider_named_in("update the slackness metric", target_id="todos") is None
+
+    def test_gaias_own_subagent_names_are_ordinary_words_and_never_flagged(self) -> None:
+        """ "todos", "reminders" and "skills" turn up in task prose constantly;
+        a generic noun cannot mislead anyone about which product did the work,
+        so only third-party products are matched."""
+        assert foreign_provider_named_in("add reminders for each of the todos", "gmail") is None
+        assert foreign_provider_named_in("use your skills to draft it", "gmail") is None
+
+    def test_an_uppercase_spelling_still_matches(self) -> None:
+        """The matcher is compiled with re.IGNORECASE; without it, a caller who
+        writes "TODOIST" or "Todoist" instead of the lowercase id would slip
+        past undetected."""
+        named = foreign_provider_named_in("push it to TODOIST", target_id="todos")
+
+        assert named is not None and named.id == "todoist"

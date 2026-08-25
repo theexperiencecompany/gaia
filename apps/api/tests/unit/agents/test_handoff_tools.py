@@ -11,6 +11,7 @@ from app.agents.core.subagents.handoff_tools import (
     _get_subagent_by_id,
     _resolve_subagent,
     check_integration_connection,
+    handoff,
     index_custom_mcp_as_subagent,
 )
 from app.agents.core.subagents.provider_subagents import SubagentUnavailableError
@@ -775,3 +776,97 @@ class TestConnectionChecksUseTheirArguments:
             _graph, _name, error, _is_custom = await _resolve_subagent("posthog", "user1")
 
         assert "https://gaia.test/connect/xyz" in error
+
+
+@contextmanager
+def _resolved_subagent(agent_name: str, integration_id: str) -> Iterator[MagicMock]:
+    """Stand every collaborator `handoff` needs past resolution, so the only
+    thing under test is what it does with the task text it was handed."""
+    ctx = SimpleNamespace(agent_name=agent_name, integration_id=integration_id)
+    with (
+        patch(
+            "app.agents.core.subagents.handoff_tools.prepare_subagent_execution",
+            new_callable=AsyncMock,
+            return_value=(ctx, None, None),
+        ),
+        patch(
+            "app.agents.core.subagents.handoff_tools._has_parked_subagent",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch(
+            "app.agents.core.subagents.handoff_tools._run_blocking_handoff",
+            new_callable=AsyncMock,
+            return_value="subagent ran",
+        ) as dispatch,
+    ):
+        yield dispatch
+
+
+@pytest.mark.unit
+class TestHandoffRejectsAForeignProviderInTheTask:
+    """A task that names one provider while being routed to another produces a
+    result claiming work the target never did — eight GAIA todos were reported
+    to the user as "8 tasks created (Todoist)" from exactly this input."""
+
+    PROD_TASK = (
+        "Create these 8 separate tasks on Aryan's todo list (Todoist). Each one is its "
+        "own task. Use clear, actionable titles:\n\n1. Buy Resend Pro to send emails"
+    )
+
+    async def test_the_prod_task_is_rejected_before_the_subagent_runs(self) -> None:
+        with _resolved_subagent("todo_agent", "todos") as dispatch:
+            result = await handoff.coroutine(
+                subagent_id="todos",
+                task=self.PROD_TASK,
+                config={"configurable": {"user_id": "u1", "thread_id": "t1"}},
+            )
+
+        dispatch.assert_not_awaited()
+        assert "Todoist" in result
+        assert "subagent:todoist" in result
+
+    async def test_the_same_task_without_the_provider_name_dispatches(self) -> None:
+        with _resolved_subagent("todo_agent", "todos") as dispatch:
+            result = await handoff.coroutine(
+                subagent_id="todos",
+                task="Create these 8 separate tasks on Aryan's todo list.",
+                config={"configurable": {"user_id": "u1", "thread_id": "t1"}},
+            )
+
+        dispatch.assert_awaited_once()
+        assert result == "subagent ran"
+
+    async def test_the_provider_named_is_free_to_be_the_target(self) -> None:
+        with _resolved_subagent("todoist_agent", "todoist") as dispatch:
+            result = await handoff.coroutine(
+                subagent_id="todoist",
+                task="Create 8 tasks in Todoist.",
+                config={"configurable": {"user_id": "u1", "thread_id": "t1"}},
+            )
+
+        dispatch.assert_awaited_once()
+        assert result == "subagent ran"
+
+
+@pytest.mark.unit
+class TestBackgroundHandoffWithoutAStream:
+    """``background=True`` needs a stream_id to route the result back. Without
+    one the handoff still runs, but blocking — and the executor has to be told,
+    or it calls ``wait_for_subagents()`` for a result that already arrived and
+    waits on nothing."""
+
+    async def test_the_result_is_prefixed_with_the_fallback_warning(self) -> None:
+        with _resolved_subagent("todo_agent", "todos") as dispatch:
+            result = await handoff.coroutine(
+                subagent_id="todos",
+                task="Create a task.",
+                background=True,
+                config={"configurable": {"user_id": "u1", "thread_id": "t1"}},
+            )
+
+        dispatch.assert_awaited_once()
+        assert result == (
+            "[WARNING: background handoff fell back to blocking: "
+            "stream_id not propagated into executor configurable] subagent ran"
+        )

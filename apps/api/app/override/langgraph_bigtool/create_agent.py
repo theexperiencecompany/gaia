@@ -153,19 +153,55 @@ def _prepare_fallback(
     return (lambda: bindable.bind_tools(tools_to_bind), fallback_lane)
 
 
-def _bind_session_id(llm_with_tools: Runnable, model_configurations: AgentConfigurable) -> Runnable:
-    """Bind the sticky-routing session id onto ``llm_with_tools``, if applicable."""
+def _bind_session_id(
+    llm_with_tools: Runnable,
+    model_configurations: AgentConfigurable,
+    agent_name: str | None = None,
+) -> Runnable:
+    """Bind the sticky-routing session id onto ``llm_with_tools``, if applicable.
+
+    ``agent_name`` gives each agent CLASS its own cache chain, extending the
+    ``-aux`` suffix that already exists for one-shot calls.
+
+    Why: every agent in a turn previously shared the conversation's bare session
+    id, so comms, the executor, the subagents and the memory lane all wrote into
+    one chain and evicted each other. Measured end-to-end on the real graph, the
+    executor — which runs in a burst and re-reads its own chain immediately —
+    held 72.2%, while comms, which idles across a turn while the others run,
+    collapsed to 26.8%. That comms' own sticky-flip REPLAY of the identical bytes
+    read 99.9% seconds later is the proof the bytes were always cacheable: the
+    chain existed, something else had taken the slot by the next turn.
+    """
     # Must run AFTER bind_tools (which rebuilds the runnable and drops outer bindings), so the
     # call pins to the conversation's provider and its prompt cache chains across turns.
     # Gated on the provider the same way ainvoke_llm gates it: session_id is an
     # OpenRouter routing hint, and Gemini has no stickiness to pin, so sending
     # it there is an unsupported argument on every graph call.
+    key = _agent_sticky_key(model_configurations, agent_name)
+    return llm_with_tools.bind(session_id=key) if key else llm_with_tools
+
+
+def _agent_sticky_key(
+    model_configurations: AgentConfigurable, agent_name: str | None
+) -> str | None:
+    """This agent's sticky-routing key for this run, or ``None``.
+
+    One computation, used by the primary's bind AND handed to ``invoke_llm``
+    for the fallback. They used to derive it separately — the fallback from
+    config, which yields the BARE session id — so a provider hiccup dropped
+    every agent back into one shared chain and they resumed evicting each
+    other, the exact failure the per-agent key exists to prevent.
+
+    Gated on the provider the same way ainvoke_llm gates it: session_id is an
+    OpenRouter routing hint, and Gemini has no stickiness to pin, so sending
+    it there is an unsupported argument on every graph call.
+    """
     if model_configurations.get("provider") not in STICKY_ROUTING_PROVIDERS:
-        return llm_with_tools
+        return None
     session_id = model_configurations.get("session_id")
-    if session_id:
-        return llm_with_tools.bind(session_id=session_id)
-    return llm_with_tools
+    if not session_id:
+        return None
+    return f"{session_id}-{agent_name}" if agent_name else str(session_id)
 
 
 def _extract_middleware(
@@ -319,7 +355,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
         model_configurations = agent_configurable(config)
         tools_to_bind = _tools_to_bind(deps, state)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]  # langchain model-lane stubs omit bind_tools for this lane type
-        llm_with_tools = _bind_session_id(llm_with_tools, model_configurations)
+        llm_with_tools = _bind_session_id(llm_with_tools, model_configurations, agent_name)
         prepared = _prepare_fallback(llm, tools_to_bind, model_configurations)
         state = _maybe_inject_wrapup(state)
         response = invoke_llm(
@@ -329,6 +365,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
             config=config,
             label=deps.agent_name,
             fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
+            sticky_session_id=_agent_sticky_key(model_configurations, agent_name),
         )
 
         return {"messages": [*tombstones, _finalize_model_response(response, deps.agent_name)]}  # type: ignore[return-value]  # helper's declared return is wider than the dict actually built
@@ -350,7 +387,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
 
         tools_to_bind = _tools_to_bind(deps, state)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]  # langchain model-lane stubs omit bind_tools for this lane type
-        llm_with_tools = _bind_session_id(llm_with_tools, model_configurations)
+        llm_with_tools = _bind_session_id(llm_with_tools, model_configurations, agent_name)
         prepared = _prepare_fallback(llm, tools_to_bind, model_configurations)
         # LLMAccountingMiddleware already charges this call; auxiliary metering
         # here would book it a second time.
@@ -362,6 +399,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
             label=deps.agent_name,
             meter_auxiliary=False,
             fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
+            sticky_session_id=_agent_sticky_key(model_configurations, agent_name),
         )
 
         _log_message_preview(state)

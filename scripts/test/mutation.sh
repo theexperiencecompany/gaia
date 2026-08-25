@@ -563,8 +563,11 @@ if [ -n "$EQUIVALENT" ]; then
   echo "      ever reaches a truthiness test ('x or y', 'if x:', 'x if x else y'," >&2
   echo "      or code such a test guards), where every falsy value takes the same" >&2
   echo "      branch. Truthy defaults are NOT covered: d.get(k, 1) or 0 really" >&2
-  echo "      does return 1 when the key is missing. One further one-off:" >&2
-  echo "      json.dumps' ensure_ascii, which json documents as a truth value." >&2
+  echo "      does return 1 when the key is missing. Two further one-offs:" >&2
+  echo "      json.dumps' ensure_ascii, which json documents as a truth value," >&2
+  echo "      and a case-ONLY rewrite of a header name in an x.headers.get()" >&2
+  echo "      lookup, which every .headers mapping resolves case-insensitively" >&2
+  echo "      (RFC 9110 5.1); asking for a DIFFERENT header still fails." >&2
   echo "$EQUIVALENT" >&2
 fi
 if [ -n "$LOGGING" ]; then

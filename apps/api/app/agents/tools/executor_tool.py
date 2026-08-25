@@ -106,7 +106,7 @@ async def call_executor(
         "What must be TRUE for this task to count as done, as a checklist (e.g. "
         "['the 3 promo emails archived', 'the offer letter flagged']). Give the "
         "executor a concrete target so it doesn't stop after one step. NEVER "
-        "omit — even a single-step ask needs a concrete done state.",
+        "omit: even a single-step ask needs a concrete done state.",
     ],
     active_todo_id: Annotated[
         str | None,
@@ -209,7 +209,7 @@ async def _dispatch_executor(
                 conversation_id=conversation_id,
             )
             return (
-                "That task is already running from this same message — not "
+                "That task is already running from this same message, not "
                 "starting it again. The results are on the way."
             )
 
@@ -279,7 +279,7 @@ async def _dispatch_executor(
     # has run a single tool — so it must not read as completion, and it has to
     # name the approval gate the user may be about to see.
     return (
-        f"Task accepted (task_id: {task_id}). Nothing has run yet — this only means the "
+        f"Task accepted (task_id: {task_id}). Nothing has run yet: this only means the "
         "work has STARTED. Do not tell the user anything was sent, created, deleted, or "
         "finished. Risky actions pause for the user's approval first and they see an "
         "approval card; if that happens the work waits on them, not on you. Acknowledge "
@@ -372,7 +372,7 @@ async def cancel_executor(
 
         result = f"Cancelled: {', '.join(cancelled)}."
         if skipped_running:
-            result += " Currently running task was not in the cancel list — still running."
+            result += " Currently running task was not in the cancel list, still running."
         return result
 
     except Exception as e:
