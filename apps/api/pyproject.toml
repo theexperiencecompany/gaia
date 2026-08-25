@@ -119,7 +119,7 @@ dev = [
   "pytest-timeout>=2.4.0",
   "pytest-split>=0.8.0",
   "time-machine>=3.3.1",
-  "schemathesis>=4.24.3",
+  "schemathesis>=4.25.0",
   "hypothesis>=6.165.2",
   "mutmut>=3.7.0",
 ]
