@@ -178,7 +178,7 @@ backend = [
   "aio-pika>=9.5.5",
   "e2b-code-interpreter>=1.2.0",
   "jinja2==3.1.6",
-  "markupsafe==3.0.2",
+  "markupsafe==3.0.3",
   "hf-xet>=1.0.3",
   "tomli>=2.2.1",
   "itsdangerous>=2.2.0",
