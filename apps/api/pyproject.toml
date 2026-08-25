@@ -136,7 +136,7 @@ backend = [
   "pymongo==4.9.2",
   "redis==5.2.1",
   "psycopg2-binary>=2.9.10",
-  "psycopg[binary,pool]>=3.2.10",
+  "psycopg[binary,pool]>=3.3.4",
   "asyncpg>=0.30.0",
   "chromadb>=0.6.3",
   "langchain-core>=1.2.28",
