@@ -17,7 +17,7 @@ import uuid
 from composio import Composio
 from composio.types import ExecuteRequestFn
 from langchain_core.runnables import RunnableConfig
-from langgraph.config import get_config, get_stream_writer
+from langgraph.config import get_stream_writer
 from pydantic import BaseModel, Field
 
 from app.agents.templates.mail_templates import (
@@ -29,7 +29,7 @@ from app.agents.workspace.offload import OffloadInfo
 from app.constants.email import MessageFieldLiteral
 from app.constants.log_tags import LogTag
 from app.constants.offload import OFFLOAD_RESULT_KEY
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import agent_configurable, current_run_config
 from app.models.common_models import GatherContextInput
 from app.models.composio_schemas.gmail import (
     BodyProcessingLiteral,
@@ -105,21 +105,6 @@ def _gmail_proxy(
         body=body,
         query=query,
     )
-
-
-def _current_config() -> RunnableConfig:
-    """The active LangGraph run config, or an empty config outside a run.
-
-    Custom tools execute synchronously inside the LangGraph tool node, so the
-    run's ``configurable`` (home timezone, session id) is reachable through
-    ``get_config()`` — the same way ``linear_tool`` / ``calendar_tool`` read it.
-    Outside a runnable context (e.g. unit tests) it returns an empty config so
-    callers fall back to their UTC / no-offload defaults instead of raising.
-    """
-    try:
-        return get_config()
-    except RuntimeError:
-        return {}
 
 
 def _conversation_id(config: RunnableConfig) -> str | None:
@@ -603,7 +588,7 @@ def _summarize(
     request: FetchMessagesInput,
 ) -> dict[str, Any]:
     """Top-level orchestrator: resolve → paginate → offload-or-inline."""
-    config = _current_config()
+    config = current_run_config()
     tz = home_timezone_from_config(config)
     combined_query, default_max = _resolve_timeframe(request.timeframe, request.query, tz)
     cap = _effective_max(request, default_max)
@@ -759,7 +744,7 @@ def _aggregate_threads(
 def _summarize_threads(user_id: str, request: FetchThreadInput) -> dict[str, Any]:
     """Top-level FETCH_THREAD orchestrator: fetch → offload-or-inline, mirroring
     ``_summarize`` (same thresholds, card, offload file, no-session fallback)."""
-    config = _current_config()
+    config = current_run_config()
     try:
         threads, flat_views, truncated = _aggregate_threads(user_id, request)
     except _PartialResultError as exc:
@@ -1239,8 +1224,8 @@ def register_gmail_custom_tools(composio: Composio) -> list[str]:
 
         The canonical thread-read tool. Fetches each ``thread_id`` (batched,
         concurrently) and returns its messages in conversation order, shaped
-        exactly like ``GMAIL_FETCH_MESSAGES`` results — normalized body,
-        attachment metadata, same ``fields``/``body_processing`` contract — so
+        exactly like ``GMAIL_FETCH_MESSAGES`` results: normalized body,
+        attachment metadata, same ``fields``/``body_processing`` contract, so
         there is one read path, not a divergent raw thread view.
 
         Get thread ids from the ``threadId`` on ``GMAIL_FETCH_MESSAGES``

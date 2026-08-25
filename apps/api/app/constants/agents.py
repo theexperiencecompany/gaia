@@ -32,6 +32,7 @@ class AgentTag(StrEnum):
     PLATFORM_DELIVERY = "platform_delivery"
     DELIVERY_INSTRUCTIONS = "delivery_instructions"
     SUBAGENT_RESULT = "subagent_result"
+    STYLE_CORRECTION = "style_correction"
 
 
 def wrap_agent_payload(tag: AgentTag, body: str, agent: str | None = None) -> str:

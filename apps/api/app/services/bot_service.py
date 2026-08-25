@@ -64,19 +64,26 @@ class BotService:
 
     @staticmethod
     def build_session_key(platform: str, platform_user_id: str, channel_id: str | None) -> str:
-        """
-        Build a unique session key for bot conversations.
+        """The one key a (platform, user, channel) conversation lives under.
 
-        Args:
-            platform: Platform name
-            platform_user_id: User's ID on the platform
-            channel_id: Channel/group ID (None for DM)
+        No ``channel_id`` means "the user's DM" — all a backend-originated
+        delivery knows, since it resolves its destination from the platform link
+        (``outbound_delivery._resolve_destination`` returns the platform user id)
+        rather than from an inbound chat. A DM therefore has to key off the
+        platform user id, which is exactly what Telegram sends as the chat id for
+        a private chat: ``ctx.chat.id == ctx.from.id`` there.
 
-        Returns:
-            Unique session key string
+        This used to key an absent channel as the literal ``"dm"``, so one
+        Telegram DM lived under two keys — ``telegram:<id>:<id>`` from the chat
+        and ``telegram:<id>:dm`` from workflow delivery — and the user's chat
+        forked into a second conversation carrying none of the history.
+
+        Known gap: Discord and Slack DM channel ids are NOT the user id, so their
+        backend-originated deliveries still resolve a session the inbound DM never
+        touches. Closing that needs the bots to signal "this chat is a DM"; it is
+        not derivable server-side.
         """
-        suffix = channel_id or "dm"
-        return f"{platform}:{platform_user_id}:{suffix}"
+        return f"{platform}:{platform_user_id}:{channel_id or platform_user_id}"
 
     @staticmethod
     async def get_or_create_session(

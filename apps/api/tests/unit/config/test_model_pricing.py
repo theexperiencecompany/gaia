@@ -126,38 +126,45 @@ class TestEveryRuntimeModelIsPriced:
 
 
 class TestAuxModelPricing:
-    """The aux lane runs a separate model id under AUX_MODEL_NAME ("V4 Flash
-    0423", not the "0731" revision the graph runs) with its OWN published rate.
-    The two ids carry different OpenRouter rate cards, and 0423 is the CHEAPER
-    of the two, so pricing the aux lane at the default's rate would over-count
-    aux COGS by ~2.2x."""
+    """The aux lane runs on the SAME model id as the graph, isolated by session
+    suffixes rather than by a second model id. Measured, both halves: the old
+    separate id's provider pool could not cache or hold session affinity for
+    tool-carrying requests (fixed sessions read [1536,0]/[0,0]/[0,0]) while the
+    0731 pool chains perfectly ([0,1792,1792]/[1792,1792,1792]) — and every
+    structured one-shot carries a tool. Pricing follows: aux spend meters at
+    the default rate, which is what the calls are actually billed at."""
 
-    def test_aux_model_priced_at_its_own_rate(self) -> None:
-        pricing = get_model_pricing(AUX_MODEL_NAME)
+    def test_aux_resolves_to_the_default_model_id(self) -> None:
+        assert AUX_MODEL_NAME == DEFAULT_MODEL_NAME
 
-        assert pricing.input_cost_per_1k == 0.00006426
-        assert pricing.output_cost_per_1k == 0.00012852
+    def test_aux_spend_meters_at_the_default_rate(self) -> None:
+        assert get_model_pricing(AUX_MODEL_NAME) == get_model_pricing(DEFAULT_MODEL_NAME)
 
-    def test_aux_rate_differs_from_default_rate(self) -> None:
-        aux = get_model_pricing(AUX_MODEL_NAME)
-        default = get_model_pricing(DEFAULT_MODEL_NAME)
+    def test_the_retired_aux_id_still_meters_at_its_served_rate(self) -> None:
+        """Historical llm_call events and mid-deploy stragglers on the old
+        "0423" id must price at the rate they were actually served at, never
+        fall through to DEFAULT_PRICING."""
+        retired = get_model_pricing("deepseek/deepseek-v4-flash")
 
-        assert aux != default
-        assert aux.input_cost_per_1k < default.input_cost_per_1k
+        assert retired.input_cost_per_1k == 0.00006426
+        assert retired.output_cost_per_1k == 0.00012852
+        assert retired != DEFAULT_PRICING
 
-    def test_aux_spend_meters_at_aux_rate_end_to_end(self) -> None:
+    def test_aux_cached_tokens_meter_at_the_cached_rate_end_to_end(self) -> None:
+        """The point of moving the lane: cached input at ~1/10th. A metering
+        bug that billed cached tokens at the full rate would silently erase the
+        saving this campaign exists to bank."""
         result = calculate_token_cost(
             AUX_MODEL_NAME, input_tokens=100_000, output_tokens=2_000, cached_tokens=80_000
         )
+        rate = get_model_pricing(AUX_MODEL_NAME)
 
-        # Costs are rounded to 6dp by calculate_token_cost:
-        # uncached input: (100000 - 80000) / 1000 * 0.00006426  = 0.0012852  -> 0.001285
-        # cached input:   80000 / 1000 * 0.000012852            = 0.00102816 -> 0.001028
-        # output:         2000 / 1000 * 0.00012852              = 0.00025704 -> 0.000257
-        assert result["input_cost"] == pytest.approx(0.001285)
-        assert result["cached_input_cost"] == pytest.approx(0.001028)
-        assert result["output_cost"] == pytest.approx(0.000257)
-        assert result["total_cost"] == pytest.approx(0.00257)
+        assert result["input_cost"] == pytest.approx(20_000 / 1000 * rate.input_cost_per_1k)
+        assert result["cached_input_cost"] == pytest.approx(
+            80_000 / 1000 * rate.cached_input_cost_per_1k
+        )
+        # The 0731 rate card prices cached input at exactly a fifth of uncached.
+        assert rate.cached_input_cost_per_1k == pytest.approx(rate.input_cost_per_1k / 5)
 
 
 def _with_rate(pricing: ModelPricing) -> AbstractContextManager[MagicMock]:

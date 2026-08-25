@@ -11,7 +11,7 @@ only when the user names one.
 
 Do NOT use for one-off context that only matters this turn, or for tasks
 (use todo tools for those). Memory also learns from conversations in the
-background — store only what the user explicitly wants remembered.
+background: store only what the user explicitly wants remembered.
 
 Args:
     content: The fact to remember, written as one self-contained assertion
@@ -26,7 +26,7 @@ Returns:
 SEARCH_MEMORY = """
 Search stored memories using a natural language query.
 
-Fast indexed recall over everything remembered about the user — semantically
+Fast indexed recall over everything remembered about the user: semantically
 similar facts rank first. Use it to recall preferences, people, plans, or any
 context from past interactions. Pass `folder` to scope the search to one
 folder of the memory tree (and its subfolders).
@@ -75,8 +75,8 @@ Returns:
 """
 
 SEARCH_JOURNAL = """
-Search the episodic journal — the day-by-day log of what the user did and
-what you did for them.
+Search the episodic journal (the day-by-day log of what the user did and
+what you did for them).
 
 Answers "when did we last talk about X" or "have I worked on Y before":
 recent journal lines are matched verbatim, older days through their
@@ -95,7 +95,7 @@ Read the journal page for one specific date.
 
 Returns everything logged that day: what the user did and discussed, what you
 did for them, plus the day summary if the day is over. Use for questions like
-"what did we do three weeks ago?" or "what happened on May 21?" — compute the
+"what did we do three weeks ago?" or "what happened on May 21?": compute the
 date first, then call this.
 
 Args:
@@ -114,7 +114,7 @@ Documents: 'user' (identity & life context), 'memory' (how to assist them:
 tone, conventions, preferences), 'agenda' (open loops: projects, commitments,
 deadlines), 'people' (relationship register incl. key dates), 'insights'
 (observed patterns and routines). user/memory/agenda are already injected
-into your context every turn — read 'people' and 'insights' when you need
+into your context every turn; read 'people' and 'insights' when you need
 depth.
 
 Args:
@@ -130,7 +130,7 @@ Rewrite one of the core memory documents (full replace, versioned).
 
 Replaces the entire document with the provided markdown and bumps its
 version (prior versions are kept as history). Read the current document
-first and carry over everything still true — this is a rewrite, not an
+first and carry over everything still true; this is a rewrite, not an
 append. The documents are also maintained automatically in the background;
 use this only when the user asks for a change or a document is clearly wrong.
 

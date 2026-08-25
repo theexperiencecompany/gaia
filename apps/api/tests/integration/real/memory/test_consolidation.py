@@ -8,6 +8,7 @@ shrunk via monkeypatch — no sleeps against the production 120s window.
 
 import asyncio
 
+from langchain_core.messages import BaseMessage
 import pytest
 from redis.asyncio import Redis
 
@@ -25,11 +26,31 @@ from app.memory.schemas import (
     ExtractedMemoryBatch,
     ReconcileBatchResult,
     ReconcileDecision,
+    VerifiedDocument,
 )
-from tests.integration.real.memory.llm import FakeMemoryLLM, make_batch, make_fact
+from tests.integration.real.memory.llm import (
+    FakeMemoryLLM,
+    human_prompt,
+    make_batch,
+    make_fact,
+)
 from tests.integration.real.memory.store import fetch_document_rows, seed_memories
 
 pytestmark = pytest.mark.memory
+
+
+def _pass_verification(fake_llm: FakeMemoryLLM) -> None:
+    """Let the post-rewrite fact-check return the document untouched.
+
+    Every rewrite is verified against its source facts before it lands, so a
+    test that is not about verification still has to answer that call.
+    """
+
+    def _respond(messages: list[BaseMessage]) -> VerifiedDocument:
+        document = human_prompt(messages).split("## Source facts", 1)[0]
+        return VerifiedDocument(content=document.removeprefix("## Document\n").strip(), struck=[])
+
+    fake_llm.respond(VerifiedDocument, _respond)
 
 
 async def test_consolidate_feeds_user_doc_prompt_with_the_right_facts(
@@ -47,6 +68,7 @@ async def test_consolidate_feeds_user_doc_prompt_with_the_right_facts(
         ConsolidatedDocument,
         ConsolidatedDocument(content="# About Arjun\n- Engineer at TechNova in Bengaluru."),
     )
+    _pass_verification(fake_llm)
 
     rewritten = await memory_engine.consolidate(memory_user, [MemoryDocType.USER_MD])
     assert rewritten == [MemoryDocType.USER_MD]
@@ -122,6 +144,7 @@ async def test_debounced_consolidation_merges_doc_types_and_fires_once(
     # waiter fired a partial pass.
     monkeypatch.setattr(consolidation, "CONSOLIDATION_DEBOUNCE_SECONDS", 10)
     fake_llm.respond(ConsolidatedDocument, ConsolidatedDocument(content="# Rewritten"))
+    _pass_verification(fake_llm)
     # Short first-person facts can drift into the reconcile band; the verdict
     # is irrelevant here, so keep everything NEW and test only the debounce.
     fake_llm.respond(

@@ -34,6 +34,7 @@ from shared.py.wide_events import (
     spawn_logged_task,
     wide_task,
 )
+from tests.helpers import WideEventRecorder
 
 
 class _EmitRecorder:
@@ -456,26 +457,6 @@ async def test_interleaved_wide_tasks_stay_isolated():
     assert by_name["job_a"]["trace_id"] != by_name["job_b"]["trace_id"]
 
 
-class _EventRecorder:
-    """Captures every wide event a boundary flushes through the loguru sink."""
-
-    def __init__(self) -> None:
-        self.events: list[dict[str, Any]] = []
-
-    def bind(self, **kwargs: Any) -> "_EventRecorder":
-        self._ctx = kwargs
-        return self
-
-    def log(self, level: str, message: str) -> None:
-        self.events.append(dict(self._ctx))
-
-    def opt(self, **kwargs: Any) -> "_EventRecorder":
-        return self
-
-    def __getattr__(self, name: str) -> Any:
-        return lambda *a, **k: None
-
-
 async def test_a_nested_boundary_does_not_steal_the_outer_event():
     """An inner boundary must not consume the event the outer one owes.
 
@@ -487,7 +468,7 @@ async def test_a_nested_boundary_does_not_steal_the_outer_event():
     including anything set after the inner block. This is what makes a
     per-iteration boundary inside a long-lived listener loop usable at all.
     """
-    recorder = _EventRecorder()
+    recorder = WideEventRecorder()
 
     with patch("shared.py.wide_events._loguru", recorder):
         async with log_context("outer", outer_before=True):
@@ -517,7 +498,7 @@ async def test_adopted_trace_id_reaches_spawned_child_work():
     work landed under two different traces and could not be joined.
     """
     upstream = "cafebabedeadbeef"
-    recorder = _EventRecorder()
+    recorder = WideEventRecorder()
 
     async def child() -> None:
         log.set(child_ran=True)

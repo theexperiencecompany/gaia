@@ -550,13 +550,13 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
         destructive_tools=NOTION_DESTRUCTIVE_TOOLS,
         associated_triggers=[
             TriggerConfig(
-                slug="NOTION_PAGE_ADDED_TO_DATABASE",
+                slug="NOTION_PAGE_CREATED",
                 name="New Page in Database",
-                description="Triggers when a new page is added to a Notion database.",
+                description="Triggers when a new page is created in a Notion data source or under a parent page.",
                 auto_activate=False,
                 workflow_trigger_schema=WorkflowTriggerSchema(
                     slug="notion_new_page_in_db",
-                    composio_slug="NOTION_PAGE_ADDED_TO_DATABASE",
+                    composio_slug="NOTION_PAGE_CREATED",
                     name="New Page in Database",
                     description="Trigger when a page is added to a specific database",
                     config_schema={
@@ -569,13 +569,13 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                 ),
             ),
             TriggerConfig(
-                slug="NOTION_PAGE_UPDATED_TRIGGER",
+                slug="NOTION_PAGE_PROPERTIES_UPDATED",
                 name="Page Updated",
-                description="Triggers when any block within a specified Notion page is updated.",
+                description="Triggers when the properties of a specified Notion page are updated.",
                 auto_activate=False,
                 workflow_trigger_schema=WorkflowTriggerSchema(
                     slug="notion_page_updated",
-                    composio_slug="NOTION_PAGE_UPDATED_TRIGGER",
+                    composio_slug="NOTION_PAGE_PROPERTIES_UPDATED",
                     name="Page Updated",
                     description="Trigger when a specific page is updated",
                     config_schema={
@@ -588,16 +588,22 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                 ),
             ),
             TriggerConfig(
-                slug="NOTION_ALL_PAGE_EVENTS_TRIGGER",
-                name="All Page Events",
-                description="Triggers when any Notion page is created or updated across the workspace.",
+                slug="NOTION_PAGE_CONTENT_UPDATED",
+                name="Page Content Updated",
+                description="Triggers when the body content of a specified Notion page is updated.",
                 auto_activate=False,
                 workflow_trigger_schema=WorkflowTriggerSchema(
-                    slug="notion_all_page_events",
-                    composio_slug="NOTION_ALL_PAGE_EVENTS_TRIGGER",
-                    name="Any Page Event",
-                    description="Trigger on any page creation or update",
-                    config_schema={},
+                    slug="notion_page_content_updated",
+                    composio_slug="NOTION_PAGE_CONTENT_UPDATED",
+                    name="Page Content Updated",
+                    description="Trigger when a page's content is updated",
+                    config_schema={
+                        "page_id": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="The ID of the Notion page to monitor (empty for all pages)",
+                        ),
+                    },
                 ),
             ),
         ],
@@ -1550,24 +1556,19 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
         destructive_tools=ASANA_DESTRUCTIVE_TOOLS,
         associated_triggers=[
             TriggerConfig(
-                slug="ASANA_TASK_TRIGGER",
+                slug="ASANA_TASK_CREATED",
                 name="Task Trigger",
-                description="Triggered when a task involves the user.",
+                description="Triggered when a new task is created in a monitored project.",
                 auto_activate=False,
                 workflow_trigger_schema=WorkflowTriggerSchema(
                     slug="asana_task_trigger",
-                    composio_slug="ASANA_TASK_TRIGGER",
+                    composio_slug="ASANA_TASK_CREATED",
                     name="Task Trigger",
-                    description="Triggered when a task involves the user.",
+                    description="Triggered when a new task is created in a monitored project.",
                     config_schema={
-                        "project_id": TriggerConfigFieldSchema(
+                        "project_gid": TriggerConfigFieldSchema(
                             type="string",
-                            description="ID of the project to trigger on.",
-                            default="",
-                        ),
-                        "workspace_id": TriggerConfigFieldSchema(
-                            type="string",
-                            description="ID of the workspace to trigger on.",
+                            description="Asana GID of the project to monitor (required).",
                             default="",
                         ),
                     },

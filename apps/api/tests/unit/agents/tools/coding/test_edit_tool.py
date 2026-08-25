@@ -439,7 +439,7 @@ async def test_edit_path_escaping_workspace_is_rejected() -> None:
             config=CONFIG,
         )
 
-    assert result == "Error: Path escapes /workspace: /etc/passwd"
+    assert result == "Error: path must stay inside /workspace"
     mock_acquire.assert_not_called()
 
 
@@ -473,7 +473,7 @@ async def test_edit_sandbox_unavailable_returns_friendly_error() -> None:
             config=CONFIG,
         )
 
-    assert result == "Error: sandbox unavailable — pool empty"
+    assert result == "Error: sandbox unavailable (pool empty)"
 
 
 async def test_edit_unexpected_sandbox_failure_returns_error_and_logs() -> None:

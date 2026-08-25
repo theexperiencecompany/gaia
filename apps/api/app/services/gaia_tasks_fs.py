@@ -85,6 +85,5 @@ def _project(doc: TodoDocument) -> GaiaTaskProjection:
             "project_id": doc.project_id,
             "created_at": doc.created_at,
             "updated_at": doc.updated_at,
-            "vfs_path": doc.vfs_path,
         },
     }

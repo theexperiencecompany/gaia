@@ -18,7 +18,12 @@ from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, HumanMessage
-from langchain_core.runnables import RunnableConfig, RunnableLambda
+from langchain_core.runnables import (
+    Runnable,
+    RunnableBinding,
+    RunnableConfig,
+    RunnableLambda,
+)
 from langchain_openrouter import ChatOpenRouter
 from pydantic import BaseModel, SecretStr
 import pytest
@@ -617,7 +622,17 @@ class TestFallbackHandover:
 
     @staticmethod
     def _bindable_runnable(result: Any) -> NonCallableMagicMock:
-        runnable = NonCallableMagicMock()
+        """A fallback double that reports as OpenRouter-wire.
+
+        ``_resolve_fallback`` binds the sticky key only onto a runnable whose
+        underlying client is OpenRouter (a Google client raises on the unknown
+        kwarg), and it decides that by walking the real wrapper chain — which a
+        bare mock has none of. ``spec`` makes the double a RunnableBinding
+        wrapping a real ChatOpenRouter, so these tests exercise the same branch
+        production takes instead of silently landing in the "not sticky" one.
+        """
+        runnable = NonCallableMagicMock(spec=RunnableBinding)
+        runnable.bound = ChatOpenRouter(model="m", api_key="k")
         runnable.with_retry = MagicMock(return_value=runnable)
         runnable.bind = MagicMock(return_value=runnable)
         runnable.ainvoke = AsyncMock(return_value=result)
@@ -1001,18 +1016,72 @@ class _Extracted(BaseModel):
 
 
 class TestMemoryLaneProviderSelection:
-    """The direct-Gemini memory lane is a cache-isolation optimisation, not a
-    requirement. A deployment with only OPENROUTER_API_KEY — the documented
-    self-host path — must still extract memories, and a Gemini outage must not
-    silently drop every extraction for its duration."""
+    """The memory pipeline PREFERS the aux (OpenRouter) lane and keeps direct
+    Gemini as the fallback. Measured, both halves: Gemini's implicit cache
+    never extends past tools+system into the contents (identical 4.6k prompts
+    repeatedly read exactly 3,064 cached — the schema + system prompt), while
+    the aux lane reads 98.1%% cached on the same shape and keeps extending as
+    the transcript appends. The Gemini preference existed for cache isolation
+    from the graph's chains; the per-agent sticky session keys now provide that
+    isolation on one provider, so the reason for the split is gone and the lane
+    with a working cache wins."""
 
-    @patch("app.agents.llm.client.ainvoke_structured", new_callable=AsyncMock)
-    @patch("app.agents.llm.client.get_memory_llm")
-    @patch("app.agents.llm.client.memory_lane_available", return_value=False)
-    async def test_falls_back_to_the_aux_lane_when_google_is_unconfigured(
-        self, mock_available: MagicMock, mock_memory_llm: MagicMock, mock_aux: AsyncMock
+    @patch("app.agents.llm.client.settings")
+    def test_provider_order_setting_becomes_the_routing_preference(
+        self, mock_settings: MagicMock
     ) -> None:
-        mock_aux.return_value = _Extracted(fact="from-aux")
+        """OPENROUTER_PROVIDER_ORDER exists because which upstream a request
+        draws decides its cache fate (measured: pinned coreweave/fp8 read
+        [1792x5,128] while unpinned read [0,0,0] in the same window). The knob
+        must translate exactly — slugs in order, fallbacks left enabled — and
+        stay a no-op when unset, since a hard pin was measured worse once and
+        the preference is meant to be set from prod data."""
+        from app.agents.llm.client import _provider_order_kwargs
+
+        mock_settings.OPENROUTER_PROVIDER_ORDER = "coreweave/fp8, deepseek"
+        assert _provider_order_kwargs() == {
+            "model_kwargs": {"provider": {"order": ["coreweave/fp8", "deepseek"]}}
+        }
+
+        mock_settings.OPENROUTER_PROVIDER_ORDER = None
+        assert _provider_order_kwargs() == {}
+
+        # Whitespace-only must not send an empty order list to the provider.
+        mock_settings.OPENROUTER_PROVIDER_ORDER = " , "
+        assert _provider_order_kwargs() == {}
+
+    @patch("app.agents.llm.client.settings")
+    def test_the_aux_lane_predicate_reads_the_openrouter_key(
+        self, mock_settings: MagicMock
+    ) -> None:
+        """The real predicate body, not a patch of it: the lane choice above
+        hangs off this one boolean, so its truth table is contract."""
+        from app.agents.llm.client import aux_lane_available
+
+        mock_settings.GAIA_SIM_MODE = False
+        mock_settings.OPENROUTER_API_KEY = "or-key"
+        assert aux_lane_available() is True
+
+        mock_settings.OPENROUTER_API_KEY = None
+        assert aux_lane_available() is False
+
+        mock_settings.GAIA_SIM_MODE = True
+        assert aux_lane_available() is True
+
+    @patch("app.agents.llm.client._aux_structured_runnable")
+    @patch("app.agents.llm.client.ainvoke_llm", new_callable=AsyncMock)
+    @patch("app.agents.llm.client.get_memory_llm")
+    @patch("app.agents.llm.client.memory_lane_available", return_value=True)
+    @patch("app.agents.llm.client.aux_lane_available", create=True, return_value=True)
+    async def test_the_aux_lane_is_preferred_and_carries_a_gemini_fallback(
+        self,
+        mock_aux_available: MagicMock,
+        mock_available: MagicMock,
+        mock_memory_llm: MagicMock,
+        mock_ainvoke: AsyncMock,
+        mock_aux_runnable: MagicMock,
+    ) -> None:
+        mock_ainvoke.return_value = _Extracted(fact="from-aux")
         config = RunnableConfig(configurable={"user_id": "u1"})
 
         result = await ainvoke_structured_gemini(
@@ -1025,32 +1094,52 @@ class TestMemoryLaneProviderSelection:
         )
 
         assert result.fact == "from-aux"
-        mock_memory_llm.assert_not_called()
-        # The handover is the whole call, not just the schema: a dropped
+        # The handover is the whole call, not just the runnable: a dropped
         # argument here silently re-defaults it on the lane that actually runs.
-        assert mock_aux.await_args.args[0] is _Extracted
-        assert mock_aux.await_args.args[1] == "transcript"
-        assert mock_aux.await_args.kwargs == {
-            "label": "memory:extract",
-            "temperature": 0.4,
-            "config": config,
-            "timeout": 9.0,
-        }
+        assert mock_ainvoke.await_args.args == (mock_aux_runnable.return_value, "transcript")
+        assert mock_aux_runnable.call_args.args == (_Extracted, 0.4, config)
+        kwargs = dict(mock_ainvoke.await_args.kwargs)
+        fallback = kwargs.pop("fallback")
+        assert kwargs == {"config": config, "label": "memory:extract", "timeout": 9.0}
+        # An aux outage has somewhere to go: the fallback factory builds the
+        # Gemini structured runnable with this call's schema and temperature.
+        mock_memory_llm.assert_not_called()
+        assert fallback() is mock_memory_llm.return_value.with_structured_output.return_value
+        assert mock_memory_llm.call_args.kwargs["temperature"] == 0.4
+        assert mock_memory_llm.return_value.with_structured_output.call_args.args[0] is _Extracted
 
     @patch("app.agents.llm.client._aux_structured_runnable")
     @patch("app.agents.llm.client.ainvoke_llm", new_callable=AsyncMock)
-    @patch("app.agents.llm.client.get_memory_llm")
-    @patch("app.agents.llm.client.memory_lane_available", return_value=True)
-    async def test_gemini_is_preferred_and_carries_an_aux_fallback(
+    @patch("app.agents.llm.client.memory_lane_available", return_value=False)
+    @patch("app.agents.llm.client.aux_lane_available", create=True, return_value=True)
+    async def test_no_gemini_at_all_means_aux_with_no_fallback(
         self,
+        mock_aux_available: MagicMock,
         mock_available: MagicMock,
-        mock_memory_llm: MagicMock,
         mock_ainvoke: AsyncMock,
         mock_aux_runnable: MagicMock,
     ) -> None:
+        mock_ainvoke.return_value = _Extracted(fact="from-aux")
+
+        result = await ainvoke_structured_gemini(_Extracted, "transcript", label="memory:extract")
+
+        assert result.fact == "from-aux"
+        assert mock_ainvoke.await_args.kwargs["fallback"] is None
+
+    @patch("app.agents.llm.client.ainvoke_llm", new_callable=AsyncMock)
+    @patch("app.agents.llm.client.get_memory_llm")
+    @patch("app.agents.llm.client.memory_lane_available", return_value=True)
+    @patch("app.agents.llm.client.aux_lane_available", create=True, return_value=False)
+    async def test_without_the_aux_lane_gemini_still_serves_alone(
+        self,
+        mock_aux_available: MagicMock,
+        mock_available: MagicMock,
+        mock_memory_llm: MagicMock,
+        mock_ainvoke: AsyncMock,
+    ) -> None:
         mock_ainvoke.return_value = _Extracted(fact="from-gemini")
-        config = RunnableConfig(configurable={"user_id": "u1"})
         structured = mock_memory_llm.return_value.with_structured_output.return_value
+        config = RunnableConfig(configurable={"user_id": "u1"})
 
         result = await ainvoke_structured_gemini(
             _Extracted,
@@ -1062,44 +1151,81 @@ class TestMemoryLaneProviderSelection:
         )
 
         assert result.fact == "from-gemini"
-        mock_memory_llm.assert_called_once()
+        # The handover is the whole call: a dropped argument silently
+        # re-defaults it on the lane that actually runs.
         assert mock_memory_llm.call_args.kwargs["temperature"] == 0.4
         assert mock_memory_llm.return_value.with_structured_output.call_args.args[0] is _Extracted
-        # The handover is the whole call, not just the runnable: a dropped
-        # argument here silently re-defaults it on the lane that actually runs.
         assert mock_ainvoke.await_args.args == (structured, "transcript")
-        kwargs = dict(mock_ainvoke.await_args.kwargs)
-        fallback = kwargs.pop("fallback")
-        assert kwargs == {"config": config, "label": "memory:extract", "timeout": 9.0}
-        # A Gemini outage has somewhere to go: ainvoke_llm gets a real fallback
-        # factory instead of the None that dropped every extraction — and the
-        # aux runnable it builds carries this call's schema, temperature and
-        # config rather than a defaulted set.
-        assert fallback() is mock_aux_runnable.return_value
-        assert mock_aux_runnable.call_args.args == (_Extracted, 0.4, config)
+        assert mock_ainvoke.await_args.kwargs == {
+            "config": config,
+            "label": "memory:extract",
+            "timeout": 9.0,
+        }
 
-    @patch("app.agents.llm.client.get_helper_llm")
+    @patch("app.agents.llm.client.ainvoke_structured", new_callable=AsyncMock)
     @patch("app.agents.llm.client.get_memory_llm")
-    @patch("app.agents.llm.client.memory_lane_available", return_value=True)
-    async def test_gemini_outage_is_served_by_the_aux_lane(
+    @patch("app.agents.llm.client.memory_lane_available", return_value=False)
+    @patch("app.agents.llm.client.aux_lane_available", create=True, return_value=False)
+    async def test_neither_lane_configured_surfaces_the_canonical_not_configured(
         self,
+        mock_aux_available: MagicMock,
         mock_available: MagicMock,
         mock_memory_llm: MagicMock,
+        mock_structured: AsyncMock,
+    ) -> None:
+        """Delegates to ainvoke_structured, whose LLMNotConfiguredError names
+        the fix — extraction's callers catch exactly that type."""
+        mock_structured.return_value = _Extracted(fact="delegated")
+        config = RunnableConfig(configurable={"user_id": "u1"})
+
+        result = await ainvoke_structured_gemini(
+            _Extracted,
+            "transcript",
+            label="memory:extract",
+            temperature=0.4,
+            config=config,
+            timeout=9.0,
+        )
+
+        assert result.fact == "delegated"
+        mock_memory_llm.assert_not_called()
+        # The handover is the whole call: a dropped argument silently
+        # re-defaults it on the lane that actually runs.
+        assert mock_structured.await_args.args == (_Extracted, "transcript")
+        assert mock_structured.await_args.kwargs == {
+            "label": "memory:extract",
+            "temperature": 0.4,
+            "config": config,
+            "timeout": 9.0,
+        }
+
+    @patch("app.agents.llm.client.get_memory_llm")
+    @patch("app.agents.llm.client.get_helper_llm")
+    @patch("app.agents.llm.client.memory_lane_available", return_value=True)
+    @patch("app.agents.llm.client.aux_lane_available", create=True, return_value=True)
+    async def test_an_aux_outage_is_served_by_gemini(
+        self,
+        mock_aux_available: MagicMock,
+        mock_available: MagicMock,
         mock_helper: MagicMock,
+        mock_memory_llm: MagicMock,
     ) -> None:
         failing = NonCallableMagicMock()
         failing.with_retry = MagicMock(return_value=failing)
-        failing.ainvoke = AsyncMock(side_effect=ConnectionError("gemini down"))
-        mock_memory_llm.return_value.with_structured_output.return_value = failing
+        failing.bind = MagicMock(return_value=failing)
+        failing.ainvoke = AsyncMock(side_effect=ConnectionError("aux down"))
+        mock_helper.return_value.model_copy.return_value.with_structured_output.return_value = (
+            failing
+        )
 
-        aux = NonCallableMagicMock()
-        aux.with_retry = MagicMock(return_value=aux)
-        aux.ainvoke = AsyncMock(return_value=_Extracted(fact="from-aux"))
-        mock_helper.return_value.model_copy.return_value.with_structured_output.return_value = aux
+        gemini = NonCallableMagicMock()
+        gemini.with_retry = MagicMock(return_value=gemini)
+        gemini.ainvoke = AsyncMock(return_value=_Extracted(fact="from-gemini"))
+        mock_memory_llm.return_value.with_structured_output.return_value = gemini
 
         result = await ainvoke_structured_gemini(_Extracted, "transcript", label="memory:extract")
 
-        assert result.fact == "from-aux"
+        assert result.fact == "from-gemini"
 
 
 # ---------------------------------------------------------------------------
@@ -1273,6 +1399,97 @@ class TestRecordAuxiliaryUsage:
         handler = UsageMetadataCallbackHandler()
         handler.usage_metadata = dict(usage_by_model)
         return handler
+
+    async def test_the_llm_call_event_carries_the_generation_id(self) -> None:
+        """The generation id is the only handle on WHICH upstream served a
+        call, and structured calls used to lose it (every follow-up and
+        memory-family event read MISSING) — so the per-provider cache table
+        covered only the graph trio and the lanes most in need of attribution
+        had none. The aux metering path must put it on the wide event."""
+        handler = self._handler(m={"input_tokens": 10, "output_tokens": 2})
+
+        with (
+            patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.0)),
+            patch("app.agents.llm.client.log") as mock_log,
+        ):
+            await _record_auxiliary_usage(
+                handler, "follow_up_actions", "user-1", generation_id="gen-abc123"
+            )
+
+        assert mock_log.info.call_args.kwargs["generation_id"] == "gen-abc123"
+
+    def test_the_generation_id_callback_reads_llm_output_then_generation_info(self) -> None:
+        """ChatOpenRouter puts the id in ``llm_output`` on the non-streaming
+        path and in ``generation_info`` when streaming; the callback must read
+        both, and report None — never a placeholder — when neither carries one."""
+        from langchain_core.outputs import ChatGeneration, LLMResult
+
+        from app.agents.llm.client import _GenerationIdCallback
+
+        cb = _GenerationIdCallback()
+        cb.on_llm_end(LLMResult(generations=[[]], llm_output={"id": "gen-nonstream"}))
+        assert cb.generation_id == "gen-nonstream"
+
+        cb = _GenerationIdCallback()
+        cb.on_llm_end(
+            LLMResult(
+                generations=[
+                    [
+                        ChatGeneration(
+                            message=AIMessage(content="x"),
+                            generation_info={"id": "gen-streamed"},
+                        )
+                    ]
+                ],
+                llm_output=None,
+            )
+        )
+        assert cb.generation_id == "gen-streamed"
+
+        cb = _GenerationIdCallback()
+        cb.on_llm_end(LLMResult(generations=[[]], llm_output={}))
+        assert cb.generation_id is None
+
+    async def test_ainvoke_llm_threads_the_generation_id_to_the_metering(self) -> None:
+        """The callback being correct is worth nothing if ainvoke_llm does not
+        attach it and hand its CAPTURED VALUE to the metering — the value, not
+        just the kwarg, or a hardcoded None passes unnoticed."""
+        from tests.helpers import create_fake_llm
+
+        with (
+            patch("app.agents.llm.client._GenerationIdCallback") as cb_cls,
+            patch("app.agents.llm.client._record_auxiliary_usage", new=AsyncMock()) as rec,
+        ):
+            cb_cls.return_value.generation_id = "gen-wired"
+            await ainvoke_llm(create_fake_llm(["ok"]), "hi", label="follow_up_actions")
+
+        assert rec.await_args.kwargs["generation_id"] == "gen-wired"
+
+    async def test_the_fallback_call_carries_the_generation_handler_too(self) -> None:
+        """A fallback that drops the handler makes exactly the calls that
+        changed provider — the ones whose serving upstream matters MOST —
+        unattributable. Both invoke sites must attach it."""
+        from tests.helpers import create_fake_llm
+
+        failing = NonCallableMagicMock()
+        failing.with_retry = MagicMock(return_value=failing)
+        failing.ainvoke = AsyncMock(side_effect=ConnectionError("primary down"))
+
+        with (
+            patch("app.agents.llm.client._GenerationIdCallback") as cb_cls,
+            patch("app.agents.llm.client._record_auxiliary_usage", new=AsyncMock()),
+            patch(
+                "app.agents.llm.client._with_usage_handler",
+                side_effect=lambda config, handler: dict(config or {}),
+            ) as attach,
+        ):
+            await ainvoke_llm(
+                failing, "hi", fallback=create_fake_llm(["ok"]), label="follow_up_actions"
+            )
+
+        attached = [call.args[1] for call in attach.call_args_list]
+        # primary: usage + generation handler; fallback: usage + generation handler
+        assert attached.count(cb_cls.return_value) == 2
 
     async def test_books_reasoning_tokens_from_the_output_details(self) -> None:
         """Reasoning tokens are billed and priced separately, so losing them
@@ -1814,3 +2031,115 @@ class TestTheInvokeTimeoutIsEnforced:
                 timeout=0.05,
                 meter_auxiliary=False,
             )
+
+
+class TestTheStickyKeyNeverReachesANonOpenRouterFallback:
+    """``session_id`` is OpenRouter's sticky-routing hint. Binding it onto a
+    Google client raises ``ValidationError`` (GenerateContentConfig forbids
+    extra fields) BEFORE the request leaves the process — so a cross-provider
+    fallback that inherits the primary's routing param does not degrade, it
+    dies, taking the outage path down with it.
+
+    Reachable two ways: the graph lane falls OpenRouter -> Gemini by
+    PROVIDER_PRIORITY, and the memory lane's fallback is Gemini by design.
+    Verified live against the real API: the memory fallback failed with
+    "session_id: Extra inputs are not permitted".
+    """
+
+    @staticmethod
+    def _non_openrouter_fallback(result: AIMessage) -> NonCallableMagicMock:
+        """A fallback shaped like production's but on another provider.
+
+        Structurally a RunnableBinding around a non-OpenRouter chat model —
+        the shape ``with_structured_output``/``bind_tools`` produce. A REAL
+        ChatGoogleGenerativeAI would be higher fidelity but pulls in gRPC,
+        which segfaults mutmut's forking workers and takes this module's
+        mutation gate down with it; the real client is covered by the live
+        probe in the commit message instead.
+        """
+        from tests.helpers import create_fake_llm
+
+        runnable = NonCallableMagicMock(spec=RunnableBinding)
+        runnable.bound = create_fake_llm(["ok"])
+        runnable.with_retry = MagicMock(return_value=runnable)
+        runnable.bind = MagicMock(return_value=runnable)
+        runnable.ainvoke = AsyncMock(return_value=result)
+        return runnable
+
+    def test_an_openrouter_runnable_is_recognised_through_its_wrappers(self) -> None:
+        """The predicate must see through with_structured_output/bind_tools —
+        a fallback is never a bare client."""
+        from app.agents.llm.client import _is_openrouter_wire
+
+        client = ChatOpenRouter(model="m", api_key="k")
+
+        assert _is_openrouter_wire(client) is True
+        assert _is_openrouter_wire(client.bind_tools([])) is True
+        assert _is_openrouter_wire(client.with_structured_output(_Extracted)) is True
+
+    def test_another_provider_is_not_mistaken_for_openrouter(self) -> None:
+        from app.agents.llm.client import _is_openrouter_wire
+        from tests.helpers import create_fake_llm
+
+        other = create_fake_llm(["ok"])
+
+        assert _is_openrouter_wire(other) is False
+        assert _is_openrouter_wire(other.bind()) is False
+
+    def test_the_walk_terminates_on_a_self_generating_object(self) -> None:
+        from app.agents.llm.client import _is_openrouter_wire
+
+        """A mock invents a fresh child for every attribute access, so an
+        open-ended walk never converges — it hung this file's suite for eight
+        minutes. The walk follows only the two real wrapper types, bounded."""
+        assert _is_openrouter_wire(NonCallableMagicMock()) is False
+
+    def test_a_wrapper_stack_deeper_than_the_bound_is_not_assumed_openrouter(self) -> None:
+        """Running out of hops means the walk never SAW an OpenRouter client,
+        so the honest answer is no. Answering yes there would bind
+        ``session_id`` onto whatever the stack actually wraps, and a provider
+        that does not understand it rejects the call outright — the exact
+        failure the bound exists to avoid, reintroduced by the safeguard."""
+        from app.agents.llm.client import _WIRE_WALK_MAX_HOPS, _is_openrouter_wire
+        from tests.helpers import create_fake_llm
+
+        node: Runnable = create_fake_llm(["ok"])
+        for _ in range(_WIRE_WALK_MAX_HOPS + 1):
+            binding = NonCallableMagicMock(spec=RunnableBinding)
+            binding.bound = node
+            node = binding
+
+        assert _is_openrouter_wire(node) is False
+
+    async def test_a_gemini_fallback_is_invoked_without_the_sticky_key(self) -> None:
+        """The regression itself: a real Gemini structured runnable as the
+        fallback, a session on the config, and the call must reach the model
+        rather than raising on an unsupported argument."""
+        primary = TestAinvokeLlm._runnable(side_effect=ConnectionError("aux down"))
+        fallback = self._non_openrouter_fallback(AIMessage(content="ok"))
+
+        await ainvoke_llm(
+            primary,
+            [HumanMessage(content="hi")],
+            fallback=fallback,
+            config=RunnableConfig(configurable={"user_id": "u1", "session_id": "memory-u1"}),
+        )
+
+        fallback.ainvoke.assert_awaited()
+        fallback.bind.assert_not_called()
+
+    async def test_an_openrouter_fallback_still_gets_its_sticky_key(self) -> None:
+        """The gate must not disarm the behaviour it guards: a same-wire
+        fallback still lands back on the conversation's provider."""
+        primary = TestAinvokeLlm._runnable(side_effect=ConnectionError("provider down"))
+        fallback = TestFallbackHandover._bindable_runnable(AIMessage(content="ok"))
+
+        await ainvoke_llm(
+            primary,
+            [HumanMessage(content="hi")],
+            fallback=fallback,
+            config=RunnableConfig(configurable={"user_id": "u1", "session_id": "conv-1"}),
+            meter_auxiliary=False,
+        )
+
+        assert fallback.bind.call_args.kwargs == {"session_id": "conv-1"}

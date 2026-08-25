@@ -8,10 +8,11 @@ authenticated requests, and edge cases around missing settings.
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from httpx import ASGITransport, AsyncClient
 from jose import JWTError
 import pytest
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
 from app.core.bot_auth_middleware import BotAuthMiddleware
 
@@ -107,10 +108,10 @@ class TestAlreadyAuthenticated:
         app = FastAPI()
 
         # A middleware that sets authenticated before BotAuthMiddleware runs
-        from starlette.middleware.base import BaseHTTPMiddleware
-
         class PreAuthMiddleware(BaseHTTPMiddleware):
-            async def dispatch(self, request: Request, call_next):
+            async def dispatch(
+                self, request: Request, call_next: RequestResponseEndpoint
+            ) -> Response:
                 request.state.authenticated = True
                 request.state.user = {"user_id": "pre_auth_user"}
                 return await call_next(request)
@@ -135,6 +136,65 @@ class TestAlreadyAuthenticated:
         assert data["authenticated"] is True
         assert data["user_id"] == "pre_auth_user"
 
+    @patch("app.core.bot_auth_middleware.get_cache", new_callable=AsyncMock)
+    @patch("app.core.bot_auth_middleware.set_cache", new_callable=AsyncMock)
+    @patch(
+        "app.core.bot_auth_middleware.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.core.bot_auth_middleware.verify_bot_session_token")
+    async def test_already_authenticated_request_is_never_re_resolved(
+        self,
+        mock_verify: MagicMock,
+        mock_platform: AsyncMock,
+        mock_set_cache: AsyncMock,
+        mock_get_cache: AsyncMock,
+    ) -> None:
+        """The short circuit must actually skip re-authentication, not just
+        happen to leave the same answer in place.
+
+        A valid ``Authorization`` header for a DIFFERENT user rides along on
+        this request. If the ``if getattr(request.state, "authenticated",
+        False):`` guard is bypassed (wrong object, wrong attribute name, or
+        wrong default), the middleware runs its own JWT verification and
+        clobbers the pre-authenticated identity with this one.
+        """
+        mock_verify.return_value = FAKE_JWT_PAYLOAD  # resolves to "user_abc123"
+        mock_get_cache.return_value = None
+        mock_platform.return_value = FAKE_USER_DATA
+
+        app = FastAPI()
+
+        class PreAuthMiddleware(BaseHTTPMiddleware):
+            async def dispatch(
+                self, request: Request, call_next: RequestResponseEndpoint
+            ) -> Response:
+                request.state.authenticated = True
+                request.state.user = {"user_id": "pre_auth_user"}
+                return await call_next(request)
+
+        app.add_middleware(BotAuthMiddleware)
+        app.add_middleware(PreAuthMiddleware)
+
+        @app.get("/api/test")
+        async def endpoint(request: Request) -> dict[str, Any]:
+            return {
+                "authenticated": request.state.authenticated,
+                "user_id": request.state.user.get("user_id"),
+            }
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
+            resp = await client.get(
+                "/api/test",
+                headers={"Authorization": "Bearer someone-elses-valid-jwt"},
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["user_id"] == "pre_auth_user"
+        mock_verify.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # JWT Bearer token authentication
@@ -145,6 +205,37 @@ class TestJWTAuth:
     @pytest.fixture
     def app(self) -> FastAPI:
         return _build_app()
+
+    @patch("app.core.bot_auth_middleware.get_cache", new_callable=AsyncMock)
+    @patch("app.core.bot_auth_middleware.set_cache", new_callable=AsyncMock)
+    @patch(
+        "app.core.bot_auth_middleware.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.core.bot_auth_middleware.verify_bot_session_token")
+    async def test_exactly_the_bearer_prefix_is_stripped_from_the_token(
+        self,
+        mock_verify: MagicMock,
+        mock_platform: AsyncMock,
+        mock_set_cache: AsyncMock,
+        mock_get_cache: AsyncMock,
+        app: FastAPI,
+    ) -> None:
+        """``"Bearer "`` is 7 characters — the verifier must receive the token
+        with none of its own characters eaten."""
+        mock_verify.return_value = FAKE_JWT_PAYLOAD
+        mock_get_cache.return_value = None
+        mock_platform.return_value = FAKE_USER_DATA
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
+            resp = await client.get(
+                "/api/test",
+                headers={"Authorization": "Bearer abcdef123456"},
+            )
+
+        assert resp.status_code == 200
+        mock_verify.assert_called_once_with("abcdef123456")
 
     @patch("app.core.bot_auth_middleware.get_cache", new_callable=AsyncMock)
     @patch("app.core.bot_auth_middleware.set_cache", new_callable=AsyncMock)
@@ -373,6 +464,48 @@ class TestAPIKeyAuth:
         assert data["bot_platform_user_id"] == "tg_123"
 
     @patch("app.core.bot_auth_middleware.get_cache", new_callable=AsyncMock)
+    @patch("app.core.bot_auth_middleware.set_cache", new_callable=AsyncMock)
+    @patch(
+        "app.core.bot_auth_middleware.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.core.bot_auth_middleware.settings")
+    async def test_the_request_resolves_the_platform_user_it_names(
+        self,
+        mock_settings: MagicMock,
+        mock_platform: AsyncMock,
+        mock_set_cache: AsyncMock,
+        mock_get_cache: AsyncMock,
+        app: FastAPI,
+    ) -> None:
+        """Two linked users on one platform must not resolve to each other.
+
+        Every other test here hands the lookup a single canned user, so the id
+        the middleware passed down was never checked — and authenticating one
+        person's request as another is the worst failure this file has.
+        """
+        mock_settings.GAIA_BOT_API_KEY = "secret-bot-key"  # pragma: allowlist secret
+        mock_get_cache.return_value = None
+        linked = {
+            "tg_123": {**FAKE_USER_DATA, "_id": "user_one", "email": "one@example.com"},
+            "tg_456": {**FAKE_USER_DATA, "_id": "user_two", "email": "two@example.com"},
+        }
+        mock_platform.side_effect = lambda _platform, platform_user_id: linked.get(platform_user_id)
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
+            resp = await client.get(
+                "/api/test",
+                headers={
+                    "X-Bot-API-Key": "secret-bot-key",
+                    "X-Bot-Platform": "telegram",
+                    "X-Bot-Platform-User-Id": "tg_456",
+                },
+            )
+
+        assert resp.json()["user"]["user_id"] == "user_two"
+
+    @patch("app.core.bot_auth_middleware.get_cache", new_callable=AsyncMock)
     @patch("app.core.bot_auth_middleware.settings")
     async def test_valid_api_key_with_cached_platform_user(
         self,
@@ -583,6 +716,80 @@ class TestAuthPrecedence:
         assert data["authenticated"] is True
         # JWT authenticates via discord (from FAKE_JWT_PAYLOAD), not slack
         assert data["user"]["auth_provider"] == "bot:discord"
+
+    @pytest.mark.regression
+    @patch("app.core.bot_auth_middleware.get_cache", new_callable=AsyncMock)
+    @patch("app.core.bot_auth_middleware.set_cache", new_callable=AsyncMock)
+    @patch(
+        "app.core.bot_auth_middleware.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.core.bot_auth_middleware.verify_bot_session_token")
+    @patch("app.core.bot_auth_middleware.settings")
+    async def test_jwt_fast_path_still_marks_the_bot_api_key_valid(
+        self,
+        mock_settings: MagicMock,
+        mock_verify: MagicMock,
+        mock_platform: AsyncMock,
+        mock_set_cache: AsyncMock,
+        mock_get_cache: AsyncMock,
+    ) -> None:
+        """A valid JWT must not hide a valid API key.
+
+        The key authorises the bot ROUTE (``require_bot_api_key``); the JWT only
+        identifies the user. Verifying the key only when the JWT failed left
+        every fast-path request with ``bot_api_key_valid`` unset, so ``/bot/*``
+        answered 401 and the bot threw its session token away and retried —
+        a wasted round trip on almost every turn.
+        """
+        mock_settings.GAIA_BOT_API_KEY = "secret-bot-key"  # pragma: allowlist secret
+        mock_verify.return_value = FAKE_JWT_PAYLOAD
+        mock_get_cache.return_value = None
+        mock_platform.return_value = FAKE_USER_DATA
+
+        app = _build_app()
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
+            resp = await client.get(
+                "/api/test",
+                headers={
+                    "Authorization": "Bearer jwt-token",
+                    "X-Bot-API-Key": "secret-bot-key",
+                    "X-Bot-Platform": "discord",
+                    "X-Bot-Platform-User-Id": "disc_999",
+                },
+            )
+
+        data = resp.json()
+        assert data["authenticated"] is True
+        assert data["bot_api_key_valid"] is True
+        assert data["bot_platform"] == "discord"
+        assert data["bot_platform_user_id"] == "disc_999"
+
+    @patch("app.core.bot_auth_middleware.verify_bot_session_token")
+    @patch("app.core.bot_auth_middleware.settings")
+    async def test_jwt_fast_path_leaves_an_invalid_key_invalid(
+        self,
+        mock_settings: MagicMock,
+        mock_verify: MagicMock,
+    ) -> None:
+        """The key is verified, not assumed — a wrong key stays rejected even
+        when the JWT authenticated the user."""
+        mock_settings.GAIA_BOT_API_KEY = "secret-bot-key"  # pragma: allowlist secret
+        mock_verify.return_value = FAKE_JWT_PAYLOAD
+
+        app = _build_app()
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
+            resp = await client.get(
+                "/api/test",
+                headers={
+                    "Authorization": "Bearer jwt-token",
+                    "X-Bot-API-Key": "wrong-key",
+                },
+            )
+
+        assert resp.json()["bot_api_key_valid"] is False
 
 
 # ---------------------------------------------------------------------------

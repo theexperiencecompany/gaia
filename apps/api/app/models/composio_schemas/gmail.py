@@ -16,18 +16,27 @@ from app.constants.email import DEFAULT_SUMMARY_FIELDS, MessageFieldLiteral
 
 
 class GmailNewMessagePayload(BaseModel):
-    """Payload for GMAIL_NEW_GMAIL_MESSAGE trigger."""
+    """Payload for GMAIL_NEW_GMAIL_MESSAGE trigger.
+
+    Field set verified against Composio triggers_types API (2026-08).
+    """
 
     attachment_list: list[Any] | None = Field(
         None, description="List of attachments in the message"
+    )
+    id: str | None = Field(None, description="The raw Gmail message ID")
+    label_ids: list[str] | None = Field(
+        None, description="The Gmail label IDs applied to the message"
     )
     message_id: str | None = Field(None, description="Message ID")
     message_text: str | None = Field(None, description="Text content of the message")
     message_timestamp: str | None = Field(None, description="Timestamp of the message")
     payload: dict[str, Any] | None = Field(None, description="Full message payload")
+    preview: dict[str, Any] | None = Field(None, description="Preview payload of the message")
     sender: str | None = Field(None, description="Sender email address")
     subject: str | None = Field(None, description="Email subject")
     thread_id: str | None = Field(None, description="Thread ID")
+    to: str | None = Field(None, description="Recipient email address")
 
 
 # =============================================================================

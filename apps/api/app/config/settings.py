@@ -90,6 +90,12 @@ class CommonSettings(BaseAppSettings):
     # Where the scripted stub lives when sim mode is on; consumed only by
     # _sim_llm (defaults to SIM_STUB_BASE_URL when unset).
     OPENROUTER_BASE_URL: str | None = None
+    # Comma-separated OpenRouter provider slugs (tag form, e.g. "coreweave/fp8")
+    # to PREFER for the default-model lane — fallbacks stay enabled, so an
+    # outage degrades to the normal rotation. Empty (the default) leaves
+    # routing untouched. Set from the per-provider cache-hit table, not by
+    # guesswork; see _provider_order_kwargs in agents/llm/client.py.
+    OPENROUTER_PROVIDER_ORDER: str | None = None
     # Dev-only: lift every per-user rate limit (chat messages, uploads, ...).
     # Eval harnesses drive thousands of legitimate requests per day against a
     # free-plan dev user; without this they 429 at the free tier's 200/day.
