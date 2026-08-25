@@ -185,7 +185,7 @@ async def platform_requires_upgrade(user_id: str, platform: str) -> bool:
 
 async def require_platform_plan(user_id: str, platform: str) -> None:
     """Raise the standard 429 upsell when a free user tries to link a paid-only platform."""
-    if settings.ENV == "selfhost":
+    if not settings.billing_enabled:
         # No billing ⇒ premium platforms are linkable by everyone.
         return
     if await platform_requires_upgrade(user_id, platform):

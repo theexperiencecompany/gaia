@@ -86,7 +86,7 @@ async def _free_cap_remaining(user_id: str, growth: int) -> int | None:
     resolving here keeps one canonical check instead of threading plan_type
     through every path.
     """
-    if settings.ENV == "selfhost":
+    if not settings.billing_enabled:
         # No billing ⇒ no plan tiers ⇒ memory is uncapped on self-hosted
         # instances.
         return None

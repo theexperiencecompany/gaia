@@ -153,6 +153,16 @@ class CommonSettings(BaseAppSettings):
     def _strip_trailing_slash(cls, v: str) -> str:
         return v.rstrip("/") if isinstance(v, str) else v
 
+    # Capability flag, not configuration: does THIS deployment bill users?
+    # ENV=selfhost has no payment provider by design (the Free plan auto-seeds),
+    # so every budget/plan gate reads this instead of re-deriving the answer by
+    # string-comparing ENV — one place to change if a deployment profile ever
+    # gains or loses billing.
+    @property
+    def billing_enabled(self) -> bool:
+        """Whether billing gates are active (False under ENV=selfhost)."""
+        return self.ENV != "selfhost"
+
     # ----------------------------------------------
     # Outbound Email
     # ----------------------------------------------
@@ -937,7 +947,19 @@ def get_settings() -> Any:  # noqa: ANN401 -- framework contract
             # Same hard blocks as production (see _raise_if_dev_override_env),
             # then the relaxed self-host profile.
             _raise_if_dev_override_env()
-            settings_obj = SelfHostSettings.from_env()
+            # Local email+password auth is THE self-host default: with AUTH_MODE
+            # unset, the pydantic field default ("workos") would construct a
+            # WorkOS client against missing credentials and never mount the
+            # local-auth routes — an instance with no way to sign in. Only an
+            # explicit AUTH_MODE in the environment overrides this default.
+            if os.getenv("AUTH_MODE") is None:
+                log.info(
+                    f"{LogTag.STARTUP} AUTH_MODE unset under ENV=selfhost "
+                    "- defaulting to local email+password auth"
+                )
+                settings_obj = SelfHostSettings.from_env(AUTH_MODE="local")
+            else:
+                settings_obj = SelfHostSettings.from_env()
             log.info(f"{LogTag.STARTUP} Self-host settings initialized")
         else:
             # Hard block, not a warning: the dev auth bypass authenticates

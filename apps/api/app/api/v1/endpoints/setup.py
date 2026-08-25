@@ -95,7 +95,7 @@ async def get_setup_status() -> dict[str, Any]:
         "auth_mode": settings.AUTH_MODE,
         "has_admin_account": has_admin_account,
         "needs_setup": _needs_setup(has_admin_account, configured),
-        "billing_enabled": settings.ENV != "selfhost",
+        "billing_enabled": settings.billing_enabled,
         "providers": {p: {"configured": c} for p, c in configured.items()},
         "plans_seeded": await is_payment_setup(),
     }

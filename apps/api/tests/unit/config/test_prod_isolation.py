@@ -508,9 +508,11 @@ def test_development_boot_still_dummy_ok_with_workos_mode(monkeypatch):
     assert settings_obj.WORKOS_API_KEY is None
 
 
-def test_selfhost_boot_without_workos_credentials_is_fine(monkeypatch):
-    """Self-host never requires WorkOS credentials — even with the hosted
-    AUTH_MODE=workos left at its default and all three vars absent."""
+def test_selfhost_unset_auth_mode_defaults_to_local(monkeypatch):
+    """ENV=selfhost with AUTH_MODE unset boots local email+password auth —
+    never the pydantic 'workos' default, which would construct a WorkOS
+    client with no credentials and leave the local-auth routes unmounted.
+    Local auth needs none of the three WorkOS vars."""
     from app.config.settings import SelfHostSettings, get_settings
 
     for var in _DEV_OVERRIDE_VARS:
@@ -524,7 +526,7 @@ def test_selfhost_boot_without_workos_credentials_is_fine(monkeypatch):
     settings_obj = get_settings()
 
     assert isinstance(settings_obj, SelfHostSettings)
-    assert settings_obj.AUTH_MODE == "workos"  # defaulted, yet boot succeeded
+    assert settings_obj.AUTH_MODE == "local"
     assert settings_obj.WORKOS_API_KEY is None
 
 

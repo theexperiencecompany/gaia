@@ -424,7 +424,7 @@ async def enforce_daily_cost_budget(
     ``feature_key`` names the surface being blocked (e.g. ``chat_messages``,
     ``trigger_workflow_executions``) for the 429 payload and reset copy.
     """
-    if settings.ENV == "selfhost":
+    if not settings.billing_enabled:
         # Self-hosted instances record spend but never wall a request (billing
         # is disabled there).
         return

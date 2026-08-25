@@ -283,7 +283,7 @@ async def get_budget_stop_reason(
     (``user_id`` missing) or the plan lookup itself errors (infra hiccup) —
     both warn loudly so the gap stays visible, never silently skipped.
     """
-    if settings.ENV == "selfhost":
+    if not settings.billing_enabled:
         # Self-hosted instances record cost but never wall a run (billing is
         # disabled there) — and no wrap-up notice either, since there is no
         # allowance to run out of.

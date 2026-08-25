@@ -71,7 +71,7 @@ class DodoPaymentService:
             # self-host concept; the Free plan auto-seeds) — expected state, so
             # it logs as info rather than an alarming startup ERROR. Every other
             # environment treats the failure as the real problem it is.
-            if settings.ENV == "selfhost":
+            if not settings.billing_enabled:
                 log.info(
                     f"{LogTag.PAYMENT} Dodo payments not configured — "
                     "billing disabled on self-host",

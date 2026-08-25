@@ -378,7 +378,7 @@ async def _pro_monthly_budget_exhausted(user_id: str) -> bool:
     Fails open (False) on infra errors — never punish a paying user for a Redis
     hiccup.
     """
-    if settings.ENV == "selfhost":
+    if not settings.billing_enabled:
         # No billing ⇒ no economic guard; the configured model always serves.
         return False
     try:
