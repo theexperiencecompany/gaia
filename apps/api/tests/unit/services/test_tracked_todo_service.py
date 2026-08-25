@@ -15,6 +15,8 @@ from app.models.todo_models import Priority, TodoDocument, TodoModel, TodoRespon
 from app.services.tracked_todo_service import (
     CANVAS_TEMPLATE,
     TrackedTodoService,
+    clear_pending_question,
+    record_pending_question_reply,
     tracked_todo_service,
 )
 
@@ -466,39 +468,48 @@ def _question_doc(**overrides: object) -> TodoDocument:
 
 
 class TestRecordPendingQuestionReply:
-    async def test_matching_reply_clears_the_question_and_reschedules(self):
-        doc = _question_doc()
+    async def _run(self, *, claim, schedule):
         repo_update = AsyncMock()
-        schedule = AsyncMock(return_value=True)
         with (
             patch(
-                f"{_MOD}.todo_repository.find_open_pending_question",
-                AsyncMock(return_value=doc),
+                f"{_MOD}.todo_repository.claim_pending_question",
+                AsyncMock(return_value=claim),
             ),
-            patch(f"{_MOD}.todo_repository.update", repo_update),
-            patch(f"{_MOD}.TrackedTodoService.schedule_execution", schedule),
+            patch(f"{_MOD}.todo_repository.update", repo_update) as update,
+            patch(f"{_MOD}.TrackedTodoService.schedule_execution", AsyncMock(side_effect=schedule)),
             patch(f"{_MOD}.TrackedTodoService.system_log", AsyncMock()),
             patch(f"{_MOD}.TrackedTodoService.append_canvas_timeline", AsyncMock()),
         ):
-            handled = await tracked_todo_service.record_pending_question_reply(
-                USER_ID, "msg-42", "yes, plan A"
-            )
+            handled = await record_pending_question_reply(USER_ID, "msg-42", "yes, plan A")
+        return handled, update
+
+    async def test_matching_reply_claims_the_question_and_reschedules(self):
+        doc = _question_doc()
+
+        def _schedule(todo_id, when):
+            assert datetime.now(UTC) <= when <= datetime.now(UTC) + timedelta(minutes=2)
+            return True
+
+        handled, update = await self._run(claim=doc, schedule=_schedule)
 
         assert handled is True
-        update = repo_update.await_args.kwargs["update"]
-        assert update.pending_question is None
-        # The todo re-runs shortly after the answer, under the execution lock.
-        run_at = schedule.await_args.args[1]
-        assert datetime.now(UTC) <= run_at <= datetime.now(UTC) + timedelta(minutes=2)
+        # The only write is the atomic claim itself — no separate clear step.
+        update.assert_not_awaited()
+
+    async def test_enqueue_failure_restores_the_claimed_question(self):
+        """If the rerun enqueue fails after the claim, the question must be
+        restored — otherwise the user's answer is consumed and the todo has
+        neither a pending question nor a scheduled run to recover with."""
+        doc = _question_doc()
+        handled, repo_update = await self._run(claim=doc, schedule=lambda *_: False)
+
+        assert handled is False
+        restore = repo_update.await_args.kwargs["update"]
+        assert restore.pending_question is not None
+        assert restore.pending_question.message_id == "msg-42"
 
     async def test_a_non_matching_message_id_is_a_no_op(self):
-        with patch(
-            f"{_MOD}.todo_repository.find_open_pending_question",
-            AsyncMock(return_value=None),
-        ):
-            handled = await tracked_todo_service.record_pending_question_reply(
-                USER_ID, "unrelated", "hello"
-            )
+        handled, _update = await self._run(claim=None, schedule=lambda *_: True)
         assert handled is False
 
 
@@ -511,7 +522,7 @@ class TestClearPendingQuestion:
             patch(f"{_MOD}.todo_repository.update", repo_update),
             patch(f"{_MOD}.TrackedTodoService.system_log", AsyncMock()) as system_log,
         ):
-            cleared = await tracked_todo_service.clear_pending_question(
+            cleared = await clear_pending_question(
                 TODO_ID, USER_ID, "question expired without an answer"
             )
 
@@ -524,5 +535,5 @@ class TestClearPendingQuestion:
             f"{_MOD}.todo_repository.get",
             AsyncMock(return_value=_todo_doc()),
         ):
-            cleared = await tracked_todo_service.clear_pending_question(TODO_ID, USER_ID, "reason")
+            cleared = await clear_pending_question(TODO_ID, USER_ID, "reason")
         assert cleared is False

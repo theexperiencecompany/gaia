@@ -5,6 +5,7 @@ stay silent on plain relative reminders, so the executor routes the former to
 create_tracked_todo (due_date = deadline) instead of a one-shot reminder.
 """
 
+from langchain_core.messages import HumanMessage
 import pytest
 
 from app.agents.prompts.todo_prompts import (
@@ -57,8 +58,6 @@ class TestSystemPromptTeachesRouting:
 
 class TestPreModelHookNudge:
     def _state(self, *messages: str) -> dict:
-        from langchain_core.messages import HumanMessage
-
         return {"messages": [HumanMessage(content=m) for m in messages]}
 
     def test_deadline_anchored_message_injects_the_nudge(self):

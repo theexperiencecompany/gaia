@@ -29,7 +29,7 @@ from app.models.stream_events import ErrorFrame
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.chat.stream import run_chat_stream_background
-from app.services.tracked_todo_service import tracked_todo_service
+from app.services.tracked_todo_service import record_pending_question_reply
 from app.utils.agent_utils import format_sse_data
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import ChatContext, get_trace_id, log, log_context
@@ -183,7 +183,7 @@ async def chat_stream_endpoint(
     # chat turn itself proceeds normally either way.
     if body.replyToMessage and body.replyToMessage.id:
         try:
-            answered = await tracked_todo_service.record_pending_question_reply(
+            answered = await record_pending_question_reply(
                 user_id, body.replyToMessage.id, body.message
             )
             if answered:

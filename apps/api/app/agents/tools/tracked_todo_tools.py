@@ -409,6 +409,15 @@ def _patch_canvas_section(current: str, section: str, content: str) -> str:
     return current[:head_end] + "\n" + content.rstrip() + "\n" + current[next_section:]
 
 
+def _terminal_timeline_entry(now: datetime, detail: str, summary: str) -> str:
+    """Canvas Timeline line for a run terminated via finish_todo_run.
+
+    Lives outside the @tool body so the entry format stays byte-identical to
+    the worker's start/fail/finish markers, which use the same separator.
+    """
+    return f"■ {now.isoformat()} — run finished via finish_todo_run ({detail}): {summary}"
+
+
 def _format_create_output(
     result: TodoResponse,
     parsed_scheduled_at: datetime | None,
@@ -482,7 +491,7 @@ async def create_tracked_todo(
         str | None,
         "ISO datetime of the EXTERNAL deadline this todo works toward (appointment "
         "date, filing date, expiry date), with timezone offset. This is the user's "
-        "deadline — NOT when GAIA runs (that's scheduled_at). Use for deadline-anchored "
+        "deadline, NOT when GAIA runs (that's scheduled_at). Use for deadline-anchored "
         "requests like 'remind me 3 days before my appointment': due_date = the "
         "appointment, scheduled_at = 3 days before it.",
     ] = None,
@@ -503,7 +512,7 @@ async def create_tracked_todo(
     recurring work, or an ongoing multi-step initiative. This includes
     deadline-anchored requests ("remind me 3 days before my appointment"):
     GAIA must run ahead of the user's deadline and do real work, so use
-    due_date = the deadline and scheduled_at = the lead time — a fire-once
+    due_date = the deadline and scheduled_at = the lead time: a fire-once
     reminder cannot do that.
 
     Do NOT create one for read-only work (fetching, listing, searching, or
@@ -528,7 +537,7 @@ async def create_tracked_todo(
                 Different from due_date: due_date = deadline (overdue = still needs doing),
                 expires_at = relevance window (expired = no longer worth tracking).
     due_date: ISO datetime of the external deadline this todo works toward (with timezone
-              offset). The appointment/filing/expiry date itself — not when GAIA runs
+              offset). The appointment/filing/expiry date itself, not when GAIA runs
               (scheduled_at). For "remind me N days before X": due_date = X, scheduled_at = N days earlier.
     """
     user_id = config.get("metadata", {}).get("user_id")
@@ -897,10 +906,18 @@ async def _ask_user_daily_count(user_id: str) -> int:
 
 
 async def _post_question_message(
-    todo: TodoDocument, question: str, options: list[str], conversation_id: str, user_id: str
-) -> str | None:
-    """Append the question as a bot message to the run's conversation; returns its id."""
-    message_id = uuid4().hex
+    todo: TodoDocument,
+    question: str,
+    options: list[str],
+    conversation_id: str,
+    user_id: str,
+    message_id: str,
+) -> None:
+    """Append the question as a bot message to the run's conversation.
+
+    ``message_id`` is supplied by the caller (the persisted PendingQuestion) so
+    a delivery retry posts with the SAME id instead of creating a duplicate.
+    """
     text = question
     if options:
         text += "\n\nOptions:\n" + "\n".join(f"- {opt}" for opt in options)
@@ -917,7 +934,124 @@ async def _post_question_message(
         UpdateMessagesRequest(conversation_id=conversation_id, messages=[message]),
         user=cast(AuthenticatedUser, {"user_id": user_id}),
     )
-    return message_id
+
+
+def _validate_finish_args(
+    outcome: str, reschedule_at: str | None, question: str | None
+) -> str | None:
+    """Outcome/argument coupling checks; returns the error message, or None."""
+    if outcome == "reschedule" and not reschedule_at:
+        return "Error: outcome 'reschedule' requires reschedule_at."
+    if outcome == "ask_user":
+        if not question or not question.strip():
+            return "Error: outcome 'ask_user' requires question."
+        if reschedule_at:
+            return (
+                "Error: outcome 'ask_user' does not take reschedule_at; the todo "
+                "re-runs automatically when the user replies."
+            )
+    return None
+
+
+async def _finish_outcome_complete(todo_id: str, user_id: str, summary: str) -> str:
+    """Run the 'complete' outcome; returns the timeline detail or an error."""
+    success = await tracked_todo_service.complete_tracked_todo(
+        todo_id=todo_id, user_id=user_id, summary=summary
+    )
+    if not success:
+        return f"Error: could not complete tracked todo {todo_id}."
+    return "completed"
+
+
+async def _finish_outcome_reschedule(
+    todo_id: str, user_id: str, reschedule_at: str | None
+) -> str:
+    """Run the 'reschedule' outcome; returns the timeline detail or an error."""
+    parsed_at, error = _parse_iso_future_datetime(reschedule_at or "", "reschedule_at")
+    if error or parsed_at is None:
+        return error or "Error: invalid reschedule_at."
+    await todo_repository.update(
+        todo_id, user_id=user_id, update=TodoUpdate(scheduled_at=parsed_at)
+    )
+    await tracked_todo_service.reschedule_execution(todo_id, parsed_at)
+    return f"rescheduled to {parsed_at.isoformat()}"
+
+
+async def _finish_outcome_ask_user(
+    doc: TodoDocument,
+    *,
+    todo_id: str,
+    user_id: str,
+    conversation_id: str,
+    now: datetime,
+    question: str,
+    options: list[str] | None,
+) -> str:
+    """Run the 'ask_user' outcome; returns the timeline detail or an error.
+
+    Durable transition: the PendingQuestion is persisted (with its preallocated
+    message id and delivered=False) BEFORE the message is posted. A failed or
+    interrupted delivery leaves an undelivered record that the next attempt
+    resumes with the same message id — so a retry can never send a duplicate
+    question, and the reply-match record always exists once the user can see
+    the question.
+    """
+    existing = doc.pending_question
+    if existing and existing.delivered:
+        return (
+            "Error: this todo already has an outstanding question awaiting the user's "
+            "reply. Use outcome 'reschedule' instead."
+        )
+
+    if existing:
+        pq = existing
+    else:
+        ask_count = await _ask_user_daily_count(user_id)
+        if ask_count > ASK_USER_DAILY_LIMIT:
+            return (
+                f"Error: daily limit of {ASK_USER_DAILY_LIMIT} questions reached for today. "
+                "Use outcome 'reschedule' instead."
+            )
+        pq = PendingQuestion(
+            question=question,
+            options=[opt.strip() for opt in (options or []) if opt.strip()],
+            asked_at=now,
+            expires_at=now + PENDING_QUESTION_TTL,
+            conversation_id=conversation_id,
+            message_id=uuid4().hex,
+            delivered=False,
+        )
+        persisted = await todo_repository.update(
+            todo_id, user_id=user_id, update=TodoUpdate(pending_question=pq)
+        )
+        if not persisted:
+            return f"Error: could not persist the pending question on tracked todo {todo_id}."
+
+    try:
+        await _post_question_message(
+            doc, pq.question, pq.options, pq.conversation_id, user_id, pq.message_id
+        )
+    except Exception as exc:
+        # Keep the undelivered record: the run fails its terminal contract and
+        # retries, and the retry resumes delivery with the same message id.
+        log.warning(
+            "tracked_todo.question_delivery_failed",
+            todo_id=todo_id,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        return (
+            "Error: could not deliver the question message; it stays pending and "
+            "is retried with the same message id."
+        )
+
+    if not pq.delivered:
+        await todo_repository.update(
+            todo_id,
+            user_id=user_id,
+            update=TodoUpdate(pending_question=pq.model_copy(update={"delivered": True})),
+        )
+    return f"asked the user (expires {pq.expires_at.isoformat()})"
 
 
 @tool
@@ -945,7 +1079,7 @@ async def finish_todo_run(
     ] = None,
 ) -> str:
     """End THIS scheduled tracked-todo run. Every scheduled run MUST call exactly
-    this tool once, as its final action — ending without it counts as a failed run
+    this tool once, as its final action; ending without it counts as a failed run
     and burns a retry.
 
     - 'complete': the todo's goal is fully achieved (archives the todo).
@@ -961,17 +1095,9 @@ async def finish_todo_run(
 
     if outcome not in _TERMINAL_OUTCOMES:
         return f"Error: invalid outcome '{outcome}'. Use one of: {', '.join(_TERMINAL_OUTCOMES)}."
-
-    if outcome == "reschedule" and not reschedule_at:
-        return "Error: outcome 'reschedule' requires reschedule_at."
-    if outcome == "ask_user":
-        if not question or not question.strip():
-            return "Error: outcome 'ask_user' requires question."
-        if reschedule_at:
-            return (
-                "Error: outcome 'ask_user' does not take reschedule_at — the todo "
-                "re-runs automatically when the user replies."
-            )
+    validation_error = _validate_finish_args(outcome, reschedule_at, question)
+    if validation_error:
+        return validation_error
 
     doc = await todo_repository.get(todo_id, user_id=user_id)
     if not doc:
@@ -981,67 +1107,30 @@ async def finish_todo_run(
     now = datetime.now(UTC)
 
     if outcome == "complete":
-        success = await tracked_todo_service.complete_tracked_todo(
-            todo_id=todo_id, user_id=user_id, summary=summary
-        )
-        if not success:
-            return f"Error: could not complete tracked todo {todo_id}."
-        detail = "completed"
-
+        detail = await _finish_outcome_complete(todo_id, user_id, summary)
     elif outcome == "reschedule":
-        parsed_at, error = _parse_iso_future_datetime(reschedule_at or "", "reschedule_at")
-        if error or parsed_at is None:
-            return error or "Error: invalid reschedule_at."
-        await todo_repository.update(
-            todo_id, user_id=user_id, update=TodoUpdate(scheduled_at=parsed_at)
-        )
-        await tracked_todo_service.reschedule_execution(todo_id, parsed_at)
-        detail = f"rescheduled to {parsed_at.isoformat()}"
-
-    else:  # ask_user
-        if doc.pending_question:
-            return (
-                "Error: this todo already has an outstanding question awaiting the user's "
-                "reply. Use outcome 'reschedule' instead."
-            )
-        ask_count = await _ask_user_daily_count(user_id)
-        if ask_count > ASK_USER_DAILY_LIMIT:
-            return (
-                f"Error: daily limit of {ASK_USER_DAILY_LIMIT} questions reached for today. "
-                "Use outcome 'reschedule' instead."
-            )
-        assert question is not None  # validated above; narrows for mypy
-        trimmed_options = [opt.strip() for opt in (options or []) if opt.strip()]
-        message_id = await _post_question_message(
-            doc, question, trimmed_options, conversation_id, user_id
-        )
-        if not message_id:
-            return "Error: could not deliver the question message — try 'reschedule' instead."
-        expires_at = now + PENDING_QUESTION_TTL
-        await todo_repository.update(
-            todo_id,
+        detail = await _finish_outcome_reschedule(todo_id, user_id, reschedule_at)
+    else:  # ask_user — argument coupling validated above
+        assert question is not None  # narrows for mypy
+        detail = await _finish_outcome_ask_user(
+            doc,
+            todo_id=todo_id,
             user_id=user_id,
-            update=TodoUpdate(
-                pending_question=PendingQuestion(
-                    question=question,
-                    options=trimmed_options,
-                    asked_at=now,
-                    expires_at=expires_at,
-                    conversation_id=conversation_id,
-                    message_id=message_id,
-                )
-            ),
+            conversation_id=conversation_id,
+            now=now,
+            question=question.strip(),
+            options=options,
         )
-        detail = f"asked the user (expires {expires_at.isoformat()})"
+    if detail.startswith("Error:"):
+        return detail
 
     pool = await RedisPoolManager.get_pool()
     await pool.set(terminal_marker_key(todo_id), outcome, ex=TERMINAL_MARKER_TTL_SECONDS)
 
-    iso_now = now.isoformat()
     await tracked_todo_service.append_canvas_timeline(
         todo_id=todo_id,
         user_id=user_id,
-        entry=f"■ {iso_now} — run finished via finish_todo_run ({detail}): {summary}",
+        entry=_terminal_timeline_entry(now, detail, summary),
     )
     log.set(todo={"finish_outcome": outcome})
     log.info("tracked_todo.run_finished", todo_id=todo_id, outcome=outcome)

@@ -506,7 +506,7 @@ class TestChatStreamPendingQuestionReply:
                 new_callable=AsyncMock,
             ),
             patch(
-                "app.api.v1.endpoints.chat.tracked_todo_service.record_pending_question_reply",
+                "app.api.v1.endpoints.chat.record_pending_question_reply",
                 record,
             ),
         ]

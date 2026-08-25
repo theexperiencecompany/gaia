@@ -15,18 +15,19 @@ forever (one-shot) / every 30 minutes instead of after 1h then 4h (retry).
 Recurrence/timezone resolution itself is covered by test_tracked_todo_recurrence.py.
 """
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.constants.todos import FAILED_LABEL
+from app.constants.todos import FAILED_LABEL, PENDING_QUESTION_TTL
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
 )
-from app.models.todo_models import TodoDocument
+from app.models.todo_models import PendingQuestion, TodoDocument
 from app.workers.tasks.tracked_todo_tasks import (
     _LOCK_RELEASE_LUA,
     MAX_RETRY_ATTEMPTS,
@@ -139,6 +140,42 @@ class TestExecuteTrackedTodoLock:
 
         pool.delete.assert_not_awaited()
         pool.eval.assert_not_awaited()
+
+    async def test_a_transient_heartbeat_error_does_not_kill_the_run_or_the_release(self):
+        """A failed lock renewal must be logged and retried on the next tick —
+        an exiting heartbeat lets the lock lapse mid-run and opens the door to
+        concurrent execution."""
+        pool = _pool()
+        extends: list[bool] = []  # one entry per renewal attempt (failed ones included)
+        releases: list[bool] = []
+
+        async def _eval(lua: str, *_args: object, **_kwargs: object) -> int:
+            if lua == _LOCK_RELEASE_LUA:
+                releases.append(True)
+                return 1
+            extends.append(True)
+            if len(extends) == 1:
+                raise ConnectionError("redis blip")
+            return 1
+
+        pool.eval = AsyncMock(side_effect=_eval)
+
+        async def _inner(_todo_id: str, _pool: object) -> str:
+            await asyncio.sleep(0.05)
+            return "success:todo-1"
+
+        with (
+            patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
+            patch(f"{MODULE}._execute_todo_with_retry", _inner),
+            patch(f"{MODULE}.LOCK_HEARTBEAT_SECONDS", 0.01),
+        ):
+            result = await execute_tracked_todo({}, "todo-1")
+
+        assert result == "success:todo-1"
+        # The first renewal raised, the heartbeat survived to renew again, and
+        # the release (compare-and-delete) is still the final lock operation.
+        assert len(extends) >= 2
+        assert len(releases) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -284,6 +321,47 @@ class TestExecuteTodoWithRetrySuccess:
         assert result == "success:todo-1"
         # Only the retry reset lands; scheduled_at stays as the agent set it.
         assert _updates(repo) == [{"gaia_retry_count": 0}]
+        pool.enqueue_job.assert_not_awaited()
+
+    @pytest.mark.regression
+    async def test_ask_user_parks_scheduled_at_and_never_advances_the_recurrence(self):
+        """A recurring run that ends in ask_user is blocked on the user's reply.
+        Advancing the recurrence re-enqueued and re-ran the todo while its
+        question was still outstanding — before the user ever answered."""
+        anchor = datetime.now(UTC) - timedelta(days=2)
+        expires = datetime.now(UTC) + timedelta(hours=20)
+        question = PendingQuestion(
+            question="Proceed with plan A?",
+            asked_at=datetime.now(UTC),
+            expires_at=expires,
+            conversation_id="conv-1",
+            message_id="msg-1",
+        )
+        result, repo, pool = await self._run(
+            _doc(scheduled_at=anchor, recurrence="daily", pending_question=question),
+            outcome="ask_user",
+        )
+
+        assert result == "success:todo-1"
+        # scheduled_at parks on the question's expiry so the safety net's
+        # due-query (scheduled_at <= now) can't pick the todo up meanwhile.
+        assert _updates(repo) == [{"gaia_retry_count": 0, "scheduled_at": expires}]
+        pool.enqueue_job.assert_not_awaited()
+
+    @pytest.mark.regression
+    async def test_ask_user_without_a_readable_question_parks_for_the_default_ttl(self):
+        """Defensive fallback: even if the question record vanished between the
+        run finishing and this read, scheduled_at must move into the future —
+        never keep pointing at the run that just fired."""
+        anchor = datetime.now(UTC) - timedelta(days=2)
+        result, repo, pool = await self._run(
+            _doc(scheduled_at=anchor, recurrence="daily"), outcome="ask_user"
+        )
+
+        assert result == "success:todo-1"
+        (payload,) = _updates(repo)
+        parked = payload["scheduled_at"]
+        assert anchor < datetime.now(UTC) < parked <= datetime.now(UTC) + PENDING_QUESTION_TTL
         pool.enqueue_job.assert_not_awaited()
 
     async def test_a_stale_terminal_marker_is_cleared_before_the_agent_runs(self):

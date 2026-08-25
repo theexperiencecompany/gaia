@@ -313,6 +313,27 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             }
         )
 
+    async def claim_pending_question(
+        self, user_id: str, message_id: str
+    ) -> TodoDocument | None:
+        """Atomically clear a todo's ``pending_question`` matched by its message id.
+
+        Compare-and-set for the ask_user loop: of two concurrent replays (double
+        POST, reply racing the expiry sweep) exactly one claims the question and
+        gets the BEFORE image back; the loser gets None and must not act.
+        """
+        return await self._apply_raw_update(
+            {
+                "user_id": user_id,
+                "labels": GAIA_TRACKED_LABEL,
+                "completed": False,
+                "pending_question.message_id": message_id,
+            },
+            {"$set": {"pending_question": None}},
+            scope=user_id,
+            return_document=False,
+        )
+
     async def list_active_gaia_tracked_since(
         self, user_id: str, *, completed_since: datetime
     ) -> list[TodoDocument]:

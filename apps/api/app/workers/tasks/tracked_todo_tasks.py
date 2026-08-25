@@ -10,6 +10,7 @@ Handles:
 """
 
 import asyncio
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 import random
 from typing import Any, cast
@@ -18,7 +19,7 @@ from uuid import uuid4
 from arq.connections import ArqRedis
 
 from app.agents.core.agent import call_agent_silent
-from app.constants.todos import FAILED_LABEL, terminal_marker_key
+from app.constants.todos import FAILED_LABEL, PENDING_QUESTION_TTL, terminal_marker_key
 from app.db.repositories.todos import todo_repository
 from app.models.message_models import MessageRequestWithHistory
 from app.models.notification.notification_models import (
@@ -110,13 +111,29 @@ async def execute_tracked_todo(_ctx: dict[str, Any], todo_id: str) -> str:
     async def _heartbeat() -> None:
         while True:
             await asyncio.sleep(LOCK_HEARTBEAT_SECONDS)
-            await lua.eval(_LOCK_EXTEND_LUA, 1, lock_key, lock_token, LOCK_TTL_SECONDS)
+            try:
+                await lua.eval(_LOCK_EXTEND_LUA, 1, lock_key, lock_token, LOCK_TTL_SECONDS)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                # Transient Redis errors must not end renewal — a lapsed lock
+                # lets a second execution in. Keep retrying on the next tick.
+                log.warning(
+                    "tracked_todo.lock_renew_failed",
+                    todo_id=todo_id,
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                )
 
     heartbeat_task = asyncio.create_task(_heartbeat())
     try:
         return await _execute_todo_with_retry(todo_id, pool)
     finally:
         heartbeat_task.cancel()
+        # Await cancellation before releasing so the renewer can't fire a
+        # renewal that lands AFTER our release and resurrects the lock.
+        with suppress(asyncio.CancelledError):
+            await heartbeat_task
         await lua.eval(_LOCK_RELEASE_LUA, 1, lock_key, lock_token)
 
 
@@ -168,7 +185,7 @@ async def _execute_todo_with_retry(todo_id: str, pool: ArqRedis) -> str:
 
         outcome = await _run_execution(doc, user_id, user_data=user_data)
 
-        if outcome not in (None, "complete", "reschedule"):
+        if outcome not in (None, "complete", "reschedule", "ask_user"):
             log.warning(
                 "tracked_todo.unexpected_terminal_outcome", todo_id=todo_id, outcome=outcome
             )
@@ -185,11 +202,24 @@ async def _execute_todo_with_retry(todo_id: str, pool: ArqRedis) -> str:
         # timezone (looked up once at the top of this run).
         next_run = (
             _compute_next_run(doc.recurrence, user_tz.value, anchor=doc.scheduled_at)
-            if doc.recurrence and not agent_decided_next
+            if doc.recurrence and not agent_decided_next and outcome != "ask_user"
             else None
         )
         if agent_decided_next:
             update = TodoUpdate(gaia_retry_count=0)
+        elif outcome == "ask_user":
+            # The run asked the user a question: the recurrence must NOT advance
+            # while a question is outstanding (the re-run comes from the user's
+            # reply, or from the expiry sweep). Park scheduled_at on the
+            # question's expiry so the safety net doesn't re-enqueue the blocked
+            # todo on every scan.
+            fresh = await todo_repository.get_by_id(todo_id)
+            parked_until = (
+                fresh.pending_question.expires_at
+                if fresh and fresh.pending_question
+                else datetime.now(UTC) + PENDING_QUESTION_TTL
+            )
+            update = TodoUpdate(gaia_retry_count=0, scheduled_at=parked_until)
         else:
             update = TodoUpdate(gaia_retry_count=0, scheduled_at=next_run)
         await todo_repository.update(todo_id, user_id=user_id, update=update)

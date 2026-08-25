@@ -26,7 +26,10 @@ from app.models.notification.notification_models import (
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.services.notification_service import notification_service
-from app.services.tracked_todo_service import tracked_todo_service
+from app.services.tracked_todo_service import (
+    clear_pending_question,
+    tracked_todo_service,
+)
 from app.services.user_service import get_user_by_id
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import is_within_local_daytime
@@ -156,7 +159,7 @@ async def _process_expired_questions(list_of: list[TodoDocument], now: datetime)
     """Clear unanswered expired questions and re-run the todo so it isn't stranded."""
     requeued = 0
     for todo in list_of:
-        if not await tracked_todo_service.clear_pending_question(
+        if not await clear_pending_question(
             todo.id, todo.user_id, "question expired without an answer"
         ):
             continue

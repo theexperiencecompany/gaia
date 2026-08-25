@@ -30,6 +30,15 @@ class PendingQuestion(BaseModel):
     expires_at: datetime
     conversation_id: str = Field(..., description="Conversation the question message was posted to")
     message_id: str = Field(..., description="Bot message carrying the question (reply-match key)")
+    delivered: bool = Field(
+        default=True,
+        description=(
+            "Whether the question message was actually posted. Persisted False "
+            "BEFORE delivery so an interrupted delivery resumes with the same "
+            "message_id instead of sending a duplicate question. Defaults True "
+            "so records written before this field existed read as delivered."
+        ),
+    )
 
 
 class SubTask(BaseModel):

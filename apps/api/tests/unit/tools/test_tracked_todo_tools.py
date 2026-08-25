@@ -12,7 +12,7 @@ in tracked_todo_tools.py; the tests here pin the fix down.
 
 from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -1574,6 +1574,7 @@ class TestFinishTodoRunAskUser:
                 expires_at=datetime.now(UTC) + timedelta(hours=1),
                 conversation_id="c",
                 message_id="m",
+                delivered=True,
             ),
         )
         stack, repo_update, pool = await self._enter(doc=doc)
@@ -1595,3 +1596,108 @@ class TestFinishTodoRunAskUser:
             )
         assert "daily limit" in result
         repo_update.assert_not_awaited()
+
+    @pytest.mark.regression
+    async def test_a_failed_delivery_keeps_the_question_pending_and_skips_the_marker(self):
+        """If the message can't be posted, the persisted question must stay —
+        clearing it (or setting the terminal marker anyway) would either lose
+        the reply-match record or report success falsely."""
+        doc = TodoDocument(id="t1", user_id="user-1", title="t")
+        stack, repo_update, pool = await self._enter(doc=doc)
+        stack.enter_context(
+            patch(f"{_TOOLS_MODULE}.update_messages", AsyncMock(side_effect=RuntimeError("down")))
+        )
+        with stack:
+            result = await finish_todo_run.coroutine(
+                config=_run_config(), outcome="ask_user", summary="s", question="Proceed?"
+            )
+
+        assert "could not deliver" in result
+        # The persist happened (recovery record exists), but no terminal marker.
+        assert repo_update.await_args.kwargs["update"].pending_question is not None
+        pool.set.assert_not_awaited()
+
+    @pytest.mark.regression
+    async def test_the_question_is_persisted_before_it_is_delivered(self):
+        """Persisting after delivery would let a crash between the two send the
+        user a question with no reply-match record — and a retry would then
+        send a duplicate."""
+        doc = TodoDocument(id="t1", user_id="user-1", title="t")
+        order: list[str] = []
+
+        async def _repo_update(*_a: object, **_k: object) -> MagicMock:
+            order.append("persist")
+            return MagicMock()
+
+        async def _deliver(*_a: object, **_k: object) -> None:
+            order.append("deliver")
+
+        with (
+            patch(f"{_TOOLS_MODULE}.todo_repository.get", AsyncMock(return_value=doc)),
+            patch(f"{_TOOLS_MODULE}.todo_repository.update", _repo_update),
+            patch(f"{_TOOLS_MODULE}.update_messages", _deliver),
+            patch(
+                f"{_TOOLS_MODULE}.RedisPoolManager.get_pool",
+                AsyncMock(return_value=_pool_for_tool()),
+            ),
+            patch(f"{_TOOLS_MODULE}.tracked_todo_service.append_canvas_timeline", AsyncMock()),
+        ):
+            await finish_todo_run.coroutine(
+                config=_run_config(), outcome="ask_user", summary="s", question="Proceed?"
+            )
+
+        # The delivered-marking write lands after delivery — the first two
+        # calls prove the ordering that matters.
+        assert order[:2] == ["persist", "deliver"]
+
+    async def test_an_undelivered_question_is_resumed_with_the_same_message_id(self):
+        """A retry after a failed delivery must reuse the stored message id and
+        stored text — never post a second, differently-id'd question."""
+        stored = PendingQuestion(
+            question="Proceed with plan A?",
+            options=["yes"],
+            asked_at=datetime.now(UTC),
+            expires_at=datetime.now(UTC) + timedelta(hours=24),
+            conversation_id="conv-1",
+            message_id="msg-original",
+            delivered=False,
+        )
+        doc = TodoDocument(id="t1", user_id="user-1", title="t", pending_question=stored)
+        stack, repo_update, pool = await self._enter(doc=doc)
+        deliver = AsyncMock()
+        stack.enter_context(patch(f"{_TOOLS_MODULE}.update_messages", deliver))
+        with stack:
+            result = await finish_todo_run.coroutine(
+                config=_run_config(),
+                outcome="ask_user",
+                summary="s",
+                question="a totally different question?",
+            )
+
+        assert "asked the user" in result
+        request = deliver.await_args.args[0]
+        assert request.messages[0].message_id == "msg-original"
+        assert request.messages[0].response.startswith("Proceed with plan A?")
+        # The resume marks it delivered.
+        assert repo_update.await_args.kwargs["update"].pending_question.delivered is True
+
+    async def test_a_daily_capped_retry_still_resumes_an_undelivered_question(self):
+        """Resume is recovery, not a new question — it must not burn or be
+        blocked by the daily ask-user quota."""
+        stored = PendingQuestion(
+            question="Proceed?",
+            asked_at=datetime.now(UTC),
+            expires_at=datetime.now(UTC) + timedelta(hours=24),
+            conversation_id="conv-1",
+            message_id="msg-original",
+            delivered=False,
+        )
+        doc = TodoDocument(id="t1", user_id="user-1", title="t", pending_question=stored)
+        stack, _repo_update_, _pool_ = await self._enter(
+            doc=doc, incr_value=ASK_USER_DAILY_LIMIT + 5
+        )
+        with stack:
+            result = await finish_todo_run.coroutine(
+                config=_run_config(), outcome="ask_user", summary="s", question="Proceed?"
+            )
+        assert "asked the user" in result
