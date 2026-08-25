@@ -396,9 +396,7 @@ def main() -> int:
             print("NEXT: infra/config problems (not code): inspect logs, fix environment, rerun:")
             print(f"  mise ci:local --only {','.join(broken)}")
         if not failing and not broken:
-            print(
-                "NEXT: all green — run `mise pr:comments` to confirm 0 unresolved threads, then clear to merge."
-            )
+            print("NEXT: all local gates green — push, then `mise ci:remote` for GitHub gate state")
 
     if failures:
         return 1

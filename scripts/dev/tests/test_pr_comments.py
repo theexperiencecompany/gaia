@@ -26,6 +26,7 @@ import sys
 import tempfile
 
 SCRIPT = Path(__file__).resolve().parent.parent / "pr_comments.py"
+# NOTE: run via mise's python (>=3.11): `mise exec -- python3 scripts/dev/tests/test_pr_comments.py`
 GH_TIMEOUT = "1"
 
 

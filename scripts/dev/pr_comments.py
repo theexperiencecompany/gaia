@@ -351,6 +351,7 @@ query($owner:String!,$name:String!,$number:Int!,$after:String) {
             f"  4. Re-run `mise pr:comments {branch}` until it reports 0 unresolved — then confirm threads"
         )
         print("     actually show resolved on the GitHub PR before merging.")
+        print(f"  5. GitHub gates: `mise ci:remote {branch}` (checks, conflicts, approvals).")
         print("  (this tool is read-only: it never resolves or replies for you)")
     else:
         print("NEXT: no unresolved threads — check CI before merging: gh pr checks")

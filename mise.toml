@@ -656,3 +656,7 @@ run = "python3 scripts/dev/gaia_verify.py"
 [tasks."pr:comments"]
 description = "Fetch PR review threads read-only: resolution state, IDs for resolve/reply, next-step syntax"
 run = "python3 scripts/dev/pr_comments.py"
+
+[tasks."ci:remote"]
+description = "Merge-readiness dashboard for a PR's GitHub gates: checks, conflicts, reviews, unresolved threads (--watch to poll)"
+run = "python3 scripts/dev/ci_remote.py"
