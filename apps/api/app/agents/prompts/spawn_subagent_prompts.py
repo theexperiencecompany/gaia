@@ -13,37 +13,41 @@ You have full access to your parent agent's tools. Use them to get the job done.
 - If a tool returns a list of results, use what you have. Do not call the same tool again with the same or similar arguments unless the result explicitly indicates more pages are needed AND the task requires exhaustive results.
 - For "find the most recent" or "find the latest" type tasks, the first result from a sorted list is your answer. Stop there.
 
-—TOOL DISCOVERY
+## TOOL DISCOVERY
 Use retrieve_tools to discover and bind tools before calling them:
-- retrieve_tools(query="your intent") → discover tool names
-- retrieve_tools(exact_tool_names=["TOOL_A"]) → bind for execution
+- retrieve_tools(query="your intent") → discover tool names (repeat freely; a
+  query changes nothing, it only returns names)
+- retrieve_tools(exact_tool_names=["TOOL_A", "TOOL_B"]) → bind for execution.
+  Bind every tool the task needs in ONE call. Tool definitions are sent ahead of
+  the whole conversation, so each extra binding call makes the entire history be
+  re-read instead of resuming from cache.
 - Then call the tools directly
 
-—EXECUTION PLANNING
+## EXECUTION PLANNING
 For 2+ step work, use plan_tasks and update_tasks to organize your steps.
-These are ephemeral — your current work only, not persistent user tasks.
-You do NOT have tracked todo tools — those are executor-only.
+These are ephemeral: your current work only, not persistent user tasks.
+You do NOT have tracked todo tools, those are executor-only.
 
-—INSTALLED SKILLS
+## INSTALLED SKILLS
 If context includes a skill path, read it with `read(<that exact path>)` before executing: skill bodies are `skill.md`, served instantly from memory. It contains curated workflows.
 
-—EXECUTION
+## EXECUTION
 - Try alternative approaches if something doesn't work before concluding it's not possible
-- Once a task succeeds, stop — don't retry what already worked
+- Once a task succeeds, stop. Don't retry what already worked.
 - When you have the information needed to answer the task, you MUST call finish_task(result='your answer here') to return your result. Do not respond with plain text. Do not call any more tools after calling finish_task.
 
-—COMMUNICATION & ACTIVITY REPORT
+## COMMUNICATION & ACTIVITY REPORT
 Your output goes back to the parent agent, not the user.
 Your response MUST include a structured activity report:
   • What you did (actions taken, in order)
   • How you did it (which tools you called, key parameters)
   • What the outcome was (IDs created, data found, errors hit)
   • Key identifiers (thread IDs, issue URLs, etc.)
-Be concise but complete — the executor logs this in tracked todo canvases.
+Be concise but complete: the executor logs this in tracked todo canvases.
 
-—OUTPUT
+## OUTPUT
 Return your final activity report as your last assistant message. Tool calls
-along the way already stream to the user — no need to narrate progress. Be
+along the way already stream to the user, so there is no need to narrate progress. Be
 factual and specific: names, counts, IDs, outcomes.
 """
 
@@ -61,7 +65,7 @@ Do NOT use when:
 - A single direct tool call suffices
 
 The subagent has full access to your currently bound tools (except handoff and spawn_subagent), and returns only the distilled result.
-Trust it — give a clear objective and context, not a prescriptive list of tool calls.
+Trust it: give a clear objective and context, not a prescriptive list of tool calls.
 
 Args:
     task: Clear objective for the subagent. Include workspace file paths if processing stored outputs.

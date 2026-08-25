@@ -52,8 +52,8 @@ from app.models.message_models import MessageDict
 from app.services.hil.approvals_store import list_pending_for_conversation
 from app.services.hil.bridge import build_action_detail
 from app.services.hil.resolution import (
-    ApprovalRequestForbidden,
-    ApprovalRequestNotFound,
+    ApprovalRequestForbiddenError,
+    ApprovalRequestNotFoundError,
     abandon_conversation_approvals,
     resolve_approval,
 )
@@ -254,7 +254,7 @@ async def _safe_resolve(
     approval_id: str, user_id: str, decision: Literal["approve", "deny"], feedback: str | None
 ) -> None:
     """Apply one decision, tolerating an already-resolved/expired approval."""
-    with contextlib.suppress(ApprovalRequestNotFound, ApprovalRequestForbidden):
+    with contextlib.suppress(ApprovalRequestNotFoundError, ApprovalRequestForbiddenError):
         await resolve_approval(
             approval_id=approval_id,
             user_id=user_id,

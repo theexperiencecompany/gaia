@@ -17,6 +17,7 @@
  * ./text so sibling modules can import them without a barrel import cycle.
  */
 
+export { segmentIntoBubbles } from "./bubbles";
 export {
   dispatchTodoSubcommand,
   dispatchWorkflowSubcommand,

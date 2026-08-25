@@ -73,6 +73,44 @@ def _ensure_timestamptz_columns(connection: Connection) -> None:
         log.info(f"{LogTag.STARTUP} Promoted column to timestamptz", table=table, column=column)
 
 
+# Columns added to a table that already exists in production. ``create_all``
+# only CREATEs missing tables, so a new column on an existing one has to be
+# added in place — the same gap ``_ensure_timestamptz_columns`` covers for
+# types. Each entry is (table, column, column definition); the definition must
+# carry a DEFAULT whenever it is NOT NULL, so existing rows stay valid.
+_ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("memories", "shelf_life", "varchar(20) NOT NULL DEFAULT 'durable'"),
+)
+
+
+def _ensure_added_columns(connection: Connection) -> None:
+    """Add columns declared on a model but missing from an existing table.
+
+    Idempotent — a fresh database already has them from ``create_all``, and a
+    re-run finds them present. Existing rows take the column's DEFAULT, which
+    is why every NOT NULL entry declares one.
+    """
+    preparer = connection.dialect.identifier_preparer
+    for table, column, definition in _ADDED_COLUMNS:
+        exists = connection.execute(
+            text(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_name = :table AND column_name = :column"
+            ),
+            {"table": table, "column": column},
+        ).scalar()
+        if exists:
+            continue
+        # DDL, not text(): identifiers can never be bind parameters. Table,
+        # column and definition all come from the whitelist above, never input.
+        connection.execute(
+            DDL(
+                f"ALTER TABLE {preparer.quote(table)} ADD COLUMN {preparer.quote(column)} {definition}"
+            )
+        )
+        log.info(f"{LogTag.STARTUP} Added missing column", table=table, column=column)
+
+
 def _adapt_url_for_asyncpg(postgres_url: str) -> tuple[str, dict[str, Any]]:
     """Translate a libpq-style URL into something asyncpg accepts.
 
@@ -132,6 +170,7 @@ async def init_postgresql_engine() -> AsyncEngine:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_ensure_added_columns)
         await conn.run_sync(_ensure_timestamptz_columns)
 
     log.set(db={"connection_status": "connected", "backend": "postgresql"})

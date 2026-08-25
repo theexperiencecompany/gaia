@@ -564,7 +564,7 @@ class TestFetchMessages:
                 "app.services.composio.custom_tools.gmail_tools.write_session_file_sync"
             ) as write_mock,
             patch(
-                "app.services.composio.custom_tools.gmail_tools.get_config",
+                "app.services.composio.custom_tools.gmail_tools.current_run_config",
                 return_value={"configurable": {"vfs_session_id": "test"}},
             ),
         ):
@@ -621,7 +621,7 @@ class TestFetchMessages:
         mock_proxy.side_effect = side_effect
 
         with patch(
-            "app.services.composio.custom_tools.gmail_tools.get_config",
+            "app.services.composio.custom_tools.gmail_tools.current_run_config",
             return_value={"configurable": {}},  # no vfs_session_id / thread_id
         ):
             result = tools["FETCH_MESSAGES"](

@@ -184,7 +184,7 @@ CRITICAL REQUIREMENTS:
 8. Use `gaia` category for steps that involve GAIA's own reasoning, writing, analysis, or synthesis with NO external tool call.
    Examples: summarize fetched content, draft a message or brief, classify items, generate an outline, extract key points, write a report section.
    Use `gaia` instead of hallucinating categories like "documents" or "general" for pure-reasoning steps.
-   Do NOT use `gaia` if the step calls any external system — use the appropriate integration category instead.
+   Do NOT use `gaia` if the step calls any external system: use the appropriate integration category instead.
 
 ## ABSTRACT STEP DESIGN:
 **Steps are GENERIC descriptions, NOT specific tool calls!**
@@ -297,13 +297,13 @@ tracked todo listed above. Match by:
 - Same person, project, or topic as an active todo
 
 If a match is found, update that todo's canvas with the new signal information using
-update_tracked_todo_canvas (mode "append" or "section" — do not read the canvas and rewrite the
+update_tracked_todo_canvas (mode "append" or "section"; do not read the canvas and rewrite the
 whole thing). Be verbose, this is GAIA's working memory: include email addresses, thread IDs,
 event IDs, timestamps; quote the key sentences (not whole emails); update Current State; add a
 Timeline entry "- {date}: {what happened}".
 
-This matching step only MATCHES and UPDATES existing tracked todos — do not create a new one
-just because a signal arrived. (Creating still follows the normal rule — only when the run
+This matching step only MATCHES and UPDATES existing tracked todos: do not create a new one
+just because a signal arrived. (Creating still follows the normal rule, only when the run
 leaves ongoing work worth coming back to; a read-only or summary workflow never creates one,
 since fetching, listing, or summarizing data is not trackable work.) If nothing matches, just
 run the workflow.
@@ -313,13 +313,13 @@ run the workflow.
 WORKFLOW_AUTO_NOTIFY_SECTION = """
 NOTIFICATIONS: GAIA automatically sends the user a completion notification carrying this run's
 result on all their enabled channels when the run finishes. Do NOT call send_notification to
-announce that the workflow finished or to deliver its result — that would notify the user twice.
+announce that the workflow finished or to deliver its result: that would notify the user twice.
 Only call send_notification if the workflow instructions above explicitly ask for an immediate
 or conditional alert during the run (e.g. "ping me on WhatsApp if an email is urgent").
 """
 
 WORKFLOW_SILENT_NOTIFY_SECTION = """
-NOTIFICATIONS: This workflow is configured to run silently — GAIA does NOT send an automatic
+NOTIFICATIONS: This workflow is configured to run silently. GAIA does NOT send an automatic
 completion notification; the result only lands in this conversation. If the workflow
 instructions above ask to notify, alert, ping, or message the user (including conditionally,
 like "only if something needs my attention"), deliver that alert with send_notification.
@@ -337,47 +337,47 @@ WORKFLOW_EXECUTION_PROMPT = """You're running the user's saved workflow on their
 
 Hand the whole workflow to the executor as ONE task in a single call_executor call, with the goal and every step included in that one call. Do not make a separate call_executor call per step and do not split the work across turns: one delegation covers the entire workflow, then let the executor's result come back. Don't summarize anything yourself before the executor returns.
 
-If this workflow only fetches, reads, lists, or summarizes data, do NOT create a tracked todo for it — there is nothing to track or follow up on.
+If this workflow only fetches, reads, lists, or summarizes data, do NOT create a tracked todo for it: there is nothing to track or follow up on.
 
 {user_message}"""
 
 # =============================================================================
-# MAGIC PROMPT GENERATOR — system prompt & user template
+# MAGIC PROMPT GENERATOR: system prompt & user template
 # =============================================================================
 
 WORKFLOW_PROMPT_GENERATION_SYSTEM = """You are writing execution instructions for GAIA, an AI workflow agent.
 
 The instructions are read by the agent at execution time. Write directly to it in imperative second-person ("Fetch...", "Search...", "Send..."). Never third-person.
 
-The agent is intelligent — it decides how to call tools, process data, format output, handle retries, and structure results on its own. Your job is to describe the GOAL and the desired OUTCOME, not the mechanics.
+The agent is intelligent: it decides how to call tools, process data, format output, handle retries, and structure results on its own. Your job is to describe the GOAL and the desired OUTCOME, not the mechanics.
 
 NEVER include in instructions:
 - Implementation details: "store in JSON", "extract fields", "parse response", "retry once", "log the error"
 - Data handling: "for each email extract X, Y, Z", "create an object", "build an array"
-- Trigger context: what triggers the workflow, when it fires, what event starts it, "when a new email arrives", "before each meeting", "check calendar for upcoming events" — the trigger system handles this separately and the agent already knows WHY it was invoked
+- Trigger context: what triggers the workflow, when it fires, what event starts it, "when a new email arrives", "before each meeting", "check calendar for upcoming events" (the trigger system handles this separately and the agent already knows WHY it was invoked)
 - Scheduling language: cron, times, "every morning", "10 minutes before"
 - Retry/error logic: the agent handles failures automatically
 - Step-by-step procedures: the system generates steps separately
 
-The user's description is raw input — distill it to intent. Strip away the WHEN (trigger) and focus on the WHAT (action). Examples:
+The user's description is raw input: distill it to intent. Strip away the WHEN (trigger) and focus on the WHAT (action). Examples:
 - "10 mins before every meeting check my inbox" → intent is "show me relevant emails for an upcoming meeting", NOT "check calendar then fetch emails"
 - "when I get an email, summarize it" → intent is "summarize the incoming email"
 - "extract sender, subject, first 200 chars, store as JSON" → intent is "summarize new emails"
 
-Write 80–150 words of plain prose. No bullets, no headers, no code fences. Name the integrations and describe what the user should receive. One sentence for fallback behavior.
+Write 80-150 words of plain prose. No bullets, no headers, no code fences. Name the integrations and describe what the user should receive. One sentence for fallback behavior.
 
-Improve mode: sharpen existing instructions — add specificity and edge cases only. Don't restructure.
+Improve mode: sharpen existing instructions, add specificity and edge cases only. Don't restructure.
 
 Trigger suggestion rules (apply in STRICT priority order):
-1. INTEGRATION FIRST — scan the available triggers list below. If the user's intent involves a service that has a trigger, YOU MUST use it. This is not optional.
+1. INTEGRATION FIRST: scan the available triggers list below. If the user's intent involves a service that has a trigger, YOU MUST use it. This is not optional.
    - "before meeting" / "meeting starts" / "calendar event" → calendar_event_starting_soon
    - "new email" / "check inbox" / "when I get an email" → gmail_new_message
    - "new commit" / "push to repo" → github_commit_event
    - "new message in slack" → slack_new_message
    - "new issue" / "issue created" → github_issue_added or linear_issue_created
    Even if the user also mentions a time interval ("every 10 mins check email"), the integration trigger takes priority.
-2. SCHEDULE — only if a cadence is mentioned AND no integration trigger matches the described event.
-3. MANUAL — default when nothing implies timing or an event.
+2. SCHEDULE: only if a cadence is mentioned AND no integration trigger matches the described event.
+3. MANUAL: default when nothing implies timing or an event.
 - trigger_name MUST be the exact slug from the available triggers list
 - Common cron: daily 9 AM = 0 9 * * *, weekdays 8 AM = 0 8 * * 1-5, every Monday = 0 10 * * 1, hourly = 0 * * * *"""
 

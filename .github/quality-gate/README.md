@@ -33,4 +33,4 @@ to reintroduce, not a default.
 `biome`, `deps`, `circular`, `file-size`, `types-location`, `components-per-file`,
 `duplicates`, `package-hygiene`, `type-check`, `python-static`,
 `python-mypy`, `observability`, `wide-event-conformance`, `dead-code`, `alert-rules`,
-`suppression-ratchet`, `gitleaks`, `semgrep`, `test-mutation`.
+`suppression-hygiene`, `gitleaks`, `semgrep`, `test-mutation`.

@@ -16,7 +16,6 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from app.agents.core.background.comms_narrator import record_platform_delivery
-from app.constants.general import MESSAGE_BREAK_SENTINEL_RE
 from app.constants.log_tags import LogTag
 from app.models.chat_models import (
     BOT_CONVERSATION_SOURCES,
@@ -33,6 +32,7 @@ from app.services.outbound_delivery import (
     publish_outbound_message,
 )
 from app.services.platform_link_service import PlatformLinkService
+from app.utils.message_breaks import split_message_bubbles
 from app.utils.notification.channel_preferences import fetch_channel_preferences
 from shared.py.wide_events import log
 
@@ -61,9 +61,10 @@ async def deliver_workflow_result_to_platforms(
     if not targets:
         return
 
-    # Comms splits its reply into bubbles with the break sentinel;
-    # publish_outbound_message strips blanks and sends them as one ordered message.
-    bubbles = MESSAGE_BREAK_SENTINEL_RE.split(notification_text)
+    # Comms splits its reply into bubbles with the break sentinel. The bubbles
+    # are needed here too — the langgraph provenance record below has to say what
+    # was actually delivered, not the raw text with its control tokens.
+    bubbles = split_message_bubbles(notification_text)
     for source, platform_user_id in targets:
         await _post_workflow_message(
             user=user,
@@ -121,6 +122,9 @@ async def _post_workflow_message(
         conversation_id = await BotService.get_or_create_session(
             platform=source.value,
             platform_user_id=platform_user_id,
+            # No channel: this delivery goes to the user's DM, the only destination
+            # publish_outbound_message can resolve from the platform link. See
+            # BotService.build_session_key for how a DM keys.
             channel_id=None,
             user=user,
         )
@@ -141,7 +145,7 @@ async def _post_workflow_message(
                 platform=source.value,
                 conversation_id=conversation_id,
                 message_id=bot_message.message_id,
-                bubbles=len([b for b in bubbles if b.strip()]),
+                bubbles=len(bubbles),
             )
             return
         if result is OutboundResult.PUBLISHED:
@@ -161,7 +165,7 @@ async def _post_workflow_message(
             platform=source.value,
             conversation_id=conversation_id,
             message_id=bot_message.message_id,
-            bubbles=len([b for b in bubbles if b.strip()]),
+            bubbles=len(bubbles),
             result=result.value,
         )
     except Exception as e:  # best-effort per platform

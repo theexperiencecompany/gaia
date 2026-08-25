@@ -62,6 +62,9 @@ class AnalyticsEvents(StrEnum):
     CONVERSATION_DELETED = "chat:conversation_deleted"
     CHAT_MESSAGE_COMPLETED = "chat:message_completed"
     CHAT_MESSAGE_CANCELLED = "chat:message_cancelled"
+    # A comms reply scored dirty against the AI-ism detectors and was
+    # rewritten before delivery. Counts only — never the text.
+    CHAT_STYLE_GUARD_REGENERATED = "chat:style_guard_regenerated"
 
     # Files
     FILE_UPLOADED = "chat:file_uploaded"

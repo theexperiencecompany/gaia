@@ -55,7 +55,7 @@ class TestPerformSearch:
         )
         mock_engine_cls.return_value.search = AsyncMock(return_value=response)
 
-        fn = perform_search.__wrapped__  # type: ignore[attr-defined]
+        fn = perform_search.__wrapped__  # type: ignore[attr-defined]  # reaching the unwrapped original under functools.wraps
         result = await fn(query="hello", count=5)
 
         assert result.query == "hello"
@@ -70,7 +70,7 @@ class TestPerformSearch:
         """When all providers fail/skip, perform_search returns empty collections."""
         mock_engine_cls.return_value.search = AsyncMock(return_value=SearchResponse())
 
-        fn = perform_search.__wrapped__  # type: ignore[attr-defined]
+        fn = perform_search.__wrapped__  # type: ignore[attr-defined]  # reaching the unwrapped original under functools.wraps
         result = await fn(query="empty", count=3)
 
         assert result.web == []
@@ -87,7 +87,7 @@ class TestPerformSearch:
         )
         mock_engine_cls.return_value.search = AsyncMock(return_value=response)
 
-        fn = perform_search.__wrapped__  # type: ignore[attr-defined]
+        fn = perform_search.__wrapped__  # type: ignore[attr-defined]  # reaching the unwrapped original under functools.wraps
         result = await fn(query="q", count=1)
 
         item = result.web[0]
@@ -100,7 +100,7 @@ class TestPerformSearch:
         """SearchEngine.search is called with the exact query and count."""
         mock_engine_cls.return_value.search = AsyncMock(return_value=SearchResponse())
 
-        fn = perform_search.__wrapped__  # type: ignore[attr-defined]
+        fn = perform_search.__wrapped__  # type: ignore[attr-defined]  # reaching the unwrapped original under functools.wraps
         await fn(query="pytest rocks", count=7)
 
         mock_engine_cls.return_value.search.assert_awaited_once_with("pytest rocks", 7)
@@ -117,7 +117,7 @@ class TestPerformSearch:
         )
         mock_engine_cls.return_value.search = AsyncMock(return_value=response)
 
-        fn = perform_search.__wrapped__  # type: ignore[attr-defined]
+        fn = perform_search.__wrapped__  # type: ignore[attr-defined]  # reaching the unwrapped original under functools.wraps
         result = await fn(query="many", count=3)
 
         assert len(result.web) == 3
@@ -142,7 +142,7 @@ class TestSearchForResearch:
         )
         mock_engine_cls.return_value.search = AsyncMock(return_value=response)
 
-        fn = search_for_research.__wrapped__  # type: ignore[attr-defined]
+        fn = search_for_research.__wrapped__  # type: ignore[attr-defined]  # reaching the unwrapped original under functools.wraps
         result = await fn(query="deep", count=5)
 
         assert "results" in result
@@ -153,7 +153,7 @@ class TestSearchForResearch:
     async def test_empty_response_returns_empty_results(self, mock_engine_cls: MagicMock) -> None:
         mock_engine_cls.return_value.search = AsyncMock(return_value=SearchResponse())
 
-        fn = search_for_research.__wrapped__  # type: ignore[attr-defined]
+        fn = search_for_research.__wrapped__  # type: ignore[attr-defined]  # reaching the unwrapped original under functools.wraps
         result = await fn(query="nothing", count=5)
 
         assert result == {"results": []}
@@ -168,7 +168,7 @@ class TestSearchForResearch:
         )
         mock_engine_cls.return_value.search = AsyncMock(return_value=response)
 
-        fn = search_for_research.__wrapped__  # type: ignore[attr-defined]
+        fn = search_for_research.__wrapped__  # type: ignore[attr-defined]  # reaching the unwrapped original under functools.wraps
         result = await fn(query="x", count=1)
 
         assert set(result.keys()) == {"results"}
@@ -178,7 +178,7 @@ class TestSearchForResearch:
         """search_for_research defaults count to 5 when not supplied."""
         mock_engine_cls.return_value.search = AsyncMock(return_value=SearchResponse())
 
-        fn = search_for_research.__wrapped__  # type: ignore[attr-defined]
+        fn = search_for_research.__wrapped__  # type: ignore[attr-defined]  # reaching the unwrapped original under functools.wraps
         await fn(query="default")
 
         mock_engine_cls.return_value.search.assert_awaited_once_with("default", 5)

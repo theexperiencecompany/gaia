@@ -195,7 +195,8 @@ class CalendarTriggerHandler(TriggerHandler):
         """
         try:
             # Import here to avoid circular imports
-            from app.services import calendar_service
+            # Deferred import: breaks circular import: calendar_service chain re-enters the trigger-handler modules
+            from app.services import calendar_service  # noqa: PLC0415 -- calendar cycle
 
             calendar_list = await calendar_service.list_calendars(user_id)
 

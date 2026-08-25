@@ -16,6 +16,8 @@ from app.constants.log_tags import LogTag
 from app.db.postgresql import (
     Base,
     _adapt_url_for_asyncpg,
+    _ensure_added_columns,
+    _ensure_timestamptz_columns,
     close_postgresql_db,
     get_db_session,
     get_postgresql_engine,
@@ -284,7 +286,7 @@ class TestInitPostgresqlEngine:
             assert result is mock_engine
 
     async def test_creates_tables_on_init(self) -> None:
-        """Should run run_sync twice during initialization: create_all then _ensure_timestamptz_columns."""
+        """Startup runs the three schema steps, in order."""
         mock_engine = MagicMock()
         mock_conn = AsyncMock()
         mock_ctx = AsyncMock()
@@ -301,9 +303,15 @@ class TestInitPostgresqlEngine:
 
             await _get_original_init_fn()()
 
-            # Production calls run_sync twice: Base.metadata.create_all and
-            # _ensure_timestamptz_columns (promotes legacy timestamp columns to timestamptz).
-            assert mock_conn.run_sync.await_count == 2
+            # Named, not counted: _ensure_added_columns adds columns introduced
+            # after a table already existed (memories.shelf_life), and a startup
+            # that silently stopped running it would leave every such column
+            # missing on an existing database.
+            assert [call.args[0] for call in mock_conn.run_sync.await_args_list] == [
+                Base.metadata.create_all,
+                _ensure_added_columns,
+                _ensure_timestamptz_columns,
+            ]
 
     async def test_engine_pool_configuration(self) -> None:
         """Engine should be created with expected pool settings."""

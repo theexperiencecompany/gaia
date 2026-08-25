@@ -41,7 +41,7 @@ def storage():
 class TestNotificationStorageDelegation:
     async def test_save_delegates_to_create(self, storage, mock_repo):
         record = object()
-        await storage.save_notification(record)  # type: ignore[arg-type]
+        await storage.save_notification(record)
         mock_repo.create.assert_awaited_once_with(record)
 
     async def test_get_delegates_with_user(self, storage, mock_repo):

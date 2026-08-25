@@ -382,7 +382,7 @@ def register_subagent_providers(integration_ids: list[str] | None = None) -> int
         # actual return type while satisfying the registry overload.
         providers.register(
             name=agent_name,
-            loader_func=_make_subagent_loader(subagent),  # type: ignore[arg-type]
+            loader_func=_make_subagent_loader(subagent),  # type: ignore[arg-type]  # register()'s TypeVar'd loader signature won't unify against a concrete async callable
             required_keys=[],
         )
         registered_count += 1

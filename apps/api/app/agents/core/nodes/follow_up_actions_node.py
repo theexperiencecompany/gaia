@@ -96,7 +96,7 @@ async def generate_follow_up_actions(
         return []
 
 
-async def follow_up_actions_node(state: State, config: RunnableConfig, store: BaseStore) -> State:
+async def follow_up_actions_node(state: State, config: RunnableConfig, store: BaseStore) -> State:  # noqa: ARG001 -- execute_hooks() passes state/config/store positionally
     """Analyze conversation context and stream relevant follow-up actions.
 
     Follow-up actions are streamed, not stored in state.

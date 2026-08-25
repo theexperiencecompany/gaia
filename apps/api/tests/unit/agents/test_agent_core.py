@@ -17,7 +17,12 @@ from app.agents.llm import lane as lane_module
 from app.agents.llm.lane import AgentRole
 from app.constants.llm import DEV_MODEL_OPTIONS
 from app.helpers.agent_helpers import recent_user_messages
-from app.models.message_models import MessageRequestWithHistory
+from app.models.message_models import (
+    MessageRequestWithHistory,
+    ReplyToMessageData,
+    SelectedCalendarEventData,
+    SelectedWorkflowData,
+)
 from app.services.analytics_service import AnalyticsEvents
 
 # ---------------------------------------------------------------------------
@@ -38,7 +43,7 @@ def _make_request(**overrides) -> MessageRequestWithHistory:
         "replyToMessage": None,
     }
     defaults.update(overrides)
-    return MessageRequestWithHistory(**defaults)  # type: ignore[arg-type]
+    return MessageRequestWithHistory(**defaults)  # type: ignore[arg-type]  # fixture spreads an untyped defaults dict into the model
 
 
 def _make_user(**overrides) -> dict:
@@ -220,15 +225,32 @@ class TestCoreAgentLogic:
             patches["log"] as mock_log,
         ):
             await _core_agent_logic(
-                request=_make_request(),
+                request=_make_request(
+                    selectedWorkflow=SelectedWorkflowData(
+                        id="wf-1", title="Wf", description="d", steps=[]
+                    ),
+                    selectedCalendarEvent=SelectedCalendarEventData(
+                        id="evt-1", summary="Evt", description="d", start={}, end={}
+                    ),
+                    replyToMessage=ReplyToMessageData(id="msg-1", content="hi", role="user"),
+                ),
                 conversation_id="conv-1",
                 user=_make_user(),
+                trigger_context={"workflow_id": "wf-1"},
             )
 
         mock_log.set.assert_called_once()
         call_kwargs = mock_log.set.call_args.kwargs
-        assert "agent" in call_kwargs
-        assert call_kwargs["agent"]["model"] == "gpt-4o"
+        # Exact dict, not a subset: these flags are what separates a workflow
+        # run from chat in the operator's view of the event stream.
+        assert call_kwargs["agent"] == {
+            "model": "gpt-4o",
+            "has_workflow": True,
+            "has_trigger_context": True,
+            "has_calendar_event": True,
+            "has_reply": True,
+            "history_message_count": len(FAKE_HISTORY),
+        }
 
 
 # ---------------------------------------------------------------------------

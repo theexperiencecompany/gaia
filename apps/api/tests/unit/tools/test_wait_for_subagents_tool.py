@@ -36,6 +36,16 @@ def _collected(results: list[dict[str, str]]) -> object:
 
 
 @pytest.mark.unit
+class TestNoStreamToJoin:
+    async def test_the_refusal_is_the_exact_sentence_the_executor_reads(self) -> None:
+        """This string IS the tool's answer — the executor has nothing else to go
+        on, so it is the contract, not a log line."""
+        result = await wait_for_subagents.coroutine(config={"configurable": {}})
+
+        assert result == "No active stream: cannot wait for subagents."
+
+
+@pytest.mark.unit
 class TestCollectedResultFraming:
     async def test_each_result_is_framed_and_attributed_to_its_agent(self) -> None:
         with _collected(

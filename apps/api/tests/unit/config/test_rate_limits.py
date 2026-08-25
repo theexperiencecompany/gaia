@@ -136,7 +136,7 @@ class TestTieredRateLimits:
 
     def test_info_is_required(self) -> None:
         with pytest.raises(Exception):
-            TieredRateLimits()  # type: ignore[call-arg]
+            TieredRateLimits()  # type: ignore[call-arg]  # bare construction exercises required-arg validation
 
 
 # ---------------------------------------------------------------------------

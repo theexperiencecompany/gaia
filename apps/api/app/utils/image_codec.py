@@ -39,7 +39,7 @@ from app.utils.multimodal import ContentBlock, image_content_block
 _BASE64_EXPANSION = 4 / 3
 
 
-class InvalidImage(ValueError):
+class InvalidImageError(ValueError):
     """Data that is not a decodable image, or that busts the inline size budget."""
 
 
@@ -69,7 +69,7 @@ class ImageCodec:
 
     @classmethod
     async def from_bytes(cls, data: bytes) -> InlineImage:
-        """Fit raw image bytes to the inline budget. Raises ``InvalidImage``."""
+        """Fit raw image bytes to the inline budget. Raises ``InvalidImageError``."""
         return await asyncio.to_thread(cls._fit, data)
 
     @classmethod
@@ -80,23 +80,23 @@ class ImageCodec:
         cannot make us materialize a 200 MB payload in memory.
         """
         if len(data_b64) > MAX_IMAGE_FILE_BYTES * _BASE64_EXPANSION:
-            raise InvalidImage(f"image exceeds the {MAX_IMAGE_FILE_BYTES}-byte inline limit")
+            raise InvalidImageError(f"image exceeds the {MAX_IMAGE_FILE_BYTES}-byte inline limit")
         try:
             data = base64.b64decode(data_b64, validate=True)
         except (ValueError, TypeError) as exc:
-            raise InvalidImage(f"image data is not valid base64: {exc}") from exc
+            raise InvalidImageError(f"image data is not valid base64: {exc}") from exc
         return await cls.from_bytes(data)
 
     @classmethod
     def _fit(cls, data: bytes) -> InlineImage:
         """Validate and, when needed, re-encode. CPU-bound — runs in a thread."""
         if len(data) > MAX_IMAGE_FILE_BYTES:
-            raise InvalidImage(
+            raise InvalidImageError(
                 f"image is {len(data)} bytes; exceeds the {MAX_IMAGE_FILE_BYTES}-byte inline limit"
             )
         mime_type, (width, height) = cls._probe(data)
         if width * height > MAX_IMAGE_PIXELS:
-            raise InvalidImage(
+            raise InvalidImageError(
                 f"image is {width}x{height} ({width * height} pixels); "
                 f"exceeds the {MAX_IMAGE_PIXELS}-pixel inline limit"
             )
@@ -115,7 +115,7 @@ class ImageCodec:
 
     @staticmethod
     def _probe(data: bytes) -> tuple[str | None, tuple[int, int]]:
-        """The sniffed MIME and dimensions of a real image. Raises ``InvalidImage``.
+        """The sniffed MIME and dimensions of a real image. Raises ``InvalidImageError``.
 
         The MIME comes off the decoded header, never from the caller — a file
         extension and an MCP server's declared ``mimeType`` can both lie, and a block
@@ -128,7 +128,7 @@ class ImageCodec:
                 size = image.size
                 image.verify()  # invalidates `image` — read anything else first
         except (OSError, Image.DecompressionBombError) as exc:
-            raise InvalidImage(f"not a decodable image: {exc}") from exc
+            raise InvalidImageError(f"not a decodable image: {exc}") from exc
         return sniffed, size
 
     @staticmethod
@@ -149,7 +149,7 @@ class ImageCodec:
         except (OSError, Image.DecompressionBombError) as exc:
             # `verify()` in `_probe` only reads the header — a truncated or
             # corrupt file gets past it and blows up here, on the full decode.
-            raise InvalidImage(f"image could not be re-encoded: {exc}") from exc
+            raise InvalidImageError(f"image could not be re-encoded: {exc}") from exc
 
         encoded = b""
         for quality in TRANSCODE_QUALITY_STEPS:

@@ -76,4 +76,4 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 error_type=type(close_error).__name__,
                 error=str(close_error),
             )
-        raise e
+        raise

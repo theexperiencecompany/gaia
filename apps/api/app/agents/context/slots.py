@@ -91,9 +91,20 @@ TAIL_VOLATILE_SLOTS: frozenset[PromptSlot] = frozenset(
 #: Providers on the OpenAI wire format. They apply every system message wherever
 #: it appears (DeepSeek included — the earliest wins on a directive conflict,
 #: which keeps the static prompt's authority), so the tail layout is safe on
-#: them. Gemini is not on this list and never can be: ``langchain-google-genai``
-#: promotes only a LEADING contiguous run of system messages to
-#: ``system_instruction`` and silently DROPS every one after that.
+#: them.
+#:
+#: Gemini stays off this list, but NOT for the reason recorded here before:
+#: that comment said ``langchain-google-genai`` "silently DROPS" system
+#: messages after the first run, and on 4.2.0 it does not — ``_parse_chat_history``
+#: collects every SystemMessage into ``system_instruction`` whatever its
+#: position (verified: a trailing memory block arrives intact). Content loss is
+#: not the risk.
+#:
+#: The real reason is caching, and it points the same way. Because every system
+#: message merges into ``system_instruction``, moving the volatile slots behind
+#: the conversation would fold per-turn bytes into the one block Gemini caches
+#: rather than out of it — the opposite of what the tail layout achieves on the
+#: OpenAI wire, where the volatile slots leave the prefix entirely.
 TAIL_VOLATILE_PROVIDERS: frozenset[LLMProviderName] = frozenset(
     {LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM}
 )
@@ -107,10 +118,11 @@ def request_slot_order(provider: str | None) -> tuple[PromptSlot, ...]:
     cache can therefore only ever cover ``[static, dynamic_stable]``.
 
     On the OpenAI wire the per-turn slots move after the conversation, making the
-    stable prefix ``[static, dynamic_stable, ...conversation]``. Measured on the
-    real lane: 97% hit rate against 83% for the leading-block layout
-    (``scripts/measure_llm_cache.py``), because the conversation joins the cached
-    prefix instead of re-sending in full every turn.
+    stable prefix ``[static, dynamic_stable, ...conversation]``, because the
+    conversation then joins the cached prefix instead of re-sending in full every
+    turn. The A/B against the leading-block layout measured 35.2% -> 94.9% on the
+    isolated harness and ~45% -> 80-85% steady-state end to end; methodology and
+    charts are in ``docs/llm-cache-measurements.md``.
     """
     if provider not in TAIL_VOLATILE_PROVIDERS:
         return tuple(PromptSlot)

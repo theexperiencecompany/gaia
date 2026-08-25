@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 import re
 from typing import Any, Literal
 
@@ -723,9 +723,15 @@ class EventCreateRequest(BaseCalendarEvent):
             # Try to parse as ISO datetime
             datetime.fromisoformat(v)
         except ValueError:
-            # If not ISO datetime, check if it's a valid date (YYYY-MM-DD)
+            # If not ISO datetime, check if it's a valid date (YYYY-MM-DD).
+            # strptime leniently accepts unpadded dates that fromisoformat
+            # rejects; the parsed value is a validity probe and is discarded
+            # after this check. Keep it UTC-anchored: a naive parse must not
+            # count as a valid all-day date.
             try:
-                datetime.strptime(v, "%Y-%m-%d")
+                parsed_date = datetime.strptime(v, "%Y-%m-%d").replace(tzinfo=UTC)
+                if parsed_date.tzinfo is None:
+                    raise ValueError
             except ValueError:
                 raise ValueError(
                     f"{field_name} must be in ISO format (YYYY-MM-DDTHH:MM:SS) or date format (YYYY-MM-DD)"
@@ -745,7 +751,7 @@ class EventCreateRequest(BaseCalendarEvent):
                     raise ValueError("Start time must be before end time")
             except ValueError as e:
                 if "fromisoformat" not in str(e):
-                    raise e
+                    raise
                 # This means the format validation failed, which is handled by the field validator
 
         return self
