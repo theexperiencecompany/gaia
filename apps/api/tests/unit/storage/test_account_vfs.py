@@ -143,7 +143,7 @@ def test_stale_read_only_projections_are_made_writable_before_removal(
         real_chmod(self, mode)
 
     monkeypatch.setattr(Path, "chmod", recording_chmod)
-    _prune_stale_json(tmp_path / ACCOUNT_DIR, set())
+    _prune_stale_json(tmp_path / ACCOUNT_DIR, set(), set())
 
     assert chmod_calls == [(tmp_path / stale_rel, 0o644)]
     assert not (tmp_path / stale_rel).exists()
@@ -169,7 +169,7 @@ def test_prune_tolerates_a_projection_that_vanishes_after_listing(
     monkeypatch.setattr(Path, "rglob", rglob_with_ghost)
     monkeypatch.setattr(Path, "chmod", lambda self, mode: None)
 
-    _prune_stale_json(account_root, set())
+    _prune_stale_json(account_root, set(), set())
 
 
 @pytest.mark.unit
