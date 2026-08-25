@@ -41,5 +41,7 @@ def test_guides_tell_the_agent_files_are_read_only_and_tools_are_the_way() -> No
     subscription = system_file_body("account/guides/subscription.md") or ""
     assert "update_notification_settings" in notifications
     assert "manage_linked_account" in linked
-    # Cancellation must never be presented as something GAIA can do.
-    assert "cancel" in subscription.lower()
+    # The restriction must be stated as a prohibition on GAIA, not merely the
+    # word "cancel" appearing anywhere (e.g. "the user cancelled last month").
+    lowered = subscription.lower()
+    assert "cannot modify or cancel" in lowered or "you cannot" in lowered

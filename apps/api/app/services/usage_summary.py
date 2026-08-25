@@ -31,24 +31,40 @@ from app.services.payments.payment_service import payment_service
 
 async def get_realtime_usage(user_id: str, user_plan: PlanType) -> dict[str, FeatureUsageSummary]:
     """Real-time per-feature usage read straight from the Redis rate-limit windows."""
-    features_formatted: dict[str, FeatureUsageSummary] = {}
+    # Every window is an independent Redis GET — issue them all at once so
+    # summary latency stays flat as the feature count grows.
+    keys: list[tuple[str, str]] = [
+        (feature_key, period)
+        for feature_key in FEATURE_LIMITS
+        for period in ["day", "month"]
+        if getattr(get_limits_for_plan(feature_key, user_plan), period, 0) > 0
+    ]
+    usages = await asyncio.gather(
+        *(
+            tiered_limiter.redis.get(
+                tiered_limiter._get_redis_key(
+                    user_id, feature_key, getattr(RateLimitPeriod, period.upper())
+                )
+            )
+            for feature_key, period in keys
+        )
+    )
+    used_by_key = {
+        (feature_key, period): int(usage) if usage else 0
+        for (feature_key, period), usage in zip(keys, usages)
+    }
 
+    features_formatted: dict[str, FeatureUsageSummary] = {}
     for feature_key in FEATURE_LIMITS:
         feature_info = get_feature_info(feature_key)
         pro_limits = get_limits_for_plan(feature_key, PlanType.PRO)
         periods: dict[str, FeaturePeriodUsage] = {}
-
         current_limits = get_limits_for_plan(feature_key, user_plan)
 
         for period in ["day", "month"]:
             limit = getattr(current_limits, period, 0)
             if limit > 0:
-                redis_key = tiered_limiter._get_redis_key(
-                    user_id, feature_key, getattr(RateLimitPeriod, period.upper())
-                )
-                current_usage = await tiered_limiter.redis.get(redis_key)
-                current_usage = int(current_usage) if current_usage else 0
-
+                current_usage = used_by_key[(feature_key, period)]
                 reset_time = get_reset_time(getattr(RateLimitPeriod, period.upper()))
                 periods[period] = FeaturePeriodUsage(
                     used=current_usage,
