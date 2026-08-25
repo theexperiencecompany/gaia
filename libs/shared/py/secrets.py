@@ -70,7 +70,7 @@ def inject_infisical_secrets() -> None:
     client_secret = os.environ["INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET"]
 
     try:
-        from infisical_sdk import InfisicalSDKClient
+        from infisical_sdk import InfisicalSDKClient  # noqa: PLC0415 -- optional dep, guarded below
 
         start_time = time.time()
         log.info("Connecting to Infisical...")

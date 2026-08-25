@@ -109,7 +109,7 @@ def _make_oauth_integration(
         provider=provider,
         scopes=[],
         available=available,
-        managed_by=managed_by,  # type: ignore[arg-type]
+        managed_by=managed_by,  # type: ignore[arg-type]  # fixture uses a plain string for the managed_by Literal
         mcp_config=mcp_config,
         composio_config=composio_config,
         subagent_config=subagent_config,

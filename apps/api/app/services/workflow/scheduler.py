@@ -136,7 +136,8 @@ class WorkflowScheduler(BaseSchedulerService):
             if not workflow:
                 raise ValueError("Task must be a Workflow instance")
 
-            from app.workers.tasks import execute_workflow_as_chat
+            # Deferred import: breaks circular dependency: worker task modules import this scheduler/service stack
+            from app.workers.tasks import execute_workflow_as_chat  # noqa: PLC0415 -- deferred
 
             log.set(workflow={"id": workflow.id, "status": "executing"})
             log.info(f"{LogTag.WORKFLOW} Executing workflow", id=workflow.id)

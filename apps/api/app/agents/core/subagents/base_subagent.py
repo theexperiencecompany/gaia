@@ -1,8 +1,9 @@
 """Factory for provider-specific sub-agents.
 
 Subagents are standalone graphs with their own checkpointers, invoked via the
-tool-calling pattern like executor_agent. Each runs memory_node as an
-end_graph_hook to learn user memories (IDs, preferences, contacts) per user.
+tool-calling pattern like executor_agent. Passive memory learning is NOT wired
+here — it runs once per comms turn, over the conversation the user actually
+had (see app/agents/core/nodes/memory_node.py).
 """
 
 import asyncio
@@ -15,7 +16,6 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph.state import CompiledStateGraph
 
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
-from app.agents.core.nodes import memory_node
 from app.agents.core.nodes.pre_model_hooks import worker_pre_model_hooks
 from app.agents.core.subagents.spawn_agent import get_spawn_graph
 from app.agents.middleware import SubagentMiddleware, create_subagent_middleware
@@ -210,6 +210,7 @@ class SubAgentFactory:
         # middleware and the todo (plan_tasks/update_tasks) tools + hook so it
         # cannot drift into executing the workflow it is supposed to describe.
         middleware = create_subagent_middleware(
+            agent_name=name,
             subagent_llm=llm,
             subagent_registry=full_tool_dict,
             subagent_tool_space=tool_space,
@@ -241,7 +242,12 @@ class SubAgentFactory:
             "agent_name": name,
             "middleware": middleware,
             "pre_model_hooks": worker_pre_model_hooks(todo_hook),
-            "end_graph_hooks": [memory_node],
+            # No memory hook. Extraction runs once per comms turn: a subagent
+            # sees the same thread the comms agent already ingested, so hooking
+            # it here re-extracted one conversation once per subagent per turn,
+            # and it is the tier whose transcripts are raw provider payloads
+            # rather than anything the user said.
+            "end_graph_hooks": [],
         }
 
         valid_auto_bind: list[str] | None = (
@@ -307,7 +313,7 @@ class SubAgentFactory:
                 tool_runtime_config=child_tool_runtime,
             )
 
-        builder = create_agent(**common_kwargs)  # type: ignore[arg-type]
+        builder = create_agent(**common_kwargs)  # type: ignore[arg-type]  # kwargs assembled as a runtime dict; **-unpacking defeats mypy's kwarg checking
 
         try:
             checkpointer_manager = await get_checkpointer_manager()

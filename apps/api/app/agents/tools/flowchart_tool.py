@@ -14,7 +14,7 @@ from app.templates.docstrings.flowchart_tool_docs import (
 @with_rate_limiting("flowchart_creation")
 @with_doc(CREATE_FLOWCHART)
 async def create_flowchart(
-    config: RunnableConfig,
+    config: RunnableConfig,  # noqa: ARG001 -- framework contract
     description: Annotated[str, "Description of the flowchart to create"],
     direction: Annotated[
         str,

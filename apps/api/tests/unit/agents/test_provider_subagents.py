@@ -47,7 +47,7 @@ def _make_subagent_config(**overrides) -> SubAgentConfig:
         "disable_retrieve_tools": False,
     }
     defaults.update(overrides)
-    return SubAgentConfig(**defaults)  # type: ignore[arg-type]
+    return SubAgentConfig(**defaults)  # type: ignore[arg-type]  # fixture spreads an untyped defaults dict into the model
 
 
 def _make_integration(
@@ -63,7 +63,7 @@ def _make_integration(
     if composio_config is None and managed_by == "composio":
         from app.models.mcp_config import ComposioConfig
 
-        composio_config = ComposioConfig(  # type: ignore[assignment]
+        composio_config = ComposioConfig(  # type: ignore[assignment]  # real ComposioConfig replaces the mock in this test
             auth_config_id="test_auth",
             toolkit="test_toolkit",
         )
@@ -75,7 +75,7 @@ def _make_integration(
         category="test",
         provider=provider,
         scopes=[],
-        managed_by=managed_by,  # type: ignore[arg-type]
+        managed_by=managed_by,  # type: ignore[arg-type]  # fixture uses a plain string for the managed_by Literal
         mcp_config=mcp_config,
         subagent_config=subagent_config,
         composio_config=composio_config,
@@ -97,7 +97,7 @@ def _make_subagent(
         id=integration_id,
         name="Test Integration",
         provider=provider,
-        managed_by=managed_by,  # type: ignore[arg-type]
+        managed_by=managed_by,  # type: ignore[arg-type]  # fixture uses a plain string for the managed_by Literal
         config=subagent_config,
         mcp_config=mcp_config,
     )

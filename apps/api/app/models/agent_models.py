@@ -5,6 +5,7 @@ from typing import Any, Literal, TypedDict, cast
 
 from langchain.agents.middleware.types import AgentMiddleware, ToolCallRequest
 from langchain_core.runnables import RunnableConfig
+from langgraph.config import get_config
 
 #: One entry of an agent's middleware stack.
 #:
@@ -182,6 +183,21 @@ class AgentConfigurable(TypedDict, total=False):
     #: model switcher. The executor builds its own configurable rather than
     #: inheriting comms's lane wholesale, so the choice rides down here.
     dev_executor_model: str
+
+
+def current_run_config() -> RunnableConfig:
+    """The active ``RunnableConfig`` for the current graph run.
+
+    LangChain's middleware hooks are called as ``(state, runtime)`` and
+    ``(request, handler)`` — neither hands the config in as a parameter.
+    ``get_config()`` reads it from LangGraph's context-var, the same mechanism
+    nodes use. Returns an empty config outside a runnable context, so callers on
+    a sync fallback path never have to guard.
+    """
+    try:
+        return get_config()
+    except RuntimeError:
+        return RunnableConfig()
 
 
 def agent_configurable(config: RunnableConfig | None) -> AgentConfigurable:

@@ -21,26 +21,26 @@ async def read_manual(topic: ManualTopic) -> str:
     Use this to refresh on how GAIA works or how to do a self-management task,
     instead of ``cat``-ing a file (which would spin up the sandbox). Topics:
 
-    - ``integrations`` — connect/configure integrations; per-integration custom
+    - ``integrations``: connect/configure integrations; per-integration custom
       instructions ("remember this for Gmail").
-    - ``tracked-todos`` — create/search/update/schedule/complete tracked todos;
+    - ``tracked-todos``: create/search/update/schedule/complete tracked todos;
       canvas conventions; recurrence; institutional memory.
-    - ``user-todos`` — the user's own todo list and external task providers.
-    - ``goals`` — long-term goals and AI-generated roadmaps; tracking progress.
-    - ``reminders`` — one-off and recurring time-based nudges to the user; how a
+    - ``user-todos``: the user's own todo list and external task providers.
+    - ``goals``: long-term goals and AI-generated roadmaps; tracking progress.
+    - ``reminders``: one-off and recurring time-based nudges to the user; how a
       reminder differs from a workflow and a tracked todo.
-    - ``sessions-and-artifacts`` — working in a session; producing artifacts.
-    - ``notifications`` — reading the inbox and sending the user a message on a
+    - ``sessions-and-artifacts``: working in a session; producing artifacts.
+    - ``notifications``: reading the inbox and sending the user a message on a
       channel (``send_notification``); channel linking.
-    - ``workflows`` — saved automations that fire on a schedule or integration
+    - ``workflows``: saved automations that fire on a schedule or integration
       event; what ``create_workflow`` does and doesn't do; result delivery.
-    - ``memory`` — long-term memory about the user: the ``/workspace/memory/``
+    - ``memory``: long-term memory about the user: the ``/workspace/memory/``
       layout, journal, core documents, and the memory tools.
-    - ``skills`` — install (from GitHub) or author skills inline; scope and
+    - ``skills``: install (from GitHub) or author skills inline; scope and
       manage them; how skills extend GAIA.
-    - ``documents`` — generate downloadable files (PDF, Word, slides,
+    - ``documents``: generate downloadable files (PDF, Word, slides,
       spreadsheets, CSV) from a request and its data.
-    - ``billing`` — the user's plan and payment history; handing them a checkout
+    - ``billing``: the user's plan and payment history; handing them a checkout
       link to upgrade to Pro; what to say when they hit a usage limit.
 
     Pass one of the topic names above; returns that topic's full doc. Passing an

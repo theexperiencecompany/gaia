@@ -89,7 +89,7 @@ class TestValidateCronExpression:
     def test_none_raises_attribute_error(self) -> None:
         # croniter raises AttributeError for non-string inputs, not caught by validate.
         with pytest.raises(AttributeError):
-            validate_cron_expression(None)  # type: ignore[arg-type]
+            validate_cron_expression(None)
 
 
 # ---------------------------------------------------------------------------

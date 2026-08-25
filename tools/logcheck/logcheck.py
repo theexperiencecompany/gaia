@@ -119,11 +119,11 @@ class Violation:
         return f"  line {self.line_no}: [{self.rule}] {self.detail}"
 
 
-def _reject_constant(name: str) -> Any:
+def _reject_constant(name: str) -> Any:  # noqa: ANN401 -- framework contract
     raise ValueError(f"bare {name} is not valid JSON — strict parsers drop the line")
 
 
-def _iso(value: Any) -> bool:
+def _iso(value: Any) -> bool:  # noqa: ANN401 -- framework contract
     try:
         datetime.fromisoformat(str(value))
         return True

@@ -15,10 +15,10 @@ When users express need for help, have issues, want to report bugs, request feat
 or need to contact support, use this tool to prepare a support ticket draft.
 
 EXAMPLES:
-• "I'm having trouble with my account" → type: "support"
-• "Can you add a dark mode feature?" → type: "feature"
-• "The app keeps crashing" → type: "support"
-• "I'd like to request a new integration" → type: "feature"
+• "I'm having trouble with my account" → request_type: "support"
+• "Can you add a dark mode feature?" → request_type: "feature"
+• "The app keeps crashing" → request_type: "support"
+• "I'd like to request a new integration" → request_type: "feature"
 
 PROCESS:
 1. Determines the appropriate type based on user request
@@ -37,7 +37,7 @@ The user will see a review card where they can edit the ticket details before
 submitting to the support team.
 
 Args:
-    type: "support" for technical issues/help, "feature" for enhancement requests
+    request_type: "support" for technical issues/help, "feature" for enhancement requests
     title: Brief, descriptive title of the issue or request (1-200 characters)
     description: Detailed explanation of the issue, steps to reproduce, or feature details (10-5000 characters). Use plain text only, no markdown formatting.
 

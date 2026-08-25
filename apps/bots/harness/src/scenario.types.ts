@@ -27,6 +27,12 @@ export interface ScenarioTurn {
   channelId?: string;
   /** Assertions on the transcript this turn generated. */
   expect?: ScenarioAssertion[];
+  /**
+   * Milliseconds to keep the outbound consumer alive after the reply stream
+   * closes, so this turn's proactive deliveries land in ITS events. Overrides
+   * the scenario-level {@link Scenario.settleMs}. See that field for why.
+   */
+  settleMs?: number;
 }
 
 /** A complete scenario: which platform + user, and the ordered turns. */
@@ -39,4 +45,15 @@ export interface Scenario {
   user: string;
   /** Ordered conversation turns. */
   turns: ScenarioTurn[];
+  /**
+   * Default settle window for every turn, in milliseconds (0 = don't wait).
+   *
+   * A reply that hands off to the background executor closes its SSE stream
+   * as soon as the handoff preamble is sent; the real answer is narrated and
+   * published to the platform's outbound queue seconds LATER. Without a settle
+   * window the harness tears its consumer down in between, and the answer sits
+   * in the durable queue until some later `gaia-sim` boot drains it into an
+   * unrelated transcript — the turn looks like it silently dropped the reply.
+   */
+  settleMs?: number;
 }

@@ -181,6 +181,23 @@ class TestStripTrackingParams:
         text = "(see https://example.com/page?utm_source=fb)."
         assert strip_tracking_params(text) == "(see https://example.com/page)."
 
+    def test_strips_valueless_tracking_param(self) -> None:
+        # A bare `utm_source` with no `=` is still a tracking key: the split
+        # index that reads everything before the first `=` must be what gets
+        # matched against _TRACKING_PARAMS, not the part after it.
+        text = "https://example.com/?utm_source&keep=1"
+        result = strip_tracking_params(text)
+        assert "utm_source" not in result
+        assert "keep=1" in result
+
+    def test_strips_uppercase_tracking_param_key(self) -> None:
+        # Key matching is case-insensitive; the case fold happens on the
+        # extracted key before membership check.
+        text = "https://example.com/?UTM_SOURCE=fb&keep=1"
+        result = strip_tracking_params(text)
+        assert "UTM_SOURCE" not in result
+        assert "keep=1" in result
+
 
 class TestCollapseWhitespace:
     def test_collapses_multiple_blank_lines(self) -> None:

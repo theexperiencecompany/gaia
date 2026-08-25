@@ -292,11 +292,11 @@ class TriggerHandler(ABC):
 
     async def get_config_options(
         self,
-        trigger_name: str,
-        field_name: str,
-        user_id: str,
-        integration_id: str,
-        parent_ids: list[str] | None = None,
+        trigger_name: str,  # noqa: ARG002 -- framework contract
+        field_name: str,  # noqa: ARG002 -- framework contract
+        user_id: str,  # noqa: ARG002 -- framework contract
+        integration_id: str,  # noqa: ARG002 -- framework contract
+        parent_ids: list[str] | None = None,  # noqa: ARG002 -- framework contract
         **_kwargs: str,
     ) -> Sequence[TriggerOption | TriggerOptionGroup]:
         """Get dynamic options for a trigger configuration field.

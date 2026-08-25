@@ -97,7 +97,7 @@ The worker tier. Has access to **everything** that does work.
 
 - `apps/api/app/agents/core/nodes/filter_messages.py` — `filter_messages_node` trims history.
 - `apps/api/app/agents/core/nodes/manage_system_prompts.py` — `manage_system_prompts_node` collapses repeat system messages for cache-prefix stability.
-- `apps/api/app/agents/core/nodes/memory_node.py` — `memory_node` end-graph hook on every subagent + comms turn for passive durable-memory learning.
+- `apps/api/app/agents/core/nodes/memory_node.py` — `memory_node` end-graph hook on the **comms** turn only, for passive durable-memory learning. It ingests the delta since the thread's high-water mark, labels the transcript `user`/`gaia`/`tool`, and skips system-generated conversations.
 - `apps/api/app/agents/core/nodes/follow_up_actions_node.py` — **comms-only** end hook for proactive suggestions.
 
 ### Helper layer
@@ -117,7 +117,7 @@ Every integration is a `CompiledStateGraph` of its own. The executor hands off t
 - `apps/api/app/agents/core/subagents/__init__.py`
 - `apps/api/app/agents/core/subagents/registry.py` — `all_subagents()` and `get_subagent_by_id()`. **Single source of truth** that combines OAuth-derived subagents + builtins. Process-lifetime `@cache`'d.
 - `apps/api/app/agents/core/subagents/builtin_subagents.py` — `BUILTIN_SUBAGENTS` (currently `docgen`, `gaia_knowledge_guide`). Excluded from the marketplace.
-- `apps/api/app/agents/core/subagents/base_subagent.py` — `SubAgentFactory.create_provider_subagent()`. Wires the per-integration graph: scoped tool dict, `SubagentMiddleware`, todo tools, MCP/Composio tools, end-hook `[memory_node]`, checkpointer, and the three pre-model hooks.
+- `apps/api/app/agents/core/subagents/base_subagent.py` — `SubAgentFactory.create_provider_subagent()`. Wires the per-integration graph: scoped tool dict, `SubagentMiddleware`, todo tools, MCP/Composio tools, no end-hooks (memory learning runs once per comms turn, not per subagent), checkpointer, and the three pre-model hooks.
 - `apps/api/app/agents/core/subagents/provider_subagents.py` — `create_subagent()` (non-auth MCP) and `create_subagent_for_user()` (per-user auth MCP; rebuilt on every handoff, no memoization). `register_subagent_providers()` registers lazy loaders.
 - `apps/api/app/agents/core/subagents/handoff_tools.py` — `@tool handoff(subagent_id, task, config, background=False)`. Resolves the subagent via `_resolve_subagent()`, builds a `SubagentExecutionContext`, then runs blocking (`_run_blocking_handoff`) or fires `run_subagent_background()`. Includes `_get_subagent_by_id` (Redis cached at `SUBAGENT_CACHE_PREFIX`), `_sanitize_task_user_reference` (replaces Gaia display name with service username), and `index_custom_mcp_as_subagent` (ChromaDB indexing for semantic search). Also exports `check_integration_connection()`.
 - `apps/api/app/agents/core/subagents/subagent_runner.py` — `SubagentExecutionContext`, `build_initial_messages` (seeds `[static_system, dynamic_stable, memory_recall?, human_task, current_time]` in canonical slot order — see §Context assembly), `execute_subagent_stream` (handles `messages`/`custom`/`updates` events; emits `subagent_start`/`subagent_end` lifecycle), `prepare_executor_execution` (builds executor context with `DIRECT EXECUTION HINT`).
@@ -315,7 +315,7 @@ A **PG-backed** memory engine projected to VFS as Markdown (`/workspace/memory/.
 
 ### Active learning
 
-`memory_node` (`apps/api/app/agents/core/nodes/memory_node.py`) is the end-graph hook on every comms + subagent turn. It runs LLM-based memory extraction passively, so conversational disclosures become durable memories without explicit `add_memory` calls.
+`memory_node` (`apps/api/app/agents/core/nodes/memory_node.py`) is the end-graph hook on the comms turn. It runs LLM-based memory extraction passively, so conversational disclosures become durable memories without explicit `add_memory` calls. Subagents do NOT run it — they see the same thread comms already ingested.
 
 ### Frontend types
 

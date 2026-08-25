@@ -30,7 +30,7 @@ def _todo_doc(**overrides: object) -> TodoDocument:
         "user_id": USER_ID,
         "title": "Prepare Q3 report",
         "labels": [GAIA_TRACKED_LABEL, "work"],
-        "vfs_path": f"/users/{USER_ID}/todos/{TODO_ID}",
+        "vfs_path": f"/workspace/gaia-tasks/{TODO_ID}",
         "canvas_content": "# Prepare Q3 report\n\n## Key Details\nthread: abc123\n\n## Timeline\n- step one\n",
         "log_content": "# System Log\n",
         "completed": False,
@@ -97,13 +97,13 @@ class TestCreateTrackedTodo:
         result = await TrackedTodoService.create_tracked_todo(USER_ID, "Prepare Q3 report")
 
         assert result.id == TODO_ID
-        assert result.vfs_path == f"/users/{USER_ID}/todos/{TODO_ID}"
+        assert result.vfs_path == f"/workspace/gaia-tasks/{TODO_ID}"
 
         todo_model: TodoModel = mock_deps.create.call_args.args[0]
         assert GAIA_TRACKED_LABEL in todo_model.labels
 
         update = mock_repo.update.await_args.kwargs["update"]
-        assert update.vfs_path == f"/users/{USER_ID}/todos/{TODO_ID}"
+        assert update.vfs_path == f"/workspace/gaia-tasks/{TODO_ID}"
         assert update.canvas_content == CANVAS_TEMPLATE.format(title="Prepare Q3 report")
         assert "[CREATED]" in update.log_content
         assert "Source: agent" in update.log_content
@@ -162,14 +162,58 @@ class TestCompleteTrackedTodo:
         update = mock_repo.update.await_args.kwargs["update"]
         assert update.completed is True
         assert update.completed_at is not None
-        assert update.vfs_path == f"/users/{USER_ID}/todos/archive/{TODO_ID}"
+        assert update.vfs_path == f"/workspace/gaia-tasks/archive/{TODO_ID}"
         mock_deps.mark.assert_awaited_once_with(TODO_ID)
         mock_deps.sync.assert_called_once_with(USER_ID)
+
+    async def test_missing_vfs_path_falls_back_to_derived_workspace_label(
+        self, mock_repo: MagicMock, mock_deps: SimpleNamespace
+    ) -> None:
+        """A doc with no stored label must get the derived /workspace-scoped one —
+        never None, and never a label derived from the wrong id."""
+        mock_repo.get.return_value = _todo_doc(vfs_path=None)
+
+        ok = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done")
+
+        assert ok is True
+        update = mock_repo.update.await_args.kwargs["update"]
+        assert update.vfs_path == f"/workspace/gaia-tasks/archive/{TODO_ID}"
+
+    async def test_legacy_user_scoped_label_is_healed_on_completion(
+        self, mock_repo: MagicMock, mock_deps: SimpleNamespace
+    ) -> None:
+        """A doc still storing the host-side /users/<uid> label must not have it
+        persisted back on completion — the derived archive label replaces it."""
+        mock_repo.get.return_value = _todo_doc(vfs_path=f"/users/{USER_ID}/todos/{TODO_ID}")
+
+        ok = await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done")
+
+        assert ok is True
+        update = mock_repo.update.await_args.kwargs["update"]
+        assert update.vfs_path == f"/workspace/gaia-tasks/archive/{TODO_ID}"
 
 
 class TestGetActiveTrackedSummary:
     async def test_empty_string_without_docs(self, mock_repo):
         assert await TrackedTodoService.get_active_tracked_summary(USER_ID) == ""
+
+    @pytest.mark.regression
+    async def test_stored_user_scoped_vfs_path_never_leaks_into_agent_context(
+        self, mock_repo: MagicMock, mock_deps: SimpleNamespace
+    ) -> None:
+        """Old docs store vfs_path as /users/<uid>/todos/<id> — that host-side
+        path must never reach the LLM, which only knows /workspace-scoped paths."""
+        stale_doc = _todo_doc(vfs_path=f"/users/{USER_ID}/todos/{TODO_ID}")
+        mock_repo.list_active_tracked.return_value = [stale_doc]
+        mock_deps.read.return_value = "## Key Details\nthread: abc123\n"
+
+        summary = await TrackedTodoService.get_active_tracked_summary(USER_ID)
+        context = await TrackedTodoService.get_signal_matching_context(USER_ID)
+
+        assert USER_ID not in summary
+        assert USER_ID not in context
+        assert "/users/" not in summary
+        assert "/users/" not in context
 
     async def test_renders_summary_lines(self, mock_repo):
         mock_repo.list_active_tracked.return_value = [_todo_doc()]
@@ -180,7 +224,8 @@ class TestGetActiveTrackedSummary:
         assert lines[0] == "ACTIVE TRACKED TODOS:"
         assert '"Prepare Q3 report" [work]' in lines[1]
         assert "ID: todo-1" in lines[1]
-        assert "VFS: /users/507f1f77bcf86cd799439011/todos/todo-1" in lines[1]
+        assert "VFS" not in lines[1]
+        assert USER_ID not in lines[1]
         assert lines[1].endswith("2d old, updated 0d ago") or "d old" in lines[1]
 
     async def test_active_todo_pinned_with_star(self, mock_repo):
@@ -284,10 +329,8 @@ class TestGetSignalMatchingContext:
 
         lines = context.split("\n")
         assert lines[0] == "ACTIVE TRACKED TODOS (check if incoming signal relates to any):"
-        assert (
-            lines[1]
-            == '- "Prepare Q3 report" [work] (ID: todo-1, vfs: /users/507f1f77bcf86cd799439011/todos/todo-1)'
-        )
+        assert lines[1] == '- "Prepare Q3 report" [work] (ID: todo-1)'
+        assert USER_ID not in context
         assert "    thread: abc123" in lines[2]
         assert "    email: x@y.com" in lines[3]
 

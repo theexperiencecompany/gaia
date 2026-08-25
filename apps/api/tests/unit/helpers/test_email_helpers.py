@@ -63,7 +63,7 @@ class TestBuildUserContext:
     ) -> None:
         result = _build_user_context(name, email)
         if should_contain_email:
-            assert email in result  # type: ignore[operator]
+            assert email in result
         else:
             assert result == f"The user's name is {name}."
 

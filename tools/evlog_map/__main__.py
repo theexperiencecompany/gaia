@@ -156,7 +156,7 @@ def main(argv: list[str]) -> int:
     if args.github_summary:
         summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
         if summary_path:
-            with open(summary_path, "a", encoding="utf-8") as fh:
+            with Path(summary_path).open("a", encoding="utf-8") as fh:
                 fh.write(render_github_summary(result) + "\n")
 
     failed = False

@@ -26,6 +26,7 @@ from app.workers.tasks.maintenance_sweep_tasks import (
     NOTIFICATION_MUTE_DAYS,
     SECONDS_PER_DAY,
     STRIKE_TTL_DAYS,
+    WAITING_LABEL_MAX_DAYS,
     _classify_tracked_todos,
     _has_upcoming_schedule,
     _health_check_dormant,
@@ -172,6 +173,14 @@ class TestIsDormant:
     def test_stuck_blocking_label_surfaces_after_max_days(self):
         doc = _doc(updated_at=NOW - timedelta(days=10), labels=["waiting-for-approval"])
         assert _is_dormant(doc, NOW) is True
+
+    def test_blocking_label_at_exactly_max_days_is_not_yet_stuck(self):
+        """ "Surface" means strictly past the cap — day 8 of an 8-day cap is the
+        last quiet day, not the first escalated one."""
+        doc = _doc(
+            updated_at=NOW - timedelta(days=WAITING_LABEL_MAX_DAYS), labels=["waiting-for-approval"]
+        )
+        assert _is_dormant(doc, NOW) is False
 
     def test_missing_updated_at_is_never_dormant(self):
         assert _is_dormant(_doc(updated_at=None), NOW) is False

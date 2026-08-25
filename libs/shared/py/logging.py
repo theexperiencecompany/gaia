@@ -541,7 +541,8 @@ def _json_file_sink_factory(log_dir: Path) -> Callable[[Message], None]:
                             f"[gaia-logging] failed to close stale log handle {old_key}: {exc}\n"
                         )
             _prune_structured_logs(log_dir, utc_day)
-            fh = open(resolved, "a", encoding="utf-8")  # noqa: SIM115
+            # Handle is cached in _handles and outlives this call by design.
+            fh = resolved.open("a", encoding="utf-8")
             _handles[key] = fh
 
         fh.write(_build_json_entry(record))

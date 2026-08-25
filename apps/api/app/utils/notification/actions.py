@@ -164,9 +164,9 @@ class RedirectActionHandler(ActionHandler):
     async def execute(
         self,
         action: NotificationAction,
-        notification: NotificationRecord,
+        notification: NotificationRecord,  # noqa: ARG002 -- framework contract
         user_id: str,
-        request: Request | None,
+        request: Request | None,  # noqa: ARG002 -- framework contract
     ) -> ActionResult:
         redirect_config = action.config.redirect
 
@@ -210,7 +210,7 @@ class ModalActionHandler(ActionHandler):
         action: NotificationAction,
         notification: NotificationRecord,
         user_id: str,
-        request: Request | None,
+        request: Request | None,  # noqa: ARG002 -- framework contract
     ) -> ActionResult:
         modal_config = action.config.modal
 

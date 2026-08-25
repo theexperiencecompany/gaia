@@ -546,6 +546,30 @@ Type /help <command> for details.`,
 };
 
 /**
+ * The user-facing message the API sent with an error response, if it sent one.
+ *
+ * FastAPI puts it under `detail`: a bare string for a plain `HTTPException`
+ * (the bots' flat anti-spam limiter), or an object carrying `message` for the
+ * rate-limit family — `RateLimitExceededException` composes copy naming the
+ * wall that was hit ("You've used today's AI usage allowance. Upgrade to Pro
+ * for higher limits."), which is the only place that distinction exists.
+ */
+function serverMessage(error: unknown): string | null {
+  const data = (error as { response?: { data?: unknown } } | null)?.response
+    ?.data;
+  if (typeof data !== "object" || data === null) return null;
+  const { detail, message } = data as { detail?: unknown; message?: unknown };
+  const candidate =
+    typeof detail === "string"
+      ? detail
+      : ((detail as { message?: unknown } | null | undefined)?.message ??
+        message);
+  return typeof candidate === "string" && candidate.trim()
+    ? candidate.trim()
+    : null;
+}
+
+/**
  * Formats an error message for user display.
  */
 export function formatBotError(error: unknown): string {
@@ -561,7 +585,15 @@ export function formatBotError(error: unknown): string {
   }
 
   if (status === 429) {
-    return "⏳ You're sending messages too fast. Please wait a moment and try again.";
+    // Three different walls return 429 — flat anti-spam, the plan's message
+    // quota, and the daily AI-usage budget — and only the body says which.
+    // Collapsing them all to "you're sending messages too fast" told a user who
+    // is out of allowance to slow down, which is not what happened and not
+    // something waiting fixes.
+    const fromServer = serverMessage(error);
+    return fromServer
+      ? `⏳ ${fromServer}`
+      : "⏳ You're sending messages too fast. Please wait a moment and try again.";
   }
 
   const message = error instanceof Error ? error.message : String(error ?? "");

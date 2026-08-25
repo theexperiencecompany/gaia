@@ -144,7 +144,7 @@ class TestWrapToolWithNullFilter:
         async def async_callback() -> None:
             pass
 
-        wrapped = wrap_tool_with_null_filter(tool, on_connection_error=async_callback)  # type: ignore[arg-type]
+        wrapped = wrap_tool_with_null_filter(tool, on_connection_error=async_callback)  # type: ignore[arg-type]  # stub callback narrows the declared callable signature
         with pytest.raises(TypeError, match="synchronous callable"):
             await wrapped._arun()
 

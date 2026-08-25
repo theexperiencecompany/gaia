@@ -354,11 +354,7 @@ class LazyLoader(Generic[T]):
 
     def _is_value_missing(self, value: object) -> bool:
         """Check if a value is considered missing/invalid."""
-        if value is None:
-            return True
-        if isinstance(value, str) and value.strip() == "":
-            return True
-        return False
+        return value is None or (isinstance(value, str) and value.strip() == "")
 
     def _handle_missing_values_on_get(self, missing_indices: set[int]) -> Union[T, bool] | None:
         """Handle missing values when get() is called."""
@@ -656,7 +652,7 @@ class ProviderRegistry:
             failed = ", ".join(name for name, _ in errors)
             raise RuntimeError(f"Provider warmup failed for: {failed}")
 
-    def get(self, name: str) -> Any | None:
+    def get(self, name: str) -> Any | None:  # noqa: ANN401 -- framework contract
         """Get a provider instance by name synchronously - only works for sync providers.
 
         Returns ``Any`` because the registry is keyed by name, not by type: the
@@ -678,7 +674,7 @@ class ProviderRegistry:
                     self.get(dep)
         return loader.get()
 
-    async def aget(self, name: str) -> Any | None:
+    async def aget(self, name: str) -> Any | None:  # noqa: ANN401 -- framework contract
         """Get a provider instance by name asynchronously - works for both sync and async providers.
 
         Returns ``Any`` for the same reason as :meth:`get`; narrow with ``cast``.

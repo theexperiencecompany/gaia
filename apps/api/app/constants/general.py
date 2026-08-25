@@ -4,17 +4,11 @@ General Constants.
 Centralized general-purpose constants.
 """
 
-import re
-
 ORCHESTRATOR_MAX_ITERATIONS = 10
+# The canonical bubble-break sentinel the comms prompt tells the model to emit.
+# Recognizing the near-miss spellings it actually emits (and splitting on them)
+# is ``app.utils.message_breaks`` — this is only the token we ask for.
 NEW_MESSAGE_BREAKER = "<NEW_MESSAGE_BREAK>"
-
-# The model occasionally emits a near-miss spelling of the bubble-break sentinel
-# (e.g. <NEW_LINE_BREAK> instead of <NEW_MESSAGE_BREAK>). Every spelling is
-# treated as the canonical break so it splits bubbles; none ever ships to a
-# platform as literal text. Kept beside NEW_MESSAGE_BREAKER so the sentinel
-# vocabulary lives in one place.
-MESSAGE_BREAK_SENTINEL_RE = re.compile(r"<\s*NEW_(?:MESSAGE|LINE)_BREAK\s*>", re.IGNORECASE)
 
 # Upper bound for every 1-based `page` query parameter. Paginated endpoints turn
 # `page` into a Mongo `skip` of `(page - 1) * page_size`; unbounded, a large

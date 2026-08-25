@@ -269,7 +269,7 @@ async def search_integration_tools(
 
     Use this to confirm an integration can actually perform a step before you put
     it in the workflow, and to size up its capabilities. Do NOT copy these tool
-    names into the workflow prompt — describe the action in plain language and let
+    names into the workflow prompt: describe the action in plain language and let
     the executor pick the right tool at run time. Pass integration_id to list that
     integration's tools (optionally narrowed by query); pass only a query to scan
     across the user's connected integrations. You must provide one of them.

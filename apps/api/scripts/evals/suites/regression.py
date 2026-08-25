@@ -226,7 +226,7 @@ class RegressionSuite(Suite):
                     config=config,
                     stream_mode="updates",
                 ):
-                    for node, payload in event.items():
+                    for payload in event.values():
                         for msg in payload.get("messages", []) if isinstance(payload, dict) else []:
                             content = getattr(msg, "content", None)
                             msg_type = getattr(msg, "type", "?")

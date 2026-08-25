@@ -24,7 +24,6 @@ from app.config.rate_limits import RateLimitPeriod, get_reset_time, get_time_win
 from app.config.settings import settings
 from app.constants.cache import COST_BUDGET_NOTIFIED_KEY
 from app.constants.llm import (
-    COMMS_REASONING,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
@@ -33,6 +32,7 @@ from app.constants.llm import (
     MODEL_KWARGS_FIELD_ID,
     MONTHLY_BUDGET_TTL_SECONDS,
     OPENROUTER_REASONING,
+    PAID_COMMS_REASONING,
     PAID_MODEL_NAME,
     PAID_MODEL_PROVIDER,
     PRO_MONTHLY_COST_BUDGET_USD,
@@ -65,9 +65,7 @@ BINDING_FIELD_IDS: frozenset[str] = frozenset(
 class AgentRole(StrEnum):
     """Which tier is asking for a lane.
 
-    Only the reasoning budget differs by role today: comms is mostly routing and
-    acknowledgement work, so a paid turn spends its thinking budget on the
-    executor's tool selection instead.
+    Only the reasoning budget differs by role today — see :func:`_reasoning_for`.
     """
 
     COMMS = "comms"
@@ -175,17 +173,17 @@ class ModelLane:
         return replace(self, provider=provider, model=model, provider_pin=None, reasoning=None)
 
 
-def _reasoning_for(role: AgentRole, paid: bool) -> dict[str, Any]:
-    """Today's effective effort per (role, tier).
+def _reasoning_for(role: AgentRole) -> dict[str, Any]:
+    """The effort a PAID lane gives each role. The free lane's is fixed in
+    :func:`_default_lane`.
 
-    Characterization, not endorsement: a FREE comms turn resolves ``medium``
-    because it never set the key and inherited the client default, while a PAID
-    comms turn explicitly set ``low`` — so free currently out-thinks pro. That is
-    a deliberate open non-decision (see the plan's Task 2); it is written out
-    explicitly here so it is visible and cannot change by accident.
+    Comms gets its own knob so it can be raised past the executor's default
+    without moving the executor's. It must never resolve BELOW the free lane's
+    effort: it sat at ``low`` against free's ``medium``, which had a paying
+    user's front-door agent thinking less than a free user's.
     """
-    if paid and role is AgentRole.COMMS:
-        return COMMS_REASONING
+    if role is AgentRole.COMMS:
+        return PAID_COMMS_REASONING
     return OPENROUTER_REASONING
 
 
@@ -217,7 +215,7 @@ def _dev_lane(option: DevModelOption, role: AgentRole) -> ModelLane:
     return ModelLane(
         provider=provider,
         model=option["model"] or PROVIDER_MODELS.get(provider) or None,
-        reasoning=_reasoning_for(role, paid=True) if option["reasoning"] else None,
+        reasoning=_reasoning_for(role) if option["reasoning"] else None,
         provider_pin=option["model_kwargs"],
         max_input_tokens=DEFAULT_MAX_TOKENS,
     )
@@ -305,7 +303,7 @@ async def resolve_lane(
         ModelLane(
             provider=LLMProviderName(PAID_MODEL_PROVIDER),
             model=PAID_MODEL_NAME,
-            reasoning=_reasoning_for(role, paid=True),
+            reasoning=_reasoning_for(role),
             # No routing pin, deliberately. The session_id key on every request
             # forces OpenRouter's sticky routing, which keeps a conversation on
             # the provider holding its warm prompt cache; an explicit `only`

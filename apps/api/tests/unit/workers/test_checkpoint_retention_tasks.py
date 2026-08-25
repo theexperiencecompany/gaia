@@ -95,7 +95,7 @@ class TestCheckpointWrittenAt:
     def test_ids_that_carry_no_timestamp_read_as_unknown_not_a_wrong_date(self) -> None:
         assert _checkpoint_written_at("7c9e6679-7425-40de-944b-e07fc1f90ae7") is None  # uuid4
         assert _checkpoint_written_at("not-a-uuid") is None
-        assert _checkpoint_written_at(None) is None  # type: ignore[arg-type]
+        assert _checkpoint_written_at(None) is None
 
 
 class TestSweepStaleSpawnThreads:

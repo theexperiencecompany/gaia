@@ -9,28 +9,25 @@
  * @module
  */
 import type { Readable } from "node:stream";
-import type { AxiosInstance } from "axios";
 import type { ApprovalRequestData } from "../../chat";
-import type { BotUserContext, ChatRequest } from "../types";
+import { NEW_MESSAGE_BREAK_TOKEN } from "../../utils/messageBreakUtils";
+import type { ChatRequest } from "../types";
 import { getHttpStatus } from "../utils/logger";
 import { wideLog } from "../utils/wide-events";
+import type {
+  ApprovalUpdateHandler,
+  ChatStreamClient,
+  MessageBoundary,
+  MessageBoundaryHandler,
+  NoticeHandler,
+} from "./chat-stream.types";
 
-/** Fired when a HIL approval frame arrives (bots render it out-of-band). */
-export type ApprovalUpdateHandler = (
-  data: ApprovalRequestData,
-) => void | Promise<void>;
-
-/**
- * The slice of {@link GaiaClient} the streamer needs: the HTTP client, auth
- * header builder, and session-token storage. Passed as an explicit deps object
- * so the streaming logic stays decoupled from the client's private internals.
- */
-export interface ChatStreamClient {
-  client: AxiosInstance;
-  userHeaders(ctx: BotUserContext): Record<string, string>;
-  storeSessionToken(ctx: BotUserContext, token: string): void;
-  clearSessionToken(ctx: BotUserContext): void;
-}
+export type {
+  ApprovalUpdateHandler,
+  ChatStreamClient,
+  MessageBoundaryHandler,
+  NoticeHandler,
+} from "./chat-stream.types";
 
 /** Exponential-backoff base delay and ceiling for stream retries. */
 const RETRY_BASE_DELAY_MS = 1000;
@@ -59,6 +56,8 @@ export async function streamChat(
   onError: (error: Error) => void | Promise<void>,
   endpoint: string,
   onApprovalUpdate?: ApprovalUpdateHandler,
+  onMessageBoundary?: MessageBoundaryHandler,
+  onNotice?: NoticeHandler,
   maxRetries = 2,
 ): Promise<string> {
   let lastError: Error | null = null;
@@ -75,6 +74,8 @@ export async function streamChat(
         attempt > 0,
         endpoint,
         onApprovalUpdate,
+        onMessageBoundary,
+        onNotice,
       );
     } catch (error: unknown) {
       lastError = error instanceof Error ? error : new Error(String(error));
@@ -123,7 +124,9 @@ interface SseFrame {
   error?: string;
   session_token?: string;
   approval?: ApprovalRequestData;
+  notice?: { text: string };
   text?: string;
+  message_boundary?: MessageBoundary;
   done?: boolean;
   conversation_id?: string;
 }
@@ -152,10 +155,26 @@ async function streamChatOnce(
   retried: boolean,
   endpoint: string,
   onApprovalUpdate?: ApprovalUpdateHandler,
+  onMessageBoundary?: MessageBoundaryHandler,
+  onNotice?: NoticeHandler,
 ): Promise<string> {
   let fullText = "";
+  // Text streamed since the last message boundary. It only joins `fullText`
+  // once the backend confirms the message it belongs to was a real reply —
+  // a handoff preamble is streamed first and retracted afterwards, and
+  // `fullText` is the whole reply on platforms that render nothing until the
+  // stream ends (Discord, WhatsApp, iMessage).
+  let pendingText = "";
   let conversationId = "";
   let streamError: Error | null = null;
+
+  const keepPendingText = (): void => {
+    if (!pendingText) return;
+    fullText = fullText
+      ? `${fullText}${NEW_MESSAGE_BREAK_TOKEN}${pendingText}`
+      : pendingText;
+    pendingText = "";
+  };
 
   const ctx = {
     platform: request.platform,
@@ -200,6 +219,7 @@ async function streamChatOnce(
         if (!finished) {
           finished = true;
           stream.destroy();
+          keepPendingText();
           if (fullText) {
             // If we got some content, consider it a success
             await onDone(fullText, conversationId);
@@ -223,6 +243,38 @@ async function streamChatOnce(
         if (inactivityTimer) clearTimeout(inactivityTimer);
       };
 
+      // The frames that carry content: none of them ends the stream, so they
+      // are applied in order and the caller keeps reading. Kept apart from the
+      // terminal frames below so each half stays readable as it grows.
+      const applyFrameUpdate = async (frame: SseFrame): Promise<void> => {
+        if (frame.session_token) {
+          deps.storeSessionToken(ctx, frame.session_token);
+        }
+        if (frame.approval) {
+          await onApprovalUpdate?.(frame.approval);
+        }
+        if (frame.notice) {
+          await onNotice?.(frame.notice.text);
+        }
+        if (frame.text) {
+          pendingText += frame.text;
+          await onChunk(frame.text);
+        }
+        if (frame.message_boundary) {
+          const { discarded } = frame.message_boundary;
+          if (discarded) {
+            pendingText = "";
+          } else {
+            keepPendingText();
+          }
+          // Both halves are announced. A kept boundary is what tells a
+          // streaming platform its message is final and may now be split into
+          // bubbles — do it any earlier and a retraction arriving next has
+          // nothing left it can take back.
+          await onMessageBoundary?.(discarded);
+        }
+      };
+
       // Applies one parsed SSE frame's side effects. Returns true once the
       // stream is complete (done or error), signalling the caller to resolve.
       const handleFrame = async (frame: SseFrame): Promise<boolean> => {
@@ -241,19 +293,10 @@ async function streamChatOnce(
           await onError(new Error(frame.error));
           return true;
         }
-        if (frame.session_token) {
-          deps.storeSessionToken(ctx, frame.session_token);
-        }
-        if (frame.approval) {
-          await onApprovalUpdate?.(frame.approval);
-          return false;
-        }
-        if (frame.text) {
-          fullText += frame.text;
-          await onChunk(frame.text);
-        }
+        await applyFrameUpdate(frame);
         if (frame.done) {
           finish();
+          keepPendingText();
           conversationId = frame.conversation_id || "";
           await onDone(fullText, conversationId);
           return true;
@@ -283,7 +326,16 @@ async function streamChatOnce(
         }
       };
 
-      stream.on("data", async (rawChunk: Buffer) => {
+      // Frames already received but not yet applied. Processing a chunk is
+      // async (every handler may await), so it yields — and `end` fires on the
+      // very next tick when the response arrives in one piece, which is the
+      // normal case for a short reply. Without something to wait on, `end`
+      // flipped `finished` mid-loop and every frame after the first `await` was
+      // silently dropped: an approval prompt, a rate-limit notice or a message
+      // boundary sharing a TCP chunk with the text before it simply vanished.
+      let draining: Promise<void> = Promise.resolve();
+
+      const drainChunk = async (rawChunk: Buffer): Promise<void> => {
         if (finished) return;
         try {
           resetInactivityTimer(resolve);
@@ -305,13 +357,19 @@ async function streamChatOnce(
             resolve();
           }
         }
+      };
+
+      stream.on("data", (rawChunk: Buffer) => {
+        draining = draining.then(() => drainChunk(rawChunk));
       });
 
       stream.on("end", async () => {
+        await draining;
         if (inactivityTimer) clearTimeout(inactivityTimer);
         try {
           if (!finished) {
             finished = true;
+            keepPendingText();
             if (fullText) {
               // Got partial response - return what we have
               await onDone(fullText, conversationId);
@@ -343,6 +401,7 @@ async function streamChatOnce(
         try {
           if (!finished) {
             finished = true;
+            keepPendingText();
             const isRetryable = RETRYABLE_ERRORS.some((retryableErr) =>
               err.message.includes(retryableErr),
             );
@@ -382,6 +441,10 @@ async function streamChatOnce(
         true,
         endpoint,
         onApprovalUpdate,
+        onMessageBoundary,
+        // Dropped here until now: a stale session token cost the retried
+        // attempt every rate-limit notice it produced.
+        onNotice,
       );
     }
 

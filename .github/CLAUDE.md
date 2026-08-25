@@ -51,7 +51,11 @@ Three layers, from cheap to precise:
 1. **`code-quality.yml` `changes` job** — one no-toolchain job diffs the PR
    and skips whole language lanes (Python lanes on a TS-only PR and vice
    versa). Lanes skipped this way count as PASSING in the gate; a failed
-   `changes` job fails the gate.
+   `changes` job fails the gate. The detect lists are a deliberate superset
+   that includes workflow/config files (yaml/yml/toml/lock/json): a
+   workflow-only (`.yml`) PR lights every lane up so changes to CI itself
+   get validated, but each lane self-skips via its own narrower
+   `changed-files.sh` list — lane lists NEVER include yml.
 2. **`main.yml` `detect` job** — `nx show projects --affected` (via
    `nrwl/nx-set-shas`, base `master`) computes the affected project lists
    that gate build/test jobs and scope their `-p` arguments.
@@ -128,22 +132,20 @@ is gone — the rollout it enabled is complete and the two sources of truth had
 drifted. New lane: add the job, its result to the gate's `needs:` + `RESULT`
 map, and its name to the `LANES` array; it is enforced from the first run.
 
-## Suppression baseline (no new inline lint suppressions)
+## Suppression hygiene (every inline suppression carries its why)
 
-The `suppression-ratchet` lane guards `# noqa` / `# type: ignore` / `// biome-ignore`
-against silent growth via a checked-in baseline (`config/suppressions-baseline.json`),
-not a git-history diff — `tools/lints/check_suppressions.py` scans the current
-working tree and compares per-(file, kind) counts against it, so the check is a
-pure local scan with no fetch-depth, base ref, or merge-base. A file may only
-match or shrink its baseline count; a pure rename (byte-identical content) is
-free via a content hash, but any genuine growth fails with an exact `file:line`.
-Reproduce or accept a change locally with the one command:
-`python3 tools/lints/check_suppressions.py` (add `--update` to regenerate the
-baseline after fixing or deliberately accepting a new suppression — the baseline
-diff is the review surface). This is unrelated to the ruff ignore-list ratchet
-(`tools/lints/check_ignore_ratchet.py`), which guards `[tool.ruff.lint] ignore`
-/ `per-file-ignores` / mypy overrides in `pyproject.toml` — see
-`tools/lints/README.md#ignore-ratchet`.
+The `suppression-hygiene` lane is stateless: there is no baseline. A suppression
+(`# noqa` / `# type: ignore` / `// biome-ignore`) may only exist inline, at the
+offending line, WITH a written reason on that same line —
+`tools/lints/check_suppressions.py` fails at the exact line otherwise. Staleness
+is hunted by the compilers themselves: mypy's `warn_unused_ignores` flags dead
+`# type: ignore`, ruff's RUF100 flags dead `# noqa`, and biome's
+`suppressions/unused` diagnostic for dead `// biome-ignore` is gated in the
+biome lane. Reproduce locally:
+`python3 tools/lints/check_suppressions.py` (add paths to scope). Escape hatches
+in `pyproject.toml` (`[tool.ruff.lint] ignore`, `per-file-ignores`, weakening
+mypy overrides) must each carry a why-comment beside them — checked by
+`tools/lints/check_ignore_whys.py`; see `tools/lints/README.md#ignore-whys`.
 
 ## Log readability (for humans AND agents)
 
