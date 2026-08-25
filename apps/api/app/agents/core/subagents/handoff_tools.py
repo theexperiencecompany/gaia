@@ -36,7 +36,11 @@ from app.agents.core.subagents.provider_subagents import (
     SubagentUnavailableError,
     create_subagent_for_user,
 )
-from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
+from app.agents.core.subagents.registry import (
+    all_subagents,
+    foreign_provider_named_in,
+    get_subagent_by_id,
+)
 from app.agents.core.subagents.subagent_helpers import (
     create_subagent_system_message,
 )
@@ -310,7 +314,7 @@ async def _resolve_subagent(
             return (
                 None,
                 None,
-                f"Error: {integration_name} is unavailable — {e.reason}",
+                f"Error: {integration_name} is unavailable: {e.reason}",
                 False,
             )
 
@@ -350,7 +354,7 @@ async def _resolve_subagent(
             return (
                 None,
                 None,
-                f"Error: {agent_name} is unavailable — {e.reason}",
+                f"Error: {agent_name} is unavailable: {e.reason}",
                 False,
             )
     else:
@@ -702,7 +706,7 @@ async def handoff(
     background: Annotated[
         bool,
         "If True, run the subagent in the background and return immediately. "
-        "Use for parallel subagent dispatch — call wait_for_subagents() after "
+        "Use for parallel subagent dispatch: call wait_for_subagents() after "
         "all background handoffs to collect results. Default False (blocking).",
     ] = False,
     tool_call_id: Annotated[str, InjectedToolCallId] = "",
@@ -752,6 +756,23 @@ async def handoff(
         agent_name: str = ctx.agent_name
         integration_id: str = ctx.integration_id
 
+        # A task naming one provider while routed to another is a routing mistake
+        # that survives the whole run: the subagent does the work on ITS system and
+        # the executor writes the name it was told into the summary, so the user is
+        # told their data went somewhere it never went. Refuse before dispatch —
+        # the executor can re-route or drop the name, but it cannot un-say it.
+        foreign = foreign_provider_named_in(task, integration_id)
+        if foreign is not None:
+            return (
+                f"HANDOFF REJECTED: this task is routed to the {agent_name} subagent "
+                f"({integration_id}) but its text names {foreign.name}. {foreign.name} is a "
+                f"separate integration with its own subagent, and nothing you hand to "
+                f"{integration_id} touches it: leaving the name in makes the result claim "
+                f"{foreign.name} did work it never did. Either re-issue this handoff to "
+                f"subagent:{foreign.id} if that is where the work belongs, or send it again "
+                f"with every mention of {foreign.name} removed from the task."
+            )
+
         # An uncollected parked subagent owns this integration's checkpoint thread.
         # Running ANY new handoff on it (blocking or background) would feed fresh
         # input to an interrupted thread — LangGraph discards the pending interrupt,
@@ -792,7 +813,7 @@ async def handoff(
                     probe_parked,
                 )
                 return (
-                    "[WARNING: background handoff fell back to blocking — "
+                    "[WARNING: background handoff fell back to blocking: "
                     "stream_id not propagated into executor configurable] "
                     f"{blocking_result}"
                 )

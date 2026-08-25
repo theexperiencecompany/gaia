@@ -32,6 +32,9 @@ repos:
     rev: v0.14.13
     hooks:
       - id: ruff-check
+        # Autofix at commit time — parity with the biome hook below. A fix
+        # fails the commit so the corrected files get re-staged.
+        args: [--fix, --exit-non-zero-on-fix]
         priority: 0
       - id: ruff-format
         priority: 0

@@ -54,11 +54,12 @@ MODEL_PRICING: dict[str, ModelPricing] = {
         output_cost_per_1k=0.0004,
         cached_input_cost_per_1k=0.000025,
     ),
-    # AUX_MODEL_NAME — "DeepSeek V4 Flash 0423" (Apr 2026), not the "0731"
-    # revision the graph runs, so aux calls get a separate prompt-cache
-    # namespace. Two ids, two rate cards: 0423 is roughly 0.46x 0731's input
-    # rate, so pricing the aux lane at 0731's rate would OVER-count aux COGS by
-    # ~2.2x. 20% cached-input fraction, matching OpenRouter's listing.
+    # "DeepSeek V4 Flash 0423" (Apr 2026). No lane produces this id any more —
+    # AUX_MODEL_NAME now resolves to the 0731 revision, because this id's
+    # provider pool cannot cache or hold session affinity for tool-carrying
+    # requests (measured; see constants/llm.py). The row stays so historical
+    # llm_call events and any straggler mid-deploy calls still meter at the
+    # rate they were actually served at, not at DEFAULT_PRICING's.
     "deepseek/deepseek-v4-flash": ModelPricing(
         input_cost_per_1k=0.00006426,
         output_cost_per_1k=0.00012852,

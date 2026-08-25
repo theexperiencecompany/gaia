@@ -86,7 +86,7 @@ class TestExactBinding:
             run = await run_graph(graph, "search the web")
 
         assert run.results_from(SELECT_NODE) == [
-            f"Bound 1 tools — call them directly:\n  - {RETRIEVABLE}"
+            f"Bound 1 tools, call them directly:\n  - {RETRIEVABLE}"
         ]
 
     async def test_several_tools_bind_in_one_retrieval(self):

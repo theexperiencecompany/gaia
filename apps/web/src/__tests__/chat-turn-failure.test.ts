@@ -46,8 +46,7 @@ const meta = (): TurnMessageMeta => ({
 });
 
 const accWithText = (text: string): TurnAccumulator => ({
-  ...createTurnAccumulator(),
-  responseText: text,
+  ...createTurnAccumulator(text),
 });
 
 describe("buildTurnMessageRecord", () => {

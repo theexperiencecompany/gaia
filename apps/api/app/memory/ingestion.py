@@ -8,35 +8,41 @@ core-document consolidation for the docs its changes touch.
 """
 
 from dataclasses import dataclass
-from datetime import UTC, date as date_type, datetime
+from datetime import UTC, date as date_type, datetime, timedelta
 import time
 import uuid
 
 from app.constants.memory import (
+    AGENDA_CATEGORY_PATH,
+    AGENDA_ITEM_TTL_DAYS,
     CATEGORY_PATH_MAX_DEPTH,
     DEFAULT_MEMORY_IMPORTANCE,
     EPISODE_ENTRY_TIME_FORMAT,
     FREE_MEMORY_CAP_COUNT_SAFETY_MARGIN,
     FREE_MEMORY_FACT_LIMIT,
     RECENT_FACTS_LIMIT,
+    RECONCILE_SIMILARITY_THRESHOLD,
+    STATE_FACT_TTL_DAYS,
     TRANSCRIPT_CHUNK_MAX_CHARS,
     TRANSCRIPT_CHUNK_OVERLAP_CHARS,
     TRANSCRIPT_CHUNK_TURNS,
     TRANSCRIPT_CHUNKS_PER_SESSION_CAP,
     MemoryKind,
     MemoryRelationType,
+    MemoryShelfLife,
     MemorySourceType,
     ReconcileOutcome,
 )
 from app.memory import cap_counter, chroma_store, pg_store
 from app.memory.chroma_store import ConversationChunkItem, EpisodeVectorItem, MemoryVectorItem
-from app.memory.consolidation import infer_doc_types, schedule_consolidation
+from app.memory.consolidation import infer_doc_types, render_agenda_document, schedule_consolidation
 from app.memory.context import invalidate_user_memory_caches
 from app.memory.embeddings import embed_batch, embed_query
 from app.memory.extraction import categorize_fact, extract_memories, summarize_episode_entries
+from app.memory.management import forget_memory
 from app.memory.mappers import row_to_entry
 from app.memory.reconciliation import ReconciledFact, reconcile
-from app.memory.schemas import ExtractedFact
+from app.memory.schemas import ExtractedFact, ExtractedMemoryBatch
 from app.models.memory_db_models import MemoryRecord
 from app.models.memory_models import MemoryEntry
 from app.models.payment_models import PlanType
@@ -72,8 +78,8 @@ async def _free_cap_remaining(user_id: str, growth: int) -> int | None:
     lookup hiccuped). For a free user it is ``max(0, limit - live count)``, so
     a batch that would cross the cap can be trimmed to land exactly at it.
 
-    ``growth`` is how many facts this call would add (the NEW/EXTENDS count for
-    a batch, 1 for a single add). The live count comes from the Redis counter
+    ``growth`` is how many facts this call would add (the NEW count for a
+    batch, 1 for a single add). The live count comes from the Redis counter
     (``cap_counter``) on the hot path, avoiding a Postgres ``COUNT`` when a free
     user sits far below the cap. The cache is trusted only when the remaining
     budget clears ``growth`` plus a safety margin; when the batch might cross
@@ -115,15 +121,15 @@ def _enforce_free_cap(
 ) -> tuple[list[ReconciledFact], int]:
     """Trim growth facts to ``remaining`` free slots, preserving order.
 
-    Admits at most ``remaining`` NEW/EXTENDS facts (the ones that grow the
-    live set) in reconciliation order and drops the surplus; UPDATES and
-    DUPLICATEs pass through untouched since they never grow the count.
-    Returns the kept facts and how many were dropped.
+    Admits at most ``remaining`` NEW facts (the only outcome that grows the
+    live set) in reconciliation order and drops the surplus; UPDATES, EXTENDS
+    and DUPLICATEs pass through untouched since each supersedes or collapses
+    into an existing row. Returns the kept facts and how many were dropped.
     """
     kept: list[ReconciledFact] = []
     admitted = dropped = 0
     for item in reconciled:
-        if item.outcome in (ReconcileOutcome.NEW, ReconcileOutcome.EXTENDS):
+        if item.outcome is ReconcileOutcome.NEW:
             if admitted >= remaining:
                 dropped += 1
                 continue
@@ -165,6 +171,103 @@ class _ApplyResult:
     extended: int
     entities_linked: int = 0
     edges_added: int = 0
+
+
+# A shelf life that expires maps to a flat window; durable and journal do not
+# appear here because neither ever produces an expiring row.
+# Reconcile outcomes that retire their target. Both write a new version onto
+# the chain and flip the old row out of the live set; only the relation label
+# differs, so history still says whether the world changed (UPDATES) or the
+# same claim was merely restated more completely (EXTENDS).
+_SUPERSESSION_RELATION: dict[ReconcileOutcome, MemoryRelationType] = {
+    ReconcileOutcome.UPDATES: MemoryRelationType.UPDATES,
+    ReconcileOutcome.EXTENDS: MemoryRelationType.EXTENDS,
+}
+
+
+_SHELF_LIFE_TTL_DAYS: dict[MemoryShelfLife, int] = {
+    MemoryShelfLife.STATE: STATE_FACT_TTL_DAYS,
+    MemoryShelfLife.TASK: AGENDA_ITEM_TTL_DAYS,
+}
+
+
+def _forget_after(shelf_life: MemoryShelfLife, since: datetime | None) -> datetime | None:
+    """When a row stops being live — derived from shelf life, never from the LLM.
+
+    The extractor used to pick expiry dates itself and almost never did (19 of
+    1,028 production rows carried one), so every count, balance and connection
+    status it stored stayed live forever.
+    """
+    ttl_days = _SHELF_LIFE_TTL_DAYS.get(shelf_life)
+    if ttl_days is None:
+        return None
+    return (since or datetime.now(UTC)) + timedelta(days=ttl_days)
+
+
+def _agenda_fact(item: str) -> ExtractedFact:
+    """An agenda item as a memory row: a task-shelf-life fact in the agenda folder."""
+    return ExtractedFact(
+        content=item,
+        kind=MemoryKind.FACT,
+        shelf_life=MemoryShelfLife.TASK,
+        category_path=AGENDA_CATEGORY_PATH,
+        importance=DEFAULT_MEMORY_IMPORTANCE,
+    )
+
+
+def _route_by_shelf_life(batch: ExtractedMemoryBatch) -> tuple[ExtractedMemoryBatch, list[str]]:
+    """Send every assertion to the store its shelf life says owns it.
+
+    ``task`` and ``journal`` never become plain facts: a commitment becomes an
+    agenda row and anything that merely happened — including everything GAIA
+    itself recommended, drafted or advised — becomes a journal line. Agenda
+    items go through the normal fact pipeline (so they are embedded, deduped
+    and correctable) rather than the old Redis side-channel, which no tool
+    could reach.
+
+    Returns the rewritten batch plus the agenda items this conversation
+    CLOSED; those retire an existing row instead of writing a new one.
+    """
+    facts: list[ExtractedFact] = []
+    episode_entries = list(batch.episode_entries)
+    agenda_items = [update.item for update in batch.agenda_updates if not update.resolved]
+    resolved = [update.item for update in batch.agenda_updates if update.resolved]
+
+    for fact in batch.facts:
+        match fact.shelf_life:
+            case MemoryShelfLife.TASK:
+                agenda_items.append(fact.content)
+            case MemoryShelfLife.JOURNAL:
+                episode_entries.append(fact.content)
+            case _:
+                facts.append(fact)
+
+    facts.extend(_agenda_fact(item) for item in agenda_items)
+    return ExtractedMemoryBatch(facts=facts, episode_entries=episode_entries), resolved
+
+
+async def _close_resolved_agenda_items(user_id: str, items: list[str]) -> int:
+    """Retire the live agenda rows this conversation closed; returns how many.
+
+    Matching is semantic, not textual: the extractor restates a commitment in
+    its own words when it closes it, so the closure is embedded and matched the
+    same way reconciliation matches a new fact against existing ones.
+    """
+    if not items:
+        return 0
+    embeddings = await embed_batch(items)
+    closed = 0
+    for item, embedding in zip(items, embeddings):
+        similar = await chroma_store.query_similar(user_id, embedding, n=1, only_latest=True)
+        if not similar or similar[0][1] < RECONCILE_SIMILARITY_THRESHOLD:
+            continue
+        memory_id = similar[0][0]
+        rows = await pg_store.get_memories_by_ids(user_id, [memory_id])
+        if not rows or rows[0].category_path != AGENDA_CATEGORY_PATH:
+            continue
+        if await forget_memory(user_id, memory_id, f"agenda item resolved: {item}"):
+            closed += 1
+    return closed
 
 
 async def retain(
@@ -225,8 +328,10 @@ async def retain(
         batch.episode_entries = []
         batch.agenda_updates = []
 
+    batch, resolved_agenda = _route_by_shelf_life(batch)
+
     result = RetainResult(facts_extracted=len(batch.facts))
-    if not batch.facts and not batch.episode_entries and not batch.agenda_updates:
+    if not batch.facts and not batch.episode_entries and not resolved_agenda:
         log.set(
             memory=MemoryContext(
                 operation="retain",
@@ -246,20 +351,19 @@ async def retain(
     reconciled = await reconcile(user_id, batch.facts, embeddings)
     timings["reconcile_ms"] = _elapsed_ms(stage)
 
-    # Free-plan cap: passive ingestion admits only as many growth facts
-    # (NEW/EXTENDS) as fit under the cap and silently drops the rest, so a
+    # Free-plan cap: passive ingestion admits only as many NEW facts as fit
+    # under the cap and silently drops the rest, so a
     # batch that crosses the cap lands exactly at it rather than overshooting
     # (48 live + 10 new must not become 58). Concurrent same-user batches can
     # transiently exceed the cap by a few facts (the check is not a reservation
     # by design — enforcement stays fail-open), after which growth stops, so
     # the cap is exact per batch and convergent, not globally atomic. UPDATES
-    # supersede (net count unchanged) so what GAIA knows stays current, and
+    # and EXTENDS supersede (net count unchanged) so what GAIA knows stays
+    # current, and
     # reads are never gated — the cap blocks growth, it does not lobotomize.
     # Facts keep reconciliation order (input order), so earlier facts in the
     # transcript win the remaining slots deterministically.
-    growth = sum(
-        1 for item in reconciled if item.outcome in (ReconcileOutcome.NEW, ReconcileOutcome.EXTENDS)
-    )
+    growth = sum(1 for item in reconciled if item.outcome is ReconcileOutcome.NEW)
     remaining = await _free_cap_remaining(user_id, growth)
     if remaining is not None:
         reconciled, dropped = _enforce_free_cap(reconciled, remaining)
@@ -295,12 +399,17 @@ async def retain(
     await _store_conversation_chunks(user_id, messages, source_id=source_id, now=now)
     timings["chunks_ms"] = _elapsed_ms(stage)
 
-    await invalidate_user_memory_caches(user_id)
-    await _schedule_post_ingest(
-        user_id,
-        inserted_facts=[fact for _, fact in applied.inserted],
-        agenda_updates=batch.agenda_updates,
+    stage = time.perf_counter()
+    closed = await _close_resolved_agenda_items(user_id, resolved_agenda)
+    agenda_touched = closed > 0 or any(
+        fact.shelf_life is MemoryShelfLife.TASK for _, fact in applied.inserted
     )
+    if agenda_touched:
+        await render_agenda_document(user_id)
+    timings["agenda_ms"] = _elapsed_ms(stage)
+
+    await invalidate_user_memory_caches(user_id)
+    await _schedule_post_ingest(user_id, inserted_facts=[fact for _, fact in applied.inserted])
 
     timings["total_ms"] = _elapsed_ms(started)
     log.set(
@@ -340,8 +449,9 @@ async def retain_single(
     Raises ``MemoryLimitReachedError`` when a free user at the live-fact cap
     tries to add a fact that would GROW the set — explicit adds fail LOUD so
     the tool/endpoint can upsell, unlike passive ingestion which drops
-    silently. A DUPLICATE or UPDATES resolves to zero growth and stays allowed
-    at the cap, so the outcome is known only after reconciliation.
+    silently. A DUPLICATE, UPDATES or EXTENDS resolves to zero growth and
+    stays allowed at the cap, so the outcome is known only after
+    reconciliation.
     """
     now = datetime.now(UTC)
     fact = await _build_single_fact(user_id, content, category_path, now)
@@ -352,7 +462,7 @@ async def retain_single(
         # reconcile() drops facts the batched LLM returned no verdict for.
         raise ValueError("Memory could not be reconciled against existing memories")
 
-    is_growth = reconciled[0].outcome in (ReconcileOutcome.NEW, ReconcileOutcome.EXTENDS)
+    is_growth = reconciled[0].outcome is ReconcileOutcome.NEW
     if is_growth:
         remaining = await _free_cap_remaining(user_id, growth=1)
         if remaining is not None and remaining <= 0:
@@ -361,9 +471,7 @@ async def retain_single(
     applied = await _apply_reconciled(user_id, reconciled, source_type=source_type, source_id=None)
     await invalidate_user_memory_caches(user_id)
     await _schedule_post_ingest(
-        user_id,
-        inserted_facts=[inserted_fact for _, inserted_fact in applied.inserted],
-        agenda_updates=[],
+        user_id, inserted_facts=[inserted_fact for _, inserted_fact in applied.inserted]
     )
 
     if applied.inserted:
@@ -416,11 +524,16 @@ async def _build_single_fact(
     category_path: str | None,
     now: datetime,
 ) -> ExtractedFact:
-    """Build the ExtractedFact for a manual add, categorizing if needed."""
+    """Build the ExtractedFact for a manual add, categorizing if needed.
+
+    An explicit add is always durable: the user (or the agent on their behalf)
+    asked for this to be remembered, so it must never expire on its own.
+    """
     if category_path is not None:
         return ExtractedFact(
             content=content,
             kind=MemoryKind.FACT,
+            shelf_life=MemoryShelfLife.DURABLE,
             category_path=category_path,
             importance=DEFAULT_MEMORY_IMPORTANCE,
         )
@@ -436,12 +549,14 @@ async def _build_single_fact(
         return ExtractedFact(
             content=content,
             kind=MemoryKind.FACT,
+            shelf_life=MemoryShelfLife.DURABLE,
             category_path=_FALLBACK_CATEGORY_PATH,
             importance=DEFAULT_MEMORY_IMPORTANCE,
         )
     return ExtractedFact(
         content=content,
         kind=categorization.kind,
+        shelf_life=MemoryShelfLife.DURABLE,
         category_path=categorization.category_path,
         importance=categorization.importance,
         entities=categorization.entities,
@@ -457,26 +572,23 @@ async def _apply_reconciled(
     source_id: str | None,
     mentioned_at: datetime | None = None,
 ) -> _ApplyResult:
-    """Write reconciled facts to Postgres + Chroma and wire up the graph."""
+    """Write reconciled facts to Postgres + Chroma and wire up the graph.
+
+    EXTENDS supersedes its parent exactly like UPDATES. It used to coexist with
+    it — "the new fact is distinct" — and the result in production was 329 live
+    rows (36% of the store) that were EXTENDS children of a still-live parent,
+    every pair injected into recall as two competing versions of one attribute.
+    A more complete restatement of the same subject-attribute is a revision, so
+    the parent moves into history and only the complete form stays live.
+    """
     inserted: list[tuple[MemoryRecord, ExtractedFact]] = []
     new = updated = extended = duplicates = 0
 
-    new_and_extends = [
-        item
-        for item in reconciled
-        if item.outcome in (ReconcileOutcome.NEW, ReconcileOutcome.EXTENDS)
-    ]
-    extend_target_ids = [
-        item.target_memory_id
-        for item in new_and_extends
-        if item.outcome is ReconcileOutcome.EXTENDS and item.target_memory_id
-    ]
-    extend_targets = {
-        str(row.id): row for row in await pg_store.get_memories_by_ids(user_id, extend_target_ids)
-    }
-
-    records: list[MemoryRecord] = []
-    for item in new_and_extends:
+    fresh: list[tuple[MemoryRecord, ExtractedFact]] = []
+    for item in reconciled:
+        if item.outcome is ReconcileOutcome.DUPLICATE:
+            duplicates += 1
+            continue
         record = _build_record(
             item.fact,
             user_id=user_id,
@@ -484,45 +596,25 @@ async def _apply_reconciled(
             source_id=source_id,
             mentioned_at=mentioned_at,
         )
-        target = extend_targets.get(item.target_memory_id or "")
-        if item.outcome is ReconcileOutcome.EXTENDS and target is not None:
-            # EXTENDS records a relatedness link to an existing fact, but the new
-            # fact is distinct and coexists with its parent — it is NOT a revision.
-            # So it keeps version 1 and its own chain (no version bump, no root
-            # chaining); only UPDATES advances a supersession chain. This is why
-            # a v2 always means "this fact was revised" and has real history.
-            record.parent_id = target.id
-            record.relation_type = MemoryRelationType.EXTENDS.value
-            extended += 1
-        else:
-            new += 1
-        records.append(record)
-
-    await pg_store.insert_memories(records)
-    inserted.extend(zip(records, [item.fact for item in new_and_extends]))
-
-    for item in reconciled:
-        if item.outcome is ReconcileOutcome.DUPLICATE:
-            duplicates += 1
-        elif item.outcome is ReconcileOutcome.UPDATES and item.target_memory_id:
-            record = _build_record(
-                item.fact,
-                user_id=user_id,
-                source_type=source_type,
-                source_id=source_id,
-                mentioned_at=mentioned_at,
-            )
-            row = await pg_store.supersede_memory(
-                item.target_memory_id, user_id, record, MemoryRelationType.UPDATES
-            )
-            if row is None:
-                # Target vanished between reconcile and apply — store as plain NEW.
-                await pg_store.insert_memories([record])
-                new += 1
-            else:
+        relation = _SUPERSESSION_RELATION.get(item.outcome)
+        if relation is not None and item.target_memory_id:
+            row = await pg_store.supersede_memory(item.target_memory_id, user_id, record, relation)
+            if row is not None:
                 await chroma_store.set_memory_flags(item.target_memory_id, is_latest=False)
-                updated += 1
-            inserted.append((record, item.fact))
+                if relation is MemoryRelationType.EXTENDS:
+                    extended += 1
+                else:
+                    updated += 1
+                inserted.append((record, item.fact))
+                continue
+            # Target vanished between reconcile and apply — store it as a plain
+            # new row rather than losing the fact.
+        fresh.append((record, item.fact))
+
+    if fresh:
+        await pg_store.insert_memories([record for record, _ in fresh])
+        new = len(fresh)
+        inserted.extend(fresh)
 
     embeddings_by_content = {item.fact.content: item.embedding for item in reconciled}
     vector_items: list[MemoryVectorItem] = [
@@ -544,10 +636,10 @@ async def _apply_reconciled(
 
     entities_linked, edges_added = await _apply_graph(user_id, inserted)
 
-    # Keep the free-cap counter in sync: NEW and EXTENDS grow the live set;
-    # UPDATES supersede (net zero) and DUPLICATEs add nothing. A no-op when the
-    # counter is unseeded (paid users) or Redis is down.
-    await cap_counter.adjust_live_count(user_id, new + extended)
+    # Keep the free-cap counter in sync: only NEW grows the live set. UPDATES
+    # and EXTENDS supersede (net zero) and DUPLICATEs add nothing. A no-op when
+    # the counter is unseeded (paid users) or Redis is down.
+    await cap_counter.adjust_live_count(user_id, new)
 
     return _ApplyResult(
         inserted=inserted,
@@ -684,7 +776,6 @@ async def _schedule_post_ingest(
     user_id: str,
     *,
     inserted_facts: list[ExtractedFact],
-    agenda_updates: list[str],
 ) -> None:
     """Fire-and-forget follow-ups after every ingestion.
 
@@ -693,9 +784,9 @@ async def _schedule_post_ingest(
     debounced and only scheduled for the docs this ingestion touched.
     """
     schedule_memory_vfs_sync(user_id)
-    doc_types = infer_doc_types(inserted_facts, agenda_updates)
+    doc_types = infer_doc_types(inserted_facts)
     if doc_types:
-        await schedule_consolidation(user_id, doc_types, agenda_updates=agenda_updates)
+        await schedule_consolidation(user_id, doc_types)
 
 
 def _elapsed_ms(since: float) -> int:
@@ -732,11 +823,12 @@ def _build_record(
     values: dict[str, object] = {
         "user_id": user_id,
         "kind": fact.kind.value,
+        "shelf_life": fact.shelf_life.value,
         "content": fact.content,
         "category_path": _clamp_category_path(fact.category_path),
         "occurred_start": fact.occurred_start,
         "occurred_end": fact.occurred_end,
-        "forget_after": fact.forget_after,
+        "forget_after": _forget_after(fact.shelf_life, mentioned_at),
         "importance": fact.importance,
         "source_type": source_type.value,
         "source_id": source_id,

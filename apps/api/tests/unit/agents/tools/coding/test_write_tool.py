@@ -185,7 +185,7 @@ async def test_path_escaping_workspace_is_rejected() -> None:
     with patch(f"{MODULE}.acquire_sandbox") as mock_acquire:
         result = await write.ainvoke({"path": "/etc/passwd", "content": "x"}, config=CONFIG)
 
-    assert result == "Error: Path escapes /workspace: /etc/passwd"
+    assert result == "Error: path must stay inside /workspace"
     mock_acquire.assert_not_called()
 
 
@@ -193,7 +193,7 @@ async def test_sandbox_unavailable_returns_friendly_error() -> None:
     with patch(f"{MODULE}.acquire_sandbox", side_effect=SandboxAcquisitionError("pool empty")):
         result = await write.ainvoke({"path": "scratch/x.py", "content": "x"}, config=CONFIG)
 
-    assert result == "Error: sandbox unavailable — pool empty"
+    assert result == "Error: sandbox unavailable: pool empty"
 
 
 async def test_write_failure_returns_error_and_logs() -> None:

@@ -15,6 +15,7 @@ from tests._harness.context_sources import knowledge, memory
 from tests.helpers import captured_wide_event
 
 from app.agents.context.fetchers import (
+    _dedupe_by_provider,
     _split_core_context,
     _split_off_section,
     build_active_todo_banner,
@@ -271,6 +272,104 @@ class TestConnectedIntegrationsManifest:
             AsyncMock(side_effect=RuntimeError("mongo down")),
         ):
             assert await build_connected_integrations_manifest("u1", header="HEADER:") == ""
+
+    async def test_a_connected_task_provider_does_not_mask_the_builtin_todo_list(self) -> None:
+        """The prod failure: with Todoist connected and the built-in todos only a
+        parenthetical in the header, the executor read "the user's todo list" as
+        Todoist and reported eight GAIA todos as "8 tasks created (Todoist)"."""
+        with patch(
+            "app.agents.context.fetchers.get_connected_integrations_named",
+            AsyncMock(return_value=[{"id": "todoist", "name": "Todoist"}]),
+        ):
+            manifest = await build_connected_integrations_manifest("u1", header="HEADER:")
+
+        assert manifest == (
+            "HEADER:\n- Todos: GAIA's own todo list, not Todoist (todos)\n- Todoist (todoist)"
+        )
+
+    async def test_the_builtin_row_names_every_provider_it_is_confused_with(self) -> None:
+        with patch(
+            "app.agents.context.fetchers.get_connected_integrations_named",
+            AsyncMock(
+                return_value=[
+                    {"id": "googletasks", "name": "Google Tasks"},
+                    {"id": "todoist", "name": "Todoist"},
+                ]
+            ),
+        ):
+            manifest = await build_connected_integrations_manifest("u1", header="HEADER:")
+
+        assert "- Todos: GAIA's own todo list, not Google Tasks or Todoist (todos)" in manifest
+
+    async def test_no_overlapping_provider_means_no_builtin_row(self) -> None:
+        """The list stays a list of connected accounts; a built-in is spelled out
+        only where something connected could be mistaken for it."""
+        with patch(
+            "app.agents.context.fetchers.get_connected_integrations_named",
+            AsyncMock(return_value=[{"id": "gmail", "name": "Gmail"}]),
+        ):
+            manifest = await build_connected_integrations_manifest("u1", header="HEADER:")
+
+        assert manifest == "HEADER:\n- Gmail (gmail)"
+
+    async def test_two_ids_for_one_provider_render_once_under_the_resolved_name(self) -> None:
+        """A stale ``google_calendar`` beside today's ``googlecalendar`` rendered
+        both — one of them a bare id that resolves to no subagent at all."""
+        with patch(
+            "app.agents.context.fetchers.get_connected_integrations_named",
+            AsyncMock(
+                return_value=[
+                    {"id": "google_calendar", "name": "google_calendar"},
+                    {"id": "googlecalendar", "name": "Google Calendar"},
+                ]
+            ),
+        ):
+            manifest = await build_connected_integrations_manifest("u1", header="HEADER:")
+
+        assert manifest == "HEADER:\n- Google Calendar (googlecalendar)"
+
+
+@pytest.mark.unit
+class TestDedupeByProvider:
+    def test_a_real_name_already_held_is_never_displaced_by_an_id_named_duplicate(
+        self,
+    ) -> None:
+        """A later id-only entry for the same provider must not clobber an
+        earlier one that already resolved to a display name."""
+        items = [
+            {"id": "slack", "name": "Slack Workspace"},
+            {"id": "sl_ack", "name": "sl_ack"},
+        ]
+
+        assert _dedupe_by_provider(items) == [{"id": "slack", "name": "Slack Workspace"}]
+
+    def test_an_id_named_entry_held_first_is_replaced_once_a_real_name_arrives(self) -> None:
+        items = [
+            {"id": "slack", "name": "slack"},
+            {"id": "sl_ack", "name": "Slack Workspace"},
+        ]
+
+        assert _dedupe_by_provider(items) == [{"id": "sl_ack", "name": "Slack Workspace"}]
+
+    def test_the_first_real_name_wins_over_a_second_equally_real_name(self) -> None:
+        """Once a provider has resolved to ANY display name, a second row for
+        the same provider must not overwrite it — even when the second row
+        also carries a real name, not just an id."""
+        items = [
+            {"id": "calendar", "name": "Calendar One"},
+            {"id": "cal_endar", "name": "Calendar Two"},
+        ]
+
+        assert _dedupe_by_provider(items) == [{"id": "calendar", "name": "Calendar One"}]
+
+    def test_distinct_providers_are_all_kept_in_first_seen_order(self) -> None:
+        items = [
+            {"id": "gmail", "name": "Gmail"},
+            {"id": "slack", "name": "Slack"},
+            {"id": "notion", "name": "Notion"},
+        ]
+
+        assert _dedupe_by_provider(items) == items
 
 
 @pytest.mark.unit

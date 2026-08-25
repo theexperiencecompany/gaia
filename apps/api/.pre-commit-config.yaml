@@ -1,3 +1,7 @@
+# Ruff/mypy/bandit/pip-audit pins are REQUIRED on this surface by
+# tools/lints/check_tool_pins.py (EXPECTED table) — even though the root
+# .pre-commit-config.yaml also gates them repo-wide at identical versions.
+# Do not remove: the guard fails without these blocks.
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.14.13

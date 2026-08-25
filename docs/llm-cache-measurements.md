@@ -3,13 +3,15 @@
 Live A/B measured on the production lane (OpenRouter → `deepseek/deepseek-v4-flash-0731`,
 DeepSeek's automatic prefix cache). Two complementary measurements:
 
-1. **Harness** (`apps/api/scripts/measure_llm_cache.py`): real message shapes
-   through the real `manage_system_prompts_node` against the real provider,
-   back-to-back per-turn calls (what the layout alone is worth).
-2. **End-to-end** (`apps/api/scripts/drive_big_conversation.py`): the real
-   `/api/v1/chat-stream` endpoint — full comms → executor graph, real history
-   growth, 45-turn conversations, ~2.7M input tokens per run (what production
-   gets).
+1. **Harness**: real message shapes through the real `manage_system_prompts_node`
+   against the real provider, back-to-back per-turn calls (what the layout alone
+   is worth).
+2. **End-to-end**: the real `/api/v1/chat-stream` endpoint — full comms →
+   executor graph, real history growth, 45-turn conversations, ~2.7M input
+   tokens per run (what production gets).
+
+Both driver scripts were removed in `9db9dbd6b`; see "Reading the live rate"
+at the end for how to measure the current number without them.
 
 ## The layouts
 
@@ -184,3 +186,134 @@ real provider, per-run isolated bytes) for the layout A/B, and the real
 `/api/v1/chat-stream` endpoint was driven for the end-to-end runs. Requests
 were captured byte-level through a logging proxy to verify determinism and
 the exact divergence points.
+
+Those driver scripts were deliberately removed in `9db9dbd6b` — they billed real
+tokens on every run, and their findings are recorded above. Do not go looking for
+them. To read the rate as it stands today, use the method below instead: it costs
+nothing and answers the same question against real traffic.
+
+## Reading the live rate (free, repeatable)
+
+Every LLM call already emits an `llm_call` wide event carrying `input_tokens`
+and `cached_tokens`. Reading them needs no driver, no tokens and no deploy —
+only Loki:
+
+```
+{service=~"gaia-backend|arq_worker"} | json | llm_event="llm_call"
+```
+
+Then `sum(cached_tokens) / sum(input_tokens)`.
+
+Three things decide whether the number is true. Each was got wrong at least once:
+
+- **Query both services.** `arq_worker` is a separate `service` label and carries
+  the memory and workflow lanes. `gaia-backend` alone reported **51.5%** against
+  a true **39.8%** — twelve points of pure selection bias.
+- **Drop `sticky_flip_discarded="true"`.** Those are retry replays of bytes just
+  sent, ~99% cached by construction. Counting them flatters every aggregate.
+- **Weight by tokens, not by call.** A mean of per-call rates lets a handful of
+  tiny one-shots outvote the 40k-token subagent calls that carry the cost.
+  Tokens are what is billed, so tokens are what the metric is.
+
+Group by `agent_name` for the per-lane split, and chain by `thread_id` in time
+order to separate a genuine cold start from a cache that was lost. Note that
+threads are strictly **per agent** (`<conv>` is comms, `executor_<conv>`,
+`<subagent>_executor_<conv>`), so anything about agents evicting *each other*
+has to be looked for at the conversation level — the trailing id segment — not
+per thread. A per-thread comparison cannot see it and will report zero.
+
+### Baseline, 24h to 2026-08-24 (pre-#1095)
+
+**39.8% overall.** The three agent lanes are 84.8% of all prompt tokens and 47
+of the 60 points of loss:
+
+| Lane | Hit rate | Share of prompt tokens | Points of loss |
+|---|---|---|---|
+| provider_subagent | 37.6% | 26.2% | 16.4 |
+| comms_agent | 44.7% | 29.4% | 16.3 |
+| executor_agent | 50.1% | 29.2% | 14.6 |
+| memory:extraction | 12.8% | 10.7% | 9.3 |
+| everything else | — | 4.5% | 3.7 |
+
+### The shape that matters
+
+The loss is **bimodal, not spread**. When the cache works it reads over 90%;
+almost all loss is calls reading *exactly zero* — 44.5% of comms calls, 54.1% of
+subagent calls. Splitting those by whether they were the first call on their
+thread is what turns the number into a plan:
+
+- **Lost warm caches** — 118 calls that were *not* first on their thread yet read
+  0% (4.1M tokens, ~19 pts). 87 of them fired within 60s of the previous call on
+  the same thread, on the same model: far too fast to be expiry, so these are
+  prefixes being invalidated. At the conversation level, 29% had another agent of
+  the same conversation run in between (shared routing key) and 71% did not
+  (churn inside one agent's own chain).
+- **Cold first calls** — 117 calls (4.0M tokens, ~18 pts). Not inherently
+  unavoidable: in the same window 21 of 69 comms first-calls read **69.3%**, 17
+  of 51 executor first-calls read 60.0%. The static prefix is byte-identical
+  across conversations for an agent, so it is already warm somewhere. Closing
+  that gap is worth ~11 pts — but note `session_id` is bound on every request
+  today and those 21 still hit, so "pinning prevents landing warm" is *not*
+  established. It needs an A/B, and an earlier broader pinning change measured
+  worse and was reverted.
+- **No `thread_id` at all** — the background lanes cannot chain or route
+  stickily. `memory:reconcile`, `consolidate` and `episode_summary` are 100%
+  cold but average 960 / 1,038 / 257 tokens per call, below the provider's
+  minimum cacheable block, so there is nothing to win there.
+
+Sizing every bucket this way is what stops the next person optimising the wrong
+thing: shrinking `VOLATILE_BLOCK_MAX_CHARS` only helps calls that are already
+warm, and those already read 90%+.
+
+## What the shape of the prompt permits
+
+Fixing every bucket above does not get you an arbitrary number. The ceiling
+falls out of three measured quantities, and it is worth knowing before anyone
+sets a target.
+
+The graph lane's mean prompt is **35,132 tokens** (532 calls, 24h). On a warm
+mid-conversation call the bytes that *must* be re-read are the volatile block
+plus the turn's own new text (~400 tokens, generously):
+
+```
+warm ceiling  =  1 - (volatile_tokens + 400) / 35132
+```
+
+Everything turns on `volatile_tokens`, and it needs no deploy to read:
+`assemble_context` already records `memory_recall_chars` — the size of the whole
+volatile block — on the `dynamic_context` wide event for every assembly
+(`assemble.py`). Measured over 24h in production:
+
+| Tier | n | mean volatile | warm ceiling | blended @10% first-calls | @15% | @20% |
+|---|---|---|---|---|---|---|
+| comms | 118 | 2,670 chars (667 tok) | 97.0% | 94.2% | 92.8% | 91.4% |
+| executor | 35 | 3,818 chars (954 tok) | 96.1% | 93.5% | 92.1% | 90.8% |
+| provider_subagent | 34 | 2,946 chars (736 tok) | 96.8% | 94.0% | 92.6% | 91.3% |
+| **all tiers** | 187 | 2,935 chars (734 tok) | **96.8%** | **94.0%** | 92.7% | 91.3% |
+
+Mean rather than median, because a token-weighted rate sums bytes and the
+distribution has a long tail (comms medians 2,155 against a p90 of 6,500). The
+8,000-char cap truncates only 1.1% of calls, so it is working as the backstop it
+was meant to be and is not what sets the ceiling.
+
+First calls are blended in at 69.3% — the best observed in production — because
+they can inherit the shared static prefix but never a conversation.
+
+So the answer to "can we hit 90–95%": **yes, the range is reachable.** The
+warm-call ceiling is ~96.8%, and a realistic blend lands at **91–94%** depending
+on what share of prompt tokens are first-on-thread. The bottom of the target is
+comfortable once the invalidation and cold-start buckets close; the top of it
+(95%) additionally needs first calls held below ~10% of tokens *and* doing
+better than the 69.3% they currently manage at best.
+
+Two earlier revisions of this section got this wrong in opposite directions,
+both by reasoning about `volatile_tokens` from a bound instead of reading it:
+first from `VOLATILE_BLOCK_MAX_CHARS` (concluding 95% was arithmetically
+impossible), then from summing each section's configured limits, which
+double-counted and came out roughly 2x high. The number had been on the wide
+event the whole time.
+
+One thing this does settle: the volatile-tail work is small. At the measured
+mean the whole block is ~2% of a prompt, not the "~10 points" an earlier
+estimate claimed, and most of it (recall, knowledge, agenda, todos, run banners)
+is genuinely per-turn and cannot move anywhere.

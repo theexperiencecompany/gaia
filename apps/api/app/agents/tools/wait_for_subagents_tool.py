@@ -74,7 +74,7 @@ async def wait_for_subagents(
     conversation_id = str(configurable.get("conversation_id") or "")
 
     if not stream_id:
-        return "No active stream — cannot wait for subagents."
+        return "No active stream: cannot wait for subagents."
 
     if conversation_id:
         # This join IS the collection a queued wake-up would have provided —

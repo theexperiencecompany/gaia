@@ -30,11 +30,17 @@ class GitHubPullRequestEventPayload(BaseModel):
 
 
 class GitHubStarAddedEventPayload(BaseModel):
-    """Payload for GITHUB_STAR_ADDED_EVENT trigger."""
+    """Payload for GITHUB_STAR_ADDED_EVENT trigger.
 
-    action: str | None = Field(None, description="Action (starred)")
+    Field set verified against Composio triggers_types API (2026-08).
+    """
+
+    action: str | None = Field(None, description="Action performed on the star")
+    repository_id: int | None = Field(None, description="Unique ID of the repository")
+    repository_name: str | None = Field(None, description="Name of the repository")
+    repository_url: str | None = Field(None, description="GitHub URL of the repository")
     starred_at: str | None = Field(None, description="When the star was added")
-    user: str | None = Field(None, description="Username who starred")
+    starred_by: str | None = Field(None, description="Username who added the star")
 
 
 class GitHubIssueAddedEventPayload(BaseModel):

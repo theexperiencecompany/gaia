@@ -108,7 +108,7 @@ async def read(
         # Containment failure (path escaped the user root) or bad input.
         return f"Error: {e}"
     except SandboxAcquisitionError as e:
-        return f"Error: sandbox unavailable — {e}"
+        return f"Error: sandbox unavailable ({e})"
     except Exception as e:
         log.error(f"{LogTag.SANDBOX} read tool failed", error_type=type(e).__name__, exc_info=True)
         return f"Error reading file: {e}"
@@ -143,7 +143,7 @@ async def _read_image(
     except ValueError as e:
         return f"Error: {e}"
     except SandboxAcquisitionError as e:
-        return f"Error: sandbox unavailable — {e}"
+        return f"Error: sandbox unavailable ({e})"
     except Exception as e:
         log.error(f"{LogTag.SANDBOX} read tool failed", error_type=type(e).__name__, exc_info=True)
         return f"Error reading file: {e}"
@@ -152,7 +152,7 @@ async def _read_image(
     try:
         image = await ImageCodec.from_bytes(data)
     except InvalidImageError as e:
-        return f"Error: cannot read {abs_path} as an image — {e}"
+        return f"Error: cannot read {abs_path} as an image ({e})"
 
     # The file's own type and size, not the inline block's: `ImageCodec` may have
     # transcoded a large PNG to JPEG for delivery, and naming that here would tell
@@ -170,7 +170,7 @@ async def _read_image(
     )
 
     header = f"Image file {abs_path} ({mime_type}, {file_size} bytes)"
-    return [text_content_block(f"{header} — shown below."), image.to_block()]
+    return [text_content_block(f"{header}, shown below."), image.to_block()]
 
 
 def _format_text_read(
@@ -269,7 +269,7 @@ async def _read_file_sandbox(
     except FileNotFoundError:
         return f"Error: file not found at {abs_path}"
     except ValueError as e:
-        return f"Error: {e} — read a narrower range or run with the host mount"
+        return f"Error: {e}; read a narrower range or run with the host mount"
     # Decode with errors="replace" to stay binary-safe, matching read_user_file.
     text = raw.decode("utf-8", errors="replace")
     return _format_text_read(abs_path, text, offset, limit, session_id)

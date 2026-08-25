@@ -646,3 +646,17 @@ run = "python3 tools/evlog_map"
 [tasks."observability:map:all"]
 description = "Observability score with the per-entry check matrix"
 run = "python3 tools/evlog_map --all"
+
+# ── Agent-legible gates ──────────────────────────────────────────────────────
+[tasks."ci:local"]
+description = "Run CI quality gates locally (same lanes/versions as GitHub Actions); --list shows all lanes"
+run = "python3 scripts/dev/gaia_verify.py"
+
+
+[tasks."pr:comments"]
+description = "Fetch PR review threads read-only: resolution state, IDs for resolve/reply, next-step syntax"
+run = "python3 scripts/dev/pr_comments.py"
+
+[tasks."ci:remote"]
+description = "Merge-readiness dashboard for a PR's GitHub gates: checks, conflicts, reviews, unresolved threads (--watch to poll)"
+run = "python3 scripts/dev/ci_remote.py"

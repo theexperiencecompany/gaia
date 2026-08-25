@@ -20,6 +20,7 @@ Runs as a pre-model hook so it also fires when a generation is cancelled
 """
 
 from collections import defaultdict
+import hashlib
 from typing import cast
 
 from langchain_core.messages import AnyMessage
@@ -35,6 +36,7 @@ from app.agents.context.slots import (
 from app.constants.log_tags import LogTag
 from app.models.agent_models import agent_configurable
 from app.override.langgraph_bigtool.utils import PRUNED_MESSAGE_IDS_KEY, State
+from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
 
 #: Wide-event field per slot. Spelled out rather than derived from the enum
@@ -73,14 +75,17 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
         dropped_system = 0
         dropped_time = 0
         slot_order = request_slot_order(agent_configurable(config).get("provider"))
+        kept_by_slot: dict[PromptSlot, list[AnyMessage]] = {}
         for slot in slot_order:
             group = by_slot.get(slot)
             if not group:
                 continue
             if slot not in SINGLETON_SLOTS:
                 kept.extend(group)
+                kept_by_slot[slot] = group
                 continue
             kept.append(group[-1])
+            kept_by_slot[slot] = [group[-1]]
             for stale in group[:-1]:
                 if slot is PromptSlot.TIME:
                     dropped_time += 1
@@ -89,8 +94,39 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
                 if stale.id:
                     pruned_ids.append(stale.id)
 
+        # A short content fingerprint per slot. The cached prefix is a BYTE
+        # prefix, so a single slot whose bytes move between turns pushes
+        # everything after it out of the cache — and until now the only way to
+        # find which slot moved was to guess. Comparing these across two
+        # consecutive requests names the culprit directly. Hashes, never
+        # content: these carry user data.
+        # Built from ``kept_by_slot``, not ``by_slot``: a singleton slot sends
+        # only its LAST message, so hashing the whole group moves the digest
+        # when a stale copy differs even though the sent bytes are identical —
+        # a false "this slot churned" in precisely the stacked-slot case this
+        # field exists to diagnose.
+        slot_text = {
+            slot.name.lower(): "\x00".join(
+                extract_text_content(m.content) for m in kept_by_slot[slot]
+            )
+            for slot in slot_order
+            if slot in kept_by_slot
+        }
+        slot_digests = {
+            name: hashlib.blake2b(text.encode(), digest_size=4).hexdigest()
+            for name, text in slot_text.items()
+        }
+        # Sizes answer the question the digests cannot: once the prefix IS stable,
+        # what is left uncached is simply the bytes behind the cache boundary, and
+        # the only way to raise the hit rate further is to know which slot owns
+        # them. Characters, not tokens — this node has no tokenizer, and ~4 chars
+        # per token is close enough to rank the slots.
+        slot_chars = {name: len(text) for name, text in slot_text.items()}
+
         log.set(
             prompt_pruning={
+                "slot_digests": slot_digests,
+                "slot_chars": slot_chars,
                 "messages_in": len(messages),
                 "messages_out": len(kept),
                 "dropped_system_prompts": dropped_system,

@@ -30,6 +30,7 @@ from app.workers.tasks import (
     regenerate_workflow_steps,
     run_nurture_sequence_task,
     sweep_abandoned_imessage_registrations,
+    sweep_expired_memories,
     sweep_idle_sandboxes,
 )
 from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
@@ -70,6 +71,7 @@ _run_nurture_sequence_task = arq_task(run_nurture_sequence_task)
 _promote_usage_badges = arq_task(promote_usage_badges)
 _sweep_dormant_user_workflows = arq_task(sweep_dormant_user_workflows)
 _sweep_abandoned_imessage_registrations = arq_task(sweep_abandoned_imessage_registrations)
+_sweep_expired_memories = arq_task(sweep_expired_memories)
 
 WorkerSettings.functions = [
     _sweep_hil_approvals,
@@ -94,6 +96,7 @@ WorkerSettings.functions = [
     _promote_usage_badges,
     _sweep_dormant_user_workflows,
     _sweep_abandoned_imessage_registrations,
+    _sweep_expired_memories,
 ]
 
 WorkerSettings.cron_jobs = [
@@ -183,6 +186,15 @@ WorkerSettings.cron_jobs = [
     cron(
         cast(WorkerCoroutine, _sweep_dormant_user_workflows),
         hour=6,  # Daily at 06:00 UTC
+        minute=0,
+        second=0,
+    ),
+    # Retire memories whose forget_after has passed. Without this, expiry is
+    # only a read-time filter: an expired fact stays in the folder tree, the
+    # plan cap count, the workspace projection and the rendered agenda.
+    cron(
+        cast(WorkerCoroutine, _sweep_expired_memories),
+        hour=2,  # Daily at 02:00 UTC, before the session/checkpoint prunes
         minute=0,
         second=0,
     ),
