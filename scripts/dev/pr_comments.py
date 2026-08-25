@@ -206,25 +206,41 @@ def main() -> int:
     )
     if rc != 0:
         if "no pull requests found" in err.lower() or "no open pull requests" in err.lower():
-            print(f"pr:comments: no open PR for branch '{branch}' — nothing to fetch.")
+            if args.json:
+                print(
+                    json.dumps(
+                        {
+                            "schema_version": SCHEMA_VERSION,
+                            "repo": repo_slug,
+                            "pr": None,
+                            "threads": [],
+                            "thread_count": 0,
+                            "unresolved_count": 0,
+                            "reason": f"no open PR for branch '{branch}'",
+                        }
+                    )
+                )
+            else:
+                print(f"pr:comments: no open PR for branch '{branch}' — nothing to fetch.")
             return 0
         eprint(f"pr:comments: gh failed resolving the PR:\n{err.strip()[:400]}")
         return classify_failure(err, rc)
-    meta = json.loads(out)
-    pr_number, pr_url, head_sha = meta["number"], meta["url"], meta["headRefOid"]
+    try:
+        meta = json.loads(out)
+        pr_number, pr_url, head_sha = meta["number"], meta["url"], meta["headRefOid"]
+    except (json.JSONDecodeError, KeyError) as exc:
+        eprint(f"ci error: gh returned unparseable PR metadata ({exc}): {out[:200]}")
+        sys.exit(2)
 
     step(2, steps_total, f"fetching review threads for #{pr_number} …", args.json)
-    query = (
-        """
+    query = """
 query($owner:String!,$name:String!,$number:Int!,$after:String) {
   repository(owner:$owner,name:$name){ pullRequest(number:$number){
-    reviewThreads(first:%d,after:$after){ pageInfo{hasNextPage endCursor}
+    reviewThreads(first:__FIRST__,after:$after){ pageInfo{hasNextPage endCursor}
       nodes{ id isResolved isOutdated path line originalLine startLine diffSide
         comments(first:3){ totalCount
           nodes{ id databaseId author{ login } body } } } } } } }
-"""
-        % GRAPHQL_PAGE
-    )
+""".replace("__FIRST__", str(GRAPHQL_PAGE))
     threads_raw: list[dict] = []
     cursor: str | None = None
     pages = 0
@@ -239,7 +255,11 @@ query($owner:String!,$name:String!,$number:Int!,$after:String) {
         if rc != 0:
             eprint(f"pr:comments: GraphQL fetch failed:\n{err.strip()[:400]}")
             return classify_failure(err, rc)
-        data = json.loads(out)
+        try:
+            data = json.loads(out)
+        except json.JSONDecodeError as exc:
+            eprint(f"ci error: gh returned non-JSON GraphQL output ({exc}): {out[:200]}")
+            sys.exit(2)
         if "errors" in data:
             eprint(f"pr:comments: GraphQL errors: {json.dumps(data['errors'])[:400]}")
             return 2

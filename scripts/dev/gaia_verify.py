@@ -84,7 +84,7 @@ def load_lanes(path: Path) -> list[Lane]:
                     command=row["command"],
                 )
             )
-        except (KeyError, ValueError) as exc:
+        except Exception as exc:
             _die(f"config error: {path} lane #{i}: {exc}")
     for ln in lanes:
         if ln.timeout_s <= 0:
@@ -129,11 +129,11 @@ def changed_files(root: Path, base: str, strict_base: bool = False) -> list[str]
 
     files: list[str] = []
     cmds = [
-        ["git", "diff", "--name-only", f"{base}...HEAD"],
-        ["git", "diff", "--name-only", "HEAD"],
-        ["git", "ls-files", "--others", "--exclude-standard"],
+        (["git", "diff", "--name-only", f"{base}...HEAD"], True),
+        (["git", "diff", "--name-only", "HEAD"], False),
+        (["git", "ls-files", "--others", "--exclude-standard"], False),
     ]
-    for cmd in cmds:
+    for cmd, uses_base in cmds:
         try:
             proc = run(cmd, 30, cwd=root)
         except subprocess.TimeoutExpired:
@@ -141,7 +141,7 @@ def changed_files(root: Path, base: str, strict_base: bool = False) -> list[str]
             continue
         if proc.returncode == 0:
             files.extend(f for f in proc.stdout.splitlines() if f.strip())
-        elif strict_base and base in cmd:
+        elif strict_base and uses_base:
             base_unusable(proc.stderr.strip()[:200])
         else:
             # Unknown/missing base ref is common on fresh clones; fall back to HEAD-only diffs.
@@ -295,8 +295,7 @@ def main() -> int:
         lane_t0 = time.monotonic()
         try:
             with open(log_file, "w") as logfh:
-                # lanes ARE shell pipelines (&& chains); config is repo-trusted
-                proc = subprocess.run(  # noqa: S602
+                proc = subprocess.run(  # noqa: S602 - lanes ARE shell pipelines (&& chains); config is repo-trusted
                     ln.command,
                     shell=True,
                     check=False,

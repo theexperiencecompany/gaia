@@ -121,6 +121,10 @@ GH_SHIM = r"""#!/usr/bin/env bash
 SC="${STUB_SCENARIO:-happy}"
 ARGS=("$@")
 if [[ "${ARGS[0]:-}" == "pr" && "${ARGS[1]:-}" == "view" ]]; then
+  if [[ "$SC" == "no_pr" ]]; then
+    echo "no pull requests found for branch ghost-branch" >&2
+    exit 1
+  fi
   if [[ "$SC" == "auth_fail" ]]; then
     echo "gh: Bad credentials" >&2
     exit 4
@@ -183,7 +187,7 @@ def run_scenario(scenario: str, extra_args: list[str]) -> tuple[int, str]:
             env=env,
             timeout=120,
         )
-        return proc.returncode, proc.stdout
+        return proc.returncode, proc.stdout, proc.stderr
 
 
 def check(label: str, cond: bool, detail: str = "") -> None:
@@ -196,7 +200,7 @@ def check(label: str, cond: bool, detail: str = "") -> None:
 def main() -> int:
     print("pr_comments fault-injection fixtures:")
 
-    rc, out = run_scenario("happy", ["--json"])
+    rc, out, _err = run_scenario("happy", ["--json"])
     d = json.loads(out)
     check("two_pages: thread_count==51", d["thread_count"] == 51, f"got {d['thread_count']}")
     check("two_pages: truncated is False", d["truncated"] is False)
@@ -221,29 +225,29 @@ def main() -> int:
     check("sanitize: html stripped", "<b>" not in json.dumps(d))
     check("exit: happy -> 0", rc == 0)
 
-    rc, out = run_scenario("pagination_cap", ["--json"])
+    rc, out, _err = run_scenario("pagination_cap", ["--json"])
     d = json.loads(out)
     check("cap: truncated True", d["truncated"] is True)
     check("cap: pages bounded at 20", d["pages_fetched"] <= 20, f"got {d['pages_fetched']}")
     check("cap: still exits 0", rc == 0)
 
-    rc, out = run_scenario("auth_fail", [])
+    rc, out, _err = run_scenario("auth_fail", [])
     check("auth_fail: exit 1", rc == 1, f"got {rc}")
 
-    rc, out = run_scenario("graphql_error", ["--json"])
+    rc, out, _err = run_scenario("graphql_error", ["--json"])
     check("graphql_error: exit 2", rc == 2, f"got {rc}")
 
-    rc, out = run_scenario("timeout", [])
+    rc, out, _err = run_scenario("timeout", [])
     check("timeout: exit 1 (network-class)", rc == 1, f"got {rc}")
 
-    rc, out = run_scenario("malformed_json", ["--json"])
+    rc, out, err = run_scenario("malformed_json", ["--json"])
     check(
         "malformed_json: clean exit (no traceback)",
         rc in (1, 2) and "Traceback" not in out,
         f"rc={rc}",
     )
 
-    rc, out = run_scenario("empty_pr", ["--json"])
+    rc, out, _err = run_scenario("empty_pr", ["--json"])
     d = json.loads(out)
     check(
         "empty_pr: counts 0, exit 0",
@@ -307,8 +311,17 @@ def main() -> int:
     arr["lanes"] = {"a": 1}
     check("loader: non-list lanes -> exit 2", loader_exit(json.dumps(arr)) == 2)
 
-    rc, out = run_scenario("happy", [])  # sanity: normal path unaffected
+    rc, out, _err = run_scenario("happy", [])  # sanity: normal path unaffected
     check("happy path still exit 0 after hardening", rc == 0)
+
+    # T5 regression: --json stays machine-readable in the no-PR state
+    rc, out, _err = run_scenario("no_pr", ["--json"])
+    try:
+        dj = json.loads(out)
+        ok = dj.get("pr") is None and dj.get("thread_count") == 0 and rc == 0
+    except json.JSONDecodeError:
+        ok = False
+    check("no_pr --json: valid JSON w/ pr:null, exit 0", ok, f"rc={rc} out={out[:80]}")
 
     print()
     if FAILURES:
