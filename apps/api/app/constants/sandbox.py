@@ -41,3 +41,31 @@ SANDBOX_CONNECT_TIMEOUT_SECONDS = 10
 # since the last refresh — avoids a set_timeout round-trip on every tool call in
 # a rapid turn. Half the lifetime leaves ample slack before the deadline.
 SANDBOX_TIMEOUT_REFRESH_SECONDS = SANDBOX_LIFETIME_SECONDS // 2
+
+# ── Local Docker-exec sandbox (ENV=selfhost without an E2B API key) ──
+# See app/services/sandbox/local_sandbox.py for the implementation.
+
+# Image for per-user local sandbox containers. A lightweight Python base covers
+# what the coding tools need (bash, coreutils, python); anything heavier is
+# installed by the agent into the workspace at runtime, like any other task.
+LOCAL_SANDBOX_IMAGE = "python:3.12-slim"
+
+# Per-user containers are named ``<prefix><sanitized user_id>``.
+LOCAL_SANDBOX_CONTAINER_PREFIX = "gaia-sandbox-"
+
+# Named Docker volume mounted at /workspace in EVERY local sandbox container,
+# including the static `gaia-sandbox` service in
+# infra/docker/docker-compose.selfhost.yml. The compose file pins this exact
+# literal name so containers created ad hoc by the API land on the same
+# durable workspace volume instead of a project-prefixed copy.
+LOCAL_SANDBOX_VOLUME = "gaia-sandbox-workspace"
+
+# Workspace mountpoint inside local sandbox containers. Must equal
+# WORKSPACE_ROOT (app.agents.workspace.paths) — the tools address files under
+# /workspace and expect the container to see them there.
+LOCAL_SANDBOX_WORKSPACE_MOUNT = "/workspace"
+
+# Upper bound on one ensure_started() cycle. Covers a cold-host image pull
+# (~50 MB class) plus daemon latency; the API container itself talks to the
+# host Docker daemon over its socket, so first-acquire can legitimately be slow.
+LOCAL_SANDBOX_START_TIMEOUT_SECONDS = 300

@@ -292,6 +292,31 @@ services:
       timeout: 10s
       retries: 5
 
+  # ─── Local coding sandbox ───
+  # Static fallback sandbox for ENV=selfhost instances WITHOUT an E2B API key.
+  # The API's LocalDockerSandbox (apps/api/app/services/sandbox/local_sandbox.py)
+  # drives code execution through `docker exec` / `docker cp`, creating per-user
+  # siblings named gaia-sandbox-<user_id> that mount the SAME pinned workspace
+  # volume below — files survive container recreation and are visible to this
+  # container too. Requires the gaia-backend container to reach the host Docker
+  # daemon (docker CLI + socket mount) to actually exec.
+  gaia-sandbox:
+    container_name: gaia-sandbox
+    logging: *default_logging
+    image: python:3.12-slim
+    # Keep PID 1 alive forever; exec sessions attach and detach on demand.
+    command: ["sleep", "infinity"]
+    volumes:
+      - sandbox_workspace:/workspace
+    restart: unless-stopped
+    networks:
+      - gaia_network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; os.stat('/workspace')"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
 volumes:
   chroma_data:
   pgdata:
@@ -300,6 +325,12 @@ volumes:
   rabbitmq_data:
   juicefs_cache:
   models_cache:
+  sandbox_workspace:
+    # Pinned literal name (compose would otherwise prefix the project name) so
+    # LocalDockerSandbox can mount the same volume into its ad-hoc per-user
+    # containers by name. Must match LOCAL_SANDBOX_VOLUME in
+    # apps/api/app/constants/sandbox.py.
+    name: gaia-sandbox-workspace
 
 networks:
   gaia_network:
