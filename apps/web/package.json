@@ -125,7 +125,7 @@
     "@tiptap/extension-link": "^2.27.2",
     "@tiptap/extension-mention": "^2.27.2",
     "@tiptap/extension-paragraph": "^2.27.2",
-    "@tiptap/extension-placeholder": "^2.27.2",
+    "@tiptap/extension-placeholder": "^3.30.2",
     "@tiptap/extension-text": "^2.27.2",
     "@tiptap/extension-typography": "^2.27.2",
     "@tiptap/extension-underline": "^2.27.2",
