@@ -18,7 +18,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.workers.tasks.tracked_todo_tasks import execute_tracked_todo
+from app.workers.tasks.tracked_todo_tasks import (
+    _LOCK_EXTEND_LUA,
+    _LOCK_RELEASE_LUA,
+    execute_tracked_todo,
+)
 
 pytestmark = pytest.mark.stress
 
@@ -28,11 +32,12 @@ CLAIMANTS = 40
 
 
 class _FakePool:
-    """In-process ArqRedis stand-in: atomic SET-NX/EXISTS/DELETE on a dict.
+    """In-process ArqRedis stand-in: atomic SET-NX/EXISTS/Lua-release on a dict.
 
     ``set`` performs check-and-write with no awaits between them — the same
     atomicity the real single-threaded Redis gives the ``nx=True`` claim, so
-    of N concurrent callers exactly one observes ``True``.
+    of N concurrent callers exactly one observes ``True``. ``eval`` mirrors
+    the compare-and-delete release (and no-op renewal) scripts.
     """
 
     def __init__(self) -> None:
@@ -53,6 +58,18 @@ class _FakePool:
 
     async def exists(self, key: str) -> int:
         return int(key in self._keys)
+
+    async def eval(self, lua: str, _numkeys: int, key: str, *args: str) -> int:
+        token = args[0]
+        if lua == _LOCK_EXTEND_LUA:
+            return int(self._keys.get(key) == token)
+        if lua == _LOCK_RELEASE_LUA:
+            if self._keys.get(key) != token:
+                return 0
+            del self._keys[key]
+            self.delete_calls.append(key)
+            return 1
+        raise ValueError(f"unexpected script: {lua}")
 
 
 async def _yielding_execution(*_args: Any, **_kwargs: Any) -> str:

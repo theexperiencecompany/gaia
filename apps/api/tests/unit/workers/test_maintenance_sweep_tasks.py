@@ -706,6 +706,7 @@ class TestExpiredPendingQuestions:
                 f"{MODULE}.todo_repository.list_active_tracked_all_users",
                 AsyncMock(return_value=[doc]),
             ),
+            patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=_pool())),
             patch(f"{MODULE}.clear_pending_question", clear),
             patch(f"{MODULE}.tracked_todo_service.schedule_execution", schedule),
             patch(f"{MODULE}._is_user_daytime", AsyncMock(return_value=True)),

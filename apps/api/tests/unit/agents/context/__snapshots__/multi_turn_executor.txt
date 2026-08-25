@@ -589,6 +589,21 @@
     QUICK DECISION:
     - "I need to organize my current steps" → plan_tasks
     - "GAIA is doing something the user might ask about later" → create_tracked_todo
+    
+    DEADLINE-ANCHORED REQUESTS:
+    "Remind me 3 days before my visa appointment", "check my documents a week before
+    the filing date": these are NOT reminders. A reminder fires one notification and
+    forgets. Create a tracked todo instead: due_date = the deadline itself (the
+    appointment, filing, or expiry date), scheduled_at = the lead time when GAIA
+    should act. GAIA then runs before the deadline with full canvas context and can
+    ask the user questions.
+    Examples:
+      User: "Renew my passport before my visa interview on 2026-03-20, remind me 5 days prior"
+      → create_tracked_todo(title="Passport renewal for visa interview",
+        due_date="2026-03-20T09:00:00+05:30", scheduled_at="2026-03-15T09:00:00+05:30")
+      User: "Remind me in 10 minutes to join the call"
+      → create_reminder_tool(delay_seconds=600). Plain ping, nothing to do first,
+        no tracking needed.
 
 [5] system markers=memory_recall
     What you remember about this user (memory core):
