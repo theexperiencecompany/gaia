@@ -11,11 +11,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 import pytest
 
-from app.schemas.usage import UsageBudget, UsageSummary
+from app.schemas.usage import UsageActivityResponse, UsageBudget, UsageSummary
 from app.services.analytics_service import AnalyticsEvents
 
 SUMMARY_URL = "/api/v1/usage/summary"
 HISTORY_URL = "/api/v1/usage/history"
+ACTIVITY_URL = "/api/v1/usage/activity"
 ANALYTICS_PATCH = "app.api.v1.endpoints.usage.capture_context_event"
 
 
@@ -106,6 +107,31 @@ class TestGetUsageSummary:
         assert response.status_code == 200
         data = response.json()
         assert data["plan_type"] == "pro"
+
+    async def test_summary_is_built_for_the_authenticated_user(self, client: AsyncClient):
+        with patch(
+            _BUILD_USAGE_SUMMARY,
+            new_callable=AsyncMock,
+            return_value=_mock_summary(),
+        ) as mock_build:
+            response = await client.get(SUMMARY_URL)
+
+        assert response.status_code == 200
+        mock_build.assert_awaited_once_with("507f1f77bcf86cd799439011")
+
+    async def test_summary_records_period_and_feature_count_in_event(self, client: AsyncClient):
+        with (
+            patch(
+                _BUILD_USAGE_SUMMARY,
+                new_callable=AsyncMock,
+                return_value=_mock_summary(),
+            ),
+            patch("app.api.v1.endpoints.usage.log") as mock_log,
+        ):
+            response = await client.get(SUMMARY_URL)
+
+        assert response.status_code == 200
+        mock_log.set.assert_any_call(period="realtime", result_count=0)
 
     async def test_get_summary_service_error_returns_500(self, client: AsyncClient):
         with patch(
@@ -205,3 +231,35 @@ class TestGetUsageHistory:
             response = await client.get(HISTORY_URL)
 
         assert response.status_code == 500
+
+
+# ---------------------------------------------------------------------------
+# GET /usage/activity
+# ---------------------------------------------------------------------------
+
+
+class TestGetUsageActivity:
+    """Tests for the get usage activity endpoint."""
+
+    async def test_get_activity_returns_200(self, client: AsyncClient):
+        activity = UsageActivityResponse(days=[], total=0, total_tokens=0, streak=0)
+        with patch(
+            "app.api.v1.endpoints.usage.get_activity",
+            new_callable=AsyncMock,
+            return_value=activity,
+        ):
+            response = await client.get(ACTIVITY_URL)
+
+        assert response.status_code == 200
+        assert response.json()["total"] == 0
+
+    async def test_get_activity_service_error_returns_500(self, client: AsyncClient):
+        with patch(
+            "app.api.v1.endpoints.usage.get_activity",
+            new_callable=AsyncMock,
+            side_effect=Exception("DB error"),
+        ):
+            response = await client.get(ACTIVITY_URL)
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to get usage activity"

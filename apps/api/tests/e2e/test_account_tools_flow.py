@@ -44,13 +44,17 @@ def _graph_with(fake_llm, extra_tools=(), **patches):
     """Compile the real GAIA graph with the account tools bound."""
     return build_gaia_test_graph(
         fake_llm=fake_llm,
-        tool_registry={name: TOOLS_BY_NAME[name] for name in (
-            "update_notification_settings",
-            "update_preferences",
-            "update_custom_instructions",
-            "set_selected_voice",
-            "manage_linked_account",
-        )} | {t.name: t for t in extra_tools},
+        tool_registry={
+            name: TOOLS_BY_NAME[name]
+            for name in (
+                "update_notification_settings",
+                "update_preferences",
+                "update_custom_instructions",
+                "set_selected_voice",
+                "manage_linked_account",
+            )
+        }
+        | {t.name: t for t in extra_tools},
     )
 
 
@@ -85,19 +89,31 @@ def _patched_seams():
 
 
 class TestAccountToolsThroughGraph:
-    async def test_update_notification_settings_lands_in_the_repo(self, thread_config, memory_saver, in_memory_store, _patched_seams):
+    async def test_update_notification_settings_lands_in_the_repo(
+        self, thread_config, memory_saver, in_memory_store, _patched_seams
+    ):
         fake_llm = BindableToolsFakeModel(
             responses=[
-                AIMessage(content="", tool_calls=[{
-                    "id": "c1", "name": "update_notification_settings",
-                    "args": {"email": False}, "type": "tool_call",
-                }]),
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "c1",
+                            "name": "update_notification_settings",
+                            "args": {"email": False},
+                            "type": "tool_call",
+                        }
+                    ],
+                ),
                 AIMessage(content="Email notifications are off."),
             ]
         )
-        graph = build_gaia_test_graph(fake_llm=fake_llm, tool_registry={
-            "update_notification_settings": TOOLS_BY_NAME["update_notification_settings"]
-        })
+        graph = build_gaia_test_graph(
+            fake_llm=fake_llm,
+            tool_registry={
+                "update_notification_settings": TOOLS_BY_NAME["update_notification_settings"]
+            },
+        )
 
         result = await graph.ainvoke(
             {"messages": [HumanMessage(content="turn off email notifications")]},
@@ -108,7 +124,9 @@ class TestAccountToolsThroughGraph:
         assert "Notification settings updated" in tool_msg.content
         assert "email=off" in tool_msg.content
         # The write went to THIS graph's user, not another tenant's.
-        _patched_seams.set_channels.assert_awaited_once_with(thread_config["configurable"]["user_id"], email=False)
+        _patched_seams.set_channels.assert_awaited_once_with(
+            thread_config["configurable"]["user_id"], email=False
+        )
         # Analytics only after success.
         _patched_seams.capture.assert_called_once_with(
             AnalyticsEvents.ACCOUNT_SETTING_CHANGED, {"area": "notifications"}
@@ -122,19 +140,29 @@ class TestAccountToolsThroughGraph:
         self, thread_config, memory_saver, in_memory_store, _patched_seams
     ):
         voice = SimpleNamespace(voice_id="v-9", name="Rachel", starred=False)
-        _patched_seams.list_voices.return_value = SimpleNamespace(voices=[voice], selected_voice_id=None)
+        _patched_seams.list_voices.return_value = SimpleNamespace(
+            voices=[voice], selected_voice_id=None
+        )
         fake_llm = BindableToolsFakeModel(
             responses=[
-                AIMessage(content="", tool_calls=[{
-                    "id": "c2", "name": "set_selected_voice",
-                    "args": {"voice": "rachel"}, "type": "tool_call",
-                }]),
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "c2",
+                            "name": "set_selected_voice",
+                            "args": {"voice": "rachel"},
+                            "type": "tool_call",
+                        }
+                    ],
+                ),
                 AIMessage(content="Voice switched."),
             ]
         )
-        graph = build_gaia_test_graph(fake_llm=fake_llm, tool_registry={
-            "set_selected_voice": TOOLS_BY_NAME["set_selected_voice"]
-        })
+        graph = build_gaia_test_graph(
+            fake_llm=fake_llm,
+            tool_registry={"set_selected_voice": TOOLS_BY_NAME["set_selected_voice"]},
+        )
 
         result = await graph.ainvoke(
             {"messages": [HumanMessage(content="switch my voice to Rachel")]},
@@ -152,16 +180,26 @@ class TestAccountToolsThroughGraph:
     ):
         fake_llm = BindableToolsFakeModel(
             responses=[
-                AIMessage(content="", tool_calls=[{
-                    "id": "c3", "name": "update_custom_instructions",
-                    "args": {"instructions": "x" * 501}, "type": "tool_call",
-                }]),
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "c3",
+                            "name": "update_custom_instructions",
+                            "args": {"instructions": "x" * 501},
+                            "type": "tool_call",
+                        }
+                    ],
+                ),
                 AIMessage(content="Sorry, that was too long."),
             ]
         )
-        graph = build_gaia_test_graph(fake_llm=fake_llm, tool_registry={
-            "update_custom_instructions": TOOLS_BY_NAME["update_custom_instructions"]
-        })
+        graph = build_gaia_test_graph(
+            fake_llm=fake_llm,
+            tool_registry={
+                "update_custom_instructions": TOOLS_BY_NAME["update_custom_instructions"]
+            },
+        )
 
         result = await graph.ainvoke(
             {"messages": [HumanMessage(content="remember this: ...")]},
@@ -176,23 +214,36 @@ class TestAccountToolsThroughGraph:
     async def test_manage_linked_account_generate_link_returns_connect_instructions(
         self, thread_config, memory_saver, in_memory_store, _patched_seams
     ):
-        flow = SimpleNamespace(auth_url=None, instructions="Open Telegram and message @gaia_bot with /auth", action_link="https://t.me/gaia_bot")
+        flow = SimpleNamespace(
+            auth_url=None,
+            instructions="Open Telegram and message @gaia_bot with /auth",
+            action_link="https://t.me/gaia_bot",
+        )
         from app.agents.tools import account_tools
 
-        with patch(f"{account_tools.__name__}.start_platform_connect", new=AsyncMock(return_value=flow)):
+        with patch(
+            f"{account_tools.__name__}.start_platform_connect", new=AsyncMock(return_value=flow)
+        ):
             fake_llm = BindableToolsFakeModel(
                 responses=[
-                    AIMessage(content="", tool_calls=[{
-                        "id": "c4", "name": "manage_linked_account",
-                        "args": {"platform": "telegram", "action": "generate_link"},
-                        "type": "tool_call",
-                    }]),
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "c4",
+                                "name": "manage_linked_account",
+                                "args": {"platform": "telegram", "action": "generate_link"},
+                                "type": "tool_call",
+                            }
+                        ],
+                    ),
                     AIMessage(content="Here's your link."),
                 ]
             )
-            graph = build_gaia_test_graph(fake_llm=fake_llm, tool_registry={
-                "manage_linked_account": TOOLS_BY_NAME["manage_linked_account"]
-            })
+            graph = build_gaia_test_graph(
+                fake_llm=fake_llm,
+                tool_registry={"manage_linked_account": TOOLS_BY_NAME["manage_linked_account"]},
+            )
 
             result = await graph.ainvoke(
                 {"messages": [HumanMessage(content="connect telegram")]},
@@ -223,9 +274,7 @@ class TestHILWiring:
         link_meta = registry.get_tool_meta("manage_linked_account")
         assert link_meta is not None and link_meta.always_gate is False
 
-    async def test_resolve_policy_asks_for_settings_even_when_hil_is_off(
-        self, real_tool_registry
-    ):
+    async def test_resolve_policy_asks_for_settings_even_when_hil_is_off(self, real_tool_registry):
         from unittest.mock import patch as sync_patch
 
         from app.models.hil_models import HILPreferences
@@ -257,11 +306,20 @@ class TestWriteRefusalJourney:
         with patch("app.agents.tools.coding.write_tool.acquire_sandbox", return_value=sandbox):
             fake_llm = BindableToolsFakeModel(
                 responses=[
-                    AIMessage(content="", tool_calls=[{
-                        "id": "c5", "name": "write",
-                        "args": {"path": "/workspace/account/preferences.json", "content": "{}"},
-                        "type": "tool_call",
-                    }]),
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "c5",
+                                "name": "write",
+                                "args": {
+                                    "path": "/workspace/account/preferences.json",
+                                    "content": "{}",
+                                },
+                                "type": "tool_call",
+                            }
+                        ],
+                    ),
                     AIMessage(content="I can't edit that directly."),
                 ]
             )

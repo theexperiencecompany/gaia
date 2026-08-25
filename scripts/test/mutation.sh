@@ -145,7 +145,12 @@ _phase() {
 # log, and nothing can outlive this script holding its stdout open.
 _cleanup() {
   rm -f "$PHASE_FILE"
-  [ -z "${MUTMUT_KEEP_WORKDIR:-}" ] && rm -rf "$WORKDIR"
+  # Explicit if, not `&&`: a short-circuit here returns 1 when the keep-var is
+  # set, and an EXIT trap's failing last command clobbers the script's exit
+  # status — a passing verdict would report EXIT=1.
+  if [ -z "${MUTMUT_KEEP_WORKDIR:-}" ]; then
+    rm -rf "$WORKDIR"
+  fi
 }
 trap _cleanup EXIT
 # EXIT alone does not run on a signal, so a killed run would leave its scratch

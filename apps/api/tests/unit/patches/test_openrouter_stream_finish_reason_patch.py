@@ -12,7 +12,7 @@ from openrouter.components.chatstreamchoice import ChatStreamChoice
 import pytest
 
 # Import applies the patch (module-level apply()).
-import app.patches.openrouter_stream_finish_reason_patch as patch_module  # noqa: F401
+import app.patches.openrouter_stream_finish_reason_patch as patch_module  # noqa: F401  # import applies the monkeypatch at module level; the symbol itself is unused
 
 
 def _chunk(payload: dict) -> ChatStreamChoice:
@@ -27,9 +27,7 @@ class TestFinishReasonPatch:
         assert chunk.finish_reason is None
 
     def test_present_finish_reason_still_parses(self) -> None:
-        chunk = _chunk(
-            {"delta": {"content": "x"}, "index": 0, "finish_reason": "stop"}
-        )
+        chunk = _chunk({"delta": {"content": "x"}, "index": 0, "finish_reason": "stop"})
         assert chunk.finish_reason == "stop"
 
     def test_tool_call_chunks_also_tolerate_a_missing_reason(self) -> None:

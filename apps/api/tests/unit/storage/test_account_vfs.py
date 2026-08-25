@@ -13,11 +13,16 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from app.constants.account import ACCOUNT_DIR, ACCOUNT_READ_ONLY_PATHS
-from app.services.storage.account_vfs import AccountFileProjection, materialize_account_files
+from app.services.storage.account_vfs import (
+    AccountFileProjection,
+    _prune_stale_json,
+    materialize_account_files,
+)
 
 
 def projection(rel_path: str, payload: dict[str, object]) -> AccountFileProjection:
@@ -60,6 +65,18 @@ def test_unchanged_bodies_are_not_rewritten(tmp_path: Path) -> None:
 
     # Same bodies again → zero writes.
     assert materialize_account_files(tmp_path, files) == 0
+
+
+@pytest.mark.unit
+def test_an_unchanged_file_does_not_stop_later_files_from_being_written(
+    tmp_path: Path,
+) -> None:
+    first = projection(f"{ACCOUNT_DIR}/preferences.json", {"response_style": "brief"})
+    materialize_account_files(tmp_path, [first])
+
+    second = projection(f"{ACCOUNT_DIR}/usage.json", {"plan_type": "free"})
+    assert materialize_account_files(tmp_path, [first, second]) == 1
+    assert '"free"' in (tmp_path / ACCOUNT_DIR / "usage.json").read_text()
 
 
 @pytest.mark.unit
@@ -106,6 +123,53 @@ def test_stale_projection_leaving_the_manifest_is_pruned(tmp_path: Path) -> None
 
     assert materialize_account_files(tmp_path, []) == 0
     assert not (tmp_path / ACCOUNT_DIR / "old-view.json").exists()
+
+
+@pytest.mark.unit
+def test_stale_read_only_projections_are_made_writable_before_removal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Projections are written 0444; the prune pass must chmod back to a
+    # writable mode before unlinking (required on platforms that refuse to
+    # delete read-only files), then remove the stale view.
+    stale_rel = f"{ACCOUNT_DIR}/old-view.json"
+    materialize_account_files(tmp_path, [projection(stale_rel, {})])
+
+    chmod_calls: list[tuple[Path, int]] = []
+    real_chmod = Path.chmod
+
+    def recording_chmod(self: Path, mode: int) -> None:
+        chmod_calls.append((self, mode))
+        real_chmod(self, mode)
+
+    monkeypatch.setattr(Path, "chmod", recording_chmod)
+    _prune_stale_json(tmp_path / ACCOUNT_DIR, set())
+
+    assert chmod_calls == [(tmp_path / stale_rel, 0o644)]
+    assert not (tmp_path / stale_rel).exists()
+
+
+@pytest.mark.unit
+def test_prune_tolerates_a_projection_that_vanishes_after_listing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A concurrent writer can delete a listed projection between the rglob
+    # listing and the unlink — the prune must treat the file as gone, not
+    # raise FileNotFoundError out of the sync.
+    account_root = tmp_path / ACCOUNT_DIR
+    account_root.mkdir()
+    ghost = account_root / "ghost.json"
+    real_rglob = Path.rglob
+
+    def rglob_with_ghost(root: Path, pattern: str) -> Any:
+        if root == account_root:
+            return iter([ghost])
+        return real_rglob(root, pattern)
+
+    monkeypatch.setattr(Path, "rglob", rglob_with_ghost)
+    monkeypatch.setattr(Path, "chmod", lambda self, mode: None)
+
+    _prune_stale_json(account_root, set())
 
 
 @pytest.mark.unit

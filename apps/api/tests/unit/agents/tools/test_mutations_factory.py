@@ -8,10 +8,12 @@ consumer inherits proven behavior instead of re-deriving it.
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+from langchain_core.runnables.config import RunnableConfig
 from pydantic import BaseModel, Field
 import pytest
 
-from app.agents.tools.core.mutations import define_mutation_tool
+from app.agents.tools.core.mutations import define_mutation_tool, user_id_from_config
+from app.constants.log_tags import LogTag
 from app.utils.errors import AppError
 
 MODULE = "app.agents.tools.core.mutations"
@@ -65,8 +67,32 @@ async def test_missing_user_fails_without_calling_apply() -> None:
     apply = AsyncMock(return_value="done")
     result = await make_probe(apply).ainvoke({"value": 1}, config={})
 
-    assert "authentication required" in result
+    # Exact string: this text is the agent-facing contract for an unauthenticated
+    # tool call, so a mangled variant must fail.
+    assert result == "Error: user authentication required."
     apply.assert_not_awaited()
+
+
+async def test_wrapper_stamps_tool_and_surface_into_the_wide_event() -> None:
+    async def apply(user_id: str, *, value: int) -> str:
+        return "ok"
+
+    probe = define_mutation_tool(
+        name="probe_log_set",
+        area="log_area",
+        description="probe",
+        args_model=ProbeArgs,
+        apply=apply,
+    )
+    with patch(f"{MODULE}.log") as log_mock:
+        await probe.ainvoke({"value": 1}, config=CONFIG)
+
+    # The wrapper's wide-event stamp is how a mutation is traced back to its
+    # tool and product area — both keys must land exactly.
+    log_mock.set.assert_called_once_with(
+        tool={"name": "probe_log_set", "action": "mutate"},
+        surface={"area": "log_area"},
+    )
 
 
 async def test_app_error_becomes_a_structured_error_string() -> None:
@@ -83,10 +109,25 @@ async def test_unexpected_error_is_logged_and_reported_not_raised() -> None:
     async def apply(user_id: str, *, value: int) -> str:
         raise RuntimeError("redis exploded")
 
-    result = await make_probe(apply).ainvoke({"value": 1}, config=CONFIG)
+    probe = define_mutation_tool(
+        name="probe_fail",
+        area="test_area",
+        description="probe",
+        args_model=ProbeArgs,
+        apply=apply,
+    )
+    with patch(f"{MODULE}.log") as log_mock, patch(f"{MODULE}.capture_context_event"):
+        result = await probe.ainvoke({"value": 1}, config=CONFIG)
 
-    assert result.startswith("Error:")
-    assert "did not complete" in result
+    assert result == "Error: probe_fail did not complete (RuntimeError)."
+    # The failure must land in the wide event's errors[] with full context:
+    # which tool, what exception class, what message.
+    log_mock.error.assert_called_once_with(
+        f"{LogTag.TOOL} mutation failed",
+        tool="probe_fail",
+        error_type="RuntimeError",
+        error="redis exploded",
+    )
 
 
 async def test_event_captures_only_after_success(_quiet) -> None:
@@ -165,8 +206,39 @@ class TestUserIdExtraction:
         result = await make_probe(apply).ainvoke(
             {"value": 1}, config={"metadata": {"user_id": "   "}}
         )
-        assert "authentication required" in result
+        assert result == "Error: user authentication required."
         apply.assert_not_awaited()
+
+
+class TestUserIdFromConfig:
+    def test_configurable_takes_precedence_over_metadata(self) -> None:
+        config: RunnableConfig = {
+            "configurable": {"user_id": "cfg-user"},
+            "metadata": {"user_id": "meta-user"},
+        }
+        assert user_id_from_config(config) == "cfg-user"
+
+    def test_metadata_is_the_fallback_when_configurable_has_no_user(self) -> None:
+        config: RunnableConfig = {
+            "configurable": {},
+            "metadata": {"user_id": "meta-user"},
+        }
+        assert user_id_from_config(config) == "meta-user"
+
+    def test_config_without_a_metadata_key_yields_none_not_a_crash(self) -> None:
+        # The metadata lookup must default to {} — a config that carries only
+        # `configurable` (the workflow/silent-run shape) must not explode.
+        assert user_id_from_config({"configurable": {}}) is None
+
+    def test_none_and_non_string_user_ids_are_rejected(self) -> None:
+        assert user_id_from_config(None) is None
+        assert user_id_from_config({}) is None
+        assert user_id_from_config({"metadata": {"user_id": 123}}) is None
+        assert user_id_from_config({"metadata": {"user_id": None}}) is None
+
+    def test_whitespace_only_user_id_becomes_none_and_valid_ids_are_stripped(self) -> None:
+        assert user_id_from_config({"metadata": {"user_id": "   "}}) is None
+        assert user_id_from_config({"metadata": {"user_id": "  u-1  "}}) == "u-1"
 
 
 async def test_unknown_schema_keys_are_dropped_before_apply_sees_them() -> None:

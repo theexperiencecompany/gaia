@@ -34,16 +34,22 @@ class TestGenerateLink:
         flow.instructions = "Message @gaia_bot with /auth"
         flow.action_link = "https://t.me/gaia_bot"
         with (
-            patch(f"{MODULE}.enforce_rate_limit", new=AsyncMock()),
-            patch(f"{MODULE}.start_platform_connect", new=AsyncMock(return_value=flow)),
+            patch(f"{MODULE}.enforce_rate_limit", new=AsyncMock()) as limit,
+            patch(f"{MODULE}.start_platform_connect", new=AsyncMock(return_value=flow)) as connect,
         ):
             result = await account_tools.manage_linked_account.ainvoke(
                 {"platform": "telegram", "action": "generate_link"}, config=CONFIG
             )
 
-        assert "connect your telegram account" in result.lower()
-        assert "Message @gaia_bot with /auth" in result
-        assert "https://t.me/gaia_bot" in result
+        assert result == (
+            "To connect your telegram account:\n"
+            "Message @gaia_bot with /auth\n"
+            "Open: https://t.me/gaia_bot"
+        )
+        # The limiter is keyed to THIS user under the connect feature, and the
+        # flow is started for the same user and platform the caller asked for.
+        limit.assert_awaited_once_with("user-1", account_tools.LINK_GENERATION_FEATURE_KEY)
+        connect.assert_awaited_once_with("user-1", "telegram")
 
     async def test_oauth_platform_returns_the_authorize_url(self) -> None:
         flow = AsyncMock()
@@ -86,6 +92,7 @@ class TestDisconnect:
             patch(f"{MODULE}.disconnect_platform_account", new=unlink),
             patch(f"{MODULE}.schedule_account_sync", new=resync),
             patch(f"{MODULE}.capture_context_event") as capture,
+            patch(f"{MODULE}.log") as log_mock,
         ):
             result = await account_tools.manage_linked_account.ainvoke(
                 {"platform": "whatsapp", "action": "disconnect"}, config=CONFIG
@@ -98,6 +105,9 @@ class TestDisconnect:
         capture.assert_called_once_with(
             AnalyticsEvents.ACCOUNT_PLATFORM_DISCONNECTED, {"area": "linked_accounts"}
         )
+        # The wide event names the action and platform — downstream debugging
+        # of a disconnect reads these, not the return string.
+        log_mock.set.assert_called_once_with(action="disconnect", platform="whatsapp")
 
     async def test_disconnect_failure_surfaces_as_an_error_string_not_a_crash(self) -> None:
         from app.utils.errors import AppError

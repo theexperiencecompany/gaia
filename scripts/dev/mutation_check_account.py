@@ -32,19 +32,44 @@ COVERING_TESTS: dict[str, list[str]] = {
 MUTATIONS = [
     # (id, file, old, new) — every `old` must occur exactly once in the file.
     # --- factory: auth + error envelope -----------------------------------
-    ("M01", "app/agents/tools/core/mutations.py", "return user_id.strip() or None", "return user_id"),
+    (
+        "M01",
+        "app/agents/tools/core/mutations.py",
+        "return user_id.strip() or None",
+        "return user_id",
+    ),
     ("M02", "app/agents/tools/core/mutations.py", "if not user_id:", "if False:"),
     ("M03", "app/agents/tools/core/mutations.py", 'detail += f" Fix: {e.fix}"', "pass"),
-    ("M04", "app/agents/tools/core/mutations.py", 'capture_context_event(event, {"area": area})', 'capture_context_event(event, {"area": "wrong"})'),
+    (
+        "M04",
+        "app/agents/tools/core/mutations.py",
+        'capture_context_event(event, {"area": area})',
+        'capture_context_event(event, {"area": "wrong"})',
+    ),
     ("M05", "app/agents/tools/core/mutations.py", "return result", 'return "done"'),
     # --- appliers: guards and boundaries ----------------------------------
     ("M06", "app/services/account_settings.py", "if not given:", "if False:"),
     ("M07", "app/services/account_settings.py", "if not style:", "if False:"),
-    ("M08", "app/services/account_settings.py", "len(value) > MAX_CUSTOM_INSTRUCTIONS_CHARS", "len(value) > MAX_CUSTOM_INSTRUCTIONS_CHARS + 1"),
+    (
+        "M08",
+        "app/services/account_settings.py",
+        "len(value) > MAX_CUSTOM_INSTRUCTIONS_CHARS",
+        "len(value) > MAX_CUSTOM_INSTRUCTIONS_CHARS + 1",
+    ),
     ("M09", "app/services/account_settings.py", "if not is_valid_timezone(tz):", "if False:"),
-    ("M10", "app/services/account_settings.py", "v.voice_id == query or v.name.lower() == query.lower()", "v.name.lower() == query.lower()"),
+    (
+        "M10",
+        "app/services/account_settings.py",
+        "v.voice_id == query or v.name.lower() == query.lower()",
+        "v.name.lower() == query.lower()",
+    ),
     ("M11", "app/services/account_settings.py", "catalog.voices[:15]", "catalog.voices"),
-    ("M12", "app/services/account_settings.py", "value = instructions.strip() or None", 'value = instructions.strip() or ""'),
+    (
+        "M12",
+        "app/services/account_settings.py",
+        "value = instructions.strip() or None",
+        'value = instructions.strip() or ""',
+    ),
     # --- refusal map -------------------------------------------------------
     (
         "M13",
@@ -59,7 +84,12 @@ MUTATIONS = [
         'AccountArea.NOTIFICATIONS: "update_preferences"',
     ),
     # --- materializer: the self-heal contract ------------------------------
-    ('M15', "app/services/storage/account_vfs.py", 'if matches_text(target, doc["body"]):', "if True:"),
+    (
+        "M15",
+        "app/services/storage/account_vfs.py",
+        'if matches_text(target, doc["body"]):',
+        "if True:",
+    ),
     # M16 is an ACCEPTED EQUIVALENT MUTANT: chmod-before-unlink is defensive
     # for filesystems that refuse to unlink read-only files (JuiceFS); on
     # macOS/Linux plain unlink succeeds either way, so no behavioral test can

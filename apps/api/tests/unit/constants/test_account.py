@@ -103,9 +103,12 @@ def test_refusal_points_at_the_mutation_tool_that_owns_the_change(
 @pytest.mark.unit
 @pytest.mark.parametrize("rel_path", ["account/subscription.json", "account/usage.json"])
 def test_billing_truth_names_no_tool_because_none_exists(rel_path: str) -> None:
-    refusal = account_mutation_refusal(rel_path)
-    assert refusal is not None
-    assert "read-only" in refusal
+    # Exact text: this refusal is shown to the user verbatim, so the wording
+    # is part of the contract — no tool to point at, the sentence stands alone.
+    assert account_mutation_refusal(rel_path) == (
+        f"Error: {rel_path} is a read-only projection of the user's account "
+        "and cannot be modified by editing it."
+    )
 
 
 @pytest.mark.unit

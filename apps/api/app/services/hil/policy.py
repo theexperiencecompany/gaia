@@ -67,7 +67,7 @@ async def resolve_policy(request: ToolCallRequest, user_id: str, tool_name: str)
     prefs = await _preferences(user_id)
     if prefs.mode == "always_allow":
         return "allow"
-    if not await is_gated(prefs, tool_name, tool_of(request), args=call.args):
+    if not await is_gated(prefs, tool_name, tool_of(request)):  # args resolved above
         return "allow"
     return "auto" if prefs.mode == "auto" else "ask"
 

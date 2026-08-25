@@ -173,15 +173,15 @@ async def link_platform(
         raise HTTPException(status_code=409, detail=str(e)) from e
 
 
+# The unlink is audited inside platform_link_service.disconnect_platform_account
+# (shared with the agent tool path) so every entry point writes one audit trail.
+# evlog-map-disable-next-line audit -- audited in disconnect_platform_account
 @router.delete("/{platform}")
 async def disconnect_platform(
     platform: str,
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> DisconnectPlatformResponse:
     """Disconnect a platform from user account."""
-    # evlog-map-disable-next-line audit -- the unlink is audited inside
-    # platform_link_service.disconnect_platform_account, shared with the agent
-    # tool path so every entry point produces one identical audit trail.
     if not current_user:
         raise HTTPException(status_code=401, detail="Not authenticated")
 

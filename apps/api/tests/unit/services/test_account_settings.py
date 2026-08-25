@@ -21,21 +21,19 @@ USER_ID = "user-1"
 @pytest.fixture
 def repo():
     with (
-        patch.object(account_settings.user_repository, "set_channel_preferences", new=AsyncMock()) as set_channels,
+        patch.object(
+            account_settings.user_repository, "set_channel_preferences", new=AsyncMock()
+        ) as set_channels,
         patch.object(
             account_settings.user_repository, "update_onboarding_preferences", new=AsyncMock()
         ) as update_prefs,
         patch.object(account_settings.user_repository, "update", new=AsyncMock()) as update,
     ):
-        yield SimpleNamespace(
-            set_channels=set_channels, update_prefs=update_prefs, update=update
-        )
+        yield SimpleNamespace(set_channels=set_channels, update_prefs=update_prefs, update=update)
 
 
 async def test_notification_channels_write_only_the_given_flags(repo) -> None:
-    result = await account_settings.set_notification_channels(
-        USER_ID, email=False, telegram=True
-    )
+    result = await account_settings.set_notification_channels(USER_ID, email=False, telegram=True)
 
     assert "email=off" in result and "telegram=on" in result
     repo.set_channels.assert_awaited_once_with(USER_ID, email=False, telegram=True)
@@ -143,7 +141,7 @@ class TestSetPreferencesEdges:
         with pytest.raises(AppError, match="User not found"):
             await account_settings.set_preferences(USER_ID, timezone="UTC")
 
-    @pytest.mark.parametrize("tz", ["+05:30", "-08:00", "asia/kolkata", "UTC"])
+    @pytest.mark.parametrize("tz", ["+05:30", "-08:00", "Asia/Kolkata", "UTC"])
     async def test_every_timezone_shape_the_canonical_validator_accepts_lands_verbatim(
         self, repo, tz
     ):
@@ -242,7 +240,8 @@ class TestVoiceSelectionAttacks:
         with (
             patch(f"{MODULE}.list_voices", new=AsyncMock(return_value=self.catalog_of(voice))),
             patch(
-                f"{MODULE}.set_user_voice", new=AsyncMock(side_effect=RuntimeError("elevenlabs down"))
+                f"{MODULE}.set_user_voice",
+                new=AsyncMock(side_effect=RuntimeError("elevenlabs down")),
             ),
         ):
             with pytest.raises(RuntimeError, match="elevenlabs down"):

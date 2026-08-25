@@ -59,7 +59,11 @@ class TestNotificationChannels:
     async def test_flags_persist_and_unset_channels_survive(self, mongo_db):
         await mongo_db["users"].update_one(
             {"_id": USER_OID},
-            {"$set": {"notification_channel_prefs": {"telegram": True, "email": True, "discord": True}}},
+            {
+                "$set": {
+                    "notification_channel_prefs": {"telegram": True, "email": True, "discord": True}
+                }
+            },
         )
 
         await account_settings.set_notification_channels(USER_ID, email=False)

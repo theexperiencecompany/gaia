@@ -76,6 +76,36 @@ class TestResolvePolicy:
             assert await resolve_policy(make_request(), USER_ID, "delete_everything") == "allow"
         assert classify.await_count == 0
 
+    async def test_the_callers_tool_name_reaches_the_gate(self) -> None:
+        # Attack: resolving the gate under the wrong name (or None) would lose
+        # this tool's own override and hand an explicitly allowed call to the
+        # classifier — or worse, to the judge.
+        with (
+            patch(
+                f"{MODULE}.get_hil_preferences",
+                new=AsyncMock(return_value=prefs("auto", send_email=False)),
+            ),
+            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=True)),
+        ):
+            assert await resolve_policy(make_request(), USER_ID, "send_email") == "allow"
+
+    async def test_the_pending_calls_tool_object_reaches_the_classifier(self) -> None:
+        # Attack: dropping the request's tool loses its description and MCP
+        # destructiveHint — the exact regression that let a hint-gated call
+        # auto-run. The classifier below only allows a call it can see.
+        tool = make_tool(name="send_email", description="wipe the user's disk")
+        request = make_request(name="send_email", tool=tool)
+
+        async def classify(name: str, description: str, **_: object) -> bool:
+            assert description == "wipe the user's disk", description
+            return False
+
+        with (
+            patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs("auto"))),
+            patch(f"{MODULE}.is_tool_destructive", side_effect=classify),
+        ):
+            assert await resolve_policy(request, USER_ID, "send_email") == "allow"
+
 
 class TestOverrides:
     async def test_an_override_to_ask_gates_a_tool_the_classifier_calls_safe(self) -> None:
@@ -283,30 +313,58 @@ class TestAlwaysGate:
 
     async def test_forced_ask_wins_over_every_mode_without_reading_preferences(self) -> None:
         # The check runs BEFORE the preference lookup, so a dead preference
-        # store cannot wave an account mutation through.
+        # store cannot wave an account mutation through. The stamp is looked up
+        # by the call's own name — a lookup under any other name finds nothing.
         with (
-            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=SimpleNamespace(
-                get_tool_meta=lambda name: self.meta(True)
-            ))),
-            patch(f"{MODULE}._preferences", new=AsyncMock(side_effect=AssertionError("must not read prefs"))) as prefs_read,
-            patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs("always_allow"))),
+            patch(
+                f"{MODULE}.get_tool_registry",
+                new=AsyncMock(
+                    return_value=SimpleNamespace(
+                        get_tool_meta=lambda name: (
+                            self.meta(True) if name == "update_preferences" else None
+                        )
+                    )
+                ),
+            ),
+            patch(
+                f"{MODULE}._preferences",
+                new=AsyncMock(side_effect=AssertionError("must not read prefs")),
+            ) as prefs_read,
+            patch(
+                f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs("always_allow"))
+            ),
         ):
             assert await resolve_policy(make_request(), USER_ID, "update_preferences") == "ask"
         prefs_read.assert_not_awaited()
 
     async def test_per_tool_allow_override_does_not_bypass_the_stamp(self) -> None:
         tool = make_tool(name="update_preferences")
-        with patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=SimpleNamespace(
-            get_tool_meta=lambda name: self.meta(True)
-        ))):
-            assert await is_gated(prefs("always_ask", update_preferences=False), "update_preferences", tool) is True
+        with patch(
+            f"{MODULE}.get_tool_registry",
+            new=AsyncMock(
+                return_value=SimpleNamespace(
+                    get_tool_meta=lambda name: (
+                        self.meta(True) if name == "update_preferences" else None
+                    )
+                )
+            ),
+        ):
+            assert (
+                await is_gated(
+                    prefs("always_ask", update_preferences=False), "update_preferences", tool
+                )
+                is True
+            )
 
     async def test_ungated_tools_are_unaffected_by_the_stamp_path(self) -> None:
         tool = make_tool(name="web_search")
         with (
-            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=SimpleNamespace(
-                get_tool_meta=lambda name: self.meta(False)
-            ))),
+            patch(
+                f"{MODULE}.get_tool_registry",
+                new=AsyncMock(
+                    return_value=SimpleNamespace(get_tool_meta=lambda name: self.meta(False))
+                ),
+            ),
             patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=False)),
         ):
             assert await is_gated(prefs(), "web_search", tool) is False
@@ -317,24 +375,50 @@ class TestArgumentGate:
 
     def registry_with_stamp(self, always_gate: bool = False):
         return AsyncMock(
-            return_value=SimpleNamespace(get_tool_meta=lambda name: SimpleNamespace(always_gate=always_gate))
+            return_value=SimpleNamespace(
+                get_tool_meta=lambda name: SimpleNamespace(always_gate=always_gate)
+            )
         )
 
     async def test_disconnect_always_asks_regardless_of_mode(self) -> None:
-        request = make_request(name="manage_linked_account", args={"platform": "slack", "action": "disconnect"})
+        request = make_request(
+            name="manage_linked_account", args={"platform": "slack", "action": "disconnect"}
+        )
         with (
             patch(f"{MODULE}.get_tool_registry", new=self.registry_with_stamp()),
-            patch(f"{MODULE}._preferences", new=AsyncMock(side_effect=AssertionError("must not read prefs"))),
+            patch(
+                f"{MODULE}._preferences",
+                new=AsyncMock(side_effect=AssertionError("must not read prefs")),
+            ),
         ):
             assert await resolve_policy(request, USER_ID, "manage_linked_account") == "ask"
 
     async def test_generate_link_falls_through_to_normal_resolution(self) -> None:
-        request = make_request(name="manage_linked_account", args={"platform": "slack", "action": "generate_link"})
+        request = make_request(
+            name="manage_linked_account", args={"platform": "slack", "action": "generate_link"}
+        )
         with (
             patch(f"{MODULE}.get_tool_registry", new=self.registry_with_stamp()),
-            patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs("always_allow"))),
+            patch(
+                f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs("always_allow"))
+            ),
         ):
             assert await resolve_policy(request, USER_ID, "manage_linked_account") == "allow"
+
+    async def test_is_gated_honors_the_argument_gate_on_its_own(self) -> None:
+        # Direct gate checks (e.g. a sibling scan) must hit on the call's own
+        # name and args — not on None standing in for either. The classifier is
+        # pinned safe so the ONLY thing that can gate here is the argument gate.
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=self.registry_with_stamp()),
+            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=False)),
+        ):
+            assert (
+                await is_gated(
+                    prefs(), "manage_linked_account", None, args={"action": "disconnect"}
+                )
+                is True
+            )
 
     async def test_a_disconnect_sibling_counts_as_pausing(self) -> None:
         state_messages = [
@@ -348,9 +432,11 @@ class TestArgumentGate:
             patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs())),
             patch(
                 f"{MODULE}.get_tool_registry",
-                new=AsyncMock(
-                    return_value=SimpleNamespace(get_tool_meta=lambda name: None)
-                ),
+                new=AsyncMock(return_value=SimpleNamespace(get_tool_meta=lambda name: None)),
             ),
+            # Pinned safe so the sibling pauses ONLY because its disconnect
+            # args reached the gate — losing them would read as safe and let
+            # the pending call auto-run into the pause's replay.
+            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=False)),
         ):
             assert await has_pausing_sibling(request, USER_ID, "call-1") is True

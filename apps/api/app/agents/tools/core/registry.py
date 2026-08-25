@@ -367,7 +367,7 @@ class ToolRegistry:
                 "update_custom_instructions",
                 "set_selected_voice",
             },
-        )
+        )  # pragma: no mutate -- closing paren is whitespace-only (AST-equivalent)
         self._add_category(
             "tracked_todos",
             tools=[*tracked_todo_tools.tools],

@@ -11,6 +11,7 @@ from app.models.platform_models import DisconnectPlatformResponse, PlatformLinkR
 from app.services.analytics_service import AnalyticsEvents
 from app.services.photon.photon_client import PhotonUser
 from app.services.platform_link_service import IMESSAGE_REGISTRATION_FEATURE_KEY
+from app.utils.errors import AppError
 from tests.conftest import FAKE_USER
 
 BASE = "/api/v1/platform-links"
@@ -187,6 +188,41 @@ class TestLinkPlatform:
         )
 
     @pytest.mark.asyncio
+    async def test_successful_link_schedules_account_sync_for_user(
+        self, client: AsyncClient
+    ) -> None:
+        mock_redis = AsyncMock()
+        mock_redis.hgetall = AsyncMock(
+            return_value={"platform": "discord", "platform_user_id": "DISC123"}
+        )
+        mock_redis.delete = AsyncMock()
+        link_result = PlatformLinkResult(
+            status="linked",
+            platform="discord",
+            platform_user_id="DISC123",
+            connected_at="2024-01-01T00:00:00Z",
+            is_new_link=False,
+        )
+
+        with (
+            patch("app.api.v1.endpoints.platform_links.redis_cache") as mock_cache,
+            patch(
+                "app.api.v1.endpoints.platform_links.PlatformLinkService.link_account",
+                new_callable=AsyncMock,
+                return_value=link_result,
+            ),
+            patch(
+                "app.api.v1.endpoints.platform_links.schedule_account_sync"
+            ) as mock_schedule_sync,
+        ):
+            mock_cache.client = mock_redis
+            resp = await client.post(f"{BASE}/discord", json={"token": "valid_tok"})
+
+        assert resp.status_code == 200
+        # The workspace projection must sync THIS user's files, not a null id.
+        mock_schedule_sync.assert_called_once_with(FAKE_USER_ID)
+
+    @pytest.mark.asyncio
     async def test_link_conflict(self, client: AsyncClient) -> None:
         """ValueError from link_account returns 409."""
         mock_redis = AsyncMock()
@@ -257,6 +293,80 @@ class TestDisconnectPlatform:
         mock_capture.assert_called_once_with(
             AnalyticsEvents.INTEGRATION_DISCONNECTED, {"integration_id": "discord"}
         )
+
+    @pytest.mark.asyncio
+    async def test_disconnect_resolves_the_link_for_the_authenticated_user(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(
+                "app.api.v1.endpoints.platform_links.disconnect_platform_account",
+                new_callable=AsyncMock,
+                return_value=DisconnectPlatformResponse(status="disconnected", platform="discord"),
+            ) as mock_disconnect,
+            patch("app.api.v1.endpoints.platform_links.schedule_account_sync"),
+        ):
+            resp = await client.delete(f"{BASE}/discord")
+
+        assert resp.status_code == 200
+        # The unlink must run against THIS user's account, for THIS platform.
+        assert mock_disconnect.await_args.args == (FAKE_USER_ID, "discord")
+
+    @pytest.mark.asyncio
+    async def test_disconnect_schedules_account_sync_for_the_user(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(
+                "app.api.v1.endpoints.platform_links.disconnect_platform_account",
+                new_callable=AsyncMock,
+                return_value=DisconnectPlatformResponse(status="disconnected", platform="discord"),
+            ),
+            patch(
+                "app.api.v1.endpoints.platform_links.schedule_account_sync"
+            ) as mock_schedule_sync,
+        ):
+            resp = await client.delete(f"{BASE}/discord")
+
+        assert resp.status_code == 200
+        mock_schedule_sync.assert_called_once_with(FAKE_USER_ID)
+
+    @pytest.mark.asyncio
+    async def test_disconnect_maps_service_error_to_status_and_detail(
+        self, client: AsyncClient
+    ) -> None:
+        """The service's AppError reaches the client with its status AND message."""
+        with (
+            patch(
+                "app.api.v1.endpoints.platform_links.disconnect_platform_account",
+                new_callable=AsyncMock,
+                side_effect=AppError(
+                    message="Platform not linked",
+                    status_code=404,
+                ),
+            ),
+            patch("app.api.v1.endpoints.platform_links.schedule_account_sync"),
+        ):
+            resp = await client.delete(f"{BASE}/discord")
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Platform not linked"
+
+    @pytest.mark.asyncio
+    async def test_disconnect_records_success_outcome(self, client: AsyncClient) -> None:
+        with (
+            patch(
+                "app.api.v1.endpoints.platform_links.disconnect_platform_account",
+                new_callable=AsyncMock,
+                return_value=DisconnectPlatformResponse(status="disconnected", platform="discord"),
+            ),
+            patch("app.api.v1.endpoints.platform_links.schedule_account_sync"),
+            patch("app.api.v1.endpoints.platform_links.log") as mock_log,
+        ):
+            resp = await client.delete(f"{BASE}/discord")
+
+        assert resp.status_code == 200
+        mock_log.set.assert_any_call(outcome="success")
 
     @pytest.mark.asyncio
     async def test_disconnect_no_existing_entry_returns_404(self, client: AsyncClient) -> None:
@@ -385,6 +495,22 @@ class TestInitiatePlatformConnect:
         assert body["auth_type"] == "manual"
         assert "WhatsApp" in body["instructions"]
         assert body["action_link"] == "https://wa.me/15551234567"
+
+    @pytest.mark.asyncio
+    async def test_connect_records_outcome_and_auth_type_in_event(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch("app.services.platform_link_service.settings") as mock_settings,
+            patch("app.api.v1.endpoints.platform_links.log") as mock_log,
+        ):
+            mock_settings.DISCORD_OAUTH_CLIENT_ID = None
+            mock_settings.SLACK_OAUTH_CLIENT_ID = None
+            mock_settings.TELEGRAM_BOT_USERNAME = "gaia_bot"
+            resp = await client.post(f"{BASE}/telegram/connect", json={})
+
+        assert resp.status_code == 200
+        mock_log.set.assert_any_call(outcome="success", auth_type="manual")
 
     @pytest.mark.asyncio
     async def test_unauthenticated(self, unauthed_client: AsyncClient) -> None:
