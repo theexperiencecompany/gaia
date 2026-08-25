@@ -28,6 +28,7 @@ from app.scripts import repair_memory_store
 from app.scripts.repair_memory_store import (
     _repair_user,
     _run,
+    covers,
     extends_parents_to_retire,
     looks_like_state,
     main,
@@ -259,6 +260,25 @@ def store() -> Iterator[SimpleNamespace]:
 
 @pytest.mark.unit
 class TestRepairUserPlan:
+    async def test_the_containment_flag_is_what_decides_the_extends_plan(
+        self, store: SimpleNamespace, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        parent = make_row(content="avoid corporate jargon and em dashes")
+        child = make_row(
+            content="avoid fluff in marketing copy",
+            parent_id=parent.id,
+            relation_type="extends",
+        )
+        store.get_all_live_memories.return_value = [parent, child]
+
+        await _repair_user("u1", make_args(extends_containment=1.0))
+        strict = capsys.readouterr().out
+        await _repair_user("u1", make_args(extends_containment=0.0))
+        lax = capsys.readouterr().out
+
+        assert "EXTENDS parents still live alongside their child: 0" in strict
+        assert "EXTENDS parents still live alongside their child: 1" in lax
+
     async def test_the_dry_run_prints_the_whole_plan_and_writes_nothing(
         self, store: SimpleNamespace, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -537,6 +557,42 @@ class TestRunBootstrapsWhatAScriptHasNoLifespanFor:
 
 
 @pytest.mark.unit
+class TestWhatCountsAsCoverage:
+    def test_the_share_is_measured_against_the_parents_words_only(self) -> None:
+        # parent: startup, bootstrapped, venture, backed, india (5); child repeats 4.
+        parent = "startup bootstrapped venture backed india"
+        child = "startup bootstrapped venture backed berlin and a great deal more"
+
+        assert covers(parent, child, 0.8) is True
+        assert covers(parent, child, 0.81) is False
+
+    def test_a_parent_made_only_of_filler_is_never_covered(self) -> None:
+        assert covers("it is as it was", "it is as it was", 0.0) is False
+
+    def test_case_and_filler_do_not_count_toward_coverage(self) -> None:
+        assert covers("PostHog Analytics", "posthog analytics", 1.0) is True
+        assert covers("the a an of to", "the a an of to", 0.0) is False
+        assert covers("AI is useful", "useful", 1.0) is True
+
+    def test_two_letter_words_are_filler_and_three_letter_words_are_subject(self) -> None:
+        assert covers("uses AI", "uses", 1.0) is True
+        assert covers("uses zsh", "uses", 1.0) is False
+
+    def test_an_apostrophe_keeps_a_contraction_as_one_word(self) -> None:
+        assert covers("doesn't drink", "does not drink", 1.0) is False
+        assert covers("doesn't drink", "doesn't drink", 1.0) is True
+
+
+@pytest.mark.unit
+class TestTheSnapshotLengthBound:
+    def test_the_bound_is_inclusive(self) -> None:
+        exactly = "currently " + "x" * 290
+        assert len(exactly) == 300
+        assert looks_like_state(exactly) is True
+        assert looks_like_state(exactly + "x") is False
+
+
+@pytest.mark.unit
 class TestCommandLine:
     @staticmethod
     def _run_main(argv: list[str]) -> tuple[list[argparse.Namespace], int | str | None]:
@@ -568,6 +624,8 @@ class TestCommandLine:
                 "mem-2",
                 "--state-age-days",
                 "30",
+                "--extends-containment",
+                "0.5",
             ]
         )
 
@@ -577,6 +635,7 @@ class TestCommandLine:
         assert args.apply is True
         assert args.retire_ids == ["mem-1", "mem-2"]
         assert args.state_age_days == 30
+        assert args.extends_containment == 0.5
 
     def test_a_run_without_flags_is_a_dry_run_at_the_default_window(self) -> None:
         captured, _code = self._run_main(["--user", "u1"])
@@ -585,6 +644,7 @@ class TestCommandLine:
         assert args.apply is False
         assert args.retire_ids is None
         assert args.state_age_days == STATE_FACT_TTL_DAYS
+        assert args.extends_containment == 0.8
 
     def test_a_run_with_no_user_refuses_to_start(self) -> None:
         with patch("sys.argv", ["repair_memory_store"]), pytest.raises(SystemExit) as raised:
@@ -626,4 +686,8 @@ class TestCommandLine:
         assert "--retire-ids RETIRE_IDS Forget this memory id outright (repeatable)." in options
         assert (
             "--state-age-days STATE_AGE_DAYS Age past which a state-like row is retired." in options
+        )
+        assert (
+            "--extends-containment EXTENDS_CONTAINMENT Share of a parent's words its child must "
+            "repeat before the parent is retired." in options
         )
