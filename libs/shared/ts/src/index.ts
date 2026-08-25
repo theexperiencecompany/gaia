@@ -203,6 +203,7 @@ export {
   runBotProcess,
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,
+  segmentIntoBubbles,
   sendChunked,
   settingsCommand,
   statusCommand,

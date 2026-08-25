@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 # Pre-import to break circular dependency chain:
 # workflow_tool -> workflow_utils -> workflow.subagent_output -> workflow.__init__ -> service -> workflow_utils
-import app.services.workflow.service  # noqa: F401
+import app.services.workflow.service  # noqa: F401  # side-effect import breaks the documented circular-dependency chain
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -115,7 +115,7 @@ class TestCreateWorkflow:
             mock_writer_factory.return_value = _writer_mock()
             mock_runner.execute = AsyncMock(return_value="subagent output")
 
-            result = await create_workflow.coroutine(  # type: ignore[attr-defined]
+            result = await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 user_request="send me a summary every morning",
             )
@@ -138,7 +138,7 @@ class TestCreateWorkflow:
             mock_writer_factory.return_value = _writer_mock()
             mock_runner.execute = AsyncMock(return_value="output")
 
-            result = await create_workflow.coroutine(  # type: ignore[attr-defined]
+            result = await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 user_request="create a workflow",
             )
@@ -161,7 +161,7 @@ class TestCreateWorkflow:
             mock_writer_factory.return_value = _writer_mock()
             mock_runner.execute = AsyncMock(return_value="output")
 
-            result = await create_workflow.coroutine(  # type: ignore[attr-defined]
+            result = await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 user_request="create workflow",
             )
@@ -176,7 +176,7 @@ class TestCreateWorkflow:
         with patch(f"{MODULE}.get_stream_writer") as mock_writer_factory:
             mock_writer_factory.return_value = _writer_mock()
 
-            result = await create_workflow.coroutine(  # type: ignore[attr-defined]
+            result = await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 user_request="",
             )
@@ -195,7 +195,7 @@ class TestCreateWorkflow:
             mock_writer_factory.return_value = _writer_mock()
             mock_runner.execute = AsyncMock(side_effect=Exception("Runner crashed"))
 
-            result = await create_workflow.coroutine(  # type: ignore[attr-defined]
+            result = await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 user_request="make a workflow",
             )
@@ -225,7 +225,7 @@ class TestCreateWorkflow:
             mock_writer_factory.return_value = _writer_mock()
             mock_runner.execute = AsyncMock(return_value="output")
 
-            result = await create_workflow.coroutine(  # type: ignore[attr-defined]
+            result = await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 user_request="run daily at 9am",
             )
@@ -254,7 +254,7 @@ class TestCreateWorkflow:
             mock_writer_factory.return_value = writer
             mock_runner.execute = AsyncMock(return_value="output")
 
-            result = await create_workflow.coroutine(  # type: ignore[attr-defined]
+            result = await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 user_request="run daily",
             )
@@ -286,7 +286,7 @@ class TestGetWorkflow:
             mock_writer_factory.return_value = writer
             mock_service.get_workflow = AsyncMock(return_value=workflow)
 
-            result = await get_workflow.coroutine(  # type: ignore[attr-defined]
+            result = await get_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 workflow_id="wf-1",
             )
@@ -304,7 +304,7 @@ class TestGetWorkflow:
             mock_writer_factory.return_value = _writer_mock()
             mock_service.get_workflow = AsyncMock(return_value=None)
 
-            result = await get_workflow.coroutine(  # type: ignore[attr-defined]
+            result = await get_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 workflow_id="wf-nonexistent",
             )
@@ -323,7 +323,7 @@ class TestGetWorkflow:
             mock_writer_factory.return_value = _writer_mock()
             mock_service.get_workflow = AsyncMock(side_effect=Exception("DB timeout"))
 
-            result = await get_workflow.coroutine(  # type: ignore[attr-defined]
+            result = await get_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 workflow_id="wf-1",
             )
@@ -356,7 +356,7 @@ class TestExecuteWorkflow:
             mock_writer_factory.return_value = writer
             mock_service.execute_workflow = AsyncMock(return_value=exec_result)
 
-            result = await execute_workflow.coroutine(  # type: ignore[attr-defined]
+            result = await execute_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 workflow_id="wf-1",
             )
@@ -375,7 +375,7 @@ class TestExecuteWorkflow:
             mock_writer_factory.return_value = _writer_mock()
             mock_service.execute_workflow = AsyncMock(side_effect=Exception("Workflow disabled"))
 
-            result = await execute_workflow.coroutine(  # type: ignore[attr-defined]
+            result = await execute_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 workflow_id="wf-1",
             )
@@ -404,7 +404,7 @@ class TestSearchTriggers:
                 ]
             )
 
-            result = await search_triggers.coroutine(  # type: ignore[attr-defined]
+            result = await search_triggers.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 query="when I get a calendar event",
             )
@@ -420,7 +420,7 @@ class TestSearchTriggers:
         with patch(f"{SHARED_MODULE}.TriggerSearchService") as mock_trigger_svc:
             mock_trigger_svc.search = AsyncMock(side_effect=Exception("ChromaDB unavailable"))
 
-            result = await search_triggers.coroutine(  # type: ignore[attr-defined]
+            result = await search_triggers.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 query="test",
             )
@@ -451,7 +451,7 @@ class TestListWorkflows:
             mock_writer_factory.return_value = writer
             mock_service.list_workflows = AsyncMock(return_value=([workflow], 1))
 
-            result = await list_workflows.coroutine(config=_make_config())  # type: ignore[attr-defined]
+            result = await list_workflows.coroutine(config=_make_config())  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
 
         assert result["success"] is True
         assert result["data"]["total"] == 1
@@ -468,7 +468,7 @@ class TestListWorkflows:
             mock_writer_factory.return_value = _writer_mock()
             mock_service.list_workflows = AsyncMock(side_effect=Exception("Connection refused"))
 
-            result = await list_workflows.coroutine(config=_make_config())  # type: ignore[attr-defined]
+            result = await list_workflows.coroutine(config=_make_config())  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
 
         assert result["success"] is False
         assert result["error"] == "fetch_failed"

@@ -165,6 +165,7 @@ export {
   renderForPlatform,
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,
+  segmentIntoBubbles,
   sendChunked,
   unfetchableMediaMessage,
   unsupportedMediaMessage,

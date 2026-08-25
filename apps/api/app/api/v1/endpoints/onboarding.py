@@ -119,8 +119,8 @@ async def complete_user_onboarding(
         return OnboardingResponse(
             success=True, message="Onboarding completed successfully", user=updated_user
         )
-    except HTTPException as e:
-        raise e
+    except HTTPException:
+        raise
     except Exception as e:
         log.error(
             f"{LogTag.ONBOARDING} Error completing onboarding",
@@ -350,8 +350,8 @@ async def update_user_preferences(
             message="Preferences updated successfully",
             user=updated_user,
         )
-    except HTTPException as e:
-        raise e
+    except HTTPException:
+        raise
     except Exception as e:
         log.error(
             f"{LogTag.ONBOARDING} Error updating preferences",

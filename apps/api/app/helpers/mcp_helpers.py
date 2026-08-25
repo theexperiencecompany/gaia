@@ -35,7 +35,8 @@ def get_tool_namespace_from_url(server_url: str, fallback: str = "") -> str:
     Returns:
         Namespace string (e.g., "api.example.com/v1")
     """
-    from urllib.parse import urlparse
+    # Deferred import: stdlib import kept local to this single-use URL helper
+    from urllib.parse import urlparse  # noqa: PLC0415 -- stdlib import kept local to
 
     if not server_url:
         return fallback

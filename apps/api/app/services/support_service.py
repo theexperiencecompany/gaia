@@ -150,7 +150,7 @@ async def create_support_request(
     try:
         # Generate unique IDs
         request_id = str(uuid.uuid4())
-        ticket_id = f"GAIA-{datetime.now().strftime('%Y%m%d')}-{str(uuid.uuid4())[:8].upper()}"
+        ticket_id = f"GAIA-{datetime.now(UTC).strftime('%Y%m%d')}-{str(uuid.uuid4())[:8].upper()}"
 
         current_time = datetime.now(UTC)
 
@@ -300,7 +300,7 @@ async def create_support_request_with_attachments(
     try:
         # Generate unique IDs
         request_id = str(uuid.uuid4())
-        ticket_id = f"GAIA-{datetime.now().strftime('%Y%m%d')}-{str(uuid.uuid4())[:8].upper()}"
+        ticket_id = f"GAIA-{datetime.now(UTC).strftime('%Y%m%d')}-{str(uuid.uuid4())[:8].upper()}"
 
         current_time = datetime.now(UTC)
 
@@ -543,8 +543,8 @@ async def _send_support_email_notifications(
 
     except Exception as e:
         log.error("Error sending email notifications", error=str(e), error_type=type(e).__name__)
-        # Re-raise the exception to trigger transaction rollback
-        raise e
+        # Re-raise to trigger transaction rollback
+        raise
 
 
 async def get_user_support_requests(

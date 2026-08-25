@@ -43,7 +43,7 @@ class TestExtractToolEntriesFromUpdate:
         assert result == []
 
     async def test_non_dict_input_returns_empty_list(self) -> None:
-        result = await extract_tool_entries_from_update("not a dict", set())  # type: ignore[arg-type]
+        result = await extract_tool_entries_from_update("not a dict", set())
         assert result == []
 
     async def test_dict_without_messages_key_returns_empty(self) -> None:

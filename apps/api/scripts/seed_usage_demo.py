@@ -185,4 +185,4 @@ print(
     f"cost ${cost_today:.3f}/day ${cost_month:.2f}/mo"
 )
 
-print("\nDONE. Set DEV_AUTH_BYPASS_EMAIL=%s and restart the API." % EMAIL)
+print(f"\nDONE. Set DEV_AUTH_BYPASS_EMAIL={EMAIL} and restart the API.")

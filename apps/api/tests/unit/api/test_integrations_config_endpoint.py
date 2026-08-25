@@ -82,7 +82,7 @@ class TestGetIntegrationsConfig:
     async def test_config_success(self, client: AsyncClient) -> None:
         from app.schemas.integrations.responses import IntegrationsConfigResponse
 
-        mock_response = IntegrationsConfigResponse(integrations=[_config_item()])  # type: ignore[list-item]
+        mock_response = IntegrationsConfigResponse(integrations=[_config_item()])  # type: ignore[list-item]  # fixture returns a raw dict where IntegrationConfigItem is expected
         with patch(
             "app.api.v1.endpoints.integrations.config.build_integrations_config",
             return_value=mock_response,
@@ -116,10 +116,10 @@ class TestDisconnectIntegration:
     async def test_disconnect_success(self, client: AsyncClient) -> None:
         from app.schemas.integrations.responses import IntegrationSuccessResponse
 
-        mock_result = IntegrationSuccessResponse(
+        mock_result = IntegrationSuccessResponse(  # type: ignore[call-arg]  # pydantic ignores the extra success kwarg at runtime
             success=True,
             message="Disconnected",
-            integration_id="github",  # type: ignore[call-arg]
+            integration_id="github",
         )
         with (
             patch(

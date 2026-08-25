@@ -347,6 +347,9 @@ export class TurnSession {
         return undefined;
 
       case "response":
+      // A discarded boundary retracts text that is already on screen, so it has
+      // to re-render exactly like an added delta does.
+      case "message_boundary":
       case "tool_data":
       case "tool_output":
       case "reasoning":
@@ -367,8 +370,14 @@ export class TurnSession {
 
   private accumulate(event: ChatStreamEvent): void {
     // Executor/tool activity after main_response_complete means the turn is
-    // still working — re-arm the loading indicator it may have cleared.
-    if (event.type !== "response" && event.type !== "follow_up_actions") {
+    // still working — re-arm the loading indicator it may have cleared. Text
+    // events are not activity: `message_boundary` only closes the message whose
+    // deltas just arrived, so it must not re-arm what they did not.
+    if (
+      event.type !== "response" &&
+      event.type !== "message_boundary" &&
+      event.type !== "follow_up_actions"
+    ) {
       this.setSpinner(true);
     }
 

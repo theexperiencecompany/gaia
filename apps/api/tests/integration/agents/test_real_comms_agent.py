@@ -129,7 +129,7 @@ def _follow_up_node_io_patches(
     node's internal slicing/prompt/guard logic runs for real.
     """
     if writer_fn is None:
-        writer_fn = lambda _: None  # noqa: E731
+        writer_fn = lambda _: None  # noqa: E731  # default no-op writer for an optional hook parameter
 
     if capabilities is None:
         capabilities = {"tool_names": []}

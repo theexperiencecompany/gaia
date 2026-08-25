@@ -195,7 +195,7 @@ def _make_tool(name: str, description: str) -> BaseTool:
     def _dummy_tool(input_text: str) -> str:
         return f"{name}: {input_text}"
 
-    return _dummy_tool  # type: ignore[return-value]
+    return _dummy_tool
 
 
 # Pre-built tool set for semantic retrieval tests

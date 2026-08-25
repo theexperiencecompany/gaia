@@ -100,7 +100,8 @@ class CreateReminderRequest(BaseModel):
     @field_validator("repeat")
     @classmethod
     def check_repeat_cron(cls, v: str | None) -> str | None:
-        from app.utils.cron_utils import validate_cron_expression
+        # Deferred import: validator-local re-import of validate_cron_expression, also bound at module top level
+        from app.utils.cron_utils import validate_cron_expression  # noqa: PLC0415 -- deferred
 
         if v is not None and not validate_cron_expression(v):
             raise ValueError(f"Invalid cron expression: {v}")
@@ -224,7 +225,7 @@ class CreateReminderToolRequest(BaseModel):
     def validate_timezone_offset(cls, v: str | None) -> str | None:
         """Validate timezone offset format (+|-)HH:MM"""
         if v is not None:
-            import re
+            import re  # noqa: PLC0415 -- stdlib import kept local to this validator branch
 
             if not re.match(r"^[+-]\d{2}:\d{2}$", v):
                 raise ValueError("Timezone offset must be in (+|-)HH:MM format")
@@ -302,7 +303,9 @@ class UpdateReminderRequest(BaseModel):
     @field_validator("repeat")
     @classmethod
     def check_repeat_cron(cls, v: str | None) -> str | None:
-        from app.utils.cron_utils import validate_cron_expression
+        from app.utils.cron_utils import (  # noqa: PLC0415 -- keeps croniter off this module's import path; only needed when a repeat cron actually validates
+            validate_cron_expression,
+        )
 
         if v is not None and not validate_cron_expression(v):
             raise ValueError(f"Invalid cron expression: {v}")
@@ -326,8 +329,6 @@ class UpdateReminderRequest(BaseModel):
     @field_validator("stop_after")
     @classmethod
     def check_stop_after_future(cls, v: datetime | None) -> datetime | None:
-        from datetime import datetime
-
         if v is not None:
             # Ensure timezone-aware datetime
             if v.tzinfo is None:

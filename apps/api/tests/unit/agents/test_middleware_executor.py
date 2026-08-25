@@ -60,7 +60,7 @@ def _make_config(**overrides: Any) -> RunnableConfig:
         },
     }
     cfg.update(overrides)
-    return cfg  # type: ignore[return-value]
+    return cfg  # type: ignore[return-value]  # fixture returns a plain dict as RunnableConfig
 
 
 class _NoOpMiddleware(AgentMiddleware):

@@ -53,7 +53,7 @@ def _active_since() -> datetime:
     return datetime.now(UTC) - timedelta(days=MEMORY_BACKFILL_ACTIVE_DAYS)
 
 
-async def backfill_active_users(ctx: dict[str, Any]) -> str:
+async def backfill_active_users(ctx: dict[str, Any]) -> str:  # noqa: ARG001 -- contract
     """Daily cron: enqueue a memory backfill for eligible users, capped per run.
 
     Capping per run drains the backlog gradually instead of spiking the
@@ -83,7 +83,7 @@ async def backfill_active_users(ctx: dict[str, Any]) -> str:
     return f"memory backfill: enqueued {enqueued}, {max(remaining - enqueued, 0)} still pending"
 
 
-async def backfill_user_memories(ctx: dict[str, Any], user_id: str) -> str:
+async def backfill_user_memories(ctx: dict[str, Any], user_id: str) -> str:  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
     """Replay one user's conversations into memory, then notify them.
 
     Idempotent: re-checks the marker, and the engine's reconciliation dedups

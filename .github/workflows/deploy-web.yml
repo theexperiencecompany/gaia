@@ -249,19 +249,48 @@ jobs:
           echo "### ❌ Preview deploy failed" >> "$GITHUB_STEP_SUMMARY"
           echo "Check token scopes and that Workers Gradual Rollouts / Versions is enabled for this worker." >> "$GITHUB_STEP_SUMMARY"
 
+      # Post as the "Cloudflare Deployment" GitHub App (its avatar is the
+      # Cloudflare logo) when its credentials are configured; the default
+      # workflow token always renders as github-actions[bot] and cannot be
+      # renamed. Without the secrets the step is skipped and the comment falls
+      # back to the default token, so the preview comment never goes missing.
+      - name: Mint a Cloudflare Deployment app token
+        id: cf_app_token
+        if: success() && vars.CLOUDFLARE_DEPLOYMENT_APP_ID != ''
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.CLOUDFLARE_DEPLOYMENT_APP_ID }}
+          private-key: ${{ secrets.CLOUDFLARE_DEPLOYMENT_APP_PRIVATE_KEY }}
+
       - name: Comment PR with preview URL
         if: success()
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         with:
+          github-token: ${{ steps.cf_app_token.outputs.token || secrets.GITHUB_TOKEN }}
           script: |
+            // One persistent comment per PR, found by a hidden marker and
+            // updated in place on every deploy, so the thread never fills up
+            // with one "preview deployed" line per commit.
             const pr = context.issue.number;
             const alias = `pr-${pr}`;
-            const body = `☁️ Cloudflare preview deployed — alias \`${alias}\`\n\n` +
-              `Expected URL: https://pr-${pr}-gaia.heygaia.workers.dev\n` +
-              `> Preview requires Workers preview_urls / route. Check job summary for duration.`;
-            github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: pr,
-              body
-            }).catch(e => core.warning(`PR comment failed: ${e.message}`));
+            const marker = '<!-- cloudflare-preview-comment -->';
+            const sha = context.payload.pull_request?.head?.sha ?? context.sha;
+            const logo = '<img src="https://upload.wikimedia.org/wikipedia/commons/9/94/Cloudflare_Logo.png" alt="Cloudflare" height="16" valign="middle">';
+            const body = `${marker}\n${logo} **Cloudflare preview deployed**: alias \`${alias}\`\n\n` +
+              `Preview: https://pr-${pr}-gaia.heygaia.workers.dev\n` +
+              `Last deployed commit: \`${sha.slice(0, 7)}\` at ${new Date().toISOString()}\n\n` +
+              `> Render check only: no API behind it, so anything that calls the backend will not work here.`;
+            const { owner, repo } = context.repo;
+            try {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner, repo, issue_number: pr, per_page: 100,
+              });
+              const existing = comments.find(c => c.body && c.body.includes(marker));
+              if (existing) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: pr, body });
+              }
+            } catch (e) {
+              core.warning(`PR comment failed: ${e.message}`);
+            }

@@ -49,7 +49,7 @@ def _make_params(arguments: dict | None = None, **extra: Any) -> ToolExecutePara
     """Create a ToolExecuteParams-like dict."""
     params: dict[str, Any] = {"arguments": arguments or {}}
     params.update(extra)
-    return params  # type: ignore[return-value]
+    return params  # type: ignore[return-value]  # helper builds a plain dict standing in for ToolExecuteParams
 
 
 def _make_response(
@@ -82,7 +82,7 @@ class TestComposioHookRegistry:
             params["arguments"]["x"] = params["arguments"].get("x", 0) * 2
             return params
 
-        registry.register_before_hook(double_value)  # type: ignore[arg-type]
+        registry.register_before_hook(double_value)  # type: ignore[arg-type]  # hook doubles are typed against raw dicts, not ToolExecuteParams
         result = registry.execute_before_hooks("TOOL", "KIT", _make_params({"x": 5}))
         assert result["arguments"]["x"] == 10
 
@@ -120,8 +120,8 @@ class TestComposioHookRegistry:
             call_order.append("second")
             return params
 
-        registry.register_before_hook(first)  # type: ignore[arg-type]
-        registry.register_before_hook(second)  # type: ignore[arg-type]
+        registry.register_before_hook(first)  # type: ignore[arg-type]  # hook doubles are typed against raw dicts, not ToolExecuteParams
+        registry.register_before_hook(second)  # type: ignore[arg-type]  # hook doubles are typed against raw dicts, not ToolExecuteParams
         registry.execute_before_hooks("T", "K", _make_params())
         assert call_order == ["first", "second"]
 
@@ -136,8 +136,8 @@ class TestComposioHookRegistry:
             params["arguments"]["b"] = 2
             return params
 
-        registry.register_before_hook(add_a)  # type: ignore[arg-type]
-        registry.register_before_hook(add_b)  # type: ignore[arg-type]
+        registry.register_before_hook(add_a)  # type: ignore[arg-type]  # hook doubles are typed against raw dicts, not ToolExecuteParams
+        registry.register_before_hook(add_b)  # type: ignore[arg-type]  # hook doubles are typed against raw dicts, not ToolExecuteParams
         result = registry.execute_before_hooks("T", "K", _make_params())
         assert result["arguments"] == {"a": 1, "b": 2}
 
@@ -151,8 +151,8 @@ class TestComposioHookRegistry:
             params["arguments"]["ok"] = True
             return params
 
-        registry.register_before_hook(bad_hook)  # type: ignore[arg-type]
-        registry.register_before_hook(good_hook)  # type: ignore[arg-type]
+        registry.register_before_hook(bad_hook)  # type: ignore[arg-type]  # hook doubles are typed against raw dicts, not ToolExecuteParams
+        registry.register_before_hook(good_hook)  # type: ignore[arg-type]  # hook doubles are typed against raw dicts, not ToolExecuteParams
         result = registry.execute_before_hooks("T", "K", _make_params())
         assert result["arguments"]["ok"] is True
 

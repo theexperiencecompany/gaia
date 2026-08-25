@@ -141,7 +141,8 @@ async def create_workflow(
 @limiter.limit("100/minute")
 @limiter.limit("1000/hour")
 async def list_workflows(
-    request: Request, user: AuthenticatedUser = Depends(get_current_user)
+    request: Request,  # noqa: ARG001 -- slowapi requires request in the handler signature
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> WorkflowListResponse:
     """List all workflows for the current user."""
     log.set(
@@ -215,7 +216,7 @@ async def execute_workflow(
 @router.get("/workflows/{workflow_id}/executions", response_model=WorkflowExecutionsResponse)
 @limiter.limit("100/minute")
 async def get_workflow_executions(
-    request: Request,
+    request: Request,  # noqa: ARG001 -- framework contract
     workflow_id: str,
     limit: int = 10,
     offset: int = 0,
@@ -626,7 +627,7 @@ async def unpublish_workflow(
 @limiter.limit("500/minute")
 @limiter.limit("5000/hour")
 async def get_explore_workflows(
-    request: Request,
+    request: Request,  # noqa: ARG001 -- framework contract
     limit: int = 25,
     offset: int = 0,
 ) -> PublicWorkflowsResponse:
@@ -654,7 +655,7 @@ async def get_explore_workflows(
 @limiter.limit("500/minute")
 @limiter.limit("5000/hour")
 async def get_public_workflows(
-    request: Request,
+    request: Request,  # noqa: ARG001 -- framework contract
     limit: int = 20,
     offset: int = 0,
 ) -> PublicWorkflowsResponse:
@@ -683,7 +684,7 @@ async def get_public_workflows(
 @router.get("/workflows/public/{workflow_ref}", response_model=WorkflowResponse)
 @limiter.limit("500/minute")
 @limiter.limit("5000/hour")
-async def get_public_workflow(request: Request, workflow_ref: str) -> WorkflowResponse:
+async def get_public_workflow(request: Request, workflow_ref: str) -> WorkflowResponse:  # noqa: ARG001 -- contract
     """Get a public workflow by ID (wf_xxx) or slug."""
     lookup_mode = "id" if workflow_ref.startswith("wf_") else "slug"
     log.set(
@@ -775,7 +776,9 @@ async def generate_workflow_prompt_endpoint(
 @limiter.limit("500/minute")
 @limiter.limit("5000/hour")
 async def get_workflow(
-    request: Request, workflow_id: str, user: AuthenticatedUser = Depends(get_current_user)
+    request: Request,  # noqa: ARG001 -- slowapi requires request in the handler signature
+    workflow_id: str,
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> WorkflowResponse:
     """Get a specific workflow by ID."""
     log.set(

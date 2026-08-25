@@ -1,7 +1,7 @@
 """Docstrings for calendar-related tools."""
 
 CUSTOM_CREATE_EVENT = """
-CALENDAR — CREATE EVENT(S)
+CALENDAR: CREATE EVENT(S)
 
 Creates one or more calendar events. Supports batch creation with ID mapping for adding recurrence.
 
@@ -24,11 +24,11 @@ Returns (when confirm_immediately=True):
         "errors": [{"index": 1, "summary": "...", "error": "..."}]
     }
     Use event_id with ADD_RECURRENCE to make events recurring.
-    A non-empty "errors" means only some events were created — tell the user which failed.
+    A non-empty "errors" means only some events were created: tell the user which failed.
 """
 
 CUSTOM_GET_DAY_SUMMARY = """
-CALENDAR — GET DAY SUMMARY
+CALENDAR: GET DAY SUMMARY
 
 Gets a quick summary of a day's schedule including events, busy hours, and next upcoming event.
 Uses user's timezone from their profile preferences.
@@ -52,7 +52,7 @@ Returns:
 """
 
 CUSTOM_LIST_CALENDARS = """
-CALENDAR — LIST CALENDARS
+CALENDAR: LIST CALENDARS
 
 Lists all calendars accessible to the user.
 
@@ -64,7 +64,7 @@ Returns:
 """
 
 CUSTOM_FETCH_EVENTS = """
-CALENDAR — FETCH EVENTS
+CALENDAR: FETCH EVENTS
 
 Fetches events from one or more calendars within an optional time range.
 
@@ -86,7 +86,7 @@ Returns:
 """
 
 CUSTOM_FIND_EVENT = """
-CALENDAR — SEARCH/FIND EVENT
+CALENDAR: SEARCH/FIND EVENT
 
 Searches for events by text query. Searches event titles, descriptions, and other text fields.
 
@@ -101,7 +101,7 @@ Returns:
 """
 
 CUSTOM_GET_EVENT = """
-CALENDAR — GET EVENT(S)
+CALENDAR: GET EVENT(S)
 
 Gets one or more calendar events by ID.
 
@@ -115,11 +115,11 @@ Returns:
         "events": [{"event_id": "...", "calendar_id": "...", "event": {...}}],
         "errors": [{"event_id": "...", "calendar_id": "...", "error": "..."}]
     }
-    A non-empty "errors" means only some events were retrieved — tell the user which failed.
+    A non-empty "errors" means only some events were retrieved: tell the user which failed.
 """
 
 CUSTOM_DELETE_EVENT = """
-CALENDAR — DELETE EVENT(S)
+CALENDAR: DELETE EVENT(S)
 
 Deletes one or more calendar events.
 
@@ -134,11 +134,11 @@ Returns:
         "deleted": [{"event_id": "...", "calendar_id": "..."}],
         "errors": [{"event_id": "...", "calendar_id": "...", "error": "..."}]
     }
-    A non-empty "errors" means only some events were deleted — tell the user which failed.
+    A non-empty "errors" means only some events were deleted: tell the user which failed.
 """
 
 CUSTOM_PATCH_EVENT = """
-CALENDAR — UPDATE/PATCH EVENT
+CALENDAR: UPDATE/PATCH EVENT
 
 Updates an existing calendar event. Only the fields provided will be updated.
 
@@ -158,7 +158,7 @@ Returns:
 """
 
 CUSTOM_ADD_RECURRENCE = """
-CALENDAR — ADD RECURRENCE
+CALENDAR: ADD RECURRENCE
 
 Adds a recurrence pattern to an existing event. Use this to make an event repeating.
 

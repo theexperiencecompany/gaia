@@ -21,8 +21,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from unittest.mock import patch
 
 import no_service_classes
+import pytest
 import repository_boundaries
 import route_contract
+import run as lint_runner
 import tool_dump_boundary
 import wide_events_logging
 
@@ -311,6 +313,55 @@ def test_raw_redis_cache_client_import_is_not_flagged(tmp_path: Path) -> None:
     src = "from app.db.redis import redis_cache\n"
     path = _write(tmp_path, "app/services/brand_new_service.py", src)
     assert repository_boundaries.check([path]) == []
+
+
+# --------------------------------------------------------------------------- #
+# runner (run.py) — one rule crashing must not hide the others
+# --------------------------------------------------------------------------- #
+
+
+def test_rule_crash_reports_rule_and_file_and_remaining_rules_still_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A rule whose ``ast.parse`` explodes (e.g. a pre-3.10 interpreter on 3.10
+    syntax) must be reported with its rule name and the file it died on, every
+    other rule must still run and report, and the exit code must stay non-zero."""
+    _write(
+        tmp_path,
+        f"{_ENDPOINT_DIR}/x.py",
+        "@router.get('/x')\n"
+        "async def get_x(user):\n"
+        "    result = await do_work()\n"
+        "    return JSONResponse(result)\n",
+    )  # route-contract violation — a rule that runs BEFORE the crash
+    _write(
+        tmp_path,
+        "app/services/leaky.py",
+        "from app.db.mongodb.collections import todos_collection\n",
+    )  # repository-boundaries violation — a rule that runs AFTER the crash
+    _write(
+        tmp_path,
+        "app/services/new_service.py",
+        "class NewService:\n    def f(self):\n        pass\n",
+    )
+
+    parse_failure = SyntaxError("invalid syntax")
+    parse_failure.filename = str(tmp_path / f"{_ENDPOINT_DIR}/x.py")
+    parse_failure.lineno = 2
+
+    import no_service_classes  # noqa: PLC0415 -- test-local import for patch target
+
+    with patch.object(no_service_classes, "check", side_effect=parse_failure):
+        code = lint_runner.main([str(tmp_path)])
+
+    err = capsys.readouterr().err
+    assert code == 1  # a crashed rule fails the run, like violations do
+    assert "no-service-classes" in err  # the crashed rule is named
+    assert f"{_ENDPOINT_DIR}/x.py:2" in err  # with the file and line it died on
+    assert "SyntaxError: invalid syntax" in err  # an ast.parse failure, not a silent skip
+    assert "route-contract" in err  # rules before the crash still ran
+    assert "repository-boundaries" in err  # rules after the crash still ran
+    assert "rule(s) crashed" in err  # the crash is in the failure summary
 
 
 # --------------------------------------------------------------------------- #

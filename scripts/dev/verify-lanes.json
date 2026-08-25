@@ -1,5 +1,5 @@
 {
-  "$comment": "GAIA verify lanes \u2014 local mirror of CI quality gates (.github/workflows/code-quality.yml + main.yml). name matches the CI job/step (rows may be step-granular). scope = extended regex over changed paths; lane runs if ANY file matches (--all overrides). heavy=true needs --with-heavy. timeout_s hard cap; expiry -> status=timeout (exit 2). require_cmd: any missing -> skipped(missing-tool). command runs at repo root \u2014 keep byte-parity with the CI job's own repro line. Edit a workflow lane and this file in the SAME commit. INTENTIONALLY NOT MIRRORED (CI-only): build, build-images, test-python-coverage (coverage>=70%, diff-cover>=90%, schemathesis fuzz), regression-proof, test-device-bridge, validate-release-manifest, test-harness-tools, trivy-scan (advisory), changelog-sync (auto-fix PR job). Known deltas: py-tests mirrors via Dagger not byte-parity flake-gate shards; alert-rules needs locally installed pint/promtool (CI pins v0.87.0/v3.1.0 from release tarballs); whole-repo scopes are stricter than CI's changed-file scoping (safe direction).",
+  "$comment": "GAIA verify lanes \u2014 local mirror of CI quality gates (.github/workflows/code-quality.yml + main.yml). name matches the CI job/step (rows may be step-granular). scope = extended regex over changed paths; lane runs if ANY file matches (--all overrides). heavy=true needs --with-heavy. timeout_s hard cap; expiry -> status=timeout (exit 2). require_cmd: any missing -> skipped(missing-tool). command runs at repo root \u2014 keep byte-parity with the CI job's own repro line. Edit a workflow lane and this file in the SAME commit. INTENTIONALLY NOT MIRRORED (CI-only): build, build-images, test-python-coverage (coverage>=70%, diff-cover>=90%, schemathesis fuzz), regression-proof, test-device-bridge, validate-release-manifest, test-harness-tools, trivy-scan (advisory), changelog-sync (auto-fix PR job). Known deltas: py-tests mirrors via Dagger not byte-parity flake-gate shards; alert-rules needs locally installed pint/promtool (CI pins v0.87.0/v3.1.0 from release tarballs); whole-repo scopes are stricter than CI's changed-file scoping (safe direction). Post-merge note: master pinned bandit/xenon/interrogate and split ignore-ratchet into ignore-whys + ignore-staleness + tool-pins (2026-08 merge of origin/master).",
   "schema_version": 1,
   "lanes": [
     {
@@ -115,12 +115,28 @@
       "command": "python3 tools/lints/run.py apps/api/app"
     },
     {
-      "name": "ignore-ratchet",
+      "name": "ignore-whys",
       "scope": "^pyproject\\.toml$|^tools/lints/(check_ignore_ratchet\\.py|ignore_ratchet_baseline\\.txt)",
       "heavy": false,
       "timeout_s": 120,
       "require_cmd": [],
-      "command": "python3 tools/lints/check_ignore_ratchet.py"
+      "command": "python3 tools/lints/check_ignore_whys.py"
+    },
+    {
+      "name": "ignore-staleness",
+      "scope": "^pyproject\\.toml$|^tools/lints/",
+      "heavy": false,
+      "timeout_s": 120,
+      "require_cmd": [],
+      "command": "python3 tools/lints/check_ignore_staleness.py"
+    },
+    {
+      "name": "tool-pins",
+      "scope": "\\.(py|toml)$|^tools/lints/|^\\.pre-commit-config\\.yaml$",
+      "heavy": false,
+      "timeout_s": 120,
+      "require_cmd": [],
+      "command": "python3 tools/lints/check_tool_pins.py"
     },
     {
       "name": "interrogate",
@@ -128,7 +144,7 @@
       "heavy": false,
       "timeout_s": 180,
       "require_cmd": [],
-      "command": "pnpm run quality:py:interrogate"
+      "command": "uvx --no-build interrogate==1.7.0 -c pyproject.toml apps/api apps/voice-agent libs/shared/py"
     },
     {
       "name": "xenon",
@@ -136,7 +152,7 @@
       "heavy": false,
       "timeout_s": 180,
       "require_cmd": [],
-      "command": "pnpm run quality:py:xenon"
+      "command": "uvx --no-build xenon==0.9.3 --max-absolute F --max-modules E --max-average B apps/api apps/voice-agent libs/shared/py -e 'apps/api/tests/**' -e 'apps/api/scripts/**' -e 'libs/shared/py/tests/**'"
     },
     {
       "name": "bandit",
@@ -144,7 +160,7 @@
       "heavy": false,
       "timeout_s": 300,
       "require_cmd": [],
-      "command": "uvx bandit -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low"
+      "command": "uvx --no-build bandit@1.9.4 -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low"
     },
     {
       "name": "pip-audit",
