@@ -290,6 +290,44 @@ class TestBlockedCallLabelsANonEnumPlan:
         assert writer.call_args.args[0]["tool_data"]["data"]["current_plan"] == "legacy_plan"
 
 
+class TestTokenCounting:
+    """With ``count_tokens`` on, a dict result's ``tokens_used`` is logged."""
+
+    @staticmethod
+    async def _run(tokens_used: Any) -> MagicMock:
+        async def tool(config: dict[str, Any] | None = None) -> dict[str, Any]:
+            return {"ran": True, "tokens_used": tokens_used}
+
+        decorated = rl.with_rate_limiting(feature_key="generate_image", count_tokens=True)(tool)
+        with (
+            patch(
+                "app.decorators.rate_limiting.payment_service.get_cached_plan_type",
+                new=AsyncMock(return_value=PlanType.FREE),
+            ),
+            patch(
+                "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
+                new=AsyncMock(return_value={}),
+            ),
+            patch("app.decorators.rate_limiting.log") as log,
+        ):
+            await decorated(config={"metadata": {"user_id": "user-1"}})
+        return log
+
+    async def test_a_positive_usage_is_logged_with_its_feature(self) -> None:
+        log = await self._run(42)
+
+        log.debug.assert_any_call(
+            f"{rl.LogTag.API} Token usage recorded",
+            tokens_used=42,
+            feature_key="generate_image",
+        )
+
+    async def test_zero_usage_logs_no_token_line(self) -> None:
+        log = await self._run(0)
+
+        assert all("Token usage recorded" not in str(c.args[0]) for c in log.debug.call_args_list)
+
+
 async def _endpoint() -> dict[str, bool]:
     """A rate-limited endpoint body."""
     return {"ok": True}

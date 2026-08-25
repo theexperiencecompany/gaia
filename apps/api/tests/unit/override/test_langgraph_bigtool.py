@@ -2,11 +2,11 @@
 
 from collections.abc import Sequence
 from typing import Any, Protocol, cast
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
-from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import BaseTool, tool
+from langchain_core.tools import BaseTool, StructuredTool, tool
 from langgraph.graph import StateGraph
 from langgraph.store.base import BaseStore
 import pytest
@@ -14,7 +14,9 @@ import pytest
 from app.agents.llm import lane as lane_module
 from app.agents.llm.lane import ModelLane
 from app.agents.llm.types import LLMProviderName
+from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import (
+    COMPLETION_NUDGE_MESSAGE,
     DEFAULT_MAX_TOKENS,
     LANE_FIELD_ID,
     RECURSION_WRAPUP_THRESHOLD_STEPS,
@@ -28,9 +30,21 @@ from app.override.langgraph_bigtool.agent_config import (
 from app.override.langgraph_bigtool.create_agent import (
     _agent_sticky_key,
     _bind_session_id,
+    _executable_calls,
     _fallback_config,
+    _get_bound_tool_names,
+    _last_tool_calling_message,
+    _log_message_preview,
+    _maybe_inject_wrapup,
     _prepare_fallback,
+    _resolve_retrieval_result,
+    _retrieval_call_kwargs,
+    _select_tools_node,
+    _tools_to_bind,
+    afinish_task_node,
     create_agent,
+    finish_task_node,
+    nudge_continue_node,
 )
 from app.override.langgraph_bigtool.utils import State
 
@@ -845,7 +859,10 @@ class TestBindSessionId:
         # call is actually made on — so it has to stay the configured double.
         bound.bind.return_value = bound
         builder = create_agent(
-            llm, _make_tool_registry(dummy_tool_a), disable_retrieve_tools=True, agent_name=agent
+            llm,
+            _make_tool_registry(dummy_tool_a),
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            agent_config=AgentConfig(agent_name=agent),
         )
 
         await _agent_runnable(builder).afunc(
@@ -868,8 +885,8 @@ class TestBindSessionId:
         builder = create_agent(
             llm,
             _make_tool_registry(dummy_tool_a),
-            disable_retrieve_tools=True,
-            agent_name="comms_agent",
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            agent_config=AgentConfig(agent_name="comms_agent"),
         )
 
         _agent_runnable(builder).func(
@@ -1064,8 +1081,8 @@ class TestTheFallbackKeepsTheAgentsOwnChain:
         builder = create_agent(
             llm,
             _make_tool_registry(dummy_tool_a),
-            disable_retrieve_tools=True,
-            agent_name="comms_agent",
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            agent_config=AgentConfig(agent_name="comms_agent"),
         )
 
         with patch(
@@ -1088,8 +1105,8 @@ class TestTheFallbackKeepsTheAgentsOwnChain:
         builder = create_agent(
             llm,
             _make_tool_registry(dummy_tool_a),
-            disable_retrieve_tools=True,
-            agent_name="comms_agent",
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            agent_config=AgentConfig(agent_name="comms_agent"),
         )
 
         with patch(
@@ -1103,3 +1120,239 @@ class TestTheFallbackKeepsTheAgentsOwnChain:
             )
 
         assert invoked.call_args.kwargs["sticky_session_id"] == "conv-1-comms_agent"
+
+
+# ---------------------------------------------------------------------------
+# Small node/helper contracts — wrap-up notice, binding order, tool routing
+# ---------------------------------------------------------------------------
+
+_CREATE_AGENT_MODULE = "app.override.langgraph_bigtool.create_agent"
+
+
+def _hyphenated_tool() -> BaseTool:
+    def fn(query: str) -> str:
+        """A tool whose registered name keeps an MCP-style hyphen."""
+        return "ok"
+
+    return StructuredTool.from_function(fn, name="web-search")
+
+
+def _make_deps(
+    retrieve_tools: BaseTool | None = None,
+    middleware_tools: list[BaseTool] | None = None,
+) -> Any:
+    from app.override.langgraph_bigtool.create_agent import _AgentDeps
+
+    return _AgentDeps(
+        llm=_make_llm(),
+        tool_registry=_make_tool_registry(dummy_tool_a, dummy_tool_b),
+        agent_name="executor_agent",
+        middleware_executor=None,
+        middleware_tools=middleware_tools or [],
+        retrieve_tools=cast("StructuredTool | None", retrieve_tools),
+        store_arg=None,
+        retrieve_tools_function=None,
+        retrieve_tools_coroutine=None,
+        initial_tool_ids=["dummy_tool_a"],
+        pre_model_hooks=None,
+        end_graph_hooks=None,
+        require_finish_to_end=False,
+    )
+
+
+class TestMaybeInjectWrapupDirect:
+    def test_low_budget_appends_the_notice_as_a_trailing_human_message(self) -> None:
+        state = _make_state(messages=[HumanMessage("keep going")], remaining_steps=3)
+
+        result = _maybe_inject_wrapup(state)
+
+        notice = result["messages"][-1]
+        assert isinstance(notice, HumanMessage)
+        assert "almost out of steps" in notice.content
+        assert "3 left" in notice.content
+        # Original messages are preserved, not replaced.
+        assert result["messages"][:-1] == list(state["messages"])
+
+    def test_budget_above_threshold_returns_state_untouched(self) -> None:
+        state = _make_state()
+
+        assert _maybe_inject_wrapup(state) is state
+
+    def test_non_integer_budget_returns_state_untouched(self) -> None:
+        state = cast("State", {**_make_state(), "remaining_steps": "many"})
+
+        assert _maybe_inject_wrapup(state) is state
+
+
+class TestToolsToBindOrdering:
+    def test_retrieve_tools_leads_and_stale_selected_ids_are_skipped(self) -> None:
+        deps = _make_deps(retrieve_tools=dummy_tool_b)
+        state = _make_state(selected_tool_ids=["ghost_id", "dummy_tool_a"])
+
+        bound = _tools_to_bind(deps, state)
+
+        # retrieve_tools first, then the initial tool; the stale id is skipped
+        # and the selected id dedupes against the initial binding.
+        assert [t.name for t in bound] == ["dummy_tool_b", "dummy_tool_a"]
+        assert bound[0] is dummy_tool_b
+
+
+class TestLogMessagePreviewDirect:
+    @patch(f"{_CREATE_AGENT_MODULE}.log")
+    def test_long_content_is_truncated_with_an_ellipsis(self, mock_log: MagicMock) -> None:
+        _log_message_preview(_make_state(messages=[HumanMessage("x" * 500)]))
+
+        (msg,), kwargs = mock_log.info.call_args
+        entry = kwargs["preview"][0]
+        assert len(entry["content"]) == 200
+        assert entry["content"].endswith("...")
+
+    @patch(f"{_CREATE_AGENT_MODULE}.log")
+    def test_a_failing_message_is_swallowed_into_debug(self, mock_log: MagicMock) -> None:
+        exploding = MagicMock(spec=AIMessage)
+        type(exploding).content = PropertyMock(side_effect=RuntimeError("unreadable"))
+
+        _log_message_preview(_make_state(messages=[exploding]))
+
+        mock_log.info.assert_not_called()
+        assert mock_log.debug.call_args.kwargs["error_type"] == "RuntimeError"
+
+
+class TestRetrievalCallKwargsDirect:
+    def test_store_and_configured_user_id_are_injected_into_the_call(self) -> None:
+        store = MagicMock()
+
+        kwargs = _retrieval_call_kwargs(
+            {"args": {"query": "calendar tools"}, "id": "c1"},
+            "store_key",
+            store,
+            {"configurable": {"user_id": "user-123"}},
+        )
+
+        assert kwargs == {
+            "query": "calendar tools",
+            "store_key": store,
+            "user_id": "user-123",
+        }
+
+
+class TestResolveRetrievalResultResponseText:
+    def test_rendered_text_is_recorded_and_subagent_tools_are_filtered(self) -> None:
+        response_texts: dict[str, str] = {}
+
+        bind, response = _resolve_retrieval_result(
+            {
+                "tools_to_bind": ["cal", "subagent:research", 42],
+                "response": ["cal"],
+                "response_text": "Found your calendar tools.",
+            },
+            "call-1",
+            response_texts,
+        )
+
+        assert bind == ["cal"]
+        assert response == ["cal"]
+        assert response_texts == {"call-1": "Found your calendar tools."}
+
+
+class TestSelectToolsNodeGuard:
+    def test_no_retrieval_source_configured_raises_at_node_construction(self) -> None:
+        with pytest.raises(ValueError, match="retrieve_tools_function or retrieve_tools_coroutine"):
+            _select_tools_node(_make_deps())
+
+
+class TestFinishTaskNodeDirect:
+    def test_result_value_becomes_the_tool_message_content(self) -> None:
+        result = finish_task_node([{"id": "call-1", "args": {"result": "done"}}], store=MagicMock())
+
+        (msg,) = result["messages"]
+        assert isinstance(msg, ToolMessage)
+        assert msg.content == "done"
+        assert msg.tool_call_id == "call-1"
+        assert msg.name == FINISH_TASK_NAME
+
+    def test_missing_result_falls_back_to_task_completed(self) -> None:
+        result = finish_task_node([{"id": "call-2"}], store=MagicMock())
+
+        assert result["messages"][0].content == "Task completed."
+
+    async def test_async_twin_delegates_to_the_sync_impl(self) -> None:
+        result = await afinish_task_node(
+            [{"id": "call-3", "args": {"result": 7}}], store=MagicMock()
+        )
+
+        assert result["messages"][0].content == "7"
+
+
+class TestNudgeContinueNode:
+    def test_returns_a_single_human_nudge_message(self) -> None:
+        result = nudge_continue_node(_make_state())
+
+        (msg,) = result["messages"]
+        assert isinstance(msg, HumanMessage)
+        assert msg.content == COMPLETION_NUDGE_MESSAGE
+
+
+class TestLastToolCallingMessageEdge:
+    def test_no_ai_tool_call_in_history_returns_none(self) -> None:
+        state = _make_state(messages=[HumanMessage("hi"), AIMessage(content="hello")])
+
+        assert _last_tool_calling_message(state) is None
+
+
+class TestGetBoundToolNamesSources:
+    def test_collects_retrieval_selected_initial_and_middleware_tools(self) -> None:
+        middleware_tool = MagicMock()
+        middleware_tool.name = "spawn_subagent"
+        deps = _make_deps(retrieve_tools=dummy_tool_b, middleware_tools=[middleware_tool])
+        state = _make_state(selected_tool_ids=["dummy_tool_a", "ghost_id"])
+
+        bound = _get_bound_tool_names(deps, state)
+
+        assert bound == {"dummy_tool_b", "dummy_tool_a", "spawn_subagent"}
+
+
+class TestExecutableCallsRouting:
+    def test_no_tool_calling_message_dispatches_nothing(self) -> None:
+        assert _executable_calls(_make_deps(), _make_state()) == []
+
+    def test_retrieve_tools_calls_are_never_dispatched_to_the_tools_node(self) -> None:
+        deps = _make_deps(retrieve_tools=dummy_tool_b)
+        ai_msg = AIMessage(
+            content="",
+            tool_calls=[{"name": "dummy_tool_b", "args": {}, "id": "c1"}],
+        )
+
+        assert _executable_calls(deps, _make_state(messages=[ai_msg])) == []
+
+    def test_hyphenated_bound_name_is_canonicalized_in_place(self) -> None:
+        hyphen_tool = _hyphenated_tool()
+        from app.override.langgraph_bigtool.create_agent import _AgentDeps
+
+        deps = _AgentDeps(
+            llm=_make_llm(),
+            tool_registry={"web-search": hyphen_tool},
+            agent_name="executor_agent",
+            middleware_executor=None,
+            middleware_tools=[],
+            retrieve_tools=None,
+            store_arg=None,
+            retrieve_tools_function=None,
+            retrieve_tools_coroutine=None,
+            initial_tool_ids=["web-search"],
+            pre_model_hooks=None,
+            end_graph_hooks=None,
+            require_finish_to_end=False,
+        )
+        ai_msg = AIMessage(
+            content="",
+            tool_calls=[
+                {"name": "web_search", "args": {"query": "x"}, "id": "c1"},
+                {"name": "unknown_tool", "args": {}, "id": "c2"},
+            ],
+        )
+
+        runnable = _executable_calls(deps, _make_state(messages=[ai_msg]))
+
+        assert [c["id"] for c in runnable] == ["c1"]
+        assert runnable[0]["name"] == "web-search"

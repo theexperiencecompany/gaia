@@ -328,6 +328,20 @@ class TestRecurrenceRuleToRruleString:
         assert "UNTIL=" in result
 
 
+class TestUntilRruleValueUnparseableFallbacks:
+    """The RFC 5545 formatter's fallbacks for `until` values that slip past
+    validation (e.g. constructed via model_construct): a bare date degrades to
+    its compact form, an unparseable datetime is passed through verbatim."""
+
+    def test_unparseable_bare_date_degrades_to_its_compact_form(self):
+        m = RecurrenceRule.model_construct(frequency="DAILY", until="31-12-2025")
+        assert "UNTIL=31122025" in m.to_rrule_string()
+
+    def test_unparseable_datetime_is_passed_through_verbatim(self):
+        m = RecurrenceRule.model_construct(frequency="DAILY", until="31/12/2025T10:00")
+        assert "UNTIL=31/12/2025T10:00" in m.to_rrule_string()
+
+
 # ---------------------------------------------------------------------------
 # RecurrenceData
 # ---------------------------------------------------------------------------

@@ -7,9 +7,11 @@ must never hand ``create_workflow`` an empty string as if it were a draft.
 """
 
 from dataclasses import dataclass
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import AIMessageChunk, SystemMessage, ToolMessage
+from langgraph.errors import GraphRecursionError
 import pytest
 
 from app.agents.context.assemble import AssembledContext
@@ -17,6 +19,11 @@ from app.constants.llm import WORKFLOW_SUBAGENT_RECURSION_LIMIT
 from app.services.workflow.workflow_subagent import SubagentRunContext, WorkflowSubagentRunner
 
 _MOD = "app.services.workflow.workflow_subagent"
+
+# The runner still consumes messages through the deprecated ``.text()`` method
+# call; the suite escalates warnings to errors, so the tests exercising it
+# locally silence exactly that warning.
+_TEXT_DEPRECATION = "ignore::langchain_core._api.deprecation.LangChainDeprecationWarning"
 
 
 @dataclass
@@ -151,3 +158,150 @@ class TestExecuteLogPins:
         ]
         assert len(exec_logs) == 1
         assert exec_logs[0].kwargs["task_length"] == len("t")
+
+
+class _StreamGraph:
+    """Minimal astream stand-in yielding pre-built (mode, payload) events."""
+
+    def __init__(self, events: list[Any]) -> None:
+        self._events = events
+
+    async def astream(self, state: dict, stream_mode: Any = None, config: Any = None) -> Any:
+        for event in self._events:
+            yield event
+
+
+@pytest.mark.unit
+class TestConsumeMessageChunk:
+    def test_a_silent_chunk_is_ignored(self) -> None:
+        chunk = AIMessageChunk(content="hidden")
+
+        result = WorkflowSubagentRunner._consume_message_chunk(
+            (chunk, {"silent": True}), MagicMock(), "kept"
+        )
+
+        assert result == "kept"
+
+    @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
+    def test_an_ai_chunks_text_is_appended(self) -> None:
+        result = WorkflowSubagentRunner._consume_message_chunk(
+            (AIMessageChunk(content="Hello"), {}), None, ""
+        )
+
+        assert result == "Hello"
+
+    @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
+    def test_an_empty_ai_chunk_appends_nothing(self) -> None:
+        result = WorkflowSubagentRunner._consume_message_chunk(
+            (AIMessageChunk(content=""), {}), MagicMock(), "kept"
+        )
+
+        assert result == "kept"
+
+    @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
+    def test_a_tool_result_is_streamed_as_tool_output(self) -> None:
+        writer = MagicMock()
+
+        result = WorkflowSubagentRunner._consume_message_chunk(
+            (ToolMessage(content="tool ran", tool_call_id="tc1"), {}), writer, ""
+        )
+
+        writer.assert_called_once_with(
+            {"tool_output": {"tool_call_id": "tc1", "output": "tool ran"}}
+        )
+        assert result == ""
+
+    @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
+    def test_a_tool_result_without_a_writer_changes_nothing(self) -> None:
+        result = WorkflowSubagentRunner._consume_message_chunk(
+            (ToolMessage(content="tool ran", tool_call_id="tc1"), {}), None, ""
+        )
+
+        assert result == ""
+
+
+@pytest.mark.unit
+class TestEmitUpdateEntries:
+    async def test_each_new_tool_entry_is_streamed(self) -> None:
+        entries = [
+            ("tc1", {"tool_name": "search_triggers"}),
+            ("tc2", {"tool_name": "list_workflows"}),
+        ]
+        writer = MagicMock()
+        with patch(
+            f"{_MOD}.extract_tool_entries_from_update",
+            new_callable=AsyncMock,
+            return_value=entries,
+        ) as extract:
+            await WorkflowSubagentRunner._emit_update_entries(
+                {"node": {"messages": []}}, writer, emitted_tool_calls={"tc0"}
+            )
+
+        extract.assert_awaited_once_with(state_update={"messages": []}, emitted_tool_calls={"tc0"})
+        assert [c.args[0] for c in writer.call_args_list] == [
+            {"tool_data": {"tool_name": "search_triggers"}},
+            {"tool_data": {"tool_name": "list_workflows"}},
+        ]
+
+    async def test_no_writer_still_consumes_the_entries(self) -> None:
+        with patch(
+            f"{_MOD}.extract_tool_entries_from_update",
+            new_callable=AsyncMock,
+            return_value=[("tc1", {"tool_name": "search_triggers"})],
+        ):
+            await WorkflowSubagentRunner._emit_update_entries(
+                {"node": {"messages": []}}, None, set()
+            )
+
+
+@pytest.mark.unit
+class TestStreamTurnModes:
+    @staticmethod
+    async def _run(events: list[Any]) -> tuple[str, bool, MagicMock]:
+        writer = MagicMock()
+        with patch(
+            f"{_MOD}.extract_tool_entries_from_update",
+            new_callable=AsyncMock,
+            return_value=[("tc1", {"tool_name": "search_triggers"})],
+        ):
+            message, hit_limit = await WorkflowSubagentRunner._stream_turn(
+                _StreamGraph(events), {}, {}, writer, set()
+            )
+        return message, hit_limit, writer
+
+    @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
+    async def test_updates_messages_and_custom_events_are_each_dispatched(self) -> None:
+        entry = {"tool_name": "search_triggers"}
+        message, hit_limit, writer = await self._run(
+            [
+                ("updates", {"node": {"messages": []}}),
+                ("messages", (AIMessageChunk(content="Hi "), {})),
+                ("custom", {"step": 1}),
+                ("bogus",),
+                ("messages", (AIMessageChunk(content="there"), {})),
+            ]
+        )
+
+        assert message == "Hi there"
+        assert hit_limit is False
+        assert [c.args[0] for c in writer.call_args_list] == [
+            {"tool_data": entry},
+            {"step": 1},
+        ]
+
+    @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
+    async def test_a_recursion_error_returns_the_partial_text_and_the_hit_flag(self) -> None:
+        class _RecursingGraph(_StreamGraph):
+            async def astream(
+                self, state: dict, stream_mode: Any = None, config: Any = None
+            ) -> Any:
+                yield ("messages", (AIMessageChunk(content="partial"), {}))
+                raise GraphRecursionError
+
+        writer = MagicMock()
+        message, hit_limit = await WorkflowSubagentRunner._stream_turn(
+            _RecursingGraph([]), {}, {}, writer, set()
+        )
+
+        assert message == "partial"
+        assert hit_limit is True

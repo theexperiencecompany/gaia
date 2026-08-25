@@ -10,6 +10,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import BaseTool, tool
 import pytest
 
+from app.agents.core.nodes.pre_model_hooks import worker_pre_model_hooks
 from app.agents.core.subagents.base_subagent import SubAgentFactory, SubAgentToolConfig
 from app.agents.core.subagents.spawn_agent import _build_spawn_graph
 from app.agents.middleware.subagent import SubagentMiddleware
@@ -27,7 +28,7 @@ from app.agents.tools.core.tool_runtime_config import (
     build_executor_child_tool_runtime_config,
     build_provider_parent_tool_runtime_config,
 )
-from app.constants.general import FINISH_TASK_NAME
+from app.constants.general import FINISH_TASK_NAME, SPAWN_AGENT_NAME
 from app.override.langgraph_bigtool.create_agent import (
     AgentConfig,
     ToolRetrievalConfig,
@@ -299,14 +300,49 @@ async def test_tool_runtime_config_builders_cover_direct_and_dynamic_modes():
     assert tools_config.retrieve_tools_coroutine is not None
 
 
+def test_build_create_agent_tool_kwargs_hands_retrieval_scoping_through_verbatim():
+    """tool_space, the subagent-discovery toggle and the bindable set reach
+    get_retrieve_tools_function exactly as given — nulling or dropping any of
+    them silently widens what a spawned subagent can discover."""
+    sentinel = AsyncMock()
+    config = ToolRuntimeConfig(
+        initial_tool_names=["read"],
+        enable_retrieve_tools=True,
+        include_subagents_in_retrieve=True,
+    )
+    with patch(
+        "app.agents.tools.core.tool_runtime_config.get_retrieve_tools_function",
+        return_value=sentinel,
+    ) as mock_get:
+        kwargs = build_create_agent_tool_kwargs(
+            config,
+            tool_space="provider_space",
+            bindable_tool_names={"vfs_read"},
+        )
+
+    mock_get.assert_called_once_with(
+        tool_space="provider_space",
+        include_subagents=True,
+        bindable_tool_names={"vfs_read"},
+    )
+    assert kwargs["tools_config"].retrieve_tools_coroutine is sentinel
+    assert kwargs["tools_config"].initial_tool_ids == ["read"]
+    assert kwargs["tools_config"].disable_retrieve_tools is False
+
+
 async def _spawn_graph_agent_kwargs(
-    *, registry: dict[str, BaseTool], excluded: set[str], runtime: ToolRuntimeConfig
+    *,
+    registry: dict[str, BaseTool],
+    excluded: set[str],
+    runtime: ToolRuntimeConfig,
+    llm: Any = None,
 ) -> dict[str, Any]:
     """The kwargs ``_build_spawn_graph`` hands to ``create_agent`` for this config.
 
     Store, checkpointer and agent builder are stubbed because they are the
     boundaries; the scoping under test is the real production code between them.
     """
+    llm = llm or _FakeLLM()
     captured: dict[str, Any] = {}
 
     def _fake_create_agent(**kwargs: Any) -> Any:
@@ -322,7 +358,7 @@ async def _spawn_graph_agent_kwargs(
         patch("app.agents.core.subagents.spawn_agent.create_agent", new=_fake_create_agent),
     ):
         await _build_spawn_graph(
-            llm=_FakeLLM(),
+            llm=llm,
             registry=registry,
             excluded_tool_names=excluded,
             tool_space="provider_space",
@@ -363,6 +399,29 @@ async def test_spawn_graph_disables_retrieve_when_the_parent_did():
 
     assert captured["tools_config"].disable_retrieve_tools is True
     assert captured["tools_config"].retrieve_tools_coroutine is None
+
+
+@pytest.mark.asyncio
+async def test_spawn_graph_wires_identity_middleware_and_hooks_into_create_agent():
+    """The spawn's identity and guardrails ride on these exact kwargs: the agent
+    name keys threads/logs, the middleware list is what gives a spawn the HIL
+    gate, and the pre-model chain is the executor's minus the todo hook.
+    create_agent selects behavior purely by these kwarg names, so a renamed key
+    or dropped value silently falls back to its own default."""
+    llm = _FakeLLM()
+    captured = await _spawn_graph_agent_kwargs(
+        registry={"vfs_read": vfs_read},
+        excluded=set(),
+        runtime=ToolRuntimeConfig(initial_tool_names=["vfs_read"], enable_retrieve_tools=False),
+        llm=llm,
+    )
+
+    assert captured["llm"] is llm
+    assert set(captured) == {"llm", "tool_registry", "agent_config", "hooks_config", "tools_config"}
+    assert captured["agent_config"].agent_name == SPAWN_AGENT_NAME
+    # middleware_factory=list → the factory call must appear verbatim.
+    assert captured["agent_config"].middleware == []
+    assert list(captured["hooks_config"].pre_model_hooks) == list(worker_pre_model_hooks())
 
 
 @pytest.mark.asyncio
@@ -643,6 +702,31 @@ async def test_base_subagent_wiring_uses_shared_tool_runtime_helpers():
     # the thread comms already ingested, so hooking it here re-extracts one
     # conversation once per subagent per turn and bills for every pass.
     assert captured_kwargs["hooks_config"].end_graph_hooks == []
+
+
+@pytest.mark.asyncio
+async def test_base_subagent_hands_create_agent_the_exact_agent_config():
+    # create_agent receives **common_kwargs, so a renamed key silently drops the
+    # wiring instead of erroring: assert every key by name, plus the identity
+    # values inside AgentConfig — the subagent's own name and the middleware
+    # list built for it.
+    captured_kwargs, mw = await _run_provider_subagent_factory(
+        use_direct_tools=False,
+        disable_retrieve_tools=False,
+    )
+
+    assert set(captured_kwargs) == {
+        "llm",
+        "tool_registry",
+        "agent_config",
+        "hooks_config",
+        "tools_config",
+    }
+    assert captured_kwargs["tool_registry"]["normal_tool"] is normal_tool
+    agent_config = captured_kwargs["agent_config"]
+    assert isinstance(agent_config, AgentConfig)
+    assert agent_config.agent_name == "provider_agent"
+    assert agent_config.middleware == [mw]
 
 
 @pytest.mark.asyncio

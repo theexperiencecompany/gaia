@@ -317,9 +317,13 @@ class TestBuildCommsGraph:
             kwargs = mock_ca.call_args.kwargs
             assert kwargs["agent_config"].agent_name == "comms_agent"
             assert kwargs["tools_config"].disable_retrieve_tools is True
-            assert "call_executor" in kwargs["tools_config"].initial_tool_ids
-            assert "add_memory" in kwargs["tools_config"].initial_tool_ids
-            assert "search_memory" in kwargs["tools_config"].initial_tool_ids
+            from app.agents.tools import memory_tools
+
+            assert kwargs["tools_config"].initial_tool_ids == [
+                "call_executor",
+                "cancel_executor",
+                *[memory_tool.name for memory_tool in memory_tools.tools],
+            ]
 
     async def test_comms_graph_has_end_graph_hooks(self):
         with ExitStack() as stack:
@@ -466,8 +470,26 @@ class TestBuildExecutorGraph:
             mock_ca.assert_called_once()
             kwargs = mock_ca.call_args.kwargs
             assert kwargs["agent_config"].agent_name == "executor_agent"
-            assert "handoff" in kwargs["tools_config"].initial_tool_ids
-            assert "plan_tasks" in kwargs["tools_config"].initial_tool_ids
+            # Exact equality, not membership: a renamed id silently drops that
+            # tool from the executor's initial bind set, and membership lets the
+            # typo through as long as one asserted name survives.
+            assert kwargs["tools_config"].initial_tool_ids == [
+                "handoff",
+                "plan_tasks",
+                "update_tasks",
+                "read",
+                "bash",
+                "deep_research",
+                "wait_for_subagents",
+                "read_manual",
+                "create_tracked_todo",
+                "update_tracked_todo",
+                "update_tracked_todo_canvas",
+                "complete_tracked_todo",
+                "search_todo_context",
+                "list_tracked_todos",
+                "save_learned_skill",
+            ]
 
     async def test_executor_tool_registry_includes_handoff(self):
         with ExitStack() as stack:

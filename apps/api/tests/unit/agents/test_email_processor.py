@@ -11,6 +11,8 @@ import pytest
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.memory.email_processor import (
     OnboardingFetchOptions,
+    _await_discovery_tasks,
+    _collect_platform_results,
     _crawl_and_store_discovered,
     _discover_and_store_linked_profiles,
     _extract_linked_profile_links,
@@ -1807,3 +1809,62 @@ class TestDiscoverAndStoreLinkedProfilesArgPins:
         assert crawled_urls == {"https://built.github/johndoe"}
         mock_memory.retain.assert_awaited_once()
         assert mock_memory.retain.await_args.args[0] == USER_ID
+
+
+# ---------------------------------------------------------------------------
+# _collect_platform_results / _await_discovery_tasks — tally + discovery await
+# ---------------------------------------------------------------------------
+
+
+class TestCollectPlatformResultsDirect:
+    @patch(_PATCH_LOG)
+    def test_exception_result_is_logged_and_not_tallied(self, mock_log: MagicMock) -> None:
+        boom = RuntimeError("gmail search down")
+
+        profiles_stored, extracted, discovery = _collect_platform_results(
+            USER_ID, [("github", None)], [boom]
+        )
+
+        assert profiles_stored == 0
+        assert extracted == []
+        assert discovery == []
+        (msg,), kwargs = mock_log.error.call_args
+        assert msg == f"{LogTag.MEMORY} Platform extraction failed"
+        assert kwargs["platform"] == "github"
+        assert kwargs["error_type"] == "RuntimeError"
+        assert kwargs["error"] == "gmail search down"
+        assert kwargs["user_id"] == USER_ID
+
+
+class TestAwaitDiscoveryTasksDirect:
+    @patch(_PATCH_LOG)
+    async def test_empty_task_list_returns_zero_without_gathering(
+        self, mock_log: MagicMock
+    ) -> None:
+        assert await _await_discovery_tasks(USER_ID, []) == 0
+        mock_log.info.assert_not_called()
+
+    @patch(_PATCH_LOG)
+    async def test_sums_int_results_and_logs_failed_tasks(self, mock_log: MagicMock) -> None:
+        async def store(count: int) -> int:
+            return count
+
+        async def boom() -> int:
+            raise RuntimeError("crawl died")
+
+        tasks = [
+            asyncio.create_task(store(2)),
+            asyncio.create_task(boom()),
+            asyncio.create_task(store(3)),
+        ]
+
+        discovered = await _await_discovery_tasks(USER_ID, tasks)
+
+        assert discovered == 5
+        failure_logs = [
+            c for c in mock_log.error.call_args_list if "Discovery task failed" in c.args[0]
+        ]
+        assert len(failure_logs) == 1
+        assert failure_logs[0].kwargs["error_type"] == "RuntimeError"
+        assert failure_logs[0].kwargs["error"] == "crawl died"
+        assert failure_logs[0].kwargs["user_id"] == USER_ID

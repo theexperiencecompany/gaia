@@ -12,8 +12,14 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 
 from app.agents.tools.integrations.notion_tool import (
+    _append_content_block,
+    _append_table_block,
     _build_parent,
     _fetch_data,
+    _fetch_page_blocks,
+    _fetch_page_title,
+    _insert_markdown,
+    _item_title,
     _move_page,
     register_notion_custom_tools,
 )
@@ -412,3 +418,149 @@ def test_fetch_data_empty_string_query_is_omitted_from_search_body() -> None:
 
     assert "query" not in proxy.call_args.kwargs["body"]
     assert result == {"values": [], "count": 0, "has_more": False}
+
+
+# --- extracted composio helpers: title / blocks / insert paths ----------------
+
+
+def _composio_returning(result: dict[str, Any]) -> MagicMock:
+    composio = MagicMock()
+    composio.tools.execute.return_value = result
+    return composio
+
+
+def test_fetch_page_title_unsuccessful_raises_app_error_with_502() -> None:
+    composio = _composio_returning({"successful": False, "error": "upstream down"})
+
+    with pytest.raises(AppError) as excinfo:
+        _fetch_page_title(composio, "pg-1", AUTH_CREDS)
+
+    assert excinfo.value.status_code == 502
+    assert excinfo.value.message == "Failed to fetch Notion page title: upstream down"
+    assert composio.tools.execute.call_args.kwargs["slug"] == "NOTION_GET_PAGE_PROPERTY_ACTION"
+    assert composio.tools.execute.call_args.kwargs["arguments"] == {
+        "page_id": "pg-1",
+        "property_id": "title",
+    }
+
+
+def test_fetch_page_blocks_unsuccessful_raises_value_error() -> None:
+    composio = _composio_returning({"successful": False, "error": "no blocks for you"})
+
+    with pytest.raises(ValueError) as excinfo:
+        _fetch_page_blocks(composio, FetchPageAsMarkdownInput(page_id="pg-1"), AUTH_CREDS)
+
+    assert str(excinfo.value) == "Failed to fetch blocks: no blocks for you"
+
+
+def test_append_table_block_sends_exact_table_args_and_raises_on_failure() -> None:
+    request = InsertMarkdownInput(parent_block_id="blk-9", markdown="irrelevant")
+    block: dict[str, Any] = {
+        "type": "table",
+        "table_width": 2,
+        "rows": [["a", "b"]],
+        "has_column_header": True,
+    }
+    composio = _composio_returning({"successful": True})
+
+    _append_table_block(composio, request, block, AUTH_CREDS)
+
+    composio.tools.execute.assert_called_once_with(
+        slug="NOTION_APPEND_TABLE_BLOCKS",
+        arguments={
+            "block_id": "blk-9",
+            "table_width": 2,
+            "has_column_header": True,
+            "rows": [["a", "b"]],
+        },
+        version=None,
+        dangerously_skip_version_check=True,
+        user_id="user_test_123",
+    )
+
+    failing = _composio_returning({"successful": False, "error": "table refused"})
+    with pytest.raises(ValueError) as excinfo:
+        _append_table_block(failing, request, block, AUTH_CREDS)
+    assert str(excinfo.value) == "Failed to insert table: table refused"
+
+
+def test_append_content_block_includes_after_only_when_set_and_raises_on_failure() -> None:
+    request = InsertMarkdownInput(
+        parent_block_id="blk-9", markdown="irrelevant", after="blk-anchor"
+    )
+    block: dict[str, Any] = {"type": "paragraph", "paragraph": {}}
+    composio = _composio_returning({"successful": True})
+
+    _append_content_block(composio, request, block, request.after, AUTH_CREDS)
+
+    composio.tools.execute.assert_called_once_with(
+        slug="NOTION_ADD_MULTIPLE_PAGE_CONTENT",
+        arguments={
+            "parent_block_id": "blk-9",
+            "content_blocks": [block],
+            "after": "blk-anchor",
+        },
+        version=None,
+        dangerously_skip_version_check=True,
+        user_id="user_test_123",
+    )
+
+    failing = _composio_returning({"successful": False, "error": "insert refused"})
+    with pytest.raises(ValueError) as excinfo:
+        _append_content_block(failing, request, block, None, AUTH_CREDS)
+    assert str(excinfo.value) == "Failed to insert markdown: insert refused"
+    assert "after" not in failing.tools.execute.call_args.kwargs["arguments"]
+
+
+@patch(f"{MODULE}.markdown_to_notion_blocks")
+def test_insert_markdown_without_blocks_raises_value_error(mock_convert: MagicMock) -> None:
+    mock_convert.return_value = []
+
+    with pytest.raises(ValueError) as excinfo:
+        _insert_markdown(
+            MagicMock(),
+            InsertMarkdownInput(parent_block_id="blk-1", markdown=""),
+            AUTH_CREDS,
+        )
+
+    assert str(excinfo.value) == "No content to insert - markdown conversion produced no blocks"
+
+
+@patch(f"{MODULE}.markdown_to_notion_blocks")
+def test_insert_markdown_routes_tables_and_positions_after_anchor(
+    mock_convert: MagicMock,
+) -> None:
+    mock_convert.return_value = [
+        {"type": "paragraph", "paragraph": {}},
+        {"type": "table", "table_width": 1, "rows": [["a"]]},
+        {"type": "heading_1", "heading_1": {}},
+    ]
+    request = InsertMarkdownInput(parent_block_id="blk-1", markdown="x", after="anchor")
+    composio = _composio_returning({"successful": True})
+
+    result = _insert_markdown(composio, request, AUTH_CREDS)
+
+    slugs = [c.kwargs["slug"] for c in composio.tools.execute.call_args_list]
+    assert slugs == [
+        "NOTION_ADD_MULTIPLE_PAGE_CONTENT",
+        "NOTION_APPEND_TABLE_BLOCKS",
+        "NOTION_ADD_MULTIPLE_PAGE_CONTENT",
+    ]
+    first_content, _, last_content = composio.tools.execute.call_args_list
+    assert first_content.kwargs["arguments"]["after"] == "anchor"
+    assert "after" not in last_content.kwargs["arguments"]
+    assert result == {
+        "parent_block_id": "blk-1",
+        "blocks_added": 3,
+        "tables_added": 1,
+        "after": "anchor",
+    }
+
+
+def test_item_title_page_with_empty_title_property_falls_back_to_untitled() -> None:
+    item = {
+        "object": "page",
+        "properties": {"Name": {"type": "title", "title": []}},
+    }
+
+    assert _item_title(item) == "Untitled"

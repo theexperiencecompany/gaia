@@ -492,6 +492,56 @@ class TestMCPClientDoConnect:
 
         mock_base_client.close_all_sessions.assert_awaited_once()
 
+    @patch("app.services.mcp.mcp_client.IntegrationResolver")
+    @patch("app.services.mcp.mcp_client.BaseMCPClient")
+    @patch("app.services.mcp.mcp_client.ResilientLangChainAdapter")
+    @patch("app.services.mcp.mcp_client.wrap_tools_with_null_filter")
+    @patch("app.services.mcp.mcp_client.store_mcp_tools", new_callable=AsyncMock)
+    @patch(
+        "app.services.mcp.mcp_client.update_user_integration_status",
+        new_callable=AsyncMock,
+    )
+    async def test_retries_connect_once_after_successful_token_refresh(
+        self,
+        mock_update_status,
+        mock_store_tools,
+        mock_wrap,
+        mock_adapter_cls,
+        mock_base_client_cls,
+        mock_resolver,
+    ):
+        resolved = MagicMock()
+        resolved.mcp_config = _make_mcp_config(requires_auth=True)
+        resolved.source = "platform"
+        resolved.custom_doc = None
+        mock_resolver.resolve = AsyncMock(return_value=resolved)
+
+        tools = [_mock_tool("tool_a")]
+        mock_base_client = AsyncMock()
+        mock_base_client_cls.return_value = mock_base_client
+        # First attempt hits a stale token; the post-refresh retry succeeds.
+        mock_base_client.create_session = AsyncMock(
+            side_effect=[Exception("401 Unauthorized"), MagicMock()]
+        )
+        mock_adapter = AsyncMock()
+        mock_adapter.create_tools = AsyncMock(return_value=tools)
+        mock_adapter_cls.return_value = mock_adapter
+        mock_wrap.return_value = tools
+
+        client = MCPClient(user_id=USER_ID)
+        client.token_store.get_bearer_token = AsyncMock(return_value=None)
+        client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
+        client.token_store.get_oauth_token = AsyncMock(return_value="tok")
+        client.token_store.store_unauthenticated = AsyncMock()
+        client._try_refresh_token = AsyncMock(return_value=True)
+
+        result = await client._do_connect(INTEGRATION_ID)
+
+        assert result is tools
+        client._try_refresh_token.assert_awaited_once_with(INTEGRATION_ID, resolved.mcp_config)
+        assert mock_base_client.create_session.await_count == 2
+        assert client._tools[INTEGRATION_ID] is tools
+
 
 class TestParseDeviceServerUrl:
     def test_parses_device_id_and_server_key(self):

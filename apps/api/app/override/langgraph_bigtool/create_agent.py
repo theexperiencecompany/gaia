@@ -355,7 +355,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
         model_configurations = agent_configurable(config)
         tools_to_bind = _tools_to_bind(deps, state)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]  # langchain model-lane stubs omit bind_tools for this lane type
-        llm_with_tools = _bind_session_id(llm_with_tools, model_configurations, agent_name)
+        llm_with_tools = _bind_session_id(llm_with_tools, model_configurations, deps.agent_name)
         prepared = _prepare_fallback(llm, tools_to_bind, model_configurations)
         state = _maybe_inject_wrapup(state)
         response = invoke_llm(
@@ -365,7 +365,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
             config=config,
             label=deps.agent_name,
             fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
-            sticky_session_id=_agent_sticky_key(model_configurations, agent_name),
+            sticky_session_id=_agent_sticky_key(model_configurations, deps.agent_name),
         )
 
         return {"messages": [*tombstones, _finalize_model_response(response, deps.agent_name)]}  # type: ignore[return-value]  # helper's declared return is wider than the dict actually built
@@ -387,7 +387,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
 
         tools_to_bind = _tools_to_bind(deps, state)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]  # langchain model-lane stubs omit bind_tools for this lane type
-        llm_with_tools = _bind_session_id(llm_with_tools, model_configurations, agent_name)
+        llm_with_tools = _bind_session_id(llm_with_tools, model_configurations, deps.agent_name)
         prepared = _prepare_fallback(llm, tools_to_bind, model_configurations)
         # LLMAccountingMiddleware already charges this call; auxiliary metering
         # here would book it a second time.
@@ -399,7 +399,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
             label=deps.agent_name,
             meter_auxiliary=False,
             fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
-            sticky_session_id=_agent_sticky_key(model_configurations, agent_name),
+            sticky_session_id=_agent_sticky_key(model_configurations, deps.agent_name),
         )
 
         _log_message_preview(state)

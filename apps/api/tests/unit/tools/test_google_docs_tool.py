@@ -6,13 +6,18 @@ the delete-doc failure path.
 """
 
 from collections.abc import Callable
+import json
 from typing import Any
 from unittest.mock import MagicMock, call, patch
 
 import pytest
 
 from app.agents.tools.integrations.google_docs_tool import (
+    _create_toc,
     _delete_doc,
+    _fetch_document_data,
+    _gather_recent_docs,
+    _insert_toc_text,
     _share_doc,
     register_google_docs_custom_tools,
 )
@@ -356,3 +361,181 @@ def test_delete_doc_raises_runtime_error_on_app_error() -> None:
     assert excinfo.value.__cause__ is error
     assert proxy.call_args.kwargs["method"] == "DELETE"
     assert proxy.call_args.kwargs["endpoint"].endswith("/files/doc-1")
+
+
+# --- _fetch_document_data ------------------------------------------------------
+
+
+def _composio_returning(result: dict[str, Any]) -> MagicMock:
+    composio = MagicMock()
+    composio.tools.execute.return_value = result
+    return composio
+
+
+def test_fetch_document_data_returns_dict_payload_directly() -> None:
+    composio = _composio_returning({"successful": True, "data": {"body": {"content": []}}})
+
+    assert _fetch_document_data(composio, "doc-1", AUTH_CREDS) == {"body": {"content": []}}
+    composio.tools.execute.assert_called_once_with(
+        slug="GOOGLEDOCS_GET_DOCUMENT_BY_ID",
+        arguments={"id": "doc-1"},
+        version=None,
+        dangerously_skip_version_check=True,
+        user_id="user_test_123",
+    )
+
+
+def test_fetch_document_data_parses_stringified_json_payload() -> None:
+    composio = _composio_returning(
+        {"successful": True, "data": json.dumps({"body": {"content": [1]}})}
+    )
+
+    assert _fetch_document_data(composio, "doc-1", AUTH_CREDS) == {"body": {"content": [1]}}
+
+
+def test_fetch_document_data_invalid_json_string_fails_the_body_check() -> None:
+    composio = _composio_returning({"successful": True, "data": "{not json"})
+
+    with patch(f"{MODULE}.log") as log_mock:
+        with pytest.raises(ValueError) as excinfo:
+            _fetch_document_data(composio, "doc-1", AUTH_CREDS)
+
+    assert str(excinfo.value) == "Failed to get document or document has no body content"
+    assert log_mock.debug.call_args.kwargs["error_type"] == "JSONDecodeError"
+
+
+def test_fetch_document_data_non_dict_payload_with_body_substring_raises_format_error() -> None:
+    composio = _composio_returning({"successful": True, "data": "raw body blob"})
+
+    with pytest.raises(ValueError) as excinfo:
+        _fetch_document_data(composio, "doc-1", AUTH_CREDS)
+
+    assert str(excinfo.value) == "Document data is not in expected format"
+
+
+def test_fetch_document_data_unsuccessful_execute_raises_value_error() -> None:
+    composio = _composio_returning({"successful": False, "error": "quota exceeded"})
+
+    with pytest.raises(ValueError) as excinfo:
+        _fetch_document_data(composio, "doc-1", AUTH_CREDS)
+
+    assert str(excinfo.value) == "Failed to get document: quota exceeded"
+
+
+def test_fetch_document_data_type_error_from_execute_propagates() -> None:
+    composio = MagicMock()
+    composio.tools.execute.side_effect = TypeError("bad signature")
+
+    with patch(f"{MODULE}.log") as log_mock:
+        with pytest.raises(TypeError):
+            _fetch_document_data(composio, "doc-1", AUTH_CREDS)
+
+    assert log_mock.debug.call_args.kwargs["error_type"] == "TypeError"
+
+
+# --- _insert_toc_text / _create_toc --------------------------------------------
+
+
+def test_insert_toc_text_sends_exact_insert_request_and_returns_result() -> None:
+    request = CreateTOCInput(document_id="doc-6", insertion_index=2)
+    composio = _composio_returning({"successful": True, "data": {"done": True}})
+
+    result = _insert_toc_text(composio, request, "# TOC", AUTH_CREDS)
+
+    composio.tools.execute.assert_called_once_with(
+        slug="GOOGLEDOCS_INSERT_TEXT_ACTION",
+        arguments={"document_id": "doc-6", "text": "# TOC", "insertion_index": 2},
+        version=None,
+        dangerously_skip_version_check=True,
+        user_id="user_test_123",
+    )
+    assert result == {"successful": True, "data": {"done": True}}
+
+
+def test_insert_toc_text_failure_raises_value_error() -> None:
+    composio = _composio_returning({"successful": False, "error": "insert denied"})
+
+    with pytest.raises(ValueError) as excinfo:
+        _insert_toc_text(composio, CreateTOCInput(document_id="doc-6"), "# TOC", AUTH_CREDS)
+
+    assert str(excinfo.value) == "Failed to insert text: insert denied"
+
+
+@patch(f"{MODULE}.generate_toc_text", return_value="# Table of contents")
+@patch(f"{MODULE}.extract_headings_from_document", return_value=["Intro", "Details"])
+def test_create_toc_combines_fetch_extract_and_insert_into_one_response(
+    mock_extract: MagicMock, mock_generate: MagicMock
+) -> None:
+    composio = MagicMock()
+    composio.tools.execute.side_effect = [
+        {"successful": True, "data": {"body": {}}},
+        {"successful": True, "data": {"revision": 7}},
+    ]
+    request = CreateTOCInput(document_id="doc-6", title="Contents")
+
+    result = _create_toc(composio, request, AUTH_CREDS)
+
+    mock_extract.assert_called_once_with({"body": {}}, request.include_heading_levels)
+    mock_generate.assert_called_once_with(["Intro", "Details"], "Contents")
+    assert result == {
+        "document_id": "doc-6",
+        "url": "https://docs.google.com/document/d/doc-6/edit",
+        "headings_found": 2,
+        "toc_content": "# Table of contents",
+        "headings": ["Intro", "Details"],
+        "insert_response": {"revision": 7},
+    }
+
+
+# --- _gather_recent_docs -------------------------------------------------------
+
+
+def test_gather_recent_docs_queries_drive_and_maps_file_fields() -> None:
+    proxy = MagicMock(
+        return_value={
+            "files": [
+                {
+                    "id": "d1",
+                    "name": "Notes",
+                    "modifiedTime": "2026-01-01T00:00:00Z",
+                    "webViewLink": "https://docs.google.com/d/d1",
+                },
+                {"id": None},
+            ]
+        }
+    )
+
+    with patch(f"{MODULE}.proxy_request_sync", proxy):
+        result = _gather_recent_docs("user_42")
+
+    proxy.assert_called_once_with(
+        user_id="user_42",
+        toolkit="GOOGLEDOCS",
+        endpoint="https://www.googleapis.com/drive/v3/files",
+        method="GET",
+        query={
+            "q": "mimeType='application/vnd.google-apps.document'",
+            "orderBy": "viewedByMeTime desc",
+            "pageSize": 20,
+            "fields": "files(id,name,modifiedTime,webViewLink)",
+        },
+    )
+    assert result == {
+        "recent_docs": [
+            {
+                "id": "d1",
+                "name": "Notes",
+                "modified": "2026-01-01T00:00:00Z",
+                "url": "https://docs.google.com/d/d1",
+            },
+            {"id": None, "name": None, "modified": None, "url": None},
+        ],
+        "doc_count": 2,
+    }
+
+
+def test_gather_recent_docs_with_no_proxy_result_reports_zero() -> None:
+    with patch(f"{MODULE}.proxy_request_sync", MagicMock(return_value=None)):
+        result = _gather_recent_docs("user_42")
+
+    assert result == {"recent_docs": [], "doc_count": 0}

@@ -26,11 +26,13 @@ from app.models.calendar_models import (
     GoogleCalendarEventDateTime,
     GoogleCalendarEventResource,
     GoogleCalendarEventsPage,
+    GoogleCalendarListEntry,
     RecurrenceData,
     RecurrenceRule,
 )
 from app.services.calendar_service import (
     _all_day_bounds,
+    _selected_search_calendars,
     create_calendar_event,
     delete_calendar_event,
     fetch_calendar_events,
@@ -78,6 +80,23 @@ def _http_error(status: int, body: dict[str, Any] | None = None) -> AppError:
         status_code=status,
         meta={"provider_response": body or {}},
     )
+
+
+class TestSelectedSearchCalendars:
+    async def test_preferences_matching_no_listed_calendar_search_everything(
+        self, mock_calendar_repo: AsyncMock
+    ):
+        """Stored selections that reference calendars absent from Google's list
+        would otherwise search nothing — the fallback covers every calendar."""
+        mock_calendar_repo.get_for_user.return_value = _prefs(["deleted-cal"])
+        calendars = [
+            GoogleCalendarListEntry(id="cal-a", summary="A"),
+            GoogleCalendarListEntry(id="cal-b", summary="B"),
+        ]
+
+        result = await _selected_search_calendars(USER_ID, calendars)
+
+        assert result == calendars
 
 
 # ---------------------------------------------------------------------------

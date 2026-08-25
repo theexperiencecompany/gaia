@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.decorators.caching import Cacheable, _pattern_to_key
+from app.decorators.caching import Cacheable, CacheInvalidator, _pattern_to_key
 
 pytestmark = pytest.mark.unit
 
@@ -157,3 +157,70 @@ class TestCacheableHitMissFlow:
 
         assert result == "sync-result"
         assert calls == ["x"]
+
+
+class TestCacheableValidation:
+    def test_no_key_strategy_raises_at_construction(self):
+        with pytest.raises(
+            ValueError, match="Either key_pattern, key_generator, or smart_hash must be provided"
+        ):
+            Cacheable()
+
+
+class TestCacheableKeyGenerator:
+    async def test_a_sync_key_generators_return_becomes_the_cache_key(self):
+        @Cacheable(key_generator=lambda func_name, *args, **kwargs: f"gen:{args[0]}", ttl=60)
+        async def fetch(item_id: str) -> str:
+            return "fresh"
+
+        with (
+            patch(
+                "app.decorators.caching.get_cache", new_callable=AsyncMock, return_value=None
+            ) as mock_get,
+            patch("app.decorators.caching.set_cache", new_callable=AsyncMock),
+        ):
+            assert await fetch("item-1") == "fresh"
+
+        assert mock_get.await_args.args[0] == "gen:item-1"
+
+    async def test_an_async_key_generator_is_awaited(self):
+        async def key_gen(func_name: str, *args: Any, **kwargs: Any) -> str:
+            return f"agen:{args[0]}"
+
+        @Cacheable(key_generator=key_gen, ttl=60)
+        async def fetch(item_id: str) -> str:
+            return "fresh"
+
+        with (
+            patch(
+                "app.decorators.caching.get_cache", new_callable=AsyncMock, return_value=None
+            ) as mock_get,
+            patch("app.decorators.caching.set_cache", new_callable=AsyncMock),
+        ):
+            await fetch("item-1")
+
+        assert mock_get.await_args.args[0] == "agen:item-1"
+
+
+class TestCacheableUnresolvedKeyGuard:
+    async def test_no_resolvable_strategy_at_call_time_raises(self):
+        cacheable = Cacheable(smart_hash=True)
+        cacheable.smart_hash = False
+
+        with pytest.raises(ValueError, match="key_pattern must be provided"):
+            await cacheable._cache_key("func_name", lambda: None, (), {})
+
+
+class TestCacheInvalidatorAsyncKeyGenerator:
+    async def test_an_async_generator_can_bust_multiple_keys(self):
+        async def key_gen(func_name: str, *args: Any, **kwargs: Any) -> list[str]:
+            return ["bust:a", "bust:b"]
+
+        @CacheInvalidator(key_generator=key_gen)
+        async def mutate(item_id: str) -> str:
+            return "done"
+
+        with patch("app.decorators.caching.delete_cache", new_callable=AsyncMock) as mock_delete:
+            assert await mutate("x") == "done"
+
+        assert [c.args[0] for c in mock_delete.await_args_list] == ["bust:a", "bust:b"]
