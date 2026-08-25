@@ -1597,7 +1597,6 @@ class TestFinishTodoRunAskUser:
         assert "daily limit" in result
         repo_update.assert_not_awaited()
 
-    @pytest.mark.regression
     async def test_a_failed_delivery_keeps_the_question_pending_and_skips_the_marker(self):
         """If the message can't be posted, the persisted question must stay —
         clearing it (or setting the terminal marker anyway) would either lose
@@ -1617,7 +1616,6 @@ class TestFinishTodoRunAskUser:
         assert repo_update.await_args.kwargs["update"].pending_question is not None
         pool.set.assert_not_awaited()
 
-    @pytest.mark.regression
     async def test_the_question_is_persisted_before_it_is_delivered(self):
         """Persisting after delivery would let a crash between the two send the
         user a question with no reply-match record — and a retry would then

@@ -963,9 +963,7 @@ async def _finish_outcome_complete(todo_id: str, user_id: str, summary: str) -> 
     return "completed"
 
 
-async def _finish_outcome_reschedule(
-    todo_id: str, user_id: str, reschedule_at: str | None
-) -> str:
+async def _finish_outcome_reschedule(todo_id: str, user_id: str, reschedule_at: str | None) -> str:
     """Run the 'reschedule' outcome; returns the timeline detail or an error."""
     parsed_at, error = _parse_iso_future_datetime(reschedule_at or "", "reschedule_at")
     if error or parsed_at is None:

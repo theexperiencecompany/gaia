@@ -395,9 +395,7 @@ class TrackedTodoService:
             return False
 
 
-async def record_pending_question_reply(
-    user_id: str, reply_message_id: str, answer: str
-) -> bool:
+async def record_pending_question_reply(user_id: str, reply_message_id: str, answer: str) -> bool:
     """Record a user's reply to a todo's outstanding question and re-run the todo.
 
     Deterministic thread-match: ``reply_message_id`` must equal the stored
@@ -413,9 +411,7 @@ async def record_pending_question_reply(
     todo_id = claimed.id
 
     now = datetime.now(UTC)
-    await TrackedTodoService.system_log(
-        todo_id, user_id, "QUESTION_ANSWERED", f"Answer: {answer}"
-    )
+    await TrackedTodoService.system_log(todo_id, user_id, "QUESTION_ANSWERED", f"Answer: {answer}")
     await TrackedTodoService.append_canvas_timeline(
         todo_id=todo_id,
         user_id=user_id,
@@ -423,9 +419,7 @@ async def record_pending_question_reply(
     )
 
     jitter = random.uniform(5, 30)
-    enqueued = await TrackedTodoService.schedule_execution(
-        todo_id, now + timedelta(seconds=jitter)
-    )
+    enqueued = await TrackedTodoService.schedule_execution(todo_id, now + timedelta(seconds=jitter))
     if not enqueued:
         await todo_repository.update(
             todo_id,
@@ -459,9 +453,7 @@ async def clear_pending_question(todo_id: str, user_id: str, reason: str) -> boo
         "QUESTION_EXPIRED",
         f"Pending question cleared ({reason}); todo rescheduled.",
     )
-    await todo_repository.update(
-        todo_id, user_id=user_id, update=TodoUpdate(pending_question=None)
-    )
+    await todo_repository.update(todo_id, user_id=user_id, update=TodoUpdate(pending_question=None))
     return True
 
 

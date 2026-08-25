@@ -323,7 +323,6 @@ class TestExecuteTodoWithRetrySuccess:
         assert _updates(repo) == [{"gaia_retry_count": 0}]
         pool.enqueue_job.assert_not_awaited()
 
-    @pytest.mark.regression
     async def test_ask_user_parks_scheduled_at_and_never_advances_the_recurrence(self):
         """A recurring run that ends in ask_user is blocked on the user's reply.
         Advancing the recurrence re-enqueued and re-ran the todo while its
@@ -348,7 +347,6 @@ class TestExecuteTodoWithRetrySuccess:
         assert _updates(repo) == [{"gaia_retry_count": 0, "scheduled_at": expires}]
         pool.enqueue_job.assert_not_awaited()
 
-    @pytest.mark.regression
     async def test_ask_user_without_a_readable_question_parks_for_the_default_ttl(self):
         """Defensive fallback: even if the question record vanished between the
         run finishing and this read, scheduled_at must move into the future —

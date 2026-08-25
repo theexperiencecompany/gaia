@@ -297,25 +297,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             limit=limit,
         )
 
-    async def find_open_pending_question(
-        self, user_id: str, message_id: str
-    ) -> TodoDocument | None:
-        """The tracked todo whose outstanding question was asked as ``message_id``.
-
-        Deterministic reply-match key for the ask_user loop — no semantic matching.
-        """
-        return await self._find_one(
-            {
-                "user_id": user_id,
-                "labels": GAIA_TRACKED_LABEL,
-                "completed": False,
-                "pending_question.message_id": message_id,
-            }
-        )
-
-    async def claim_pending_question(
-        self, user_id: str, message_id: str
-    ) -> TodoDocument | None:
+    async def claim_pending_question(self, user_id: str, message_id: str) -> TodoDocument | None:
         """Atomically clear a todo's ``pending_question`` matched by its message id.
 
         Compare-and-set for the ask_user loop: of two concurrent replays (double
