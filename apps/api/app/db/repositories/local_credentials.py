@@ -2,8 +2,9 @@
 
 Global (not user-scoped): a self-host instance has a single administrator, and
 the signup gate ("does ANY credential exist?") is a whole-collection question.
-Credentials are write-once — rotation means writing a replacement row — so no
-typed update path is exposed.
+Identity fields are write-once — only the bcrypt hash may ever be updated (the
+password-change endpoint rotates it via the typed update model), so a rotation
+is an in-place ``$set``, never a delete-and-recreate.
 
 Registration is gated by an ATOMIC CLAIM, never check-then-create: every
 credential carries the constant ``slot="admin"`` discriminator and a unique

@@ -26,7 +26,7 @@ import pytest
 from app.config.settings import settings
 from app.constants.auth import JWT_ALGORITHM
 from app.constants.error_codes import INVALID_CREDENTIALS
-from app.models.auth_models import LocalCredentialDocument
+from app.models.auth_models import LocalCredentialDocument, LocalCredentialUpdate
 from app.models.user_models import UserDocument
 from app.utils.local_auth_utils import (
     issue_session_token,
@@ -158,6 +158,18 @@ def credential_store():
         store[doc.user_id] = doc
         return doc
 
+    async def update(
+        doc_id: str, update_model: LocalCredentialUpdate
+    ) -> LocalCredentialDocument | None:
+        """Typed ``$set`` by id, mirroring MongoRepository.update semantics."""
+        await asyncio.sleep(0)
+        doc = next((c for c in store.values() if c.id == doc_id), None)
+        if doc is None:
+            return None
+        updated = doc.model_copy(update=update_model.model_dump(exclude_unset=True))
+        store[updated.user_id] = updated
+        return updated
+
     async def any_exists() -> bool:
         await asyncio.sleep(0)
         return bool(store)
@@ -167,6 +179,7 @@ def credential_store():
     holder.get_by_user_id = AsyncMock(side_effect=get_by_user_id)
     holder.create = AsyncMock(side_effect=create)
     holder.try_create = AsyncMock(side_effect=try_create)
+    holder.update = AsyncMock(side_effect=update)
     holder.any_exists = AsyncMock(side_effect=any_exists)
     return holder
 
@@ -201,6 +214,7 @@ def patched_repos(directory, credential_store, monkeypatch):
         patch.object(real_creds, "get_by_user_id", credential_store.get_by_user_id),
         patch.object(real_creds, "create", credential_store.create),
         patch.object(real_creds, "try_create", credential_store.try_create),
+        patch.object(real_creds, "update", credential_store.update),
         patch.object(real_creds, "any_exists", credential_store.any_exists),
     ):
         yield directory
@@ -211,6 +225,7 @@ def seed_admin(directory: UserDirectory, credential_store, email: str) -> UserDo
     user = UserDocument.model_validate({"id": str(ObjectId()), "email": email, "name": "Admin"})
     directory.by_email[email] = user
     credential_store.store[user.id] = LocalCredentialDocument(
+        id=str(ObjectId()),
         user_id=user.id,
         password_hash=bcrypt_lib.hashpw(TEST_PASSWORD.encode(), bcrypt_lib.gensalt()).decode(),
     )
@@ -663,6 +678,193 @@ class TestBcryptValueErrorGuards:
             "error_code": INVALID_CREDENTIALS,
             "message": "Invalid email or password",
         }
+
+
+# ---------------------------------------------------------------------------
+# Change password
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestChangePassword:
+    """PATCH /api/v1/auth/password — self-service rotation for the local
+    admin, driven through the real middleware so the session requirement is
+    exercised end to end."""
+
+    @pytest.fixture
+    def admin(self, patched_repos, credential_store):
+        return seed_admin(patched_repos, credential_store, "admin@gaia.dev")
+
+    async def test_change_then_old_fails_new_works(
+        self, admin, credential_store, _instance_secret, monkeypatch
+    ):
+        """The full rotation contract: 200 on change, old password stops
+        authenticating, new password logs in."""
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+        token = await issue_session_token(admin.id)
+        old_hash = credential_store.store[admin.id].password_hash
+
+        app = _build_middleware_app()
+        client = await _client(app)
+        async with client:
+            client.cookies.set("gaia_session", token)
+            response = await client.patch(
+                "/api/v1/auth/password",
+                json={
+                    "current_password": TEST_PASSWORD,
+                    "new_password": "brand-new-password",
+                },
+            )
+            old_login = await client.post(
+                "/api/v1/auth/login",
+                json={"email": "admin@gaia.dev", "password": TEST_PASSWORD},
+            )
+            new_login = await client.post(
+                "/api/v1/auth/login",
+                json={"email": "admin@gaia.dev", "password": "brand-new-password"},
+            )
+
+        assert response.status_code == 200, response.text
+        assert old_login.status_code == 401
+        assert new_login.status_code == 200, new_login.text
+        # The stored hash really rotated — not just a re-hash of the same
+        # secret (bcrypt salts differ every time).
+        new_hash = credential_store.store[admin.id].password_hash
+        assert new_hash != old_hash
+        assert bcrypt_lib.checkpw(b"brand-new-password", new_hash.encode())
+
+    async def test_wrong_current_password_is_401_and_changes_nothing(
+        self, admin, credential_store, _instance_secret, monkeypatch
+    ):
+        """A wrong current password is the uniform invalid_credentials 401 and
+        leaves the working credential untouched."""
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+        token = await issue_session_token(admin.id)
+        original = credential_store.store[admin.id]
+
+        app = _build_middleware_app()
+        client = await _client(app)
+        async with client:
+            client.cookies.set("gaia_session", token)
+            response = await client.patch(
+                "/api/v1/auth/password",
+                json={
+                    "current_password": "wrong-current-password",
+                    "new_password": "brand-new-password",
+                },
+            )
+            assert response.status_code == 401, response.text
+            assert response.json()["detail"]["error_code"] == INVALID_CREDENTIALS
+            # Nothing written — the old password still works.
+            assert credential_store.store[admin.id] is original
+            still_works = await client.post(
+                "/api/v1/auth/login",
+                json={"email": "admin@gaia.dev", "password": TEST_PASSWORD},
+            )
+
+        assert still_works.status_code == 200
+
+    async def test_without_a_session_is_401_not_authenticated(
+        self, admin, _instance_secret, monkeypatch
+    ):
+        """The route is not excluded from auth: without a session it fails
+        closed through get_current_user, never reaching verification."""
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+
+        app = _build_middleware_app()
+        client = await _client(app)
+        async with client:
+            response = await client.patch(
+                "/api/v1/auth/password",
+                json={
+                    "current_password": TEST_PASSWORD,
+                    "new_password": "brand-new-password",
+                },
+            )
+
+        assert response.status_code == 401
+        assert response.json()["detail"]["error_code"] == "NOT_AUTHENTICATED"
+
+    async def test_short_new_password_is_422_before_any_verification(
+        self, admin, credential_store, _instance_secret, monkeypatch
+    ):
+        """min_length is part of the request contract — rejected before the
+        current-password verify runs and before anything is written."""
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+        token = await issue_session_token(admin.id)
+        original = credential_store.store[admin.id]
+
+        app = _build_middleware_app()
+        client = await _client(app)
+        async with client:
+            client.cookies.set("gaia_session", token)
+            response = await client.patch(
+                "/api/v1/auth/password",
+                json={"current_password": TEST_PASSWORD, "new_password": "short"},
+            )
+
+        assert response.status_code == 422, response.text
+        assert credential_store.store[admin.id] is original
+
+    async def test_over_bcrypt_limit_new_password_is_422_before_any_write(
+        self, admin, credential_store, _instance_secret, monkeypatch
+    ):
+        """>72 bytes would make bcrypt >= 5 raise ValueError mid-request;
+        request validation rejects it as a clean 422 first (byte cap, chars
+        are not bytes)."""
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+        token = await issue_session_token(admin.id)
+        original = credential_store.store[admin.id]
+
+        app = _build_middleware_app()
+        client = await _client(app)
+        async with client:
+            client.cookies.set("gaia_session", token)
+            response = await client.patch(
+                "/api/v1/auth/password",
+                json={
+                    "current_password": TEST_PASSWORD,
+                    "new_password": PASSWORD_OVER_BCRYPT_LIMIT,
+                },
+            )
+
+        assert response.status_code == 422, response.text
+        assert credential_store.store[admin.id] is original
+
+    async def test_update_receives_typed_rotation_model(
+        self, admin, credential_store, _instance_secret, monkeypatch
+    ):
+        """The repository seam gets a LocalCredentialUpdate carrying ONLY the
+        new hash — identity fields (user_id/slot/created_at) can never drift
+        through a password change."""
+        import app.api.v1.endpoints.auth_local as auth_local_module
+
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+
+        app = _build_router_app()
+        # Drive the handler directly against the router app with the auth
+        # dependencies overridden — same seam, no middleware noise.
+        app.dependency_overrides[auth_local_module.get_user_id] = lambda: admin.id
+        app.dependency_overrides[auth_local_module.get_current_user] = lambda: {
+            "user_id": admin.id,
+            "email": "admin@gaia.dev",
+            "auth_provider": "email",
+        }
+        client = await _client(app)
+        async with client:
+            response = await client.patch(
+                "/api/v1/auth/password",
+                json={
+                    "current_password": TEST_PASSWORD,
+                    "new_password": "brand-new-password",
+                },
+            )
+
+        assert response.status_code == 200, response.text
+        credential_store.update.assert_awaited_once()
+        update_arg = credential_store.update.await_args.args[1]
+        assert isinstance(update_arg, LocalCredentialUpdate)
+        assert update_arg.model_dump(exclude_unset=True).keys() == {"password_hash"}
 
 
 # ---------------------------------------------------------------------------

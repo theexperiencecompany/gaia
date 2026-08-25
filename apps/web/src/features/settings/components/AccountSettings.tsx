@@ -13,6 +13,7 @@ import type React from "react";
 import { useRef, useState } from "react";
 import { authApi } from "@/features/auth/api/authApi";
 import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
+import { PasswordChangeSection } from "@/features/settings/components/PasswordChangeSection";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
@@ -168,6 +169,9 @@ export default function AccountSection({
           <span className="text-sm text-zinc-400">{user?.email}</span>
         </SettingsRow>
       </SettingsSection>
+
+      {/* Self-host local auth only — renders nothing on hosted instances. */}
+      <PasswordChangeSection />
 
       <SettingsSection title="Account">
         <SettingsRow

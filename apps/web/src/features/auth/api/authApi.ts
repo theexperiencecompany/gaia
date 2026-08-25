@@ -114,6 +114,24 @@ export const authApi = {
     return response.data;
   },
 
+  // Local (self-host) password change — PATCH /auth/password. Requires a live
+  // session; a wrong current password comes back as 401 invalid_credentials
+  // which apiService never toasts (it looks like an auth failure), so the
+  // caller extracts it with getLocalAuthError and renders it inline.
+  changePassword: async (
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> => {
+    await apiService.patch(
+      "/auth/password",
+      {
+        current_password: currentPassword,
+        new_password: newPassword,
+      },
+      { successMessage: "Password updated successfully" },
+    );
+  },
+
   // Update user profile (name/picture)
   updateProfile: async (formData: FormData): Promise<UserInfo> => {
     return apiService.patch<UserInfo>("/user/me", formData, {

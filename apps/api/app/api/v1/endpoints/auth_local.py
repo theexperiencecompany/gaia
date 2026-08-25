@@ -1,7 +1,8 @@
 """Local-mode auth endpoints (``AUTH_MODE="local"``, self-hosting).
 
 Mounted at ``/auth`` by ``app/api/v1/routes.py``; ``signup`` and ``login`` are
-public (the coordinator lists them in the middleware's ``exclude_paths``).
+public (the coordinator lists them in the middleware's ``exclude_paths``),
+while ``password`` and ``logout`` require a live local session.
 A self-host instance has exactly one administrator: the first signup creates
 it, every later signup is refused with ``registration_closed``.
 """
@@ -10,9 +11,10 @@ from datetime import datetime
 from typing import Never, cast
 
 import bcrypt
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.api.v1.middleware.rate_limiter import limiter
 from app.config.settings import settings
 from app.constants.auth import AUDIT_ACTOR_UNAUTHENTICATED
@@ -20,11 +22,13 @@ from app.constants.error_codes import INVALID_CREDENTIALS, REGISTRATION_CLOSED
 from app.db.repositories.local_credentials import local_credentials_repository
 from app.db.repositories.users import user_repository
 from app.models.auth_models import (
+    ChangePasswordRequest,
     LocalCredentialDocument,
+    LocalCredentialUpdate,
     LoginRequest,
     SignupRequest,
 )
-from app.models.user_models import UserDocument, user_to_legacy_dict
+from app.models.user_models import AuthenticatedUser, UserDocument, user_to_legacy_dict
 from app.utils.auth_utils import build_user_context
 from app.utils.local_auth_utils import (
     LOCAL_SESSION_COOKIE,
@@ -286,6 +290,84 @@ async def login(request: Request, body: LoginRequest) -> JSONResponse:
 
     response = JSONResponse(content={"user": _user_payload(user)})
     _set_session_cookie(response, token, request=request)
+    log.set(outcome="success")
+    return response
+
+
+@router.patch("/password")
+@limiter.limit("5/minute")
+async def change_password(
+    request: Request,
+    body: ChangePasswordRequest,
+    user_id: str = Depends(get_user_id),
+    _user: AuthenticatedUser = Depends(get_current_user),
+) -> JSONResponse:
+    """Rotate the caller's own password after re-verifying the current one.
+
+    Not in the middleware's ``exclude_paths`` — a live local session is
+    required to even reach this handler. The current-password verify runs the
+    same bcrypt path as login and fails with the same uniform
+    ``invalid_credentials`` shape (401): whether the credential is missing or
+    the password is wrong must stay indistinguishable. No timing equalizer is
+    burned for a missing credential — unlike login, the caller already holds
+    an authenticated session, so there is no account left to enumerate.
+
+    Deliberately narrow failure semantics: a wrong current password is a
+    401 (the client renders it inline next to that field), while an over-cap
+    or too-short NEW password is rejected on the wire as a 422 before any
+    verification runs.
+    """
+    log.set(operation="local_change_password", client_ip=_client_ip(request))
+
+    credential = await local_credentials_repository.get_by_user_id(user_id)
+
+    try:
+        verified = (
+            bcrypt.checkpw(body.current_password.encode(), credential.password_hash.encode())
+            if credential is not None
+            else False
+        )
+    except ValueError:
+        # bcrypt >= 5 refuses inputs past its 72-byte cap — a
+        # wrong-password-shaped outcome, folded into the uniform 401 below
+        # exactly like login (request validation normally rejects such
+        # input earlier with a 422).
+        verified = False
+    if not verified or credential is None:
+        log.audit("password change rejected", actor=user_id)
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error_code": INVALID_CREDENTIALS,
+                "message": "Current password is incorrect",
+            },
+        )
+
+    # Hash BEFORE touching the stored row: bcrypt >= 5 refuses over-cap input,
+    # and a failed hash must leave the old (working) credential untouched.
+    try:
+        password_hash = bcrypt.hashpw(
+            body.new_password.encode(), bcrypt.gensalt(rounds=_BCRYPT_ROUNDS)
+        ).decode()
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"message": "Password must be at most 72 bytes (UTF-8 encoded)"},
+        ) from exc
+
+    updated = await local_credentials_repository.update(
+        credential.id, LocalCredentialUpdate(password_hash=password_hash)
+    )
+    if updated is None:
+        # Unreachable in practice (single admin holding a live session), but a
+        # vanished row must never be reported as success.
+        raise HTTPException(
+            status_code=500,
+            detail={"message": "Password update did not persist"},
+        )
+
+    log.audit("password changed", actor=user_id)
+    response = JSONResponse(status_code=200, content={"status": "ok"})
     log.set(outcome="success")
     return response
 

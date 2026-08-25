@@ -74,11 +74,14 @@ class LocalCredentialDocument(MongoDocument):
 
 
 class LocalCredentialUpdate(BaseModel):
-    """No in-app update path exists for credentials (a rotation writes a new
-    document). The repository base requires an update model; ``extra="forbid"``
-    keeps any future accidental update attempt loud."""
+    """Typed update payload for credential writes. The bcrypt hash is the ONLY
+    mutable field (the password-change endpoint rotates it); ``user_id``,
+    ``slot`` and ``created_at`` are write-once identity. ``extra="forbid"``
+    keeps any accidental extra-field update loud."""
 
     model_config = ConfigDict(extra="forbid")
+
+    password_hash: str
 
 
 class SignupRequest(BaseModel):
@@ -105,3 +108,15 @@ class LoginRequest(BaseModel):
     # 401. (No min_length here — login must not reject credentials created
     # under older policy.)
     password: BcryptLimitedPassword
+
+
+class ChangePasswordRequest(BaseModel):
+    """Body of ``PATCH /api/v1/auth/password`` — rotates the caller's own
+    password after re-verifying the current one."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    current_password: BcryptLimitedPassword
+    # Same contract as SignupRequest.password: minimum length on the wire,
+    # byte-level cap guaranteed by BcryptLimitedPassword.
+    new_password: BcryptLimitedPassword = Field(min_length=8)
