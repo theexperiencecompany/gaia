@@ -1,9 +1,4 @@
-"""Docstrings for reminder-rel3. Limits (only when user asks, explicitly or implicitly):
-   • If user says "stop after 5 days" (daily reminders), set `max_occurrences=5`.
-   • Or use `stop_after` (ISO 8601) to cut off after a date.
-
-PAYLOAD:
-  STATIC → {"title": str, "body": str}n tools."""
+"""Docstrings for reminder tools."""
 
 # TODO: Improve this prompt to be more concise and focused on the tool's purpose, LLM still sometimes misses that it has capabilities to create reminders with tools, not just static notifications.
 
@@ -12,6 +7,14 @@ Create static reminder for the user.
 
 This tool creates scheduled reminders that show simple notifications. Handles timezone
 conversion, recurring schedules, and validation automatically.
+
+WHEN NOT TO USE:
+• Deadline-anchored requests where GAIA should DO something first ("remind me 3 days
+  before my visa appointment", "check my documents a week before the filing date").
+  A reminder only pings once; it cannot hold context, do work, or ask questions.
+  For these use create_tracked_todo with due_date = the deadline itself and
+  scheduled_at = the lead time when GAIA should act.
+• Plain "remind me in 10 minutes" style pings are exactly what THIS tool is for.
 
 TIMEZONE HANDLING:
 • RELATIVE TIME (e.g., "in 2 minutes", "in 5 minutes") → Calculate the actual future time by adding the duration to current time. DO NOT convert timezones - just calculate the new hours/minutes and STRICTLY use timezone_offset: "+00:00"

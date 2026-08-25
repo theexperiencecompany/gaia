@@ -22,7 +22,7 @@ from typing import Annotated, Any, Literal, cast
 from uuid import uuid4
 
 from langchain.tools import InjectedToolCallId
-from langchain_core.messages import SystemMessage, ToolMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 from langgraph.config import get_stream_writer
@@ -36,12 +36,31 @@ from app.agents.prompts.todo_prompts import (
     PLAN_TASKS_DESCRIPTION,
     TODO_SYSTEM_PROMPT,
     UPDATE_TASKS_DESCRIPTION,
+    deadline_routing_nudge,
 )
 from app.constants.log_tags import LogTag
 from app.override.langgraph_bigtool.utils import State
 from shared.py.wide_events import log
 
 TODO_TOOL_NAMES: set[str] = {"plan_tasks", "update_tasks"}
+
+
+def _latest_human_text(messages: list[BaseMessage]) -> str | None:
+    """Flattened text of the most recent human message, or None."""
+    for msg in reversed(messages):
+        if not isinstance(msg, HumanMessage):
+            continue
+        content = msg.content
+        if isinstance(content, str):
+            return content or None
+        parts: list[str] = []
+        for part in content:
+            if isinstance(part, str):
+                parts.append(part)
+            elif isinstance(part, dict) and isinstance(part.get("text"), str):
+                parts.append(part["text"])
+        return " ".join(parts) or None
+    return None
 
 
 class Todo(TypedDict):
@@ -288,6 +307,9 @@ def create_todo_pre_model_hook(
 
         todos = state.get("todos", [])
         parts = [TODO_SYSTEM_PROMPT]
+        nudge = deadline_routing_nudge(_latest_human_text(messages))
+        if nudge:
+            parts.append(nudge)
         if todos:
             parts.append(_format_todos(todos))
 

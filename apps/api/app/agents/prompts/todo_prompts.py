@@ -1,5 +1,33 @@
 """Prompts and tool descriptions for the agent task management tools."""
 
+import re
+
+# "remind/check/follow up N <units> before <deadline>" anchors work to a future
+# deadline. A fire-once reminder cannot do that work; only a tracked todo with
+# due_date (the deadline) + scheduled_at (the lead-time run) can.
+DEADLINE_ANCHORED_PATTERN = re.compile(
+    r"\b(?:remind|reminder|check|follow\s+up|notify|alert)\b"
+    r"[^?!.\n]{0,120}?"
+    r"\b(?:\d+|one|two|three|four|five|six|a|an)\s+"
+    r"(?:day|week|month|hour)s?\s+(?:before|prior\s+to|ahead\s+of)\b",
+    re.IGNORECASE,
+)
+
+DEADLINE_ROUTING_NUDGE = (
+    "ROUTING NOTE: this request anchors work to a future deadline ('N days before X'). "
+    "A one-shot reminder can only ping once and holds no context. If GAIA should verify, "
+    "prepare, collect, or follow up before that deadline, use create_tracked_todo: "
+    "due_date = the deadline itself, scheduled_at = when GAIA should act."
+)
+
+
+def deadline_routing_nudge(latest_human_text: str | None) -> str:
+    """Return the creation-routing nudge when the message is deadline-anchored."""
+    if latest_human_text and DEADLINE_ANCHORED_PATTERN.search(latest_human_text):
+        return DEADLINE_ROUTING_NUDGE
+    return ""
+
+
 # System prompt appended to model context
 TODO_SYSTEM_PROMPT = """You have TWO separate task systems — do not confuse them.
 
@@ -24,7 +52,22 @@ For long-running tasks (scheduling, recurrence, learnings): read the skill first
 
 QUICK DECISION:
 - "I need to organize my current steps" → plan_tasks
-- "GAIA is doing something the user might ask about later" → create_tracked_todo"""
+- "GAIA is doing something the user might ask about later" → create_tracked_todo
+
+DEADLINE-ANCHORED REQUESTS:
+"Remind me 3 days before my visa appointment", "check my documents a week before
+the filing date": these are NOT reminders. A reminder fires one notification and
+forgets. Create a tracked todo instead: due_date = the deadline itself (the
+appointment, filing, or expiry date), scheduled_at = the lead time when GAIA
+should act. GAIA then runs before the deadline with full canvas context and can
+ask the user questions.
+Examples:
+  User: "Renew my passport before my visa interview on 2026-03-20, remind me 5 days prior"
+  → create_tracked_todo(title="Passport renewal for visa interview",
+    due_date="2026-03-20T09:00:00+05:30", scheduled_at="2026-03-15T09:00:00+05:30")
+  User: "Remind me in 10 minutes to join the call"
+  → create_reminder_tool(delay_seconds=600). Plain ping, nothing to do first,
+    no tracking needed."""
 
 # Tool description for plan_tasks
 PLAN_TASKS_DESCRIPTION = """Create an execution plan for your current multi-step work.

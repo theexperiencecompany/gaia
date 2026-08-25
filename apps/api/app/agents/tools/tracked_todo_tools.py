@@ -478,6 +478,14 @@ async def create_tracked_todo(
         "or 'follow up if no reply' (expires in 2 weeks). "
         "Different from due_date: due_date means 'should be done by'; expires_at means 'no longer matters after'.",
     ] = None,
+    due_date: Annotated[
+        str | None,
+        "ISO datetime of the EXTERNAL deadline this todo works toward (appointment "
+        "date, filing date, expiry date), with timezone offset. This is the user's "
+        "deadline — NOT when GAIA runs (that's scheduled_at). Use for deadline-anchored "
+        "requests like 'remind me 3 days before my appointment': due_date = the "
+        "appointment, scheduled_at = 3 days before it.",
+    ] = None,
 ) -> str:
     """
     Create a tracked todo: a GAIA-managed todo with a working-memory canvas.
@@ -492,7 +500,11 @@ async def create_tracked_todo(
     Create one ONLY when GAIA itself performs or schedules a real action on an
     external system that it needs to remember, follow up on, or repeat: sent an
     email and awaits a reply, created an issue, posted to Slack, scheduled
-    recurring work, or an ongoing multi-step initiative.
+    recurring work, or an ongoing multi-step initiative. This includes
+    deadline-anchored requests ("remind me 3 days before my appointment"):
+    GAIA must run ahead of the user's deadline and do real work, so use
+    due_date = the deadline and scheduled_at = the lead time — a fire-once
+    reminder cannot do that.
 
     Do NOT create one for read-only work — fetching, listing, searching, or
     summarizing data — no matter how complex it is or how often it runs (a
@@ -515,10 +527,19 @@ async def create_tracked_todo(
     expires_at: ISO datetime string when this todo becomes irrelevant regardless of completion.
                 Different from due_date: due_date = deadline (overdue = still needs doing),
                 expires_at = relevance window (expired = no longer worth tracking).
+    due_date: ISO datetime of the external deadline this todo works toward (with timezone
+              offset). The appointment/filing/expiry date itself — not when GAIA runs
+              (scheduled_at). For "remind me N days before X": due_date = X, scheduled_at = N days earlier.
     """
     user_id = config.get("metadata", {}).get("user_id")
     if not user_id:
         return _ERR_NO_USER_ID
+
+    parsed_due_date: datetime | None = None
+    if due_date:
+        parsed_due_date, due_error = _parse_iso_future_datetime(due_date, "due_date")
+        if due_error or parsed_due_date is None:
+            return due_error or "Error: invalid due_date."
 
     # Recurrence is always evaluated in the user's stored timezone. We only
     # look it up here to (a) compute the first cron fire correctly and (b)
@@ -541,6 +562,7 @@ async def create_tracked_todo(
         initial_canvas=initial_canvas,
         labels=labels,
         priority=parsed_priority,
+        due_date=parsed_due_date,
     )
 
     persist_error = await _persist_scheduling_fields(

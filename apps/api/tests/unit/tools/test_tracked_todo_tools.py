@@ -542,6 +542,23 @@ class TestCreateTrackedTodoValidation:
         )
         assert "requires scheduled_at" in result
 
+    async def test_invalid_due_date_short_circuits_before_the_service_call(self):
+        with patch(
+            "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
+            new_callable=AsyncMock,
+        ) as mock_create:
+            result = await create_tracked_todo.coroutine(
+                config=_config(), title="t", due_date="garbage"
+            )
+        assert "invalid due_date format" in result
+        mock_create.assert_not_awaited()
+
+    async def test_past_due_date_returns_error(self):
+        result = await create_tracked_todo.coroutine(
+            config=_config(), title="t", due_date=_PAST_ISO
+        )
+        assert "must be in the future" in result
+
 
 class TestCompleteTrackedTodo:
     async def test_missing_user_id_returns_error(self):
@@ -1180,6 +1197,27 @@ class TestCreateTrackedTodoSuccess:
             result = await create_tracked_todo.coroutine(config=_config(), title="t")
         assert "Tracked todo created: t1" in result
         assert "update_tracked_todo_canvas(todo_id='t1'" in result
+
+    async def test_due_date_is_parsed_and_passed_through_to_the_service(self):
+        with patch(
+            "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
+            new_callable=AsyncMock,
+            return_value=self._response(),
+        ) as mock_create:
+            result = await create_tracked_todo.coroutine(
+                config=_config(), title="t", due_date=_FUTURE_ISO
+            )
+        assert "created" in result
+        assert mock_create.await_args.kwargs["due_date"] == _FUTURE
+
+    async def test_no_due_date_passes_none_to_the_service(self):
+        with patch(
+            "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
+            new_callable=AsyncMock,
+            return_value=self._response(),
+        ) as mock_create:
+            await create_tracked_todo.coroutine(config=_config(), title="t")
+        assert mock_create.await_args.kwargs["due_date"] is None
 
     async def test_create_with_scheduled_at_persists_and_schedules(self):
         with (
