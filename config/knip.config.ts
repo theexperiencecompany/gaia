@@ -283,8 +283,6 @@ const config: KnipConfig = {
         "@icons",
         // HeroUI ships per-component subpackages pulled in transitively.
         "@heroui/.*",
-        // Workspace package resolved via pnpm workspace, not always traced.
-        "@gaia/shared",
         // Next.js image optimization (implicitly required, no direct import)
         "sharp",
         // Used by SWC compilation (no direct import in source)

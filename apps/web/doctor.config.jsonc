@@ -48,9 +48,13 @@
       },
       // ── Dev-only playground routes ──────────────────────────────────────
       // app/[locale]/dev/** pages (openui-samples, orb, text-animation,
-      // toasts, tool-gallery, wake-word) are developer-only surfaces; their
-      // unique children (OpenUIPlayground, openui examples registry,
-      // WakeWordIndicator) are reachable only through them.
+      // toasts, tool-gallery, wake-word) are developer-only surfaces: every
+      // route file is *.dev.tsx (stripped from prod builds via pageExtensions)
+      // and the segment layout 404s outside development. Their unique
+      // children (OpenUIPlayground → openui examples registry; the
+      // wake-word barrel index) are reachable only through them — the rest
+      // of features/wake-word is live via the (desktop)/wake-listener route;
+      // WakeWordIndicator itself has no importer yet (WIP feature).
       {
         "files": [
           "src/app/[locale]/dev/**",
@@ -76,16 +80,20 @@
         "files": ["src/config/openui/promptSpecs.ts"],
         "rules": ["deslop/unused-export"]
       },
-      // Supply-chain floor moved to top-level `supplyChain` key below.
+      // Two deps are intentionally never imported from source (verified):
+      // @react-types/shared — `declare module` augmentation in
+      // src/layouts/HeroUIProvider.tsx + tsconfig paths mapping;
+      // @swc-node/register — SWC transpiler resolved by Nx tooling, no
+      // direct source import (see knip.config.ts ignoreDependencies).
       {
         "files": ["package.json"],
         "rules": ["deslop/unused-dependency"]
       },
       // ── Scanner data-flow / heuristic gaps (verified in code) ───────────
       // next.config.mjs sets images.contentDispositionType "attachment" +
-      // contentSecurityPolicy "script-src 'none'; sandbox" alongside
-      // dangerouslyAllowSVG (remote SVGs are load-bearing); the scanner cannot
-      // read config-level mitigations.
+      // contentSecurityPolicy "default-src 'self'; script-src 'none';
+      // sandbox;" alongside dangerouslyAllowSVG (remote SVGs are
+      // load-bearing); the scanner cannot read config-level mitigations.
       {
         "files": ["next.config.mjs"],
         "rules": ["react-doctor/active-static-asset"]
@@ -96,16 +104,18 @@
         "files": ["src/app/api/og/shared.tsx"],
         "rules": ["react-doctor/nextjs-no-img-element"]
       },
-      // Both createObjectURL calls are paired with URL.revokeObjectURL inside
-      // finally blocks (~lines 142/146) covering success + error paths; the
-      // scanner's data-flow analysis misses cross-scope revocation.
+      // Both createObjectURL calls (:103/:133) are paired with
+      // URL.revokeObjectURL inside finally blocks (:146/:142) covering success
+      // + img-load-error paths; the scanner's data-flow analysis misses
+      // cross-scope revocation.
       {
         "files": ["src/components/shared/LogoWithContextMenu.tsx"],
         "rules": ["react-doctor/no-create-object-url-without-revoke"]
       },
-      // Preview URLs are tracked at creation (previewObjectUrls[]) and batch-
-      // revoked in the outer finally (:136–138) covering success + error paths;
-      // cross-scope revocation is invisible to the data-flow analysis.
+      // Preview URLs are tracked at creation (previewObjectUrls[], :63/:70)
+      // and batch-revoked in the outer try/finally (:123–131, revoke loop at
+      // :126–128) covering success + error paths; cross-scope revocation is
+      // invisible to the data-flow analysis.
       {
         "files": ["src/features/chat/hooks/useFileAttachments.ts"],
         "rules": ["react-doctor/no-create-object-url-without-revoke"]
@@ -126,12 +136,16 @@
         "files": ["src/features/landing/components/hero/HeroImage.tsx"],
         "rules": ["react-doctor/no-unthrottled-scroll-mutation"]
       },
+      // The embed sandbox is intentional: only YouTube/Vimeo hosts take the
+      // iframe path (:6–23), embeds stay cross-origin, so allow-same-origin
+      // grants the player its own origin's storage — never this app's. The
+      // "allow-scripts + allow-same-origin defeats the sandbox" failure mode
+      // requires a same-origin-with-parent frame; a cross-origin player cannot
+      // reach the parent DOM to strip the attribute. Dropping allow-same-origin
+      // breaks player state storage; the rule is origin-unaware.
       {
         "files": ["src/config/openui/components/VideoBlockView.tsx"],
-        "rules": [
-          "react-doctor/iframe-missing-sandbox",
-          "react/iframe-missing-sandbox"
-        ]
+        "rules": ["react-doctor/iframe-missing-sandbox"]
       },
       // timezoneSearchText() returns a string; .includes(query) is substring
       // matching, not array membership (verified against utils/timezoneUtils.ts
@@ -155,9 +169,11 @@
         "files": ["src/features/settings/hooks/useHilPreferences.ts"],
         "rules": ["react-doctor/async-await-in-loop"]
       },
-      // Several icons here are verbatim user-provided/Lottie-derived assets
-      // preserved as-is by instruction; all non-verbatim icons were rounded
-      // to ≤2 decimals during the sweep.
+      // The flagged paths are verbatim upstream icon-library /
+      // Lottie-derived exports preserved as-is by instruction (28/54 paths
+      // in icons.tsx and 22/51 in ChatDemo.tsx still carry full source
+      // precision) — rounding would break diffability against the assets
+      // they were copied from.
       {
         "files": ["src/features/landing/components/iphone/ChatDemo.tsx"],
         "rules": ["react-doctor/rendering-svg-precision"]

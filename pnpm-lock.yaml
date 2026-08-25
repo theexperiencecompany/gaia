@@ -580,9 +580,6 @@ importers:
 
   apps/web:
     dependencies:
-      '@gaia/shared':
-        specifier: workspace:*
-        version: link:../../libs/shared/ts
       '@gaia/wake-word':
         specifier: workspace:*
         version: link:../../libs/wake-word
