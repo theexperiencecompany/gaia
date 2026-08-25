@@ -44,8 +44,16 @@ from app.utils.notification.channel_preferences import fetch_channel_preferences
 from shared.py.wide_events import log
 
 
-async def build_account_projections(user_id: str) -> list[AccountFileProjection]:
-    """Fetch every account view for ``user_id`` as serialized JSON bodies."""
+async def build_account_projections(
+    user_id: str,
+) -> tuple[list[AccountFileProjection], set[str]]:
+    """Fetch every account view for ``user_id`` as serialized JSON bodies.
+
+    Returns the projections plus the set of workspace-relative paths whose
+    source failed this pass — callers must keep their previous on-disk
+    projection instead of pruning it as stale (a stale view beats a missing
+    one, and the failure is logged loudly in ``_safe_body``).
+    """
     groups: list[tuple[str, Callable[[str], Awaitable[str | None]]]] = [
         ("subscription", _subscription_body),
         ("usage", _usage_body),
@@ -56,13 +64,23 @@ async def build_account_projections(user_id: str) -> list[AccountFileProjection]
         ("voices/selected", _voice_selected_body),
     ]
 
+    # Independent sources — one slow provider must not serialize the rest.
+    results = await asyncio.gather(
+        *(_safe_body(group, builder, user_id) for group, builder in groups)
+    )
     files: list[AccountFileProjection] = []
-    for group, builder in groups:
-        body = await _safe_body(group, builder, user_id)
-        if body is not None:
-            files.append({"id": group, "path": f"{ACCOUNT_DIR}/{group}.json", "body": body})
-    files.extend(await _safe_linked_files(user_id))
-    return files
+    failed: set[str] = set()
+    for (group, _), body in zip(groups, results):
+        if body is None:
+            failed.add(f"{ACCOUNT_DIR}/{group}.json")
+            continue
+        files.append({"id": group, "path": f"{ACCOUNT_DIR}/{group}.json", "body": body})
+
+    linked, linked_failed = await _safe_linked_files(user_id)
+    files.extend(linked)
+    if linked_failed:
+        failed.update(p["path"] for p in linked)
+    return files, failed
 
 
 async def sync_account_files(user_id: str) -> int:
@@ -73,8 +91,10 @@ async def sync_account_files(user_id: str) -> int:
     """
     if not _is_mounted():
         return 0
-    files = await build_account_projections(user_id)
-    return await asyncio.to_thread(materialize_account_files, user_workspace_path(user_id), files)
+    files, failed = await build_account_projections(user_id)
+    return await asyncio.to_thread(
+        materialize_account_files, user_workspace_path(user_id), files, failed
+    )
 
 
 # Fire-and-forget wrapper for settings/linking/billing write paths.
@@ -106,9 +126,17 @@ async def _safe_body(
         return None
 
 
-async def _safe_linked_files(user_id: str) -> list[AccountFileProjection]:
+async def _safe_linked_files(
+    user_id: str,
+) -> tuple[list[AccountFileProjection], bool]:
+    """Linked-platform projections, plus whether the source failed this pass.
+
+    On failure the caller keeps the previous files on disk (preserved from the
+    prune) instead of re-projecting them as "not connected" from no data — a
+    provider error must not look like the user unplugged everything.
+    """
     try:
-        return await _linked_account_bodies(user_id)
+        return await _linked_account_bodies(user_id), False
     except Exception as e:
         log.error(
             f"{LogTag.STORAGE} account projection failed — linked accounts skipped this pass",
@@ -116,7 +144,7 @@ async def _safe_linked_files(user_id: str) -> list[AccountFileProjection]:
             error_type=type(e).__name__,
             error=str(e),
         )
-        return []
+        return [], True
 
 
 async def _subscription_body(user_id: str) -> str:

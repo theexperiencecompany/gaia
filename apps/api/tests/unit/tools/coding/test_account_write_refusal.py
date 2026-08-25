@@ -16,13 +16,15 @@ CONFIG = {"metadata": {"user_id": "user-1", "conversation_id": "conv-1"}}
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    "path",
+    ("path", "expected_tool"),
     [
-        "/workspace/account/preferences.json",
-        "/workspace/account/voices/selected.json",
+        ("/workspace/account/preferences.json", "update_preferences"),
+        ("/workspace/account/voices/selected.json", "set_selected_voice"),
     ],
 )
-async def test_write_to_an_account_file_refuses_and_never_touches_the_sandbox(path) -> None:
+async def test_write_to_an_account_file_refuses_and_never_touches_the_sandbox(
+    path, expected_tool
+) -> None:
     with (
         patch("app.agents.tools.coding.write_tool.acquire_sandbox") as sandbox,
         patch("app.agents.tools.coding.write_tool.log"),
@@ -32,7 +34,9 @@ async def test_write_to_an_account_file_refuses_and_never_touches_the_sandbox(pa
         )
 
     assert "read-only projection" in result
-    assert "update_preferences" in result or "set_selected_voice" in result
+    # The refusal must name exactly the tool that owns this file — a wrong
+    # pointer sends the agent (and the user) to the wrong action.
+    assert expected_tool in result
     sandbox.assert_not_called()
 
 
@@ -63,4 +67,5 @@ async def test_subscription_refusal_names_no_tool_because_none_exists() -> None:
         )
 
     assert "read-only" in result
+    assert "update_" not in result and "set_selected_voice" not in result
     sandbox.assert_not_called()

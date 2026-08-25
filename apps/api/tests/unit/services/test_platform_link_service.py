@@ -965,7 +965,6 @@ class TestDisconnectPlatformAccount:
         mock_log.audit.assert_called_once_with(
             "platform account unlinked",
             actor=sample_user_id,
-            resource="DISC999",
             provider="discord",
         )
         mock_capture.assert_called_once_with(
@@ -1019,8 +1018,7 @@ class TestDisconnectPlatformAccount:
         mock_log.audit.assert_called_once_with(
             "platform account unlink rejected",
             actor=sample_user_id,
-            resource="DISC999",
             provider="discord",
+            reason="unlink_failed",
             error_type="ValueError",
-            error="boom",
         )

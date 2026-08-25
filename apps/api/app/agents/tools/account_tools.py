@@ -43,7 +43,7 @@ class UpdateNotificationSettingsArgs(BaseModel):
 class UpdatePreferencesArgs(BaseModel):
     response_style: str | None = Field(
         default=None,
-        description="Response style: brief, detailed, casual, professional — or a custom label",
+        description="Response style: brief, detailed, casual, professional, or a custom label",
     )
     timezone: str | None = Field(
         default=None,
@@ -72,6 +72,11 @@ class ManageLinkedAccountArgs(BaseModel):
     action: Literal["generate_link", "disconnect"] = Field(
         description="'generate_link' starts connecting the platform (returns a URL or "
         "instructions); 'disconnect' removes an existing link"
+    )
+    phone: str | None = Field(
+        default=None,
+        description="REQUIRED for imessage generate_link: the user's phone number in "
+        "E.164 format (e.g. +15551234567); ask the user for it first",
     )
 
 
@@ -134,10 +139,12 @@ set_selected_voice = define_mutation_tool(
 )
 
 
-async def _manage_linked_account(user_id: str, *, platform: str, action: str) -> str:
+async def _manage_linked_account(
+    user_id: str, *, platform: str, action: str, phone: str | None = None
+) -> str:
     if action == "generate_link":
         await enforce_rate_limit(user_id, LINK_GENERATION_FEATURE_KEY)
-        flow = await start_platform_connect(user_id, platform)
+        flow = await start_platform_connect(user_id, platform, phone=phone)
         parts = [f"To connect your {platform} account:"]
         if flow.instructions:
             parts.append(flow.instructions)
@@ -166,7 +173,7 @@ manage_linked_account = define_mutation_tool(
     description=(
         "Connect or disconnect one of the user's messaging platforms (telegram, whatsapp, "
         "discord, slack, imessage). generate_link returns a URL or instructions the user "
-        "follows to connect — no approval needed. DISCONNECTING always asks the user to "
+        "follows to connect (no approval needed). DISCONNECTING always asks the user to "
         "confirm first."
     ),
     args_model=ManageLinkedAccountArgs,

@@ -35,11 +35,17 @@ class AccountFileProjection(TypedDict):
     body: str
 
 
-def materialize_account_files(user_root: Path, files: list[AccountFileProjection]) -> int:
-    """Idempotently project ``files`` under ``<user_root>/account/``.
+def materialize_account_files(
+    user_root: Path,
+    files: list[AccountFileProjection],
+    preserve_paths: set[str] | None = None,
+) -> int:
+    """Project ``files`` under ``<user_root>/account/``, pruning stale views.
 
-    Returns the number of bodies actually rewritten. Stale projections (a file
-    that left the manifest) are pruned so a removed view never lingers.
+    ``preserve_paths`` are workspace-relative paths whose source could not be
+    read this pass (provider outage): their previous on-disk projection is kept
+    instead of being pruned as stale — a stale view beats a missing one, and
+    the failure is logged by the caller.
     """
     account_root = user_root / ACCOUNT_DIR
     expected: set[str] = set()
@@ -54,25 +60,28 @@ def materialize_account_files(user_root: Path, files: list[AccountFileProjection
         write_readonly_body(target, doc["body"])
         written += 1
 
-    _prune_stale_json(account_root, expected)
+    _prune_stale_json(account_root, expected, preserve_paths or set())
     return written
 
 
-def _prune_stale_json(account_root: Path, expected: set[str]) -> None:
+def _prune_stale_json(account_root: Path, expected: set[str], preserve: set[str]) -> None:
     """Remove *.json projections under ``account/`` that left the manifest.
 
     Only data files are pruned — markdown guides belong to the system-file
     linker and are never touched here. Platform files are always re-projected
     (connected or not), so this fires only when the manifest itself shrinks.
+    Paths in ``preserve`` (a source that failed this pass) survive the prune.
     """
     if not account_root.is_dir():
         return
     prefix = f"{ACCOUNT_DIR}/"
     for existing in account_root.rglob("*.json"):
         rel = existing.relative_to(account_root).as_posix()
-        if f"{prefix}{rel}" not in expected:
-            existing.chmod(0o644)
-            existing.unlink(missing_ok=True)
+        full = f"{prefix}{rel}"
+        if full == "" or full in expected or full in preserve:
+            continue
+        existing.chmod(0o644)
+        existing.unlink(missing_ok=True)
 
 
 __all__ = [

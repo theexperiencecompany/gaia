@@ -347,20 +347,20 @@ async def disconnect_platform_account(user_id: str, platform: str) -> Disconnect
     try:
         result = await PlatformLinkService.unlink_account(user_id, platform)
     except ValueError as e:
+        # No raw identifiers or provider error text in the audit — the actor
+        # and outcome are what make a rejected attempt findable.
         log.audit(
             "platform account unlink rejected",
             actor=user_id,
-            resource=platform_user_id,
             provider=platform,
+            reason="unlink_failed",
             error_type=type(e).__name__,
-            error=str(e),
         )
         raise create_error(message=str(e), status_code=404) from e
 
     log.audit(
         "platform account unlinked",
         actor=user_id,
-        resource=platform_user_id,
         provider=platform,
     )
     capture_context_event(

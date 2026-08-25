@@ -75,24 +75,30 @@ async def set_preferences(
                 fix="Use one of brief, detailed, casual, professional — or pass a custom label",
                 status_code=400,
             )
-        result = await user_repository.update_onboarding_preferences(
-            user_id,
-            # PATCH-style: fields_set holds only response_style, so the
-            # repository writes just that dotted path.
-            OnboardingPreferences.model_construct(response_style=style),
-        )
-        if result is None:
-            raise AppError(message="User not found", status_code=404)
-        updated.append(f"response style set to '{style}'")
-
     if timezone is not None:
-        tz = timezone.strip()
+        tz = timezone.strip() if timezone else ""
         if not is_valid_timezone(tz):
             raise AppError(
                 message=f"Invalid timezone '{tz}'",
                 fix="Use an IANA identifier like 'America/New_York', 'Asia/Kolkata' or 'UTC'",
                 status_code=400,
             )
+
+    # Everything validated — only now does any write happen, so a bad
+    # timezone can't ride in behind a good style (or vice versa).
+    if response_style is not None:
+        result = await user_repository.update_onboarding_preferences(
+            user_id,
+            # PATCH-style: fields_set holds only response_style, so the
+            # repository writes just that dotted path.
+            OnboardingPreferences.model_construct(response_style=response_style.strip()),
+        )
+        if result is None:
+            raise AppError(message="User not found", status_code=404)
+        updated.append(f"response style set to '{response_style.strip()}'")
+
+    if timezone is not None:
+        tz = timezone.strip()
         user = await user_repository.update(user_id, UserUpdate(timezone=tz))
         if user is None:
             raise AppError(message="User not found", status_code=404)

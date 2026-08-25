@@ -165,6 +165,7 @@ def main() -> int:
     selected = [m for m in MUTATIONS if only is None or m[0] in only]
     killed: list[str] = []
     survived: list[str] = []
+    equivalent = {"M16"}  # documented accepted-equivalent in MUTATIONS above
     # Strictly serial: concurrent mutants of the SAME file overwrite and restore
     # each other mid-run (a race that produced false survivors).
     for mutant in selected:
@@ -175,9 +176,12 @@ def main() -> int:
         elif outcome == "SURVIVED":
             survived.append(mid)
 
+    unexpected = [mid for mid in survived if mid not in equivalent]
     print(f"\n{len(killed)} killed / {len(survived)} survived")
     if survived:
-        print("SURVIVORS:", ", ".join(survived))
+        print("SURVIVED:", ", ".join(survived))
+    if unexpected:
+        print("UNEXPECTED SURVIVORS:", ", ".join(unexpected))
         return 1
     return 0
 

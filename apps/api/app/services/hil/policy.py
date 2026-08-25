@@ -139,13 +139,25 @@ async def has_pausing_sibling(request: ToolCallRequest, user_id: str, tool_call_
     if any(call["name"] in HIL_PAUSING_TOOLS for call in siblings):
         return True
 
+    # Forced-ask siblings pause even when HIL is otherwise off — checked before
+    # the always_allow fast path below, because that fast path exists to skip
+    # preference-driven gating, and the stamp is not preference-driven.
+    registry = await get_tool_registry()
+    for call in siblings:
+        name = str(call["name"])
+        meta = registry.get_tool_meta(name)
+        if (meta is not None and meta.always_gate) or _argument_gate_hit(
+            name, call.get("args") or None
+        ):
+            return True
+
     prefs = await get_hil_preferences(user_id)
     if prefs.mode == "always_allow":
-        # HIL is off for this user, so no sibling gate can pause. Answered before the
-        # per-sibling classification below because every ungated call now asks this
-        # (see gate._run_once_across_replays) and that is ~100% of traffic.
+        # HIL is off for this user, so no preference-driven gate can pause. Answered
+        # after the forced-gate scan because account mutations ask regardless of this
+        # mode (and before the per-sibling classification below because every ungated
+        # call now asks this — see gate._run_once_across_replays).
         return False
-    registry = await get_tool_registry()
     for call in siblings:
         name = str(call["name"])
         if name in HIL_EXEMPT_TOOLS:

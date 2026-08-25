@@ -8,10 +8,12 @@ tool's own dispatch, formatting, analytics and resync are not.
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from pydantic import ValidationError
 import pytest
 
 from app.agents.tools import account_tools
 from app.services.analytics_service import AnalyticsEvents
+from app.utils.errors import AppError
 
 MODULE = "app.agents.tools.account_tools"
 CONFIG = {"metadata": {"user_id": "user-1"}}
@@ -49,7 +51,7 @@ class TestGenerateLink:
         # The limiter is keyed to THIS user under the connect feature, and the
         # flow is started for the same user and platform the caller asked for.
         limit.assert_awaited_once_with("user-1", account_tools.LINK_GENERATION_FEATURE_KEY)
-        connect.assert_awaited_once_with("user-1", "telegram")
+        connect.assert_awaited_once_with("user-1", "telegram", phone=None)
 
     async def test_oauth_platform_returns_the_authorize_url(self) -> None:
         flow = AsyncMock()
@@ -110,8 +112,6 @@ class TestDisconnect:
         log_mock.set.assert_called_once_with(action="disconnect", platform="whatsapp")
 
     async def test_disconnect_failure_surfaces_as_an_error_string_not_a_crash(self) -> None:
-        from app.utils.errors import AppError
-
         with (
             patch(
                 f"{MODULE}.disconnect_platform_account",
@@ -129,16 +129,12 @@ class TestDisconnect:
 @pytest.mark.unit
 class TestSchemaContract:
     async def test_unsupported_platform_is_rejected_by_the_schema_itself(self) -> None:
-        from pydantic import ValidationError
-
         with pytest.raises(ValidationError):
             await account_tools.manage_linked_account.ainvoke(
                 {"platform": "carrier_pigeon", "action": "disconnect"}, config=CONFIG
             )
 
     async def test_unknown_action_is_rejected_by_the_schema_itself(self) -> None:
-        from pydantic import ValidationError
-
         with pytest.raises(ValidationError):
             await account_tools.manage_linked_account.ainvoke(
                 {"platform": "slack", "action": "nuke"}, config=CONFIG
