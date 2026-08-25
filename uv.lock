@@ -2258,7 +2258,7 @@ dev = [
     { name = "types-croniter", specifier = ">=6.0.0.20250626" },
     { name = "types-decorator", specifier = ">=5.2.0.20250324" },
     { name = "types-defusedxml", specifier = ">=0.7.0.20260504" },
-    { name = "types-deprecated", specifier = ">=1.2.15.20250304" },
+    { name = "types-deprecated", specifier = ">=1.3.1.20260728" },
     { name = "types-greenlet", specifier = ">=3.2.0.20250417" },
     { name = "types-jsonschema", specifier = ">=4.24.0.20250708" },
     { name = "types-pexpect", specifier = ">=4.9.0.20260518" },
@@ -8247,11 +8247,11 @@ wheels = [
 
 [[package]]
 name = "types-deprecated"
-version = "1.3.1.20251101"
+version = "1.3.1.20260728"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/c6/96/0f96107945697e452c56a2e9f575da627e61d67940e5913d9c968e5e8be1/types_deprecated-1.3.1.20251101.tar.gz", hash = "sha256:f002d266b73201f46ec6fc712c1f016067ec6cb44357559cdb50c86b010951a7", size = 8358, upload-time = "2025-11-01T03:04:05.6Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6d/0f/a6c55e899f6a2b3519f4079ee1d99f64411299a6d882decbdf17b17319ba/types_deprecated-1.3.1.20260728.tar.gz", hash = "sha256:cab836fdcf6b57d3e277e62d9d76d8a4c556a2639fd0e90cb555fa0e8300d164", size = 8729, upload-time = "2026-07-28T04:51:30.946Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9e/50/fb191dba89031e30c9ea07c3133c6fe8e7da038ef4d0b79539cf85fb1a97/types_deprecated-1.3.1.20251101-py3-none-any.whl", hash = "sha256:274edcc2a084d3fe31802d3c1379abd630716d3db34e40577e12ad84d6b73134", size = 9057, upload-time = "2025-11-01T03:04:04.633Z" },
+    { url = "https://files.pythonhosted.org/packages/fe/e6/4e4d2a7d861ac277fbdce3d9a25ce5205f366bcc4e37c021eeb2017c160c/types_deprecated-1.3.1.20260728-py3-none-any.whl", hash = "sha256:d94b3e1db08db6a63ad0e8519e2da2b2d22843f015efa7bd83baef6aa99f7403", size = 9109, upload-time = "2026-07-28T04:51:30.008Z" },
 ]
 
 [[package]]
