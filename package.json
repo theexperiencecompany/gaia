@@ -45,7 +45,7 @@
     "next": "16.3.0",
     "npm-package-json-lint": "^10.4.1",
     "nx": "^22.7.7",
-    "publint": "^0.3.21",
+    "publint": "^0.3.24",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "style-dictionary": "^4.4.0",
