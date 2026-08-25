@@ -39,6 +39,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 from datetime import UTC, datetime, timedelta
+import math
 import re
 import uuid
 
@@ -72,7 +73,9 @@ _STATE_PHRASES = re.compile(
 # ("uses nasal spray" vs "dislikes its taste").
 _DEFAULT_EXTENDS_CONTAINMENT = 0.8
 
-# Filler that carries no subject, so it never counts toward coverage.
+# Filler that carries no subject, so it never counts toward coverage. Negation
+# is deliberately absent: "not venture-backed" and "venture-backed" are
+# opposite claims, and the child must repeat the "not" to cover the parent.
 _CONTAINMENT_STOPWORDS = frozenset(
     {
         "a",
@@ -93,7 +96,6 @@ _CONTAINMENT_STOPWORDS = frozenset(
         "with",
         "and",
         "or",
-        "not",
         "his",
         "her",
         "their",
@@ -158,6 +160,14 @@ def _subject_tokens(content: str) -> set[str]:
         for word in re.findall(r"[a-z0-9']+", content.lower())
         if word not in _CONTAINMENT_STOPWORDS and len(word) > 2
     }
+
+
+def containment_share(raw: str) -> float:
+    """argparse type for --extends-containment: a share, so 0.0 to 1.0 inclusive."""
+    value = float(raw)
+    if math.isnan(value) or not 0.0 <= value <= 1.0:
+        raise argparse.ArgumentTypeError(f"{raw!r} is not a share between 0.0 and 1.0")
+    return value
 
 
 def covers(parent: str, child: str, threshold: float) -> bool:
@@ -296,7 +306,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--extends-containment",
-        type=float,
+        type=containment_share,
         default=_DEFAULT_EXTENDS_CONTAINMENT,
         help="Share of a parent's words its child must repeat before the parent is retired.",
     )

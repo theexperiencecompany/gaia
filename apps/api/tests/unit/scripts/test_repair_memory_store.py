@@ -578,6 +578,11 @@ class TestWhatCountsAsCoverage:
         assert covers("uses AI", "uses", 1.0) is True
         assert covers("uses zsh", "uses", 1.0) is False
 
+    def test_a_child_that_flips_the_parents_meaning_does_not_cover_it(self) -> None:
+        # "not" is the whole difference between these two claims.
+        assert covers("startup is not venture-backed", "startup is venture-backed", 0.8) is False
+        assert covers("startup is not venture-backed", "startup is not venture-backed", 1.0) is True
+
     def test_an_apostrophe_keeps_a_contraction_as_one_word(self) -> None:
         assert covers("doesn't drink", "does not drink", 1.0) is False
         assert covers("doesn't drink", "doesn't drink", 1.0) is True
@@ -645,6 +650,39 @@ class TestCommandLine:
         assert args.retire_ids is None
         assert args.state_age_days == STATE_FACT_TTL_DAYS
         assert args.extends_containment == 0.8
+
+    @pytest.mark.parametrize("bad", ["-1", "1.5", "nan"])
+    def test_a_containment_outside_zero_to_one_refuses_to_start(
+        self, bad: str, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with (
+            patch(
+                "sys.argv", ["repair_memory_store", "--user", "u1", "--extends-containment", bad]
+            ),
+            pytest.raises(SystemExit) as raised,
+        ):
+            main()
+
+        assert raised.value.code == 2
+        assert f"'{bad}' is not a share between 0.0 and 1.0" in capsys.readouterr().err
+
+    def test_a_containment_that_is_not_a_number_refuses_to_start(self) -> None:
+        with (
+            patch(
+                "sys.argv", ["repair_memory_store", "--user", "u1", "--extends-containment", "half"]
+            ),
+            pytest.raises(SystemExit) as raised,
+        ):
+            main()
+
+        assert raised.value.code == 2
+
+    @pytest.mark.parametrize("edge", ["0", "1"])
+    def test_the_ends_of_the_share_are_allowed(self, edge: str) -> None:
+        captured, code = self._run_main(["--user", "u1", "--extends-containment", edge])
+
+        assert code == 0
+        assert captured[0].extends_containment == float(edge)
 
     def test_a_run_with_no_user_refuses_to_start(self) -> None:
         with patch("sys.argv", ["repair_memory_store"]), pytest.raises(SystemExit) as raised:
