@@ -84,7 +84,7 @@
     "dotenv-cli": "^11.0.0",
     "reactotron-react-native": "^5.2.0",
     "tailwindcss": "^4.3.2",
-    "typescript": "^7.0.2",
+    "typescript": "npm:typescript@6.0.0-beta",
     "vitest": "^4.1.10"
   },
   "private": true

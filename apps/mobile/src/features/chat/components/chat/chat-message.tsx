@@ -1,4 +1,8 @@
 import {
+  SUBAGENT_GROUP_TOOL_NAME,
+  TOOL_CALLS_DATA_TOOL_NAME,
+} from "@gaia/shared/chat";
+import {
   parseOpenUISegments,
   parseThinkingFromText,
   splitMessageByBreaks,
@@ -6,260 +10,38 @@ import {
 import * as Haptics from "expo-haptics";
 import { PressableFeedback } from "heroui-native";
 import { useCallback, useMemo } from "react";
-import { Pressable, View } from "react-native";
-import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
-import {
-  Alert01Icon,
-  AppIcon,
-  Brain02Icon,
-  RepeatIcon,
-} from "@/components/icons";
+import { Text, View } from "react-native";
+import Animated, { FadeIn } from "react-native-reanimated";
 import { MessageBubble } from "@/components/ui/message-bubble";
-import { Text } from "@/components/ui/text";
-import { ThinkingCard } from "@/features/chat/components/streaming/ThinkingCard";
-import { ToolProgressCard } from "@/features/chat/components/streaming/ToolProgressCard";
 import { useResponsive } from "@/lib/responsive";
 import { extractUrls, useLinkPreview } from "../../hooks/use-link-preview";
 import { ToolDataRenderer } from "../../tool-data/renderers";
 import type { Message } from "../../types";
 import { OpenUIRenderer } from "../openui/OpenUIRenderer";
+import { ActivityBlock } from "../streaming/activity-block";
+import { buildTimeline } from "../streaming/activity-format";
+import { FailedResponse } from "./failed-response";
+import { FollowUpActions } from "./follow-up-actions";
 import { ImageBubble } from "./image-bubble";
 import { LinkPreviewCard } from "./link-preview-card";
-import { LoadingIndicator } from "./loading-indicator";
+import { MemoryIndicator } from "./memory-indicator";
 import type { MessageActionConfig } from "./message-action-sheet";
 import { MessageReplyQuote } from "./message-reply-quote";
 import { ThinkingBubble } from "./thinking-bubble";
 
 const EMOJI_ONLY_REGEX = /^[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\s]+$/u;
 
+/** Shape accepted by MemoryIndicator, derived from the component itself. */
+type MemoryIndicatorData = Parameters<typeof MemoryIndicator>[0]["memoryData"];
+
+// Gap scale token (decisions §5).
+const GAP_SM = 4;
+
 function getEmojiInfo(text: string): { isEmojiOnly: boolean; count: number } {
   const trimmed = text.trim();
   if (!EMOJI_ONLY_REGEX.test(trimmed)) return { isEmojiOnly: false, count: 0 };
   const chars = [...trimmed.replace(/\s/g, "")];
   return { isEmojiOnly: true, count: chars.length };
-}
-
-// -- Follow-up actions --------------------------------------------------------
-
-interface FollowUpActionsProps {
-  actions: string[];
-  onActionPress?: (action: string) => void;
-}
-
-function FollowUpActions({ actions, onActionPress }: FollowUpActionsProps) {
-  const { spacing } = useResponsive();
-  if (!actions.length) return null;
-
-  return (
-    <View
-      className="flex-row flex-wrap gap-2 mt-2"
-      style={{ paddingLeft: spacing.md, paddingRight: spacing.md }}
-    >
-      {actions.map((action, i) => (
-        <Animated.View
-          key={action}
-          entering={FadeInDown.delay(i * 60)
-            .duration(300)
-            .springify()}
-        >
-          <Pressable
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              onActionPress?.(action);
-            }}
-            className="px-3.5 py-1.5 rounded-full bg-zinc-800 active:bg-zinc-700"
-          >
-            <Text className="text-zinc-300 text-sm">{action}</Text>
-          </Pressable>
-        </Animated.View>
-      ))}
-    </View>
-  );
-}
-
-// -- Memory indicator ---------------------------------------------------------
-
-type MemoryDataShape = {
-  type?: string;
-  operation?: string;
-  status?: string;
-  count?: number;
-  content?: string;
-} | null;
-
-function getMemoryLabel(memoryData: MemoryDataShape): string | null {
-  if (!memoryData) return null;
-
-  if (memoryData.type === "memory_stored") return "Memory stored";
-
-  if (memoryData.status === "success") {
-    switch (memoryData.operation) {
-      case "create":
-        return "Memory created";
-      case "search":
-        if (memoryData.count === 0) return "No memories found";
-        if (memoryData.count === 1) return "Found 1 memory";
-        return `Found ${memoryData.count} memories`;
-      case "list":
-        if (memoryData.count === 0) return "No memories";
-        return `Retrieved ${memoryData.count} memories`;
-      default:
-        return "Memory updated";
-    }
-  }
-
-  if (memoryData.status === "storing") return "Storing memory...";
-  if (memoryData.status === "searching") return "Searching memories...";
-  if (memoryData.status === "retrieving") return "Retrieving memories...";
-
-  return null;
-}
-
-function MemoryIndicator({ memoryData }: { memoryData: MemoryDataShape }) {
-  const { spacing, fontSize, moderateScale } = useResponsive();
-  const label = getMemoryLabel(memoryData);
-  if (!label) return null;
-
-  return (
-    <View
-      style={{
-        marginTop: spacing.xs + 2,
-        paddingHorizontal: spacing.md,
-      }}
-    >
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          alignSelf: "flex-start",
-          gap: spacing.xs,
-          backgroundColor: "rgba(63, 63, 70, 0.5)",
-          borderRadius: moderateScale(12, 0.5),
-          paddingHorizontal: spacing.sm + 2,
-          paddingVertical: spacing.xs,
-        }}
-      >
-        <AppIcon
-          icon={Brain02Icon}
-          size={moderateScale(11, 0.5)}
-          color="#a1a1aa"
-        />
-        <Text
-          style={{
-            fontSize: fontSize.xs,
-            color: "#a1a1aa",
-            fontWeight: "500",
-          }}
-        >
-          {label}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
-// -- Failed response ----------------------------------------------------------
-
-/**
- * Failure surface for an errored turn — mobile counterpart of web's
- * FailedResponse. The streamed text (if any) stays visible above; this strip
- * marks the answer as cut short and offers a retry.
- */
-function FailedResponse({
-  error,
-  hasPartialText,
-  onRetry,
-}: {
-  error: string;
-  hasPartialText: boolean;
-  onRetry?: () => void;
-}) {
-  const { spacing, fontSize, moderateScale } = useResponsive();
-
-  if (hasPartialText) {
-    // Compact strip under the partial bubble — the answer was truncated.
-    return (
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: spacing.sm,
-          marginTop: spacing.xs + 2,
-          paddingHorizontal: spacing.md,
-        }}
-      >
-        <AppIcon icon={Alert01Icon} size={14} color="#a1a1aa" />
-        <Text
-          style={{ color: "#a1a1aa", fontSize: fontSize.xs, flexShrink: 1 }}
-        >
-          Response was cut short
-        </Text>
-        {onRetry ? <RetryButton onRetry={onRetry} /> : null}
-      </View>
-    );
-  }
-
-  // Full bubble — nothing streamed, so this IS the message.
-  return (
-    <View style={{ paddingHorizontal: spacing.md, width: "100%" }}>
-      <View
-        style={{
-          alignSelf: "flex-start",
-          maxWidth: "85%",
-          backgroundColor: "#27272a",
-          borderRadius: moderateScale(20, 0.5),
-          padding: spacing.md,
-          flexDirection: "row",
-          alignItems: "flex-start",
-          gap: spacing.sm,
-        }}
-      >
-        <AppIcon
-          icon={Alert01Icon}
-          size={17}
-          color="#a1a1aa"
-          style={{ marginTop: 1 }}
-        />
-        <View style={{ flexShrink: 1, gap: spacing.xs }}>
-          <Text style={{ color: "#e4e4e7", fontSize: fontSize.base }}>
-            This response failed
-          </Text>
-          <Text
-            style={{ color: "#a1a1aa", fontSize: fontSize.sm }}
-            numberOfLines={2}
-          >
-            {error}
-          </Text>
-          {onRetry ? <RetryButton onRetry={onRetry} /> : null}
-        </View>
-      </View>
-    </View>
-  );
-}
-
-function RetryButton({ onRetry }: { onRetry: () => void }) {
-  const { moderateScale } = useResponsive();
-  return (
-    <Pressable
-      onPress={onRetry}
-      style={({ pressed }) => ({
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 4,
-        opacity: pressed ? 0.7 : 1,
-        borderRadius: moderateScale(12, 0.5),
-        borderWidth: 0,
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        alignSelf: "flex-start",
-      })}
-    >
-      <AppIcon icon={RepeatIcon} size={13} color="#00bbff" />
-      <Text style={{ color: "#00bbff", fontSize: 12, fontWeight: "600" }}>
-        Retry
-      </Text>
-    </Pressable>
-  );
 }
 
 // -- ChatMessage --------------------------------------------------------------
@@ -388,7 +170,7 @@ function UserChatMessage({
         delayLongPress={350}
         style={{
           flexDirection: "row",
-          paddingVertical: spacing.md,
+          marginBottom: spacing.xs,
           alignItems: "flex-end",
           justifyContent: "flex-end",
           paddingHorizontal: spacing.md,
@@ -417,7 +199,7 @@ function UserChatMessage({
   );
 }
 
-/** The received (AI) message text/OpenUI parts. */
+/** The received (AI) message text/OpenUI parts — accumulates WHILE streaming. */
 function AITextParts({
   parts,
   messageId,
@@ -476,33 +258,23 @@ interface AIMainContentProps {
   message: Message;
   messageParts: MessagePart[];
   isGeneratingImage: boolean;
-  showToolProgress: boolean;
-  showThinkingCard: boolean;
-  showLoadingState: boolean;
   isLoading: boolean;
   isLastMessage: boolean;
-  loadingMessage: string;
-  progressToolName: string | null;
-  progressMessage: string | null;
 }
 
-/** Main content area of an AI message — mutually exclusive render states. */
+/**
+ * Main content area of an AI message. Streaming activity lives in the
+ * ActivityBlock sibling ABOVE this — text accumulates simultaneously instead
+ * of the old mutually-exclusive surface swap (thinking OR progress OR text).
+ */
 function AIMainContent({
   message,
   messageParts,
   isGeneratingImage,
-  showToolProgress,
-  showThinkingCard,
-  showLoadingState,
   isLoading,
   isLastMessage,
-  loadingMessage,
-  progressToolName,
-  progressMessage,
 }: AIMainContentProps) {
   const { spacing } = useResponsive();
-  const loadingText =
-    loadingMessage !== "Thinking..." ? loadingMessage : undefined;
 
   if (message.imageData || isGeneratingImage) {
     return (
@@ -518,26 +290,6 @@ function AIMainContent({
         />
       </View>
     );
-  }
-  if (showToolProgress) {
-    return (
-      <View style={{ paddingHorizontal: spacing.md, width: "100%" }}>
-        <ToolProgressCard
-          toolName={progressToolName}
-          progressMessage={progressMessage}
-        />
-      </View>
-    );
-  }
-  if (showThinkingCard) {
-    return (
-      <View style={{ paddingHorizontal: spacing.md, width: "100%" }}>
-        <ThinkingCard message={loadingText} />
-      </View>
-    );
-  }
-  if (showLoadingState) {
-    return <LoadingIndicator progress={loadingText} />;
   }
   if (messageParts.length > 0) {
     return (
@@ -560,7 +312,6 @@ function AIChatMessage({
   isLoading,
   isLastMessage,
   loadingMessage,
-  progressToolName,
   progressMessage,
   onFollowUpAction,
   onRetry,
@@ -569,8 +320,8 @@ function AIChatMessage({
   messageParts: MessagePart[];
   isLoading: boolean;
   isLastMessage: boolean;
+  /** Contextual loading label from the screen ("Thinking about X..."). */
   loadingMessage: string;
-  progressToolName: string | null;
   progressMessage: string | null;
   onFollowUpAction?: (action: string) => void;
   /** Re-run the failed turn (only meaningful when message.error is set). */
@@ -578,11 +329,28 @@ function AIChatMessage({
 }) {
   const { spacing } = useResponsive();
 
-  const hasContent = messageParts.length > 0;
-  const showLoadingState = isLoading && !hasContent;
-  const showToolProgress = showLoadingState && progressMessage !== null;
-  const showThinkingCard = showLoadingState && !showToolProgress;
+  const hasStreamedText =
+    messageParts.length > 0 || !!parsedContent.thinking || !!message.imageData;
   const isGeneratingImage = message.imageData != null && !message.imageData.url;
+  const failed = !!message.error && !isLoading;
+
+  const hasActivity = useMemo(
+    () => buildTimeline(message.toolData).length > 0,
+    [message.toolData],
+  );
+
+  // Tool data that carries its own rich typed card (approvals, weather, …).
+  // tool_calls_data and subagent_group render inside the ActivityBlock chain
+  // instead — subagent_group has no typed card and would hit UnsupportedToolCard.
+  const nonCallToolData = useMemo(
+    () =>
+      (message.toolData ?? []).filter(
+        (e) =>
+          e.tool_name !== TOOL_CALLS_DATA_TOOL_NAME &&
+          e.tool_name !== SUBAGENT_GROUP_TOOL_NAME,
+      ),
+    [message.toolData],
+  );
 
   const rawText = message.text ?? "";
   const linkPreviewUrls = extractUrls(rawText);
@@ -591,13 +359,11 @@ function AIChatMessage({
   );
 
   const hasAnyContent =
-    hasContent ||
+    hasStreamedText ||
+    hasActivity ||
+    isLoading ||
     isGeneratingImage ||
-    showToolProgress ||
-    showThinkingCard ||
-    showLoadingState ||
-    !!parsedContent.thinking ||
-    !!message.toolData?.length ||
+    nonCallToolData.length > 0 ||
     !!message.memoryData ||
     !!message.followUpActions?.length ||
     !!message.error;
@@ -612,27 +378,36 @@ function AIChatMessage({
         delayLongPress={350}
         style={{
           flexDirection: "column",
-          paddingVertical: spacing.sm,
+          marginBottom: spacing.sm,
           alignItems: "flex-start",
           width: "100%",
         }}
       >
-        {/* Tool data cards — rendered inline before message text, matches
-            web's chat_bubble_container flow (flex column, gap from cards).
-            alignSelf: stretch so the wrapper fills the parent column —
-            ToolCallsSection's expanded Input/Output panels need to span the
-            full chat width, not collapse to icon+title content size. */}
-        {message.toolData?.length ? (
+        {/* Agent activity — persistent first sibling of the turn; streamed
+            markdown accumulates BELOW it simultaneously (decisions §2). */}
+        {(hasActivity || isLoading) && (
+          <ActivityBlock
+            toolData={message.toolData ?? []}
+            isRunning={isLoading}
+            hasStreamedText={hasStreamedText}
+            failed={failed}
+            thinkingLabel={
+              progressMessage ??
+              (loadingMessage !== "Thinking..." ? loadingMessage : null)
+            }
+          />
+        )}
+
+        {/* Typed tool-data cards (non tool_calls_data) — full width above text */}
+        {nonCallToolData.length ? (
           <View style={{ paddingHorizontal: spacing.md, alignSelf: "stretch" }}>
-            <ToolDataRenderer toolData={message.toolData} />
+            <ToolDataRenderer toolData={nonCallToolData} />
           </View>
         ) : null}
 
         {/* Thinking / reasoning bubble (collapsible) */}
         {parsedContent.thinking ? (
-          <View
-            style={{ paddingHorizontal: spacing.md, marginBottom: spacing.xs }}
-          >
+          <View style={{ paddingHorizontal: spacing.md, marginBottom: GAP_SM }}>
             <ThinkingBubble thinkingContent={parsedContent.thinking} />
           </View>
         ) : null}
@@ -642,21 +417,13 @@ function AIChatMessage({
           message={message}
           messageParts={messageParts}
           isGeneratingImage={isGeneratingImage}
-          showToolProgress={showToolProgress}
-          showThinkingCard={showThinkingCard}
-          showLoadingState={showLoadingState}
           isLoading={isLoading}
           isLastMessage={isLastMessage}
-          loadingMessage={loadingMessage}
-          progressToolName={progressToolName}
-          progressMessage={progressMessage}
         />
 
         {/* Link preview – shown below message content for AI messages */}
         {!isLoading && linkPreviewUrls.length > 0 && linkPreviewData?.length ? (
-          <View
-            style={{ paddingHorizontal: spacing.md, marginTop: spacing.xs }}
-          >
+          <View style={{ paddingHorizontal: spacing.md, marginTop: GAP_SM }}>
             <LinkPreviewCard
               url={linkPreviewData[0].url}
               title={linkPreviewData[0].title}
@@ -670,7 +437,9 @@ function AIChatMessage({
 
         {/* Memory indicator pill */}
         {message.memoryData ? (
-          <MemoryIndicator memoryData={message.memoryData as MemoryDataShape} />
+          <MemoryIndicator
+            memoryData={message.memoryData as MemoryIndicatorData}
+          />
         ) : null}
 
         {/* Follow-up action chips */}
@@ -682,10 +451,10 @@ function AIChatMessage({
         ) : null}
 
         {/* Errored turn: keep the streamed text above and mark the failure */}
-        {message.error && !isLoading ? (
+        {message.error && failed ? (
           <FailedResponse
             error={message.error}
-            hasPartialText={hasContent}
+            hasPartialText={messageParts.length > 0}
             onRetry={onRetry}
           />
         ) : null}
@@ -703,7 +472,6 @@ export function ChatMessage({
   isLoading = false,
   isLastMessage = false,
   loadingMessage = "Thinking...",
-  progressToolName = null,
   progressMessage = null,
 }: ChatMessageProps) {
   const { parsedContent, messageParts } = useMessageParts(message.text);
@@ -728,7 +496,6 @@ export function ChatMessage({
       isLoading={isLoading}
       isLastMessage={isLastMessage}
       loadingMessage={loadingMessage}
-      progressToolName={progressToolName}
       progressMessage={progressMessage}
       onFollowUpAction={onFollowUpAction}
       onRetry={onRetry}

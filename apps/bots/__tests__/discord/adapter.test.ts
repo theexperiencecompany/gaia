@@ -96,7 +96,7 @@ vi.mock("discord.js", () => {
 // Mock @gaia/shared so we control handleStreamingChat.
 // ---------------------------------------------------------------------------
 
-vi.mock("@gaia/shared", () => {
+vi.mock("@gaia/shared/bots", () => {
   const BaseBotAdapter = class {
     platform = "discord";
     gaia = {};
@@ -228,7 +228,7 @@ vi.mock("@gaia/shared", () => {
 // Now import the real adapter (which will use the mocks above).
 // ---------------------------------------------------------------------------
 
-import { handleStreamingChat } from "@gaia/shared";
+import { handleStreamingChat } from "@gaia/shared/bots";
 import { DiscordAdapter } from "../../discord/src/adapter";
 
 // ---------------------------------------------------------------------------

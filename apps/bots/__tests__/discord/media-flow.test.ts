@@ -30,7 +30,7 @@ import {
   processBotMedia,
 } from "../../../../libs/shared/ts/src/bots/utils";
 
-vi.mock("@gaia/shared", async () => {
+vi.mock("@gaia/shared/bots", async () => {
   const { makeGaiaSharedMock } = await import("../shared/mocks/gaiaSharedBase");
   const real = await import("../../../../libs/shared/ts/src/bots/utils");
   return makeGaiaSharedMock("discord", {
@@ -45,7 +45,7 @@ vi.mock("@gaia/shared", async () => {
   });
 });
 
-import { fetchBytesCapped, MEDIA_READ_TIMEOUT_MS } from "@gaia/shared";
+import { fetchBytesCapped, MEDIA_READ_TIMEOUT_MS } from "@gaia/shared/bots";
 import type { Message } from "discord.js";
 import { DiscordAdapter } from "../../discord/src/adapter";
 

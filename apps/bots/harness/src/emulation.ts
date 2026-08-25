@@ -22,7 +22,7 @@ import {
   renderForPlatform,
   STREAMING_DEFAULTS,
   type StreamingOptions,
-} from "@gaia/shared";
+} from "@gaia/shared/bots";
 
 export interface PlatformEmulation {
   platform: PlatformName;

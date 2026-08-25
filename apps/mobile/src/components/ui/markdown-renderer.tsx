@@ -1,5 +1,5 @@
 import * as Linking from "expo-linking";
-import { memo, useCallback, useState } from "react";
+import { memo, type ReactNode, useCallback, useState } from "react";
 import {
   Image,
   Text as RNText,
@@ -7,6 +7,7 @@ import {
   type TextStyle,
   View,
 } from "react-native";
+import Animated, { FadeIn } from "react-native-reanimated";
 import { WebView } from "react-native-webview";
 import {
   type Block,
@@ -24,16 +25,17 @@ import {
   CodeBlock,
   InlineCode,
 } from "@/features/chat/components/code-block/CodeBlock";
+import { colors } from "@/lib/design-tokens";
 import { useResponsive } from "@/lib/responsive";
 
 // -- Theme constants ----------------------------------------------------------
 
 const COLORS = {
-  text: "#ffffff",
-  muted: "#a1a1aa",
-  blockquoteBorder: "#3f3f46", // zinc-700
-  hrColor: "#3f3f46",
-  linkColor: "#00bbff",
+  text: colors.white,
+  muted: colors.zinc400,
+  blockquoteBorder: colors.zinc700,
+  hrColor: colors.zinc700,
+  linkColor: colors.brand,
 } as const;
 
 export interface MarkdownRendererProps {
@@ -273,7 +275,7 @@ function ListBlock({
                         height: 4,
                         borderLeftWidth: 2,
                         borderBottomWidth: 2,
-                        borderColor: "#000",
+                        borderColor: colors.black,
                         transform: [{ rotate: "-45deg" }, { translateY: -1 }],
                       }}
                     />
@@ -372,7 +374,7 @@ function TableBlock({
       }}
     >
       {/* Header row */}
-      <View style={{ flexDirection: "row", backgroundColor: "#27272a" }}>
+      <View style={{ flexDirection: "row", backgroundColor: colors.zinc800 }}>
         {headerRow.map((cell, i) => (
           <View
             key={cell.id}
@@ -538,69 +540,81 @@ function MathBlock({ code, inline }: { code: string; inline?: boolean }) {
 
 // -- Block dispatcher ---------------------------------------------------------
 
-function RenderBlocks({ blocks }: { blocks: Block[] }) {
+function renderSingleBlock(
+  block: Block,
+  idx: number,
+  total: number,
+): ReactNode {
+  const key = blockKey(block, idx);
+  switch (block.type) {
+    case "paragraph":
+      return (
+        <View
+          key={key}
+          style={{
+            marginTop: 0,
+            marginBottom: idx < total - 1 ? 12 : 0,
+          }}
+        >
+          <InlineContent segments={block.segments} />
+        </View>
+      );
+    case "heading":
+      return (
+        <HeadingBlock key={key} level={block.level} segments={block.segments} />
+      );
+    case "codeBlock":
+      if (block.language === "mermaid") {
+        return <MermaidBlock key={key} code={block.code} />;
+      }
+      return (
+        <CodeBlock key={key} language={block.language} code={block.code} />
+      );
+    case "blockquote":
+      return <BlockquoteBlock key={key} segments={block.segments} />;
+    case "list":
+      return (
+        <ListBlock
+          key={key}
+          ordered={block.ordered}
+          start={block.start}
+          items={block.items}
+        />
+      );
+    case "table":
+      return (
+        <TableBlock key={key} alignments={block.alignments} rows={block.rows} />
+      );
+    case "hr":
+      return <HorizontalRule key={key} />;
+    case "mathBlock":
+      return <MathBlock key={key} code={block.code} />;
+    default:
+      return null;
+  }
+}
+
+function RenderBlocks({
+  blocks,
+  animateEntry = false,
+}: {
+  blocks: Block[];
+  /** Fade in freshly mounted blocks — enabled only while streaming. */
+  animateEntry?: boolean;
+}) {
   return (
     <View>
       {blocks.map((block, idx) => {
-        const key = blockKey(block, idx);
-        switch (block.type) {
-          case "paragraph":
-            return (
-              <View
-                key={key}
-                style={{
-                  marginTop: 0,
-                  marginBottom: idx < blocks.length - 1 ? 12 : 0,
-                }}
-              >
-                <InlineContent segments={block.segments} />
-              </View>
-            );
-          case "heading":
-            return (
-              <HeadingBlock
-                key={key}
-                level={block.level}
-                segments={block.segments}
-              />
-            );
-          case "codeBlock":
-            if (block.language === "mermaid") {
-              return <MermaidBlock key={key} code={block.code} />;
-            }
-            return (
-              <CodeBlock
-                key={key}
-                language={block.language}
-                code={block.code}
-              />
-            );
-          case "blockquote":
-            return <BlockquoteBlock key={key} segments={block.segments} />;
-          case "list":
-            return (
-              <ListBlock
-                key={key}
-                ordered={block.ordered}
-                start={block.start}
-                items={block.items}
-              />
-            );
-          case "table":
-            return (
-              <TableBlock
-                key={key}
-                alignments={block.alignments}
-                rows={block.rows}
-              />
-            );
-          case "hr":
-            return <HorizontalRule key={key} />;
-          case "mathBlock":
-            return <MathBlock key={key} code={block.code} />;
-          default:
-            return null;
-        }
+        const rendered = renderSingleBlock(block, idx, blocks.length);
+        if (!animateEntry || rendered == null) return rendered;
+        return (
+          <Animated.View
+            key={blockKey(block, idx)}
+            entering={FadeIn.duration(180)}
+          >
+            {rendered}
+          </Animated.View>
+        );
       })}
     </View>
   );
@@ -623,7 +637,7 @@ function MarkdownRendererInner({
     return null;
   }
 
-  return <RenderBlocks blocks={blocks} />;
+  return <RenderBlocks blocks={blocks} animateEntry={!!isStreaming} />;
 }
 
 const MarkdownRenderer = memo(MarkdownRendererInner);

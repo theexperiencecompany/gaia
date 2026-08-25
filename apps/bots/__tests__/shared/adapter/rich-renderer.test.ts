@@ -1,5 +1,5 @@
-import type { RichMessage } from "@gaia/shared";
-import { renderForPlatform, richMessageToMarkdown } from "@gaia/shared";
+import type { RichMessage } from "@gaia/shared/bots";
+import { renderForPlatform, richMessageToMarkdown } from "@gaia/shared/bots";
 import { describe, expect, it } from "vitest";
 
 // ---------------------------------------------------------------------------

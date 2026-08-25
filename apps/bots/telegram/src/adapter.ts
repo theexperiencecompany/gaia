@@ -46,7 +46,7 @@ import {
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,
   withWideEvent,
-} from "@gaia/shared";
+} from "@gaia/shared/bots";
 import type { Message } from "@grammyjs/types";
 import { Bot, type Context, GrammyError, InputFile } from "grammy";
 
