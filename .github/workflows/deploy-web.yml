@@ -279,9 +279,7 @@ jobs:
             const body = `${marker}\n${logo} **Cloudflare preview deployed**: alias \`${alias}\`\n\n` +
               `Preview: https://pr-${pr}-gaia.heygaia.workers.dev\n` +
               `Last deployed commit: \`${sha.slice(0, 7)}\` at ${new Date().toISOString()}\n\n` +
-              `> What this is: a build and render check of the web app on Cloudflare Workers, deployed when apps/web, libs/shared/ts or the web build config change. ` +
-              `It is built without a real API base URL and the API's CORS list does not include workers.dev origins, so pages render but nothing that calls the API works here. ` +
-              `Preview requires Workers preview_urls / route. Duration is in the job summary.`;
+              `> Render check only: no API behind it, so anything that calls the backend will not work here.`;
             const { owner, repo } = context.repo;
             try {
               const comments = await github.paginate(github.rest.issues.listComments, {
