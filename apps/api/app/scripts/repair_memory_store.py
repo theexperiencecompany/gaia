@@ -233,18 +233,44 @@ async def _repair_user(user_id: str, args: argparse.Namespace) -> int:
     rows = await pg_store.get_all_live_memories(user_id)
     print(f"\n{'=' * 78}\nUser {user_id}: {len(rows)} live memories\n{'=' * 78}")
 
-    extends_pairs = extends_parents_to_retire(rows, containment=args.extends_containment)
+    keep = set(args.keep_ids or [])
+    retire = set(args.retire_ids or [])
+    # A typo in either list is silent otherwise: the row you meant to spare gets
+    # retired, or the row you meant to retire survives, and the plan looks right
+    # both times. Both lists name rows of the user being repaired.
+    unknown = (keep | retire) - {str(row.id) for row in rows}
+    if unknown:
+        raise SystemExit(
+            f"user {user_id} has no live memory {', '.join(sorted(unknown))} — "
+            "--keep-ids and --retire-ids name rows of the user being repaired"
+        )
+
+    if keep:
+        print(f"\nSpared by --keep-ids: {len(keep)}")
+        for row in rows:
+            if str(row.id) in keep:
+                print(f"  - keep   {row.id}: {row.content!r}")
+
+    extends_pairs = [
+        (parent, child)
+        for parent, child in extends_parents_to_retire(rows, containment=args.extends_containment)
+        if str(parent.id) not in keep
+    ]
     print(f"\nEXTENDS parents still live alongside their child: {len(extends_pairs)}")
     for parent, child in extends_pairs:
         print(f"  - retire {parent.id}: {parent.content!r}")
         print(f"      kept  {child.id}: {child.content!r}")
 
-    stale = state_rows_to_forget(rows, now=now, age_days=args.state_age_days)
+    stale = [
+        row
+        for row in state_rows_to_forget(rows, now=now, age_days=args.state_age_days)
+        if str(row.id) not in keep
+    ]
     print(f"\nStale state snapshots older than {args.state_age_days}d: {len(stale)}")
     for row in stale:
         print(f"  - forget {row.id} ({row.created_at:%Y-%m-%d}): {row.content!r}")
 
-    manual = [row for row in rows if str(row.id) in set(args.retire_ids or [])]
+    manual = [row for row in rows if str(row.id) in retire]
     if manual:
         print(f"\nExplicitly retired by --retire-ids: {len(manual)}")
         for row in manual:
@@ -305,6 +331,11 @@ def main() -> None:
         "--retire-ids", action="append", help="Forget this memory id outright (repeatable)."
     )
     parser.add_argument(
+        "--keep-ids",
+        action="append",
+        help="Never retire this memory id, whatever the plan says (repeatable).",
+    )
+    parser.add_argument(
         "--extends-containment",
         type=containment_share,
         default=_DEFAULT_EXTENDS_CONTAINMENT,
@@ -317,6 +348,9 @@ def main() -> None:
         help="Age past which a state-like row is retired.",
     )
     args = parser.parse_args()
+    contradictory = set(args.keep_ids or []) & set(args.retire_ids or [])
+    if contradictory:
+        parser.error(f"--keep-ids and --retire-ids both name {', '.join(sorted(contradictory))}")
     raise SystemExit(asyncio.run(_run(args)))
 
 

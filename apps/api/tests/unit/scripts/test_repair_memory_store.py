@@ -227,12 +227,14 @@ def make_args(
     *,
     apply: bool = False,
     retire_ids: list[str] | None = None,
+    keep_ids: list[str] | None = None,
     state_age_days: int | None = None,
     extends_containment: float = 0.8,
 ) -> argparse.Namespace:
     return argparse.Namespace(
         apply=apply,
         retire_ids=retire_ids,
+        keep_ids=keep_ids,
         state_age_days=STATE_FACT_TTL_DAYS if state_age_days is None else state_age_days,
         extends_containment=extends_containment,
     )
@@ -598,6 +600,97 @@ class TestTheSnapshotLengthBound:
 
 
 @pytest.mark.unit
+class TestAnExplicitSpareOutranksThePlan:
+    """Both heuristics read wording, so both have honest false positives: a
+    residency fact phrased with "currently", a preference whose child is
+    narrower. --keep-ids is the operator's override, and it wins over every
+    rule in the script."""
+
+    async def test_a_spared_row_is_not_retired_as_a_duplicate(
+        self, store: SimpleNamespace, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        parent = make_row(content="sam works at acme")
+        child = make_row(
+            content="sam works at acme as a staff engineer",
+            parent_id=parent.id,
+            relation_type="extends",
+        )
+        store.get_all_live_memories.return_value = [parent, child]
+
+        await _repair_user("u1", make_args(apply=True, keep_ids=[str(parent.id)]))
+
+        out = capsys.readouterr().out
+        assert "EXTENDS parents still live alongside their child: 0" in out
+        assert f"\nSpared by --keep-ids: 1\n  - keep   {parent.id}: {parent.content!r}\n" in out
+        store.forget_memory.assert_not_awaited()
+
+    async def test_nothing_is_spared_when_no_id_is_given(
+        self, store: SimpleNamespace, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        store.get_all_live_memories.return_value = [make_row(content="sam works at acme")]
+
+        await _repair_user("u1", make_args())
+
+        assert "Spared by --keep-ids" not in capsys.readouterr().out
+
+    async def test_a_spared_row_is_not_forgotten_as_a_stale_snapshot(
+        self, store: SimpleNamespace, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        row = make_row(content="Aryan is currently a Resident Indian", age_days=90)
+        store.get_all_live_memories.return_value = [row]
+
+        await _repair_user("u1", make_args(apply=True, keep_ids=[str(row.id)]))
+
+        assert "Stale state snapshots older than 60d: 0" in capsys.readouterr().out
+        store.forget_memory.assert_not_awaited()
+
+    async def test_sparing_one_row_leaves_the_rest_of_the_plan_alone(
+        self, store: SimpleNamespace, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        spared = make_row(content="Aryan is currently a Resident Indian", age_days=90)
+        doomed = make_row(content="Gmail is currently disconnected", age_days=90)
+        store.get_all_live_memories.return_value = [spared, doomed]
+
+        await _repair_user("u1", make_args(apply=True, keep_ids=[str(spared.id)]))
+
+        assert "Stale state snapshots older than 60d: 1" in capsys.readouterr().out
+        store.forget_memory.assert_awaited_once()
+        assert store.forget_memory.await_args.args[1] == str(doomed.id)
+
+    async def test_an_id_that_names_no_live_row_stops_the_run(self, store: SimpleNamespace) -> None:
+        store.get_all_live_memories.return_value = [make_row(content="sam works at acme")]
+
+        with pytest.raises(SystemExit) as raised:
+            await _repair_user("u1", make_args(keep_ids=["zz-row", "aa-row"]))
+
+        assert str(raised.value) == (
+            "user u1 has no live memory aa-row, zz-row — --keep-ids and --retire-ids "
+            "name rows of the user being repaired"
+        )
+        store.forget_memory.assert_not_awaited()
+
+    async def test_a_retire_id_that_names_no_live_row_stops_the_run_too(
+        self, store: SimpleNamespace
+    ) -> None:
+        store.get_all_live_memories.return_value = [make_row(content="sam works at acme")]
+
+        with pytest.raises(SystemExit) as raised:
+            await _repair_user("u1", make_args(retire_ids=["typo-id"]))
+
+        assert str(raised.value) == (
+            "user u1 has no live memory typo-id — --keep-ids and --retire-ids "
+            "name rows of the user being repaired"
+        )
+        store.forget_memory.assert_not_awaited()
+
+    async def test_a_live_id_passes_the_check(self, store: SimpleNamespace) -> None:
+        row = make_row(content="sam works at acme")
+        store.get_all_live_memories.return_value = [row]
+
+        assert await _repair_user("u1", make_args(keep_ids=[str(row.id)])) == 0
+
+
+@pytest.mark.unit
 class TestCommandLine:
     @staticmethod
     def _run_main(argv: list[str]) -> tuple[list[argparse.Namespace], int | str | None]:
@@ -684,6 +777,46 @@ class TestCommandLine:
         assert code == 0
         assert captured[0].extends_containment == float(edge)
 
+    def test_the_spare_list_parses_and_is_repeatable(self) -> None:
+        captured, code = self._run_main(
+            ["--user", "u1", "--keep-ids", "mem-1", "--keep-ids", "mem-2"]
+        )
+
+        assert code == 0
+        assert captured[0].keep_ids == ["mem-1", "mem-2"]
+
+    def test_a_run_with_no_spare_list_leaves_it_unset(self) -> None:
+        captured, _code = self._run_main(["--user", "u1"])
+
+        assert captured[0].keep_ids is None
+
+    def test_sparing_and_retiring_the_same_id_refuses_to_start(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with (
+            patch(
+                "sys.argv",
+                [
+                    "repair_memory_store",
+                    "--user",
+                    "u1",
+                    "--keep-ids",
+                    "m2",
+                    "--keep-ids",
+                    "m1",
+                    "--retire-ids",
+                    "m1",
+                    "--retire-ids",
+                    "m2",
+                ],
+            ),
+            pytest.raises(SystemExit) as raised,
+        ):
+            main()
+
+        assert raised.value.code == 2
+        assert "--keep-ids and --retire-ids both name m1, m2" in capsys.readouterr().err
+
     def test_a_run_with_no_user_refuses_to_start(self) -> None:
         with patch("sys.argv", ["repair_memory_store"]), pytest.raises(SystemExit) as raised:
             main()
@@ -728,4 +861,8 @@ class TestCommandLine:
         assert (
             "--extends-containment EXTENDS_CONTAINMENT Share of a parent's words its child must "
             "repeat before the parent is retired." in options
+        )
+        assert (
+            "--keep-ids KEEP_IDS Never retire this memory id, whatever the plan says "
+            "(repeatable)." in options
         )
