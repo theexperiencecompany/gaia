@@ -123,7 +123,7 @@ def _limit_hit_exception(
             {"feature": actual_feature_key, "plan": plan_label(user_plan)},
         )
     detail_dict: dict[str, Any] = {}
-    reset_time = None
+    # reset_time resolves below: detail dict first, then the exception attr.
 
     # HTTPException.detail is typed `str` by Starlette, but
     # RateLimitExceededException always sets it to a dict at runtime — cast to
@@ -272,7 +272,7 @@ def with_rate_limiting(
             user_id = context.get("user_id") if context else None
 
             if user_id:
-                initiator = context.get("initiator", "frontend") if context else "frontend"
+                initiator = (context or {}).get("initiator")
                 # Skip rate limiting for system operations if configured
                 if not (bypass_for_system and initiator == "backend"):
                     await _enforce_feature_limit(user_id, actual_feature_key)

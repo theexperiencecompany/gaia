@@ -3,6 +3,7 @@
 import asyncio
 import contextlib
 from datetime import UTC, datetime
+import itertools
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -13,11 +14,14 @@ from app.agents.memory.email_processor import (
     OnboardingFetchOptions,
     _await_discovery_tasks,
     _collect_platform_results,
+    _collect_profile_extraction,
+    _collect_storage_results,
     _crawl_and_store_discovered,
     _discover_and_store_linked_profiles,
     _extract_linked_profile_links,
     _extract_profiles_from_parallel_searches,
     _latest_gmail_scan_timestamp,
+    _mark_processing_complete,
     _process_single_platform,
     _search_platform_emails,
     _search_platform_emails_parallel,
@@ -61,6 +65,9 @@ _PATCH_MEMORY_ENGINE = "app.agents.memory.email_processor.memory_engine"
 _PATCH_SEARCH_PARALLEL = "app.agents.memory.email_processor._search_platform_emails_parallel"
 _PATCH_PROCESS_SINGLE = "app.agents.memory.email_processor._process_single_platform"
 _PATCH_AWAIT_DISCOVERY = "app.agents.memory.email_processor._await_discovery_tasks"
+_PATCH_COLLECT_STORAGE = "app.agents.memory.email_processor._collect_storage_results"
+_PATCH_PROFILE_COLLECTION = "app.agents.memory.email_processor._collect_profile_extraction"
+_PATCH_MARK_PROC = "app.agents.memory.email_processor._mark_processing_complete"
 _PATCH_EXTRACT_LINKS = "app.agents.memory.email_processor._extract_linked_profile_links"
 _PATCH_CRAWL_DISCOVERED = "app.agents.memory.email_processor._crawl_and_store_discovered"
 _PATCH_LOG = "app.agents.memory.email_processor.log"
@@ -906,6 +913,21 @@ class TestFetchEmailsForOnboardingPins:
         assert mock_search.await_args_list[1].kwargs["page_token"] == "tok"
 
     @patch(_PATCH_SEARCH, new_callable=AsyncMock)
+    async def test_final_page_requests_only_the_remaining_allowance(
+        self, mock_search: AsyncMock
+    ) -> None:
+        """After 3 of 10 emails, the next batch asks for exactly 7 — not
+        max_total and not BATCH_SIZE."""
+        mock_search.side_effect = [
+            GmailMessagesResponse(
+                messages=[{"id": "1"}, {"id": "2"}, {"id": "3"}], next_page_token="tok"
+            ),
+            GmailMessagesResponse(messages=[]),
+        ]
+        await fetch_emails_for_onboarding(USER_ID, max_total=10)
+        assert mock_search.await_args_list[1].kwargs["max_results"] == 7
+
+    @patch(_PATCH_SEARCH, new_callable=AsyncMock)
     async def test_fetch_error_is_propagated_after_logging(self, mock_search: AsyncMock) -> None:
         mock_search.side_effect = RuntimeError("gmail down")
         with patch("app.agents.memory.email_processor.log") as log:
@@ -1066,6 +1088,27 @@ class TestCollectStorageResultsDirect:
         assert complete[0].kwargs["total_batches"] == 2
         assert complete[0].kwargs["failed_batches"] == 1
 
+    async def test_two_failed_batches_count_two_with_each_tasks_error(self) -> None:
+        """storage_errors accumulates (+1 per failure) and each warning names
+        that task's own error message."""
+
+        async def boom(message: str) -> None:
+            raise RuntimeError(message)
+
+        tasks = [asyncio.create_task(boom("mongo down")), asyncio.create_task(boom("redis down"))]
+        with patch("app.agents.memory.email_processor.log") as log:
+            errors = await _collect_storage_results(USER_ID, tasks, _StepTimer())
+
+        assert errors == 2
+        warnings = [
+            c
+            for c in log.warning.call_args_list
+            if c.args and c.args[0] == f"{LogTag.MEMORY} Email storage task failed"
+        ]
+        assert [w.kwargs["task_index"] for w in warnings] == [1, 2]
+        assert [w.kwargs["error_type"] for w in warnings] == ["RuntimeError", "RuntimeError"]
+        assert [w.kwargs["error"] for w in warnings] == ["mongo down", "redis down"]
+
     async def test_a_gather_failure_counts_every_task_as_failed(self) -> None:
         from app.agents.memory.email_processor import _collect_storage_results
 
@@ -1129,6 +1172,23 @@ class TestMarkProcessingCompletePins:
         ]
         assert len(done_logs) == 1
         assert done_logs[0].kwargs["user_id"] == USER_ID
+
+    async def test_skipped_watermark_warning_names_the_user(self) -> None:
+        from app.agents.memory.email_processor import _mark_processing_complete
+
+        timer = MagicMock()
+        with (
+            patch(_PATCH_USERS) as users,
+            patch(_PATCH_MARK_COMPLETE, new_callable=AsyncMock),
+            patch("app.agents.memory.email_processor.log") as log,
+        ):
+            users.set_gmail_scan_timestamp = AsyncMock()
+            await _mark_processing_complete(USER_ID, False, 0, timer, False)
+
+        warning = log.warning.call_args
+        assert "watermark not advanced" in warning.args[0]
+        assert warning.kwargs == {"user_id": USER_ID}
+        users.set_gmail_scan_timestamp.assert_not_awaited()
 
     async def test_mark_failure_is_swallowed_and_timestamp_still_written(self) -> None:
         from app.agents.memory.email_processor import _mark_processing_complete
@@ -1628,7 +1688,9 @@ class TestCollectStorageResultsLogArgPins:
     ) -> None:
         from app.agents.memory.email_processor import _collect_storage_results
 
-        mock_time.monotonic = MagicMock(side_effect=[0.0, 0.1234])
+        # Non-zero base: the duration must be a DIFFERENCE of the two
+        # monotonic readings, not their sum.
+        mock_time.monotonic = MagicMock(side_effect=[10.0, 10.1234])
 
         async def ok() -> None:
             await asyncio.sleep(0)
@@ -1796,12 +1858,13 @@ class TestDiscoverAndStoreLinkedProfilesArgPins:
         mock_crawl.return_value = {"content": "C", "error": None}
         mock_memory.retain = AsyncMock(return_value=MagicMock(facts_extracted=1))
         crawled_urls: set[str] = set()
+        semaphore = asyncio.Semaphore()
 
         count = await _discover_and_store_linked_profiles(
             USER_ID,
             "find https://github.com/johndoe pls",
             "twitter",
-            asyncio.Semaphore(),
+            semaphore,
             crawled_urls=crawled_urls,
         )
 
@@ -1809,6 +1872,42 @@ class TestDiscoverAndStoreLinkedProfilesArgPins:
         assert crawled_urls == {"https://built.github/johndoe"}
         mock_memory.retain.assert_awaited_once()
         assert mock_memory.retain.await_args.args[0] == USER_ID
+        # The crawl runs with the caller's own semaphore...
+        assert mock_crawl.await_args.args[2] is semaphore
+        # ...and the retention hints name the SOURCE platform.
+        hints = mock_memory.retain.await_args.kwargs["extraction_hints"]
+        assert "their twitter emails" in hints
+
+
+class TestExtractProfilesPlatformFailurePins:
+    @patch(_PATCH_LOG)
+    @patch(_PATCH_AWAIT_DISCOVERY, new_callable=AsyncMock, return_value=0)
+    @patch(_PATCH_PROCESS_SINGLE, new_callable=AsyncMock, side_effect=RuntimeError("platform boom"))
+    @patch(_PATCH_USERS)
+    @patch(_PATCH_SEARCH_PARALLEL, new_callable=AsyncMock)
+    async def test_platform_failure_error_log_carries_user_id(
+        self,
+        mock_parallel: AsyncMock,
+        mock_users: MagicMock,
+        mock_single: AsyncMock,
+        mock_discovery: AsyncMock,
+        mock_log: MagicMock,
+    ) -> None:
+        mock_users.get = AsyncMock(return_value=None)
+        mock_parallel.return_value = {"github": [{"id": "g"}]}
+
+        result = await _extract_profiles_from_parallel_searches(USER_ID)
+
+        failures = [
+            c
+            for c in mock_log.error.call_args_list
+            if c.args and c.args[0] == f"{LogTag.MEMORY} Platform extraction failed"
+        ]
+        assert len(failures) == 1
+        assert failures[0].kwargs["platform"] == "github"
+        assert failures[0].kwargs["error_type"] == "RuntimeError"
+        assert failures[0].kwargs["user_id"] == USER_ID
+        assert result["profiles_stored"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -1834,6 +1933,20 @@ class TestCollectPlatformResultsDirect:
         assert kwargs["error_type"] == "RuntimeError"
         assert kwargs["error"] == "gmail search down"
         assert kwargs["user_id"] == USER_ID
+
+    @patch(_PATCH_LOG)
+    def test_non_success_dict_result_is_not_tallied(self, mock_log: MagicMock) -> None:
+        """An error-dict outcome is neither tallied nor treated as a success."""
+        profiles_stored, extracted, discovery = _collect_platform_results(
+            USER_ID,
+            [("github", None)],
+            [{"error": "Invalid username 'bad!' for github"}],
+        )
+
+        assert profiles_stored == 0
+        assert extracted == []
+        assert discovery == []
+        mock_log.error.assert_not_called()
 
 
 class TestAwaitDiscoveryTasksDirect:
@@ -1868,3 +1981,128 @@ class TestAwaitDiscoveryTasksDirect:
         assert failure_logs[0].kwargs["error_type"] == "RuntimeError"
         assert failure_logs[0].kwargs["error"] == "crawl died"
         assert failure_logs[0].kwargs["user_id"] == USER_ID
+
+
+# ---------------------------------------------------------------------------
+# Mutation-kill pins: process_gmail_to_memory forwarding + timing
+# ---------------------------------------------------------------------------
+
+
+class TestProcessGmailToMemoryForwardingPins:
+    """Every id and total the orchestrator computes must reach the stage
+    helpers intact."""
+
+    @patch(_PATCH_LOG)
+    @patch(_PATCH_MARK_PROC, new_callable=AsyncMock)
+    @patch(
+        _PATCH_PROFILE_COLLECTION,
+        new_callable=AsyncMock,
+        return_value=(2, [{"platform": "github", "url": "u"}]),
+    )
+    @patch(_PATCH_COLLECT_STORAGE, new_callable=AsyncMock, return_value=0)
+    @patch(_PATCH_STORE_EMAILS, new_callable=AsyncMock)
+    @patch(_PATCH_PROCESS, return_value=([{"role": "user", "content": "c"}], 0))
+    @patch(_PATCH_SEARCH, new_callable=AsyncMock)
+    @patch(_PATCH_USERS)
+    @patch(_PATCH_EXTRACT_PROFILES, new_callable=AsyncMock, return_value={"profiles_stored": 0})
+    async def test_ids_and_totals_flow_intact_through_every_stage(
+        self,
+        mock_profiles: AsyncMock,
+        mock_users: MagicMock,
+        mock_search: AsyncMock,
+        mock_process: MagicMock,
+        mock_store: AsyncMock,
+        mock_collect_storage: AsyncMock,
+        mock_profile_collection: AsyncMock,
+        mock_mark: AsyncMock,
+        mock_log: MagicMock,
+    ) -> None:
+        mock_users.get = AsyncMock(
+            return_value=UserDocument(
+                id=USER_ID, email_memory_processed=False, name="N", email="n@x.com"
+            )
+        )
+        mock_users.set_gmail_scan_timestamp = AsyncMock()
+        mock_search.return_value = GmailMessagesResponse(messages=[{"id": "1"}])
+
+        result = await process_gmail_to_memory(USER_ID)
+
+        # The DB lookup, batch-fetch loop and profile track all see USER_ID.
+        mock_users.get.assert_awaited_once_with(USER_ID)
+        assert mock_search.await_args.kwargs["user_id"] == USER_ID
+        # create_task invokes the track immediately; its consumer is mocked,
+        # so pin the call (not an await) with the caller's user_id.
+        mock_profiles.assert_called_once_with(USER_ID)
+
+        # The user's name/email reach the storage call untouched. The task's
+        # consumer (_collect_storage_results) is mocked, so pin the call.
+        mock_store.assert_called_once_with(
+            USER_ID, [{"role": "user", "content": "c"}], "N", "n@x.com"
+        )
+
+        # Stage helpers receive the caller's user_id.
+        assert mock_collect_storage.await_args.args[0] == USER_ID
+        assert mock_profile_collection.await_args.args[0] == USER_ID
+
+        # Completion gets (USER_ID, True, parsed + profiles, live timer) and
+        # advances the watermark because no storage failed.
+        mark_args = mock_mark.await_args.args
+        assert mark_args[0] == USER_ID
+        assert mark_args[1] is True
+        assert mark_args[2] == 3  # 1 parsed email + 2 profiles
+        assert isinstance(mark_args[3], _StepTimer)
+        assert mock_mark.await_args.kwargs == {"advance_watermark": True}
+
+        # The completion log's duration is a real elapsed time.
+        completed = [
+            c
+            for c in mock_log.info.call_args_list
+            if c.args and c.args[0] == f"{LogTag.MEMORY} Processing complete"
+        ]
+        assert len(completed) == 1
+        assert completed[0].kwargs["duration_s"] < 10_000
+
+        assert result["profiles_stored"] == 2
+
+    @patch(_PATCH_LOG)
+    @patch(_PATCH_MARK_COMPLETE, new_callable=AsyncMock)
+    @patch(_PATCH_PROCESS, return_value=([], 0))
+    @patch(_PATCH_SEARCH, new_callable=AsyncMock)
+    @patch(_PATCH_USERS)
+    @patch(_PATCH_EXTRACT_PROFILES, new_callable=AsyncMock, return_value={"profiles_stored": 0})
+    async def test_fetch_phase_timing_is_recorded_under_its_exact_label(
+        self,
+        mock_profiles: AsyncMock,
+        mock_users: MagicMock,
+        mock_search: AsyncMock,
+        mock_process: MagicMock,
+        mock_mark: AsyncMock,
+        mock_log: MagicMock,
+    ) -> None:
+        mock_users.get = AsyncMock(
+            return_value=UserDocument(id=USER_ID, email_memory_processed=False)
+        )
+        mock_users.set_gmail_scan_timestamp = AsyncMock()
+        mock_search.return_value = GmailMessagesResponse(messages=[])
+
+        with patch("app.agents.memory.email_processor.time") as mock_time:
+            # Monotonic readings march upward from a non-zero base, so a
+            # recorded elapsed time is only correct as a DIFFERENCE; a sum
+            # lands near 2000 and fails the bound below.
+            mock_time.monotonic = MagicMock(side_effect=itertools.count(1000.0, 0.25))
+            mock_time.time = MagicMock(side_effect=[42.0, 42.5])
+            await process_gmail_to_memory(USER_ID)
+
+        summaries = [
+            c
+            for c in mock_log.info.call_args_list
+            if c.args
+            and c.args[0] == f"{LogTag.MEMORY} Onboarding email pipeline timing breakdown"
+        ]
+        assert len(summaries) == 1
+        summary = summaries[0].kwargs["summary"]
+        lines = summary.splitlines()
+        matching = [l for l in lines if l.strip().startswith("Gmail fetch + parse phase (total)")]
+        assert len(matching) == 1
+        elapsed = float(matching[0].split()[-1].rstrip("s"))
+        assert elapsed < 100.0

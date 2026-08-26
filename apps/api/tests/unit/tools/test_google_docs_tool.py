@@ -385,6 +385,15 @@ def test_fetch_document_data_returns_dict_payload_directly() -> None:
     )
 
 
+def test_fetch_document_data_passes_version_through_from_credentials() -> None:
+    composio = _composio_returning({"successful": True, "data": {"body": {}}})
+    creds: dict[str, Any] = {"user_id": "user_test_123", "version": "2024-01-01"}
+
+    _fetch_document_data(composio, "doc-1", creds)
+
+    assert composio.tools.execute.call_args.kwargs["version"] == "2024-01-01"
+
+
 def test_fetch_document_data_parses_stringified_json_payload() -> None:
     composio = _composio_returning(
         {"successful": True, "data": json.dumps({"body": {"content": [1]}})}
@@ -452,6 +461,15 @@ def test_insert_toc_text_sends_exact_insert_request_and_returns_result() -> None
     assert result == {"successful": True, "data": {"done": True}}
 
 
+def test_insert_toc_text_passes_version_through_from_credentials() -> None:
+    composio = _composio_returning({"successful": True})
+    creds: dict[str, Any] = {"user_id": "user_test_123", "version": "2024-06-01"}
+
+    _insert_toc_text(composio, CreateTOCInput(document_id="doc-6"), "# TOC", creds)
+
+    assert composio.tools.execute.call_args.kwargs["version"] == "2024-06-01"
+
+
 def test_insert_toc_text_failure_raises_value_error() -> None:
     composio = _composio_returning({"successful": False, "error": "insert denied"})
 
@@ -461,22 +479,29 @@ def test_insert_toc_text_failure_raises_value_error() -> None:
     assert str(excinfo.value) == "Failed to insert text: insert denied"
 
 
+@patch(f"{MODULE}._insert_toc_text")
 @patch(f"{MODULE}.generate_toc_text", return_value="# Table of contents")
 @patch(f"{MODULE}.extract_headings_from_document", return_value=["Intro", "Details"])
+@patch(f"{MODULE}._fetch_document_data")
 def test_create_toc_combines_fetch_extract_and_insert_into_one_response(
-    mock_extract: MagicMock, mock_generate: MagicMock
+    mock_fetch: MagicMock,
+    mock_extract: MagicMock,
+    mock_generate: MagicMock,
+    mock_insert: MagicMock,
 ) -> None:
     composio = MagicMock()
-    composio.tools.execute.side_effect = [
-        {"successful": True, "data": {"body": {}}},
-        {"successful": True, "data": {"revision": 7}},
-    ]
     request = CreateTOCInput(document_id="doc-6", title="Contents")
+    doc_data: dict[str, Any] = {"body": {}}
+    insert_result: dict[str, Any] = {"data": {"revision": 7}}
+    mock_fetch.return_value = doc_data
+    mock_insert.return_value = insert_result
 
     result = _create_toc(composio, request, AUTH_CREDS)
 
-    mock_extract.assert_called_once_with({"body": {}}, request.include_heading_levels)
+    mock_fetch.assert_called_once_with(composio, "doc-6", AUTH_CREDS)
+    mock_extract.assert_called_once_with(doc_data, request.include_heading_levels)
     mock_generate.assert_called_once_with(["Intro", "Details"], "Contents")
+    mock_insert.assert_called_once_with(composio, request, "# Table of contents", AUTH_CREDS)
     assert result == {
         "document_id": "doc-6",
         "url": "https://docs.google.com/document/d/doc-6/edit",

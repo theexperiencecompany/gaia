@@ -310,6 +310,19 @@ class TestRecurrenceRuleToRruleString:
         assert "UNTIL=" in result
         assert "Z" in result
 
+    def test_with_until_datetime_utc_exact_value(self):
+        m = RecurrenceRule(frequency="DAILY", until="2025-12-31T23:59:59+00:00")
+        assert m.to_rrule_string() == "RRULE:FREQ=DAILY;UNTIL=20251231T235959Z"
+
+    def test_with_until_datetime_non_utc(self):
+        m = RecurrenceRule(frequency="DAILY", until="2025-06-15T10:00:00+05:30")
+        result = m.to_rrule_string()
+        assert "UNTIL=" in result
+
+    def test_with_until_datetime_non_utc_exact_value(self):
+        m = RecurrenceRule(frequency="DAILY", until="2025-06-15T10:00:00+05:30")
+        assert m.to_rrule_string() == "RRULE:FREQ=DAILY;UNTIL=20250615T100000Z"
+
     def test_with_by_month_day(self):
         m = RecurrenceRule(frequency="MONTHLY", by_month_day=[1, 15])
         assert "BYMONTHDAY=1,15" in m.to_rrule_string()
@@ -321,11 +334,6 @@ class TestRecurrenceRuleToRruleString:
     def test_interval_1_not_in_output(self):
         m = RecurrenceRule(frequency="DAILY", interval=1)
         assert "INTERVAL" not in m.to_rrule_string()
-
-    def test_until_datetime_non_utc(self):
-        m = RecurrenceRule(frequency="DAILY", until="2025-06-15T10:00:00+05:30")
-        result = m.to_rrule_string()
-        assert "UNTIL=" in result
 
 
 class TestUntilRruleValueUnparseableFallbacks:

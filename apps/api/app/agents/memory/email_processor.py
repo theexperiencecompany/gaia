@@ -750,7 +750,7 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> ProfileExtra
         # Step 2: Extract usernames and crawl profiles in parallel
         crawl_semaphore = asyncio.Semaphore(20)
         platform_tasks = []
-        discovered_profile_tasks: list[asyncio.Task[int]] = []  # Track discovery tasks
+        # Discovered-profile tasks arrive from _collect_platform_results below.
         crawled_urls: set[str] = set()  # Global deduplication: track all URLs already crawled
 
         for platform, emails in platforms_with_emails.items():

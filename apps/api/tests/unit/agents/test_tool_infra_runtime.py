@@ -815,6 +815,150 @@ async def test_base_subagent_direct_mode_propagates_child_direct_runtime():
 
 
 # ---------------------------------------------------------------------------
+# create_provider_subagent wiring pins — todo tools, hooks, middleware toggle,
+# and the declaration labels on the missing-tools warning
+# ---------------------------------------------------------------------------
+
+
+async def _run_factory_recording_wiring(*, config: SubAgentToolConfig) -> dict[str, Any]:
+    """Run the factory with every collaborator recorded.
+
+    Returns a dict with: create_agent kwargs (``agent_kwargs``), the middleware
+    factory kwargs (``middleware_kwargs``), the todo-tool/hook factory calls
+    (``todo_calls``), and the worker_pre_model_hooks stand-in (``worker``).
+    """
+    full_tools = {"normal_tool": normal_tool, "vfs_read": vfs_read}
+    dummy_registry = _DummyRegistry([normal_tool], full_tools)
+
+    captured: dict[str, Any] = {
+        "agent_kwargs": {},
+        "middleware_kwargs": {},
+        "todo_calls": {},
+    }
+
+    def _fake_create_agent(**kwargs: Any):
+        captured["agent_kwargs"].update(kwargs)
+        return _DummyBuilder(kwargs)
+
+    def _fake_middleware(**kwargs: Any):
+        captured["middleware_kwargs"].update(kwargs)
+        return []
+
+    hook_sentinel = object()
+    pre_model_hooks_sentinel = object()
+
+    def _fake_todo_tools(**kwargs: Any) -> list[BaseTool]:
+        captured["todo_calls"]["tools"] = kwargs
+        return []
+
+    def _fake_todo_hook(**kwargs: Any) -> object:
+        captured["todo_calls"]["hook"] = kwargs
+        return hook_sentinel
+
+    worker = MagicMock(return_value=pre_model_hooks_sentinel)
+
+    with (
+        patch(
+            "app.agents.core.subagents.base_subagent.get_tools_store",
+            new=AsyncMock(return_value=MagicMock()),
+        ),
+        patch(
+            "app.agents.core.subagents.base_subagent.get_tool_registry",
+            new=AsyncMock(return_value=dummy_registry),
+        ),
+        patch("app.agents.core.subagents.base_subagent.create_agent", new=_fake_create_agent),
+        patch(
+            "app.agents.core.subagents.base_subagent.create_subagent_middleware",
+            new=_fake_middleware,
+        ),
+        patch(
+            "app.agents.core.subagents.base_subagent.get_checkpointer_manager",
+            new=AsyncMock(return_value=SimpleNamespace(get_checkpointer=object)),
+        ),
+        patch(
+            "app.agents.core.subagents.base_subagent.create_todo_tools",
+            new=_fake_todo_tools,
+        ),
+        patch(
+            "app.agents.core.subagents.base_subagent.create_todo_pre_model_hook",
+            new=_fake_todo_hook,
+        ),
+        patch(
+            "app.agents.core.subagents.base_subagent.worker_pre_model_hooks",
+            new=worker,
+        ),
+    ):
+        await SubAgentFactory.create_provider_subagent(
+            provider="provider",
+            name="provider_agent",
+            llm=BindableToolsFakeModel(responses=[], profile={"max_input_tokens": 1_000_000}),
+            config=config,
+        )
+
+    captured["worker"] = worker
+    return captured
+
+
+@pytest.mark.asyncio
+async def test_a_non_authoring_subagent_keeps_spawn_enabled():
+    """The middleware toggle is the NEGATION of authoring_only: an ordinary
+    provider subagent must be able to spawn sub-subagents; inverting the flag
+    silently strips that ability from every integration agent."""
+    captured = await _run_factory_recording_wiring(config=SubAgentToolConfig())
+
+    assert captured["middleware_kwargs"]["enable_subagent"] is True
+
+
+@pytest.mark.asyncio
+async def test_todo_factories_receive_the_provider_identity_exactly():
+    """source/source_label key the todo tools' progress events to the right
+    integration; a dropped kwarg falls back to a generic label."""
+    captured = await _run_factory_recording_wiring(
+        config=SubAgentToolConfig(source_label="Gmail")
+    )
+
+    assert captured["todo_calls"]["tools"] == {"source": "provider", "source_label": "Gmail"}
+    assert captured["todo_calls"]["hook"] == {"source": "provider"}
+
+
+@pytest.mark.asyncio
+async def test_the_todo_hook_reaches_hooks_config_through_worker_pre_model_hooks():
+    """The chain is exact end to end: the created hook feeds
+    worker_pre_model_hooks, whose result lands in hooks_config.pre_model_hooks.
+    A None in either position silently un-hooks the subagent's pre-model pass."""
+    captured = await _run_factory_recording_wiring(config=SubAgentToolConfig())
+
+    worker = captured["worker"]
+    assert worker.call_count == 1
+    assert len(worker.call_args.args) == 1
+    # The argument is exactly what create_todo_pre_model_hook returned.
+    assert worker.call_args.args[0] is not None
+    assert captured["agent_kwargs"]["hooks_config"].pre_model_hooks is worker.return_value
+
+
+@pytest.mark.asyncio
+async def test_missing_declared_tools_warn_under_their_exact_declaration_kind():
+    """The warning's ``declaration`` label is how an operator tells an
+    auto_bind gap from an extra_initial gap; a mangled kind reads as the other
+    config surface's fault."""
+    with patch("app.agents.core.subagents.base_subagent.log") as log:
+        await _run_factory_recording_wiring(
+            config=SubAgentToolConfig(
+                tool_space="provider_space",
+                auto_bind_tools=["normal_tool", "missing_auto"],
+                extra_initial_tools=["missing_extra"],
+            )
+        )
+
+    warnings = log.warning.call_args_list
+    auto_bind = [c for c in warnings if c.kwargs.get("declaration") == "auto_bind"]
+    extra_initial = [c for c in warnings if c.kwargs.get("declaration") == "extra_initial"]
+    assert auto_bind and auto_bind[0].kwargs["missing_tools"] == ["missing_auto"]
+    assert auto_bind[0].kwargs["provider"] == "provider"
+    assert extra_initial and extra_initial[0].kwargs["missing_tools"] == ["missing_extra"]
+
+
+# ---------------------------------------------------------------------------
 # _render_discovery_response — what a discovery search tells the model it may do
 # ---------------------------------------------------------------------------
 

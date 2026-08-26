@@ -446,7 +446,7 @@ class TestDeleteCalendarEvent:
                 EventDeleteRequest(event_id="x", calendar_id="primary"), USER_ID
             )
         assert exc.value.status_code == 404
-        assert "Event not found" in str(exc.value.detail)
+        assert exc.value.detail == "Event not found or already deleted"
 
     async def test_percent_encodes_calendar_id_with_reserved_chars(self, mock_proxy):
         """Google calendar IDs like 'user@group.calendar.google.com' or
@@ -769,6 +769,58 @@ class TestSearchCalendarEventsNativePins:
         assert [call.args[0] for call in mock_search.await_args_list] == ["c1", "c2"]
         # A calendar without a summary contributes an empty string, not None.
         assert result.searched_calendars == ["Work", ""]
+
+
+class TestSearchArgumentPropagation:
+    """Every search input must arrive intact at each seam: the preference
+    lookup, the calendar listing, and both per-calendar search passes."""
+
+    async def test_first_pass_forwards_user_query_and_bounds_exactly(
+        self, mock_proxy, mock_calendar_repo
+    ):
+        mock_calendar_repo.get_for_user.return_value = None
+        mock_proxy.return_value = {"items": [{"id": "c1", "summary": "Work"}]}
+        with patch(
+            "app.services.calendar_service.search_events_in_calendar", new_callable=AsyncMock
+        ) as mock_search:
+            mock_search.return_value = GoogleCalendarEventsPage(items=[])
+            await search_calendar_events_native(
+                "lunch", USER_ID, time_min="2025-01-01", time_max="2025-02-01"
+            )
+
+        # Preference lookup is keyed by the requesting user.
+        mock_calendar_repo.get_for_user.assert_awaited_once_with(USER_ID)
+        # The calendar listing ran for the requesting user.
+        assert mock_proxy.call_args.kwargs["user_id"] == USER_ID
+        # The per-calendar search got every argument, positionally intact.
+        assert mock_search.await_args.args == ("c1", "lunch", USER_ID)
+        assert mock_search.await_args.kwargs == {
+            "time_min": "2025-01-01",
+            "time_max": "2025-02-01",
+        }
+
+    async def test_fallback_pass_forwards_user_query_and_bounds_exactly(
+        self, mock_proxy, mock_calendar_repo
+    ):
+        mock_calendar_repo.get_for_user.return_value = _prefs(["c1"])
+        mock_proxy.return_value = {
+            "items": [
+                {"id": "c1", "summary": "Work"},
+                {"id": "c2", "summary": "Home"},
+            ]
+        }
+        with patch(
+            "app.services.calendar_service.search_events_in_calendar", new_callable=AsyncMock
+        ) as mock_search:
+            mock_search.return_value = GoogleCalendarEventsPage(items=[])
+            await search_calendar_events_native(
+                "lunch", USER_ID, time_min="2025-01-01", time_max="2025-02-01"
+            )
+
+        assert len(mock_search.await_args_list) == 2
+        fallback_call = mock_search.await_args_list[1]
+        assert fallback_call.args == ("c2", "lunch", USER_ID)
+        assert fallback_call.kwargs == {"time_min": "2025-01-01", "time_max": "2025-02-01"}
 
 
 class TestDeleteCalendarEventPins:

@@ -8,13 +8,14 @@ as "nothing left to delete" — the one failure this file exists to catch.
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 from bson import ObjectId
 import pytest
 
 from app.db.mongodb.mongodb import object_id_filter
 from app.scripts.delete_user_account import (
+    JFS_USERS_ROOT,
     PG_USER_TABLES,
     _chroma_inventory,
     _mongo_inventory,
@@ -181,10 +182,12 @@ class TestPgInventory:
 
         _pg_inventory(conn, UID)
 
+        expected = [
+            f"SELECT count(*) FROM {table} WHERE user_id = %s" for table in PG_USER_TABLES
+        ]
+        assert [call.args[0] for call in cursor.execute.call_args_list] == expected
         for call in cursor.execute.call_args_list:
-            sql, params = call.args
-            assert "WHERE user_id = %s" in sql
-            assert params == (UID,)
+            assert call.args[1] == (UID,)
 
 
 # ---------------------------------------------------------------------------
@@ -240,6 +243,7 @@ class TestRevokeExternalAccess:
     async def test_deletes_every_composio_account_then_kills_sandboxes(self) -> None:
         from unittest.mock import AsyncMock, patch
 
+        from app.config.settings import settings
         from app.scripts.delete_user_account import _revoke_external_access
 
         account = MagicMock()
@@ -247,23 +251,13 @@ class TestRevokeExternalAccess:
         account.toolkit.slug = "gmail"
         d = _footprint(composio_accounts=[account], sandbox_ids=["sbx-1"])
 
-        with (
-            patch("app.scripts.delete_user_account.AsyncSandbox") as sandbox,
-            patch.dict("app.scripts.delete_user_account.settings.__dict__", {}, clear=False),
-        ):
+        with patch("app.scripts.delete_user_account.AsyncSandbox") as sandbox:
             sandbox.kill = AsyncMock()
             await _revoke_external_access(d)
 
         d.composio.connected_accounts.delete.assert_called_once_with(nanoid="acc-1")
         sandbox.kill.assert_awaited_once_with(
-            "sbx-1",
-            api_key=d.composio.connected_accounts.delete.call_args
-            and __import__(
-                "app.scripts.delete_user_account", fromlist=["settings"]
-            ).settings.E2B_API_KEY,
-            domain=__import__(
-                "app.scripts.delete_user_account", fromlist=["settings"]
-            ).settings.E2B_DOMAIN,
+            "sbx-1", api_key=settings.E2B_API_KEY, domain=settings.E2B_DOMAIN
         )
 
     async def test_a_composio_failure_is_recorded_not_raised(self) -> None:
@@ -300,7 +294,7 @@ class TestRevokeExternalAccess:
 
 @pytest.mark.unit
 class TestDeleteMongoData:
-    def test_gridfs_collections_and_users_doc_are_all_deleted(self) -> None:
+    def test_gridfs_collections_and_users_doc_are_all_deleted(self, capsys: Any) -> None:
         from unittest.mock import MagicMock, patch
 
         from app.scripts.delete_user_account import _delete_mongo_data
@@ -312,18 +306,28 @@ class TestDeleteMongoData:
         todos.delete_many.return_value.deleted_count = 3
         users = MagicMock()
         users.delete_one.return_value.deleted_count = 1
-        cols = {"fs.files": files_col, "todos": todos}
+        chunks = MagicMock()
+        cols = {"fs.files": files_col, "fs.chunks": chunks, "todos": todos}
         d.db.__getitem__.side_effect = cols.__getitem__
         d.db.users = users
-        d.db.list_collection_names.return_value = ["todos", "users", "fs.files"]
+        d.db.list_collection_names.return_value = ["todos", "users", "fs.files", "fs.chunks"]
 
-        with patch("app.scripts.delete_user_account.gridfs.GridFSBucket"):
+        with patch("app.scripts.delete_user_account.gridfs.GridFSBucket") as bucket_cls:
             _delete_mongo_data(d)
 
+        # GridFS files are deleted through the bucket, one per fs.files doc.
+        bucket_cls.assert_called_once_with(d.db)
+        bucket_cls.return_value.delete.assert_called_once_with("file-1")
+        files_col.find.assert_called_once_with({"metadata.user_id": UID}, {"_id": 1})
+        # The plain-collection loop skips every fs.* collection...
+        files_col.delete_many.assert_not_called()
+        chunks.delete_many.assert_not_called()
         todos.delete_many.assert_called_once_with({"user_id": UID})
-        users.delete_one.assert_called_once()
+        # ...and the users doc is removed by its ObjectId, last.
+        users.delete_one.assert_called_once_with(object_id_filter(UID))
+        assert "[mongo] todos: deleted 3" in capsys.readouterr().out
 
-    def test_support_requests_are_deleted_by_email_too(self) -> None:
+    def test_support_requests_are_deleted_by_email_too(self, capsys: Any) -> None:
         from unittest.mock import MagicMock, patch
 
         from app.scripts.delete_user_account import _delete_mongo_data
@@ -346,17 +350,28 @@ class TestDeleteMongoData:
         with patch("app.scripts.delete_user_account.gridfs.GridFSBucket"):
             _delete_mongo_data(d)
 
-        assert support.delete_many.call_args_list[1].args[0] == {"user_email": d.email}
+        first, second = support.delete_many.call_args_list
+        assert first.args[0] == {"user_id": UID}
+        assert second.args[0] == {"user_email": d.email}
+        # Both counts fold into one reported step.
+        assert "[mongo] support_requests: deleted 3" in capsys.readouterr().out
 
-    def test_bot_sessions_also_delete_by_platform_ids(self) -> None:
+    def test_bot_sessions_also_delete_by_platform_ids(self, capsys: Any) -> None:
         from unittest.mock import MagicMock, patch
 
         from app.scripts.delete_user_account import _delete_mongo_data
 
-        d = _footprint(platform_links={"telegram": {"platform_user_id": "tg-1"}})
+        d = _footprint(
+            platform_links={
+                "telegram": {"platform_user_id": "tg-1"},
+                "whatsapp": "wa-raw",
+                "slack": {"other": "x"},
+            }
+        )
         bots = MagicMock()
+        # Non-zero on BOTH sides so += is observable against = and -=.
         bots.delete_many.side_effect = [
-            MagicMock(deleted_count=0),
+            MagicMock(deleted_count=2),
             MagicMock(deleted_count=4),
         ]
         users = MagicMock()
@@ -371,7 +386,61 @@ class TestDeleteMongoData:
         with patch("app.scripts.delete_user_account.gridfs.GridFSBucket"):
             _delete_mongo_data(d)
 
-        assert bots.delete_many.call_args_list[1].args[0] == {"platform_user_id": {"$in": ["tg-1"]}}
+        second = bots.delete_many.call_args_list[1]
+        # dict links contribute their platform_user_id; a raw link contributes itself.
+        assert second.args[0] == {
+            "platform_user_id": {"$in": ["tg-1", "wa-raw", str({"other": "x"})]}
+        }
+        assert "[mongo] bot_sessions: deleted 6" in capsys.readouterr().out
+
+    def test_bot_sessions_without_platform_links_only_delete_by_user_id(
+        self, capsys: Any
+    ) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from app.scripts.delete_user_account import _delete_mongo_data
+
+        d = _footprint(platform_links={})
+        bots = MagicMock()
+        bots.delete_many.side_effect = [MagicMock(deleted_count=0), MagicMock(deleted_count=7)]
+        users = MagicMock()
+        users.delete_one.return_value.deleted_count = 1
+        empty_files = MagicMock()
+        empty_files.find.return_value = []
+        d.db.__getitem__.side_effect = lambda name: {"fs.files": empty_files}.get(
+            name, users if name == "users" else bots
+        )
+        d.db.list_collection_names.return_value = ["bot_sessions"]
+
+        with patch("app.scripts.delete_user_account.gridfs.GridFSBucket"):
+            _delete_mongo_data(d)
+
+        # No platform links -> only the user_id-scoped delete, never an $in sweep.
+        assert bots.delete_many.call_args_list == [call({"user_id": UID})]
+
+    def test_zero_count_deletions_are_not_reported_as_steps(self, capsys: Any) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from app.scripts.delete_user_account import _delete_mongo_data
+
+        d = _footprint()
+        notes = MagicMock()
+        notes.delete_many.return_value.deleted_count = 0
+        users = MagicMock()
+        users.delete_one.return_value.deleted_count = 1
+        empty_files = MagicMock()
+        empty_files.find.return_value = []
+        d.db.__getitem__.side_effect = lambda name: {"fs.files": empty_files}.get(
+            name, users if name == "users" else notes
+        )
+        d.db.list_collection_names.return_value = ["notes"]
+
+        with patch("app.scripts.delete_user_account.gridfs.GridFSBucket"):
+            _delete_mongo_data(d)
+
+        notes.delete_many.assert_called_once_with({"user_id": UID})
+        out = capsys.readouterr().out
+        assert "[mongo] notes" not in out
 
     def test_an_exception_is_recorded_as_a_failed_step(self) -> None:
         from app.scripts.delete_user_account import _delete_mongo_data
@@ -398,10 +467,39 @@ class TestDeletePostgresData:
 
         _delete_postgres_data(d)
 
-        # One DELETE per PG_USER_TABLES entry + three checkpoint tables per conv.
-        expected_tables = len(PG_USER_TABLES) + 3
-        assert cur.execute.call_count == expected_tables
+        calls = cur.execute.call_args_list
+        # One DELETE per PG_USER_TABLES entry, each scoped to the uid...
+        for i, table in enumerate(PG_USER_TABLES):
+            assert calls[i].args == (f"DELETE FROM {table} WHERE user_id = %s", (d.uid,))
+        # ...then the three checkpoint tables swept by a LIKE pattern that
+        # matches derived threads embedding the conversation id.
+        checkpoint_calls = calls[len(PG_USER_TABLES) :]
+        assert [c.args[0].split("FROM ")[1].split(" ")[0] for c in checkpoint_calls] == [
+            "checkpoint_writes",
+            "checkpoint_blobs",
+            "checkpoints",
+        ]
+        for c in checkpoint_calls:
+            table = c.args[0].split("FROM ")[1].split(" ")[0]
+            assert c.args[0] == f"DELETE FROM {table} WHERE thread_id LIKE %s ESCAPE '\\'"
+            assert c.args[1] == ("%conv-1%",)
         d.pg.commit.assert_called_once()
+
+    def test_the_like_pattern_escapes_wildcards_in_conversation_ids(self) -> None:
+        from app.scripts.delete_user_account import _delete_postgres_data
+
+        d = _footprint(conversation_ids=["a%b_c\\d"])
+        cur = MagicMock()
+        cur.rowcount = 0
+        d.pg.cursor.return_value.__enter__.return_value = cur
+
+        _delete_postgres_data(d)
+
+        patterns = {
+            c.args[1][0] for c in cur.execute.call_args_list[len(PG_USER_TABLES) :]
+        }
+        # % _ and \\ are backslash-escaped so the id only ever matches itself.
+        assert patterns == {"%a\\%b\\_c\\\\d%"}
 
     def test_an_exception_rolls_back_and_is_recorded(self) -> None:
         from app.scripts.delete_user_account import _delete_postgres_data
@@ -412,6 +510,7 @@ class TestDeletePostgresData:
         _delete_postgres_data(d)
 
         d.pg.rollback.assert_called_once()
+        d.pg.commit.assert_not_called()
         from app.scripts.delete_user_account import _failures
 
         assert len(_failures) == 1
@@ -420,23 +519,29 @@ class TestDeletePostgresData:
 
 @pytest.mark.unit
 class TestDeleteLocalStores:
-    def test_chroma_juicefs_and_redis_are_cleared(self, tmp_path: Any) -> None:
-        import shutil as shutil_mod
+    def test_chroma_juicefs_and_redis_are_cleared(self, tmp_path: Any, capsys: Any) -> None:
+        from unittest.mock import patch
 
         from app.scripts.delete_user_account import _delete_local_stores
 
         ws = tmp_path / "ws"
         ws.mkdir()
-        col = MagicMock()
+        vectors = MagicMock()
         d = _footprint(chroma_counts={"vectors": 5}, redis_keys=["k1", "k2"], jfs_path=ws)
-        d.chroma.get_collection.return_value = col
+        d.chroma.get_collection.side_effect = lambda name: {"vectors": vectors}[name]
 
-        _delete_local_stores(d)
+        with patch("app.scripts.delete_user_account.shutil.rmtree") as rmtree:
+            _delete_local_stores(d)
 
-        col.delete.assert_called_once_with(where={"user_id": UID})
+        out = capsys.readouterr().out
+        assert "[chroma] vectors: deleted 5" in out
+        assert f"[juicefs] removed {ws}" in out
+        assert "[redis] unlinked 2 keys" in out
+        # The delete targets the collection the inventory counted, by name.
+        assert d.chroma.get_collection.call_args_list == [call("vectors")]
+        vectors.delete.assert_called_once_with(where={"user_id": UID})
+        rmtree.assert_called_once_with(ws)
         d.redis_client.unlink.assert_called_once_with("k1", "k2")
-        assert not ws.exists() or not list(ws.iterdir()) or True  # rmtree best-effort
-        shutil_mod.rmtree = shutil_mod.rmtree  # keep import used
 
     def test_chroma_failure_is_recorded_and_the_rest_still_runs(self) -> None:
         from app.scripts.delete_user_account import _delete_local_stores
@@ -451,10 +556,37 @@ class TestDeleteLocalStores:
 
         assert any(f.startswith("chroma:") for f in _failures)
 
+    def test_a_missing_juicefs_path_is_not_rmtree_d(self) -> None:
+        from unittest.mock import patch
+
+        from app.scripts.delete_user_account import _delete_local_stores
+
+        jfs = MagicMock()
+        jfs.exists.return_value = False
+        d = _footprint(jfs_path=jfs)
+
+        with patch("app.scripts.delete_user_account.shutil.rmtree") as rmtree:
+            _delete_local_stores(d)
+
+        rmtree.assert_not_called()
+        from app.scripts.delete_user_account import _failures
+
+        assert not _failures
+
+    def test_redis_unlink_is_skipped_without_keys_but_still_reported(self, capsys: Any) -> None:
+        from app.scripts.delete_user_account import _delete_local_stores
+
+        d = _footprint(redis_keys=[])
+
+        _delete_local_stores(d)
+
+        d.redis_client.unlink.assert_not_called()
+        assert "[redis] unlinked 0 keys" in capsys.readouterr().out
+
 
 @pytest.mark.unit
 class TestRemoveResendContact:
-    def test_removes_the_contact_when_an_audience_is_configured(self) -> None:
+    def test_removes_the_contact_when_an_audience_is_configured(self, capsys: Any) -> None:
         from unittest.mock import patch
 
         from app.scripts.delete_user_account import _remove_resend_contact
@@ -467,9 +599,11 @@ class TestRemoveResendContact:
             settings.RESEND_AUDIENCE_ID = "aud-1"
             _remove_resend_contact(_footprint())
 
+        assert resend.api_key == "rk"
         resend.Contacts.remove.assert_called_once_with(
             audience_id="aud-1", email="user@example.com"
         )
+        assert "[resend] removed contact user@example.com" in capsys.readouterr().out
 
     def test_skips_without_an_audience_id(self) -> None:
         from unittest.mock import patch
@@ -540,8 +674,11 @@ class TestRunGuards:
 
     async def test_dry_run_reports_without_deleting(self, monkeypatch: Any, capsys: Any) -> None:
         import argparse
+        from contextlib import ExitStack
         from unittest.mock import AsyncMock, MagicMock, patch
 
+        from app.config.settings import settings
+        from app.db.mongodb.mongodb import MONGO_DATABASE_NAME
         from app.scripts.delete_user_account import _run
 
         args = argparse.Namespace(
@@ -551,18 +688,49 @@ class TestRunGuards:
         user = {"_id": ObjectId(UID), "email": "user@example.com", "name": "U"}
         db.users.find.return_value = [user]
         footprint = _footprint()
-        with (
-            patch("app.scripts.delete_user_account.MongoClient", return_value={"GAIA": db}),
-            patch(
-                "app.scripts.delete_user_account._build_footprint",
-                new_callable=AsyncMock,
-                return_value=footprint,
-            ),
-        ):
+        phase_names = [
+            "_revoke_external_access",
+            "_delete_mongo_data",
+            "_delete_postgres_data",
+            "_delete_local_stores",
+            "_remove_resend_contact",
+            "_delete_workos_identity",
+            "_verify_removal",
+        ]
+        phase_mocks = {name: MagicMock() for name in phase_names}
+        phase_patches = [
+            patch(f"app.scripts.delete_user_account.{name}", new=phase_mocks[name])
+            for name in phase_names
+        ]
+        fake_client = MagicMock()
+        fake_client.__getitem__.return_value = db
+        with ExitStack() as stack:
+            mongo_client = stack.enter_context(
+                patch("app.scripts.delete_user_account.MongoClient", return_value=fake_client)
+            )
+            stack.enter_context(
+                patch(
+                    "app.scripts.delete_user_account._build_footprint",
+                    new_callable=AsyncMock,
+                    return_value=footprint,
+                )
+            )
+            for ph in phase_patches:
+                stack.enter_context(ph)
             rc = await _run(args)
 
+        mongo_client.assert_called_once_with(settings.MONGO_DB)
+        fake_client.__getitem__.assert_called_once_with(MONGO_DATABASE_NAME)
+        # The resolve step sees the normalized email.
+        db.users.find.assert_called_once_with(
+            {"email": {"$regex": "^user@example\\.com$", "$options": "i"}}
+        )
+        for mock in phase_mocks.values():
+            mock.assert_not_called()
         assert rc == 0
         out = capsys.readouterr().out
+        assert f"user: user@example.com  uid={UID}  name=U" in out
+        assert "mode: DRY-RUN" in out
         assert "DRY-RUN complete" in out
 
 
@@ -652,30 +820,41 @@ class TestVerifyRemoval:
         pg: dict[str, int] | None = None,
         chroma: dict[str, int] | None = None,
         redis_keys: list[str] | None = None,
+        jfs_exists: bool = False,
     ) -> int:
         from unittest.mock import patch
 
         from app.scripts.delete_user_account import _verify_removal
 
         jfs = MagicMock()
-        jfs.exists.return_value = False
+        jfs.exists.return_value = jfs_exists
         d.jfs_path = jfs
         with (
             patch(
                 "app.scripts.delete_user_account._mongo_inventory",
                 return_value=mongo or {},
-            ),
-            patch("app.scripts.delete_user_account._pg_inventory", return_value=pg or {}),
+            ) as mongo_inv,
+            patch(
+                "app.scripts.delete_user_account._pg_inventory", return_value=pg or {}
+            ) as pg_inv,
             patch(
                 "app.scripts.delete_user_account._chroma_inventory",
                 return_value=chroma or {},
-            ),
+            ) as chroma_inv,
             patch(
                 "app.scripts.delete_user_account._redis_user_keys",
                 return_value=redis_keys or [],
-            ),
+            ) as redis_inv,
         ):
-            return await _verify_removal(d)
+            rc = await _verify_removal(d)
+
+        # The sweep re-inventories the SAME stores the footprint opened, scoped
+        # to this user and email — a drifted argument would verify someone else.
+        mongo_inv.assert_called_once_with(d.db, d.uid, d.email)
+        pg_inv.assert_called_once_with(d.pg, d.uid)
+        chroma_inv.assert_called_once_with(d.chroma, d.uid)
+        redis_inv.assert_called_once_with(d.redis_client, d.uid)
+        return rc
 
     async def test_every_store_clean_with_no_failures_returns_zero(self, capsys: Any) -> None:
         d = _footprint()
@@ -685,7 +864,17 @@ class TestVerifyRemoval:
         assert rc == 0
         out = capsys.readouterr().out
         assert "mongo: CLEAN" in out
-        assert "MANUAL FOLLOW-UP" in out
+        assert "postgres: CLEAN" in out
+        assert "chroma: CLEAN" in out
+        assert "redis: CLEAN" in out
+        assert "juicefs: CLEAN" in out
+        assert "composio: CLEAN" in out
+        assert "workos: CLEAN" in out
+        # The operator is told, with the uid, what the server cannot delete.
+        assert (
+            f"MANUAL FOLLOW-UP: delete the PostHog person for distinct_id {UID}" in out
+        )
+        assert f"MANUAL FOLLOW-UP: delete Langfuse traces for user_id {UID}" in out
 
     async def test_a_surviving_remnant_returns_one(self, capsys: Any) -> None:
         d = _footprint()
@@ -695,6 +884,75 @@ class TestVerifyRemoval:
         assert rc == 1
         out = capsys.readouterr().out
         assert "mongo: REMNANT {'todos': 2}" in out
+
+    async def test_each_store_remnant_is_reported_verbatim(self, capsys: Any) -> None:
+        d = _footprint()
+
+        rc = await self._verify(
+            d,
+            pg={"memories": 1},
+            chroma={"vectors": 9},
+            redis_keys=["rkey"],
+            jfs_exists=True,
+        )
+
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "postgres: REMNANT {'memories': 1}" in out
+        assert "chroma: REMNANT {'vectors': 9}" in out
+        assert "redis: REMNANT ['rkey']" in out
+        assert "juicefs: REMNANT True" in out
+
+    async def test_composio_remnant_counts_only_active_accounts(self, capsys: Any) -> None:
+        from unittest.mock import MagicMock
+
+        active = MagicMock()
+        active.id = "acc-active"
+        active.status = "ACTIVE"
+        inactive = MagicMock()
+        inactive.id = "acc-revoked"
+        inactive.status = "REVOKED"
+        d = _footprint()
+        listing = MagicMock()
+        listing.items = [active, inactive]
+        d.composio.connected_accounts.list.return_value = listing
+
+        rc = await self._verify(d)
+
+        d.composio.connected_accounts.list.assert_called_once_with(user_ids=[UID])
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "composio: REMNANT ['acc-active']" in out
+        assert "acc-revoked" not in out
+
+    async def test_a_composio_listing_without_items_reads_as_clean(self, capsys: Any) -> None:
+        from unittest.mock import Mock
+
+        d = _footprint()
+        # Some backends omit `items` entirely; the sweep must treat that as
+        # "no accounts left", not crash the verification pass.
+        d.composio.connected_accounts.list = Mock(return_value=object())
+
+        rc = await self._verify(d)
+
+        assert rc == 0
+        assert "composio: CLEAN" in capsys.readouterr().out
+
+    async def test_workos_remnant_lists_by_email_and_reports_ids(self, capsys: Any) -> None:
+        from unittest.mock import AsyncMock, MagicMock
+
+        survivor = MagicMock()
+        survivor.id = "wus-1"
+        d = _footprint()
+        d.workos.user_management.list_users = AsyncMock(
+            return_value=MagicMock(data=[survivor])
+        )
+
+        rc = await self._verify(d)
+
+        d.workos.user_management.list_users.assert_awaited_once_with(email=d.email)
+        assert rc == 1
+        assert "workos: REMNANT ['wus-1']" in capsys.readouterr().out
 
     async def test_failed_steps_return_one_even_when_every_store_is_clean(
         self, capsys: Any
@@ -713,55 +971,182 @@ class TestVerifyRemoval:
         assert "composio:acc-1" in out
 
 
+async def _run_build_footprint(
+    db: Any,
+    user: Any,
+    *,
+    uid: str = UID,
+    email: str = "User@Example.COM ",
+    composio_items: list[Any] | None = None,
+    workos_users: list[Any] | None = None,
+    redis_keys: list[bytes] | None = None,
+) -> tuple[Any, dict[str, Any]]:
+    """Call _build_footprint under the standard client patches.
+
+    Returns the footprint plus every mock the tests need to inspect.
+    """
+    import argparse
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.scripts.delete_user_account import PG_USER_TABLES, _build_footprint
+
+    args = argparse.Namespace(email=email)
+    conn = MagicMock()
+    cur = MagicMock()
+    cur.fetchone.side_effect = [(0,)] * len(PG_USER_TABLES)
+    conn.cursor.return_value.__enter__.return_value = cur
+
+    composio = MagicMock()
+    listing = MagicMock()
+    listing.items = composio_items or []
+    composio.connected_accounts.list.return_value = listing
+
+    workos = MagicMock()
+    workos_result = MagicMock()
+    workos_result.data = workos_users or []
+    workos.user_management.list_users = AsyncMock(return_value=workos_result)
+
+    redis_client = MagicMock()
+    redis_client.scan_iter.return_value = iter(redis_keys or [])
+
+    with (
+        patch(
+            "app.scripts.delete_user_account.psycopg.connect", return_value=conn
+        ) as mock_pg_connect,
+        patch(
+            "app.scripts.delete_user_account.chromadb.HttpClient"
+        ) as mock_chroma_cls,
+        patch(
+            "app.scripts.delete_user_account.redislib.Redis.from_url",
+            return_value=redis_client,
+        ) as mock_redis_from_url,
+        patch("app.scripts.delete_user_account.Composio", return_value=composio) as mock_composio,
+        patch(
+            "app.scripts.delete_user_account.AsyncWorkOSClient", return_value=workos
+        ) as mock_workos_cls,
+        patch(
+            "app.scripts.delete_user_account._mongo_inventory",
+            return_value={"todos": 5},
+        ) as mock_mongo_inv,
+        patch(
+            "app.scripts.delete_user_account._pg_inventory",
+            return_value={"memories": 1},
+        ) as mock_pg_inv,
+        patch(
+            "app.scripts.delete_user_account._chroma_inventory",
+            return_value={"vectors": 9},
+        ) as mock_chroma_inv,
+        patch(
+            "app.scripts.delete_user_account._redis_user_keys",
+            return_value=["cache:k1"],
+        ) as mock_redis_inv,
+    ):
+        d = await _build_footprint(args, db, user, uid)
+
+    mocks: dict[str, Any] = {
+        "pg_connect": mock_pg_connect,
+        "chroma_cls": mock_chroma_cls,
+        "redis_from_url": mock_redis_from_url,
+        "composio_cls": mock_composio,
+        "workos_cls": mock_workos_cls,
+        "composio": composio,
+        "workos": workos,
+        "conn": conn,
+        "redis_client": redis_client,
+        "mongo_inv": mock_mongo_inv,
+        "pg_inv": mock_pg_inv,
+        "chroma_inv": mock_chroma_inv,
+        "redis_inv": mock_redis_inv,
+    }
+    return d, mocks
+
+
 @pytest.mark.unit
 class TestBuildFootprint:
-    async def test_opens_every_client_and_collects_the_inventory(self, capsys: Any) -> None:
-        import argparse
-        from unittest.mock import AsyncMock, MagicMock, patch
+    async def test_opens_every_client_with_the_configured_settings(self) -> None:
+        from unittest.mock import MagicMock
 
-        from app.scripts.delete_user_account import PG_USER_TABLES, _build_footprint
+        from app.config.settings import settings
 
-        args = argparse.Namespace(email="User@Example.COM ")
+        d, mocks = await _run_build_footprint(MagicMock(), {})
+
+        mocks["pg_connect"].assert_called_once_with(settings.POSTGRES_URL)
+        mocks["chroma_cls"].assert_called_once_with(
+            host=settings.CHROMADB_HOST, port=settings.CHROMADB_PORT
+        )
+        mocks["redis_from_url"].assert_called_once_with(settings.REDIS_URL)
+        mocks["composio_cls"].assert_called_once_with(api_key=settings.COMPOSIO_KEY)
+        mocks["workos_cls"].assert_called_once_with(
+            api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID
+        )
+
+    async def test_collects_the_full_inventory_into_the_footprint(self, capsys: Any) -> None:
+        account = MagicMock()
+        account.id = "acc-1"
+        workos_user = MagicMock()
+        workos_user.id = "wus-1"
+
         db = MagicMock()
-        db.list_collection_names.return_value = []
         db.e2b_sandboxes.find.return_value = [{"sandbox_id": "sbx-1"}]
         db.conversations.find.return_value = [{"conversation_id": "conv-1"}]
         user = {"platform_links": {"telegram": {"platform_user_id": "tg-1"}}}
 
-        conn = MagicMock()
-        cur = MagicMock()
-        cur.fetchone.side_effect = [(0,)] * len(PG_USER_TABLES)
-        conn.cursor.return_value.__enter__.return_value = cur
-        workos_users_result = MagicMock()
-        workos_users_result.data = []
-        workos = MagicMock()
-        workos.user_management.list_users = AsyncMock(return_value=workos_users_result)
+        d, mocks = await _run_build_footprint(
+            db, user, composio_items=[account], workos_users=[workos_user]
+        )
 
-        with (
-            patch(
-                "app.scripts.delete_user_account.psycopg.connect", return_value=conn
-            ) as mock_pg_connect,
-            patch("app.scripts.delete_user_account.chromadb.HttpClient"),
-            patch("app.scripts.delete_user_account.redislib.Redis.from_url"),
-            patch("app.scripts.delete_user_account.Composio"),
-            patch(
-                "app.scripts.delete_user_account.AsyncWorkOSClient",
-                return_value=workos,
-            ),
-        ):
-            d = await _build_footprint(args, db, user, UID)
-
-        mock_pg_connect.assert_called_once()
+        # The footprint carries the exact client objects that were opened...
+        assert d.db is db
+        assert d.pg is mocks["conn"]
+        assert d.chroma is mocks["chroma_cls"].return_value
+        assert d.redis_client is mocks["redis_client"]
+        assert d.composio is mocks["composio"]
+        assert d.workos is mocks["workos"]
         assert d.uid == UID
+        # ...the inventory, scoped to this user and the normalized email...
+        mocks["mongo_inv"].assert_called_once_with(db, UID, "user@example.com")
+        mocks["pg_inv"].assert_called_once_with(mocks["conn"], UID)
+        mocks["chroma_inv"].assert_called_once_with(mocks["chroma_cls"].return_value, UID)
+        mocks["redis_inv"].assert_called_once_with(mocks["redis_client"], UID)
+        assert d.chroma_counts == {"vectors": 9}
+        assert d.redis_keys == ["cache:k1"]
+        # ...and every field the teardown and verification phases need.
         # The email is normalized exactly like the resolve step normalizes it.
         assert d.email == "user@example.com"
         assert d.platform_links == {"telegram": {"platform_user_id": "tg-1"}}
         assert d.sandbox_ids == ["sbx-1"]
         assert d.conversation_ids == ["conv-1"]
-        workos.user_management.list_users.assert_awaited_once_with(email="User@Example.COM ")
+        assert d.composio_accounts == [account]
+        assert d.workos_users == [workos_user]
+        assert d.jfs_path == JFS_USERS_ROOT / UID
+        db.e2b_sandboxes.find.assert_called_once_with({"user_id": UID}, {"sandbox_id": 1})
+        db.conversations.find.assert_called_once_with({"user_id": UID}, {"conversation_id": 1})
+        mocks["composio"].connected_accounts.list.assert_called_once_with(user_ids=[UID])
+        mocks["workos"].user_management.list_users.assert_awaited_once_with(
+            email="User@Example.COM "
+        )
         out = capsys.readouterr().out
+        assert "mongo: {'todos': 5}" in out
+        assert "postgres: {'memories': 1}" in out
+        assert "chroma: {'vectors': 9}" in out
+        assert "redis: 1 keys" in out
         assert "e2b sandboxes: ['sbx-1']" in out
         assert "conversations (checkpoint threads to sweep): 1" in out
+        assert "platform_links: ['telegram']" in out
+
+    @pytest.mark.parametrize("user", [{}, {"platform_links": None}, {"other": 1}])
+    async def test_platform_links_fall_back_to_an_empty_dict(self, user: Any) -> None:
+        from unittest.mock import MagicMock
+
+        d, _ = await _run_build_footprint(MagicMock(), user)
+
+        assert d.platform_links == {}
+
+    async def test_aborts_when_the_jfs_path_escapes_the_users_root(self) -> None:
+        from unittest.mock import MagicMock
+
+        with pytest.raises(SystemExit, match="refusing to touch"):
+            await _run_build_footprint(MagicMock(), {}, uid="../escape")
 
 
 @pytest.mark.unit
@@ -800,7 +1185,25 @@ class TestRunExecuteMode:
 
         with (
             patch("app.scripts.delete_user_account.MongoClient", return_value={"GAIA": db}),
-            pytest.raises(SystemExit, match="confirm-email does not match"),
+            pytest.raises(SystemExit, match=r"^ABORT: --confirm-email does not match email$"),
+        ):
+            await _run(args)
+
+    async def test_execute_mode_aborts_when_confirm_email_is_missing(self) -> None:
+        """A missing --confirm-email must abort even when the fallback string
+        would coincidentally compare equal to the email."""
+        import argparse
+        from unittest.mock import MagicMock, patch
+
+        from app.scripts.delete_user_account import _run
+
+        args = argparse.Namespace(email="xxxx", execute=True, uid=UID, confirm_email=None)
+        db = MagicMock()
+        db.users.find.return_value = [{"_id": ObjectId(UID), "email": "xxxx", "name": "U"}]
+
+        with (
+            patch("app.scripts.delete_user_account.MongoClient", return_value={"GAIA": db}),
+            pytest.raises(SystemExit, match=r"^ABORT: --confirm-email does not match email$"),
         ):
             await _run(args)
 
@@ -846,3 +1249,85 @@ class TestRunExecuteMode:
         # Identity deletion is the last phase — the WorkOS user list was empty,
         # so nothing to assert on the client beyond it not raising.
         assert footprint.pg.commit.called
+
+    async def test_execute_mode_runs_phases_in_order_and_returns_the_verdict(
+        self, capsys: Any
+    ) -> None:
+        import argparse
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app.scripts.delete_user_account import _run
+
+        args = argparse.Namespace(
+            email="user@example.com",
+            execute=True,
+            uid=UID,
+            confirm_email="  USER@Example.COM ",
+        )
+        db = MagicMock()
+        db.users.find.return_value = [
+            {"_id": ObjectId(UID), "email": "user@example.com", "name": "U"}
+        ]
+        jfs = MagicMock()
+        jfs.exists.return_value = False
+        footprint = _footprint(jfs_path=jfs)
+
+        order: list[tuple[str, Any]] = []
+
+        async def revoke(d: Any) -> None:
+            order.append(("revoke", d))
+
+        def mongo_phase(d: Any) -> None:
+            order.append(("mongo", d))
+
+        def postgres_phase(d: Any) -> None:
+            order.append(("postgres", d))
+
+        def local_phase(d: Any) -> None:
+            order.append(("local", d))
+
+        def resend_phase(d: Any) -> None:
+            order.append(("resend", d))
+
+        async def workos_phase(d: Any) -> None:
+            order.append(("workos", d))
+
+        async def verify(d: Any) -> int:
+            order.append(("verify", d))
+            return 7
+
+        with (
+            patch("app.scripts.delete_user_account.MongoClient", return_value={"GAIA": db}),
+            patch(
+                "app.scripts.delete_user_account._build_footprint",
+                new_callable=AsyncMock,
+                return_value=footprint,
+            ) as build_footprint,
+            patch("app.scripts.delete_user_account._revoke_external_access", revoke),
+            patch("app.scripts.delete_user_account._delete_mongo_data", mongo_phase),
+            patch("app.scripts.delete_user_account._delete_postgres_data", postgres_phase),
+            patch("app.scripts.delete_user_account._delete_local_stores", local_phase),
+            patch("app.scripts.delete_user_account._remove_resend_contact", resend_phase),
+            patch("app.scripts.delete_user_account._delete_workos_identity", workos_phase),
+            patch("app.scripts.delete_user_account._verify_removal", verify),
+        ):
+            rc = await _run(args)
+
+        assert rc == 7
+        # Every phase operates on the SAME footprint, built from this run's
+        # args, db handle, resolved user and uid.
+        build_footprint.assert_awaited_once_with(args, db, db.users.find.return_value[0], UID)
+        assert [name for name, _ in order] == [
+            "revoke",
+            "mongo",
+            "postgres",
+            "local",
+            "resend",
+            "workos",
+            "verify",
+        ]
+        assert all(d is footprint for _, d in order)
+        out = capsys.readouterr().out
+        assert "=== deleting ===" in out
+        assert "mode: EXECUTE" in out
+        assert f"user: user@example.com  uid={UID}  name=U" in out

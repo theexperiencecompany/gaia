@@ -1188,6 +1188,96 @@ class TestCreateSupportRequestWithAttachments:
 
         assert exc_info.value.status_code == 500
 
+    async def test_attachment_processing_receives_the_generated_ticket(
+        self, mock_support_repo, mock_email_notifications, sample_request_data
+    ):
+        """Uploads are keyed by the ticket id generated inside this call — a
+        None ticket would misname every Cloudinary object."""
+        with (
+            patch(
+                "app.services.support_service._process_attachments",
+                new_callable=AsyncMock,
+                return_value=([], []),
+            ) as process,
+            patch("app.services.support_service.log"),
+        ):
+            await create_support_request_with_attachments(
+                request_data=sample_request_data,
+                attachments=[_make_upload_file("img1.png", "image/png", b"data")],
+                user_id=USER_ID,
+                user_email=USER_EMAIL,
+            )
+
+        stored = mock_support_repo.create.await_args.args[0]
+        assert process.await_args.args[1] == stored.ticket_id
+
+    async def test_email_failure_rolls_back_with_the_generated_ids_and_error(
+        self, mock_support_repo, mock_email_notifications, mock_upload_file_to_cloudinary,
+        sample_request_data
+    ):
+        err = RuntimeError("smtp refused")
+
+        def _fail_team(_notification: Any) -> None:
+            raise err
+
+        with (
+            patch(
+                "app.services.support_service._send_support_email_notifications",
+                side_effect=_fail_team,
+            ),
+            patch(
+                "app.services.support_service._rollback_created_request",
+                new_callable=AsyncMock,
+            ) as rollback,
+            patch(
+                "app.services.support_service._delete_uploaded_files",
+                new_callable=AsyncMock,
+            ),
+            patch("app.services.support_service.log"),
+            pytest.raises(HTTPException),
+        ):
+            await create_support_request_with_attachments(
+                request_data=sample_request_data,
+                attachments=[_make_upload_file("img1.png", "image/png", b"data")],
+                user_id=USER_ID,
+                user_email=USER_EMAIL,
+            )
+
+        stored = mock_support_repo.create.await_args.args[0]
+        assert rollback.await_count == 1
+        args = rollback.await_args.args
+        assert args[0] == stored.ticket_id
+        assert args[1] == stored.id
+        assert args[2] == USER_ID
+        assert args[3] is err
+
+    async def test_unexpected_error_detail_names_the_cause(
+        self, mock_support_repo, sample_request_data
+    ):
+        """The catch-all handler's detail carries the underlying error text."""
+        with (
+            patch(
+                "app.services.support_service._send_support_email_notifications",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.services.support_service.SupportRequestResponse.model_validate",
+                side_effect=RuntimeError("unexpected model error"),
+            ),
+            patch("app.services.support_service.log"),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await create_support_request_with_attachments(
+                request_data=sample_request_data,
+                attachments=[],
+                user_id=USER_ID,
+                user_email=USER_EMAIL,
+            )
+
+        assert exc_info.value.detail == (
+            "Failed to create support request: unexpected model error"
+        )
+
 
 # ===========================================================================
 # _send_support_email_notifications
@@ -1421,6 +1511,13 @@ class TestGetUserSupportRequests:
 # ===========================================================================
 
 
+_COMPENSATION_FAILED_DETAIL = (
+    "Email sending failed and automatic cleanup of the support "
+    "request also failed. The request may still be stored — "
+    "please contact support instead of retrying."
+)
+
+
 class TestRollbackCreatedRequest:
     async def test_delete_success_logs_info_with_exact_args(self, mock_support_repo):
         mock_support_repo.delete.return_value = True
@@ -1441,7 +1538,10 @@ class TestRollbackCreatedRequest:
                 await _rollback_created_request("GAIA-2", "req-2", USER_ID, err)
 
         assert exc_info.value.status_code == 500
-        assert "cleanup" in exc_info.value.detail
+        # Exact: this is the message a stranded user reads — any rewording or
+        # case change is a different contract.
+        assert exc_info.value.detail == _COMPENSATION_FAILED_DETAIL
+        assert isinstance(exc_info.value.__cause__, ValueError)
         log.error.assert_called_once_with(
             "Failed to rollback support request from database",
             ticket_id="GAIA-2",
@@ -1460,7 +1560,7 @@ class TestRollbackCreatedRequest:
                 await _rollback_created_request("GAIA-3", "req-3", USER_ID, ValueError("email"))
 
         assert exc_info.value.status_code == 500
-        assert "cleanup" in exc_info.value.detail
+        assert exc_info.value.detail == _COMPENSATION_FAILED_DETAIL
         assert isinstance(exc_info.value.__cause__, RuntimeError)
         log.error.assert_called_once_with(
             "Error during rollback for ticket",
@@ -1490,6 +1590,58 @@ class TestProcessAttachmentsPins:
         assert urls == ["https://res.cloudinary.com/demo/support/ticket_file.png"] * 2
         for att in processed:
             assert isinstance(att, SupportAttachment)
+
+    async def test_each_upload_receives_its_attachment_ticket_and_constraints(self):
+        """Every per-file task must carry the real ticket id and the module's
+        type/size constraints — a None ticket misnames the Cloudinary object,
+        and None constraints would accept anything."""
+        now = datetime.now(UTC)
+        uploads = [_make_upload_file("a.png"), _make_upload_file("b.png")]
+        with patch(
+            "app.services.support_service._upload_single_attachment",
+            new_callable=AsyncMock,
+            return_value=("url", MagicMock(spec=SupportAttachment)),
+        ) as upload:
+            await _process_attachments(uploads, "GAIA-7", now)
+
+        assert upload.await_count == 2
+        first = upload.await_args_list[0].kwargs
+        assert first["attachment"] is uploads[0]
+        assert first["ticket_id"] == "GAIA-7"
+        assert first["current_time"] == now
+        assert first["allowed_types"] == ALLOWED_TYPES
+        assert first["max_file_size"] == MAX_FILE_SIZE
+
+    async def test_results_after_a_failed_upload_are_still_collected_for_cleanup(
+        self, mock_upload_file_to_cloudinary
+    ):
+        """gather returns every outcome; files uploaded AFTER the failing one
+        still made it to Cloudinary and must be cleaned up too — bailing out of
+        the results loop orphans them there forever."""
+        mock_upload_file_to_cloudinary.side_effect = [
+            "https://res.cloudinary.com/demo/support/GAIA-3_a.png",
+            RuntimeError("cloudinary down"),
+            "https://res.cloudinary.com/demo/support/GAIA-3_c.png",
+        ]
+        with (
+            patch(
+                "app.services.support_service._delete_uploaded_files",
+                new_callable=AsyncMock,
+            ) as delete,
+            patch("app.services.support_service.log"),
+            pytest.raises(HTTPException),
+        ):
+            await _process_attachments(
+                [_make_upload_file("a.png"), _make_upload_file("b.png"), _make_upload_file("c.png")],
+                "GAIA-3",
+                datetime.now(UTC),
+            )
+
+        deleted_urls = delete.await_args.args[0]
+        assert deleted_urls == [
+            "https://res.cloudinary.com/demo/support/GAIA-3_a.png",
+            "https://res.cloudinary.com/demo/support/GAIA-3_c.png",
+        ]
 
     async def test_upload_failure_cleans_up_partial_and_reraises(
         self, mock_upload_file_to_cloudinary
@@ -1530,6 +1682,42 @@ class TestProcessAttachmentsPins:
 
 
 class TestCreateSupportRequestLogPins:
+    async def test_entry_context_is_exact(
+        self, mock_support_repo, sample_request_data, mock_email_notifications
+    ):
+        """The wide-event context names the component and the requesting user."""
+        with patch("app.services.support_service.log") as log:
+            await create_support_request(sample_request_data, USER_ID, USER_EMAIL, USER_NAME)
+
+        log.set.assert_called_once_with(component="support_service", user_id=USER_ID)
+
+    async def test_email_failure_rolls_back_with_the_generated_ids_and_error(
+        self, mock_support_repo, sample_request_data, mock_email_notifications
+    ):
+        """The rollback must receive exactly what was created — ticket id,
+        request id, user, and the actual email error — or it compensates a
+        different row (or none)."""
+        team_fn, _ = mock_email_notifications
+        err = RuntimeError("smtp refused")
+        team_fn.side_effect = err
+        with (
+            patch(
+                "app.services.support_service._rollback_created_request",
+                new_callable=AsyncMock,
+            ) as rollback,
+            patch("app.services.support_service.log"),
+            pytest.raises(HTTPException),
+        ):
+            await create_support_request(sample_request_data, USER_ID, USER_EMAIL, USER_NAME)
+
+        stored = mock_support_repo.create.await_args.args[0]
+        assert rollback.await_count == 1
+        args = rollback.await_args.args
+        assert args[0] == stored.ticket_id
+        assert args[1] == stored.id
+        assert args[2] == USER_ID
+        assert args[3] is err
+
     async def test_email_failure_rolls_back_with_exact_args_and_raises_exact_detail(
         self, mock_support_repo, sample_request_data, mock_email_notifications
     ):

@@ -142,7 +142,7 @@ def _fetch_page_blocks(
 
     blocks_data = blocks_response["data"]
     blocks = (
-        blocks_data.get("results", blocks_data.get("blocks", []))
+        blocks_data.get("results", blocks_data.get("blocks"))
         if isinstance(blocks_data, dict)
         else []
     )
@@ -227,15 +227,18 @@ def _insert_markdown(
         raise ValueError("No content to insert - markdown conversion produced no blocks")
 
     blocks_added = 0
-    first_inserted = True
+    anchor_uses_left = int(request.after is not None)
 
     for block in all_blocks:
         if block.get("type") == "table":
             _append_table_block(composio, request, block, auth_credentials)
+        elif anchor_uses_left > 0:
+            anchor_uses_left = 0
+            _append_content_block(
+                composio, request, block, request.after, auth_credentials
+            )
         else:
-            after = request.after if first_inserted else None
-            first_inserted = False
-            _append_content_block(composio, request, block, after, auth_credentials)
+            _append_content_block(composio, request, block, None, auth_credentials)
         blocks_added += 1
 
     tables_added = sum(1 for b in all_blocks if b.get("type") == "table")

@@ -26,6 +26,19 @@ _MOD = "app.services.workflow.workflow_subagent"
 _TEXT_DEPRECATION = "ignore::langchain_core._api.deprecation.LangChainDeprecationWarning"
 
 
+class _NoTextChunk(AIMessageChunk):
+    """A chunk whose ``text`` attribute is absent, forcing the str(content) path."""
+
+    @property
+    def text(self) -> str:
+        raise AttributeError("no text here")
+
+
+class _FalsyToolMessage(ToolMessage):
+    def __bool__(self) -> bool:
+        return False
+
+
 @dataclass
 class _Run:
     """One execute() call: what it returned and the two calls it made."""
@@ -114,6 +127,49 @@ class TestTheLaneItInherits:
 
         config = run.stream_turn.call_args.args[2]
         assert config["recursion_limit"] == WORKFLOW_SUBAGENT_RECURSION_LIMIT
+
+    async def test_the_context_stream_writer_reaches_the_streaming_loop(self) -> None:
+        """The caller's writer is what forwards tool entries to the chat UI; a
+        runner that drops it streams nothing without any error anywhere."""
+        writer = MagicMock()
+        with (
+            patch(
+                f"{_MOD}.get_workflow_subagent", new_callable=AsyncMock, return_value=MagicMock()
+            ),
+            patch(f"{_MOD}.build_agent_config", AsyncMock(return_value={"configurable": {}})),
+            patch(
+                f"{_MOD}.assemble_context",
+                new_callable=AsyncMock,
+                return_value=AssembledContext(
+                    stable=SystemMessage(content="ctx", additional_kwargs={"dynamic_context": True}),
+                    volatile=None,
+                ),
+            ),
+            patch(
+                f"{_MOD}.build_connected_integrations_hint",
+                new_callable=AsyncMock,
+                return_value="connected: none",
+            ),
+            patch.object(
+                WorkflowSubagentRunner,
+                "_stream_turn",
+                AsyncMock(return_value=('{"title": "x"}', False)),
+            ) as stream_turn,
+            patch.object(
+                WorkflowSubagentRunner,
+                "_draft_correction_needed",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+        ):
+            await WorkflowSubagentRunner.execute(
+                task="t",
+                user_id="u1",
+                thread_id="t1",
+                context=SubagentRunContext(stream_writer=writer),
+            )
+
+        assert stream_turn.call_args.args[3] is writer
 
 
 @pytest.mark.unit
@@ -219,6 +275,36 @@ class TestConsumeMessageChunk:
 
         assert result == ""
 
+    @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
+    def test_a_block_list_content_is_unwrapped_via_text_not_str(self) -> None:
+        """``text()`` extracts the blocks' text; ``str(content)`` would ship the
+        raw repr of the block list to the user."""
+        chunk = AIMessageChunk(content=[{"type": "text", "text": "abc", "index": 0}])
+
+        result = WorkflowSubagentRunner._consume_message_chunk((chunk, {}), None, "")
+
+        assert result == "abc"
+
+    @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
+    def test_a_chunk_without_text_falls_back_to_its_content(self) -> None:
+        result = WorkflowSubagentRunner._consume_message_chunk(
+            (_NoTextChunk(content="plain"), {}), None, ""
+        )
+
+        assert result == "plain"
+
+    @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
+    def test_a_falsy_tool_message_is_skipped_like_any_falsy_chunk(self) -> None:
+        """Only real message chunks reach the writer; a falsey value must not
+        slip through the guard as a tool output."""
+        writer = MagicMock()
+        falsy_tool = _FalsyToolMessage(content="", tool_call_id="tc1")
+
+        result = WorkflowSubagentRunner._consume_message_chunk((falsy_tool, {}), writer, "kept")
+
+        writer.assert_not_called()
+        assert result == "kept"
+
 
 @pytest.mark.unit
 class TestEmitUpdateEntries:
@@ -305,3 +391,44 @@ class TestStreamTurnModes:
 
         assert message == "partial"
         assert hit_limit is True
+
+    @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
+    async def test_the_dedup_set_and_writer_are_forwarded_intact(self) -> None:
+        """The caller's emitted-tool-calls set and stream writer must reach the
+        per-event handlers — a dropped set would re-stream already-seen tool
+        entries, and a dropped writer silently kills all streaming."""
+        writer = MagicMock()
+        dedup = {"tc0"}
+        with patch(
+            f"{_MOD}.extract_tool_entries_from_update",
+            new_callable=AsyncMock,
+            return_value=[],
+        ) as extract, patch.object(
+            WorkflowSubagentRunner,
+            "_consume_message_chunk",
+            return_value="",
+        ) as consume:
+            await WorkflowSubagentRunner._stream_turn(
+                _StreamGraph(
+                    [
+                        ("updates", {"node": {"messages": []}}),
+                        ("messages", (AIMessageChunk(content="Hi"), {})),
+                    ]
+                ),
+                {},
+                {},
+                writer,
+                dedup,
+            )
+
+        assert extract.await_args.kwargs["emitted_tool_calls"] == dedup
+        assert consume.call_args.args[1] is writer
+
+    @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
+    async def test_a_custom_event_with_no_writer_is_ignored_not_fatal(self) -> None:
+        message, hit_limit = await WorkflowSubagentRunner._stream_turn(
+            _StreamGraph([("custom", {"step": 1})]), {}, {}, None, set()
+        )
+
+        assert message == ""
+        assert hit_limit is False

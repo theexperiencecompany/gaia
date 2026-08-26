@@ -54,8 +54,11 @@ INTEGRATION_STATUS_UPDATE_EVENT = "integration_status_update"
 class ExpiryOptions:
     """Why the connection is being expired, and what the expiry should trigger."""
 
+    # Required, not defaulted: both callers pass it explicitly, and a default
+    # here silently decides which detection path an expiry reads as when a
+    # future caller omits it.
+    trigger: ExpiryTrigger
     reason: str | None = None
-    trigger: ExpiryTrigger = "webhook"
     notify: bool = False
     connected_account_id: str | None = None
     paused_workflows: Sequence[str] = ()
