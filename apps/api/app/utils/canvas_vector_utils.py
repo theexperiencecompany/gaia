@@ -131,7 +131,10 @@ async def mark_canvas_completed(todo_id: str) -> bool:
         if not existing or not existing["metadatas"]:
             return False
 
-        metadata: dict[str, str | int | float | bool | None] = dict(existing["metadatas"][0])
+        # Value type is inferred from chromadb's own Metadata alias rather than
+        # restated here; chromadb 1.5.x widened it (SparseVector, list values) and a
+        # hand-written union silently goes stale on the next widening.
+        metadata = dict(existing["metadatas"][0])
         metadata["completed"] = True
         metadata["completed_at"] = datetime.now(UTC).isoformat()
 
