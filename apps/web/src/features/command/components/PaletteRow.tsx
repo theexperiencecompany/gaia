@@ -2,6 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/kbd";
+import { Skeleton } from "@heroui/skeleton";
 import { Tooltip } from "@heroui/tooltip";
 import { AiMagicIcon, ArrowLeft02Icon, ArrowRight02Icon } from "@icons";
 import { Command } from "cmdk";
@@ -64,6 +65,16 @@ export function PaletteRow({
         <ArrowLeft02Icon width={18} height={18} />
         <span className={S.flexOne}>Go back</span>
       </Command.Item>
+    );
+  }
+
+  if (row.kind === "loading") {
+    return (
+      <div aria-busy="true" className={`${ROW} gap-3 py-3`}>
+        <Skeleton className="h-4 w-4 rounded-full" />
+        <Skeleton className="h-3 w-40 rounded-medium" />
+        <Skeleton className="ml-auto h-3 w-16 rounded-medium" />
+      </div>
     );
   }
 

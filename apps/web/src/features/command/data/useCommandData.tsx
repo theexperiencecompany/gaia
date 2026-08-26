@@ -21,6 +21,7 @@ import { useConversationList } from "@/features/chat/hooks/useConversationList";
 import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { memoryApi } from "@/features/memory/api/memoryApi";
+import type { MemoryEntry } from "@/features/memory/api/types";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import type { SearchConversationResult } from "@/features/search/api/searchApi";
@@ -29,6 +30,9 @@ import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
 import { useComposerStore } from "@/stores/composerStore";
 import { usePricingModalStore } from "@/stores/pricingModalStore";
 import { useTodoStore } from "@/stores/todoStore";
+import { useVoiceModeActions } from "@/stores/voiceModeStore";
+import { useWhatsNewStore } from "@/stores/whatsNewStore";
+import { frecencyScore, useFrecencyStore } from "../frecency";
 import { ICON } from "../model/constants";
 import type {
   BuildCtx,
@@ -43,7 +47,7 @@ import {
 } from "../providers/chats";
 import { buildCommandGroups } from "../providers/commands";
 import { buildIntegrationItems } from "../providers/integrations";
-import { buildMemoryItems } from "../providers/memories";
+import { buildMemoryItems, makeMemoryItem } from "../providers/memories";
 import { buildNotificationItems } from "../providers/notifications";
 import { buildSettingsItems } from "../providers/settings";
 import { buildTodoItems } from "../providers/todos";
@@ -66,7 +70,10 @@ export interface CommandData {
     message: { message_id: string };
     snippet: string;
   }) => CommandItem;
-  askGaia: (query: string) => void;
+  /** Returns null for hits without an id — nothing to navigate to. */
+  buildSearchMemory: (mem: MemoryEntry) => CommandItem | null;
+  /** autoSend: send the query immediately instead of prefilling the composer. */
+  askGaia: (query: string, autoSend?: boolean) => void;
 }
 
 /** Orchestrates live app data into normalized command groups via per-entity builders. */
@@ -90,6 +97,9 @@ export function useCommandData(host: CommandHost): CommandData {
   const { notifications, markAsRead, archiveNotification } = useNotifications();
   const { data: subscriptionStatus } = useUserSubscriptionStatus();
   const openPricing = usePricingModalStore((s) => s.openModal);
+  const openWhatsNew = useWhatsNewStore((s) => s.openModal);
+  const { enterVoiceMode } = useVoiceModeActions();
+  const createTodoAction = useTodoStore((s) => s.createTodo);
   const { openShortcutsModal } = useKeyboardShortcuts();
   const { logout } = useLogout();
   const { data: memoryList } = useQuery({
@@ -102,6 +112,12 @@ export function useCommandData(host: CommandHost): CommandData {
   useEffect(() => {
     if (isAuthenticated) loadTodos();
   }, [isAuthenticated, loadTodos]);
+
+  const refetchMemories = useCallback(
+    () =>
+      queryClient.invalidateQueries({ queryKey: memoriesQueryKey(userEmail) }),
+    [queryClient, userEmail],
+  );
 
   const ctx = useMemo<BuildCtx>(
     () => ({
@@ -157,14 +173,26 @@ export function useCommandData(host: CommandHost): CommandData {
   const memoryItems = useMemo(
     () =>
       buildMemoryItems(memoryList?.memories ?? [], ctx, {
-        refetch: () =>
-          queryClient.invalidateQueries({
-            queryKey: memoriesQueryKey(userEmail),
-          }),
+        refetch: refetchMemories,
       }),
-    [memoryList, ctx, queryClient, userEmail],
+    [memoryList, ctx, refetchMemories],
   );
   const settingsItems = useMemo(() => buildSettingsItems(ctx), [ctx]);
+
+  // id → item maps so Recent can find items without assuming builders return
+  // them in source order (filtering builders would break positional zipping).
+  const workflowById = useMemo(
+    () => new Map(workflowItems.map((item) => [item.id, item] as const)),
+    [workflowItems],
+  );
+  const todoById = useMemo(
+    () => new Map(todoItems.map((item) => [item.id, item] as const)),
+    [todoItems],
+  );
+  const notificationById = useMemo(
+    () => new Map(notificationItems.map((item) => [item.id, item] as const)),
+    [notificationItems],
+  );
 
   const groups = useMemo<CommandGroup[]>(() => {
     const entity = (
@@ -174,6 +202,7 @@ export function useCommandData(host: CommandHost): CommandData {
       accent: string,
       path: string,
       items: CommandItem[],
+      links?: { label: string; path: string }[],
     ): CommandGroup => ({
       id,
       heading,
@@ -181,6 +210,7 @@ export function useCommandData(host: CommandHost): CommandData {
       accent,
       kind: "entity",
       path,
+      links,
       items,
     });
 
@@ -189,6 +219,12 @@ export function useCommandData(host: CommandHost): CommandData {
       isSubscribed: Boolean(subscriptionStatus?.is_subscribed),
       openPricing,
       openShortcuts: openShortcutsModal,
+      openWhatsNew,
+      enterVoiceMode,
+      createTodo: async (title) => {
+        await createTodoAction({ title });
+        await loadTodos();
+      },
       logout: async () => {
         const ok = await host.confirm({
           title: "Sign out",
@@ -240,6 +276,11 @@ export function useCommandData(host: CommandHost): CommandData {
         "text-green-400",
         "/todos",
         todoItems,
+        [
+          { label: "Today", path: "/todos/today" },
+          { label: "Upcoming", path: "/todos/upcoming" },
+          { label: "Completed", path: "/todos/completed" },
+        ],
       ),
       entity(
         "notifications",
@@ -290,29 +331,36 @@ export function useCommandData(host: CommandHost): CommandData {
     logout,
   ]);
 
-  // Recent across all types, newest first.
+  // Recent across all types. What the user picks in the palette is the
+  // strongest recency signal — frecency first, source timestamps as
+  // tiebreaker/fallback for a cold start.
+  const frecencyEntries = useFrecencyStore((s) => s.entries);
   const recent = useMemo<CommandItem[]>(() => {
     const candidates: { item: CommandItem; ts: number }[] = [];
     (conversations as ChatLike[]).forEach((c) => {
       const item = chats.byConv.get(c.conversation_id);
       if (item) candidates.push({ item, ts: c.updatedAt?.getTime() ?? 0 });
     });
-    workflows.forEach((w, i) => {
-      const item = workflowItems[i];
+    workflows.forEach((w) => {
+      const item = workflowById.get(`workflow:${w.id}`);
       if (item)
         candidates.push({ item, ts: ms(w.last_executed_at || w.updated_at) });
     });
-    todos.forEach((t, i) => {
-      const item = todoItems[i];
+    todos.forEach((t) => {
+      const item = todoById.get(`todo:${t.id}`);
       if (item) candidates.push({ item, ts: ms(t.updated_at) });
     });
-    notifications.forEach((n, i) => {
-      const item = notificationItems[i];
+    notifications.forEach((n) => {
+      const item = notificationById.get(`notification:${n.id}`);
       if (item) candidates.push({ item, ts: ms(n.created_at) });
     });
     return candidates
       .filter((c) => c.ts > 0)
-      .sort((a, b) => b.ts - a.ts)
+      .sort(
+        (a, b) =>
+          frecencyScore(frecencyEntries, b.item.id) -
+            frecencyScore(frecencyEntries, a.item.id) || b.ts - a.ts,
+      )
       .slice(0, RECENT_COUNT)
       .map((c) => c.item);
   }, [
@@ -321,9 +369,10 @@ export function useCommandData(host: CommandHost): CommandData {
     todos,
     notifications,
     chats.byConv,
-    workflowItems,
-    todoItems,
-    notificationItems,
+    workflowById,
+    todoById,
+    notificationById,
+    frecencyEntries,
   ]);
 
   const context = useMemo(() => {
@@ -334,46 +383,92 @@ export function useCommandData(host: CommandHost): CommandData {
       const item = itemById(`chat:${chatMatch[1]}`);
       if (item) return { heading: "Current chat", item };
     }
-    if (pathname.includes("/workflows")) {
-      const id = searchParams.get("id");
-      const item = id ? itemById(`workflow:${id}`) : undefined;
-      if (item) return { heading: "Current workflow", item };
-    }
-    if (pathname.includes("/integrations")) {
-      const id = searchParams.get("id");
-      const item = id ? itemById(`integration:${id}`) : undefined;
-      if (item) return { heading: "Current integration", item };
+    // Sections that address their entity through a query param.
+    const paramRoutes = [
+      {
+        route: "/workflows",
+        param: "id",
+        type: "workflow",
+        heading: "Current workflow",
+      },
+      {
+        route: "/integrations",
+        param: "id",
+        type: "integration",
+        heading: "Current integration",
+      },
+      {
+        route: "/todos",
+        param: "todoId",
+        type: "todo",
+        heading: "Current todo",
+      },
+    ] as const;
+    for (const { route, param, type, heading } of paramRoutes) {
+      if (!pathname.includes(route)) continue;
+      const id = searchParams.get(param);
+      const item = id ? itemById(`${type}:${id}`) : undefined;
+      if (item) return { heading, item };
     }
     return null;
   }, [groups, pathname, searchParams]);
 
-  const buildSearchChat = (result: SearchConversationResult): CommandItem =>
-    chats.byConv.get(result.conversation_id) ??
-    makeChatItem(
-      { conversation_id: result.conversation_id, title: result.description },
-      ctx,
-      chatActions,
-      false,
-    );
+  // Stable identities: these feed useMemo/useEffect deps in CommandMenu —
+  // recreated-per-render callbacks would invalidate its memoization on every
+  // render.
+  const buildSearchChat = useCallback(
+    (result: SearchConversationResult): CommandItem =>
+      chats.byConv.get(result.conversation_id) ??
+      makeChatItem(
+        { conversation_id: result.conversation_id, title: result.description },
+        ctx,
+        chatActions,
+        false,
+      ),
+    [chats.byConv, ctx, chatActions],
+  );
 
-  const buildSearchMessage = (result: {
-    conversation_id: string;
-    message: { message_id: string };
-    snippet: string;
-  }): CommandItem =>
-    makeMessageItem(
-      {
-        conversation_id: result.conversation_id,
-        message_id: result.message.message_id,
-        snippet: result.snippet,
-      },
-      ctx,
-    );
+  const buildSearchMessage = useCallback(
+    (result: {
+      conversation_id: string;
+      message: { message_id: string };
+      snippet: string;
+    }): CommandItem =>
+      makeMessageItem(
+        {
+          conversation_id: result.conversation_id,
+          message_id: result.message.message_id,
+          snippet: result.snippet,
+        },
+        ctx,
+      ),
+    [ctx],
+  );
+
+  /** Semantic memory hit — open-only row (no list position to refresh). */
+  const buildSearchMemory = useCallback(
+    (mem: MemoryEntry): CommandItem | null => {
+      if (!mem.id) return null;
+      return makeMemoryItem(
+        { ...mem, id: mem.id },
+        ctx,
+        { refetch: refetchMemories },
+        false,
+      );
+    },
+    [ctx, refetchMemories],
+  );
 
   const askGaia = useCallback(
-    (query: string) => {
+    (query: string, autoSend = false) => {
       prepareNewChat();
-      useComposerStore.getState().appendToInput(query);
+      // Auto-send hands the query to ChatPage's send pipeline; prefill mode
+      // drops it in the composer for the user to edit first.
+      // setPendingPrompt (not appendToInput): the latter hard-navigates via
+      // window.location.assign off /c, and a full reload drops the volatile
+      // pendingAutoSend flag — router.push keeps this an SPA handoff.
+      useComposerStore.getState().setPendingAutoSend(autoSend);
+      useComposerStore.getState().setPendingPrompt(query);
       router.push("/c");
       host.close();
     },
@@ -386,6 +481,7 @@ export function useCommandData(host: CommandHost): CommandData {
     context,
     buildSearchChat,
     buildSearchMessage,
+    buildSearchMemory,
     askGaia,
   };
 }

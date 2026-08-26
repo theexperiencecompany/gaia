@@ -73,6 +73,7 @@ export const ANALYTICS_EVENTS = {
 
   SEARCH_GLOBAL_OPENED: "search:global_opened",
   SEARCH_RESULT_CLICKED: "search:result_clicked",
+  COMMAND_ITEM_EXECUTED: "command:item_executed",
 
   // Pins/Bookmarks events
   PIN_CREATED: "pin:created",

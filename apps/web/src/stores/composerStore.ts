@@ -13,6 +13,8 @@ import type { SearchMode } from "@/types/shared/searchTypes";
 interface ComposerState {
   // Text input state
   pendingPrompt: string | null;
+  /** True when the pending prompt should be SENT on chat mount, not prefilled. */
+  pendingAutoSend: boolean;
   inputText: string;
 
   // Mode and tool selection
@@ -38,6 +40,8 @@ interface ComposerActions {
   appendToInput: (text: string) => void;
   setPendingPrompt: (prompt: string | null) => void;
   clearPendingPrompt: () => void;
+  /** Palette ask-handoff flag: the pending prompt sends instead of prefilling. */
+  setPendingAutoSend: (autoSend: boolean) => void;
   setInputText: (text: string) => void;
   appendToInputText: (text: string) => void;
   clearInputText: () => void;
@@ -75,6 +79,7 @@ type ComposerStore = ComposerState & ComposerActions;
 const initialState: ComposerState = {
   // Text input state
   pendingPrompt: null,
+  pendingAutoSend: false,
   inputText: "",
 
   // Mode and tool selection
@@ -121,6 +126,9 @@ export const useComposerStore = create<ComposerStore>()(
         clearPendingPrompt: () => {
           set({ pendingPrompt: null }, false, "clearPendingPrompt");
         },
+
+        setPendingAutoSend: (pendingAutoSend) =>
+          set({ pendingAutoSend }, false, "setPendingAutoSend"),
 
         setInputText: (inputText) => {
           set({ inputText }, false, "setInputText");
