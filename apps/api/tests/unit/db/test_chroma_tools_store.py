@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langgraph.store.base import PutOp
 import pytest
 
+from app.db.chroma.chroma_store import ChromaBatchWriteError
 from app.db.chroma.chroma_tools_store import (
     _build_put_operations,
     _compute_tool_diff,
@@ -316,6 +317,29 @@ class TestExecuteBatchOperations:
         ops = [MagicMock(spec=PutOp) for _ in range(120)]
         await _execute_batch_operations(store, ops, batch_size=50)
         assert store.abatch.await_count == 3  # 50 + 50 + 20
+
+    async def test_failed_batch_does_not_abort_startup_or_claim_success(self):
+        """A rejected batch must not propagate and must not be reported as success.
+
+        Propagating killed the API: initialize_chroma_triggers_store runs inside a
+        lazy provider, so the app exited with
+        "Failed to initialize required services: ['lazy_providers_auto_initializer']"
+        whenever the embedding provider was unreachable. Swallowing it silently was
+        the original bug. The only correct outcome is: keep going, report honestly.
+        """
+        store = AsyncMock()
+        store.abatch.side_effect = [None, ChromaBatchWriteError("50 of 50 failed"), None]
+        ops = [MagicMock(spec=PutOp) for _ in range(120)]
+
+        with patch.object(log, "info") as info, patch.object(log, "error") as error:
+            await _execute_batch_operations(store, ops, batch_size=50)
+
+        # Every batch is still attempted despite the middle one failing.
+        assert store.abatch.await_count == 3
+        # The failure is reported...
+        assert any("failed" in str(c).lower() for c in error.call_args_list)
+        # ...and success is never claimed over it.
+        assert not any("Successfully updated tools" in str(c) for c in info.call_args_list)
 
 
 # ---------------------------------------------------------------------------

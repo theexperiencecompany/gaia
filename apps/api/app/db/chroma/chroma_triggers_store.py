@@ -20,7 +20,7 @@ from app.models.oauth_models import OAuthIntegration
 from app.models.trigger_config import TriggerConfig
 from shared.py.wide_events import VectorContext, log
 
-from .chroma_store import ChromaStore
+from .chroma_store import ChromaBatchWriteError, ChromaStore
 
 # Namespace for workflow triggers in the store
 TRIGGERS_NAMESPACE = "workflow_triggers"
@@ -232,14 +232,40 @@ async def _execute_batch_operations(
 
     total_ops = len(put_ops)
 
+    batch_total = (total_ops + batch_size - 1) // batch_size
+    failed_batches = 0
+
     for i in range(0, total_ops, batch_size):
         batch = put_ops[i : i + batch_size]
-        await store.abatch(batch)
+        try:
+            await store.abatch(batch)
+        except ChromaBatchWriteError as exc:
+            # Indexing is best-effort: a batch that ChromaDB rejects (an
+            # unreachable embedding provider, a dimension mismatch) must not
+            # stop the remaining batches or the caller's startup. Report it and
+            # keep going — what must never happen is claiming success below.
+            failed_batches += 1
+            log.error(
+                f"{LogTag.CHROMA} Processed triggers batch failed",
+                batch_index=i // batch_size + 1,
+                batch_total=batch_total,
+                error=str(exc),
+            )
+            continue
         log.info(
             f"{LogTag.CHROMA} Processed triggers batch",
             batch_index=i // batch_size + 1,
-            batch_total=(total_ops + batch_size - 1) // batch_size,
+            batch_total=batch_total,
         )
+
+    if failed_batches:
+        log.error(
+            f"{LogTag.CHROMA} triggers indexing finished with failed batches",
+            total_ops=total_ops,
+            batch_total=batch_total,
+            failed_batches=failed_batches,
+        )
+        return
 
     log.info(f"{LogTag.CHROMA} Successfully updated triggers in ChromaDB", total_ops=total_ops)
 
