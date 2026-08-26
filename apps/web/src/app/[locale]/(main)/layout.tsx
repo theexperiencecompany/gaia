@@ -10,6 +10,7 @@ import RightSidebar from "@/components/layout/sidebar/RightSidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useOnboardingGuard } from "@/features/auth/hooks/useOnboardingGuard";
+import { CommandMenuProvider } from "@/features/command/CommandMenuProvider";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useBackgroundSync } from "@/hooks/useBackgroundSync";
 import ProvidersLayout from "@/layouts/ProvidersLayout";
@@ -30,10 +31,6 @@ const GlobalPricingModal = nextDynamic(
     import("@/features/pricing/components/GlobalPricingModal").then((m) => ({
       default: m.GlobalPricingModal,
     })),
-  { ssr: false },
-);
-const CommandMenu = nextDynamic(
-  () => import("@/features/search/components/CommandMenu"),
   { ssr: false },
 );
 
@@ -63,7 +60,6 @@ export default function MainLayout({ children }: { children: ReactNode }) {
   const isMobile = useIsMobile();
   const [defaultOpen, setDefaultOpen] = useState(true);
   const dragRef = useRef<HTMLDivElement>(null);
-  const [commandMenuOpen, setCommandMenuOpen] = useState(false);
   const { open: isHoloCardModalOpen, closeModal: closeHoloCardModal } =
     useHoloCardModalStore();
 
@@ -168,10 +164,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
           <WhatsNewModal />
 
           {/* Global Command Menu */}
-          <CommandMenu
-            open={commandMenuOpen}
-            onOpenChange={setCommandMenuOpen}
-          />
+          <CommandMenuProvider />
 
           {/* Onboarding Components */}
           <HoloCardModal
