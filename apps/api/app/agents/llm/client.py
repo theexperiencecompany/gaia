@@ -177,7 +177,11 @@ async def resolve_provider_config(provider: str) -> ProviderConfig | None:
 
 async def refresh_provider_configs() -> None:
     """Resolve every credential-backed provider into the runtime snapshot."""
-    await asyncio.gather(*(resolve_provider_config(name) for name in _RUNTIME_CONFIG_PROVIDERS))
+    results = await asyncio.gather(
+        *(resolve_provider_config(name) for name in _RUNTIME_CONFIG_PROVIDERS)
+    )
+    for name, config in zip(_RUNTIME_CONFIG_PROVIDERS, results):
+        _runtime_configs[name] = config
 
 
 _refresh_tasks: set[asyncio.Task[None]] = set()

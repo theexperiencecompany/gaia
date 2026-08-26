@@ -100,6 +100,7 @@ async def test_selfhost_with_an_e2b_key_stays_on_the_e2b_path(
     entry = PooledSandbox(sandbox=sbx_e2b)
     with (
         patch.object(lifecycle.settings, "ENV", "selfhost"),
+        patch.object(lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value="test-e2b-key")),
         patch.object(lifecycle, "_acquire_or_create", AsyncMock(return_value=entry)),
         patch.object(lifecycle, "e2b_sandbox_repository", AsyncMock()),
         patch.object(lifecycle, "_schedule_pause"),
