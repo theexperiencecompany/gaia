@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage, ToolMessage
 import pytest
 
+from app.agents.context.slots import TIME_CONTEXT_MARKER, mark as mark_message
 from app.agents.core.nodes.memory_node import (
     MAX_TOOL_OUTPUT_SIZE,
     _check_worth_learning,
@@ -131,6 +132,22 @@ class TestFormatMessagesForUserMemory:
     def test_empty_messages(self):
         formatted = _format_messages_for_user_memory([])
         assert formatted == []
+
+    @pytest.mark.regression
+    def test_the_time_slot_message_never_reaches_the_extractor(self):
+        """The re-stamped current-time HumanMessage is graph plumbing, not the
+        user speaking: rendered as `user: Current time...` it pollutes the
+        transcript every turn (the extractor already gets the date in its
+        volatile context)."""
+        msgs = [
+            mark_message(
+                HumanMessage(content="Current time: 2026-08-27 01:00 IST"),
+                TIME_CONTEXT_MARKER,
+            ),
+            HumanMessage(content="my anniversary is October 19"),
+        ]
+        formatted = _format_messages_for_user_memory(msgs)
+        assert formatted == [{"role": "user", "content": "my anniversary is October 19"}]
 
 
 class TestExtractTextContent:
@@ -923,6 +940,28 @@ class TestTrivialDeltaGate:
         calls = await self._run(self._thread(), mark=None)
 
         calls["retain"].assert_awaited_once()
+
+    @pytest.mark.regression
+    async def test_the_time_slot_message_is_not_substance(self) -> None:
+        """The current-time slot is a HumanMessage (kept out of
+        system_instruction for the comms cache) and is re-stamped with fresh
+        content every turn, so it lands in EVERY delta. Counted as user text it
+        makes the gate a no-op — measured live: five consecutive turns, zero
+        skips, every "ok" still bought an extraction call."""
+        messages: list[AnyMessage] = [
+            HumanMessage(content="my anniversary is October 19", id="m1"),
+            AIMessage(content="Noted.", id="m2"),
+            mark_message(
+                HumanMessage(content="Current time: 2026-08-27 01:00 IST", id="m3"),
+                TIME_CONTEXT_MARKER,
+            ),
+            HumanMessage(content="ok", id="m4"),
+            AIMessage(content="Anything else?", id="m5"),
+        ]
+
+        calls = await self._run(messages, mark="m2")
+
+        calls["retain"].assert_not_awaited()
 
 
 @pytest.mark.unit

@@ -25,6 +25,7 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMes
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
 
+from app.agents.context.slots import PromptSlot, slot_of
 from app.config.oauth_config import get_memory_extraction_prompt
 from app.constants.log_tags import LogTag
 from app.constants.memory import (
@@ -70,7 +71,10 @@ def _check_worth_learning(messages: list[AnyMessage]) -> tuple[bool, str]:
         Tuple of (should_learn, reason)
     """
     for msg in messages:
-        if isinstance(msg, HumanMessage):
+        # slot_of filters graph plumbing that rides the thread as a
+        # HumanMessage — the re-stamped current-time slot lands in every
+        # delta, and counted as user text it made this check always-true.
+        if isinstance(msg, HumanMessage) and slot_of(msg) is PromptSlot.CONVERSATION:
             if len(extract_text_content(msg.content).strip()) >= MIN_USER_CONTENT_CHARS:
                 return True, "OK"
     return False, "No substantive user message"
@@ -120,6 +124,12 @@ def _format_messages_for_user_memory(
             formatted.append({"role": _ROLE_MARKER, "content": _DELTA_MARKER})
 
         if isinstance(msg, HumanMessage):
+            # Non-conversation slots (the re-stamped current-time message) are
+            # graph plumbing: rendered as `user: ...` they polluted every
+            # transcript, and the extractor gets the date in its volatile
+            # context already.
+            if slot_of(msg) is not PromptSlot.CONVERSATION:
+                continue
             content = extract_text_content(msg.content)
             if content:
                 formatted.append({"role": _ROLE_USER, "content": content})
