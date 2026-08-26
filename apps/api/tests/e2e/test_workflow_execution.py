@@ -518,7 +518,12 @@ class _InMemoryExecutionRecords:
         existing = self.records.get(execution_id)
         if existing is None:
             return None
-        updated = existing.model_copy(update=update.model_dump(exclude_unset=True))
+        # Re-validate rather than model_copy: Mongo stores the $set dicts and the
+        # repository validates them back into the document model on read, so a
+        # copy that skips validation would hand tests shapes production never sees.
+        updated = WorkflowExecutionDocument.model_validate(
+            {**existing.model_dump(), **update.model_dump(exclude_unset=True)}
+        )
         self.records[execution_id] = updated
         return updated
 
@@ -600,6 +605,9 @@ class TestWorkflowExecutionFailurePropagation:
         monkeypatch.setattr(
             workflow_tasks, "get_user_by_id", AsyncMock(return_value={"timezone": "UTC"})
         )
+        # The checkpoint reset is Postgres; its own behaviour is proven in
+        # tests/unit/services/workflow/test_thread_reset.py.
+        monkeypatch.setattr(workflow_tasks, "reset_workflow_threads", AsyncMock(return_value=0))
         monkeypatch.setattr(
             tiered_rate_limiter.tiered_limiter, "check_and_increment", AsyncMock(return_value={})
         )
@@ -622,12 +630,24 @@ class TestWorkflowExecutionFailurePropagation:
         completed: list[str] = []
 
         async def _run_steps(request, conversation_id, user, trigger_context):
+            tool_data: list[dict[str, object]] = []
             for step in request.selectedWorkflow.steps:
                 if step["title"] == failing_step_title:
                     raise RuntimeError(
                         f"Step '{step['title']}' failed: Gmail API returned 503 Service Unavailable"
                     )
                 completed.append(step["title"])
+                tool_data.append(
+                    {
+                        "tool_name": "tool_calls_data",
+                        "data": {
+                            "tool_name": step["title"],
+                            "inputs": {"step_id": step["id"]},
+                            "output": "ok",
+                        },
+                    }
+                )
+            return "", {"tool_data": tool_data}
 
         monkeypatch.setattr(agent_module, "call_agent_silent", _run_steps)
         return completed
@@ -723,6 +743,11 @@ class TestWorkflowExecutionFailurePropagation:
         assert execution.conversation_id == "conv-workflow-1", (
             "A successful run must link the conversation holding its messages"
         )
+        assert [call.tool_name for call in execution.trace] == completed, (
+            "A successful run must record what it did — the next run reads this "
+            "instead of replaying the conversation's checkpoints"
+        )
+        assert execution.trace[0].args == {"step_id": "s1"}
         assert workflow_execution_env["recorded_stats"] == [True]
         assert workflow_execution_env["notifications"] == [], (
             "A successful run must not raise a failure notification"

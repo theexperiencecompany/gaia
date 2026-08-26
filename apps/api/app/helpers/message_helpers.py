@@ -19,6 +19,7 @@ from app.agents.templates.agent_template import (
     get_comms_static_prompt,
 )
 from app.agents.workspace.paths import safe_upload_filename
+from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
 from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
@@ -201,23 +202,35 @@ async def format_workflow_execution_message(
         "notification_section": notification_section,
     }
 
+    # This run already replayed the workflow's playbook and it stopped partway,
+    # so some of the steps below have ALREADY happened. Appended rather than
+    # folded into the templates because it is per-run evidence, not part of the
+    # workflow's standing instructions.
+    fallback_section = (trigger_context or {}).get(PLAYBOOK_FALLBACK_CONTEXT_KEY) or ""
+
     # Email-triggered workflows get enhanced context
     if trigger_context and trigger_context.get("type") == "gmail":
         email_data = trigger_context.get("email_data", {})
         msg_text = email_data.get("message_text", "")
 
-        return EMAIL_TRIGGERED_WORKFLOW_PROMPT.format(
-            email_sender=email_data.get("sender", "Unknown"),
-            email_subject=email_data.get("subject", "No Subject"),
-            email_content_preview=msg_text[:200] + ("..." if len(msg_text) > 200 else ""),
-            trigger_timestamp=trigger_context.get("triggered_at", "Unknown"),
-            **common_args,
+        return (
+            EMAIL_TRIGGERED_WORKFLOW_PROMPT.format(
+                email_sender=email_data.get("sender", "Unknown"),
+                email_subject=email_data.get("subject", "No Subject"),
+                email_content_preview=msg_text[:200] + ("..." if len(msg_text) > 200 else ""),
+                trigger_timestamp=trigger_context.get("triggered_at", "Unknown"),
+                **common_args,
+            )
+            + fallback_section
         )
 
     # Manual workflow execution
-    return WORKFLOW_EXECUTION_PROMPT.format(
-        user_message=existing_content or f"Execute workflow: {workflow_title}",
-        **common_args,
+    return (
+        WORKFLOW_EXECUTION_PROMPT.format(
+            user_message=existing_content or f"Execute workflow: {workflow_title}",
+            **common_args,
+        )
+        + fallback_section
     )
 
 

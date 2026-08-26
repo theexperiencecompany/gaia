@@ -74,7 +74,7 @@ def resolve_declared_tools(
     return resolved
 
 
-def _build_scoped_tool_dict(
+def build_scoped_tool_dict(
     tool_registry: ToolRegistry,
     tool_space: str,
     mcp_tools: list[BaseTool] | None,
@@ -190,7 +190,7 @@ class SubAgentFactory:
 
         store, tool_registry = await asyncio.gather(get_tools_store(), get_tool_registry())
 
-        scoped_tool_dict, initial_tool_ids = _build_scoped_tool_dict(
+        scoped_tool_dict, initial_tool_ids = build_scoped_tool_dict(
             tool_registry=tool_registry,
             tool_space=tool_space,
             mcp_tools=mcp_tools,

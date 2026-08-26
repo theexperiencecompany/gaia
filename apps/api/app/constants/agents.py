@@ -33,6 +33,8 @@ class AgentTag(StrEnum):
     DELIVERY_INSTRUCTIONS = "delivery_instructions"
     SUBAGENT_RESULT = "subagent_result"
     STYLE_CORRECTION = "style_correction"
+    LAST_RUN = "last_run"
+    PLAYBOOK_FALLBACK = "playbook_fallback"
 
 
 def wrap_agent_payload(tag: AgentTag, body: str, agent: str | None = None) -> str:
@@ -56,3 +58,10 @@ INTERNAL_AGENT_TAG_PATTERN = re.compile(
     rf"</?(?:{'|'.join(tag.value for tag in AgentTag)})(?:\s[^>]*)?>",
     flags=re.IGNORECASE,
 )
+
+
+# The trigger-context key carrying a stopped playbook replay's report into the
+# agent run that takes over from it. Written by the workflow worker, read by
+# ``format_workflow_execution_message`` — named once here because a drift
+# between those two sites is silent and the agent would re-run a side effect.
+PLAYBOOK_FALLBACK_CONTEXT_KEY = "playbook_fallback"

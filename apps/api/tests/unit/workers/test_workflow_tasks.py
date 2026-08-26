@@ -10,6 +10,7 @@ import pytest
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.models.notification.notification_models import ActionType, NotificationSourceEnum
+from app.models.workflow_execution_models import RecordedCall
 from app.services.analytics_service import AnalyticsEvents
 from app.services.workflow.notifications import (
     send_workflow_completion_notification,
@@ -145,7 +146,7 @@ class TestExecuteWorkflowById:
         mock_create_exec = AsyncMock(return_value=mock_execution)
         mock_complete_exec = AsyncMock()
         mock_increment = AsyncMock()
-        mock_execute_chat = AsyncMock(return_value="conv_123")
+        mock_execute_chat = AsyncMock(return_value=("conv_123", []))
 
         with (
             p_scheduler,
@@ -189,7 +190,7 @@ class TestExecuteWorkflowById:
             p_scheduler,
             patch(
                 "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
-                AsyncMock(return_value="conv_123"),
+                AsyncMock(return_value=("conv_123", [])),
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
             patch(
@@ -262,7 +263,7 @@ class TestExecuteWorkflowById:
             p_scheduler,
             patch(
                 "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
-                AsyncMock(return_value="conv_123"),
+                AsyncMock(return_value=("conv_123", [])),
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
             patch(
@@ -327,7 +328,7 @@ class TestExecuteWorkflowById:
             p_scheduler,
             patch(
                 "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
-                AsyncMock(return_value="conv_123"),
+                AsyncMock(return_value=("conv_123", [])),
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
             patch(
@@ -364,7 +365,7 @@ class TestExecuteWorkflowById:
             p_scheduler,
             patch(
                 "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
-                AsyncMock(return_value="conv_123"),
+                AsyncMock(return_value=("conv_123", [])),
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
             patch(
@@ -402,7 +403,7 @@ class TestExecuteWorkflowById:
             p_scheduler,
             patch(
                 "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
-                AsyncMock(return_value="conv_123"),
+                AsyncMock(return_value=("conv_123", [])),
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
             patch(
@@ -443,7 +444,7 @@ class TestExecuteWorkflowById:
             p_scheduler,
             patch(
                 "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
-                AsyncMock(return_value="conv_123"),
+                AsyncMock(return_value=("conv_123", [])),
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
             patch(
@@ -785,7 +786,15 @@ class TestExecuteWorkflowAsChat:
       - get_user_by_id
       - get_or_create_workflow_conversation
       - call_agent_silent  (the core agent invocation)
+      - reset_workflow_threads  (Postgres; proven in test_thread_reset.py)
     """
+
+    @pytest.fixture(autouse=True)
+    def reset_threads(self):
+        with patch(
+            "app.workers.tasks.workflow_tasks.reset_workflow_threads", new_callable=AsyncMock
+        ) as reset:
+            yield reset
 
     def _make_workflow(self, workflow_id: str | None = None, user_id: str = "user_abc"):
         wf = MagicMock()
@@ -826,7 +835,7 @@ class TestExecuteWorkflowAsChat:
                 return_value=("Result text", {}),
             ) as mock_call_agent,
         ):
-            conversation_id = await execute_workflow_as_chat(
+            conversation_id, _trace = await execute_workflow_as_chat(
                 workflow, {"user_id": workflow.user_id}, {}
             )
 
@@ -869,7 +878,7 @@ class TestExecuteWorkflowAsChat:
                 return_value=("Step 1 done. Step 2 done.", {}),
             ) as mock_call_agent,
         ):
-            conversation_id = await execute_workflow_as_chat(
+            conversation_id, _trace = await execute_workflow_as_chat(
                 workflow, {"user_id": workflow.user_id}, {}
             )
 
@@ -963,7 +972,7 @@ class TestExecuteWorkflowAsChat:
                 return_value=("Fallback result", {}),
             ) as mock_call_agent,
         ):
-            conversation_id = await execute_workflow_as_chat(
+            conversation_id, _trace = await execute_workflow_as_chat(
                 workflow, {"user_id": workflow.user_id}, {}
             )
 
@@ -1038,7 +1047,7 @@ class TestExecuteWorkflowAsChat:
                 return_value=("None user result", {}),
             ) as mock_call_agent,
         ):
-            conversation_id = await execute_workflow_as_chat(
+            conversation_id, _trace = await execute_workflow_as_chat(
                 workflow, {"user_id": workflow.user_id}, {}
             )
 
@@ -1078,6 +1087,82 @@ class TestExecuteWorkflowAsChat:
         assert user_msg.type == "user"
         assert user_msg.selectedWorkflow is not None
         assert user_msg.selectedWorkflow.id == workflow.id
+
+    async def test_it_resets_the_conversations_checkpoint_threads_before_running(
+        self, reset_threads
+    ):
+        """Without this the run replays every previous run out of Postgres."""
+        workflow = self._make_workflow()
+
+        with (
+            patch(
+                "app.workers.tasks.workflow_tasks.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value={"user_id": workflow.user_id, "timezone": "UTC"},
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value="conv_reset",
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.agents.core.agent.call_agent_silent",
+                new_callable=AsyncMock,
+                return_value=("Done", {}),
+            ),
+        ):
+            await execute_workflow_as_chat(workflow, {"user_id": workflow.user_id}, {})
+
+        reset_threads.assert_awaited_once_with("conv_reset")
+
+    async def test_it_returns_the_runs_tool_calls_as_the_trace(self):
+        """The trace is what the next run reads instead of the checkpoints."""
+        workflow = self._make_workflow()
+        tool_data = {
+            "tool_data": [
+                {
+                    "tool_name": "tool_calls_data",
+                    "data": {
+                        "tool_name": "GMAIL_FETCH",
+                        "inputs": {"query": "is:unread"},
+                        "output": "12 messages",
+                    },
+                }
+            ]
+        }
+
+        with (
+            patch(
+                "app.workers.tasks.workflow_tasks.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value={"user_id": workflow.user_id, "timezone": "UTC"},
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value="conv_trace",
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.agents.core.agent.call_agent_silent",
+                new_callable=AsyncMock,
+                return_value=("Done", tool_data),
+            ),
+        ):
+            _conversation_id, trace = await execute_workflow_as_chat(
+                workflow, {"user_id": workflow.user_id}, {}
+            )
+
+        assert [c.tool_name for c in trace] == ["GMAIL_FETCH"]
+        assert trace[0].args == {"query": "is:unread"}
+        assert trace[0].result_digest == "12 messages"
 
 
 # ---------------------------------------------------------------------------
@@ -1424,15 +1509,16 @@ class TestExecuteWorkflowByIdNotifications:
         # complete_execution should NOT have been called since execution_id is None
         mock_complete_exec.assert_not_awaited()
 
-    async def test_conversation_id_passed_to_complete_execution(self, ctx):
-        """The conversation id returned by execute_workflow_as_chat is forwarded
-        to complete_execution."""
+    async def test_conversation_id_and_trace_passed_to_complete_execution(self, ctx):
+        """The conversation id and recorded trace from execute_workflow_as_chat are
+        forwarded to complete_execution — the trace is what the next run reads."""
         workflow = _make_workflow()
 
         _, p_scheduler = _patch_scheduler(workflow)
 
         mock_execution = MagicMock()
         mock_execution.execution_id = str(uuid4())
+        recorded_call = RecordedCall(tool_name="GMAIL_FETCH", args={"query": "is:unread"})
 
         mock_complete_exec = AsyncMock()
 
@@ -1440,7 +1526,7 @@ class TestExecuteWorkflowByIdNotifications:
             p_scheduler,
             patch(
                 "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
-                AsyncMock(return_value="conv_123"),
+                AsyncMock(return_value=("conv_123", [recorded_call])),
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
             patch(
@@ -1459,6 +1545,7 @@ class TestExecuteWorkflowByIdNotifications:
         mock_complete_exec.assert_awaited_once()
         call_kwargs = mock_complete_exec.call_args.kwargs
         assert call_kwargs["conversation_id"] == "conv_123"
+        assert call_kwargs["trace"] == [recorded_call]
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,117 @@
+"""Contract tests for PlaybooksRepository against real Mongo.
+
+The invariant the whole design rests on is one active playbook per workflow with
+no version history, so the interesting assertions are that an overwrite leaves
+exactly one document behind and that a user can never reach another user's.
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+
+import pytest
+
+from app.db.repositories.playbooks import PlaybooksRepository
+from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus, PlaybookUpdate
+from app.utils.errors import EmptyUpdateError
+
+WORKFLOW_ID = "wf_contract"
+USER_ID = "user_contract"
+
+
+@pytest.fixture
+def repo(raw_collection) -> PlaybooksRepository:
+    return PlaybooksRepository()
+
+
+def make_doc(**overrides) -> PlaybookDocument:
+    now = datetime.now(UTC)
+    data = {
+        "workflow_id": WORKFLOW_ID,
+        "user_id": USER_ID,
+        "workflow_hash": "hash-1",
+        "raw_yaml": "description: first\nsteps: []\nsynthesize: s\n",
+        "description": "first",
+        "steps": [{"id": "one", "tool": "list_events", "args": {"calendar_id": "primary"}}],
+        "synthesize": "s",
+        "created_at": now,
+        "updated_at": now,
+    }
+    data.update(overrides)
+    return PlaybookDocument.model_validate(data)
+
+
+class TestPlaybooksRepository:
+    async def test_create_then_get_for_workflow_roundtrips_every_field(self, repo) -> None:
+        created = await repo.create(make_doc())
+        fetched = await repo.get_for_workflow(WORKFLOW_ID, USER_ID)
+        assert fetched == created
+
+    async def test_get_for_workflow_missing_returns_none(self, repo) -> None:
+        assert await repo.get_for_workflow("wf_nothing", USER_ID) is None
+
+    async def test_another_users_playbook_is_invisible(self, repo) -> None:
+        await repo.create(make_doc())
+        assert await repo.get_for_workflow(WORKFLOW_ID, "attacker") is None
+
+    async def test_upsert_creates_when_absent(self, repo, raw_collection) -> None:
+        stored = await repo.upsert_for_workflow(make_doc())
+        assert stored.description == "first"
+        assert await raw_collection.count_documents({"workflow_id": WORKFLOW_ID}) == 1
+
+    async def test_upsert_overwrites_in_place_keeping_one_document(
+        self, repo, raw_collection
+    ) -> None:
+        first = await repo.upsert_for_workflow(make_doc())
+        second = await repo.upsert_for_workflow(
+            make_doc(
+                description="second",
+                raw_yaml="description: second\nsteps: []\nsynthesize: s\n",
+                workflow_hash="hash-2",
+            )
+        )
+        assert second.playbook_id == first.playbook_id
+        assert second.description == "second"
+        assert second.workflow_hash == "hash-2"
+        assert await raw_collection.count_documents({"workflow_id": WORKFLOW_ID}) == 1
+
+    async def test_upsert_resets_the_last_run_outcome(self, repo) -> None:
+        await repo.upsert_for_workflow(make_doc())
+        await repo.record_run_outcome(WORKFLOW_ID, USER_ID, PlaybookRunStatus.FAILED)
+        replaced = await repo.upsert_for_workflow(make_doc(description="second"))
+        assert replaced.last_run_status is PlaybookRunStatus.NOT_RUN
+
+    async def test_record_run_outcome_persists(self, repo) -> None:
+        await repo.create(make_doc())
+        updated = await repo.record_run_outcome(WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUCCESS)
+        assert updated is not None
+        reread = await repo.get_for_workflow(WORKFLOW_ID, USER_ID)
+        assert reread is not None
+        assert reread.last_run_status is PlaybookRunStatus.SUCCESS
+
+    async def test_record_run_outcome_without_a_playbook_is_none(self, repo) -> None:
+        assert (
+            await repo.record_run_outcome("wf_nothing", USER_ID, PlaybookRunStatus.SUCCESS) is None
+        )
+
+    async def test_delete_for_workflow_removes_it_then_reports_false(self, repo) -> None:
+        await repo.create(make_doc())
+        assert await repo.delete_for_workflow(WORKFLOW_ID, USER_ID) is True
+        assert await repo.get_for_workflow(WORKFLOW_ID, USER_ID) is None
+        assert await repo.delete_for_workflow(WORKFLOW_ID, USER_ID) is False
+
+    async def test_delete_for_workflow_cannot_reach_another_user(self, repo) -> None:
+        created = await repo.create(make_doc())
+        assert await repo.delete_for_workflow(WORKFLOW_ID, "attacker") is False
+        assert await repo.get_for_workflow(WORKFLOW_ID, USER_ID) == created
+
+    async def test_empty_update_raises_empty_update_error(self, repo) -> None:
+        created = await repo.create(make_doc())
+        with pytest.raises(EmptyUpdateError):
+            await repo.update(created.playbook_id, PlaybookUpdate())
+
+    async def test_datetimes_come_back_tz_aware_utc(self, repo) -> None:
+        created = await repo.create(make_doc())
+        for value in (created.created_at, created.updated_at):
+            assert value.tzinfo is not None
+            assert value.utcoffset().total_seconds() == 0

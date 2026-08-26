@@ -1,0 +1,165 @@
+"""Playbook tools: write, read, and disable a workflow's frozen tool sequence.
+
+A workflow keeps at most one playbook. There is no edit path and no version
+history, because the agent revises by writing the whole document again, so a
+write always replaces what was there and a rejected write leaves the previous
+playbook untouched.
+"""
+
+from datetime import UTC, datetime
+from typing import Annotated, Any
+
+from langchain_core.runnables.config import RunnableConfig
+from langchain_core.tools import tool
+
+from app.constants.log_tags import LogTag
+from app.db.repositories.playbooks import playbook_repository
+from app.db.repositories.workflows import workflow_repository
+from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus
+from app.services.workflow.playbook.parser import (
+    PlaybookParseError,
+    parse_playbook,
+    validate_playbook,
+)
+from app.services.workflow.playbook.workflow_hash import workflow_hash
+from app.utils.workflow_utils import error_response, get_user_id, success_response
+from shared.py.wide_events import log
+
+
+@tool
+async def write_playbook(
+    config: RunnableConfig,
+    workflow_id: Annotated[str, "The workflow this playbook replays."],
+    yaml: Annotated[
+        str,
+        "The whole playbook document as YAML: description, steps, synthesize, "
+        "and ask when a step needs text a model has to write.",
+    ],
+) -> dict[str, Any]:
+    """
+    Freeze a workflow's settled tool sequence as a playbook, so later runs execute
+    it instead of reasoning it out again.
+
+    The document is parsed and checked against the real tools before anything is
+    stored: if it does not check out, NOTHING is written and the problems come
+    back so you can fix them and call this again. A successful write replaces the
+    workflow's previous playbook entirely, which is also how you revise one.
+
+    Only write a playbook when the same order of calls would work tomorrow
+    unchanged. A run whose order depends on what it finds is not a playbook.
+    """
+    log.set(tool={"name": "write_playbook", "action": "write"}, workflow_id=workflow_id)
+    try:
+        user_id = get_user_id(config)
+        workflow = await workflow_repository.get_for_user(workflow_id, user_id)
+        if workflow is None:
+            return error_response("workflow_not_found", f"No workflow {workflow_id} for this user.")
+
+        try:
+            body = parse_playbook(yaml)
+        except PlaybookParseError as exc:
+            log.warning(f"{LogTag.TOOL} write_playbook: unparseable", error_type="parse")
+            return error_response("invalid_playbook", exc.message)
+
+        validation = await validate_playbook(body)
+        if not validation.valid:
+            log.warning(f"{LogTag.TOOL} write_playbook: rejected", issues=len(validation.issues))
+            return error_response(
+                "invalid_playbook",
+                "The playbook was not written. Fix these and call write_playbook again: "
+                + "; ".join(f"{issue.where}: {issue.problem}" for issue in validation.issues),
+            )
+
+        now = datetime.now(UTC)
+        stored = await playbook_repository.upsert_for_workflow(
+            PlaybookDocument(
+                workflow_id=workflow_id,
+                user_id=user_id,
+                workflow_hash=workflow_hash(workflow.prompt, workflow.steps),
+                raw_yaml=yaml,
+                created_at=now,
+                updated_at=now,
+                **body.model_dump(),
+            )
+        )
+        log.set_ns("playbook", id=stored.playbook_id, steps=len(stored.steps))
+        return success_response(
+            {"playbook_id": stored.playbook_id, "steps": len(stored.steps)},
+            "Playbook written. Later runs of this workflow replay it.",
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.TOOL} write_playbook: exception", error_type=type(e).__name__, exc_info=True
+        )
+        return error_response("write_failed", str(e))
+
+
+@tool
+async def read_playbook(
+    config: RunnableConfig,
+    workflow_id: Annotated[str, "The workflow whose playbook you want to read."],
+) -> dict[str, Any]:
+    """
+    Read back a workflow's playbook: the YAML as written, when it was written,
+    and whether the most recent run replayed it or fell back to reasoning.
+
+    Read before revising, so you edit the document that exists rather than
+    guessing at it.
+    """
+    log.set(tool={"name": "read_playbook", "action": "read"}, workflow_id=workflow_id)
+    try:
+        user_id = get_user_id(config)
+        playbook = await playbook_repository.get_for_workflow(workflow_id, user_id)
+        if playbook is None:
+            return success_response(
+                {"exists": False},
+                f"Workflow {workflow_id} has no playbook yet.",
+            )
+        return success_response(
+            {
+                "exists": True,
+                "yaml": playbook.raw_yaml,
+                "written_at": playbook.updated_at.isoformat(),
+                "last_run_used_it": playbook.last_run_status is not PlaybookRunStatus.NOT_RUN,
+                "last_run_status": playbook.last_run_status.value,
+            }
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.TOOL} read_playbook: exception", error_type=type(e).__name__, exc_info=True
+        )
+        return error_response("read_failed", str(e))
+
+
+@tool
+async def disable_playbook(
+    config: RunnableConfig,
+    workflow_id: Annotated[str, "The workflow that should go back to reasoning each run."],
+    reason: Annotated[str, "Why this sequence no longer holds. Be specific."],
+) -> dict[str, Any]:
+    """
+    Delete a workflow's playbook so its runs go back to being reasoned out.
+
+    Use this when the frozen order stopped matching reality and you cannot write
+    a correct replacement, for example the run now depends on what it finds.
+    """
+    log.set(tool={"name": "disable_playbook", "action": "disable"}, workflow_id=workflow_id)
+    try:
+        user_id = get_user_id(config)
+        removed = await playbook_repository.delete_for_workflow(workflow_id, user_id)
+        if not removed:
+            return success_response(
+                {"disabled": False}, f"Workflow {workflow_id} had no playbook to disable."
+            )
+        log.set_ns("playbook", disabled=True, reason=reason)
+        return success_response(
+            {"disabled": True}, "Playbook removed. This workflow reasons out every run again."
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.TOOL} disable_playbook: exception", error_type=type(e).__name__, exc_info=True
+        )
+        return error_response("disable_failed", str(e))
+
+
+tools = [write_playbook, read_playbook, disable_playbook]

@@ -546,6 +546,7 @@ module = [
   "app.models.todo_models",
   "app.models.mail_models",
   "app.models.workflow_execution_models",
+  "app.models.playbook_models",
   "app.models.conversation_models",
   "app.models.payment_models",
   "app.models.usage_models",

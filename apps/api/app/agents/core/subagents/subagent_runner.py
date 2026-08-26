@@ -35,7 +35,7 @@ from app.agents.prompts.workflow_prompts import (
     WORKFLOW_AUTO_NOTIFY_SECTION,
     WORKFLOW_SILENT_NOTIFY_SECTION,
 )
-from app.constants.general import FINISH_TASK_NAME
+from app.constants.general import EXECUTOR_THREAD_PREFIX, FINISH_TASK_NAME
 from app.constants.hil import LANGGRAPH_INTERRUPT_KEY
 from app.constants.llm import EXECUTOR_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
@@ -645,16 +645,33 @@ def compose_executor_brief(
     acceptance_criteria: list[str],
     *,
     verbatim_request: str | None = None,
+    last_run: str | None = None,
+    playbook_check: str | None = None,
 ) -> str:
-    """Fold the definition-of-done (and verbatim request) into the executor brief."""
+    """Fold the definition-of-done (and verbatim request, previous run) into the brief.
+
+    ``last_run`` is a workflow's previous run, already rendered by
+    ``run_trace.render_last_run`` — the workflow's memory now that its checkpoint
+    threads are dropped before each fire.
+
+    ``playbook_check`` asks the executor, once the work is done, whether the
+    sequence it just ran is worth freezing as a playbook. It rides in the brief
+    rather than in the finished result's narration because ``write_playbook`` is
+    an executor tool and comms cannot reach it. Placed last, after the
+    definition of done, so it reads as the closing instruction it is.
+    """
     criteria = [c.strip() for c in acceptance_criteria if c and c.strip()]
     parts: list[str] = []
     if verbatim_request:
         parts.append(f"Original request (verbatim):\n{verbatim_request.strip()}")
     parts.append(task)
+    if last_run:
+        parts.append(last_run.strip())
     if criteria:
         lines = "\n".join(f"- {c}" for c in criteria)
         parts.append(f"Definition of done (every item must be true before you finish):\n{lines}")
+    if playbook_check:
+        parts.append(playbook_check.strip())
     return "\n\n".join(parts)
 
 
@@ -680,7 +697,7 @@ async def prepare_executor_execution(
     # executor (and the subagents it spawns, whose threads are derived from
     # this one) retains its history across call_executor invocations within
     # the same conversation.
-    executor_thread_id = f"executor_{thread_id}"
+    executor_thread_id = f"{EXECUTOR_THREAD_PREFIX}{thread_id}"
 
     # VFS session stays pinned to the conversation thread so files written by
     # one executor call are visible to the next.

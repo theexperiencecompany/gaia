@@ -63,7 +63,11 @@ async def _run_task(
             side_effect=budget_side_effect,
         ) as budget,
         patch(f"{MODULE}.create_execution", new_callable=AsyncMock) as create,
-        patch(f"{MODULE}.execute_workflow_as_chat", new_callable=AsyncMock, return_value="conv-1"),
+        patch(
+            f"{MODULE}.execute_workflow_as_chat",
+            new_callable=AsyncMock,
+            return_value=("conv-1", []),
+        ),
         patch(f"{MODULE}.complete_execution", new_callable=AsyncMock),
         patch(f"{MODULE}.WorkflowService.increment_execution_count", new_callable=AsyncMock),
         patch(f"{MODULE}.capture_event"),

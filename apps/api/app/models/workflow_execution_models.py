@@ -5,17 +5,44 @@ Models for tracking workflow execution history.
 """
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.db.repositories.base import MongoDocument
+
+#: How much of a tool's result is kept on the record. Enough to tell the next run
+#: what came back (ids, a count, a cursor) without storing message bodies — the
+#: whole point is that a run's history stops growing with the number of runs.
+RESULT_DIGEST_MAX_CHARS = 400
 
 # The run-states an execution record may hold: created as ``running``, then
 # exactly one terminal write. Named once here because the document, the update
 # model, the repository's ``complete`` and the service's ``complete_execution``
 # all speak it (Type Safety items 3 and 5).
 WorkflowExecutionStatus = Literal["running", "success", "failed"]
+
+
+class RecordedCall(BaseModel):
+    """One tool call as it actually ran.
+
+    Captured from the run's own tool events — the same stream the chat UI
+    renders — so recording costs nothing beyond persisting what was already
+    collected. ``args`` is what makes this useful: it is the material an agent
+    reads to author a playbook, and the cursor a later run picks up from.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    tool_name: str
+    tool_category: str = ""
+    #: Which subagent ran it, so a recorded handoff keeps its children — a trace
+    #: flattened to the executor level is just one ``handoff`` call and useless.
+    subagent_id: str | None = None
+    args: dict[str, Any] = Field(default_factory=dict)
+    result_digest: str = Field(
+        default="", max_length=RESULT_DIGEST_MAX_CHARS, description="Bounded result summary"
+    )
 
 
 class WorkflowExecution(BaseModel):
@@ -43,6 +70,11 @@ class WorkflowExecution(BaseModel):
         default="manual",
         description="What triggered the execution: manual, schedule, or integration name",
     )
+    #: What this run actually did, in order. Replaces the LangGraph checkpoint as
+    #: the way a workflow remembers itself: the previous run's trace is injected
+    #: into the next run's opening message, so history stops being re-sent as a
+    #: full transcript on every fire.
+    trace: list[RecordedCall] = Field(default_factory=list)
 
 
 class WorkflowExecutionsResponse(BaseModel):
@@ -75,3 +107,4 @@ class WorkflowExecutionUpdate(BaseModel):
     summary: str | None = None
     error_message: str | None = None
     conversation_id: str | None = None
+    trace: list[RecordedCall] | None = None

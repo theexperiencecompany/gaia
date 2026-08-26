@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import uuid4
 
+from app.agents.prompts.playbook_prompts import PLAYBOOK_FALLBACK_TEMPLATE
 from app.agents.prompts.workflow_prompts import (
     TODO_WORKFLOW_DESCRIPTION_TEMPLATE,
     TODO_WORKFLOW_PROMPT_TEMPLATE,
@@ -15,16 +16,21 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     CostBudgetExceededException,
     RateLimitExceededException,
 )
+from app.config.settings import settings
+from app.constants.agents import (
+    PLAYBOOK_FALLBACK_CONTEXT_KEY,
+    AgentTag,
+    wrap_agent_payload,
+)
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import get_websocket_manager
+from app.db.repositories.playbooks import playbook_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
-from app.decorators import enforce_daily_cost_budget, tiered_rate_limit
-from app.models.chat_models import MessageModel
-from app.models.message_models import (
-    MessageRequestWithHistory,
-    SelectedWorkflowData,
-)
+from app.decorators import enforce_daily_cost_budget
+from app.decorators.rate_limiting import enforce_tiered_limit
+from app.models.chat_models import MessageModel, ToolDataEntry
+from app.models.message_models import MessageRequestWithHistory
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -37,8 +43,10 @@ from app.models.notification.notification_models import (
     RedirectConfig,
 )
 from app.models.payment_models import PlanType
+from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus
 from app.models.todo_models import TodoUpdate
 from app.models.user_models import AuthenticatedUser
+from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     TriggerConfig,
@@ -55,12 +63,19 @@ from app.services.triggers.batching import (
 )
 from app.services.user_service import get_user_by_id
 from app.services.workflow.conversation_service import (
+    add_playbook_run_messages,
     add_workflow_execution_messages,
+    build_selected_workflow_data,
     get_or_create_workflow_conversation,
 )
 from app.services.workflow.execution_service import complete_execution, create_execution
+from app.services.workflow.playbook.evaluator import PlaybookUser
+from app.services.workflow.playbook.runner import PlaybookRunResult, run_playbook
+from app.services.workflow.playbook.workflow_hash import workflow_hash
+from app.services.workflow.run_trace import build_trace
 from app.services.workflow.scheduler import WorkflowScheduler, workflow_scheduler
 from app.services.workflow.service import WorkflowService
+from app.services.workflow.thread_reset import reset_workflow_threads
 from app.utils.errors import create_error
 from app.utils.timezone import Timezone, format_local_time
 from shared.py.wide_events import WorkflowContext, log
@@ -484,6 +499,94 @@ def _origin_for(trigger_type: str) -> LimitHitOrigin:
     )
 
 
+def _fallback_note(result: PlaybookRunResult) -> str:
+    """The stopped replay, addressed to the agent that has to finish the run."""
+    completed = "\n".join(f"- {line}" for line in result.completed) or "- nothing"
+    return wrap_agent_payload(
+        AgentTag.PLAYBOOK_FALLBACK,
+        PLAYBOOK_FALLBACK_TEMPLATE.format(
+            failure=result.failure or "The replay stopped without saying why.",
+            completed=completed,
+        ),
+    )
+
+
+async def _run_workflow(
+    workflow: Workflow, workflow_id: str, context: dict[str, Any]
+) -> tuple[str, list[RecordedCall]]:
+    """Run the fire on whichever path can carry it. Returns the conversation and trace.
+
+    A playbook is replayed only while its ``workflow_hash`` still matches the
+    workflow: the frozen sequence answered one particular prompt and set of
+    steps, so a user edit makes it an answer to a question nobody asked. A
+    replay that stops partway hands the rest to the agent WITH its own record,
+    which is the only thing standing between a half-finished run and a second
+    copy of every side effect it already caused.
+    """
+    # ONE charge per fire, before any path runs. It lives here rather than on the
+    # two run functions because a replay that stops partway hands the rest to the
+    # agent path: charged on both, one result would cost the user two executions,
+    # so a drifting playbook would burn their quota at double rate because OUR
+    # optimisation failed. Charging up front also keeps the pre-work refusal the
+    # decorator gave us — an over-quota user is stopped before any side effect,
+    # not after. Actual resource consumption stays metered by
+    # ``enforce_daily_cost_budget`` above, which is where "it ran twice" belongs.
+    await enforce_tiered_limit(workflow.user_id, "trigger_workflow_executions")
+
+    user: AuthenticatedUser = {"user_id": workflow.user_id}
+    playbook = await playbook_repository.get_for_workflow(workflow_id, workflow.user_id)
+
+    if playbook is None:
+        log.set_ns("playbook", mode="agent", reason="no_playbook", llm_calls=0)
+        return await execute_workflow_as_chat(workflow, user, context)
+
+    if playbook.workflow_hash != workflow_hash(workflow.prompt, workflow.steps):
+        log.set_ns(
+            "playbook",
+            mode="agent",
+            reason="stale_workflow_hash",
+            playbook_id=playbook.playbook_id,
+            llm_calls=0,
+        )
+        return await execute_workflow_as_chat(workflow, user, context)
+
+    conversation_id, result = await execute_workflow_as_playbook(workflow, user, context, playbook)
+    await playbook_repository.record_run_outcome(
+        workflow_id,
+        workflow.user_id,
+        PlaybookRunStatus.SUCCESS if result.ok else PlaybookRunStatus.FAILED,
+    )
+    if result.ok:
+        log.set_ns(
+            "playbook",
+            mode="replay",
+            reason="workflow_hash_match",
+            playbook_id=playbook.playbook_id,
+            llm_calls=result.llm_calls,
+        )
+        return conversation_id, result.trace
+
+    log.set_ns(
+        "playbook",
+        mode="agent",
+        reason="replay_stopped",
+        playbook_id=playbook.playbook_id,
+        llm_calls=result.llm_calls,
+    )
+    log.warning(
+        f"{LogTag.WORKER} Playbook replay stopped; the agent is finishing this run",
+        workflow_id=workflow_id,
+        playbook_id=playbook.playbook_id,
+        failure=result.failure,
+    )
+    conversation_id, agent_trace = await execute_workflow_as_chat(
+        workflow, user, {**context, PLAYBOOK_FALLBACK_CONTEXT_KEY: _fallback_note(result)}
+    )
+    # The replay's own calls stay on the record: they are what the agent was
+    # told not to repeat, and the next run reads this trace as its history.
+    return conversation_id, [*result.trace, *agent_trace]
+
+
 async def execute_workflow_by_id(
     ctx: dict[str, Any],  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
     workflow_id: str,
@@ -645,13 +748,11 @@ async def execute_workflow_by_id(
         )
         execution_id = execution.execution_id
 
-        # Run the workflow as a silent chat turn. The executor does all the
-        # steps and its result is delivered as the completion notification
-        # from the background delivery path (gated by workflow_id), so there
-        # is no separate notification call here.
-        conversation_id = await execute_workflow_as_chat(
-            workflow, {"user_id": workflow.user_id}, context or {}
-        )
+        # Replay the workflow's playbook when it still describes this workflow,
+        # otherwise run the agent. A replay that stops partway hands the rest of
+        # the run to the agent, carrying what it already did so the agent does
+        # not repeat a side effect.
+        conversation_id, trace = await _run_workflow(workflow, workflow_id, context or {})
 
         # Track successful execution
         await WorkflowService.increment_execution_count(
@@ -664,6 +765,7 @@ async def execute_workflow_by_id(
             status="success",
             summary="Workflow executed",
             conversation_id=conversation_id,
+            trace=trace,
         )
 
         # Analytics: the run-now endpoint already captures manual executions at
@@ -734,14 +836,112 @@ async def execute_workflow_by_id(
                 )
 
 
-# No static origin: this decorator is evaluated at import, long before the
-# trigger is known. The seam reads the run's origin instead, which
-# execute_workflow_by_id sets from trigger_type.
-@tiered_rate_limit("trigger_workflow_executions")
+async def _resolve_workflow_user(workflow: Workflow, user_id: str) -> AuthenticatedUser:
+    """The user bag a workflow run executes as, with its home zone resolved.
+
+    There is no request header here (ARQ worker), so prefer the real profile
+    zone; fall back to the workflow's own schedule zone before UTC so a missing
+    or poisoned profile doesn't silently run hours off. Both run paths read the
+    zone off ``user_data["timezone"]`` — the agent through ``build_agent_config``,
+    the replay through ``$now`` / ``$today``.
+    """
+    try:
+        # The legacy bridge dict is a spread of a validated UserDocument plus
+        # the user_id stamped below — AuthenticatedUser's shape by construction
+        # (Type Safety item 12).
+        user_data = cast(AuthenticatedUser, await get_user_by_id(user_id) or {})
+        user_data["user_id"] = user_id
+
+        profile_tz = (user_data.get("timezone") or "").strip()
+        schedule_tz = (getattr(workflow.trigger_config, "timezone", None) or "").strip()
+        resolved_tz = Timezone.parse(
+            profile_tz
+            if profile_tz and profile_tz.upper() != "UTC"
+            else (schedule_tz or profile_tz or "UTC")
+        )
+        if resolved_tz.is_utc:
+            log.warning(
+                f"{LogTag.WORKER} Workflow agent time falling back to UTC; "
+                "no real user/schedule timezone",
+                workflow_id=workflow.id,
+                user_id=user_id,
+            )
+        log.set(workflow_agent_timezone=resolved_tz.value)
+        user_data["timezone"] = resolved_tz.value
+    except Exception as e:
+        log.warning(
+            f"{LogTag.WORKER} Could not resolve workflow timezone",
+            user_id=user_id,
+            workflow_id=workflow.id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        user_data = {"user_id": user_id}
+    return user_data
+
+
+# Deliberately NOT decorated with ``tiered_rate_limit``. One fire must cost the
+# user exactly one execution against their plan quota, and a replay that stops
+# partway hands the run to the agent path — which carries the decorator. Charging
+# here as well would bill twice for one result, so a user whose playbook drifts
+# would burn their quota at double rate because OUR optimisation failed. The
+# caller charges the successful-replay case explicitly instead. Real resource
+# consumption is metered separately by ``enforce_daily_cost_budget``, which is
+# where "it genuinely ran twice" belongs.
+async def execute_workflow_as_playbook(
+    workflow: Workflow,
+    user: AuthenticatedUser,
+    context: dict[str, Any],
+    playbook: PlaybookDocument,
+) -> tuple[str, PlaybookRunResult]:
+    """Replay the workflow's playbook and write the run into its conversation.
+
+    Returns the conversation id and the replay's own report. A stopped replay is
+    NOT an exception: it comes back with ``ok=False`` so the caller can hand the
+    rest of the run to the agent knowing exactly what already happened.
+    """
+    user_id = user["user_id"]
+    user_data = await _resolve_workflow_user(workflow, user_id)
+    conversation_id = await get_or_create_workflow_conversation(
+        workflow_id=workflow.id,
+        user_id=user_id,
+        workflow_title=workflow.title,
+    )
+
+    result = await run_playbook(
+        playbook,
+        user=PlaybookUser(
+            email=user_data.get("email") or "",
+            name=user_data.get("name") or "",
+            timezone=user_data.get("timezone") or Timezone.utc().value,
+        ),
+        conversation_id=conversation_id,
+        trigger=context,
+    )
+
+    # Only a finished replay writes the turn. A stopped one leaves the
+    # conversation to the agent run that takes over, so the user sees one
+    # result for one fire instead of a half-run followed by a real one.
+    if result.ok:
+        await add_playbook_run_messages(
+            conversation_id=conversation_id,
+            user_id=user_id,
+            workflow=workflow,
+            response=result.text,
+            trace=result.trace,
+        )
+    return conversation_id, result
+
+
+# The plan-quota charge moved up to ``_run_workflow``, which is now the single
+# place a fire is billed — see the note there. It cannot live here any more:
+# a replay that stops partway calls this function to finish the run, and one
+# result must never cost the user two executions. The seam still reads the run's
+# origin, which execute_workflow_by_id sets from trigger_type.
 async def execute_workflow_as_chat(
     workflow: Workflow, user: AuthenticatedUser, context: dict[str, Any]
-) -> str:
-    """Run a workflow as a silent chat turn and return its conversation id.
+) -> tuple[str, list[RecordedCall]]:
+    """Run a workflow as a silent chat turn; return its conversation id and trace.
 
     The workflow is fed to the agent exactly like an interactive chat turn (same
     ``call_agent_silent`` entry, same ``selectedWorkflow`` awareness). Comms
@@ -750,6 +950,10 @@ async def execute_workflow_as_chat(
     notification from the background executor path (gated by ``workflow_id`` in
     the trigger context), so this function only kicks off the run and persists
     the trigger message; it does not build or send the result here.
+
+    The run's tool calls come back as the trace so the caller can persist them on
+    the execution record — the next run reads that instead of replaying this one
+    out of the conversation's checkpoints, which is why they are reset below.
     """
 
     # Avoid circular import
@@ -764,42 +968,7 @@ async def execute_workflow_as_chat(
             user_id=user_id,
         )
 
-        # Resolve the agent's home zone for this run. There is no request header
-        # here (ARQ worker), so prefer the real profile zone; fall back to the
-        # workflow's own schedule zone before UTC so a missing/poisoned profile
-        # doesn't silently run the agent hours off in UTC. build_agent_config
-        # reads it off user_data["timezone"].
-        try:
-            # The legacy bridge dict is a spread of a validated UserDocument plus
-            # the user_id stamped below — AuthenticatedUser's shape by construction
-            # (Type Safety item 12).
-            user_data = cast(AuthenticatedUser, await get_user_by_id(user_id) or {})
-            user_data["user_id"] = user_id
-
-            profile_tz = (user_data.get("timezone") or "").strip()
-            schedule_tz = (getattr(workflow.trigger_config, "timezone", None) or "").strip()
-            resolved_tz = Timezone.parse(
-                profile_tz
-                if profile_tz and profile_tz.upper() != "UTC"
-                else (schedule_tz or profile_tz or "UTC")
-            )
-            if resolved_tz.is_utc:
-                log.warning(
-                    f"{LogTag.WORKER} Workflow agent time falling back to UTC; no real user/schedule timezone",
-                    workflow_id=workflow.id,
-                    user_id=user_id,
-                )
-            log.set(workflow_agent_timezone=resolved_tz.value)
-            user_data["timezone"] = resolved_tz.value
-        except Exception as e:
-            log.warning(
-                f"{LogTag.WORKER} Could not resolve workflow timezone",
-                user_id=user_id,
-                workflow_id=workflow.id,
-                error_type=type(e).__name__,
-                error=str(e),
-            )
-            user_data = {"user_id": user_id}
+        user_data = await _resolve_workflow_user(workflow, user_id)
 
         # Get or create the workflow conversation for thread context
         conversation_id = await get_or_create_workflow_conversation(
@@ -809,21 +978,13 @@ async def execute_workflow_as_chat(
         )
         log.set(conversation_context_found=bool(conversation_id))
 
-        selected_workflow_data = SelectedWorkflowData(
-            id=workflow.id,
-            title=workflow.title,
-            description=workflow.description,
-            prompt=workflow.prompt,
-            steps=[
-                {
-                    "id": step.id,
-                    "title": step.title,
-                    "description": step.description,
-                    "category": step.category,
-                }
-                for step in workflow.steps
-            ],
-        )
+        # Drop the checkpoint threads this conversation accumulated, so the run
+        # starts clean instead of replaying every previous run. The previous run
+        # reaches the executor as its recorded trace (see call_executor).
+        if settings.WORKFLOW_THREAD_RESET_ENABLED:
+            await reset_workflow_threads(conversation_id)
+
+        selected_workflow_data = build_selected_workflow_data(workflow)
 
         # Persist the trigger as the user message. The text is left empty so the
         # UI renders just the workflow card (via selectedWorkflow), not a literal
@@ -852,7 +1013,7 @@ async def execute_workflow_as_chat(
 
         # Same entry as chat, silent. workflow_id/title in the trigger context
         # routes the executor's final result to the completion notification.
-        await call_agent_silent(
+        _message, tool_data = await call_agent_silent(
             request=request,
             conversation_id=conversation_id,
             user=user_data,
@@ -865,7 +1026,10 @@ async def execute_workflow_as_chat(
             },
         )
 
-        return conversation_id
+        # `call_agent_silent` returns the accumulated bag; its "tool_data" list is
+        # the ordered entries (executor's and its subagents') this run emitted.
+        entries = cast(list[ToolDataEntry], tool_data.get("tool_data") or [])
+        return conversation_id, build_trace(entries)
 
     except Exception as e:
         # Re-raise so caller marks execution as failed instead of fake-success.

@@ -266,7 +266,7 @@ class TestWorkerRejectsStaleFire:
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
-                AsyncMock(return_value="conv_1"),
+                AsyncMock(return_value=("conv_1", [])),
             ),
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()

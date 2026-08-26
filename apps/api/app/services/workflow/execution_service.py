@@ -10,11 +10,13 @@ from uuid import uuid4
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.models.workflow_execution_models import (
+    RecordedCall,
     WorkflowExecution,
     WorkflowExecutionDocument,
     WorkflowExecutionsResponse,
     WorkflowExecutionStatus,
 )
+from app.services.workflow.run_trace import render_last_run
 from shared.py.wide_events import log
 
 
@@ -71,6 +73,7 @@ async def complete_execution(
     summary: str | None = None,
     error_message: str | None = None,
     conversation_id: str | None = None,
+    trace: list[RecordedCall] | None = None,
 ) -> bool:
     """
     Update an execution record on completion.
@@ -81,6 +84,8 @@ async def complete_execution(
         summary: Brief summary of what was accomplished
         error_message: Error message if failed
         conversation_id: Conversation ID if not set at creation
+        trace: The tool calls this run made, which the next run reads instead of
+            replaying the conversation's checkpoints
 
     Returns:
         True if update succeeded, False otherwise
@@ -91,6 +96,7 @@ async def complete_execution(
         summary=summary,
         error_message=error_message,
         conversation_id=conversation_id,
+        trace=trace,
     )
     if updated is None:
         log.warning(
@@ -121,6 +127,16 @@ async def complete_execution(
     )
 
     return True
+
+
+async def get_last_run_brief(workflow_id: str, user_id: str) -> str:
+    """The previous run's recorded trace, rendered for the next run's executor brief.
+
+    Empty when the workflow has never recorded one — a first run, or every prior
+    run predating the trace.
+    """
+    previous = await workflow_executions_repository.find_latest_with_trace(workflow_id, user_id)
+    return "" if previous is None else render_last_run(previous)
 
 
 async def get_workflow_executions(

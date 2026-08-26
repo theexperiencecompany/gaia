@@ -293,6 +293,7 @@ class ToolRegistry:
             manual_tool,
             memory_tools,
             notification_tool,
+            playbook_tools,
             reminder_tool,
             research_tool,
             skill_tools,
@@ -363,6 +364,11 @@ class ToolRegistry:
             "workflows",
             tools=workflow_tool.tools,
             destructive_tools={"execute_workflow"},
+        )
+        self._add_category(
+            "playbooks",
+            tools=playbook_tools.tools,
+            destructive_tools=set(),
         )
         self._add_category(
             "control",
