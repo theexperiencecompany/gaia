@@ -48,6 +48,9 @@ from app.constants.sandbox import (
 from app.db.repositories.e2b_sandboxes import e2b_sandbox_repository
 from app.decorators import enforce_rate_limit
 from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState
+from app.services.providers.provider_credentials_service import (
+    resolve as resolve_e2b_config,
+)
 from app.services.sandbox.artifact_watcher import start_watcher_for
 from app.services.sandbox.local_sandbox import (
     LocalDockerSandbox,
@@ -86,15 +89,29 @@ class SandboxRateLimitError(SandboxAcquisitionError):
     """Raised when the user has exhausted their sandbox-creation rate limit."""
 
 
-def use_local_sandbox() -> bool:
+async def _resolved_e2b_api_key() -> str | None:
+    """The E2B key from the credential store, falling back to the environment.
+
+    Single seam for every E2B routing/creation decision in this module: a key
+    saved in Settings (provider ``e2b``) works without a restart and wins over
+    ``E2B_API_KEY``. The service caches resolutions for 60s, so repeated
+    checks per acquire are free.
+    """
+    config = await resolve_e2b_config("e2b")
+    return config["api_key"] if config else None
+
+
+async def use_local_sandbox() -> bool:
     """True when coding sandboxes should be local Docker-exec containers.
 
-    Self-host without an E2B key is the only mode that routes here: hosted
-    plans always have E2B, and self-host WITH a key gets the real (paused-VM)
-    experience. Checked per acquire so adding a key to .env switches the
-    backend on the next call with no restart.
+    Self-host without a resolvable E2B credential is the only mode that routes
+    here: hosted plans always have E2B, and self-host WITH a key gets the real
+    (paused-VM) experience. Checked per acquire so adding a key — to .env or
+    Settings — switches the backend on the next call with no restart.
     """
-    return settings.ENV == "selfhost" and not settings.E2B_API_KEY
+    if settings.ENV != "selfhost":
+        return False
+    return await _resolved_e2b_api_key() is None
 
 
 @contextlib.asynccontextmanager
@@ -261,7 +278,8 @@ async def _enforce_creation_limit(user_id: str) -> None:
 
 async def _create_fresh_sandbox(user_id: str, shard_id: int) -> AsyncSandbox:
     """Provision a new E2B sandbox for the user, run mount script, return handle."""
-    if not settings.E2B_API_KEY:
+    e2b_api_key = await _resolved_e2b_api_key()
+    if not e2b_api_key:
         raise SandboxAcquisitionError("E2B_API_KEY is not configured")
     if not settings.E2B_TEMPLATE_ID:
         raise SandboxAcquisitionError("E2B_TEMPLATE_ID is not configured")
@@ -283,6 +301,7 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int) -> AsyncSandbox:
             template=settings.E2B_TEMPLATE_ID,
             timeout=SANDBOX_LIFETIME_SECONDS,
             metadata={"user_id": user_id, "shard_id": str(shard_id)},
+            api_key=e2b_api_key,
         )
     sandbox_id = getattr(sbx, "sandbox_id", None)
     _record(
@@ -439,12 +458,16 @@ async def _connect_sandbox(sandbox_id: str) -> AsyncSandbox | None:
     separate `resume()` in the SDK. Passing `timeout` refreshes the sandbox's
     server-side lifetime so a resumed sandbox doesn't inherit the SDK's short
     default. Bounded so a hung E2B control-plane call falls through to a fresh
-    create instead of stalling the agent.
+    create instead of stalling the agent. The API key resolves store-first so
+    connect works when the key lives in Settings rather than the environment.
     """
+    e2b_api_key = await _resolved_e2b_api_key()
     async with fs_timer(FsOps.SBX_CONNECT_RESUME):
         try:
             return await asyncio.wait_for(
-                AsyncSandbox.connect(sandbox_id, timeout=SANDBOX_LIFETIME_SECONDS),
+                AsyncSandbox.connect(
+                    sandbox_id, timeout=SANDBOX_LIFETIME_SECONDS, api_key=e2b_api_key
+                ),
                 timeout=SANDBOX_CONNECT_TIMEOUT_SECONDS,
             )
         except Exception as e:
@@ -793,7 +816,7 @@ async def acquire_sandbox(user_id: str) -> AsyncIterator[AsyncSandbox | LocalDoc
     if not user_id:
         raise SandboxAcquisitionError("user_id is required")
 
-    if use_local_sandbox():
+    if await use_local_sandbox():
         async with _acquire_local_sandbox(user_id) as sbx:
             yield sbx
         return

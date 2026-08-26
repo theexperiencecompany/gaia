@@ -75,6 +75,7 @@ from app.services.providers.provider_credentials_service import (
     ProviderConfig,
     _env_fallback,
     resolve,
+    resolved_configs,
 )
 from shared.py.wide_events import log
 
@@ -155,7 +156,10 @@ PROVIDER_PRIORITY: dict[int, LLMProviderName] = {
 # keys (no LLM lane, but their availability reads through the same snapshot).
 _RUNTIME_CONFIG_PROVIDERS: tuple[str, ...] = CREDENTIAL_PROVIDERS
 
-_runtime_configs: dict[str, ProviderConfig | None] = {}
+# The runtime snapshot itself lives in the credential service — the data owner
+# — and every resolve() mirrors into it. This alias keeps the historical name
+# for this module's sync readers; both names are ONE dict.
+_runtime_configs = resolved_configs
 
 NO_PROVIDER_CONFIGURED_MESSAGE = (
     "No AI provider configured. Open Settings → AI Providers or run the setup wizard."
@@ -165,12 +169,10 @@ NO_PROVIDER_CONFIGURED_MESSAGE = (
 async def resolve_provider_config(provider: str) -> ProviderConfig | None:
     """The provider's active configuration from the credential service.
 
-    Thin async seam over the service's ``resolve``; the result is mirrored
-    into :data:`_runtime_configs` so sync consumers see it.
+    Thin async seam over the service's ``resolve``; resolve mirrors every
+    result into the shared snapshot so sync consumers see it.
     """
-    config = await resolve(provider)
-    _runtime_configs[provider] = config
-    return config
+    return await resolve(provider)
 
 
 async def refresh_provider_configs() -> None:

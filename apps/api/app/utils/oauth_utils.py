@@ -7,7 +7,7 @@ from fastapi import HTTPException
 import httpx
 
 from app.config.settings import settings
-from app.config.token_repository import token_repository
+from app.config.token_repository import resolve_google_oauth_credentials, token_repository
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
@@ -59,9 +59,20 @@ async def build_google_oauth_url(
     # Combine all scopes (base + existing + new), removing duplicates
     all_scopes = list(set(base_scopes + existing_scopes + integration_scopes))
 
+    # Credentials resolve store-first; without both halves there is no valid
+    # authorization URL to build.
+    credentials = await resolve_google_oauth_credentials()
+    if credentials is None:
+        log.error(f"{LogTag.OAUTH} Google OAuth is not configured; cannot build authorize URL")
+        raise HTTPException(
+            status_code=503,
+            detail="Google integration is not configured on this instance.",
+        )
+    client_id, _ = credentials
+
     params = {
         "response_type": "code",
-        "client_id": settings.GOOGLE_CLIENT_ID,
+        "client_id": client_id,
         "redirect_uri": settings.GOOGLE_CALLBACK_URL,
         "scope": " ".join(all_scopes),
         "access_type": "offline",

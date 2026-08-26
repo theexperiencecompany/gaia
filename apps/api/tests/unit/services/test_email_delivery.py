@@ -40,11 +40,21 @@ def _support_notification(**overrides: object) -> SupportEmailNotification:
 
 @pytest.fixture
 def mock_resend():
-    """Fresh Resend module seams per test — call-history isolation matters."""
+    """Fresh Resend module seams per test — call-history isolation matters.
+
+    The credential-store resolver is bound to a stored key so no test touches
+    Mongo; the provider applies it before every send/contact call.
+    """
     with (
         patch(f"{PROVIDER_MOD}.settings") as m_settings,
         patch(f"{PROVIDER_MOD}.resend.Emails.send", new_callable=MagicMock) as m_send,
         patch(f"{PROVIDER_MOD}.resend.Contacts.create", new_callable=MagicMock) as m_contact,
+        patch(
+            f"{PROVIDER_MOD}.resolve_resend_config",
+            new=AsyncMock(
+                return_value={"api_key": "re-stored", "base_url": None, "model": None, "preset": None}
+            ),
+        ),
     ):
         m_settings.RESEND_API_KEY = "re_fake"
         m_settings.RESEND_AUDIENCE_ID = ""

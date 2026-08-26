@@ -11,6 +11,8 @@ byte unchanged. The local sandbox itself is mocked; its behavior is covered by
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
@@ -36,14 +38,44 @@ def _fake_local_sandbox(alive: bool = True) -> Any:
     return sbx
 
 
-def _selfhost_no_key() -> Any:
-    """One context manager flipping settings to 'self-host without E2B'."""
-    return patch.multiple(lifecycle.settings, ENV="selfhost", E2B_API_KEY=None)
+@contextmanager
+def _selfhost_no_key() -> Iterator[None]:
+    """Settings flipped to 'self-host with NO resolvable E2B credential'."""
+    with (
+        patch.object(lifecycle.settings, "ENV", "selfhost"),
+        patch.object(
+            lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value=None)
+        ),
+    ):
+        yield
 
 
 # --------------------------------------------------------------------------
 # routing
 # --------------------------------------------------------------------------
+
+
+async def test_use_local_sandbox_requires_selfhost_and_no_resolvable_key() -> None:
+    """The backend switch reads the credential seam, not the env var: a key
+    stored in Settings (or env) keeps self-host on real E2B."""
+    with (
+        patch.object(lifecycle.settings, "ENV", "selfhost"),
+        patch.object(
+            lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value="k")
+        ),
+    ):
+        assert await lifecycle.use_local_sandbox() is False
+
+    with (
+        patch.object(lifecycle.settings, "ENV", "selfhost"),
+        patch.object(
+            lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value=None)
+        ),
+    ):
+        assert await lifecycle.use_local_sandbox() is True
+
+    with patch.object(lifecycle.settings, "ENV", "production"):
+        assert await lifecycle.use_local_sandbox() is False
 
 
 async def test_selfhost_without_an_e2b_key_yields_the_local_sandbox(
@@ -74,7 +106,6 @@ async def test_selfhost_with_an_e2b_key_stays_on_the_e2b_path(
     entry = PooledSandbox(sandbox=sbx_e2b)
     with (
         patch.object(lifecycle.settings, "ENV", "selfhost"),
-        patch.object(lifecycle.settings, "E2B_API_KEY", "key"),
         patch.object(lifecycle, "_acquire_or_create", AsyncMock(return_value=entry)),
         patch.object(lifecycle, "e2b_sandbox_repository", AsyncMock()),
         patch.object(lifecycle, "_schedule_pause"),
@@ -94,7 +125,9 @@ async def test_production_without_a_key_stays_on_the_e2b_path(
     error = AsyncMock(side_effect=lifecycle.SandboxAcquisitionError("E2B_API_KEY"))
     with (
         patch.object(lifecycle.settings, "ENV", "production"),
-        patch.object(lifecycle.settings, "E2B_API_KEY", None),
+        patch.object(
+            lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value=None)
+        ),
         patch.object(lifecycle, "_acquire_or_create", error),
     ):
         with pytest.raises(lifecycle.SandboxAcquisitionError, match="E2B_API_KEY"):

@@ -1,7 +1,8 @@
 """Instance setup API — first-run status and provider configuration (self-host).
 
 Owns the ``/setup`` surface from ``.agents/plans/selfhost-contracts.md`` (A4):
-a status probe for the web setup wizard (public only under AUTH_MODE=local)
+a status probe plus the display-only provider catalog for the web setup wizard
+(public only under AUTH_MODE=local)
 and instance-admin-gated
 management of provider credentials — masked listing, upsert, delete, live
 connectivity test, and setup-step completion tracking in instance settings.
@@ -98,6 +99,33 @@ async def get_setup_status() -> dict[str, Any]:
         "billing_enabled": settings.billing_enabled,
         "providers": {p: {"configured": c} for p, c in configured.items()},
         "plans_seeded": await is_payment_setup(),
+    }
+
+
+@router.get("/catalog")
+async def get_provider_catalog() -> dict[str, Any]:
+    """The provider catalog the setup wizard and Settings render from.
+
+    Serves ``app.constants.providers.PRESETS`` — display metadata only (no
+    secrets, no configuration state) — partitioned by role so clients can
+    render every card without shipping their own copy of the catalog:
+
+    - ``providers``: one entry per credential-store provider, in display order
+      (``CREDENTIAL_PROVIDERS``),
+    - ``custom_presets``: OpenAI-compatible gateway presets offered inside the
+      custom lane's card (``opencode`` / ``nous``),
+    - ``llm_provider_keys``: which providers can serve chat (the wizard's
+      readiness rule mirrors ``_needs_setup``).
+
+    Adding or renaming a provider becomes a Python-only change; the UI picks
+    it up here. Public under local auth like ``/status`` — the wizard renders
+    cards before an admin session exists.
+    """
+    log.set(operation="setup_catalog", auth_mode=settings.AUTH_MODE)
+    return {
+        "providers": {name: PRESETS[name] for name in CREDENTIAL_PROVIDERS},
+        "custom_presets": {name: PRESETS[name] for name in ("opencode", "nous")},
+        "llm_provider_keys": list(_LLM_PROVIDER_KEYS),
     }
 
 

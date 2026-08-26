@@ -272,6 +272,41 @@ class TestMCPClientBuildConfig:
         with pytest.raises(ValueError, match="No valid token"):
             await client._build_config(INTEGRATION_ID, mcp_config)
 
+    async def test_composio_gateway_header_uses_stored_platform_key(self):
+        """The Composio MCP gateway authenticates the PLATFORM via x-api-key;
+        the key resolves store-first so a Settings-configured key applies
+        without a restart."""
+        client = MCPClient(user_id=USER_ID)
+        composio_url = "https://backend.composio.dev/v3/mcp/abc/mcp"
+        mcp_config = _make_mcp_config(server_url=composio_url)
+        client.token_store.get_bearer_token = AsyncMock(return_value=None)
+        stored = {
+            "api_key": "stored-composio-key",
+            "base_url": None,
+            "model": None,
+            "preset": None,
+        }
+        with patch(
+            "app.services.mcp.mcp_client.resolve_composio_config",
+            new=AsyncMock(return_value=stored),
+        ):
+            config = await client._build_config(INTEGRATION_ID, mcp_config)
+        assert (
+            config["mcpServers"][INTEGRATION_ID]["headers"]["x-api-key"]
+            == "stored-composio-key"
+        )
+
+    async def test_non_composio_servers_never_resolve_the_platform_key(self):
+        client = MCPClient(user_id=USER_ID)
+        mcp_config = _make_mcp_config()
+        client.token_store.get_bearer_token = AsyncMock(return_value=None)
+        with patch(
+            "app.services.mcp.mcp_client.resolve_composio_config",
+            new=AsyncMock(side_effect=AssertionError("must not resolve off-gateway")),
+        ):
+            config = await client._build_config(INTEGRATION_ID, mcp_config)
+        assert "x-api-key" not in config["mcpServers"][INTEGRATION_ID].get("headers", {})
+
     async def test_build_config_explicit_transport(self):
         client = MCPClient(user_id=USER_ID)
         mcp_config = _make_mcp_config(transport="sse")

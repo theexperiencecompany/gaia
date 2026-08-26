@@ -24,6 +24,7 @@ from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.endpoints.setup import router as setup_router
 from app.config.settings import settings
 from app.constants.llm import OPENROUTER_MODELS_URL
+from app.constants.providers import CREDENTIAL_PROVIDERS
 from shared.py.wide_events import log
 from tests.integration.endpoints.conftest import (
     API,
@@ -226,6 +227,57 @@ class TestStatus:
         seed_state.plans_seeded = False
         body = (await client.get(f"{API}/status")).json()
         assert body["plans_seeded"] is False
+
+
+class TestProviderCatalog:
+    """GET /catalog serves the Python provider catalog so the web wizard and
+    Settings render dynamically — adding a provider stays a Python-only change."""
+
+    async def test_catalog_lists_every_provider_in_display_order(
+        self, anon_client: AsyncClient
+    ) -> None:
+        resp = await anon_client.get(f"{API}/catalog")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert list(body["providers"]) == list(CREDENTIAL_PROVIDERS)
+
+    async def test_catalog_entries_carry_display_metadata_only(
+        self, anon_client: AsyncClient
+    ) -> None:
+        body = (await anon_client.get(f"{API}/catalog")).json()
+        for spec in body["providers"].values():
+            assert set(spec) == {
+                "label",
+                "base_url",
+                "default_model",
+                "favicon_domain",
+                "needs_base_url",
+            }
+        assert body["providers"]["openrouter"]["label"] == "OpenRouter"
+        assert body["providers"]["ollama"]["default_model"] == "llama3.2"
+
+    async def test_custom_lane_presets_are_partitioned_out_of_providers(
+        self, anon_client: AsyncClient
+    ) -> None:
+        """opencode/nous are preset gateways inside the custom card, NOT
+        providers — they must never render as catalog cards."""
+        body = (await anon_client.get(f"{API}/catalog")).json()
+        assert set(body["custom_presets"]) == {"opencode", "nous"}
+        assert "opencode" not in body["providers"]
+        assert body["custom_presets"]["opencode"]["base_url"] == "https://opencode.ai/zen/go/v1"
+
+    async def test_llm_keys_mirror_the_needs_setup_rule(self, anon_client: AsyncClient) -> None:
+        body = (await anon_client.get(f"{API}/catalog")).json()
+        assert body["llm_provider_keys"] == ["openrouter", "gemini", "ollama", "custom"]
+
+    async def test_catalog_is_public_without_auth(self, anon_client: AsyncClient) -> None:
+        # The wizard renders cards before an admin session exists; the catalog
+        # carries display metadata only.
+        assert (await anon_client.get(f"{API}/catalog")).status_code == 200
+
+    async def test_catalog_has_no_auth_dependency(self) -> None:
+        assert not _requires("/catalog", get_current_user)
+        assert not _requires("/catalog", require_instance_admin)
 
 
 class TestProvidersMaskedView:

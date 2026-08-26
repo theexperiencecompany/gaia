@@ -42,6 +42,13 @@ PRESETS: dict[str, ProviderPreset] = {
     # Custom OpenAI-compatible lane. Presets below prefill base URL + model so
     # configuration is paste-a-key-only; the base-URL field stays editable for
     # manual gateways.
+    "custom": {
+        "label": "Custom / OpenAI-compatible",
+        "base_url": "",
+        "default_model": "",
+        "favicon_domain": "opencode.ai",
+        "needs_base_url": True,
+    },
     "opencode": {
         "label": "OpenCode",
         "base_url": "https://opencode.ai/zen/go/v1",
@@ -54,6 +61,15 @@ PRESETS: dict[str, ProviderPreset] = {
         "base_url": "https://inference-api.nousresearch.com/v1",
         "default_model": "",
         "favicon_domain": "nousresearch.com",
+        "needs_base_url": False,
+    },
+    # Search tool key — a single credential, no LLM endpoint, and no live
+    # probe (the setup test endpoint hard-rejects it).
+    "tavily": {
+        "label": "Tavily",
+        "base_url": "",
+        "default_model": "",
+        "favicon_domain": "tavily.com",
         "needs_base_url": False,
     },
     # Tool / integration keys — no LLM endpoint, single-credential cards.

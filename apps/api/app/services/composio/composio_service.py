@@ -32,6 +32,7 @@ from app.services.composio.langchain_composio_service import (
 )
 from app.services.composio.proxy_client import invalidate_connected_account_cache
 from app.services.mcp.mcp_tools_service import store_mcp_tools
+from app.services.providers.provider_credentials_service import resolved_config
 from app.utils.composio_hooks.registry import (
     master_after_execute_hook,
     master_before_execute_hook,
@@ -498,13 +499,32 @@ class ComposioService:
 
 @lazy_provider(
     name="composio_service",
-    required_keys=[settings.COMPOSIO_KEY],
+    required_keys=[],
     strategy=MissingKeyStrategy.WARN,
+    warning_message="Composio is not configured. Composio-backed integrations and tools will not work.",
 )
 def init_composio_service() -> ComposioService:
-    if settings.COMPOSIO_KEY is None:
-        raise RuntimeError("COMPOSIO_KEY is not set in settings")
-    return ComposioService(settings.COMPOSIO_KEY)
+    """Build the Composio service from a store-first resolved key.
+
+    Sync loader on purpose: the Composio SDK is synchronous and its consumers
+    call it from worker threads (see proxy_client), so this cannot await.
+    Instead it reads the credential service's runtime snapshot — populated by
+    resolve() at startup refresh and on every invalidation — and falls back to
+    ``COMPOSIO_KEY``, the same store → env contract as the LLM lanes' loaders.
+    A loader that finds nothing raises so the WARN strategy degrades loudly
+    instead of handing out a service built on a missing key; the next access
+    re-runs it, so a key configured later picks up without a restart.
+    """
+    config = resolved_config("composio")
+    api_key = config["api_key"] if config else None
+    if api_key is None:
+        api_key = settings.COMPOSIO_KEY
+    if not api_key:
+        raise RuntimeError(
+            "COMPOSIO_KEY is not set in settings and no composio credential "
+            "is stored"
+        )
+    return ComposioService(api_key)
 
 
 def get_composio_service() -> ComposioService:

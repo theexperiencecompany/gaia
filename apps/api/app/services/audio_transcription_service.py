@@ -14,6 +14,9 @@ from typing import Final
 
 from openai import AsyncOpenAI
 
+from app.services.providers.provider_credentials_service import (
+    resolve as resolve_openai_config,
+)
 from shared.py.wide_events import log
 
 # OpenAI's documented hard ceiling for the audio transcription endpoint.
@@ -74,6 +77,10 @@ async def transcribe_audio(
 
     The OpenAI SDK expects a tuple of ``(filename, file_obj, content_type)``
     for streamed multipart upload. Returns the trimmed transcript string.
+
+    The key resolves through the credential store first (Settings → OpenAI),
+    falling back to the environment — the same store → env policy every
+    runtime consumer follows.
     """
     log.set(
         component="audio_transcription_service",
@@ -83,7 +90,14 @@ async def transcribe_audio(
         size=len(audio_bytes),
     )
 
-    client = AsyncOpenAI()
+    config = await resolve_openai_config("openai")
+    api_key = config["api_key"] if config else None
+    if not api_key:
+        raise RuntimeError(
+            "OpenAI is not configured: store an OpenAI credential in Settings "
+            "or set OPENAI_API_KEY to transcribe audio."
+        )
+    client = AsyncOpenAI(api_key=api_key)
     file_obj = io.BytesIO(audio_bytes)
     file_obj.name = filename  # OpenAI SDK reads .name for the multipart filename
 

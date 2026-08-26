@@ -6,11 +6,13 @@ the database. ``resolve`` is the single read path every consumer uses:
 
     DB credential → env fallback → None
 
-with a 60s in-process TTL cache in front of both. Writes go through
-``upsert``/``delete`` which invalidate and fan out so every LLM consumer rebuilds
+with a 60s in-process TTL cache in front of both, and every result mirrored
+into :func:`resolved_config` for sync consumers. Writes go through
+``upsert``/``delete`` which invalidate and fan out so every consumer rebuilds
 against the new configuration:
 
-- the lazy-loader registry entry for the provider's LLM is reset,
+- the lazy-loader registry entry for the provider is reset (LLM lanes plus
+  the sync tool loaders — composio service, Cloudinary config),
 - the aux-LLM caches inside ``app.agents.llm.client`` are cleared,
 - a Redis publish on ``RUNTIME_CONFIG_CHANNEL`` tells other pods to do the same
   (subscribed to per pod by ``app.core.runtime_config_subscriber``, which
@@ -40,13 +42,18 @@ RUNTIME_CONFIG_CHANNEL = "gaia:runtime-config-updated"
 
 _CACHE_TTL_SECONDS = 60.0
 
-# Credential-store provider → lazy-loader registry key whose cached instance must
-# be rebuilt when the credential changes. "tavily" has no LLM loader.
-_LLM_REGISTRY_KEYS: dict[str, str] = {
+# Credential-store provider → lazy-loader registry key whose cached instance
+# must be rebuilt when the credential changes. LLM lanes first; then the SYNC
+# tool loaders (composio service factory, Cloudinary global config) that read
+# the runtime snapshot instead of resolving per call — resetting them makes a
+# newly saved credential take effect on the next access without a restart.
+_REGISTRY_RESET_KEYS: dict[str, str] = {
     "openrouter": "openrouter_llm",
     "gemini": "gemini_llm",
     "ollama": "ollama_llm",
     "custom": "custom_llm",
+    "composio": "composio_service",
+    "cloudinary": "cloudinary",
 }
 
 
@@ -63,6 +70,27 @@ class ProviderConfig(TypedDict):
 # configs (unconfigured) too, so misses don't re-hit Mongo on every call.
 _cache: dict[str, tuple[float, ProviderConfig]] = {}
 
+# The most recent resolve() result per provider, mirrored here so SYNC
+# consumers — sync lazy loaders like the composio service factory and the
+# Cloudinary config, which cannot await — can read a stored credential without
+# blocking, exactly as the LLM lanes' loaders do. Populated by every resolve()
+# (startup refresh, per-access, invalidation fan-out); app.agents.llm.client
+# aliases this dict as its own snapshot, so there is exactly one copy of it.
+resolved_configs: dict[str, ProviderConfig | None] = {}
+
+
+def resolved_config(provider: str) -> ProviderConfig | None:
+    """The last-known resolve() result for ``provider``, readable synchronously.
+
+    ``None`` means "not resolved yet", NOT "unconfigured" — callers that must
+    tell the two apart read :data:`resolved_configs` directly (the LLM client
+    does). Sync consumers combine the result with their own env read under the
+    LLM lanes' contract: store credentials win over env the moment a
+    resolution has run, and never before. Async consumers should ``await
+    resolve`` instead.
+    """
+    return resolved_configs.get(provider)
+
 
 async def resolve(provider: str) -> ProviderConfig | None:
     """The provider's active config: stored credential → env fallback → None."""
@@ -75,6 +103,7 @@ async def resolve(provider: str) -> ProviderConfig | None:
         config = await _decrypt_config(doc.data_encrypted)
         if config is not None:
             _cache_put(provider, config)
+            resolved_configs[provider] = config
             return config
         # Undecryptable (instance secret rotated): logged loudly above; fall
         # through so env still works instead of bricking the provider.
@@ -84,6 +113,7 @@ async def resolve(provider: str) -> ProviderConfig | None:
         # Cache known providers' outcomes (including unconfigured), so repeated
         # resolves don't hammer Mongo; unknown names return immediately.
         _cache_put(provider, fallback)
+    resolved_configs[provider] = fallback
     return fallback
 
 
@@ -129,15 +159,15 @@ def invalidate_locally(provider: str) -> None:
     """
     _cache.pop(provider, None)
 
-    registry_key = _LLM_REGISTRY_KEYS.get(provider)
+    registry_key = _REGISTRY_RESET_KEYS.get(provider)
     if registry_key is not None:
         try:
             providers.reset(registry_key)
         except KeyError:
-            # The LLM registry may not have registered this key yet (e.g. the
+            # The registry may not have registered this key yet (e.g. the
             # custom lane only registers under development) — nothing to reset.
             log.debug(
-                f"{LogTag.API} LLM provider not registered, skipping reset",
+                f"{LogTag.API} Provider not registered, skipping reset",
                 name=registry_key,
             )
 

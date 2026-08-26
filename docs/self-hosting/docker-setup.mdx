@@ -137,21 +137,16 @@ The self-host Compose file includes the following services:
     **Redis** (Port: 127.0.0.1:6379)
     - Caching, sessions, task queue backend
 
-    **ChromaDB** (Port: 8080 → 8000)
+    **ChromaDB** (Port: 127.0.0.1:8080 → 8000)
     - Vector database for embeddings
 
-    PostgreSQL, MongoDB, and Redis ship without authentication, so their host ports publish to loopback only — see [Networking](#networking).
+    PostgreSQL, MongoDB, Redis, and ChromaDB ship without authentication, and RabbitMQ ships with well-known `guest`/`guest` credentials, so their host ports publish to loopback only — see [Networking](#networking).
 
   </Accordion>
 
   <Accordion title="Workers & Messaging">
     **arq_worker** — Async background task processing (reminders, workflows, email)
-    **RabbitMQ** — Message broker (Port: 5672, Management UI: http://localhost:15672, guest/guest)
-
-  </Accordion>
-
-  <Accordion title="seed-models (one-shot job)">
-    Seeds the AI model catalogue on first boot, then exits (`restart: no`). Safe to re-run manually if needed.
+    **RabbitMQ** — Message broker (Ports: 127.0.0.1:5672 and management UI on 127.0.0.1:15672, guest/guest)
 
   </Accordion>
 </AccordionGroup>
@@ -323,7 +318,7 @@ Services communicate through the `gaia_network` bridge network:
 ```
 
 <Warning>
-PostgreSQL, MongoDB, and Redis publish to `127.0.0.1` on the host. They run without authentication by default, and between them they hold every user, session, provider credential, and the instance secret — an exposed port is remote total data loss. Do not republish these ports to `0.0.0.0` or strip the `127.0.0.1:` prefix from the Compose file. To reach a datastore from another machine, use an SSH tunnel instead:
+PostgreSQL, MongoDB, Redis, ChromaDB, and RabbitMQ publish to `127.0.0.1` on the host. They run without authentication by default (RabbitMQ on its well-known `guest`/`guest`), and between them they hold every user, session, provider credential, and the instance secret — an exposed port is remote total data loss. Do not republish these ports to `0.0.0.0` or strip the `127.0.0.1:` prefix from the Compose file. To reach a datastore from another machine, use an SSH tunnel instead:
 
 ```bash
 ssh -L 5432:127.0.0.1:5432 user@your-server
@@ -394,6 +389,36 @@ docker compose -f docker-compose.selfhost.yml start gaia-backend arq_worker
 docker compose -f docker-compose.selfhost.yml exec postgres pg_dump -U postgres -d langgraph > backups/postgres-$(date +%F).sql
 ```
 
+### Back up ChromaDB
+
+ChromaDB's vectors are re-embeddable from source content, so this is optional belt-and-braces — it saves you a full re-embedding run after a restore. Stop the writers first so the SQLite store isn't captured mid-write, then tar the data volume from inside the container (GNU tar ships in the image):
+
+```bash
+mkdir -p backups
+docker compose -f docker-compose.selfhost.yml stop gaia-backend arq_worker
+docker compose -f docker-compose.selfhost.yml exec chromadb tar czf - -C /chroma/chroma . > backups/chroma-$(date +%F).tar.gz
+docker compose -f docker-compose.selfhost.yml start gaia-backend arq_worker
+```
+
+To restore, untar into a fresh volume before starting the stack:
+
+```bash
+docker volume create gaia-selfhost_chroma_data
+docker run --rm -v gaia-selfhost_chroma_data:/data -v "$PWD/backups:/backups" alpine \
+  tar xzf /backups/chroma-2026-08-24.tar.gz -C /data
+```
+
+### Back up RabbitMQ
+
+RabbitMQ holds transient messages only — queues and exchanges are re-declared by the backend on boot — so it usually needs no backup. If you've changed topology manually or want queued-job routing preserved across a rebuild, export the broker definitions to stdout:
+
+```bash
+mkdir -p backups
+docker compose -f docker-compose.selfhost.yml exec rabbitmq rabbitmqctl export_definitions - > backups/rabbitmq-definitions-$(date +%F).json
+```
+
+Definitions capture topology and users (including password hashes) but **not** message contents — queued messages are lost with the volume. Treat an export like a credential file.
+
 ### Restore MongoDB
 
 `--drop` replaces existing collections so you don't merge stale and restored state; `-T` disables the pseudo-terminal so the redirected archive reaches `mongorestore`'s stdin:
@@ -437,12 +462,6 @@ Named volumes survive the rebuild. After upgrading, watch for vector-index failu
 
 ```bash
 docker compose -f docker-compose.selfhost.yml logs -f gaia-backend arq_worker | grep -Ei 'index_failed|memory_embedding_failed'
-```
-
-If the model catalogue changed in the new version, re-run the one-shot seeder (`--force-recreate` because it normally runs exactly once and then sits exited):
-
-```bash
-docker compose -f docker-compose.selfhost.yml up --force-recreate seed-models
 ```
 
 ### The instance secret

@@ -86,6 +86,9 @@ from app.services.mcp.token_management import (
     revoke_tokens,
     try_refresh_token,
 )
+from app.services.providers.provider_credentials_service import (
+    resolve as resolve_composio_config,
+)
 from app.utils.background_tasks import spawn_background_task
 from app.utils.mcp_oauth_utils import (
     MCP_PROTOCOL_VERSION,
@@ -444,15 +447,18 @@ class MCPClient:
             server_config["auth"] = None
 
         # Composio's hosted MCP gateway authenticates the calling platform via an
-        # x-api-key header (GAIA's COMPOSIO_KEY), not per-user OAuth/bearer. Without
+        # x-api-key header (GAIA's Composio key), not per-user OAuth/bearer. Without
         # it these servers reject the request with a bare 401. requires_auth stays
         # False because there is no user credential — this is a platform key.
-        if (
-            mcp_config.server_url
-            and COMPOSIO_MCP_HOST in mcp_config.server_url
-            and settings.COMPOSIO_KEY
-        ):
-            server_config.setdefault("headers", {})["x-api-key"] = settings.COMPOSIO_KEY
+        if mcp_config.server_url and COMPOSIO_MCP_HOST in mcp_config.server_url:
+            # Resolved store-first so a key configured in Settings applies
+            # without a restart; env remains the fallback.
+            composio_config = await resolve_composio_config("composio")
+            composio_api_key = (
+                composio_config["api_key"] if composio_config else settings.COMPOSIO_KEY
+            )
+            if composio_api_key:
+                server_config.setdefault("headers", {})["x-api-key"] = composio_api_key
 
         return {"mcpServers": {integration_id: server_config}}
 

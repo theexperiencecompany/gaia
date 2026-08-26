@@ -138,14 +138,16 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         ]
         # Local-mode-only public surfaces (self-hosting): signup/login must be
         # reachable before any session exists, and the setup wizard's status
-        # probe is read pre-auth. In workos mode these stay authenticated (and
-        # their routers are unmounted entirely) so hosted deployments expose
-        # neither a password-registration surface nor infra booleans publicly.
+        # probe and provider catalog are read pre-auth. In workos mode these
+        # stay authenticated (and their routers are unmounted entirely) so
+        # hosted deployments expose neither a password-registration surface
+        # nor infra booleans publicly.
         if settings.AUTH_MODE == "local":
             self.exclude_paths += [
                 "/api/v1/auth/signup",
                 "/api/v1/auth/login",
                 "/api/v1/setup/status",
+                "/api/v1/setup/catalog",
             ]
         # Routes that also accept an "Authorization: Bearer <agent JWT>" in
         # addition to a WorkOS session cookie.

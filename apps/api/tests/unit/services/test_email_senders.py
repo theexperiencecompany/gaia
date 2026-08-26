@@ -67,6 +67,17 @@ class TestAddMarketingContact:
     # add_contact exits early when RESEND_AUDIENCE_ID is empty (not configured).
     # All tests must patch settings so the guard passes and the real logic runs.
 
+    @pytest.fixture(autouse=True)
+    def _stored_resend_key(self):
+        """Bind the provider's credential-store seam: the key resolves through
+        provider_credentials_service (Mongo) at send time, which no unit test
+        may touch."""
+        config = {"api_key": "re-stored", "base_url": None, "model": None, "preset": None}
+        with patch(
+            f"{RESEND_PROVIDER}.resolve_resend_config", new=AsyncMock(return_value=config)
+        ):
+            yield
+
     @patch(f"{RESEND_PROVIDER}.settings")
     @patch(f"{RESEND_PROVIDER}.resend.Contacts.create")
     async def test_with_full_name(self, mock_create, mock_settings):
