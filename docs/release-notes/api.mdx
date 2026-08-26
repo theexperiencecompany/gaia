@@ -11,7 +11,7 @@ icon: "server"
 ### Features
 - **Approvals Before Destructive Actions**: GAIA now pauses and asks you first before running a tool that deletes, sends, or overwrites something, and remembers the per-tool permissions you set.
 - **Device Bridge**: A secure local bridge lets GAIA reach MCP servers and files on your own machine, so it can work with what's actually on your computer.
-- **Documents Read In-House**: PDF, DOCX, XLSX, PPTX, and CSV files you attach are now extracted locally, so uploads are faster and nothing is handed to a third-party parser.
+- **Documents Read In-House**: Text-based PDFs, plus DOCX, XLSX, PPTX, and CSV files, are now extracted on our own servers rather than sent to a cloud parser, so attachments process faster. Scanned and image-based PDFs are the exception — they still go to a third-party OCR service, because reading them requires it.
 - **Images and Screenshots**: GAIA reads images natively, keeps the screenshots it takes, and can download files from a URL to work with them.
 - **Gmail Inbox Summary**: A dedicated tool summarizes your inbox, with cleaner email bodies so long threads read properly.
 - **Plans and Usage Limits**: Free accounts now have clear daily caps and Pro runs on cost-based limits, with usage tracked per turn instead of guessed.
@@ -26,7 +26,7 @@ icon: "server"
 - **Model Failover That Holds Context**: Each turn resolves one model lane up front, so a provider failure now falls over cleanly without dropping your queued messages or a pending approval.
 - **Replies That Sound Less Like AI**: GAIA's writing is scored against a list of AI tells — em dashes, the "it's not X, it's Y" construction — and the prompt no longer models the habits it tells the model to avoid.
 - **Fresher Trigger Catalog**: Every app trigger's schema and slug is back in sync with the live Composio catalog, so event-based workflows fire on the right shape of data, and removing a trigger that's already gone no longer errors.
-- **Dormant Workflows Pause Themselves**: A daily sweep pauses activated workflows for accounts that have gone quiet, so nothing keeps firing in the background months after you stopped using it.
+- **Dormant Workflows Pause Themselves**: A daily sweep pauses active workflows for accounts that have gone quiet, so nothing keeps firing in the background months after you stopped using it. They resume automatically the next time you log in.
 - **New License**: GAIA is now licensed under PolyForm Noncommercial 1.0.0 instead of PolyForm Strict.
 
 ### Bug Fixes
