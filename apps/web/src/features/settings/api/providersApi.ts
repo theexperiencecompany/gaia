@@ -15,22 +15,6 @@ export type CredentialProvider =
   | "google_oauth"
   | "firecrawl";
 
-/** All credential-backed providers, in display order (mirrors CREDENTIAL_PROVIDERS). */
-export const SETUP_PROVIDER_KEYS = [
-  "openrouter",
-  "gemini",
-  "ollama",
-  "custom",
-  "tavily",
-  "composio",
-  "e2b",
-  "openai",
-  "resend",
-  "cloudinary",
-  "google_oauth",
-  "firecrawl",
-] as const satisfies readonly CredentialProvider[];
-
 /** Providers that can serve chat (mirrors _LLM_PROVIDER_KEYS in
  * app/api/v1/endpoints/setup.py). The tool/integration keys in
  * SETUP_PROVIDER_KEYS must never count toward LLM readiness. */
