@@ -804,6 +804,128 @@ class TestTheIngestionHandoff:
 
 
 @pytest.mark.unit
+class TestTrivialDeltaGate:
+    """A turn whose NEW material is pure chatter must not buy an extraction.
+
+    The node's worth-learning check reads the whole thread, but the extractor
+    is billed for the delta — so in a long thread every "ok"/"thanks" turn
+    passed the thread-level check on the strength of an OLD message and paid a
+    full extraction call for nothing (measured: half of production extraction
+    calls yield zero facts and zero journal entries). The delta itself must
+    carry either substantive user text or tool activity (a short "yes" that
+    triggered real work still journals what was done).
+    """
+
+    @staticmethod
+    def _thread() -> list[AnyMessage]:
+        """m1/m2 already extracted (substantive), m3/m4 the new trivial turn."""
+        return [
+            HumanMessage(content="my anniversary is October 19", id="m1"),
+            AIMessage(content="Noted — I have saved that.", id="m2"),
+            HumanMessage(content="ok", id="m3"),
+            AIMessage(content="Anything else?", id="m4"),
+        ]
+
+    async def _run(self, messages: list[AnyMessage], mark: str | None) -> dict[str, AsyncMock]:
+        engine = MagicMock()
+        engine.retain = AsyncMock(return_value=None)
+        fake = _fake_redis(mark)
+        with (
+            patch(f"{NODE}.memory_engine", engine),
+            patch(f"{NODE}.redis_cache", fake),
+        ):
+            await _store_user_memory_background(
+                messages=messages,
+                user_id="u1",
+                session_id="t1",
+                extraction_prompt=None,
+                subagent_id=None,
+                user_name=None,
+            )
+        return {"retain": engine.retain, "set": fake.client.set}
+
+    @pytest.mark.regression
+    async def test_a_chatter_only_delta_is_not_extracted(self) -> None:
+        calls = await self._run(self._thread(), mark="m2")
+
+        calls["retain"].assert_not_awaited()
+
+    @pytest.mark.regression
+    async def test_a_skipped_delta_does_not_advance_the_mark(self) -> None:
+        """The trivial turn stays in the next delta, so its content still gets
+        extracted alongside the next substantive turn instead of being lost."""
+        calls = await self._run(self._thread(), mark="m2")
+
+        calls["set"].assert_not_awaited()
+
+    @pytest.mark.regression
+    async def test_a_skipped_delta_says_so_in_the_wide_event(self) -> None:
+        """Without the reason on the event, a deliberately skipped turn and a
+        broken ingestion look identical in Loki."""
+        engine = MagicMock()
+        engine.retain = AsyncMock(return_value=None)
+        with (
+            patch(f"{NODE}.memory_engine", engine),
+            patch(f"{NODE}.redis_cache", _fake_redis("m2")),
+        ):
+            recorder = WideEventRecorder()
+            with patch("shared.py.wide_events._loguru", recorder):
+                await _store_user_memory_background(
+                    messages=self._thread(),
+                    user_id="u1",
+                    session_id="t1",
+                    extraction_prompt=None,
+                    subagent_id=None,
+                    user_name=None,
+                )
+
+        assert recorder.event("memory_retain")["memory_ingest"] == {
+            "skipped": "trivial_delta",
+            "thread_messages": 4,
+            "delta_messages": 2,
+        }
+
+    async def test_a_short_confirmation_that_triggered_work_is_still_extracted(self) -> None:
+        """ "yes" before an executor run must keep journaling what was done —
+        the tool activity is the substance, not the user's word count."""
+        messages: list[AnyMessage] = [
+            HumanMessage(content="send that email to the team please", id="m1"),
+            AIMessage(content="Ready to send — confirm?", id="m2"),
+            HumanMessage(content="yes", id="m3"),
+            AIMessage(
+                content="",
+                tool_calls=[{"id": "tc1", "name": "send_email", "args": {}}],
+                id="m4",
+            ),
+            ToolMessage(content="sent", tool_call_id="tc1", id="m5"),
+            AIMessage(content="Done — it is sent.", id="m6"),
+        ]
+
+        calls = await self._run(messages, mark="m2")
+
+        calls["retain"].assert_awaited_once()
+
+    async def test_a_substantive_delta_is_still_extracted(self) -> None:
+        messages: list[AnyMessage] = [
+            HumanMessage(content="my anniversary is October 19", id="m1"),
+            AIMessage(content="Noted.", id="m2"),
+            HumanMessage(content="I also moved to Bangalore last week", id="m3"),
+            AIMessage(content="Got it.", id="m4"),
+        ]
+
+        calls = await self._run(messages, mark="m2")
+
+        calls["retain"].assert_awaited_once()
+
+    async def test_a_first_ingestion_with_a_substantive_thread_still_runs(self) -> None:
+        """No mark: the delta is the whole thread, which the node already
+        checked — the gate must agree, not double-veto."""
+        calls = await self._run(self._thread(), mark=None)
+
+        calls["retain"].assert_awaited_once()
+
+
+@pytest.mark.unit
 class TestWhatTheNodeSpawns:
     """The node's whole job is handing the right arguments to the background
     task. It returns state either way, so a wrong argument is silent."""

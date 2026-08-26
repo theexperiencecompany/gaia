@@ -76,6 +76,25 @@ def _check_worth_learning(messages: list[AnyMessage]) -> tuple[bool, str]:
     return False, "No substantive user message"
 
 
+def _delta_worth_learning(delta: list[AnyMessage]) -> bool:
+    """Whether the NEW slice of a thread justifies an extraction call.
+
+    The node's thread-level check passes on the strength of ANY substantive
+    user message, however old — so in a long thread every "ok"/"thanks" turn
+    bought a full extraction call for a delta with nothing in it (measured:
+    half of production extraction calls yielded zero facts and zero journal
+    entries). Substance is either real user text or tool activity: a short
+    "yes" that triggered actual work still journals what was done.
+    """
+    worth, _ = _check_worth_learning(delta)
+    if worth:
+        return True
+    return any(
+        isinstance(msg, ToolMessage) or (isinstance(msg, AIMessage) and msg.tool_calls)
+        for msg in delta
+    )
+
+
 def _format_messages_for_user_memory(
     messages: list[AnyMessage],
     context_count: int = 0,
@@ -208,6 +227,19 @@ async def _store_user_memory_background(
                 log.set(memory_ingest={"skipped": "system_generated_conversation"})
                 return
             to_ingest, context_count = await _messages_to_ingest(user_id, session_id, messages)
+            delta = to_ingest[context_count:]
+            if delta and not _delta_worth_learning(delta):
+                # Not advancing the mark keeps the trivial turn in the next
+                # delta, so its content is still extracted alongside the next
+                # substantive turn instead of being silently dropped.
+                log.set(
+                    memory_ingest={
+                        "skipped": "trivial_delta",
+                        "thread_messages": len(messages),
+                        "delta_messages": len(delta),
+                    }
+                )
+                return
             formatted = _format_messages_for_user_memory(to_ingest, context_count)
             if not formatted:
                 return
