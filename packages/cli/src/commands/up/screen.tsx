@@ -71,7 +71,15 @@ const UpFinishedStep: React.FC<{
   noStart: boolean;
   stillStarting: boolean;
   customProviderNote: boolean;
-}> = ({ webPort, apiPort, noStart, stillStarting, customProviderNote }) => {
+  webDriftDetected?: boolean;
+}> = ({
+  webPort,
+  apiPort,
+  noStart,
+  stillStarting,
+  customProviderNote,
+  webDriftDetected,
+}) => {
   const success = !noStart && !stillStarting;
   return (
     <Box
@@ -139,6 +147,15 @@ const UpFinishedStep: React.FC<{
         <Box marginTop={1}>
           <Text color="gray">
             Custom LLM providers are configured in the setup wizard.
+          </Text>
+        </Box>
+      )}
+
+      {webDriftDetected && (
+        <Box marginTop={1}>
+          <Text color="yellow">
+            Web source changed since last build — run 'gaia up --build' to
+            rebuild
           </Text>
         </Box>
       )}
@@ -246,6 +263,7 @@ export const UpScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
             state.data.upNoStart !== true && state.data.upStillStarting === true
           }
           customProviderNote={state.data.customProviderNote === true}
+          webDriftDetected={state.data.webDriftDetected === true}
         />
       )}
 

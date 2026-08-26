@@ -14,13 +14,17 @@ import {
   Alert01Icon,
   KeyIcon,
   McpServerIcon,
+  SquareArrowUpRight02Icon,
   Tick02Icon,
   ViewIcon,
   ViewOffSlashIcon,
 } from "@icons";
 import Image from "next/image";
 import { useState } from "react";
-import { providerFaviconUrl } from "@/features/settings/api/providersApi";
+import {
+  PROVIDER_KEY_URLS,
+  providerFaviconUrl,
+} from "@/features/settings/api/providersApi";
 import type { ProviderCardConfig } from "../constants";
 import { useProviderSetup } from "../hooks/useProviderSetup";
 
@@ -109,34 +113,47 @@ export function ProviderSetupCard({
 
       <div className="space-y-2">
         {config.showApiKey && (
-          <Input
-            type={isKeyVisible ? "text" : "password"}
-            placeholder="Paste your API key"
-            value={apiKey}
-            onValueChange={setApiKey}
-            autoComplete="off"
-            startContent={<KeyIcon size={16} className="text-zinc-500" />}
-            endContent={
-              <Button
-                isIconOnly
-                size="sm"
-                variant="light"
-                radius="full"
-                aria-label={isKeyVisible ? "Hide API key" : "Show API key"}
-                onPress={() => setIsKeyVisible((visible) => !visible)}
-                className="text-zinc-500"
+          <>
+            <Input
+              type={isKeyVisible ? "text" : "password"}
+              placeholder="Paste your API key"
+              value={apiKey}
+              onValueChange={setApiKey}
+              autoComplete="off"
+              startContent={<KeyIcon size={16} className="text-zinc-500" />}
+              endContent={
+                <Button
+                  isIconOnly
+                  size="sm"
+                  variant="light"
+                  radius="full"
+                  aria-label={isKeyVisible ? "Hide API key" : "Show API key"}
+                  onPress={() => setIsKeyVisible((visible) => !visible)}
+                  className="text-zinc-500"
+                >
+                  {isKeyVisible ? (
+                    <ViewOffSlashIcon size={16} />
+                  ) : (
+                    <ViewIcon size={16} />
+                  )}
+                </Button>
+              }
+              size="sm"
+              radius="md"
+              isDisabled={isBusy}
+            />
+            {PROVIDER_KEY_URLS[config.key] && (
+              <a
+                href={PROVIDER_KEY_URLS[config.key]}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300"
               >
-                {isKeyVisible ? (
-                  <ViewOffSlashIcon size={16} />
-                ) : (
-                  <ViewIcon size={16} />
-                )}
-              </Button>
-            }
-            size="sm"
-            radius="md"
-            isDisabled={isBusy}
-          />
+                Get your key
+                <SquareArrowUpRight02Icon size={12} />
+              </a>
+            )}
+          </>
         )}
         {config.showBaseUrl && (
           <Input

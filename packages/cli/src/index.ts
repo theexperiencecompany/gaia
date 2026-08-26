@@ -2,10 +2,12 @@
 
 import { Command } from "commander";
 import { CLI_COMMAND_DESCRIPTIONS } from "../../../libs/shared/ts/src/cli/command-manifest.js";
+import { runBackupCommand } from "./commands/backup/handler.js";
 import { bridgeCommand } from "./commands/bridge/command.js";
 import { runDev } from "./commands/dev/handler.js";
 import { runDoctor } from "./commands/doctor/handler.js";
 import { runInit } from "./commands/init/handler.js";
+import { runRestoreCommand } from "./commands/restore/handler.js";
 import { runSetup } from "./commands/setup/handler.js";
 import { runStart } from "./commands/start/handler.js";
 import { runStatus } from "./commands/status/handler.js";
@@ -141,6 +143,44 @@ program
   .action(async (options: { forcePorts?: boolean }) => {
     await runStop({ forcePorts: options.forcePorts });
   });
+
+program
+  .command("backup")
+  .description(CLI_COMMAND_DESCRIPTIONS.backup)
+  .option(
+    "--output <dir>",
+    "Output directory for backup files (default: ./backups)",
+  )
+  .option("--dry-run", "Print the docker commands without executing them")
+  .action(async (options: { output?: string; dryRun?: boolean }) => {
+    await runBackupCommand({ output: options.output, dryRun: options.dryRun });
+  });
+
+program
+  .command("restore")
+  .description(CLI_COMMAND_DESCRIPTIONS.restore)
+  .option("--mongo <file>", "MongoDB archive file (mongodump --archive)")
+  .option("--postgres <file>", "PostgreSQL dump file")
+  .option(
+    "--from <dir>",
+    "Restore from a backup directory (picks latest mongo-*.gz and postgres-*.sql)",
+  )
+  .option("--dry-run", "Print the docker commands without executing them")
+  .action(
+    async (options: {
+      mongo?: string;
+      postgres?: string;
+      from?: string;
+      dryRun?: boolean;
+    }) => {
+      await runRestoreCommand({
+        mongo: options.mongo,
+        postgres: options.postgres,
+        from: options.from,
+        dryRun: options.dryRun,
+      });
+    },
+  );
 
 // Show help when no command is given instead of silently running init
 if (!process.argv.slice(2).length) {

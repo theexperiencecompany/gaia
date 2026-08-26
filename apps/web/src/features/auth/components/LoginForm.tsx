@@ -3,6 +3,7 @@
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Link } from "@heroui/link";
+import { Modal, ModalBody, ModalContent, ModalHeader } from "@heroui/modal";
 import { Alert01Icon } from "@icons";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
@@ -11,6 +12,10 @@ import { authApi, getLocalAuthError } from "@/features/auth/api/authApi";
 
 const INVALID_CREDENTIALS_COPY = "Invalid email or password.";
 const GENERIC_ERROR_COPY = "Could not sign you in right now. Please try again.";
+const RESET_CMD =
+  "docker exec gaia-backend python -m app.scripts.reset_admin_password";
+const RESET_MONGO_CMD =
+  "docker exec mongo mongosh --eval 'db.getSiblingDB(\"GAIA\").auth_credentials.deleteMany({})'";
 
 interface LoginFormProps {
   /**
@@ -26,6 +31,7 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showResetHelp, setShowResetHelp] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -70,6 +76,16 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
         isRequired
         isDisabled={isSubmitting}
       />
+      {/* Self-host has one admin and no email recovery — surface the CLI reset path. This form only renders on local-auth instances (see login/page.tsx). */}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => setShowResetHelp(true)}
+          className="text-xs text-zinc-400 underline-offset-4 hover:text-zinc-200 hover:underline"
+        >
+          Forgot password? →
+        </button>
+      </div>
 
       {error && (
         <div
@@ -95,6 +111,35 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
       <Link href="/signup" size="sm" color="primary" className="self-center">
         Need an account? Sign up
       </Link>
+
+      <Modal
+        isOpen={showResetHelp}
+        onClose={() => setShowResetHelp(false)}
+        size="md"
+      >
+        <ModalContent>
+          <ModalHeader>Reset admin password</ModalHeader>
+          <ModalBody className="gap-3 pb-6">
+            <p className="text-sm text-zinc-600 dark:text-zinc-300">
+              Self-hosted GAIA has one admin account. To reset your password,
+              run this on the host that runs GAIA:
+            </p>
+            <pre className="overflow-x-auto rounded-xl bg-zinc-900 p-3 text-xs text-zinc-100">
+              {RESET_CMD}
+            </pre>
+            <p className="text-xs text-zinc-500">
+              Then open{" "}
+              <Link href="/signup" size="sm" color="primary">
+                /signup
+              </Link>{" "}
+              to create a new admin account. Alternative (direct Mongo):
+            </p>
+            <pre className="overflow-x-auto rounded-xl bg-zinc-900 p-3 text-xs text-zinc-100">
+              {RESET_MONGO_CMD}
+            </pre>
+          </ModalBody>
+        </ModalContent>
+      </Modal>
     </form>
   );
 }

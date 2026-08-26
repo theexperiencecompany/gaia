@@ -9,7 +9,8 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
-import { ViewIcon, ViewOffSlashIcon } from "@icons";
+import { SquareArrowUpRight02Icon, ViewIcon, ViewOffSlashIcon } from "@icons";
+import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
@@ -17,6 +18,8 @@ import {
   type CredentialProvider,
   CUSTOM_PRESETS,
   type CustomPreset,
+  PROVIDER_KEY_URLS,
+  type ProviderCatalog,
   type ProviderConfigBody,
   type ProviderTestResult,
   providerFaviconUrl,
@@ -218,6 +221,15 @@ interface ConfigureProviderModalProps {
   onClose: () => void;
 }
 
+function useProviderCatalog() {
+  return useQuery<ProviderCatalog>({
+    queryKey: ["setup", "catalog"],
+    queryFn: () => providersApi.fetchCatalog(),
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
 function ConfigureProviderModal({
   row,
   stored,
@@ -287,8 +299,9 @@ function ConfigureProviderModal({
       await providersApi.upsertProvider(row.key, buildBody());
       toast.success(`${row.label} connected`);
       onSaved();
-    } catch {
-      toast.error(`Failed to save ${row.label}`);
+    } catch (err: unknown) {
+      const detail = extractProviderError(err);
+      toast.error(detail ?? `Failed to save ${row.label}`);
     } finally {
       setIsSaving(false);
     }
@@ -318,10 +331,12 @@ function ConfigureProviderModal({
     try {
       const result = await providersApi.testProvider(row.key, buildBody());
       setTestResult(result);
-    } catch {
+    } catch (err: unknown) {
+      const detail =
+        extractProviderError(err) ?? "Could not reach GAIA to run the test.";
       setTestResult({
         ok: false,
-        detail: "Could not reach GAIA to run the test.",
+        detail,
         models: [],
       });
     } finally {
@@ -377,6 +392,17 @@ function ConfigureProviderModal({
                 </Button>
               }
             />
+            {PROVIDER_KEY_URLS[row.key] && (
+              <a
+                href={PROVIDER_KEY_URLS[row.key]}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300"
+              >
+                Get your key
+                <SquareArrowUpRight02Icon size={12} />
+              </a>
+            )}
             {(row.needsBaseUrl || showPresetChips) && (
               <>
                 {showPresetChips && (
@@ -484,6 +510,27 @@ function ConfigureProviderModal({
   );
 }
 
+/** Pull a human-readable message out of an axios/backend error. */
+function extractProviderError(err: unknown): string | undefined {
+  if (typeof err === "object" && err !== null) {
+    const data = (err as { response?: { data?: unknown } }).response?.data;
+    if (typeof data === "object" && data !== null) {
+      const record = data as Record<string, unknown>;
+      if (typeof record.detail === "string") return record.detail;
+      if (
+        typeof record.detail === "object" &&
+        record.detail !== null &&
+        typeof (record.detail as Record<string, unknown>).message === "string"
+      ) {
+        return (record.detail as Record<string, unknown>).message as string;
+      }
+      if (typeof record.message === "string") return record.message;
+    }
+    if (err instanceof Error && err.message) return err.message;
+  }
+  return undefined;
+}
+
 export function ProvidersSettings() {
   const { data: status, refetch: refetchStatus } = useSetupStatus();
   const {
@@ -491,14 +538,41 @@ export function ProvidersSettings() {
     isLoading: isLoadingConfigs,
     refetch: refetchConfigs,
   } = useProviderConfigs();
+  const { data: catalog } = useProviderCatalog();
   const [editingKey, setEditingKey] = useState<CredentialProvider | null>(null);
 
-  const editingRow = PROVIDER_ROWS.find((r) => r.key === editingKey) ?? null;
+  // Prefer the live catalog from GET /setup/catalog (backend is now source of
+  // truth); fall back to the hardcoded PROVIDER_ROWS so older builds or a
+  // failed fetch still render every row.
+  const displayRows: ProviderRow[] = catalog
+    ? (
+        Object.entries(catalog.providers) as [
+          CredentialProvider,
+          ProviderCatalog["providers"][CredentialProvider],
+        ][]
+      ).map(([key, meta]) => {
+        const fallback = PROVIDER_ROWS.find((r) => r.key === key);
+        return {
+          key,
+          label: meta.label || fallback?.label || key,
+          description: fallback?.description || meta.description || "",
+          faviconDomain: meta.favicon_domain || fallback?.faviconDomain || "",
+          needsBaseUrl: meta.needs_base_url ?? fallback?.needsBaseUrl ?? false,
+          defaultBaseUrl:
+            meta.base_url || meta.default_base_url || fallback?.defaultBaseUrl,
+          defaultModel: meta.default_model || fallback?.defaultModel,
+          showModelField: fallback?.showModelField ?? true,
+          connectionTestable: fallback?.connectionTestable ?? false,
+        };
+      })
+    : PROVIDER_ROWS;
+
+  const editingRow = displayRows.find((r) => r.key === editingKey) ?? null;
 
   return (
     <SettingsPage>
       <SettingsSection description="Connect the AI providers, tools, and integrations GAIA runs on.">
-        {PROVIDER_ROWS.map((row) => {
+        {displayRows.map((row) => {
           const configured = status?.providers?.[row.key]?.configured === true;
 
           return (

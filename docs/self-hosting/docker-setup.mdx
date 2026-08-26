@@ -357,6 +357,31 @@ Never reclaim disk space with `docker system prune --volumes` (or `docker volume
 
 ## Backups
 
+<Tip>
+**One-liner via the CLI** — from the repo root, no manual `docker compose` needed:
+
+```bash
+gaia backup                          # dumps MongoDB + PostgreSQL to ./backups/
+gaia backup --output /tmp/my-backups # custom directory
+gaia backup --dry-run                # print the exact docker commands without running them
+
+# Restore — picks the latest dumps in a directory, or pass explicit files:
+gaia restore --from backups          # restores mongo-YYYY-MM-DD.gz + postgres-YYYY-MM-DD.sql
+gaia restore --mongo backups/mongo-2026-08-27.gz --postgres backups/postgres-2026-08-27.sql
+gaia restore --dry-run --from backups # preview restore commands
+```
+
+Equivalent one-copy-paste block for manual use (run from `infra/docker/`):
+
+```bash
+mkdir -p backups
+docker compose -f docker-compose.selfhost.yml exec -T mongo mongodump --archive --gzip > backups/mongo-$(date +%F).gz
+docker compose -f docker-compose.selfhost.yml exec -T postgres pg_dump -U postgres -d langgraph > backups/postgres-$(date +%F).sql
+```
+
+See below for consistent-snapshot variants, ChromaDB/RabbitMQ, and restore steps.
+</Tip>
+
 Two stores hold data you cannot rebuild:
 
 - **MongoDB** — users, sessions, chats, settings, provider credentials (encrypted at rest), and the [instance secret](#day-2-operations). Lose it and every login and stored provider key is gone with it.

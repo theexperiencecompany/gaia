@@ -18,6 +18,8 @@ import {
   checkComposeContainers,
   checkDiskHeadroom,
   checkDockerDaemon,
+  checkMemoryHeadroom,
+  checkPortConflicts,
   checkSetupReadiness,
   checkWebReachable,
   EXPECTED_SERVICES,
@@ -43,6 +45,7 @@ export function hasBlockingFailure(report: DoctorReport): boolean {
 interface DoctorContext {
   apiPort: number;
   webPort: number;
+  overrides: Record<number, number>;
   /** Compose project name, or null when the setup mode is undetectable. */
   project: ComposeProject | null;
 }
@@ -55,6 +58,7 @@ async function resolveContext(): Promise<DoctorContext> {
   return {
     apiPort: resolvePort(overrides, 8000),
     webPort: resolvePort(overrides, 3000),
+    overrides,
     project: mode ? COMPOSE_PROJECT_BY_MODE[mode] : null,
   };
 }
@@ -65,6 +69,9 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
 
   // 1. Docker daemon reachable.
   results.push(await checkDockerDaemon());
+
+  // 1b. Host port conflicts (respects infra/docker/.env overrides).
+  results.push(await checkPortConflicts(ctx.overrides));
 
   // 2. Compose project containers.
   if (!ctx.project) {
@@ -103,6 +110,9 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
 
   // 6. Disk headroom on the Docker data root.
   results.push(await checkDiskHeadroom());
+
+  // 7. Memory headroom.
+  results.push(await checkMemoryHeadroom());
 
   return { results };
 }

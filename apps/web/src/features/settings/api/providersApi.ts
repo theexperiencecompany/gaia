@@ -58,6 +58,17 @@ export const CUSTOM_PRESETS: readonly CustomPreset[] = [
   },
 ];
 
+/** Direct link to obtain an API key for providers that use one. */
+export const PROVIDER_KEY_URLS: Partial<Record<CredentialProvider, string>> = {
+  openrouter: "https://openrouter.ai/keys",
+  gemini: "https://aistudio.google.com/apikey",
+  tavily: "https://app.tavily.com",
+  composio: "https://app.composio.dev",
+  firecrawl: "https://www.firecrawl.dev/app/api-keys",
+  resend: "https://resend.com/api-keys",
+  cloudinary: "https://console.cloudinary.com/settings/api-keys",
+};
+
 export interface ProviderStatus {
   configured: boolean;
 }
@@ -96,9 +107,30 @@ export interface StoredProviderConfig {
   api_key_hint?: string | null;
 }
 
+export interface CatalogProviderMeta {
+  label: string;
+  description?: string;
+  favicon_domain: string;
+  needs_base_url: boolean;
+  default_model: string;
+  default_base_url?: string;
+  base_url?: string;
+}
+
+export interface ProviderCatalog {
+  providers: Record<CredentialProvider, CatalogProviderMeta>;
+  custom_presets: Record<string, CatalogProviderMeta>;
+  llm_provider_keys: CredentialProvider[];
+}
+
 class ProvidersApiService {
   async fetchSetupStatus(): Promise<SetupStatus> {
     const response = await apiauth.get<SetupStatus>("/setup/status");
+    return response.data;
+  }
+
+  async fetchCatalog(): Promise<ProviderCatalog> {
+    const response = await apiauth.get<ProviderCatalog>("/setup/catalog");
     return response.data;
   }
 

@@ -26,7 +26,14 @@ function printPlainSummary(store: CLIStore): void {
   console.info(
     `Finish setup in your browser: http://localhost:${webPort}/setup`,
   );
-  console.info("Run 'gaia doctor' anytime");
+  if (data.webDriftDetected === true) {
+    console.info(
+      "Note: Web source changed since last build — run 'gaia up --build' to rebuild",
+    );
+  }
+  console.info(
+    "Next: gaia doctor — run 'gaia doctor' anytime to verify your installation",
+  );
 }
 
 export async function runUp(

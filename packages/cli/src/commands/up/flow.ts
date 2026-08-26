@@ -8,8 +8,11 @@
  * @module commands/up/flow
  */
 
+import { execFile } from "node:child_process";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
+import { execa } from "execa";
 import {
   createUpAnswerResolver,
   DEFAULT_INSTALL_DIR,
@@ -36,6 +39,47 @@ const GAIA_REPO_URL = "https://github.com/theexperiencecompany/gaia.git";
 /** Marker of a developer checkout (as opposed to a plain install). */
 function hasMiseToml(repoPath: string): boolean {
   return fs.existsSync(path.join(repoPath, "mise.toml"));
+}
+
+/**
+ * Detect whether `apps/web` source has changed since the running `gaia-web`
+ * image was built. v1 heuristic: if the container exists and git reports local
+ * changes or a recent pull touched `apps/web/`, warn the user to rebuild.
+ * Never throws — returns false on any detection failure.
+ */
+export async function detectWebDrift(repoPath: string): Promise<boolean> {
+  // Container must exist; otherwise there is nothing stale.
+  try {
+    await execa("docker", ["inspect", "gaia-web"]);
+  } catch {
+    return false;
+  }
+
+  // Local modifications to apps/web/
+  try {
+    const { stdout } = await execa(
+      "git",
+      ["status", "--porcelain", "--", "apps/web/"],
+      { cwd: repoPath },
+    );
+    if (stdout.trim().length > 0) return true;
+  } catch {
+    // ignore — try next heuristic
+  }
+
+  // Recent pull changed apps/web/ (HEAD@{1} may not exist on fresh clones)
+  try {
+    const { stdout } = await execa(
+      "git",
+      ["diff", "--name-only", "HEAD@{1}", "HEAD", "--", "apps/web/"],
+      { cwd: repoPath },
+    );
+    if (stdout.trim().length > 0) return true;
+  } catch {
+    // HEAD@{1} missing or not a git repo — not drift
+  }
+
+  return false;
 }
 
 export async function runUpFlow(
@@ -178,6 +222,24 @@ export async function runUpFlow(
     return;
   }
 
+  // Web drift detection (v1): if apps/web source changed since last build and
+  // gaia-web container exists, warn to rebuild. Don't auto-rebuild (slow).
+  if (!options.build) {
+    try {
+      const drifted = await detectWebDrift(targetPath);
+      if (drifted) {
+        store.updateData("webDriftDetected", true);
+        // Visible in both TUI (finished screen) and plain summary; also
+        // briefly in the status line before it is overwritten by start progress.
+        store.setStatus(
+          "Web source changed since last build — run 'gaia up --build' to rebuild",
+        );
+      }
+    } catch {
+      // never block start on drift check failure
+    }
+  }
+
   try {
     await startSelfhostServices(store, targetPath, portOverrides, options);
   } catch (e) {
@@ -196,6 +258,17 @@ export async function runUpFlow(
     customProvider: options.llmProvider === "custom",
     stillStarting: !readiness.ready,
   });
+
+  // Auto-open the setup wizard when running interactively on macOS and the
+  // stack is actually ready. Non-blocking, errors are ignored — the URL is
+  // already printed in both the success screen and the plain summary.
+  if (readiness.ready) {
+    const isTTY = process.stdin.isTTY === true && process.stdout.isTTY === true;
+    if (!options.yes && isTTY && os.platform() === "darwin") {
+      const setupUrl = `http://localhost:${webPort}/setup`;
+      execFile("open", [setupUrl], () => undefined);
+    }
+  }
 }
 
 /**

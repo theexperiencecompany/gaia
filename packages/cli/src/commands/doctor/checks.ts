@@ -8,6 +8,9 @@
  * @module commands/doctor/checks
  */
 
+import * as fs from "node:fs";
+import * as os from "node:os";
+import { execa } from "execa";
 import {
   type ComposeContainerInfo,
   getComposeProjectContainers,
@@ -16,12 +19,17 @@ import {
   isDockerRunning,
 } from "../../lib/docker.js";
 import type { SetupMode } from "../../lib/env-parser.js";
+import { checkPortsWithFallback } from "../../lib/prerequisites.js";
 import type { CheckResult } from "./types";
 
 /** How a failed check influences the exit code. */
 
 /** Minimum free space (bytes) required on the Docker data root. */
 export const MIN_DISK_HEADROOM_BYTES = 2 * 1024 * 1024 * 1024;
+
+/** Memory thresholds for the headroom check (bytes). */
+export const MIN_MEMORY_WARN_BYTES = 4 * 1024 * 1024 * 1024;
+export const MIN_MEMORY_FAIL_BYTES = 2 * 1024 * 1024 * 1024;
 
 const HTTP_TIMEOUT_MS = 5000;
 
@@ -108,6 +116,69 @@ export function resolvePort(
   defaultPort: number,
 ): number {
   return overrides[defaultPort] ?? defaultPort;
+}
+
+// ---------------------------------------------------------------------------
+// Port conflicts (host ports required by GAIA, after overrides)
+// ---------------------------------------------------------------------------
+
+/**
+ * Re-checks the 8 required host ports (respecting `infra/docker/.env` overrides)
+ * for conflicts with non-GAIA processes. Skipped when the Docker daemon is
+ * unreachable because `checkPortsWithFallback` and `lsof` cannot run reliably
+ * without it.
+ */
+export async function checkPortConflicts(
+  overrides: Record<number, number> = {},
+): Promise<CheckResult> {
+  const base: Pick<CheckResult, "id" | "label" | "severity"> = {
+    id: "port-conflict",
+    label: "port-conflict",
+    severity: "blocker",
+  };
+
+  const daemonRunning = await isDockerRunning();
+  if (!daemonRunning) {
+    return {
+      ...base,
+      state: "skipped",
+      detail: "Docker daemon unreachable",
+    };
+  }
+
+  const requiredPorts = [3000, 8000, 5432, 6379, 27017, 5672, 8080, 8083];
+  const effectivePorts = requiredPorts.map((p) => overrides[p] ?? p);
+
+  let results: Awaited<ReturnType<typeof checkPortsWithFallback>>;
+  try {
+    results = await checkPortsWithFallback(effectivePorts);
+  } catch {
+    return {
+      ...base,
+      state: "skipped",
+      detail: "Could not check ports",
+    };
+  }
+
+  const conflicts = results.filter((r) => !r.available);
+  if (conflicts.length === 0) {
+    return {
+      ...base,
+      state: "ok",
+      detail: "No port conflicts",
+    };
+  }
+
+  const detail = conflicts
+    .map((c) => `:${c.port} in use by ${c.usedBy ?? "unknown"}`)
+    .join(", ");
+
+  return {
+    ...base,
+    state: "fail",
+    detail,
+    fix: "Free the port or re-run 'gaia up' with --web-port/--api-port (or set WEB_HOST_PORT/API_HOST_PORT in infra/docker/.env).",
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -425,5 +496,136 @@ export async function checkDiskHeadroom(
     state: "fail",
     detail: `${gb(availableBytes)} free at ${rootDir}, need ≥ ${gb(minimumBytes)}`,
     fix: "Free up disk space (e.g. 'docker system prune') before pulling/building images.",
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Memory headroom
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse available bytes from `/proc/meminfo` content.
+ * Prefers `MemAvailable`; falls back to `MemTotal` when `MemAvailable` is absent
+ * (older kernels). Values are in kB.
+ */
+export function parseMemInfoAvailableBytes(content: string): number | null {
+  const availableMatch = content.match(/^MemAvailable:\s+(\d+)\s+kB/m);
+  if (availableMatch?.[1]) {
+    const kb = Number(availableMatch[1]);
+    if (Number.isFinite(kb) && kb >= 0) return kb * 1024;
+  }
+  const totalMatch = content.match(/^MemTotal:\s+(\d+)\s+kB/m);
+  if (totalMatch?.[1]) {
+    const kb = Number(totalMatch[1]);
+    if (Number.isFinite(kb) && kb >= 0) return kb * 1024;
+  }
+  return null;
+}
+
+async function getAvailableMemoryBytes(): Promise<number | null> {
+  const platform = os.platform();
+  if (platform === "linux") {
+    try {
+      const content = fs.readFileSync("/proc/meminfo", "utf-8");
+      const parsed = parseMemInfoAvailableBytes(content);
+      if (parsed !== null) return parsed;
+    } catch {
+      // fall through to os.freemem fallback
+    }
+    try {
+      return os.freemem();
+    } catch {
+      return null;
+    }
+  }
+  if (platform === "darwin") {
+    try {
+      const { stdout } = await execa("vm_stat", []);
+      // vm_stat header: "Mach Virtual Memory Statistics: (page size of 16384 bytes)"
+      const pageSizeMatch = stdout.match(/page size of (\d+) bytes/);
+      const pageSize = pageSizeMatch?.[1] ? Number(pageSizeMatch[1]) : 4096;
+      // Approximate available as free + inactive + speculative pages.
+      const freeMatch = stdout.match(/Pages free:\s+(\d+)/);
+      const inactiveMatch = stdout.match(/Pages inactive:\s+(\d+)/);
+      const speculativeMatch = stdout.match(/Pages speculative:\s+(\d+)/);
+      if (freeMatch || inactiveMatch || speculativeMatch) {
+        const free = freeMatch ? Number(freeMatch[1]) : 0;
+        const inactive = inactiveMatch ? Number(inactiveMatch[1]) : 0;
+        const speculative = speculativeMatch ? Number(speculativeMatch[1]) : 0;
+        if (
+          Number.isFinite(free) &&
+          Number.isFinite(inactive) &&
+          Number.isFinite(pageSize) &&
+          pageSize > 0
+        ) {
+          return (free + inactive + speculative) * pageSize;
+        }
+      }
+    } catch {
+      // fall through to sysctl
+    }
+    try {
+      const { stdout } = await execa("sysctl", ["-n", "hw.memsize"]);
+      const total = Number(stdout.trim());
+      if (Number.isFinite(total) && total > 0) return total;
+    } catch {
+      // fall through
+    }
+    try {
+      return os.totalmem();
+    } catch {
+      return null;
+    }
+  }
+  try {
+    return os.freemem();
+  } catch {
+    return null;
+  }
+}
+
+export async function checkMemoryHeadroom(): Promise<CheckResult> {
+  const availableBytes = await getAvailableMemoryBytes().catch(() => null);
+
+  if (availableBytes === null) {
+    return {
+      id: "memory-headroom",
+      label: "Memory headroom",
+      severity: "blocker",
+      state: "skipped",
+      detail: "Could not read available memory",
+    };
+  }
+
+  const gb = (bytes: number): string => `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+
+  if (availableBytes < MIN_MEMORY_FAIL_BYTES) {
+    return {
+      id: "memory-headroom",
+      label: "Memory headroom",
+      severity: "blocker",
+      state: "fail",
+      detail: `${gb(availableBytes)} available — <2 GB; GAIA will likely fail to start.`,
+      fix: "Free up memory or add RAM before starting GAIA.",
+    };
+  }
+
+  if (availableBytes < MIN_MEMORY_WARN_BYTES) {
+    return {
+      id: "memory-headroom",
+      label: "Memory headroom",
+      severity: "warning",
+      state: "fail",
+      detail: `${gb(availableBytes)} available — <4 GB; GAIA API needs ~2.5 GB idle and may OOM during chat. Close other apps or add RAM.`,
+      fix: "Close other apps or add RAM.",
+    };
+  }
+
+  return {
+    id: "memory-headroom",
+    label: "Memory headroom",
+    severity: "blocker",
+    state: "ok",
+    detail: `${gb(availableBytes)} available`,
   };
 }

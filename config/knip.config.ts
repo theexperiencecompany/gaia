@@ -187,6 +187,7 @@ const config: KnipConfig = {
     "web",
     "eslint",
     "prettier",
+    "vm_stat",
     "lsof",
     "netstat",
     "tasklist",

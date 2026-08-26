@@ -64,6 +64,11 @@ _PRESET_NAMES = Literal["opencode", "nous"]
 _GEMINI_MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 _PROBE_TIMEOUT_SECONDS = 10.0
 
+_PRIVATE_URL_HINT = (
+    "This URL looks private or unreachable — use a public endpoint or set "
+    "OLLAMA_BASE_URL in your .env for local Ollama"
+)
+
 
 class ProviderCredentialBody(BaseModel):
     """Provider payload shared by upsert and test.
@@ -290,7 +295,10 @@ async def _assert_url_safe(base_url: str | None) -> None:
     if parsed.username or parsed.password or (parsed.port and parsed.port in (0, 1)):
         raise HTTPException(status_code=422, detail="base_url must not embed credentials")
     if parsed.hostname in ("169.254.169.254", "metadata.google.internal"):
-        raise HTTPException(status_code=422, detail="base_url must be a public address")
+        raise HTTPException(
+            status_code=422,
+            detail=f"{_PRIVATE_URL_HINT} (refusing metadata address {parsed.hostname})",
+        )
 
     try:
         # Literal private IPs are rejected here without a DNS round-trip;
@@ -298,7 +306,7 @@ async def _assert_url_safe(base_url: str | None) -> None:
         assert_safe_url_shape(base_url)
         await assert_public_http_url(base_url)
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e)) from e
+        raise HTTPException(status_code=422, detail=f"{_PRIVATE_URL_HINT} ({e})") from e
 
 
 async def _probe(provider: str, config: ProviderConfig) -> tuple[bool, str, list[str]]:
