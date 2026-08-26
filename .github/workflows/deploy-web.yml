@@ -193,7 +193,15 @@ jobs:
   preview:
     name: preview (PR pr-${{ github.event.number }})
     needs: build
-    if: github.event_name == 'pull_request'
+    # Preview uploads need CLOUDFLARE_API_TOKEN, and Actions secrets are not
+    # exposed to Dependabot PRs or to PRs from forks. Without this guard the
+    # job still runs, wrangler exits 1 on an empty token, and the PR shows a
+    # red check that has nothing to do with the change under review. The build
+    # job above still runs everywhere, so the bundle is always validated.
+    if: >-
+      github.event_name == 'pull_request'
+      && github.actor != 'dependabot[bot]'
+      && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: preview
