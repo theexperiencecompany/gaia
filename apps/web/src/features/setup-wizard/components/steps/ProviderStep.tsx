@@ -77,7 +77,13 @@ export function ProviderStep({ status, onSaved }: ProviderStepProps) {
 
   const openRouterCard =
     llmCards.find((c) => c.key === "openrouter") ?? llmCards[0];
-  const otherCards = llmCards.filter((c) => c.key !== openRouterCard?.key);
+  const ollamaCard = llmCards.find((c) => c.key === "ollama");
+  // Ollama is shown prominently alongside OpenRouter (free/local one-click)
+  // so self-hosters without an API key can continue in one click. The
+  // remaining providers stay behind the disclosure.
+  const otherCards = llmCards.filter(
+    (c) => c.key !== openRouterCard?.key && c.key !== ollamaCard?.key,
+  );
 
   return (
     <m.div className="flex w-full flex-col gap-3" {...MOTION_FADE_UP}>
@@ -86,6 +92,14 @@ export function ProviderStep({ status, onSaved }: ProviderStepProps) {
           key={openRouterCard.key}
           config={openRouterCard}
           isConfigured={isProviderConfigured(status, openRouterCard.key)}
+          onSaved={onSaved}
+        />
+      )}
+      {ollamaCard && ollamaCard.key !== openRouterCard?.key && (
+        <ProviderSetupCard
+          key={ollamaCard.key}
+          config={ollamaCard}
+          isConfigured={isProviderConfigured(status, ollamaCard.key)}
           onSaved={onSaved}
         />
       )}

@@ -12,8 +12,11 @@ Every route except ``GET /status`` requires the instance administrator (see
 
 Caller-supplied and stored base_urls are SSRF-guarded at both save and probe
 time: a URL is accepted only when every address its hostname resolves to is
-public. LAN-local endpoints (e.g. a laptop running Ollama) are therefore
-configured via ``OLLAMA_BASE_URL`` server-side, not through this API.
+public, with one exception — the ``ollama`` provider is expected to run
+locally (``http://host.docker.internal:11434``, ``http://localhost:11434``,
+etc.) so its base_url is allowed to be private/link-local and skips the
+public-IP DNS check. ``OLLAMA_BASE_URL`` server-side env still works as a
+fallback for deployments that prefer it.
 """
 
 from typing import Annotated, Any, Literal
@@ -195,8 +198,9 @@ async def put_provider(
     """Store (or replace) one provider's credential. Presets prefill server-side.
 
     Admin-only: rewriting a provider's endpoint redirects every LLM call the
-    instance makes. Stored base_urls must be public (see ``_assert_url_safe``) —
-    LAN-local Ollama belongs in ``OLLAMA_BASE_URL``, not in a stored credential.
+    instance makes. Stored base_urls must be public (see ``_assert_url_safe``)
+    except for ``ollama`` which is expected to be local
+    (``host.docker.internal`` / ``localhost``) and skips the public-IP check.
     """
     log.set(user={"id": user["user_id"]})
     _ensure_known_provider(provider)
@@ -204,7 +208,7 @@ async def put_provider(
     if provider in _BASE_URL_PROVIDERS:
         # Only these providers' endpoints drive outbound traffic; openrouter and
         # gemini dial canonical URLs and ignore whatever is stored.
-        await _assert_url_safe(base_url)
+        await _assert_url_safe(base_url, allow_private=provider == "ollama")
     await upsert_provider_config(
         provider,
         api_key=body.api_key,
@@ -266,7 +270,7 @@ async def test_provider(
     return {"ok": ok, "detail": detail, "models": models}
 
 
-async def _assert_url_safe(base_url: str | None) -> None:
+async def _assert_url_safe(base_url: str | None, *, allow_private: bool = False) -> None:
     """Refuse ``base_url`` values this router must not send requests to (SSRF).
 
     Applied wherever an outbound provider URL enters the system: at save time
@@ -282,10 +286,13 @@ async def _assert_url_safe(base_url: str | None) -> None:
     private, and public-looking names answering with private addresses
     (``127.0.0.1.nip.io``), are all rejected. Unresolvable hosts fail closed.
 
-    Consequence: LAN-local endpoints (a laptop running Ollama) cannot be
-    configured through this API — expose Ollama behind a public URL or set
-    ``OLLAMA_BASE_URL`` server-side (trusted env config never passes through
-    this guard).
+    ``allow_private``: when True (the ``ollama`` provider) the URL may point at
+    a private/link-local address such as ``host.docker.internal`` or
+    ``localhost`` — only the scheme/host/credential/metadata checks are
+    enforced, and the public-IP DNS validation is skipped. Every other
+    provider (``custom``) still requires a public endpoint — expose it behind a
+    public URL or set ``OLLAMA_BASE_URL`` server-side for trusted env config
+    that never passes through this guard.
     """
     if not base_url:
         return
@@ -299,6 +306,13 @@ async def _assert_url_safe(base_url: str | None) -> None:
             status_code=422,
             detail=f"{_PRIVATE_URL_HINT} (refusing metadata address {parsed.hostname})",
         )
+
+    if allow_private:
+        # Local Ollama is expected to run on the host or loopback; skip the
+        # public-IP DNS check that would reject host.docker.internal /
+        # localhost / 192.168.x.x. The scheme/host/credential checks above are
+        # still enforced, so malformed or metadata URLs are still rejected.
+        return
 
     try:
         # Literal private IPs are rejected here without a DNS round-trip;
@@ -315,10 +329,11 @@ async def _probe(provider: str, config: ProviderConfig) -> tuple[bool, str, list
     Never includes credentials in ``detail`` — only URLs without query strings.
     Refuses with a 422 rather than a soft failure when the configured endpoint
     of a base-url-driven provider is not public (SSRF guard; also catches
-    stored configs from before save-time validation existed).
+    stored configs from before save-time validation existed). The ``ollama``
+    provider is exempt from the public-IP check (see ``_assert_url_safe``).
     """
     if provider in _BASE_URL_PROVIDERS:
-        await _assert_url_safe(config["base_url"])
+        await _assert_url_safe(config["base_url"], allow_private=provider == "ollama")
     try:
         async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT_SECONDS) as client:
             if provider == "gemini":

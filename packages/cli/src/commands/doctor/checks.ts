@@ -20,6 +20,7 @@ import {
 } from "../../lib/docker.js";
 import type { SetupMode } from "../../lib/env-parser.js";
 import { checkPortsWithFallback } from "../../lib/prerequisites.js";
+import { findRepoRoot } from "../../lib/service-starter.js";
 import type { CheckResult } from "./types";
 
 /** How a failed check influences the exit code. */
@@ -628,4 +629,56 @@ export async function checkMemoryHeadroom(): Promise<CheckResult> {
     state: "ok",
     detail: `${gb(availableBytes)} available`,
   };
+}
+
+export async function checkGitUpdateAvailable(): Promise<CheckResult> {
+  const base: Pick<CheckResult, "id" | "label" | "severity"> = {
+    id: "git-update",
+    label: "Git update",
+    severity: "warning",
+  };
+
+  const repoPath = findRepoRoot();
+  if (!repoPath) {
+    return {
+      ...base,
+      state: "skipped",
+      detail: "No GAIA installation found",
+    };
+  }
+
+  try {
+    const { stdout } = await execa(
+      "git",
+      ["rev-list", "HEAD..origin/master", "--count"],
+      { cwd: repoPath },
+    );
+    const count = Number(stdout.trim());
+    if (!Number.isFinite(count)) {
+      return {
+        ...base,
+        state: "skipped",
+        detail: "Could not check git status",
+      };
+    }
+    if (count === 0) {
+      return {
+        ...base,
+        state: "ok",
+        detail: "Up to date with origin/master",
+      };
+    }
+    return {
+      ...base,
+      state: "fail",
+      detail: `${count} commit(s) behind origin/master`,
+      fix: "Run 'gaia update' to pull and restart services (preserves infra/docker/.env and volumes).",
+    };
+  } catch {
+    return {
+      ...base,
+      state: "skipped",
+      detail: "Could not check git status (no origin/master or not a git repo)",
+    };
+  }
 }

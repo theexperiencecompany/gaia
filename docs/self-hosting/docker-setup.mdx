@@ -7,8 +7,80 @@ icon: "docker"
 GAIA uses Docker Compose to orchestrate all the required services. This makes deployment simple and ensures consistency across different environments.
 
 <Note>
-**Looking for the easy path?** [GAIA CLI](/self-hosting/cli-setup) does all of this for you — `gaia up` checks prerequisites, writes configuration, and starts the same Compose stack described here. This guide covers driving Docker directly for advanced users who prefer full control.
+  **Looking for the easy path?** [GAIA CLI](/self-hosting/cli-setup) does all of this for you — `gaia up` checks prerequisites, writes configuration, and starts the same Compose stack described here. This guide covers driving Docker directly for advanced users who prefer full control.
 </Note>
+
+## Quick Start — 2 minutes
+
+<Steps>
+  <Step title="Install the CLI and run gaia up">
+    <CodeGroup>
+
+    ```bash curl
+    curl -fsSL https://heygaia.io/install.sh | sh
+    ```
+
+    ```bash npm
+    npm install -g @heygaia/cli
+    ```
+
+    </CodeGroup>
+
+    ```bash
+    gaia up
+    ```
+
+    This writes the `.env` files (with `ENV=selfhost`), generates machine secrets, and starts the stack. The rest of this guide explains what it started and how to operate it by hand.
+
+    Alternative without the installer — clone and start:
+
+    ```bash
+    git clone https://github.com/theexperiencecompany/gaia.git && cd gaia && gaia up
+    ```
+  </Step>
+
+  <Step title="Finish setup in the browser">
+    Open http://localhost:3000/setup, create your admin account, and paste an API key for one AI provider — see [Self-hosting overview](/self-hosting/overview).
+  </Step>
+
+  <Step title="Monitor">
+    ```bash
+    docker compose -f docker-compose.selfhost.yml ps          # container status + health
+    docker compose -f docker-compose.selfhost.yml logs -f     # stream all logs
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  **Back up in one line** — from the repo root, no manual `docker compose` needed:
+
+  ```bash
+  gaia backup                          # dumps MongoDB + PostgreSQL to ./backups/
+  gaia restore --from backups          # restores the latest dumps
+  ```
+
+  See [Backups](#backups) below for custom paths, `--dry-run`, and manual `mongodump` / `pg_dump` equivalents.
+</Tip>
+
+## Self-Host vs Cloud
+
+Same codebase, different operating profile. Self-host runs with `ENV=selfhost` and `AUTH_MODE=local`; Cloud and development use `AUTH_MODE=workos`.
+
+| Area | Cloud (heygaia.io) | Self-Host (`ENV=selfhost`) |
+| --- | --- | --- |
+| **Auth** | WorkOS / AuthKit — Google OAuth, hosted sessions | Local email + password, single admin account, `AUTH_MODE=local` |
+| **Billing** | Dodo Payments — plans and limits enforced | No billing integration; Free plan auto-seeds, `billing_enabled=false`, usage tracked locally only |
+| **Secrets** | Infisical vault (required in production) | Local `.env` only; never contacts Infisical; `INSTANCE_SECRET` auto-generated into Mongo (`instance_settings`) on first boot |
+| **Required config** | Full SaaS keys (OpenRouter, Gemini, Tavily, Composio, R2, LiveKit, etc.) required to boot | Only infra + 3 machine secrets (`MONGO_DB`, `REDIS_URL`, `POSTGRES_URL`, `CHROMADB_*`, `RABBITMQ_URL`, `AGENT_SECRET`, `BOT_SESSION_TOKEN_SECRET`, `EMAIL_UNSUBSCRIBE_SECRET`) — everything else is optional and disables gracefully; providers configured at runtime via the setup wizard |
+| **LLM providers** | Managed keys via Infisical | Bring your own — OpenRouter / Gemini / Ollama / OpenCode / Nous via Settings; keys encrypted with the instance secret |
+| **Workspace storage** | Hosted R2 + JuiceFS (managed) | Bring your own R2/S3 + Postgres meta DB via `R2_*` / `JUICEFS_META_URL_TEMPLATE`; without it chat works but uploads/artifacts log `JuiceFSUnavailable` |
+| **Sandbox** | E2B (required) with warm pool | E2B optional; without it a local Docker fallback (`gaia-sandbox`) runs code via `docker exec` |
+| **Voice** | Hosted LiveKit + Deepgram + ElevenLabs (required) | Bring your own LiveKit or leave unset to disable voice |
+| **Search / scraping** | Tavily, Exa, Firecrawl, SearXNG (keys via Infisical) | Same providers but opt-in via env; unset skips that lane |
+| **Email** | Resend (managed) | Optional `RESEND_*` — without it email features stay quiet |
+| **Observability** | Loki + Grafana, LogQL over shipped logs | Container `json-file` logs only (10 MB × 3 rotated files); no Loki shipper |
+| **Updates** | Deployed by the team | `git pull && gaia start --pull --build` — volumes survive rebuilds |
+| **Backups** | Managed | `gaia backup` / `gaia restore` — you own the dumps; see [Backups](#backups) |
 
 ## Prerequisites
 
@@ -69,40 +141,25 @@ gaia/
 
 The self-host stack is `infra/docker/docker-compose.selfhost.yml`, project name `gaia-selfhost`. Every command below runs from `infra/docker/` and passes `-f docker-compose.selfhost.yml` — Compose only auto-detects the default filename, so without `-f` you'd hit the development compose file instead.
 
-## Quick Start
+<AccordionGroup>
+  <Accordion icon="diagram-project" title="Advanced: Architecture">
+    **Stack at a glance** — one Compose project, one bridge network, named volumes:
 
-<Steps>
-  <Step title="Install the CLI and run gaia up">
-    <CodeGroup>
-
-    ```bash curl
-    curl -fsSL https://heygaia.io/install.sh | sh
+    ```
+    gaia-web (3000) ──► gaia-backend (8000) ──► postgres │ mongo │ redis │ chromadb │ rabbitmq
+         │                        │                           ▲
+         │                        ├─ host.docker.internal ─────── Ollama (host, optional)
+         │                        └─ /mnt/jfs (FUSE) ──────► R2/S3 + JuiceFS meta DB (optional)
+         └─ arq_worker ───────────► redis + mongo
     ```
 
-    ```bash npm
-    npm install -g @heygaia/cli
-    ```
+    - `gaia-web` is the Next.js frontend; server-side fetches reach the backend at `http://gaia-backend:8000`, browser fetches use `NEXT_PUBLIC_APP_URL`.
+    - `gaia-backend` + `arq_worker` are the same image with different `WORKER_TYPE`; both mount the JuiceFS FUSE cache and share `extra_hosts: host.docker.internal:host-gateway` for host services.
+    - All datastores publish to `127.0.0.1` only — see [Networking](#networking). The web/backend ports (`3000`/`8000`) are the only ones bound to `0.0.0.0` by default (overridable via `WEB_HOST_PORT` / `API_HOST_PORT`).
 
-    </CodeGroup>
-
-    ```bash
-    gaia up
-    ```
-
-    This writes the `.env` files (with `ENV=selfhost`), generates machine secrets, and starts the stack. The rest of this guide explains what it started and how to operate it by hand.
-  </Step>
-
-  <Step title="Finish setup in the browser">
-    Open http://localhost:3000/setup, create your admin account, and paste an API key for one AI provider — see [Self-hosting overview](/self-hosting/overview).
-  </Step>
-
-  <Step title="Monitor">
-    ```bash
-    docker compose -f docker-compose.selfhost.yml ps          # container status + health
-    docker compose -f docker-compose.selfhost.yml logs -f     # stream all logs
-    ```
-  </Step>
-</Steps>
+    For the full container spec see `infra/docker/docker-compose.selfhost.yml`.
+  </Accordion>
+</AccordionGroup>
 
 ## Service Overview
 
@@ -379,7 +436,7 @@ docker compose -f docker-compose.selfhost.yml exec -T mongo mongodump --archive 
 docker compose -f docker-compose.selfhost.yml exec -T postgres pg_dump -U postgres -d langgraph > backups/postgres-$(date +%F).sql
 ```
 
-See below for consistent-snapshot variants, ChromaDB/RabbitMQ, and restore steps.
+See the collapsed sections below for consistent-snapshot variants, ChromaDB/RabbitMQ, and restore steps.
 </Tip>
 
 Two stores hold data you cannot rebuild:
@@ -389,79 +446,83 @@ Two stores hold data you cannot rebuild:
 
 Redis (queue + cache), ChromaDB (vectors are re-embeddable from source content), RabbitMQ (transient messages), and the JuiceFS workspace (file bytes already live in your object store) are lower-stakes.
 
-### Back up MongoDB
+<AccordionGroup>
+  <Accordion title="Advanced: Manual backup & restore details">
+    ### Back up MongoDB
 
-The database tools ship inside the mongo container. Dump to a gzip archive and redirect it to a file on the host:
+    The database tools ship inside the mongo container. Dump to a gzip archive and redirect it to a file on the host:
 
-```bash
-mkdir -p backups
-docker compose -f docker-compose.selfhost.yml exec mongo mongodump --archive --gzip > backups/mongo-$(date +%F).gz
-```
+    ```bash
+    mkdir -p backups
+    docker compose -f docker-compose.selfhost.yml exec mongo mongodump --archive --gzip > backups/mongo-$(date +%F).gz
+    ```
 
-For a fully consistent snapshot, stop the writers first so nothing changes mid-dump:
+    For a fully consistent snapshot, stop the writers first so nothing changes mid-dump:
 
-```bash
-docker compose -f docker-compose.selfhost.yml stop gaia-backend arq_worker
-docker compose -f docker-compose.selfhost.yml exec mongo mongodump --archive --gzip > backups/mongo-$(date +%F).gz
-docker compose -f docker-compose.selfhost.yml start gaia-backend arq_worker
-```
+    ```bash
+    docker compose -f docker-compose.selfhost.yml stop gaia-backend arq_worker
+    docker compose -f docker-compose.selfhost.yml exec mongo mongodump --archive --gzip > backups/mongo-$(date +%F).gz
+    docker compose -f docker-compose.selfhost.yml start gaia-backend arq_worker
+    ```
 
-### Back up PostgreSQL
+    ### Back up PostgreSQL
 
-`pg_dump` produces a consistent snapshot on its own — safe against a live stack:
+    `pg_dump` produces a consistent snapshot on its own — safe against a live stack:
 
-```bash
-docker compose -f docker-compose.selfhost.yml exec postgres pg_dump -U postgres -d langgraph > backups/postgres-$(date +%F).sql
-```
+    ```bash
+    docker compose -f docker-compose.selfhost.yml exec postgres pg_dump -U postgres -d langgraph > backups/postgres-$(date +%F).sql
+    ```
 
-### Back up ChromaDB
+    ### Back up ChromaDB
 
-ChromaDB's vectors are re-embeddable from source content, so this is optional belt-and-braces — it saves you a full re-embedding run after a restore. Stop the writers first so the SQLite store isn't captured mid-write, then tar the data volume from inside the container (GNU tar ships in the image):
+    ChromaDB's vectors are re-embeddable from source content, so this is optional belt-and-braces — it saves you a full re-embedding run after a restore. Stop the writers first so the SQLite store isn't captured mid-write, then tar the data volume from inside the container (GNU tar ships in the image):
 
-```bash
-mkdir -p backups
-docker compose -f docker-compose.selfhost.yml stop gaia-backend arq_worker
-docker compose -f docker-compose.selfhost.yml exec chromadb tar czf - -C /chroma/chroma . > backups/chroma-$(date +%F).tar.gz
-docker compose -f docker-compose.selfhost.yml start gaia-backend arq_worker
-```
+    ```bash
+    mkdir -p backups
+    docker compose -f docker-compose.selfhost.yml stop gaia-backend arq_worker
+    docker compose -f docker-compose.selfhost.yml exec chromadb tar czf - -C /chroma/chroma . > backups/chroma-$(date +%F).tar.gz
+    docker compose -f docker-compose.selfhost.yml start gaia-backend arq_worker
+    ```
 
-To restore, untar into a fresh volume before starting the stack:
+    To restore, untar into a fresh volume before starting the stack:
 
-```bash
-docker volume create gaia-selfhost_chroma_data
-docker run --rm -v gaia-selfhost_chroma_data:/data -v "$PWD/backups:/backups" alpine \
-  tar xzf /backups/chroma-2026-08-24.tar.gz -C /data
-```
+    ```bash
+    docker volume create gaia-selfhost_chroma_data
+    docker run --rm -v gaia-selfhost_chroma_data:/data -v "$PWD/backups:/backups" alpine \
+      tar xzf /backups/chroma-2026-08-24.tar.gz -C /data
+    ```
 
-### Back up RabbitMQ
+    ### Back up RabbitMQ
 
-RabbitMQ holds transient messages only — queues and exchanges are re-declared by the backend on boot — so it usually needs no backup. If you've changed topology manually or want queued-job routing preserved across a rebuild, export the broker definitions to stdout:
+    RabbitMQ holds transient messages only — queues and exchanges are re-declared by the backend on boot — so it usually needs no backup. If you've changed topology manually or want queued-job routing preserved across a rebuild, export the broker definitions to stdout:
 
-```bash
-mkdir -p backups
-docker compose -f docker-compose.selfhost.yml exec rabbitmq rabbitmqctl export_definitions - > backups/rabbitmq-definitions-$(date +%F).json
-```
+    ```bash
+    mkdir -p backups
+    docker compose -f docker-compose.selfhost.yml exec rabbitmq rabbitmqctl export_definitions - > backups/rabbitmq-definitions-$(date +%F).json
+    ```
 
-Definitions capture topology and users (including password hashes) but **not** message contents — queued messages are lost with the volume. Treat an export like a credential file.
+    Definitions capture topology and users (including password hashes) but **not** message contents — queued messages are lost with the volume. Treat an export like a credential file.
 
-### Restore MongoDB
+    ### Restore MongoDB
 
-`--drop` replaces existing collections so you don't merge stale and restored state; `-T` disables the pseudo-terminal so the redirected archive reaches `mongorestore`'s stdin:
+    `--drop` replaces existing collections so you don't merge stale and restored state; `-T` disables the pseudo-terminal so the redirected archive reaches `mongorestore`'s stdin:
 
-```bash
-docker compose -f docker-compose.selfhost.yml exec -T mongo mongorestore --archive --gzip --drop < backups/mongo-2026-08-24.gz
-```
+    ```bash
+    docker compose -f docker-compose.selfhost.yml exec -T mongo mongorestore --archive --gzip --drop < backups/mongo-2026-08-24.gz
+    ```
 
-Restart the app containers afterwards so sessions re-issue against the restored data.
+    Restart the app containers afterwards so sessions re-issue against the restored data.
 
-### Restore PostgreSQL
+    ### Restore PostgreSQL
 
-Start from an empty schema so the restore doesn't collide with existing tables:
+    Start from an empty schema so the restore doesn't collide with existing tables:
 
-```bash
-docker compose -f docker-compose.selfhost.yml exec postgres psql -U postgres -d langgraph -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'
-cat backups/postgres-2026-08-24.sql | docker compose -f docker-compose.selfhost.yml exec -T postgres psql -U postgres -d langgraph
-```
+    ```bash
+    docker compose -f docker-compose.selfhost.yml exec postgres psql -U postgres -d langgraph -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'
+    cat backups/postgres-2026-08-24.sql | docker compose -f docker-compose.selfhost.yml exec -T postgres psql -U postgres -d langgraph
+    ```
+  </Accordion>
+</AccordionGroup>
 
 <Warning>
 A Mongo backup decrypts your provider credentials — it contains the instance secret that protects them. Store backups with the same care as `.env` files: off-host, access-controlled, never in a public bucket.
@@ -498,6 +559,46 @@ On first boot GAIA generates a root secret and persists it inside MongoDB (the `
 - If you ever plan to manage the secret through the environment, pin `INSTANCE_SECRET` **before** storing any provider credentials — the value must match whatever encrypted them.
 - Never set a fresh random value on an instance whose credentials were encrypted under a different secret: that orphans every ciphertext.
 - The only copy of an auto-generated secret lives in your MongoDB backups. Keep [backups](#backups) current and protected before any maintenance that could touch the database.
+
+<AccordionGroup>
+  <Accordion icon="key" title="Advanced: Manual environment setup">
+    `gaia up` writes everything for you, but you can also configure by hand. Create `apps/api/.env`:
+
+    ```bash
+    ENV=selfhost
+    AUTH_MODE=local
+    # Infra — Compose provides these when you use the bundled compose file,
+    # but a hand-rolled setup must supply them:
+    MONGO_DB=mongodb://mongo:27017/gaia
+    REDIS_URL=redis://redis:6379/0
+    POSTGRES_URL=postgresql://postgres:postgres@postgres:5432/langgraph
+    CHROMADB_HOST=chromadb
+    CHROMADB_PORT=8000
+    RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    # Machine secrets — generate once, keep stable:
+    AGENT_SECRET=$(openssl rand -hex 32)
+    BOT_SESSION_TOKEN_SECRET=$(openssl rand -hex 32)
+    EMAIL_UNSUBSCRIBE_SECRET=$(openssl rand -hex 32)
+    # Optional: pin INSTANCE_SECRET before storing any provider keys (see above)
+    # INSTANCE_SECRET=$(openssl rand -hex 32)
+    # Optional integrations — leave unset to disable that lane (see Self-Host vs Cloud):
+    # OPENROUTER_API_KEY=...
+    # R2_ACCOUNT_ID=... R2_BUCKET=... R2_ACCESS_KEY=... R2_SECRET_KEY=...
+    # JUICEFS_META_URL_TEMPLATE=postgres://juicefs:pass@postgres:5432/gaia_juicefs_{shard}
+    # LIVEKIT_URL=... LIVEKIT_API_KEY=... LIVEKIT_API_SECRET=...
+    ```
+
+    Secrets must stay stable across restarts — rotating `INSTANCE_SECRET` or the machine secrets after data exists invalidates sessions and provider keys. See [Environment Variables](/configuration/environment-variables) for the full list.
+
+    Start the stack after writing the file:
+
+    ```bash
+    cd infra/docker && docker compose -f docker-compose.selfhost.yml up -d
+    ```
+
+    `gaia doctor` validates the result and prints a fix for any gap.
+  </Accordion>
+</AccordionGroup>
 
 ## Troubleshooting
 

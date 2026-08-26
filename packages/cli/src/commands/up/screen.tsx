@@ -27,6 +27,7 @@ const DependencyInstallStep: React.FC<{
   logs?: string[];
 }> = ({ phase, progress, isComplete, logs }) => {
   const window = logs?.slice(-8) ?? [];
+  const isBuilding = phase.toLowerCase().includes("building");
   return (
     <Box
       flexDirection="column"
@@ -48,6 +49,13 @@ const DependencyInstallStep: React.FC<{
             <Text color="green">✓ {phase}</Text>
           )}
         </Box>
+        {!isComplete && isBuilding && (
+          <Box>
+            <Text color="gray" dimColor>
+              This can take 5-30 min on 4 GB RAM — please do not cancel.
+            </Text>
+          </Box>
+        )}
         {!isComplete && progress > 0 && (
           <Box width={50}>
             <ProgressBar value={progress} />

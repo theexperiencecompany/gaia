@@ -44,6 +44,17 @@ export interface ProviderCardConfig {
   hasPresets: boolean;
 }
 
+/**
+ * One-click Ollama defaults — the local endpoint + model the wizard's
+ * "Use local Ollama" shortcut saves without a probe. Kept here so the card
+ * defaults and the shortcut stay in sync; the backend allows this private
+ * address for ollama (see setup.py `_assert_url_safe`).
+ */
+export const OLLAMA_ONE_CLICK = {
+  baseUrl: "http://host.docker.internal:11434",
+  model: "llama3.2",
+} as const;
+
 export const LLM_PROVIDER_CARDS: ProviderCardConfig[] = [
   {
     key: "openrouter",
@@ -80,8 +91,8 @@ export const LLM_PROVIDER_CARDS: ProviderCardConfig[] = [
     showBaseUrl: true,
     showModel: true,
     connectionTestable: true,
-    defaultBaseUrl: "http://host.docker.internal:11434",
-    defaultModel: "llama3.2",
+    defaultBaseUrl: OLLAMA_ONE_CLICK.baseUrl,
+    defaultModel: OLLAMA_ONE_CLICK.model,
     hasPresets: false,
   },
   {

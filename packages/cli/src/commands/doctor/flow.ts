@@ -18,6 +18,7 @@ import {
   checkComposeContainers,
   checkDiskHeadroom,
   checkDockerDaemon,
+  checkGitUpdateAvailable,
   checkMemoryHeadroom,
   checkPortConflicts,
   checkSetupReadiness,
@@ -113,6 +114,9 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
 
   // 7. Memory headroom.
   results.push(await checkMemoryHeadroom());
+
+  // 8. Git update drift — warns when behind origin/master.
+  results.push(await checkGitUpdateAvailable());
 
   return { results };
 }

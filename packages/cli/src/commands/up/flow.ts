@@ -36,6 +36,54 @@ const ANSI_ESCAPE_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 
 const GAIA_REPO_URL = "https://github.com/theexperiencecompany/gaia.git";
 
+/**
+ * Map a raw docker build log line to a human-readable phase label for the
+ * TUI spinner. Returns null when the line carries no phase signal.
+ *
+ * Keep regex intentionally simple — docker buildx output is not machine
+ * stable, but `"=> ["` reliably marks a build step. On a 4 GB VM the web
+ * build can stall for 30 min with no other output, so any detected step
+ * should reassure the user rather than silently spinning.
+ */
+export function detectBuildPhase(logLine: string): string | null {
+  // Build step markers: "=> [stage-1 1/7]" or "=> CACHED [stage-2 3/3]"
+  if (logLine.includes("=> [") || logLine.includes("=> CACHED [")) {
+    const match = logLine.match(
+      /=>\s*(?:CACHED\s*)?\[([^\]]+?)\s+(\d+)\/(\d+)\]/,
+    );
+    if (match) {
+      const stage = match[1] ?? "";
+      const cur = match[2];
+      const total = match[3];
+      // Final stage is the longest; call it out so users don't kill it.
+      if (stage.includes("stage-2")) {
+        return `Building web — final stage (${cur}/${total}) — please wait, longest step`;
+      }
+      return `Building web (${cur}/${total}) — this can take 5-30 min on 4 GB RAM, please wait`;
+    }
+    if (logLine.includes("stage-2")) {
+      return "Building web — final stage (please wait, longest step)";
+    }
+    return "Building images... (this can take 5-30 min on 4 GB RAM, please wait)";
+  }
+  if (
+    logLine.toLowerCase().includes("naming to docker.io") ||
+    logLine.toLowerCase().includes("naming to")
+  ) {
+    return "Build complete — finalizing images...";
+  }
+  if (logLine.includes("Network gaia")) {
+    return "Starting containers...";
+  }
+  if (
+    logLine.includes("Container") &&
+    (logLine.includes("Started") || logLine.includes("Created"))
+  ) {
+    return "Starting containers...";
+  }
+  return null;
+}
+
 /** Marker of a developer checkout (as opposed to a plain install). */
 function hasMiseToml(repoPath: string): boolean {
   return fs.existsSync(path.join(repoPath, "mise.toml"));
@@ -301,6 +349,15 @@ async function startSelfhostServices(
       "dependencyLogs",
       [...current, ...lines].slice(-LOG_BUFFER_LINES),
     );
+    // Surface build-phase labels so the spinner doesn't go silent for minutes
+    // on resource-constrained VMs (web build alone can be 30 min on 4 GB RAM).
+    for (const line of lines) {
+      const phase = detectBuildPhase(line);
+      if (phase) {
+        store.updateData("dependencyPhase", phase);
+        store.setStatus(phase);
+      }
+    }
   };
   const onStatus = (status: string) => store.setStatus(status);
 

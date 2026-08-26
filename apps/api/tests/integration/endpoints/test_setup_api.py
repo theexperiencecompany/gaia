@@ -607,17 +607,20 @@ class TestSsrfGuard:
         assert resp.status_code == 422
         assert provider_service.configs == {}
 
-    async def test_put_rejects_local_ollama_endpoint(
+    async def test_put_allows_local_ollama_endpoint(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """No local-endpoint allow-list: LAN Ollama belongs in ``OLLAMA_BASE_URL``
-        env config, which never passes through this API-side guard."""
+        """Ollama is the local LLM lane — private addresses like localhost /
+        host.docker.internal are intentionally saveable via the API (the
+        provider skips the public-IP SSRF check; see setup.py `_assert_url_safe`
+        `allow_private`)."""
         monkeypatch.setattr(socket, "getaddrinfo", _resolver_returning("127.0.0.1"))
         resp = await client.put(
-            f"{API}/providers/ollama", json={"base_url": "http://localhost:11434"}
+            f"{API}/providers/ollama",
+            json={"base_url": "http://localhost:11434", "model": "llama3.2"},
         )
-        assert resp.status_code == 422
-        assert provider_service.configs == {}
+        assert resp.status_code == 200
+        assert provider_service.configs["ollama"]["base_url"] == "http://localhost:11434"
 
     async def test_put_rejects_name_resolving_private(
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch

@@ -24,8 +24,9 @@ import { useState } from "react";
 import {
   PROVIDER_KEY_URLS,
   providerFaviconUrl,
+  providersApi,
 } from "@/features/settings/api/providersApi";
-import type { ProviderCardConfig } from "../constants";
+import { OLLAMA_ONE_CLICK, type ProviderCardConfig } from "../constants";
 import { useProviderSetup } from "../hooks/useProviderSetup";
 
 interface ProviderSetupCardProps {
@@ -62,6 +63,33 @@ export function ProviderSetupCard({
     (!config.showApiKey || apiKey.trim().length > 0) &&
     (!config.showBaseUrl || baseUrl.trim().length > 0);
 
+  // Ollama one-click (free, local) — no test, just upsert the default
+  // host.docker.internal endpoint + llama3.2. The backend accepts it without
+  // an api_key and allows private addresses for ollama (see setup.py).
+  const [ollamaBusy, setOllamaBusy] = useState(false);
+  const [ollamaOutcome, setOllamaOutcome] = useState<
+    ReturnType<typeof useProviderSetup>["outcome"]
+  >(null);
+  const [ollamaError, setOllamaError] = useState<string | null>(null);
+
+  const handleOllamaOneClick = async () => {
+    setOllamaBusy(true);
+    setOllamaOutcome(null);
+    setOllamaError(null);
+    try {
+      await providersApi.upsertProvider("ollama", {
+        base_url: config.defaultBaseUrl || OLLAMA_ONE_CLICK.baseUrl,
+        model: config.defaultModel || OLLAMA_ONE_CLICK.model,
+      });
+      setOllamaOutcome({ ok: true, detail: "Saved", modelCount: 0 });
+      onSaved();
+    } catch (err) {
+      setOllamaError(extractOllamaError(err));
+    } finally {
+      setOllamaBusy(false);
+    }
+  };
+
   const faviconDomain =
     preset && config.presetFavicon
       ? (config.presetFavicon[preset.key] ?? config.faviconDomain)
@@ -93,6 +121,56 @@ export function ProviderSetupCard({
         )}
       </div>
       <p className="mb-3 text-xs text-zinc-500">{config.description}</p>
+
+      {config.key === "ollama" && (
+        <div className="mb-3 rounded-xl bg-zinc-900 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-zinc-100">
+                Quick setup — local Ollama
+              </p>
+              <p className="text-xs text-zinc-500">
+                Free, no API key needed. One click to use your local model.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              color="primary"
+              variant="flat"
+              isLoading={ollamaBusy}
+              isDisabled={ollamaBusy || isBusy}
+              onPress={handleOllamaOneClick}
+            >
+              Use local Ollama
+            </Button>
+          </div>
+          <p className="mt-2 text-xs leading-relaxed text-zinc-500">
+            Requires Ollama running on your host:{" "}
+            <code className="rounded bg-zinc-800 px-1 py-0.5 text-xs text-zinc-300">
+              ollama pull {OLLAMA_ONE_CLICK.model} && ollama serve
+            </code>{" "}
+            —{" "}
+            <a
+              href="https://ollama.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-zinc-400 hover:text-zinc-200"
+            >
+              ollama.com <SquareArrowUpRight02Icon size={10} />
+            </a>
+          </p>
+          {(ollamaOutcome || ollamaError) && (
+            <div className="mt-2">
+              <OutcomeLine
+                outcome={ollamaOutcome}
+                error={ollamaError}
+                savedLabel="Saved"
+                showModelCount={false}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {config.hasPresets && (
         <div className="mb-3 flex flex-wrap gap-2">
@@ -197,6 +275,25 @@ export function ProviderSetupCard({
       </div>
     </div>
   );
+}
+
+function extractOllamaError(err: unknown): string {
+  if (typeof err === "object" && err !== null) {
+    const data = (err as { response?: { data?: unknown } }).response?.data;
+    if (typeof data === "object" && data !== null) {
+      const record = data as Record<string, unknown>;
+      if (typeof record.detail === "string") return record.detail;
+      if (
+        typeof record.detail === "object" &&
+        record.detail !== null &&
+        typeof (record.detail as Record<string, unknown>).message === "string"
+      ) {
+        return (record.detail as Record<string, unknown>).message as string;
+      }
+    }
+    if (err instanceof Error && err.message) return err.message;
+  }
+  return "Something went wrong while saving.";
 }
 
 function OutcomeLine({

@@ -1,0 +1,171 @@
+name: Self-host smoke
+
+# Proves ENV=selfhost hasn't regressed without booting the full Docker stack.
+# Hosted PRs that break self-host (settings boot, provider wizard, local auth)
+# would otherwise have no gate until a self-hoster reports it. This lane is the
+# lightweight version: it only asserts that the selfhost profile boots and that
+# the setup-API contract suite — which already drives the router over fakes under
+# ENV=selfhost — still passes. No images are built, no containers started, so
+# the lane stays under 2 minutes. A heavier `docker compose selfhost` smoke can
+# replace it later without changing the job's contract (same if-gate, same file).
+on:
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: selfhost-smoke-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # --- Change detection (mirrors code-quality.yml#changes / main.yml#detect) ---
+  # Unified with the two main gates: uses nx-set-shas + nx show projects
+  # --affected with the same origin/master base so all three workflows agree
+  # on what "affected" means. Push/dispatch → __FULL__ semantics.
+  changes:
+    name: Detect changed languages
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    outputs:
+      has_python: ${{ steps.detect.outputs.has_python }}
+      has_typescript: ${{ steps.detect.outputs.has_typescript }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: nrwl/nx-set-shas@afb73a62d26e41464e9254689e1fd6122ee683c1 # v5.0.1
+        with:
+          main-branch-name: master
+
+      - uses: ./.github/actions/setup-node-pnpm
+
+      - name: Detect affected projects
+        id: detect
+        run: |
+          set -euo pipefail
+          normalize() { tr -d '[]"' | tr -s ' \n' ',' | sed 's/^,//; s/,$//'; }
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            PY=$(pnpm exec nx show projects --projects 'tag:scope:python' | normalize)
+            TS=$(pnpm exec nx show projects --projects 'tag:scope:typescript' | normalize)
+          else
+            PY=$(pnpm exec nx show projects --affected --projects 'tag:scope:python' | normalize)
+            TS=$(pnpm exec nx show projects --affected --projects 'tag:scope:typescript' | normalize)
+          fi
+
+          echo "python_projects=$PY" >> "$GITHUB_OUTPUT"
+          echo "typescript_projects=$TS" >> "$GITHUB_OUTPUT"
+          echo "has_python=$([[ -n "$PY" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "has_typescript=$([[ -n "$TS" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "python: ${PY:-none} | typescript: ${TS:-none}"
+
+  # --- Self-host smoke: ENV=selfhost boots, setup contract holds -------------
+  # Gated on either language so infra/compose/self-host changes are covered
+  # even when they touch no single language project. Docs-only PRs skip (fast).
+  # No Docker, no live services — the setup-API tests drive the router over
+  # in-memory fakes and already pin ENV=selfhost via conftest; the extra
+  # `settings` assertion proves the profile itself boots without a full env.
+  selfhost-smoke:
+    name: Self-host smoke (ENV=selfhost)
+    needs: [changes]
+    if: needs.changes.outputs.has_python == 'true' || needs.changes.outputs.has_typescript == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.8.17"
+          enable-cache: true
+          prune-cache: true
+
+      - name: Sync Python deps
+        run: uv sync --frozen --package gaia --group backend --group dev
+
+      - name: ENV=selfhost boots without crash
+        working-directory: apps/api
+        env:
+          ENV: selfhost
+          AUTH_MODE: local
+          # Minimal infra dummies so SelfHostSettings bootstraps (see
+          # _SELFHOST_INFRA_FIELDS in test_prod_isolation.py). Real services
+          # aren't needed — the setup suite drives the router over fakes.
+          MONGO_DB: mongodb://localhost/gaia
+          REDIS_URL: redis://localhost:6379/0
+          CHROMADB_HOST: localhost
+          CHROMADB_PORT: "8000"
+          POSTGRES_URL: postgresql://gaia:gaia@localhost/gaia
+          RABBITMQ_URL: amqp://guest:guest@localhost/
+          AGENT_SECRET: ci-selfhost-smoke
+          BOT_SESSION_TOKEN_SECRET: ci-selfhost-smoke
+          EMAIL_UNSUBSCRIBE_SECRET: ci-selfhost-smoke
+        run: |
+          uv run --frozen --no-sync python -c "
+          from app.config.settings import get_settings
+          get_settings.cache_clear()
+          s = get_settings()
+          assert s.ENV == 'selfhost', s.ENV
+          assert s.AUTH_MODE == 'local', s.AUTH_MODE
+          assert s.billing_enabled is False, 'billing must be off under selfhost'
+          print(f'boot OK: ENV={s.ENV} AUTH_MODE={s.AUTH_MODE} billing_enabled={s.billing_enabled}')
+          "
+
+      - name: Setup-API contract under ENV=selfhost
+        working-directory: apps/api
+        env:
+          ENV: selfhost
+          AUTH_MODE: local
+          MONGO_DB: mongodb://localhost/gaia
+          REDIS_URL: redis://localhost:6379/0
+          CHROMADB_HOST: localhost
+          CHROMADB_PORT: "8000"
+          POSTGRES_URL: postgresql://gaia:gaia@localhost/gaia
+          RABBITMQ_URL: amqp://guest:guest@localhost/
+          AGENT_SECRET: ci-selfhost-smoke
+          BOT_SESSION_TOKEN_SECRET: ci-selfhost-smoke
+          EMAIL_UNSUBSCRIBE_SECRET: ci-selfhost-smoke
+        run: |
+          echo "::group::pytest setup contract"
+          uv run --frozen --no-sync pytest tests/integration/endpoints/test_setup_api.py -q --tb=short --override-ini=addopts="--strict-markers --timeout=30"
+          echo "::endgroup::"
+          echo "### Self-host smoke — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "ENV=selfhost boot + setup contract: OK"
+
+      - name: Self-host isolation + infra contract (prod_isolation -k selfhost)
+        # Lightweight second probe: SelfHostSettings requires only infra secrets,
+        # local auth doesn't need WorkOS, etc. Keeps the lane honest when someone
+        # sneaks a required SaaS key back into the selfhost profile.
+        working-directory: apps/api
+        env:
+          ENV: selfhost
+          AUTH_MODE: local
+          MONGO_DB: mongodb://localhost/gaia
+          REDIS_URL: redis://localhost:6379/0
+          CHROMADB_HOST: localhost
+          CHROMADB_PORT: "8000"
+          POSTGRES_URL: postgresql://gaia:gaia@localhost/gaia
+          RABBITMQ_URL: amqp://guest:guest@localhost/
+          AGENT_SECRET: ci-selfhost-smoke
+          BOT_SESSION_TOKEN_SECRET: ci-selfhost-smoke
+          EMAIL_UNSUBSCRIBE_SECRET: ci-selfhost-smoke
+        run: |
+          echo "::group::pytest prod_isolation (selfhost)"
+          uv run --frozen --no-sync pytest tests/unit/config/test_prod_isolation.py -q -k selfhost --tb=short --override-ini=addopts="--strict-markers --timeout=30"
+          echo "::endgroup::"
+          echo "prod_isolation (selfhost): OK"
