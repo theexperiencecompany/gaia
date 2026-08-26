@@ -5,13 +5,14 @@ Purely storage: no LLM calls, no embedding calls. Lineage rules live here
 filter); everything semantic happens upstream in the engine.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import uuid
 
 from sqlalchemy import ColumnElement, Select, func, or_, select, update
 
 from app.constants.memory import (
     AGENDA_CATEGORY_PATH,
+    AGENDA_ITEM_TTL_DAYS,
     FORGET_REASON_MAX_CHARS,
     MemoryRelationType,
 )
@@ -327,6 +328,30 @@ async def get_agenda_memories(user_id: str, limit: int) -> list[MemoryRecord]:
             .limit(limit)
         )
         return list(result.scalars().all())
+
+
+async def backfill_agenda_expiry() -> int:
+    """Stamp ``forget_after`` on live agenda rows that never got one; returns count.
+
+    Agenda rows written before the task shelf-life shipped were stored durable
+    with no expiry, so the sweep could never retire them — production carried
+    year-old interviews and long-closed follow-ups in the always-injected
+    agenda block. Stamping ``created_at + AGENDA_ITEM_TTL_DAYS`` gives legacy
+    rows the exact window a new agenda item gets; already-overdue ones are
+    retired by the sweep that runs right after.
+    """
+    async with memory_session() as session:
+        result = await session.execute(
+            update(MemoryRecord)
+            .where(
+                MemoryRecord.is_forgotten.is_(False),
+                MemoryRecord.category_path == AGENDA_CATEGORY_PATH,
+                MemoryRecord.forget_after.is_(None),
+            )
+            .values(forget_after=MemoryRecord.created_at + timedelta(days=AGENDA_ITEM_TTL_DAYS))
+        )
+        await session.commit()
+        return rowcount(result)
 
 
 async def sweep_expired_memories(user_id: str | None = None) -> list[str]:

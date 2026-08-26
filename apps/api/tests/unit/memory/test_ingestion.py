@@ -576,22 +576,22 @@ class TestStoreConversationChunks:
 
 class TestAppendEpisodeEntries:
     async def test_no_entries_writes_nothing(self, boundaries: Boundaries) -> None:
-        count = await ingestion._append_episode_entries(
+        count, deduped = await ingestion._append_episode_entries(
             USER, [], source_type=MemorySourceType.CONVERSATION, now=datetime.now(UTC)
         )
-        assert count == 0
+        assert (count, deduped) == (0, 0)
         boundaries.append_episode_entries.assert_not_awaited()
 
     async def test_entries_are_stamped_with_the_ingestion_time_and_day(
         self, boundaries: Boundaries
     ) -> None:
-        count = await ingestion._append_episode_entries(
+        count, deduped = await ingestion._append_episode_entries(
             USER,
             ["drafted the email", "booked the dentist"],
             source_type=MemorySourceType.TOOL,
             now=datetime(2026, 3, 5, 23, 47, tzinfo=UTC),
         )
-        assert count == 2
+        assert (count, deduped) == (2, 0)
         user_id, day, entries = boundaries.append_episode_entries.await_args.args
         assert user_id == USER
         assert day == date_type(2026, 3, 5)
@@ -1395,7 +1395,10 @@ class TestRetain:
     ) -> None:
         boundaries.extract_memories.return_value = ExtractedMemoryBatch(episode_entries=["a line"])
         boundaries.get_unsummarized_episode_dates.return_value = [date_type(2026, 3, 4)]
+        # Three reads now: retain's journal snapshot, the append-time fresh
+        # dedupe read, then the rollover summarize of the previous day.
         boundaries.get_episode.side_effect = [
+            None,
             None,
             make_episode(entries=[{"time": "10:00", "text": "yesterday"}]),
         ]
@@ -2050,3 +2053,89 @@ class TestRetainSingleFreePlanCap:
 
         assert result.outcome is ReconcileOutcome.DUPLICATE
         assert row_to_entry.call_args.args[0] is existing
+
+
+class TestJournalNearDuplicateGate:
+    """The journal has no dedupe tier: facts get embedding reconciliation,
+    entries got appended blindly. In production one day's journal carried the
+    same discussion five times, reworded — the extractor's "do NOT repeat"
+    instruction cannot stop a paraphrase, and back-to-back retains race past
+    the journal read. The append is the one place every entry funnels through,
+    so near-duplicates are dropped there."""
+
+    _EXISTING = (
+        "Discussed the reality of GAIA's current traction metrics with Aryan "
+        "to ensure alignment on fundraising goals."
+    )
+    _REWORDED = (
+        "Discussed the reality of GAIA's current traction metrics to ensure "
+        "alignment on fundraising goals."
+    )
+    _NOVEL = "Drafted personalized win-back emails using the THANKYOU40 discount code."
+
+    @staticmethod
+    def _batch(entries: list[str]) -> ExtractedMemoryBatch:
+        return ExtractedMemoryBatch(episode_entries=entries)
+
+    @pytest.mark.regression
+    async def test_a_reworded_duplicate_of_a_journaled_entry_is_dropped(
+        self, boundaries: Boundaries
+    ) -> None:
+        boundaries.get_episode.return_value = make_episode(
+            entries=[{"time": "10:00", "text": self._EXISTING}]
+        )
+        boundaries.extract_memories.return_value = self._batch([self._REWORDED, self._NOVEL])
+
+        result = await retain(
+            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+        )
+
+        appended = boundaries.append_episode_entries.await_args.args[2]
+        assert [entry["text"] for entry in appended] == [self._NOVEL]
+        assert result.episode_entries == 1
+
+    @pytest.mark.regression
+    async def test_near_identical_entries_within_one_batch_collapse_to_one(
+        self, boundaries: Boundaries
+    ) -> None:
+        boundaries.extract_memories.return_value = self._batch(
+            [self._EXISTING, self._REWORDED, self._NOVEL]
+        )
+
+        result = await retain(
+            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+        )
+
+        appended = boundaries.append_episode_entries.await_args.args[2]
+        assert [entry["text"] for entry in appended] == [self._EXISTING, self._NOVEL]
+        assert result.episode_entries == 2
+
+    async def test_distinct_entries_all_land(self, boundaries: Boundaries) -> None:
+        entries = [
+            "Identified four GAIA Pro subscribers with failed or cancelled payments.",
+            self._NOVEL,
+            "Analyzed the 'moat' concept for AI products.",
+        ]
+        boundaries.extract_memories.return_value = self._batch(entries)
+
+        result = await retain(
+            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+        )
+
+        appended = boundaries.append_episode_entries.await_args.args[2]
+        assert [entry["text"] for entry in appended] == entries
+        assert result.episode_entries == 3
+
+    @pytest.mark.regression
+    async def test_a_fully_deduped_batch_appends_nothing(self, boundaries: Boundaries) -> None:
+        boundaries.get_episode.return_value = make_episode(
+            entries=[{"time": "10:00", "text": self._EXISTING}]
+        )
+        boundaries.extract_memories.return_value = self._batch([self._REWORDED])
+
+        result = await retain(
+            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+        )
+
+        boundaries.append_episode_entries.assert_not_awaited()
+        assert result.episode_entries == 0

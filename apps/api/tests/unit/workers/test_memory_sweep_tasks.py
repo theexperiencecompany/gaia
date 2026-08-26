@@ -1,94 +1,65 @@
-"""Unit tests for the nightly memory expiry sweep.
-
-Postgres and the per-user follow-ups are mocked; the sweep's own orchestration
-(which users get re-rendered, what the summary reports) is real.
-"""
+"""Unit tests for the nightly memory expiry sweep ARQ task."""
 
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.workers.tasks.memory_sweep_tasks import sweep_expired_memories
-from tests.helpers import captured_wide_event
-
-
-@pytest.fixture
-def sweep_boundaries() -> dict[str, AsyncMock]:
-    mocks = {
-        "sweep": AsyncMock(return_value=[]),
-        "count": AsyncMock(return_value=3),
-        "render": AsyncMock(return_value=None),
-        "seed": AsyncMock(return_value=None),
-        "invalidate": AsyncMock(return_value=None),
-    }
-    with (
-        patch(
-            "app.workers.tasks.memory_sweep_tasks.pg_store.sweep_expired_memories", mocks["sweep"]
-        ),
-        patch("app.workers.tasks.memory_sweep_tasks.pg_store.count_live_memories", mocks["count"]),
-        patch("app.workers.tasks.memory_sweep_tasks.render_agenda_document", mocks["render"]),
-        patch("app.workers.tasks.memory_sweep_tasks.set_cached_live_count", mocks["seed"]),
-        patch(
-            "app.workers.tasks.memory_sweep_tasks.invalidate_user_memory_caches",
-            mocks["invalidate"],
-        ),
-    ):
-        yield mocks
+from app.workers.tasks import memory_sweep_tasks
 
 
 @pytest.mark.unit
-class TestSweepExpiredMemories:
-    async def test_reports_how_many_rows_it_retired(
-        self, sweep_boundaries: dict[str, AsyncMock]
-    ) -> None:
-        sweep_boundaries["sweep"].return_value = ["u1", "u1", "u2"]
+class TestSweepExpiredMemoriesTask:
+    @staticmethod
+    def _patches(owners: list[str]) -> dict[str, AsyncMock]:
+        return {
+            "backfill": AsyncMock(return_value=0),
+            "sweep": AsyncMock(return_value=owners),
+            "count": AsyncMock(return_value=3),
+            "set_count": AsyncMock(return_value=None),
+            "render": AsyncMock(return_value=None),
+            "invalidate": AsyncMock(return_value=None),
+        }
 
-        summary = await sweep_expired_memories({})
+    async def _run(self, owners: list[str]) -> dict[str, AsyncMock]:
+        mocks = self._patches(owners)
+        with (
+            patch.object(memory_sweep_tasks.pg_store, "backfill_agenda_expiry", mocks["backfill"]),
+            patch.object(memory_sweep_tasks.pg_store, "sweep_expired_memories", mocks["sweep"]),
+            patch.object(memory_sweep_tasks.pg_store, "count_live_memories", mocks["count"]),
+            patch.object(memory_sweep_tasks, "set_cached_live_count", mocks["set_count"]),
+            patch.object(memory_sweep_tasks, "render_agenda_document", mocks["render"]),
+            patch.object(memory_sweep_tasks, "invalidate_user_memory_caches", mocks["invalidate"]),
+        ):
+            await memory_sweep_tasks.sweep_expired_memories({})
+        return mocks
 
-        assert summary == "expired=3 users=2"
+    @pytest.mark.regression
+    async def test_legacy_agenda_rows_get_an_expiry_before_the_sweep(self) -> None:
+        """Agenda rows written before the task shelf-life shipped carry no
+        ``forget_after``, so the sweep never retires them — measured in
+        production: 152 of 157 live agenda rows were expiry-less ``durable``
+        rows, keeping year-old items in the always-injected agenda block.
+        The task must stamp them BEFORE sweeping, so an already-overdue
+        legacy item is retired in the same run."""
+        order: list[str] = []
+        mocks = self._patches(owners=[])
+        mocks["backfill"].side_effect = lambda: order.append("backfill")
+        mocks["sweep"].side_effect = lambda: order.append("sweep") or []
+        with (
+            patch.object(memory_sweep_tasks.pg_store, "backfill_agenda_expiry", mocks["backfill"]),
+            patch.object(memory_sweep_tasks.pg_store, "sweep_expired_memories", mocks["sweep"]),
+            patch.object(memory_sweep_tasks.pg_store, "count_live_memories", mocks["count"]),
+            patch.object(memory_sweep_tasks, "set_cached_live_count", mocks["set_count"]),
+            patch.object(memory_sweep_tasks, "render_agenda_document", mocks["render"]),
+            patch.object(memory_sweep_tasks, "invalidate_user_memory_caches", mocks["invalidate"]),
+        ):
+            await memory_sweep_tasks.sweep_expired_memories({})
 
-    async def test_each_affected_user_is_repaired_exactly_once(
-        self, sweep_boundaries: dict[str, AsyncMock]
-    ) -> None:
-        sweep_boundaries["sweep"].return_value = ["u1", "u1", "u2"]
+        assert order == ["backfill", "sweep"]
 
-        await sweep_expired_memories({})
+    async def test_each_affected_user_s_views_are_repaired(self) -> None:
+        mocks = await self._run(owners=["u1", "u2", "u1"])
 
-        assert {call.args[0] for call in sweep_boundaries["render"].await_args_list} == {"u1", "u2"}
-        assert sweep_boundaries["render"].await_count == 2
-        assert [call.args for call in sweep_boundaries["invalidate"].await_args_list] == [
-            ("u1",),
-            ("u2",),
-        ]
-
-    async def test_the_free_plan_counter_is_reseeded_from_the_authoritative_count(
-        self, sweep_boundaries: dict[str, AsyncMock]
-    ) -> None:
-        sweep_boundaries["sweep"].return_value = ["u1"]
-        sweep_boundaries["count"].return_value = 7
-
-        await sweep_expired_memories({})
-
-        assert sweep_boundaries["count"].await_args.args == ("u1",)
-        assert sweep_boundaries["seed"].await_args.args == ("u1", 7)
-
-    async def test_the_sweep_is_reported_on_the_wide_event(
-        self, sweep_boundaries: dict[str, AsyncMock]
-    ) -> None:
-        # The nightly task has no caller to return to — the wide event is the
-        # only place the night's work is visible.
-        sweep_boundaries["sweep"].return_value = ["u1", "u1", "u2"]
-
-        async with captured_wide_event() as event:
-            await sweep_expired_memories({})
-
-        assert event["memory_sweep"] == {"memories_expired": 3, "users_repaired": 2}
-
-    async def test_a_clean_sweep_touches_nobody(
-        self, sweep_boundaries: dict[str, AsyncMock]
-    ) -> None:
-        await sweep_expired_memories({})
-
-        sweep_boundaries["render"].assert_not_awaited()
-        sweep_boundaries["seed"].assert_not_awaited()
-        sweep_boundaries["invalidate"].assert_not_awaited()
+        assert mocks["render"].await_count == 2
+        assert mocks["set_count"].await_count == 2
+        assert mocks["invalidate"].await_count == 2

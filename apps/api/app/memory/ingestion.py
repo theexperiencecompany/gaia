@@ -9,6 +9,7 @@ core-document consolidation for the docs its changes touch.
 
 from dataclasses import dataclass
 from datetime import UTC, date as date_type, datetime, timedelta
+from difflib import SequenceMatcher
 import time
 import uuid
 
@@ -17,6 +18,7 @@ from app.constants.memory import (
     AGENDA_ITEM_TTL_DAYS,
     CATEGORY_PATH_MAX_DEPTH,
     DEFAULT_MEMORY_IMPORTANCE,
+    EPISODE_ENTRY_DEDUPE_RATIO,
     EPISODE_ENTRY_TIME_FORMAT,
     FREE_MEMORY_CAP_COUNT_SAFETY_MARGIN,
     FREE_MEMORY_FACT_LIMIT,
@@ -389,7 +391,7 @@ async def retain(
     timings["apply_ms"] = _elapsed_ms(stage)
 
     stage = time.perf_counter()
-    result.episode_entries = await _append_episode_entries(
+    result.episode_entries, entries_deduped = await _append_episode_entries(
         user_id, batch.episode_entries, source_type=source_type, now=now
     )
     await _summarize_rolled_over_days(user_id, today=now.date())
@@ -425,6 +427,7 @@ async def retain(
             entities_linked=result.entities_linked,
             edges_added=result.edges_added,
             episode_entries=result.episode_entries,
+            episode_entries_deduped=entries_deduped,
             success=True,
             timings={key: float(value) for key, value in timings.items()},
         ),
@@ -748,22 +751,59 @@ async def _store_conversation_chunks(
     await chroma_store.upsert_conversation_chunks(items)
 
 
+def _normalize_entry(text: str) -> str:
+    """Whitespace/case-normalized entry text, the unit the dedupe compares."""
+    return " ".join(text.lower().split())
+
+
+def _is_near_duplicate(candidate: str, seen: list[str]) -> bool:
+    """Whether a normalized entry restates any already-seen one."""
+    return any(
+        candidate == prior
+        or SequenceMatcher(None, candidate, prior).ratio() >= EPISODE_ENTRY_DEDUPE_RATIO
+        for prior in seen
+    )
+
+
 async def _append_episode_entries(
     user_id: str,
     entries: list[str],
     *,
     source_type: MemorySourceType,
     now: datetime,
-) -> int:
-    """Append today's journal lines, timestamped at ingestion time."""
+) -> tuple[int, int]:
+    """Append today's novel journal lines; returns ``(appended, deduped)``.
+
+    The journal had no dedupe tier — facts get embedding reconciliation,
+    entries were appended blindly — and the extractor's "do NOT repeat"
+    instruction cannot stop a paraphrase, so one production day carried the
+    same discussion five times reworded. Today's entries are re-read HERE,
+    not reused from retain's earlier snapshot, because back-to-back retains
+    race: the fresh read sees what a concurrent retain wrote seconds ago.
+    """
     if not entries:
-        return 0
+        return 0, 0
+    episode = await pg_store.get_episode(user_id, now.date())
+    seen = (
+        [_normalize_entry(str(entry.get("text", ""))) for entry in episode.entries]
+        if episode
+        else []
+    )
+    kept: list[str] = []
+    for text in entries:
+        normalized = _normalize_entry(text)
+        if _is_near_duplicate(normalized, seen):
+            continue
+        kept.append(text)
+        seen.append(normalized)
+    if not kept:
+        return 0, len(entries)
     timestamp = now.strftime(EPISODE_ENTRY_TIME_FORMAT)
     episode_entries: list[pg_store.EpisodeEntry] = [
-        {"time": timestamp, "text": text, "source": source_type.value} for text in entries
+        {"time": timestamp, "text": text, "source": source_type.value} for text in kept
     ]
     await pg_store.append_episode_entries(user_id, now.date(), episode_entries)
-    return len(episode_entries)
+    return len(episode_entries), len(entries) - len(kept)
 
 
 async def _summarize_rolled_over_days(user_id: str, today: date_type) -> None:

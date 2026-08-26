@@ -213,6 +213,14 @@ RECONCILE_CANDIDATES = 15
 # How many recent facts are shown to the extractor as "do NOT re-extract".
 RECENT_FACTS_LIMIT = 10
 
+# Near-duplicate gate for journal entries (difflib ratio on normalized text).
+# The extractor's "do NOT repeat" instruction cannot stop a paraphrase, and
+# back-to-back retains race past the journal read — one production day carried
+# the same discussion five times, reworded. Calibrated on those real pairs:
+# true rewordings score 0.91-0.95, genuinely distinct same-day events 0.40 and
+# below, so 0.85 drops the spam with a wide margin over real events.
+EPISODE_ENTRY_DEDUPE_RATIO = 0.85
+
 # Per-thread high-water mark for passive ingestion: the id of the last message
 # already extracted from. Without it the whole thread was re-sent to the
 # extractor every turn — one production conversation with 152 checkpoints

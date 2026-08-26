@@ -19,6 +19,12 @@ from shared.py.wide_events import log
 
 async def sweep_expired_memories(_ctx: dict[str, Any]) -> str:
     """Forget every past-due memory, then repair each affected user's views."""
+    # Legacy agenda rows predate the task shelf-life and carry no expiry, so
+    # they'd sit in the always-injected agenda forever. Stamped before the
+    # sweep so an already-overdue one is retired in this same run.
+    backfilled = await pg_store.backfill_agenda_expiry()
+    if backfilled:
+        log.info(f"{LogTag.WORKER} legacy agenda rows stamped", backfilled=backfilled)
     owners = await pg_store.sweep_expired_memories()
     affected = sorted(set(owners))
 

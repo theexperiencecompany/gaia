@@ -29,6 +29,7 @@ from app.memory.pg_store.maintenance import (
     get_overview_counts,
 )
 from app.memory.pg_store.memories import (
+    backfill_agenda_expiry,
     count_live_memories,
     fts_search,
     get_agenda_memories,
@@ -80,6 +81,7 @@ __all__ = [
     "search_episode_entries",
     "set_episode_summary",
     "supersede_memory",
+    "backfill_agenda_expiry",
     "sweep_expired_memories",
     "upsert_document",
     "upsert_entities",
