@@ -270,6 +270,13 @@ NEVER list the user themselves ({user_name}); this register is the people
 AROUND them. Each person appears exactly once, under the single most specific
 section (a co-founder belongs under Work, not Others).
 
+Only people in the user's actual life belong here. NEVER list a public figure,
+celebrity, or anyone the user merely researched, read about, or asked
+questions about — a footballer from a sports question is not a relationship.
+NEVER list a name from the entity register that no source fact says anything
+about: a bare name with no supporting fact is dropped, not padded with filler
+like "Entity register entry".
+
 """
     + _CONSOLIDATION_SHARED_RULES
 )

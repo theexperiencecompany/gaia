@@ -326,7 +326,30 @@ async def _strike_unsupported(
             error_type="unsupported_document_lines",
             struck_count=len(verified.struck),
         )
-    return verified.content.strip()
+    return _apply_strikes(verified.content, verified.struck)
+
+
+def _apply_strikes(content: str, struck: list[str]) -> str:
+    """Remove every struck line from the document, mechanically.
+
+    The verifier returns two correlated outputs — the cleaned document and the
+    struck list — and the model desyncs them: probed live, it listed the
+    corrupted partner line as struck while returning the document with the
+    line still present, which is how a known-bad line survived every
+    verification pass in production. The strike list is the verdict; enforce
+    it here instead of trusting the model's copy. Headings are structure, not
+    claims (the prompt keeps them all), so a struck heading is a model error
+    this must not amplify.
+    """
+    struck_lines = {line.strip() for line in struck}
+    if not struck_lines:
+        return content.strip()
+    kept = [
+        line
+        for line in content.splitlines()
+        if line.lstrip().startswith("#") or line.strip() not in struck_lines
+    ]
+    return "\n".join(kept).strip()
 
 
 def _system_prompt(doc_type: MemoryDocType, user_name: str) -> str:

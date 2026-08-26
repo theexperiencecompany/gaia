@@ -237,6 +237,47 @@ class TestVerificationPass:
 
         assert boundaries.update_document.await_args.args[2] == "# About\n- Sam is vegetarian"
 
+    @pytest.mark.regression
+    async def test_a_struck_line_is_removed_even_when_the_model_left_it_in(
+        self, boundaries: MagicMock
+    ) -> None:
+        """The verifier returns two correlated outputs — the cleaned document
+        and the struck list — and the real model desyncs them: probed live, it
+        listed the corrupted partner line as struck while returning the
+        document with the line still in it, which is exactly how "Khyal
+        Shetal" survived every verification pass in production. The strike
+        list is the verdict; the code must enforce it on the document instead
+        of trusting the model's copy."""
+        corrupted = "- Partner: Khyal Shetal (anniversary Oct 19, 2026)"
+        boundaries.rewrite.return_value = f"# About\n- Sam is vegetarian\n{corrupted}"
+        boundaries.verify.return_value = VerifiedDocument(
+            content=f"# About\n- Sam is vegetarian\n{corrupted}",
+            struck=[corrupted],
+        )
+
+        await consolidate(USER, [MemoryDocType.USER_MD])
+
+        landed = boundaries.update_document.await_args.args[2]
+        assert corrupted not in landed
+        assert "- Sam is vegetarian" in landed
+
+    @pytest.mark.regression
+    async def test_a_heading_is_never_removed_even_if_marked_struck(
+        self, boundaries: MagicMock
+    ) -> None:
+        """Headings are structure, not claims — the prompt tells the model to
+        keep them all, so a heading in the struck list is a model error the
+        enforcement must not amplify."""
+        boundaries.rewrite.return_value = "# About\n## Identity\n- a supported line"
+        boundaries.verify.return_value = VerifiedDocument(
+            content="# About\n## Identity\n- a supported line",
+            struck=["## Identity"],
+        )
+
+        await consolidate(USER, [MemoryDocType.USER_MD])
+
+        assert "## Identity" in boundaries.update_document.await_args.args[2]
+
     async def test_the_source_facts_are_what_the_check_is_given(
         self, boundaries: MagicMock
     ) -> None:
