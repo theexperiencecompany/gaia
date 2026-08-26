@@ -41,6 +41,7 @@ from app.db.chroma.chroma_tools_store import (
     _get_existing_tools_from_chroma,
     delete_tools_by_namespace,
 )
+from app.db.chroma.noop_embedding import NoOpEmbeddingFunction
 
 _USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "0") == "1"
 _CHROMA_HOST = os.environ.get("CHROMADB_HOST", "localhost")
@@ -55,36 +56,10 @@ _CHROMA_PORT = int(os.environ.get("CHROMADB_PORT", "8000"))
 # ---------------------------------------------------------------------------
 
 
-class _NoOpEmbeddingFunction:
-    """No-op embedding function — defense-in-depth for the test wrapper.
-
-    ChromaStore already registers its own no-op EF on every collection
-    (see chroma_store._NOOP_EF), but the wrapper also defaults to this
-    for any collection created outside of ChromaStore's _get_collection.
-    Implements chroma 1.x's full EmbeddingFunction contract (name /
-    get_config / build_from_config / is_legacy) so the ephemeral client's
-    config serialization never falls into the legacy-warning path.
-    """
-
-    def __call__(self, input: list[str]) -> list[list[float]]:
-        return [[0.0] * 384 for _ in input]
-
-    @staticmethod
-    def name() -> str:
-        return "test-noop"
-
-    def get_config(self) -> dict[str, str]:
-        return {"name": "test-noop"}
-
-    @staticmethod
-    def build_from_config(config: dict) -> _NoOpEmbeddingFunction:
-        return _NoOpEmbeddingFunction()
-
-    def is_legacy(self) -> bool:
-        return False
-
-
-_NOOP_EF = _NoOpEmbeddingFunction()
+# Defense-in-depth for the test wrapper: ChromaStore already registers this on
+# every collection it creates, but the wrapper also defaults to it for any
+# collection created outside ChromaStore._get_collection.
+_NOOP_EF = NoOpEmbeddingFunction()
 
 
 class _AsyncCollectionWrapper:
