@@ -194,8 +194,8 @@ async def disconnect_platform(
     try:
         result = await disconnect_platform_account(user_id, platform)
         schedule_account_sync(user_id)
-    except AppError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message) from e
+    except AppError:
+        raise
     log.set(outcome="success")
     return result
 
@@ -226,8 +226,8 @@ async def initiate_platform_connect(
 
     try:
         result = await start_platform_connect(user_id, platform, phone=body.phone)
-    except AppError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message) from e
+    except AppError:
+        raise
     except RateLimitExceededException:
         raise
     log.set(outcome="success", auth_type=result.auth_type)

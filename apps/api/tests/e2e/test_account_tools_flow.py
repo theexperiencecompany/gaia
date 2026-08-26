@@ -26,8 +26,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 import pytest
 
+from app.agents.tools import account_tools
 from app.agents.tools.account_tools import tools as account_tool_list
+from app.agents.tools.coding.write_tool import write
+from app.core.lazy_loader import providers
+from app.db.repositories.users import user_repository
+from app.models.hil_models import HILPreferences
+from app.services import account_settings
 from app.services.analytics_service import AnalyticsEvents
+from app.services.hil.policy import resolve_policy
+from app.services.hil.utils import unpack_tool_call
 from tests.e2e.conftest import build_gaia_test_graph
 from tests.helpers import BindableToolsFakeModel
 
@@ -61,9 +69,6 @@ def _graph_with(fake_llm, extra_tools=(), **patches):
 @pytest.fixture
 def _patched_seams():
     """The repo/service boundaries behind every account tool."""
-    from app.agents.tools import account_tools
-    from app.db.repositories.users import user_repository
-    from app.services import account_settings
 
     with (
         patch.object(user_repository, "set_channel_preferences", new=AsyncMock()) as set_channels,
@@ -261,8 +266,6 @@ class TestHILWiring:
     def test_settings_tools_are_stamped_always_gate_and_link_is_not(self, real_tool_registry):
         import asyncio
 
-        from app.core.lazy_loader import providers
-
         async def grab():
             return await providers.aget("tool_registry")
 
@@ -277,9 +280,7 @@ class TestHILWiring:
     async def test_resolve_policy_asks_for_settings_even_when_hil_is_off(self, real_tool_registry):
         from unittest.mock import patch as sync_patch
 
-        from app.models.hil_models import HILPreferences
-        from app.services.hil.policy import resolve_policy
-        from app.services.hil.utils import unpack_tool_call
+
 
         request = SimpleNamespace(
             tool_call={"id": "c1", "name": "update_preferences", "args": {"timezone": "UTC"}},
@@ -299,8 +300,6 @@ class TestWriteRefusalJourney:
     async def test_write_to_account_path_refuses_inside_a_graph_turn(
         self, thread_config, memory_saver, in_memory_store
     ):
-        from app.agents.tools.coding.write_tool import write
-
         sandbox = MagicMock()
         sandbox.__aenter__ = AsyncMock(side_effect=AssertionError("sandbox must not open"))
         with patch("app.agents.tools.coding.write_tool.acquire_sandbox", return_value=sandbox):

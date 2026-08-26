@@ -258,7 +258,12 @@ class ToolRegistry:
             internal=internal,
         )
         if core_tools:
-            category.add_tools(core_tools, is_core=True, destructive_tools=destructive_tools)
+            category.add_tools(
+                core_tools,
+                is_core=True,
+                destructive_tools=destructive_tools,
+                always_gate_tools=always_gate_tools,
+            )
         if tools:
             category.add_tools(
                 tools, destructive_tools=destructive_tools, always_gate_tools=always_gate_tools
