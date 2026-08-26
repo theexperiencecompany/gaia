@@ -872,6 +872,7 @@ class TestBotChatStream:
             "disc_1",
             None,
             {"user_id": "uid_from_middleware", "_id": "uid_from_middleware"},
+            is_dm=False,
         )
 
     @patch("app.api.v1.endpoints.bot.spawn_background_task", new=MagicMock())

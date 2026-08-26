@@ -1,6 +1,6 @@
 """Unit tests for BotService."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, call, patch
 
 from fastapi import HTTPException
 import pytest
@@ -404,6 +404,34 @@ class TestADmKeysOffTheUserWhateverItsChannelId:
             f"slack:user123:{self.DM_CHANNEL}"
         )
 
+    async def test_absorb_looks_up_the_legacy_key_then_the_canonical_key(
+        self, mock_bot_repo, mock_merge_repo, mock_conversations, sample_user
+    ):
+        """The two lookups must hit the exact legacy (platform:user:channel) and
+        canonical (platform:user:user) keys, in that order — a wrong platform,
+        user id, or channel baked into either key, or a swapped/dropped lookup
+        argument, would silently miss the row that needs folding."""
+        legacy = self._row(
+            f"discord:user123:{self.DM_CHANNEL}", "conv-history", "2026-08-20T00:00:00+00:00"
+        )
+        canonical = self._row(
+            "discord:user123:user123", "conv-delivery", "2026-08-01T00:00:00+00:00"
+        )
+        mock_bot_repo.get_by_session_key = AsyncMock(side_effect=[legacy, canonical])
+        mock_merge_repo.repoint_conversation = AsyncMock()
+        mock_merge_repo.delete_by_session_key = AsyncMock(return_value=1)
+        mock_bot_repo.claim_session = AsyncMock(return_value=_session("conv-history"))
+        mock_conversations.exists = AsyncMock(return_value=True)
+
+        await BotService.get_or_create_session(
+            "discord", "user123", self.DM_CHANNEL, sample_user, is_dm=True
+        )
+
+        assert mock_bot_repo.get_by_session_key.await_args_list == [
+            call(f"discord:user123:{self.DM_CHANNEL}"),
+            call("discord:user123:user123"),
+        ]
+
     async def test_a_dm_whose_channel_is_the_user_id_needs_no_merge(
         self, mock_bot_repo, mock_conversations, sample_user
     ):
@@ -436,6 +464,11 @@ class TestADmKeysOffTheUserWhateverItsChannelId:
 
         deleted = [c.args[0] for c in mock_bot_repo.delete_by_session_key.await_args_list]
         assert deleted == [f"discord:user123:{self.DM_CHANNEL}", "discord:user123:user123"]
+        # The channel must be normalized to None (not "") before minting the
+        # fresh session, or the new session document stores an empty-string
+        # channel_id instead of a real DM.
+        claim = mock_bot_repo.claim_session.await_args.kwargs
+        assert claim["channel_id"] is None
 
 
 # ---------------------------------------------------------------------------
