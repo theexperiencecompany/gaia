@@ -13,6 +13,7 @@ narration time it would ask the narrator for a tool it cannot reach.
 """
 
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -96,3 +97,25 @@ def test_the_check_names_write_playbook_so_the_executor_can_act_on_it():
     # call_executor/cancel_executor/memory. Naming the tool is what makes the
     # brief actionable, and the executor is the only tier that has it.
     assert "write_playbook" in PLAYBOOK_CHECK_BRIEF
+
+
+def test_write_playbook_is_statically_bound_to_the_executor():
+    """The check names write_playbook, so the executor must always be able to call it.
+
+    Regression: the tool was registered in a ToolCategory and left to
+    ``retrieve_tools`` semantic retrieval. On a machine whose tool index was
+    incomplete it was never surfaced, so every run read the instruction and
+    silently authored nothing. A prompt that names a tool by hand needs that
+    tool bound by hand.
+    """
+    source = (
+        Path(__file__).resolve().parents[4]
+        / "app"
+        / "agents"
+        / "core"
+        / "graph_builder"
+        / "build_graph.py"
+    ).read_text(encoding="utf-8")
+    executor_block = source.split('agent_name="executor_agent"', 1)[1].split("]", 1)[0]
+
+    assert '"write_playbook"' in executor_block

@@ -26,6 +26,15 @@ from app.models.workflow_execution_models import (
 TOOL_CALLS_ENTRY = "tool_calls_data"
 SUBAGENT_GROUP_ENTRY = "subagent_group"
 
+#: Reasoning deltas ride the tool-call channel: ``_absorb_reasoning``
+#: (``stream_utils.py``) wraps each one as a ``tool_calls_data`` entry whose inner
+#: payload is named ``reasoning``, because the frontend renders thinking in the
+#: same thread as tool calls. They are not invocations — they have no args and no
+#: result — and counting them made a 6-call run record 206 entries, reintroducing
+#: exactly the bloat the reset exists to remove. Matched on the inner name rather
+#: than on a missing ``tool_call_id`` so a real call can never be dropped.
+NON_CALL_ENTRY_NAMES = frozenset({"reasoning"})
+
 #: Bounds on the rendered block. The trace itself is stored whole — this caps only
 #: what a single run pays to read the previous one, so a 300-call run can't
 #: reintroduce the context bloat the reset exists to remove.
@@ -99,7 +108,7 @@ def _recorded_call(data: object, subagent_id: object) -> RecordedCall | None:
     if not isinstance(data, dict):
         return None
     tool_name = data.get("tool_name")
-    if not tool_name:
+    if not tool_name or tool_name in NON_CALL_ENTRY_NAMES:
         return None
     inputs = data.get("inputs")
     output = data.get("output")

@@ -156,3 +156,41 @@ class TestRenderLastRun:
         assert f"TOOL_{LAST_RUN_MAX_CALLS}" not in rendered
         # Whatever the run did, one previous run costs a bounded slice of context.
         assert len(rendered) < 40_000
+
+
+def test_reasoning_deltas_are_not_recorded_as_calls():
+    """Reasoning rides the tool-call channel but is not an invocation.
+
+    Regression: ``_absorb_reasoning`` wraps every thinking delta as a
+    ``tool_calls_data`` entry whose inner payload is named ``reasoning``, so a
+    trace that trusted the wrapper recorded one "call" per delta. A real
+    two-step production run persisted 206 entries, 200 of them reasoning —
+    reintroducing the context bloat the thread reset exists to remove.
+    """
+    entries: list[ToolDataEntry] = [
+        {
+            "tool_name": "tool_calls_data",
+            "tool_category": "reasoning",
+            "data": {
+                "tool_name": "reasoning",
+                "tool_category": "reasoning",
+                "message": "",
+                "reasoning": "thinking out loud",
+            },
+        },
+        {
+            "tool_name": "tool_calls_data",
+            "tool_category": "todos",
+            "data": {
+                "tool_name": "search_todos",
+                "tool_category": "todos",
+                "tool_call_id": "call_1",
+                "inputs": {"query": "open"},
+                "output": "3 todos",
+            },
+        },
+    ]
+
+    trace = build_trace(entries)
+
+    assert [call.tool_name for call in trace] == ["search_todos"]

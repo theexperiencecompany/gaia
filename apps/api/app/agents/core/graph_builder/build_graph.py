@@ -110,6 +110,12 @@ async def build_executor_graph(
             "search_todo_context",
             "list_tracked_todos",
             "save_learned_skill",
+            # Bound statically, not left to retrieve_tools: the <playbook_check>
+            # block names write_playbook directly, so a run whose semantic
+            # retrieval happens to miss it would read the instruction, be unable
+            # to act on it, and silently never author a playbook. A tool a prompt
+            # names by hand has to be reachable by hand.
+            "write_playbook",
         ],
         middleware=middleware,
         pre_model_hooks=pre_model_hooks,
