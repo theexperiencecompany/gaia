@@ -430,6 +430,7 @@ export class DiscordAdapter extends BaseBotAdapter {
     const message = interaction.options.getString("message", true);
     const userId = interaction.user.id;
     const channelId = interaction.channelId;
+    const isDm = !interaction.guild;
 
     await interaction.deferReply();
     let isFirstMessage = true;
@@ -438,7 +439,7 @@ export class DiscordAdapter extends BaseBotAdapter {
 
     await handleStreamingChat(
       this.gaia,
-      { message, platform: "discord", platformUserId: userId, channelId },
+      { message, platform: "discord", platformUserId: userId, channelId, isDm },
       async (content: string) => {
         if (isFirstMessage) {
           await interaction.editReply({ content });
@@ -573,6 +574,7 @@ export class DiscordAdapter extends BaseBotAdapter {
         platform: "discord",
         platformUserId: userId,
         channelId,
+        isDm: !interaction.guild,
       },
       async (text: string) => {
         replied = true;
@@ -715,6 +717,7 @@ export class DiscordAdapter extends BaseBotAdapter {
           platform: "discord",
           platformUserId: userId,
           channelId: message.channelId,
+          isDm: true,
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),
@@ -971,6 +974,7 @@ export class DiscordAdapter extends BaseBotAdapter {
           platform: "discord",
           platformUserId: message.author.id,
           channelId: message.channelId,
+          isDm: !message.guild,
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),
@@ -1042,6 +1046,7 @@ export class DiscordAdapter extends BaseBotAdapter {
       platform: "discord",
       userId: interaction.user.id,
       channelId: interaction.channelId,
+      isDm: !interaction.guild,
       profile: {
         username: interaction.user.username,
         displayName: interaction.user.globalName ?? interaction.user.username,

@@ -372,6 +372,8 @@ export class ImessageAdapter extends BaseBotAdapter {
           platform: "imessage",
           platformUserId: handle,
           channelId: space.id,
+          // iMessage handles DMs only; group spaces are ignored upstream.
+          isDm: true,
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),
@@ -628,6 +630,7 @@ export class ImessageAdapter extends BaseBotAdapter {
       platform: "imessage",
       userId: handle,
       channelId: space.id,
+      isDm: true,
 
       send: async (text: string): Promise<SentMessage> => {
         return this.sendImessageText(

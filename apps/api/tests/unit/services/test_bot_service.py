@@ -65,6 +65,13 @@ def mock_create_conversation():
 
 
 @pytest.fixture
+def mock_merge_repo():
+    """Patch the repository handle apply_merge writes through."""
+    with patch("app.services.bot_session_merge.bot_session_repository") as mock_repo:
+        yield mock_repo
+
+
+@pytest.fixture
 def sample_user():
     """Return a sample user dict with id, email and name for session tests."""
     return {
@@ -295,6 +302,143 @@ class TestGetOrCreateSession:
 
 
 # ---------------------------------------------------------------------------
+# The DM flag: one DM, one session key, on every platform
+# ---------------------------------------------------------------------------
+
+
+class TestADmKeysOffTheUserWhateverItsChannelId:
+    """Discord and Slack DM channel ids differ from the user id, so an inbound
+    DM used to key ``platform:<user>:<dm-channel>`` while workflow delivery
+    keyed ``platform:<user>:<user>`` — one DM, two conversations, and the
+    second one carried none of the history. The bot now flags DMs, and a
+    flagged claim keys off the user id and folds the channel-keyed row in."""
+
+    DM_CHANNEL = "9876543210"
+
+    @staticmethod
+    def _row(session_key: str, conversation_id: str, updated_at: str) -> BotSessionDocument:
+        return BotSessionDocument(
+            session_key=session_key,
+            conversation_id=conversation_id,
+            platform=session_key.split(":", 1)[0],
+            platform_user_id="user123",
+            channel_id=None,
+            updated_at=updated_at,
+        )
+
+    async def test_a_flagged_dm_claims_the_user_id_key_not_the_channel(
+        self, mock_bot_repo, mock_conversations, sample_user
+    ):
+        mock_bot_repo.get_by_session_key = AsyncMock(return_value=None)
+        mock_bot_repo.claim_session = AsyncMock(return_value=_session("conv-dm"))
+        mock_conversations.exists = AsyncMock(return_value=True)
+
+        await BotService.get_or_create_session(
+            "discord", "user123", self.DM_CHANNEL, sample_user, is_dm=True
+        )
+
+        claim = mock_bot_repo.claim_session.await_args.kwargs
+        assert claim["session_key"] == "discord:user123:user123"
+        assert claim["channel_id"] is None
+
+    async def test_an_unflagged_channel_message_still_keys_on_its_channel(
+        self, mock_bot_repo, mock_conversations, sample_user
+    ):
+        mock_bot_repo.claim_session = AsyncMock(return_value=_session("conv-guild"))
+        mock_conversations.exists = AsyncMock(return_value=True)
+
+        await BotService.get_or_create_session("discord", "user123", self.DM_CHANNEL, sample_user)
+
+        claim = mock_bot_repo.claim_session.await_args.kwargs
+        assert claim["session_key"] == f"discord:user123:{self.DM_CHANNEL}"
+        mock_bot_repo.get_by_session_key.assert_not_called()
+
+    async def test_the_first_flagged_message_renames_the_channel_keyed_row(
+        self, mock_bot_repo, mock_merge_repo, mock_conversations, sample_user
+    ):
+        """The user's whole history sits under the channel-keyed row and nothing
+        sits on the user-id key: the row moves, the conversation continues."""
+        legacy = self._row(
+            f"discord:user123:{self.DM_CHANNEL}", "conv-history", "2026-08-20T00:00:00+00:00"
+        )
+        mock_bot_repo.get_by_session_key = AsyncMock(side_effect=[legacy, None])
+        mock_merge_repo.rename_session_key = AsyncMock(return_value=True)
+        mock_bot_repo.claim_session = AsyncMock(return_value=_session("conv-history"))
+        mock_conversations.exists = AsyncMock(return_value=True)
+
+        result = await BotService.get_or_create_session(
+            "discord", "user123", self.DM_CHANNEL, sample_user, is_dm=True
+        )
+
+        assert result == "conv-history"
+        mock_merge_repo.rename_session_key.assert_awaited_once_with(
+            session_key=f"discord:user123:{self.DM_CHANNEL}",
+            new_session_key="discord:user123:user123",
+            channel_id="user123",
+        )
+
+    async def test_an_already_forked_dm_keeps_the_newer_conversation(
+        self, mock_bot_repo, mock_merge_repo, mock_conversations, sample_user
+    ):
+        """Both rows exist (the fork already happened). The channel-keyed row was
+        used more recently — the user chats there — so the user-id key is
+        repointed at that conversation and the channel row is dropped."""
+        legacy = self._row(
+            f"slack:user123:{self.DM_CHANNEL}", "conv-chat", "2026-08-25T00:00:00+00:00"
+        )
+        canonical = self._row("slack:user123:user123", "conv-delivery", "2026-08-01T00:00:00+00:00")
+        mock_bot_repo.get_by_session_key = AsyncMock(side_effect=[legacy, canonical])
+        mock_merge_repo.repoint_conversation = AsyncMock()
+        mock_merge_repo.delete_by_session_key = AsyncMock(return_value=1)
+        mock_bot_repo.claim_session = AsyncMock(return_value=_session("conv-chat"))
+        mock_conversations.exists = AsyncMock(return_value=True)
+
+        await BotService.get_or_create_session(
+            "slack", "user123", self.DM_CHANNEL, sample_user, is_dm=True
+        )
+
+        mock_merge_repo.repoint_conversation.assert_awaited_once_with(
+            session_key="slack:user123:user123", conversation_id="conv-chat"
+        )
+        mock_merge_repo.delete_by_session_key.assert_awaited_once_with(
+            f"slack:user123:{self.DM_CHANNEL}"
+        )
+
+    async def test_a_dm_whose_channel_is_the_user_id_needs_no_merge(
+        self, mock_bot_repo, mock_conversations, sample_user
+    ):
+        """Telegram and WhatsApp: the DM channel IS the user id, so there is no
+        second key to fold in and no lookup to pay for."""
+        mock_bot_repo.claim_session = AsyncMock(return_value=_session("conv-tg"))
+        mock_conversations.exists = AsyncMock(return_value=True)
+
+        await BotService.get_or_create_session(
+            "telegram", "user123", "user123", sample_user, is_dm=True
+        )
+
+        mock_bot_repo.get_by_session_key.assert_not_called()
+        claim = mock_bot_repo.claim_session.await_args.kwargs
+        assert claim["session_key"] == "telegram:user123:user123"
+
+    async def test_resetting_a_flagged_dm_clears_both_keys(
+        self, mock_bot_repo, mock_conversations, mock_create_conversation, sample_user
+    ):
+        """A reset that only deleted the user-id key would let the next inbound
+        merge resurrect the channel-keyed conversation the user just reset."""
+        mock_bot_repo.delete_by_session_key = AsyncMock()
+        mock_bot_repo.get_by_session_key = AsyncMock(return_value=None)
+        mock_bot_repo.claim_session = AsyncMock(side_effect=TestGetOrCreateSession._claim_insert)
+        mock_conversations.exists = AsyncMock(return_value=False)
+
+        await BotService.reset_session(
+            "discord", "user123", self.DM_CHANNEL, sample_user, is_dm=True
+        )
+
+        deleted = [c.args[0] for c in mock_bot_repo.delete_by_session_key.await_args_list]
+        assert deleted == [f"discord:user123:{self.DM_CHANNEL}", "discord:user123:user123"]
+
+
+# ---------------------------------------------------------------------------
 # BotService.reset_session
 # ---------------------------------------------------------------------------
 
@@ -332,6 +476,9 @@ class TestResetSession:
         await BotService.reset_session("slack", "user123", "channel789", sample_user)
 
         mock_bot_repo.delete_by_session_key.assert_awaited_once_with("slack:user123:channel789")
+        # The fresh session must be the SAME channel's, not the user's DM.
+        claim = mock_bot_repo.claim_session.await_args.kwargs
+        assert claim["session_key"] == "slack:user123:channel789"
 
 
 # ---------------------------------------------------------------------------
