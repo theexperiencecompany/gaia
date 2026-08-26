@@ -301,7 +301,11 @@ function ConfigureProviderModal({
       onSaved();
     } catch (err: unknown) {
       const detail = extractProviderError(err);
-      toast.error(detail ?? `Failed to save ${row.label}`);
+      const hint = detail ? getProviderErrorHint(detail, row.key) : null;
+      const message = hint
+        ? `${detail} — ${hint}`
+        : (detail ?? `Failed to save ${row.label}`);
+      toast.error(message);
     } finally {
       setIsSaving(false);
     }
@@ -453,6 +457,18 @@ function ConfigureProviderModal({
                 }`}
               >
                 <p>{testResult.detail}</p>
+                {!testResult.ok &&
+                  (() => {
+                    const hint = getProviderErrorHint(
+                      testResult.detail,
+                      row.key,
+                    );
+                    return hint ? (
+                      <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+                        {hint}
+                      </p>
+                    ) : null;
+                  })()}
                 {testResult.ok && testResult.models.length > 0 && (
                   <p className="mt-1 text-zinc-400">
                     {testResult.models.length} models available
@@ -508,6 +524,34 @@ function ConfigureProviderModal({
       <ConfirmationDialog {...confirmationProps} />
     </>
   );
+}
+
+function getProviderErrorHint(
+  detail: string,
+  providerKey?: string,
+): string | null {
+  const lower = detail.toLowerCase();
+  if (lower.includes("private") || lower.includes("unreachable")) return null;
+  if (
+    lower.includes("401") ||
+    lower.includes("invalid") ||
+    lower.includes("unauthorized")
+  ) {
+    const url = providerKey
+      ? (PROVIDER_KEY_URLS as Record<string, string>)[providerKey]
+      : undefined;
+    if (url) {
+      return `Check your API key at ${url} — it may be expired or missing permissions.`;
+    }
+    return "Check your API key — it may be expired or missing permissions.";
+  }
+  if (lower.includes("429") || lower.includes("rate")) {
+    return "Rate limited — wait a minute and try again, or check your plan limits.";
+  }
+  if (lower.includes("timeout") || lower.includes("timed out")) {
+    return "Provider didn't respond — check your network or try again.";
+  }
+  return null;
 }
 
 /** Pull a human-readable message out of an axios/backend error. */

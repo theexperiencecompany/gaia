@@ -23,6 +23,8 @@ export interface RestoreOptions {
 export function resolveRestoreFiles(options: RestoreOptions): {
   mongoFile?: string;
   postgresFile?: string;
+  chromaFile?: string;
+  sandboxFile?: string;
 } {
   if (options.fromDir) {
     const dir = path.resolve(options.fromDir);
@@ -39,6 +41,8 @@ export function resolveRestoreFiles(options: RestoreOptions): {
     return {
       mongoFile: options.mongoFile ?? pickLatest("mongo-", ".gz"),
       postgresFile: options.postgresFile ?? pickLatest("postgres-", ".sql"),
+      chromaFile: pickLatest("chroma_data-", ".tar.gz"),
+      sandboxFile: pickLatest("sandbox-workspace-", ".tar.gz"),
     };
   }
   return { mongoFile: options.mongoFile, postgresFile: options.postgresFile };
@@ -47,6 +51,8 @@ export function resolveRestoreFiles(options: RestoreOptions): {
 export function getRestoreCommands(
   mongoFile?: string,
   postgresFile?: string,
+  chromaFile?: string,
+  sandboxFile?: string,
 ): string[] {
   const cmds: string[] = [];
   if (mongoFile) {
@@ -56,18 +62,36 @@ export function getRestoreCommands(
   }
   if (postgresFile) {
     cmds.push(
-      `docker compose -f docker-compose.selfhost.yml exec postgres psql -U postgres -d langgraph -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'`,
+      `docker compose -f docker-compose.selfhost.yml exec -T postgres psql -U postgres -d langgraph -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'`,
     );
     cmds.push(
       `cat ${postgresFile} | docker compose -f docker-compose.selfhost.yml exec -T postgres psql -U postgres -d langgraph`,
     );
   }
+  if (chromaFile) {
+    const dir = path.dirname(chromaFile);
+    const base = path.basename(chromaFile);
+    cmds.push(
+      `docker run --rm -v gaia-selfhost_chroma_data:/data -v ${dir}:/backups alpine sh -c "rm -rf /data/* && tar xzf /backups/${base} -C /data"`,
+    );
+  }
+  if (sandboxFile) {
+    const dir = path.dirname(sandboxFile);
+    const base = path.basename(sandboxFile);
+    cmds.push(
+      `docker run --rm -v gaia-sandbox-workspace:/data -v ${dir}:/backups alpine sh -c "rm -rf /data/* && tar xzf /backups/${base} -C /data"`,
+    );
+  }
   return cmds;
 }
 
-export async function runRestore(
-  options: RestoreOptions = {},
-): Promise<{ mongoFile?: string; postgresFile?: string; commands: string[] }> {
+export async function runRestore(options: RestoreOptions = {}): Promise<{
+  mongoFile?: string;
+  postgresFile?: string;
+  chromaFile?: string;
+  sandboxFile?: string;
+  commands: string[];
+}> {
   const repoPath = findRepoRoot();
   if (!repoPath) {
     throw new Error(
@@ -79,10 +103,16 @@ export async function runRestore(
   if (!fs.existsSync(composeFile))
     throw new Error(`Compose file not found: ${composeFile}`);
 
-  const { mongoFile, postgresFile } = resolveRestoreFiles(options);
-  const commands = getRestoreCommands(mongoFile, postgresFile);
+  const { mongoFile, postgresFile, chromaFile, sandboxFile } =
+    resolveRestoreFiles(options);
+  const commands = getRestoreCommands(
+    mongoFile,
+    postgresFile,
+    chromaFile,
+    sandboxFile,
+  );
 
-  if (!mongoFile && !postgresFile) {
+  if (!mongoFile && !postgresFile && !chromaFile && !sandboxFile) {
     throw new Error(
       [
         "No backup files specified.",
@@ -97,9 +127,13 @@ export async function runRestore(
     throw new Error(`Mongo backup not found: ${mongoFile}`);
   if (postgresFile && !fs.existsSync(postgresFile))
     throw new Error(`Postgres backup not found: ${postgresFile}`);
+  if (chromaFile && !fs.existsSync(chromaFile))
+    throw new Error(`Chroma backup not found: ${chromaFile}`);
+  if (sandboxFile && !fs.existsSync(sandboxFile))
+    throw new Error(`Sandbox backup not found: ${sandboxFile}`);
 
   if (options.dryRun) {
-    return { mongoFile, postgresFile, commands };
+    return { mongoFile, postgresFile, chromaFile, sandboxFile, commands };
   }
 
   const dockerRunning = await isDockerRunning();
@@ -193,5 +227,46 @@ export async function runRestore(
     }
   }
 
-  return { mongoFile, postgresFile, commands };
+  // Extra volumes: best-effort alpine tar restores. These mirror backup/flow.ts
+  // — same volume names, same alpine tar pattern. New volumes are created
+  // implicitly by `docker run -v`.
+  const extraRestores: Array<{ file: string; volume: string; label: string }> =
+    [];
+  if (chromaFile)
+    extraRestores.push({
+      file: chromaFile,
+      volume: "gaia-selfhost_chroma_data",
+      label: "Chroma",
+    });
+  if (sandboxFile)
+    extraRestores.push({
+      file: sandboxFile,
+      volume: "gaia-sandbox-workspace",
+      label: "Sandbox workspace",
+    });
+
+  for (const { file, volume, label } of extraRestores) {
+    try {
+      await execa(
+        "docker",
+        [
+          "run",
+          "--rm",
+          "-v",
+          `${volume}:/data`,
+          "-v",
+          `${path.dirname(file)}:/backups`,
+          "alpine",
+          "sh",
+          "-c",
+          `rm -rf /data/* && tar xzf /backups/${path.basename(file)} -C /data`,
+        ],
+        { cwd: dockerDir },
+      );
+    } catch (e) {
+      throw new Error(`${label} restore failed: ${(e as Error).message}`);
+    }
+  }
+
+  return { mongoFile, postgresFile, chromaFile, sandboxFile, commands };
 }

@@ -170,7 +170,11 @@ export function SetupWizard() {
                 />
               )}
               {step.id === "provider" && (
-                <ProviderStep status={status} onSaved={refreshStatus} />
+                <ProviderStep
+                  status={status}
+                  onSaved={refreshStatus}
+                  onNext={goNext}
+                />
               )}
               {step.id === "search" && (
                 <SearchStep status={status} onSaved={refreshStatus} />

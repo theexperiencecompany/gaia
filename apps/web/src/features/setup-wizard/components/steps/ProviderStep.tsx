@@ -24,14 +24,19 @@ import {
 } from "../../constants";
 import { ProviderSetupCard } from "../ProviderSetupCard";
 
+type ProviderMode = "hosted" | "ollama" | "skip";
+
 interface ProviderStepProps {
   status: SetupStatus;
   /** Refetch setup status after a card connects, so Done reflects it. */
   onSaved: () => void;
+  /** Advance the wizard (used by Ollama one-click and Skip). */
+  onNext?: () => void;
 }
 
-export function ProviderStep({ status, onSaved }: ProviderStepProps) {
+export function ProviderStep({ status, onSaved, onNext }: ProviderStepProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [mode, setMode] = useState<ProviderMode>("hosted");
 
   const { data: catalog } = useQuery<ProviderCatalog>({
     queryKey: ["setup", "catalog"],
@@ -78,63 +83,144 @@ export function ProviderStep({ status, onSaved }: ProviderStepProps) {
   const openRouterCard =
     llmCards.find((c) => c.key === "openrouter") ?? llmCards[0];
   const ollamaCard = llmCards.find((c) => c.key === "ollama");
-  // Ollama is shown prominently alongside OpenRouter (free/local one-click)
-  // so self-hosters without an API key can continue in one click. The
-  // remaining providers stay behind the disclosure.
-  const otherCards = llmCards.filter(
-    (c) => c.key !== openRouterCard?.key && c.key !== ollamaCard?.key,
-  );
+
+  // Hosted lane — every LLM card except Ollama. Ollama gets its own top-level
+  // tab so self-hosters without a key see a clear "free, no key needed" path.
+  const hostedCards = llmCards.filter((c) => c.key !== "ollama");
+  const hostedPrimary =
+    hostedCards.find((c) => c.key === openRouterCard?.key) ?? hostedCards[0];
+  const hostedOthers = hostedCards.filter((c) => c.key !== hostedPrimary?.key);
+
+  const handleOllamaSaved = () => {
+    onSaved();
+    // Let the status refetch land, then advance so the wizard reflects the new
+    // provider before moving on.
+    window.setTimeout(() => onNext?.(), 400);
+  };
 
   return (
     <m.div className="flex w-full flex-col gap-3" {...MOTION_FADE_UP}>
-      {openRouterCard && (
-        <ProviderSetupCard
-          key={openRouterCard.key}
-          config={openRouterCard}
-          isConfigured={isProviderConfigured(status, openRouterCard.key)}
-          onSaved={onSaved}
-        />
-      )}
-      {ollamaCard && ollamaCard.key !== openRouterCard?.key && (
-        <ProviderSetupCard
-          key={ollamaCard.key}
-          config={ollamaCard}
-          isConfigured={isProviderConfigured(status, ollamaCard.key)}
-          onSaved={onSaved}
-        />
-      )}
-      {otherCards.length > 0 &&
-        (showAdvanced ? (
-          <div className="flex flex-col gap-3">
-            {otherCards.map((config) => (
-              <ProviderSetupCard
-                key={config.key}
-                config={config}
-                isConfigured={isProviderConfigured(status, config.key)}
-                onSaved={onSaved}
-              />
-            ))}
+      {/* Top-level choice — the "I have nothing, just make it work" path is
+          now a first-class tab, not buried inside a card. */}
+      <div className="flex gap-1 rounded-full bg-zinc-900 p-1">
+        {(
+          [
+            { key: "hosted" as const, label: "Hosted key" },
+            { key: "ollama" as const, label: "Local Ollama · free" },
+            { key: "skip" as const, label: "Skip for now" },
+          ] as const
+        ).map((tab) => {
+          const selected = mode === tab.key;
+          return (
             <Button
-              variant="light"
+              key={tab.key}
               size="sm"
               radius="full"
-              className="self-center text-zinc-500"
-              onPress={() => setShowAdvanced(false)}
+              variant={selected ? "solid" : "light"}
+              color={selected ? "primary" : "default"}
+              className={
+                selected
+                  ? "flex-1 font-medium"
+                  : "flex-1 font-medium text-zinc-400"
+              }
+              onPress={() => setMode(tab.key)}
             >
-              Show fewer providers
+              {tab.label}
             </Button>
-          </div>
-        ) : (
-          <Button
-            variant="light"
-            size="sm"
-            radius="full"
-            className="self-center text-zinc-500"
-            onPress={() => setShowAdvanced(true)}
-          >
-            More providers
-          </Button>
-        ))}
+          );
+        })}
+      </div>
+
+      {mode === "hosted" && (
+        <div className="flex flex-col gap-3">
+          {hostedPrimary && (
+            <ProviderSetupCard
+              key={hostedPrimary.key}
+              config={hostedPrimary}
+              isConfigured={isProviderConfigured(status, hostedPrimary.key)}
+              onSaved={onSaved}
+            />
+          )}
+          {hostedOthers.length > 0 &&
+            (showAdvanced ? (
+              <div className="flex flex-col gap-3">
+                {hostedOthers.map((config) => (
+                  <ProviderSetupCard
+                    key={config.key}
+                    config={config}
+                    isConfigured={isProviderConfigured(status, config.key)}
+                    onSaved={onSaved}
+                  />
+                ))}
+                <Button
+                  variant="light"
+                  size="sm"
+                  radius="full"
+                  className="self-center text-zinc-500"
+                  onPress={() => setShowAdvanced(false)}
+                >
+                  Show fewer providers
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="light"
+                size="sm"
+                radius="full"
+                className="self-center text-zinc-500"
+                onPress={() => setShowAdvanced(true)}
+              >
+                More providers
+              </Button>
+            ))}
+        </div>
+      )}
+
+      {mode === "ollama" && (
+        <div className="flex flex-col gap-3">
+          {ollamaCard ? (
+            <ProviderSetupCard
+              key={ollamaCard.key}
+              config={ollamaCard}
+              isConfigured={isProviderConfigured(status, ollamaCard.key)}
+              onSaved={handleOllamaSaved}
+            />
+          ) : (
+            <div className="w-full rounded-2xl bg-zinc-800 p-4">
+              <p className="text-sm text-zinc-400">
+                Ollama configuration is unavailable — the provider catalog
+                couldn&apos;t be loaded. Try reloading the page.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {mode === "skip" && (
+        <div className="w-full rounded-2xl bg-zinc-800 p-4">
+          <p className="text-sm font-medium text-zinc-100">
+            Skip provider setup for now
+          </p>
+          <p className="mt-1 text-sm leading-relaxed text-zinc-400">
+            You can add a provider later in{" "}
+            <span className="font-medium text-zinc-300">
+              Settings → AI Providers
+            </span>
+            . Until then GAIA will use local fallbacks where available.
+          </p>
+          {onNext && (
+            <Button
+              size="sm"
+              color="primary"
+              variant="flat"
+              className="mt-3"
+              onPress={onNext}
+            >
+              Continue without a provider
+            </Button>
+          )}
+        </div>
+      )}
     </m.div>
   );
 }

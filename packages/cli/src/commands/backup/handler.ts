@@ -22,6 +22,12 @@ export async function runBackupCommand(
     out("Backup commands (dry run — not executed):");
     for (const cmd of result.commands) out(`  ${cmd}`);
     out("");
+    out("Extra volumes (chroma_data, sandbox-workspace) are backed up via");
+    out(
+      "  docker run --rm -v <volume>:/data -v <output>:/backups alpine tar ...",
+    );
+    out("  and are skipped if the volume does not exist (re-creatable).");
+    out("");
     out("Run without --dry-run to execute inside the running containers,");
     out(
       "or copy-paste the commands from the directory containing infra/docker/",
@@ -34,6 +40,12 @@ export async function runBackupCommand(
     const result = await runBackup({ outputDir: options.output });
     out(`MongoDB dump: ${result.mongoFile}`);
     out(`PostgreSQL dump: ${result.postgresFile}`);
+    if (result.extraFiles?.length) {
+      for (const f of result.extraFiles) out(`Volume dump: ${f}`);
+    }
+    if (result.warnings?.length) {
+      for (const w of result.warnings) out(`Note: ${w}`);
+    }
     out("");
     out("Backups complete. Store them off-host and access-controlled —");
     out(
@@ -47,6 +59,16 @@ export async function runBackupCommand(
     out(
       `  docker compose -f infra/docker/docker-compose.selfhost.yml exec -T mongo mongorestore --archive --gzip --drop < ${result.mongoFile}`,
     );
+    if (result.extraFiles?.length) {
+      for (const f of result.extraFiles) {
+        const vol = f.includes("chroma")
+          ? "gaia-selfhost_chroma_data"
+          : "gaia-sandbox-workspace";
+        out(
+          `  docker run --rm -v ${vol}:/data -v $(dirname ${f}):/backups alpine sh -c "rm -rf /data/* && tar xzf /backups/${f.split("/").pop()} -C /data"`,
+        );
+      }
+    }
   } catch (e) {
     errOut((e as Error).message);
     process.exitCode = 1;
@@ -68,7 +90,7 @@ export function printBackupHelp(): void {
     "  docker compose -f docker-compose.selfhost.yml exec -T mongo mongorestore --archive --gzip --drop < backups/mongo-YYYY-MM-DD.gz",
   );
   out(
-    "  docker compose -f docker-compose.selfhost.yml exec postgres psql -U postgres -d langgraph -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'",
+    "  docker compose -f docker-compose.selfhost.yml exec -T postgres psql -U postgres -d langgraph -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'",
   );
   out(
     "  cat backups/postgres-YYYY-MM-DD.sql | docker compose -f docker-compose.selfhost.yml exec -T postgres psql -U postgres -d langgraph",

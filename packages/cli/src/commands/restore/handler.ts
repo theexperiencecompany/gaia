@@ -22,13 +22,19 @@ export async function runRestoreCommand(
   } = {},
 ): Promise<void> {
   if (options.dryRun) {
-    const { mongoFile, postgresFile } = resolveRestoreFiles({
-      mongoFile: options.mongo,
-      postgresFile: options.postgres,
-      fromDir: options.from,
-      dryRun: true,
-    });
-    const cmds = getRestoreCommands(mongoFile, postgresFile);
+    const { mongoFile, postgresFile, chromaFile, sandboxFile } =
+      resolveRestoreFiles({
+        mongoFile: options.mongo,
+        postgresFile: options.postgres,
+        fromDir: options.from,
+        dryRun: true,
+      });
+    const cmds = getRestoreCommands(
+      mongoFile,
+      postgresFile,
+      chromaFile,
+      sandboxFile,
+    );
     if (cmds.length === 0) {
       out(
         "No backup files resolved. Use --from <dir> or --mongo/--postgres <file>.",
@@ -50,6 +56,9 @@ export async function runRestoreCommand(
     if (result.mongoFile) out(`Restored MongoDB from ${result.mongoFile}`);
     if (result.postgresFile)
       out(`Restored PostgreSQL from ${result.postgresFile}`);
+    if (result.chromaFile) out(`Restored Chroma from ${result.chromaFile}`);
+    if (result.sandboxFile)
+      out(`Restored sandbox workspace from ${result.sandboxFile}`);
     out(
       "Restore complete. Restart app containers so sessions re-issue: docker compose -f infra/docker/docker-compose.selfhost.yml restart gaia-backend arq_worker",
     );

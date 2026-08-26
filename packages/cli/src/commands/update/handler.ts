@@ -42,12 +42,16 @@ async function askConfirm(question: string): Promise<boolean> {
 function printManualSteps(): void {
   out("\nManual update steps (preserves infra/docker/.env and volumes):");
   out("  git fetch origin");
-  out("  git log HEAD..origin/master --oneline -- apps/web apps/api infra/docker  # what changed");
+  out(
+    "  git log HEAD..origin/master --oneline -- apps/web apps/api infra/docker  # what changed",
+  );
   out("  git pull --ff-only");
   out("  # if apps/web/Dockerfile or apps/web/package.json changed:");
   out("  gaia up --build");
   out("  # otherwise:");
-  out("  gaia up   # or: docker compose -f infra/docker/docker-compose.selfhost.yml up -d --pull always");
+  out(
+    "  gaia up   # or: docker compose -f infra/docker/docker-compose.selfhost.yml up -d --pull always",
+  );
   out("  # never run: docker compose down -v  (would delete volumes)");
 }
 
@@ -64,8 +68,18 @@ export async function runUpdate(options: UpdateOptions = {}): Promise<void> {
   try {
     await fetchOrigin(repoPath);
   } catch (e) {
-    err(`Warning: Could not fetch origin: ${(e as Error).message}`);
-    err("Fix: Check your network and that 'origin' remote is configured (git remote -v).");
+    const msg = (e as Error).message;
+    if (msg.includes("Not a git repository")) {
+      err(`Skipped: ${msg}`);
+      err(
+        "This install is a plain copy (e.g. gaia-vm) without a git remote — update by re-downloading or cloning the repo, then copy infra/docker/.env forward. Volumes are preserved (never run down -v).",
+      );
+      return;
+    }
+    err(`Warning: Could not fetch origin: ${msg}`);
+    err(
+      "Fix: Check your network and that 'origin' remote is configured (git remote -v).",
+    );
     printManualSteps();
     process.exitCode = 1;
     return;
@@ -87,16 +101,23 @@ export async function runUpdate(options: UpdateOptions = {}): Promise<void> {
     return;
   }
   if (status.changedFiles.length === 0 && status.behindCount > 0) {
-    out(`Already up to date for ${WATCH_PATHS.join(", ")} (${status.behindCount} commit(s) behind on other paths).`);
+    out(
+      `Already up to date for ${WATCH_PATHS.join(", ")} (${status.behindCount} commit(s) behind on other paths).`,
+    );
     return;
   }
 
-  out(`\nUpdate available — ${status.behindCount} commit(s) behind origin/master:`);
+  out(
+    `\nUpdate available — ${status.behindCount} commit(s) behind origin/master:`,
+  );
   for (const [prefix, count] of Object.entries(status.summary)) {
     const label = prefix === "other" ? "other" : prefix;
     out(`  ${label}: ${count} file(s)`);
     // Extra hint for compose changes
-    if (prefix === "infra/docker" && status.changedFiles.some((f) => f.includes("compose"))) {
+    if (
+      prefix === "infra/docker" &&
+      status.changedFiles.some((f) => f.includes("compose"))
+    ) {
       out("    (compose file changed)");
     }
   }
@@ -109,13 +130,17 @@ export async function runUpdate(options: UpdateOptions = {}): Promise<void> {
       out(`  ... and ${status.commits.length - 10} more`);
     }
   }
-  out(`\nStrategy: ${status.needsRebuild ? "--build (Dockerfile/package.json changed)" : "--pull always"}`);
+  out(
+    `\nStrategy: ${status.needsRebuild ? "--build (Dockerfile/package.json changed)" : "--pull always"}`,
+  );
   out("Preserves infra/docker/.env and volumes (never runs down -v).");
 
   let confirmed = options.yes === true;
   if (!confirmed) {
     if (!isInteractive()) {
-      out("\nNon-interactive terminal — re-run with --yes to apply, or run manually:");
+      out(
+        "\nNon-interactive terminal — re-run with --yes to apply, or run manually:",
+      );
       printManualSteps();
       return;
     }
@@ -128,7 +153,9 @@ export async function runUpdate(options: UpdateOptions = {}): Promise<void> {
   }
 
   try {
-    await pullAndRestart(repoPath, status.needsRebuild, (msg) => out(`  ${msg}`));
+    await pullAndRestart(repoPath, status.needsRebuild, (msg) =>
+      out(`  ${msg}`),
+    );
     out("\nAlready up to date after pull — services restarted.");
     if (status.needsRebuild) {
       out("Rebuilt images locally (preserved infra/docker/.env and volumes).");
@@ -138,15 +165,31 @@ export async function runUpdate(options: UpdateOptions = {}): Promise<void> {
   } catch (e) {
     // Provide the manual fallback on any failure after fetch.
     const msg = (e as Error).message;
+    if (msg.includes("Not a git repository")) {
+      err(`\nUpdate skipped: ${msg}`);
+      err(
+        "This install is a plain copy without a git remote — update by re-downloading or cloning the repo, then copy infra/docker/.env forward. Volumes are preserved (never run down -v).",
+      );
+      return;
+    }
     err(`\nUpdate failed: ${msg}`);
-    if (msg.includes("Not possible to fast-forward") || msg.includes("would be overwritten")) {
-      err("Fix: Commit or stash local changes, then rerun 'gaia update --yes'.");
+    if (
+      msg.includes("Not possible to fast-forward") ||
+      msg.includes("would be overwritten")
+    ) {
+      err(
+        "Fix: Commit or stash local changes, then rerun 'gaia update --yes'.",
+      );
     }
     // Show what the user would have run.
     try {
-      const { stdout } = await execa("git", ["status", "--porcelain"], { cwd: repoPath });
+      const { stdout } = await execa("git", ["status", "--porcelain"], {
+        cwd: repoPath,
+      });
       if (stdout.trim().length > 0) {
-        err("Local modifications exist — 'git pull --ff-only' refuses to overwrite them.");
+        err(
+          "Local modifications exist — 'git pull --ff-only' refuses to overwrite them.",
+        );
       }
     } catch {
       // ignore

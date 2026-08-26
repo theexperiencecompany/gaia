@@ -23,6 +23,52 @@ export interface BackupResult {
   mongoFile: string;
   postgresFile: string;
   commands: string[];
+  extraFiles?: string[];
+  warnings?: string[];
+}
+
+/**
+ * Extra volumes beyond the critical DBs.
+ *
+ * - `chroma_data` (compose key) → Docker volume `gaia-selfhost_chroma_data` — vector
+ *   embeddings. Re-creatable from source documents but expensive (re-embed). Backed
+ *   up best-effort via `alpine tar`.
+ * - `gaia-sandbox-workspace` (pinned name) → ephemeral per-user workspace. Re-creatable;
+ *   keep if you care about local sandbox files.
+ *
+ * Other volumes (redis_data, rabbitmq_data, juicefs_cache, models_cache) are
+ * transient queues/caches and intentionally NOT backed up — they repopulate on
+ * restart/re-download.
+ *
+ * The `docker run` one-liners below use the real Docker volume names. `chroma_data`
+ * is what `docker volume ls` shows as `gaia-selfhost_chroma_data` under the
+ * `gaia-selfhost` project; `gaia-sandbox-workspace` is pinned via `name:` in the
+ * compose file so it is literal.
+ */
+export const EXTRA_VOLUME_BACKUPS: ReadonlyArray<{
+  volume: string;
+  fileSuffix: string;
+  label: string;
+}> = [
+  {
+    volume: "gaia-selfhost_chroma_data",
+    fileSuffix: "chroma_data",
+    label: "Chroma",
+  },
+  {
+    volume: "gaia-sandbox-workspace",
+    fileSuffix: "sandbox-workspace",
+    label: "Sandbox workspace",
+  },
+] as const;
+
+async function volumeExists(volume: string): Promise<boolean> {
+  try {
+    const { stdout } = await execa("docker", ["volume", "inspect", volume]);
+    return stdout.trim().length > 0;
+  } catch {
+    return false;
+  }
 }
 
 /** YYYY-MM-DD for dated filenames. */
@@ -37,11 +83,26 @@ export function getBackupCommands(
 ): string[] {
   const mongoFile = path.join(outputDir, `mongo-${date}.gz`);
   const postgresFile = path.join(outputDir, `postgres-${date}.sql`);
-  return [
+  const base = [
     `mkdir -p ${outputDir}`,
     `docker compose -f docker-compose.selfhost.yml exec -T mongo mongodump --archive --gzip > ${mongoFile}`,
     `docker compose -f docker-compose.selfhost.yml exec -T postgres pg_dump -U postgres -d langgraph > ${postgresFile}`,
   ];
+  for (const v of EXTRA_VOLUME_BACKUPS) {
+    const file = path.join(outputDir, `${v.fileSuffix}-${date}.tar.gz`);
+    base.push(
+      `docker run --rm -v ${v.volume}:/data -v ${outputDir}:/backups alpine tar czf /backups/${path.basename(file)} -C /data .`,
+    );
+  }
+  return base;
+}
+
+/** Subset of commands for just the critical DBs (used in error hints). */
+export function getCoreBackupCommands(
+  outputDir: string,
+  date = todayIso(),
+): string[] {
+  return getBackupCommands(outputDir, date).slice(0, 3);
 }
 
 function resolveDockerDir(repoPath: string): string {
@@ -79,7 +140,14 @@ export async function runBackup(
   const commands = getBackupCommands(outDir, date);
 
   if (options.dryRun) {
-    return { mongoFile, postgresFile, commands };
+    return {
+      mongoFile,
+      postgresFile,
+      commands,
+      extraFiles: EXTRA_VOLUME_BACKUPS.map((v) =>
+        path.join(outDir, `${v.fileSuffix}-${date}.tar.gz`),
+      ),
+    };
   }
 
   const dockerRunning = await isDockerRunning();
@@ -159,5 +227,45 @@ export async function runBackup(
     );
   }
 
-  return { mongoFile, postgresFile, commands };
+  // Extra volumes: best-effort `alpine tar` dumps. Skip silently if the volume
+  // doesn't exist (fresh install or `gaia-sandbox-workspace` never created).
+  // These are re-creatable (Chroma re-embeds, sandbox is ephemeral) but we still
+  // snapshot them when present so a full restore is possible.
+  const extraFiles: string[] = [];
+  const warnings: string[] = [];
+  for (const v of EXTRA_VOLUME_BACKUPS) {
+    const file = path.join(outDir, `${v.fileSuffix}-${date}.tar.gz`);
+    if (!(await volumeExists(v.volume))) {
+      warnings.push(
+        `${v.label} volume ${v.volume} not found — skipped (re-creatable)`,
+      );
+      continue;
+    }
+    try {
+      await execa(
+        "docker",
+        [
+          "run",
+          "--rm",
+          "-v",
+          `${v.volume}:/data`,
+          "-v",
+          `${outDir}:/backups`,
+          "alpine",
+          "tar",
+          "czf",
+          `/backups/${path.basename(file)}`,
+          "-C",
+          "/data",
+          ".",
+        ],
+        { cwd: dockerDir },
+      );
+      extraFiles.push(file);
+    } catch (e) {
+      warnings.push(`${v.label} backup failed: ${(e as Error).message}`);
+    }
+  }
+
+  return { mongoFile, postgresFile, commands, extraFiles, warnings };
 }

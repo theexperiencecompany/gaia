@@ -647,6 +647,39 @@ export async function checkGitUpdateAvailable(): Promise<CheckResult> {
     };
   }
 
+  // VM plain-copy installs (gaia-vm) have no .git — this is expected, not a failure.
+  try {
+    const { stdout: isInside } = await execa(
+      "git",
+      ["rev-parse", "--is-inside-work-tree"],
+      {
+        cwd: repoPath,
+      },
+    );
+    if (isInside.trim() !== "true") {
+      return {
+        ...base,
+        state: "skipped",
+        detail: "Not a git repository — pull manually",
+      };
+    }
+  } catch {
+    return {
+      ...base,
+      state: "skipped",
+      detail: "Not a git repository — pull manually",
+    };
+  }
+  try {
+    await execa("git", ["remote", "get-url", "origin"], { cwd: repoPath });
+  } catch {
+    return {
+      ...base,
+      state: "skipped",
+      detail: "Not a git repository — pull manually (no origin remote)",
+    };
+  }
+
   try {
     const { stdout } = await execa(
       "git",

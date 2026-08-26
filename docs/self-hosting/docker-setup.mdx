@@ -10,6 +10,17 @@ GAIA uses Docker Compose to orchestrate all the required services. This makes de
   **Looking for the easy path?** [GAIA CLI](/self-hosting/cli-setup) does all of this for you — `gaia up` checks prerequisites, writes configuration, and starts the same Compose stack described here. This guide covers driving Docker directly for advanced users who prefer full control.
 </Note>
 
+## Prerequisites
+
+Before you follow the steps below on a fresh machine (e.g. an Ubuntu VM), confirm you have:
+
+- **Docker** — Docker Desktop (macOS/Windows), Docker Engine 20.10+ with Compose v2 (Linux), or OrbStack (macOS). `gaia up` will offer to install Docker if it is missing — see [Docker Installation](#prerequisites-1) below.
+- **Git** — only if you use the `git clone` alternative in step 1 (`sudo apt-get install -y git` on Ubuntu/Debian).
+- **4 GB RAM minimum, 8 GB recommended** — plus 2+ CPU cores and 10 GB free disk. The local embedding model loads ~1.8 GB into each of `gaia-backend` and `arq_worker` on first use (see [Memory sizing](#memory-sizing)).
+- **Ports** — `3000` (web) and `8000` (API) must be free on the host and are bound to `0.0.0.0` (override with `WEB_HOST_PORT` / `API_HOST_PORT`). Datastores bind to `127.0.0.1` only and don't need firewall rules: `5432` Postgres, `27017` Mongo, `6379` Redis, `8080` ChromaDB, `5672`/`15672` RabbitMQ.
+- **No API keys to boot** — the stack starts with no provider keys. Add one later at `http://localhost:3000/setup` (or replace `localhost` with your server's IP/hostname), or run entirely keyless against a local Ollama at `http://host.docker.internal:11434`.
+- **No manual `.env` setup, no Infisical** — `gaia up` writes `apps/api/.env` (`ENV=selfhost`, `AUTH_MODE=local`) and generates the three machine secrets (`AGENT_SECRET`, `BOT_SESSION_TOKEN_SECRET`, `EMAIL_UNSUBSCRIBE_SECRET`) for you. Never `cp .env.example .env` and self-host never contacts Infisical.
+
 ## Quick Start — 2 minutes
 
 <Steps>
@@ -30,9 +41,9 @@ GAIA uses Docker Compose to orchestrate all the required services. This makes de
     gaia up
     ```
 
-    This writes the `.env` files (with `ENV=selfhost`), generates machine secrets, and starts the stack. The rest of this guide explains what it started and how to operate it by hand.
+    This writes the `.env` files (with `ENV=selfhost`), generates machine secrets, and starts the stack. No `cp .env.example .env` and no Infisical — self-host never contacts it. The rest of this guide explains what it started and how to operate it by hand.
 
-    Alternative without the installer — clone and start:
+    Alternative without the installer — clone first (requires `git`):
 
     ```bash
     git clone https://github.com/theexperiencecompany/gaia.git && cd gaia && gaia up
@@ -40,7 +51,7 @@ GAIA uses Docker Compose to orchestrate all the required services. This makes de
   </Step>
 
   <Step title="Finish setup in the browser">
-    Open http://localhost:3000/setup, create your admin account, and paste an API key for one AI provider — see [Self-hosting overview](/self-hosting/overview).
+    Open `http://localhost:3000/setup` — or `http://YOUR_SERVER_IP:3000/setup` if you are on a remote VM — create your admin account, and paste an API key for one AI provider (or choose Ollama for a keyless local model). See [Self-hosting overview](/self-hosting/overview).
   </Step>
 
   <Step title="Monitor">
@@ -396,7 +407,7 @@ If you terminate TLS at a proxy, ensure it sets `X-Forwarded-Proto: https` — s
 
 ## Data Persistence
 
-Data is persisted using Docker volumes (prefixed `gaia-selfhost_`):
+Data is persisted using Docker volumes (prefixed `gaia-selfhost_`, except `gaia-sandbox-workspace` which is pinned by name):
 
 | Volume                  | Contents              |
 | ----------------------- | --------------------- |
@@ -407,6 +418,7 @@ Data is persisted using Docker volumes (prefixed `gaia-selfhost_`):
 | `gaia-selfhost_rabbitmq_data` | RabbitMQ messages |
 | `gaia-selfhost_juicefs_cache` | JuiceFS local chunk cache (speed only, safe to delete) |
 | `gaia-selfhost_models_cache` | fastembed ONNX model cache (~1.85 GB, safe to delete — re-downloads) |
+| `gaia-sandbox-workspace` | Local sandbox per-user workspace (`gaia-sandbox` fallback; survives recreation) |
 
 <Warning>
 Never reclaim disk space with `docker system prune --volumes` (or `docker volume prune`, or a routine `docker compose down -v`): the `--volumes` flag deletes every named volume above — the entire state of your instance, including users, sessions, provider credentials, and chats. Plain `docker system prune` (no flags) leaves volumes alone; it only removes stopped containers, dangling images, and build cache.
@@ -454,14 +466,14 @@ Redis (queue + cache), ChromaDB (vectors are re-embeddable from source content),
 
     ```bash
     mkdir -p backups
-    docker compose -f docker-compose.selfhost.yml exec mongo mongodump --archive --gzip > backups/mongo-$(date +%F).gz
+    docker compose -f docker-compose.selfhost.yml exec -T mongo mongodump --archive --gzip > backups/mongo-$(date +%F).gz
     ```
 
     For a fully consistent snapshot, stop the writers first so nothing changes mid-dump:
 
     ```bash
     docker compose -f docker-compose.selfhost.yml stop gaia-backend arq_worker
-    docker compose -f docker-compose.selfhost.yml exec mongo mongodump --archive --gzip > backups/mongo-$(date +%F).gz
+    docker compose -f docker-compose.selfhost.yml exec -T mongo mongodump --archive --gzip > backups/mongo-$(date +%F).gz
     docker compose -f docker-compose.selfhost.yml start gaia-backend arq_worker
     ```
 
@@ -470,7 +482,7 @@ Redis (queue + cache), ChromaDB (vectors are re-embeddable from source content),
     `pg_dump` produces a consistent snapshot on its own — safe against a live stack:
 
     ```bash
-    docker compose -f docker-compose.selfhost.yml exec postgres pg_dump -U postgres -d langgraph > backups/postgres-$(date +%F).sql
+    docker compose -f docker-compose.selfhost.yml exec -T postgres pg_dump -U postgres -d langgraph > backups/postgres-$(date +%F).sql
     ```
 
     ### Back up ChromaDB

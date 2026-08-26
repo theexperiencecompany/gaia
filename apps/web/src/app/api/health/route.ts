@@ -18,6 +18,19 @@ const HEALTH_TIMEOUT_MS = 5000;
  * Uses the server-side API base so the probe never leaves the compose network
  * when `API_BASE_URL_INTERNAL` is set; falls back to the public base for
  * single-container or dev runs.
+ *
+ * Infra coverage (postgres/redis/mongo/rabbitmq/chroma):
+ * - The web container has no DB clients, so it delegates infra health to the
+ *   API. The API's `GET /health` returns 503 on event-loop lag and the
+ *   self-host compose `gaia-backend` service has `depends_on: service_healthy`
+ *   for every infra container — a DB that is down keeps the backend
+ *   unstarted or makes its docker healthcheck (`curl -f /health`) fail, which
+ *   surfaces here as `api_down`. A separate DB liveness probe from the web
+ *   layer would be redundant and would require bundling DB drivers into the
+ *   frontend image.
+ * - If the API were extended to return 503 when any DB is down directly from
+ *   `/health`, this proxy's 503 `api_down` would continue to be the correct
+ *   externally-visible signal — no web change needed.
  */
 export async function GET() {
   const apiBase =

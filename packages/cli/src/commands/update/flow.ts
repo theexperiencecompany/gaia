@@ -9,8 +9,8 @@
  */
 
 import { execa } from "execa";
-import { findRepoRoot, startServices } from "../../lib/service-starter.js";
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
+import { findRepoRoot, startServices } from "../../lib/service-starter.js";
 import type { CheckResult } from "../doctor/types.js";
 
 /** Paths whose change matters for a self-host deploy. */
@@ -52,7 +52,40 @@ function fileListNeedsRebuild(files: string[]): boolean {
   return needsRebuildFromFiles(files);
 }
 
+export async function isGitRepo(repoPath: string): Promise<boolean> {
+  try {
+    const { stdout } = await execa(
+      "git",
+      ["rev-parse", "--is-inside-work-tree"],
+      {
+        cwd: repoPath,
+      },
+    );
+    return stdout.trim() === "true";
+  } catch {
+    return false;
+  }
+}
+
+export async function hasGitRemote(
+  repoPath: string,
+  remote = "origin",
+): Promise<boolean> {
+  try {
+    await execa("git", ["remote", "get-url", remote], { cwd: repoPath });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function fetchOrigin(repoPath: string): Promise<void> {
+  if (!(await isGitRepo(repoPath))) {
+    throw new Error("Not a git repository — pull manually");
+  }
+  if (!(await hasGitRemote(repoPath))) {
+    throw new Error("Not a git repository — pull manually (no origin remote)");
+  }
   await execa("git", ["fetch", "origin"], { cwd: repoPath });
 }
 
@@ -104,9 +137,7 @@ export async function getCommits(repoPath: string): Promise<string[]> {
   }
 }
 
-export async function getUpdateStatus(
-  repoPath: string,
-): Promise<UpdateStatus> {
+export async function getUpdateStatus(repoPath: string): Promise<UpdateStatus> {
   const behindCount = await getBehindCount(repoPath);
   const changedFiles = await getChangedFiles(repoPath);
   const commits = await getCommits(repoPath);
@@ -124,6 +155,10 @@ export async function getUpdateStatus(
  * Doctor check: warns when the local checkout is behind origin/master.
  * Never fetches — uses the locally cached origin/master to avoid network
  * delay in `gaia doctor`. The `gaia update` command does the fetch.
+ *
+ * Returns `skipped` (not `fail`) when the install is not a git repo (e.g.
+ * `gaia-vm` plain copy) — that is an expected self-host artifact, not a
+ * broken state.
  */
 export async function checkUpdateAvailable(): Promise<CheckResult> {
   const base: Pick<CheckResult, "id" | "label" | "severity"> = {
@@ -141,6 +176,21 @@ export async function checkUpdateAvailable(): Promise<CheckResult> {
     };
   }
 
+  if (!(await isGitRepo(repoPath))) {
+    return {
+      ...base,
+      state: "skipped",
+      detail: "Not a git repository — pull manually",
+    };
+  }
+  if (!(await hasGitRemote(repoPath))) {
+    return {
+      ...base,
+      state: "skipped",
+      detail: "Not a git repository — pull manually (no origin remote)",
+    };
+  }
+
   try {
     const { stdout } = await execa(
       "git",
@@ -149,7 +199,11 @@ export async function checkUpdateAvailable(): Promise<CheckResult> {
     );
     const count = Number(stdout.trim());
     if (!Number.isFinite(count)) {
-      return { ...base, state: "skipped", detail: "Could not check git status" };
+      return {
+        ...base,
+        state: "skipped",
+        detail: "Could not check git status",
+      };
     }
     if (count === 0) {
       return { ...base, state: "ok", detail: "Up to date with origin/master" };
@@ -173,17 +227,40 @@ export async function checkUpdateAvailable(): Promise<CheckResult> {
  * Perform the pull and restart. Caller should have already confirmed the
  * update (or passed --yes). Preserves infra/docker/.env and volumes (never
  * runs `down -v`).
+ *
+ * If the repo is not a git checkout (gaia-vm plain copy) the pull is skipped
+ * with a clear message instead of crashing on `git rev-parse`.
  */
 export async function pullAndRestart(
   repoPath: string,
   needsRebuild: boolean,
   onStatus?: (msg: string) => void,
 ): Promise<void> {
+  if (!(await isGitRepo(repoPath))) {
+    throw new Error("Not a git repository — pull manually");
+  }
+  if (!(await hasGitRemote(repoPath))) {
+    throw new Error("Not a git repository — pull manually (no origin remote)");
+  }
   onStatus?.("Pulling latest changes (git pull --ff-only)...");
-  await execa("git", ["pull", "--ff-only"], { cwd: repoPath });
+  try {
+    await execa("git", ["pull", "--ff-only"], { cwd: repoPath });
+  } catch (e) {
+    const msg = (e as Error).message;
+    // `--ff-only` refuses when history diverged or local changes would be
+    // overwritten. Surface the git hint rather than a raw execa dump, and let
+    // the caller (handler) suggest stashing/committing.
+    if (
+      msg.includes("Not possible to fast-forward") ||
+      msg.includes("would be overwritten") ||
+      msg.includes("divergent")
+    ) {
+      throw e;
+    }
+    throw e;
+  }
 
   const portOverrides = readDockerComposePortOverrides(repoPath);
-  const mode = needsRebuild ? "build" : "pull";
   onStatus?.(
     needsRebuild
       ? "Web Dockerfile or package.json changed — rebuilding images (this can take 5-30 min on 4 GB RAM, please wait)..."

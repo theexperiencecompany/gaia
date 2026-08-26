@@ -27,7 +27,10 @@ import {
   providersApi,
 } from "@/features/settings/api/providersApi";
 import { OLLAMA_ONE_CLICK, type ProviderCardConfig } from "../constants";
-import { useProviderSetup } from "../hooks/useProviderSetup";
+import {
+  getProviderErrorHint,
+  useProviderSetup,
+} from "../hooks/useProviderSetup";
 
 interface ProviderSetupCardProps {
   config: ProviderCardConfig;
@@ -56,39 +59,13 @@ export function ProviderSetupCard({
     isBusy,
     outcome,
     error,
+    hint,
     connect,
   } = useProviderSetup(config, onSaved);
 
   const canSave =
     (!config.showApiKey || apiKey.trim().length > 0) &&
     (!config.showBaseUrl || baseUrl.trim().length > 0);
-
-  // Ollama one-click (free, local) — no test, just upsert the default
-  // host.docker.internal endpoint + llama3.2. The backend accepts it without
-  // an api_key and allows private addresses for ollama (see setup.py).
-  const [ollamaBusy, setOllamaBusy] = useState(false);
-  const [ollamaOutcome, setOllamaOutcome] = useState<
-    ReturnType<typeof useProviderSetup>["outcome"]
-  >(null);
-  const [ollamaError, setOllamaError] = useState<string | null>(null);
-
-  const handleOllamaOneClick = async () => {
-    setOllamaBusy(true);
-    setOllamaOutcome(null);
-    setOllamaError(null);
-    try {
-      await providersApi.upsertProvider("ollama", {
-        base_url: config.defaultBaseUrl || OLLAMA_ONE_CLICK.baseUrl,
-        model: config.defaultModel || OLLAMA_ONE_CLICK.model,
-      });
-      setOllamaOutcome({ ok: true, detail: "Saved", modelCount: 0 });
-      onSaved();
-    } catch (err) {
-      setOllamaError(extractOllamaError(err));
-    } finally {
-      setOllamaBusy(false);
-    }
-  };
 
   const faviconDomain =
     preset && config.presetFavicon
@@ -123,53 +100,7 @@ export function ProviderSetupCard({
       <p className="mb-3 text-xs text-zinc-500">{config.description}</p>
 
       {config.key === "ollama" && (
-        <div className="mb-3 rounded-xl bg-zinc-900 p-3">
-          <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-zinc-100">
-                Quick setup — local Ollama
-              </p>
-              <p className="text-xs text-zinc-500">
-                Free, no API key needed. One click to use your local model.
-              </p>
-            </div>
-            <Button
-              size="sm"
-              color="primary"
-              variant="flat"
-              isLoading={ollamaBusy}
-              isDisabled={ollamaBusy || isBusy}
-              onPress={handleOllamaOneClick}
-            >
-              Use local Ollama
-            </Button>
-          </div>
-          <p className="mt-2 text-xs leading-relaxed text-zinc-500">
-            Requires Ollama running on your host:{" "}
-            <code className="rounded bg-zinc-800 px-1 py-0.5 text-xs text-zinc-300">
-              ollama pull {OLLAMA_ONE_CLICK.model} && ollama serve
-            </code>{" "}
-            —{" "}
-            <a
-              href="https://ollama.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-zinc-400 hover:text-zinc-200"
-            >
-              ollama.com <SquareArrowUpRight02Icon size={10} />
-            </a>
-          </p>
-          {(ollamaOutcome || ollamaError) && (
-            <div className="mt-2">
-              <OutcomeLine
-                outcome={ollamaOutcome}
-                error={ollamaError}
-                savedLabel="Saved"
-                showModelCount={false}
-              />
-            </div>
-          )}
-        </div>
+        <OllamaOneClick config={config} parentBusy={isBusy} onSaved={onSaved} />
       )}
 
       {config.hasPresets && (
@@ -259,6 +190,7 @@ export function ProviderSetupCard({
         <OutcomeLine
           outcome={outcome}
           error={error}
+          hint={hint}
           savedLabel={config.connectionTestable ? "Connected" : "Saved"}
           showModelCount={config.connectionTestable}
         />
@@ -275,6 +207,102 @@ export function ProviderSetupCard({
       </div>
     </div>
   );
+}
+
+function OllamaOneClick({
+  config,
+  parentBusy,
+  onSaved,
+}: {
+  config: ProviderCardConfig;
+  parentBusy: boolean;
+  onSaved: () => void;
+}) {
+  const [ollamaBusy, setOllamaBusy] = useState(false);
+  const [ollamaOutcome, setOllamaOutcome] =
+    useState<ReturnType<typeof useProviderSetup>["outcome"]>(null);
+  const [ollamaError, setOllamaError] = useState<string | null>(null);
+
+  const handleOllamaOneClick = async () => {
+    setOllamaBusy(true);
+    setOllamaOutcome(null);
+    setOllamaError(null);
+    try {
+      await providersApi.upsertProvider("ollama", {
+        base_url: config.defaultBaseUrl || OLLAMA_ONE_CLICK.baseUrl,
+        model: config.defaultModel || OLLAMA_ONE_CLICK.model,
+      });
+      setOllamaOutcome({ ok: true, detail: "Saved", modelCount: 0 });
+      onSaved();
+    } catch (err) {
+      setOllamaError(extractOllamaError(err));
+    } finally {
+      setOllamaBusy(false);
+    }
+  };
+
+  const hint = getOllamaHint(ollamaOutcome, ollamaError);
+
+  return (
+    <div className="mb-3 rounded-xl bg-zinc-900 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-zinc-100">
+            Quick setup — local Ollama
+          </p>
+          <p className="text-xs text-zinc-500">
+            Free, no API key needed. One click to use your local model.
+          </p>
+        </div>
+        <Button
+          size="sm"
+          color="primary"
+          variant="flat"
+          isLoading={ollamaBusy}
+          isDisabled={ollamaBusy || parentBusy}
+          onPress={handleOllamaOneClick}
+        >
+          Use local Ollama
+        </Button>
+      </div>
+      <p className="mt-2 text-xs leading-relaxed text-zinc-500">
+        Requires Ollama running on your host:{" "}
+        <code className="rounded bg-zinc-800 px-1 py-0.5 text-xs text-zinc-300">
+          ollama pull {OLLAMA_ONE_CLICK.model} && ollama serve
+        </code>{" "}
+        —{" "}
+        <a
+          href="https://ollama.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-zinc-400 hover:text-zinc-200"
+        >
+          ollama.com <SquareArrowUpRight02Icon size={10} />
+        </a>
+      </p>
+      {(ollamaOutcome || ollamaError) && (
+        <div className="mt-2">
+          <OutcomeLine
+            outcome={ollamaOutcome}
+            error={ollamaError}
+            hint={hint}
+            savedLabel="Saved"
+            showModelCount={false}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function getOllamaHint(
+  outcome: ReturnType<typeof useProviderSetup>["outcome"],
+  error: string | null,
+): string | null {
+  if (error) return getProviderErrorHint(error, "ollama");
+  if (outcome && !outcome.ok)
+    return getProviderErrorHint(outcome.detail, "ollama");
+  return null;
 }
 
 function extractOllamaError(err: unknown): string {
@@ -299,37 +327,49 @@ function extractOllamaError(err: unknown): string {
 function OutcomeLine({
   outcome,
   error,
+  hint,
   savedLabel,
   showModelCount,
 }: {
   outcome: ReturnType<typeof useProviderSetup>["outcome"];
   error: string | null;
+  hint?: string | null;
   /** Label for a successful outcome — probed providers connect, others save. */
   savedLabel: string;
   showModelCount: boolean;
 }) {
   if (error) {
     return (
-      <span
-        title={error}
-        className="flex min-w-0 items-center gap-1 rounded-full bg-red-400/10 px-2 py-0.5 text-xs text-red-400"
-      >
-        <Alert01Icon height={14} className="shrink-0" />
-        <span className="truncate">{error}</span>
-      </span>
+      <div className="flex min-w-0 flex-col gap-1">
+        <span
+          title={error}
+          className="flex min-w-0 items-center gap-1 rounded-full bg-red-400/10 px-2 py-0.5 text-xs text-red-400"
+        >
+          <Alert01Icon height={14} className="shrink-0" />
+          <span className="truncate">{error}</span>
+        </span>
+        {hint && (
+          <span className="text-xs leading-relaxed text-zinc-500">{hint}</span>
+        )}
+      </div>
     );
   }
   if (!outcome) return null;
   if (!outcome.ok) {
     const detail = outcome.detail || "Test failed";
     return (
-      <span
-        title={detail}
-        className="flex min-w-0 items-center gap-1 rounded-full bg-red-400/10 px-2 py-0.5 text-xs text-red-400"
-      >
-        <Alert01Icon height={14} className="shrink-0" />
-        <span className="truncate">{detail}</span>
-      </span>
+      <div className="flex min-w-0 flex-col gap-1">
+        <span
+          title={detail}
+          className="flex min-w-0 items-center gap-1 rounded-full bg-red-400/10 px-2 py-0.5 text-xs text-red-400"
+        >
+          <Alert01Icon height={14} className="shrink-0" />
+          <span className="truncate">{detail}</span>
+        </span>
+        {hint && (
+          <span className="text-xs leading-relaxed text-zinc-500">{hint}</span>
+        )}
+      </div>
     );
   }
   const countLabel =
