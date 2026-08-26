@@ -118,15 +118,15 @@ function trimSeparators(lines) {
 // --- Extract category sections ---
 
 const CAT_HEADING = /^###\s+(.+)$/;
+// Section heading -> category page. Every value here needs a CATEGORY_META entry;
+// without one the section is collected and then silently dropped.
 const CAT_MAP = {
   "features": "features",
   "bug fixes": "bug-fixes",
   "improvements": "improvements",
   "performance": "performance",
   "infrastructure": "infrastructure",
-  "foundation": "features",
-  "content": "features",
-  "documentation": "improvements",
+  "documentation": "documentation",
 };
 
 function extractCategorySections(content) {
@@ -174,6 +174,8 @@ const CATEGORY_META = {
   "bug-fixes": { title: "Bug Fixes", description: "A consolidated list of bug fixes shipped across all GAIA releases, organized by version and platform.", icon: "bug" },
   "improvements": { title: "Improvements", description: "All improvements and enhancements shipped across GAIA releases.", icon: "arrow-up-right" },
   "performance": { title: "Performance", description: "All performance improvements shipped across GAIA releases.", icon: "gauge" },
+  "infrastructure": { title: "Infrastructure", description: "Deployment, CI, observability, testing, and internal architecture work shipped across GAIA releases.", icon: "screwdriver-wrench" },
+  "documentation": { title: "Documentation", description: "Documentation, guides, and policy updates shipped across GAIA releases.", icon: "book" },
 };
 
 const YEAR_DESCRIPTIONS = {
