@@ -173,9 +173,7 @@ class TestBuildAccountProjections:
         assert "subscription" in _ids(files)
         # Failed link source: its stale files are preserved, not re-projected
         # as "not connected" from no data and not pruned away either.
-        assert failed == {
-            f"{ACCOUNT_DIR}/linked-accounts/{p.value}.json" for p in Platform
-        }
+        assert failed == {f"{ACCOUNT_DIR}/linked-accounts/{p.value}.json" for p in Platform}
 
 
 @pytest.mark.unit

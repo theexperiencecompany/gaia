@@ -838,11 +838,11 @@ class ManualDoc(NamedTuple):
     body: str
 
 
-ACCOUNT_DOC: Final[str] = """# Account — managing the user's account
+ACCOUNT_DOC: Final[str] = """# Account - managing the user's account
 
 You can manage this user's GAIA account on their behalf. Everything you need
-is under `/workspace/account/` — read-only JSON projections of their real
-settings — plus a set of mutation tools that change the real thing.
+is under `/workspace/account/` - read-only JSON projections of their real
+settings - plus a set of mutation tools that change the real thing.
 
 ## What you can manage (and with which tool)
 
@@ -854,7 +854,7 @@ settings — plus a set of mutation tools that change the real thing.
 | Voice for spoken replies | `account/voices/*.json` | `set_selected_voice` |
 | Linked messaging platforms | `account/linked-accounts/<platform>.json` | `manage_linked_account(platform, action=...)` |
 
-Every tool asks the user to confirm before it runs — ALWAYS, regardless of
+Every tool asks the user to confirm before it runs - ALWAYS, regardless of
 their approval settings. Tell them what you're about to change first.
 
 `generate_link` returns a URL or instructions the user follows to connect a
@@ -865,7 +865,7 @@ platform; `disconnect` removes an existing link (and confirms first).
 - **You cannot modify or cancel subscriptions, or touch billing.** Plan,
   usage, and charge data in `subscription.json` / `usage.json` is read-only
   truth from the billing provider; point the user at the billing page.
-- **You cannot edit the files themselves** — they are projections; editing one
+- **You cannot edit the files themselves** - they are projections; editing one
   changes nothing. The write path is always a tool above.
 
 Per-topic details live beside the data: `account/GUIDE.md` and
@@ -878,7 +878,7 @@ MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
     for doc in (
         ManualDoc(
             name="account",
-            title="Account — managing the user's account",
+            title="Account - managing the user's account",
             description=(
                 "View and manage the user's account: notification channels, response "
                 "style and timezone, custom instructions, voice, linked platforms; "

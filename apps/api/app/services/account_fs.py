@@ -137,8 +137,7 @@ async def _safe_linked_files(
         return await _linked_account_bodies(user_id), set()
     except Exception as e:
         stale = {
-            f"{ACCOUNT_DIR}/{ACCOUNT_LINKED_ACCOUNTS_DIRNAME}/{p.value}.json"
-            for p in Platform
+            f"{ACCOUNT_DIR}/{ACCOUNT_LINKED_ACCOUNTS_DIRNAME}/{p.value}.json" for p in Platform
         }
         log.error(
             f"{LogTag.STORAGE} account projection failed — linked accounts skipped this pass",
