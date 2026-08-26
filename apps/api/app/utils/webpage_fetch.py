@@ -203,7 +203,7 @@ async def _fetch_first_success(url: str, fetchers: list[WebpageFetcher] | None =
     Records every engine attempt (outcome, latency, content length) in a single
     ``webpage_fetch`` wide-event field, keyed by host for high-cardinality drill-down.
     """
-    fetchers = fetchers if fetchers is not None else _default_fetchers()
+    fetchers = fetchers if fetchers is not None else await _default_fetchers()
     host = urlparse(url).hostname or ""
     attempts: list[dict[str, Any]] = []
     errors: list[str] = []
