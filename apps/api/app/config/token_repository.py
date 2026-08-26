@@ -13,6 +13,7 @@ import json
 from typing import Any
 
 from authlib.integrations.starlette_client import OAuth
+from authlib.integrations.starlette_client.apps import StarletteOAuth2App
 from authlib.oauth2.rfc6749 import OAuth2Token
 from fastapi import HTTPException
 import httpx
@@ -22,7 +23,29 @@ from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.db.postgresql import get_db_session
 from app.models.db_oauth import OAuthToken
+from app.services.providers.provider_credentials_service import (
+    resolve as resolve_provider_config,
+)
 from shared.py.wide_events import log
+
+
+async def resolve_google_oauth_credentials() -> tuple[str, str] | None:
+    """The Google OAuth (client_id, client_secret), store credential first.
+
+    The stored ``google_oauth`` credential carries the client secret as its
+    ``api_key`` field — the store holds one secret per provider, matching the
+    service's own env-fallback mapping. The client id has no stored
+    representation yet and comes from the environment. Returns ``None``
+    unless BOTH halves resolve: a half-configured Google must never reach an
+    OAuth endpoint.
+    """
+    config = await resolve_provider_config("google_oauth")
+    stored_secret = config["api_key"] if config else None
+    client_id = settings.GOOGLE_CLIENT_ID
+    client_secret = stored_secret or settings.GOOGLE_CLIENT_SECRET
+    if not (client_id and client_secret):
+        return None
+    return client_id, client_secret
 
 
 class TokenRepository:
@@ -37,33 +60,47 @@ class TokenRepository:
         """Initialize the token repository."""
 
         self.oauth = OAuth()
-
-        # Initialize supported providers
-        self._init_oauth_clients()
+        # The Google client registers lazily on first use: credentials can
+        # come from the credential store (Mongo), which is unreachable at
+        # import time where this singleton is constructed.
+        self._google_client: StarletteOAuth2App | None = None
 
         log.info(
             f"{LogTag.STARTUP} Token repository initialized for managing API tokens (Google, etc.)"
         )
 
-    def _init_oauth_clients(self) -> None:
-        """Initialize OAuth clients for all supported providers."""
-        # Google OAuth client
-        if settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET:
-            self.oauth.register(
-                name="google",
-                client_id=settings.GOOGLE_CLIENT_ID,
-                client_secret=settings.GOOGLE_CLIENT_SECRET,
-                server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-                client_kwargs={
-                    "scope": "openid email profile",
-                    "prompt": "select_account",
-                },
-            )
-            log.info(f"{LogTag.STARTUP} Google OAuth client registered")
-        else:
+    async def _ensure_google_client(self) -> StarletteOAuth2App | None:
+        """The Google OAuth client, registered on first need; None if unconfigurable.
+
+        Resolution runs store → env on every call until it succeeds, so a
+        credential saved in Settings takes effect without a restart. Once
+        registered the client is reused as-is (re-registering mid-flight
+        could swap credentials under an active flow).
+        """
+        if self._google_client is not None:
+            return self._google_client
+
+        credentials = await resolve_google_oauth_credentials()
+        if credentials is None:
             log.warning(
-                f"{LogTag.STARTUP} Google OAuth credentials not found, client not registered"
+                f"{LogTag.STARTUP} Google OAuth credentials not found "
+                "(no stored credential, no GOOGLE_CLIENT_ID/SECRET env), client not registered"
             )
+            return None
+
+        client_id, client_secret = credentials
+        self._google_client = self.oauth.register(
+            name="google",
+            client_id=client_id,
+            client_secret=client_secret,
+            server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+            client_kwargs={
+                "scope": "openid email profile",
+                "prompt": "select_account",
+            },
+        )
+        log.info(f"{LogTag.STARTUP} Google OAuth client registered")
+        return self._google_client
 
     def _get_token_expiration(self, token_data: dict[str, Any]) -> datetime:
         """Get token expiration time with fallback logic."""
@@ -237,11 +274,11 @@ class TokenRepository:
             A new OAuth2Token or None if refreshing failed
         """
 
-        if not self.oauth.google:
+        client = await self._ensure_google_client()
+        if client is None:
             log.error(f"{LogTag.STARTUP} Google OAuth client not properly initialized")
             return None
 
-        client = self.oauth.google
         try:
             # Prepare the refresh token request
             data = {

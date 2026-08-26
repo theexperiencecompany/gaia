@@ -534,13 +534,27 @@ def _run_worker_cli() -> None:
     )
 
 
+def _load_secrets() -> None:
+    """Inject Infisical secrets, unless running self-hosted.
+
+    Self-host resolves all configuration locally by design — never contact
+    Infisical, even if machine-identity vars happen to be present (they leak
+    in through config.py's apps/api/.env dotenv fallback). Mirrors
+    ``apps/api/app/config/settings.py::_ensure_infisical_loaded``.
+    """
+    if os.getenv("ENV") == "selfhost":
+        log.info(f"{LogTag.VOICE} Infisical skipped: self-host mode uses local configuration")
+        return
+    inject_infisical_secrets()
+
+
 def start_worker() -> None:
     """Start the voice agent worker.
 
     Injects Infisical secrets once in the host process before LiveKit's
     forkserver is initialised so every JobProcess inherits them.
     """
-    inject_infisical_secrets()
+    _load_secrets()
     _run_worker_cli()
 
 

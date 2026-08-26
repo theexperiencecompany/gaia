@@ -405,6 +405,10 @@ run = "cd apps/bots && pnpm vitest run"
 description = "Run CLI tests"
 run = "cd packages/cli && pnpm vitest run"
 
+[tasks."cli:schema"]
+description = "Regenerate the CLI's vendored API config schema (packages/cli/src/lib/api-config-schema.generated.json) from apps/api settings — run after changing settings.py/settings_validator.py and commit the JSON"
+run = "cd apps/api && uv run python scripts/dump_config_schema.py > ../../packages/cli/src/lib/api-config-schema.generated.json"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # LINTING & FORMATTING
 # ─────────────────────────────────────────────────────────────────────────────

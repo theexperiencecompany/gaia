@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.agents.llm import client as client_module
 from app.agents.llm.client import _build_default_llm, get_helper_llm
 from app.constants.llm import HELPER_MAX_OUTPUT_TOKENS, OPENROUTER_MAX_OUTPUT_TOKENS
 
@@ -28,6 +29,8 @@ class TestGetHelperLlm:
         _build_default_llm.cache_clear()
         yield
         _build_default_llm.cache_clear()
+        # The tests below seed the runtime-config snapshot; drop it afterwards.
+        client_module._runtime_configs.pop("openrouter", None)
 
     @patch("app.agents.llm.client.ChatOpenRouter")
     @patch("app.agents.llm.client.settings")
@@ -35,7 +38,14 @@ class TestGetHelperLlm:
         self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
     ) -> None:
         mock_settings.GAIA_SIM_MODE = False
-        mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
+        # Config arrives through the runtime snapshot (what the credential
+        # service resolves); client.settings is patched only for sim mode.
+        client_module._runtime_configs["openrouter"] = {
+            "api_key": "or-key",  # pragma: allowlist secret
+            "base_url": None,
+            "model": None,
+            "preset": None,
+        }
         mock_chat_openrouter.return_value = MagicMock()
 
         helper_llm = get_helper_llm()
@@ -59,7 +69,12 @@ class TestGetHelperLlm:
         self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
     ) -> None:
         mock_settings.GAIA_SIM_MODE = False
-        mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
+        client_module._runtime_configs["openrouter"] = {
+            "api_key": "or-key",  # pragma: allowlist secret
+            "base_url": None,
+            "model": None,
+            "preset": None,
+        }
         mock_chat_openrouter.return_value = MagicMock()
 
         get_helper_llm(temperature=0.9)

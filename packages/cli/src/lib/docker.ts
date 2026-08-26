@@ -75,3 +75,60 @@ export async function isDockerRunning(): Promise<boolean> {
     return false;
   }
 }
+
+/** One container of a Docker Compose project, as reported by `docker ps`. */
+export interface ComposeContainerInfo {
+  /** Compose service name (label `com.docker.compose.service`). */
+  service: string;
+  /** Raw Docker state, e.g. "running", "restarting", "exited". */
+  state: string;
+}
+
+/**
+ * List all containers of a Docker Compose project (including stopped ones),
+ * keyed by compose service name. Throws when the daemon is unreachable so
+ * callers can distinguish "daemon down" from "container missing".
+ */
+export async function getComposeProjectContainers(
+  project: string,
+): Promise<ComposeContainerInfo[]> {
+  const { stdout } = await execa("docker", [
+    "ps",
+    "-a",
+    "--filter",
+    `label=com.docker.compose.project=${project}`,
+    "--format",
+    '{{.Label "com.docker.compose.service"}}|{{.State}}',
+  ]);
+
+  return parseComposePsOutput(stdout);
+}
+
+function parseComposePsOutput(stdout: string): ComposeContainerInfo[] {
+  const containers: ComposeContainerInfo[] = [];
+  for (const line of stdout.trim().split("\n")) {
+    if (!line) continue;
+    const [service, state] = line.split("|");
+    if (!service || !state) continue;
+    containers.push({ service, state });
+  }
+  return containers;
+}
+
+/** Absolute path of the daemon's data root (`docker info .DockerRootDir`). */
+export async function getDockerRootDir(): Promise<string> {
+  const { stdout } = await execa("docker", [
+    "info",
+    "--format",
+    "{{.DockerRootDir}}",
+  ]);
+  const dir = stdout.trim();
+  if (!dir) throw new Error("docker info returned an empty DockerRootDir");
+  return dir;
+}
+
+/** Raw `df -k <path>` output for the given directory. */
+export async function getDiskFreeKb(path: string): Promise<string> {
+  const { stdout } = await execa("df", ["-k", path]);
+  return stdout;
+}

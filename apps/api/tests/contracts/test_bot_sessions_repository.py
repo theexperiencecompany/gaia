@@ -30,7 +30,7 @@ class TestBotSessionsRepository:
         candidate = str(uuid.uuid4())
 
         session = await repo.claim_session(
-            session_key=key,
+            session_key=key,  # gitleaks:allow — uuid4 test fixture, not a credential
             platform="discord",
             platform_user_id="u1",
             channel_id=None,
@@ -45,7 +45,7 @@ class TestBotSessionsRepository:
     async def test_second_claim_reuses_conversation_id(self, repo):
         key = f"slack:{uuid.uuid4().hex}:c1"
         first = await repo.claim_session(
-            session_key=key,
+            session_key=key,  # gitleaks:allow — uuid4 test fixture, not a credential
             platform="slack",
             platform_user_id="u1",
             channel_id="c1",
@@ -56,7 +56,7 @@ class TestBotSessionsRepository:
         # A racing second claim gets the SAME conversation_id — its candidate is
         # discarded (this is the anti-fork guarantee).
         second = await repo.claim_session(
-            session_key=key,
+            session_key=key,  # gitleaks:allow — uuid4 test fixture, not a credential
             platform="slack",
             platform_user_id="u1",
             channel_id="c1",
@@ -69,7 +69,7 @@ class TestBotSessionsRepository:
         key = f"telegram:{uuid.uuid4().hex}:dm"
         ts = _now()
         await repo.claim_session(
-            session_key=key,
+            session_key=key,  # gitleaks:allow — uuid4 test fixture, not a credential
             platform="telegram",
             platform_user_id="u1",
             channel_id=None,
@@ -85,7 +85,7 @@ class TestBotSessionsRepository:
     async def test_delete_by_session_key(self, repo, raw_collection):
         key = f"discord:{uuid.uuid4().hex}:dm"
         await repo.claim_session(
-            session_key=key,
+            session_key=key,  # gitleaks:allow — uuid4 test fixture, not a credential
             platform="discord",
             platform_user_id="u1",
             channel_id=None,

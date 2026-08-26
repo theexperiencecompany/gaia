@@ -16,6 +16,7 @@ import React, {
 import { getLinkByLabel } from "@/config/appConfig";
 import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
+import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
@@ -36,6 +37,9 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
   const router = useRouter();
   const { modifierKeyName } = usePlatform();
   const { data: subscriptionStatus } = useUserSubscriptionStatus();
+  const { data: setupStatus } = useSetupStatus();
+  // Self-host instances have no billing — the upgrade CTA makes no sense there.
+  const billingHidden = setupStatus?.billing_enabled === false;
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -185,6 +189,10 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
           if (item.hideWhenSubscribed && subscriptionStatus?.is_subscribed) {
             return false;
           }
+          // Filter out billing CTAs on self-host (no billing)
+          if (item.hideWhenBillingDisabled && billingHidden) {
+            return false;
+          }
           // Filter by search
           if (search) {
             return item.label.toLowerCase().includes(search.toLowerCase());
@@ -193,7 +201,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
         })
         .map(buildMenuItem),
     })).filter((section) => section.items.length > 0);
-  }, [search, subscriptionStatus, buildMenuItem]);
+  }, [search, subscriptionStatus, billingHidden, buildMenuItem]);
 
   return (
     <AnimatePresence>

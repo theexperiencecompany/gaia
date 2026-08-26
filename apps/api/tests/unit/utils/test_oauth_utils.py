@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import HTTPException
 import pytest
 
+import app.utils.oauth_utils as oauth_utils_module
 from app.utils.oauth_utils import (
     build_google_oauth_url,
     upload_user_picture,
@@ -17,6 +18,21 @@ from app.utils.oauth_utils import (
 
 class TestBuildGoogleOAuthUrl:
     """Tests for building Google OAuth authorization URLs."""
+
+    @pytest.fixture(autouse=True)
+    def _google_credentials(self):
+        """Bind build_google_oauth_url's credential source: the store→env
+        resolution itself lives in token_repository (covered there); this echo
+        keeps client_id sourced from the (mocked) env like today's flows."""
+        async def _resolve() -> tuple[str, str] | None:
+            client_id = oauth_utils_module.settings.GOOGLE_CLIENT_ID
+            return (client_id, "resolved-secret") if client_id else None
+
+        with patch(
+            "app.utils.oauth_utils.resolve_google_oauth_credentials",
+            new=AsyncMock(side_effect=_resolve),
+        ):
+            yield
 
     @patch("app.utils.oauth_utils.settings")
     @patch("app.utils.oauth_utils.token_repository")
@@ -206,6 +222,25 @@ class TestBuildGoogleOAuthUrl:
         assert "access_type=offline" in url
         assert "prompt=consent" in url
         assert "include_granted_scopes=true" in url
+
+    @patch("app.utils.oauth_utils.settings")
+    @patch("app.utils.oauth_utils.token_repository")
+    async def test_unconfigured_google_fails_loud_instead_of_building_a_dead_url(
+        self, mock_token_repo: MagicMock, mock_settings: MagicMock
+    ) -> None:
+        """No client id anywhere: a URL with client_id=None can only fail at
+        Google — refuse with a clear error instead."""
+        mock_settings.GOOGLE_CLIENT_ID = None
+        mock_settings.GOOGLE_CALLBACK_URL = "http://localhost/callback"
+        mock_token_repo.get_token = AsyncMock(return_value=None)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await build_google_oauth_url(
+                user_email="u@e.com",
+                state_token="s",
+                integration_scopes=[],
+            )
+        assert exc_info.value.status_code == 503
 
 
 # ---------------------------------------------------------------------------

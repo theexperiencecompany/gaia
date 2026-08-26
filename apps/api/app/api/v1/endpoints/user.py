@@ -31,12 +31,26 @@ from app.models.user_models import (
 from app.services.analytics_service import AnalyticsEvents, capture_context_event, track_logout
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
 from app.services.user_service import update_user_profile
+from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE
 from app.utils.timezone import is_valid_timezone
 from shared.py.wide_events import log
 
 router = APIRouter()
 
-workos = WorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID)
+
+def _workos() -> WorkOSClient:
+    """Lazy WorkOS client (see oauth._workos): module-level construction
+    crashed AUTH_MODE=local boots; the logout route only touches it in
+    workos mode."""
+    global _workos_client
+    if _workos_client is None:
+        _workos_client = WorkOSClient(
+            api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID
+        )
+    return _workos_client
+
+
+_workos_client: WorkOSClient | None = None
 
 
 # exclude_none: the per-auth-path flags (impersonated/bot_authenticated/dev_bypass)
@@ -342,6 +356,24 @@ async def logout(
     """
     Logout user and return logout URL for frontend redirection.
     """
+    # Local (self-host) mode: there is no hosted session to revoke — the JWT
+    # dies with the cookie. The route goes through WorkOSAuthMiddleware like
+    # every other /user endpoint (it is not excluded there), so a valid
+    # session is required to reach this point.
+    if settings.AUTH_MODE == "local":
+        log.set(operation="logout")
+        log.audit("logged out", actor=user.get("user_id"), mode="local")
+        response = JSONResponse(content={"mode": "local"})
+        response.delete_cookie(
+            LOCAL_SESSION_COOKIE,
+            httponly=True,
+            path="/",
+            secure=settings.ENV == "production",
+            samesite="lax",
+        )
+        log.set(outcome="success")
+        return response
+
     wos_session = request.cookies.get(WOS_SESSION_COOKIE)
 
     if not wos_session:
@@ -350,7 +382,7 @@ async def logout(
     try:
         log.set(operation="logout")
 
-        session = workos.user_management.load_sealed_session(
+        session = _workos().user_management.load_sealed_session(
             sealed_session=wos_session,
             cookie_password=settings.WORKOS_COOKIE_PASSWORD,
         )

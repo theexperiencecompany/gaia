@@ -404,8 +404,6 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/gaia-web:${{ steps.tag.outputs.tag }}
             ghcr.io/${{ github.repository_owner }}/gaia-web:${{ github.sha }}
-          build-args: |
-            NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1/
           cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/gaia-web:buildcache
           cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/gaia-web:buildcache,mode=max,image-manifest=true,oci-mediatypes=true,compression=zstd
 

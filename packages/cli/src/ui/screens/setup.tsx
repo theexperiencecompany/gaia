@@ -6,6 +6,7 @@ import type { SetupMode } from "../../lib/env-parser.js";
 
 import { SETUP_STEPS, Shell } from "../components/Shell.js";
 import {
+  DockerInstallConfirmStep,
   EnvSetupSpinnerStep,
   ErrorStep,
   PortConflictStep,
@@ -63,6 +64,13 @@ export const SetupScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
 
       {state.step === "Prerequisites" && state.data.checks && (
         <SystemChecksStep checks={state.data.checks} />
+      )}
+
+      {state.inputRequest?.id === "docker_install_confirm" && (
+        <DockerInstallConfirmStep
+          onConfirm={() => store.submitInput("install")}
+          onDecline={() => store.submitInput("decline")}
+        />
       )}
 
       {state.inputRequest?.id === "port_conflicts" &&

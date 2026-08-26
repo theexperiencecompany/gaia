@@ -33,7 +33,8 @@ from pydantic import PydanticDeprecatedSince20
 
 from app.agents.core.graph_builder.build_graph import build_graphs
 from app.agents.core.graph_builder.checkpointer_manager import init_checkpointer_manager
-from app.agents.llm.client import register_llm_providers
+from app.agents.llm import lane
+from app.agents.llm.client import register_llm_providers, runtime_provider_config
 from app.agents.llm.model_catalog import init_openrouter_model_catalog
 from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.core.store import init_embeddings
@@ -196,6 +197,9 @@ def register_lazy_providers(context: Literal["main_app", "arq_worker"]) -> None:
 
     for register in registrations:
         register()
+    # The default-lane resolver needs the client's runtime snapshot; wired here
+    # (not in lane.py) because lane and client import each other.
+    lane.set_runtime_config_lookup(runtime_provider_config)
     log.info(f"{LogTag.STARTUP} All lazy providers registered successfully for", context=context)
 
 

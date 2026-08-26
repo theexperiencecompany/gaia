@@ -8,6 +8,7 @@ from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
     approvals,
+    auth_local,
     blog,
     bot,
     calendar,
@@ -34,6 +35,7 @@ from app.api.v1.endpoints import (
     reminders,
     search,
     sessions,
+    setup,
     skills,
     support,
     todos,
@@ -47,6 +49,7 @@ from app.api.v1.endpoints import (
     workflows,
 )
 from app.api.v1.endpoints.integrations import router as integrations_router
+from app.config.settings import settings
 
 router = APIRouter()
 
@@ -65,6 +68,19 @@ router.include_router(calendar.router, tags=["Calendar"])
 router.include_router(notes.router, tags=["Notes/Memories"])
 router.include_router(memory.router, tags=["Memory"], prefix="/memory")
 router.include_router(oauth.router, prefix="/oauth", tags=["OAuth"])
+# Self-host-only surfaces (see _raise_if_selfhost_feature_in_production):
+# under AUTH_MODE=workos these routers are not mounted at all, so hosted
+# deployments expose no password-registration endpoint and no unauthenticated
+# instance-posture probe. The in-module 404 guards in setup.py are a second
+# layer on top of this mount gate.
+#
+# /setup/status is not unconditionally public: the middleware's conditional
+# exclude block appends "/api/v1/setup/status" to exclude_paths only when
+# settings.AUTH_MODE == "local", never in workos mode.
+if settings.AUTH_MODE == "local":
+    router.include_router(auth_local.router, prefix="/auth", tags=["Auth"])
+if settings.AUTH_MODE == "local" or settings.ENV == "selfhost":
+    router.include_router(setup.router, prefix="/setup", tags=["Setup"])
 router.include_router(integrations_router, prefix="/integrations", tags=["Integrations"])
 router.include_router(mcp.router, prefix="/mcp", tags=["MCP"])
 router.include_router(mcp_proxy.router, prefix="/mcp", tags=["MCP"])

@@ -1,8 +1,10 @@
 """Production boot-guards and the OpenRouter base-URL passthrough.
 
 The dev-only overrides (`DEV_AUTH_BYPASS_EMAIL`, `OPENROUTER_BASE_URL`) must make
-`get_settings()` refuse to start under `ENV=production`, and `init_openrouter_llm`
-must forward the base-URL override only in development.
+`get_settings()` refuse to start under `ENV=production`, and an explicitly-set
+base URL flows through the resolved provider config into `init_openrouter_llm`
+(the shared env-fallback policy); production is protected by the boot guard,
+not by a silent drop at client-construction time.
 """
 
 from types import SimpleNamespace
@@ -86,26 +88,32 @@ def test_openrouter_base_url_allowed_in_development(monkeypatch):
     assert settings_obj.OPENROUTER_BASE_URL == "http://localhost:9797"
 
 
-def test_init_openrouter_omits_base_url_outside_sim_dev(monkeypatch):
+def test_init_openrouter_forwards_explicit_base_url(monkeypatch):
     from app.agents.llm import client
 
     captured: dict[str, object] = {}
 
     monkeypatch.setattr(client, "ChatOpenRouter", _fake_chat_openrouter(captured))
-    monkeypatch.setattr(client.settings, "ENV", "development")
     monkeypatch.setattr(client.settings, "GAIA_SIM_MODE", False)
-    monkeypatch.setattr(client.settings, "OPENROUTER_BASE_URL", "http://localhost:9797")
     monkeypatch.setattr(client.settings, "OPENROUTER_API_KEY", "sk-stub-not-used")
+    # The shared settings object feeds the credential service's env fallback,
+    # which is where the base-URL policy lives since the F5 convergence.
+    monkeypatch.setattr(client.settings, "OPENROUTER_BASE_URL", "http://localhost:9797")
 
     client.init_openrouter_llm().loader_func()
 
-    # Outside sim mode base_url must not be passed AT ALL — passing None would
-    # override ChatOpenRouter's OPENROUTER_API_BASE env default_factory.
-    # Redirecting to the stub is sim mode's job (_sim_llm).
-    assert "base_url" not in captured
+    # An explicitly-set base URL rides the resolved config into construction —
+    # the unset case still forwards NO kwarg (see test_llm_runtime_config), so
+    # ChatOpenRouter's OPENROUTER_API_BASE default keeps applying there.
+    assert captured["base_url"] == "http://localhost:9797"
 
 
-def test_init_openrouter_omits_base_url_in_production(monkeypatch):
+def test_init_openrouter_base_url_enforcement_is_the_boot_guard(monkeypatch):
+    """Even on a production ENV value, the client does not silently drop a
+    resolved base URL — that guard would be invisible and drift-prone. The
+    protection is upstream and loud: get_settings() refuses to BOOT with
+    OPENROUTER_BASE_URL outside development (test_dev_overrides_block_
+    production_boot). This pins the layering so nobody re-adds a silent drop."""
     from app.agents.llm import client
 
     captured: dict[str, object] = {}
@@ -113,7 +121,7 @@ def test_init_openrouter_omits_base_url_in_production(monkeypatch):
     monkeypatch.setattr(client, "ChatOpenRouter", _fake_chat_openrouter(captured))
     monkeypatch.setattr(client.settings, "ENV", "production")
     monkeypatch.setattr(client.settings, "GAIA_SIM_MODE", False)
-    # Even if the override leaks into a production settings object, it is ignored.
+    # A leaked-in override (unreachable via get_settings in real production).
     monkeypatch.setattr(
         client.settings, "OPENROUTER_BASE_URL", "http://localhost:9797", raising=False
     )
@@ -121,9 +129,7 @@ def test_init_openrouter_omits_base_url_in_production(monkeypatch):
 
     client.init_openrouter_llm().loader_func()
 
-    # Production construction is identical to pre-sim behavior: no base_url
-    # kwarg, so ChatOpenRouter's own OPENROUTER_API_BASE env default applies.
-    assert "base_url" not in captured
+    assert captured["base_url"] == "http://localhost:9797"
 
 
 def test_dev_override_fields_exist_on_all_settings_classes():

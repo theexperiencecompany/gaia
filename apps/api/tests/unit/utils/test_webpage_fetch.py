@@ -1,14 +1,20 @@
 """Webpage fetch failover behaviour and the httpx engine's HTML->markdown parse."""
 
 from collections.abc import Callable
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 import respx
 
 from app.utils.exceptions import FetchError
-from app.utils.webpage_fetch import HttpxFetcher, WebpageFetcher, _fetch_first_success
+from app.utils.webpage_fetch import (
+    FirecrawlFetcher,
+    HttpxFetcher,
+    WebpageFetcher,
+    _default_fetchers,
+    _fetch_first_success,
+)
 
 
 def _resolver(host_to_ip: dict[str, str]) -> Callable[[str, int], list[str]]:
@@ -72,6 +78,41 @@ async def test_raises_when_all_engines_fail() -> None:
 
     with pytest.raises(FetchError):
         await _fetch_first_success("https://example.com", fetchers=fetchers)
+
+
+# ---------------------------------------------------------------------------
+# Firecrawl credential resolution (store → env)
+# ---------------------------------------------------------------------------
+
+
+async def test_default_fetchers_resolve_the_firecrawl_key_from_the_store() -> None:
+    """A key configured in Settings (credential store) reaches the engine —
+    the runtime must not read the env var directly anymore."""
+    stored = {"api_key": "fc-stored", "base_url": None, "model": None, "preset": None}
+    with patch(
+        "app.utils.webpage_fetch.resolve_firecrawl_config",
+        new=AsyncMock(return_value=stored),
+    ):
+        fetchers = await _default_fetchers()
+
+    firecrawl = next(f for f in fetchers if isinstance(f, FirecrawlFetcher))
+    assert firecrawl.is_configured() is True
+    with patch(
+        "app.utils.webpage_fetch.FirecrawlApp", return_value=MagicMock()
+    ) as mock_app:
+        firecrawl._get_client()
+    assert mock_app.call_args.kwargs["api_key"] == "fc-stored"
+
+
+async def test_unconfigured_firecrawl_engine_is_skipped_not_broken() -> None:
+    # resolve() returning None means neither store nor env has a key; the
+    # chain must record the engine as unconfigured and move on to the backup.
+    firecrawl = FirecrawlFetcher(None)
+    assert firecrawl.is_configured() is False
+
+    backup = FakeFetcher("backup", result="ok")
+    result = await _fetch_first_success("https://example.com", fetchers=[firecrawl, backup])
+    assert result == "ok"
 
 
 @respx.mock

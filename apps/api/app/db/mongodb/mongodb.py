@@ -82,20 +82,21 @@ class MongoDB:
             log.error(f"{LogTag.MONGO} Ping failed", error=str(e), error_type=type(e).__name__)
 
     async def _initialize_indexes(self) -> None:
-        try:
-            log.info(f"{LogTag.MONGO} Initializing all indexes in MongoDB...")
-            # Import here to avoid circular import
-            # Deferred import: breaks circular dependency: indexes imports collections, which imports this module
-            from app.db.mongodb.indexes import create_all_indexes  # noqa: PLC0415 -- deferred
+        """Create all indexes. Errors propagate so boot aborts.
 
-            await create_all_indexes()
-            # await log_index_summary()
-        except Exception as e:
-            log.error(
-                f"{LogTag.MONGO} Error while initializing indexes",
-                error=str(e),
-                error_type=type(e).__name__,
-            )
+        No try/except on purpose: ``init_mongodb_async`` (lifespan) logs and
+        re-raises into startup, which fails the boot. Swallowing here would let
+        a failed security-critical index build — e.g. the unique ``slot``
+        registration gate on auth_credentials blocked by post-restore
+        duplicates — come up as a "healthy" stack with the constraint silently
+        absent.
+        """
+        log.info(f"{LogTag.MONGO} Initializing all indexes in MongoDB...")
+        # Import here to avoid circular import
+        # Deferred import: breaks circular dependency: indexes imports collections, which imports this module
+        from app.db.mongodb.indexes import create_all_indexes  # noqa: PLC0415 -- deferred
+
+        await create_all_indexes()
 
     def get_collection(self, collection_name: str) -> AsyncIOMotorCollection[dict[str, Any]]:
         """A Motor handle for one collection of the app's database."""

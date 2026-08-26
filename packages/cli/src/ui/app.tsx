@@ -1,12 +1,13 @@
 import { Box, Text } from "ink";
 import React from "react";
+import { UpScreen } from "../commands/up/screen.js";
 import { InitScreen } from "./screens/init.js";
 import { ServiceScreen } from "./screens/service.js";
 import { SetupScreen } from "./screens/setup.js";
 import { StatusScreen } from "./screens/status.js";
 import type { CLIStore } from "./store.js";
 
-export type CLICommand = "init" | "setup" | "status" | "start" | "stop";
+export type CLICommand = "init" | "setup" | "status" | "start" | "stop" | "up";
 
 const AVAILABLE_COMMANDS: readonly CLICommand[] = [
   "init",
@@ -14,6 +15,7 @@ const AVAILABLE_COMMANDS: readonly CLICommand[] = [
   "status",
   "start",
   "stop",
+  "up",
 ];
 
 interface AppProps {
@@ -71,6 +73,8 @@ const CommandRouter: React.FC<AppProps> = ({ store, command }) => {
     case "start":
     case "stop":
       return <ServiceScreen store={store} command={command} />;
+    case "up":
+      return <UpScreen store={store} />;
     default:
       return (
         <Box flexDirection="column" padding={1}>

@@ -73,6 +73,8 @@ ignore_names = [
   "__getattr__",    # module-level dunder called by Python's import machinery
   "wrap_tools",     # AgenticProvider abstract-method override (called by Composio SDK)
   "on_llm_end",     # LangChain BaseCallbackHandler override (called by the framework)
+  "embed_documents",  # LangChain Embeddings interface override — Chroma invokes it
+                      # through the interface (see local_embeddings.py)
   "build_from_config",  # chroma EmbeddingFunction contract: called dynamically via
                         # chroma's registered-embedding-function map when a
                         # collection config is reconstructed (see chroma_store.py)

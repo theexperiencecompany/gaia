@@ -10,10 +10,57 @@ export interface EnvValues {
   [key: string]: string;
 }
 
+/**
+ * Parse a raw `.env` body into KEY→VALUE pairs. Comments/blanks are skipped,
+ * surrounding quotes are stripped; blank values are omitted (a half-written
+ * entry counts as unset).
+ */
+export function parseEnvFileValues(content: string | null): EnvValues {
+  const values: EnvValues = {};
+  if (!content) return values;
+
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eqIdx = trimmed.indexOf("=");
+    if (eqIdx <= 0) continue;
+    const key = trimmed.substring(0, eqIdx).trim();
+    const value = trimmed
+      .substring(eqIdx + 1)
+      .trim()
+      .replace(/^["']|["']$/g, "");
+    if (key && value) values[key] = value;
+  }
+  return values;
+}
+
+/**
+ * Environment files carry generated machine secrets (AGENT_SECRET et al.), so
+ * they must never be group/world-readable.
+ */
+const ENV_FILE_MODE = 0o600;
+
 function backupIfExists(filePath: string): void {
   if (fs.existsSync(filePath)) {
-    fs.copyFileSync(filePath, `${filePath}.bak`);
+    const backupPath = `${filePath}.bak`;
+    fs.copyFileSync(filePath, backupPath);
+    // copyFileSync lands on default perms; the backup holds the previous
+    // generation of secrets, so it gets the same owner-only bar.
+    fs.chmodSync(backupPath, ENV_FILE_MODE);
   }
+}
+
+/**
+ * Write an env file locked to 0600. `writeFileSync`'s mode option only applies
+ * at creation — a pre-existing file keeps its old mode — so the explicit chmod
+ * also tightens files left world-readable by older CLI versions.
+ */
+function writeFileOwnerOnly(filePath: string, contents: string): void {
+  fs.writeFileSync(filePath, contents, {
+    encoding: "utf-8",
+    mode: ENV_FILE_MODE,
+  });
+  fs.chmodSync(filePath, ENV_FILE_MODE);
 }
 
 export function writeEnvFile(repoPath: string, values: EnvValues): void {
@@ -93,7 +140,7 @@ export function writeEnvFile(repoPath: string, values: EnvValues): void {
     lines.push("");
   }
 
-  fs.writeFileSync(envPath, lines.join("\n"), "utf-8");
+  writeFileOwnerOnly(envPath, lines.join("\n"));
 }
 
 export function writeWebEnvFile(
@@ -144,7 +191,7 @@ export function writeWebEnvFile(
     }
   }
 
-  fs.writeFileSync(webEnvPath, lines.join("\n"), "utf-8");
+  writeFileOwnerOnly(webEnvPath, lines.join("\n"));
 }
 
 const DOCKER_PORT_VAR_MAP: Record<number, string> = {
@@ -181,17 +228,19 @@ export function writeDockerComposeEnv(
     }
   }
 
-  // In selfhost mode, write the web build arg so docker-compose.selfhost.yml
-  // can substitute it with the correct (possibly overridden) API port.
+  // In selfhost mode, write the web runtime URL so docker-compose.selfhost.yml
+  // passes it to the container, whose entrypoint rewrites the baked-in
+  // placeholder API URL inside the JS bundle at start (single mechanism —
+  // local builds bake the placeholder, runtime always wins).
   if (mode === "selfhost") {
-    const apiPort = portOverrides[8000] ?? 8000;
+    const webPort = portOverrides[3000] ?? 3000;
     lines.push("");
-    lines.push("# Web build args");
-    lines.push(`NEXT_PUBLIC_API_BASE_URL=http://localhost:${apiPort}/api/v1/`);
+    lines.push("# Web runtime URL");
+    lines.push(`NEXT_PUBLIC_APP_URL=http://localhost:${webPort}`);
   }
 
   lines.push("");
-  fs.writeFileSync(envPath, lines.join("\n"), "utf-8");
+  writeFileOwnerOnly(envPath, lines.join("\n"));
 }
 
 /**

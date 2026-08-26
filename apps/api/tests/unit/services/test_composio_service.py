@@ -1,5 +1,6 @@
 """Tests for ComposioService and Gmail custom tools."""
 
+from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -687,6 +688,61 @@ class TestGetComposioService:
 
             with pytest.raises(RuntimeError, match="not available"):
                 get_composio_service()
+
+
+class TestInitComposioService:
+    """The loader resolves store-first (runtime snapshot) with an env fallback.
+
+    Sync loader on purpose — the Composio SDK is synchronous and its consumers
+    call it from worker threads — so it reads the credential service's runtime
+    snapshot instead of awaiting resolve().
+    """
+
+    _STORED: ClassVar[dict[str, str | None]] = {
+        "api_key": "stored-key",
+        "base_url": None,
+        "model": None,
+        "preset": None,
+    }
+
+    def test_stored_credential_wins_over_env(self):
+        from app.services.composio import composio_service as mod
+
+        fake_sdk = MagicMock()
+        with (
+            patch.object(mod, "resolved_config", return_value=self._STORED),
+            patch.object(mod, "settings") as mock_settings,
+            patch.object(mod, "Composio", return_value=fake_sdk) as mock_composio_cls,
+        ):
+            mock_settings.COMPOSIO_KEY = "env-key"
+            service = mod.init_composio_service().loader_func()
+        assert mock_composio_cls.call_args.kwargs["api_key"] == "stored-key"
+        assert service.composio is fake_sdk
+
+    def test_env_fallback_when_nothing_is_stored(self):
+        from app.services.composio import composio_service as mod
+
+        fake_sdk = MagicMock()
+        with (
+            patch.object(mod, "resolved_config", return_value=None),
+            patch.object(mod, "settings") as mock_settings,
+            patch.object(mod, "Composio", return_value=fake_sdk) as mock_composio_cls,
+        ):
+            mock_settings.COMPOSIO_KEY = "env-key"
+            service = mod.init_composio_service().loader_func()
+        assert mock_composio_cls.call_args.kwargs["api_key"] == "env-key"
+        assert service.composio is fake_sdk
+
+    def test_unconfigured_fails_loud_instead_of_building_a_dead_service(self):
+        from app.services.composio import composio_service as mod
+
+        with (
+            patch.object(mod, "resolved_config", return_value=None),
+            patch.object(mod, "settings") as mock_settings,
+        ):
+            mock_settings.COMPOSIO_KEY = None
+            with pytest.raises(RuntimeError, match="COMPOSIO_KEY"):
+                mod.init_composio_service().loader_func()
 
 
 # ---------------------------------------------------------------------------

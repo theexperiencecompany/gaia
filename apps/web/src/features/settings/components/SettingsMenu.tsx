@@ -35,6 +35,7 @@ import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { ChevronRight, Github } from "@/components/shared/icons";
 import { getLinkByLabel } from "@/config/appConfig";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
+import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
 import { WhatsNewTimelineMenu } from "@/features/whats-new/components/WhatsNewTimelineMenu";
 import { useReleases } from "@/features/whats-new/hooks/useReleases";
@@ -54,6 +55,8 @@ interface MenuItem {
   key: string;
   label: string;
   icon?: React.ComponentType<{ className?: string; color?: string }>;
+  /** Pre-rendered brand mark for entries without an @icons glyph (e.g. favicons). */
+  iconElement?: ReactNode;
   href?: string;
   action?: () => void;
   color?: "danger" | "default";
@@ -87,6 +90,9 @@ export default function SettingsMenu({
   >();
   const [modalAction, setModalAction] = useState<ModalAction | null>(null);
   const { data: subscriptionStatus } = useUserSubscriptionStatus();
+  const { data: setupStatus } = useSetupStatus();
+  // Self-host instances have no billing — the entries make no sense there.
+  const billingHidden = setupStatus?.billing_enabled === false;
   const openPricingModal = usePricingModalStore((s) => s.openModal);
   const { unseen: unseenReleases } = useReleases();
 
@@ -107,6 +113,14 @@ export default function SettingsMenu({
   const { openShortcutsModal } = useKeyboardShortcuts();
 
   const iconClasses = "w-[18px] h-[18px]";
+
+  // Entries surfaced directly in this menu; Usage drops out on self-host.
+  const quickSettingsKeys = [
+    "memory",
+    "linked-accounts",
+    "providers",
+    ...(billingHidden ? [] : ["usage"]),
+  ];
 
   const resourcesMenuItems = [
     {
@@ -214,7 +228,7 @@ export default function SettingsMenu({
   };
 
   const menuSections = [
-    ...(subscriptionStatus?.is_subscribed
+    ...(subscriptionStatus?.is_subscribed || billingHidden
       ? []
       : [
           {
@@ -237,7 +251,7 @@ export default function SettingsMenu({
       showDivider: true,
       items: [
         ...settingsPageItems.filter((item) =>
-          ["memory", "linked-accounts", "usage"].includes(item.key),
+          quickSettingsKeys.includes(item.key),
         ),
         {
           key: "keyboard_shortcuts",
@@ -368,7 +382,10 @@ export default function SettingsMenu({
                     }
                     style={iconColor ? { color: iconColor } : undefined}
                     startContent={
-                      Icon && <Icon className={iconClasses} color={iconColor} />
+                      item.iconElement ??
+                      (Icon && (
+                        <Icon className={iconClasses} color={iconColor} />
+                      ))
                     }
                     classNames={item.customClassNames}
                   >

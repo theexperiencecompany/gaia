@@ -1,10 +1,19 @@
-import * as path from "path";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type { CLIStore } from "../ui/store.js";
 import * as envParser from "./env-parser.js";
 import * as envWriter from "./env-writer.js";
+import { collectMachineSecrets } from "./machine-secrets.js";
 
 const delay = (ms: number): Promise<void> =>
   new Promise((r) => setTimeout(r, ms));
+
+export interface EnvSetupOptions {
+  /** Provider selected via `gaia up --llm-provider`. */
+  llmProvider?: "openrouter" | "gemini" | "custom";
+  /** API key supplied via `gaia up --llm-key`. */
+  llmKey?: string;
+}
 
 export async function selectSetupMode(
   store: CLIStore,
@@ -23,6 +32,7 @@ export async function runEnvSetup(
   repoPath: string,
   setupMode: envParser.SetupMode,
   portOverrides?: Record<number, number>,
+  options?: EnvSetupOptions,
 ): Promise<void> {
   store.setStep("Environment Setup");
   store.setStatus("Configuring environment...");
@@ -33,7 +43,13 @@ export async function runEnvSetup(
   store.updateData("envMethod", envMethod);
 
   const envValues: Record<string, string> = {};
-  envValues["ENV"] = "development";
+
+  // ENV policy: self-host instances run as the first-class selfhost tier with
+  // local email/password auth; developer checkouts keep development (WorkOS).
+  envValues["ENV"] = setupMode === "selfhost" ? "selfhost" : "development";
+  if (setupMode === "selfhost") {
+    envValues["AUTH_MODE"] = "local";
+  }
 
   const infraVars = envParser.getInfrastructureVariables();
   for (const varName of infraVars) {
@@ -49,6 +65,8 @@ export async function runEnvSetup(
     envValues[key] = value;
   }
 
+  applyLlmFlagAnswers(envValues, options);
+
   if (envMethod === "infisical") {
     await collectInfisicalEnv(store, envValues);
     store.setStatus(
@@ -56,16 +74,40 @@ export async function runEnvSetup(
     );
     // Skip manual env collection - all secrets managed in Infisical
   } else {
-    try {
-      await collectManualEnv(store, repoPath, envValues, setupMode);
-    } catch (e) {
-      store.setError(e as Error);
-      return;
-    }
+    // The schema is vendored (see env-parser.loadVendoredSchema), so manual
+    // collection never depends on a host Python install. Load failures
+    // propagate — the caller surfaces them.
+    await collectManualEnv(store, envValues, setupMode);
   }
 
   if (portOverrides) {
     envParser.applyPortOverrides(envValues, portOverrides, setupMode);
+  }
+
+  // Merge-don't-clobber against an existing apps/api/.env: previously
+  // assigned values (hand-edited or from an earlier run) are carried forward
+  // wherever this run didn't compute a fresh value. Machine secrets are then
+  // generated only for the trio members still missing — writeEnvFile keeps
+  // the .bak backup behavior for pre-existing files.
+  const apiEnvPath = path.join(repoPath, "apps", "api", ".env");
+  const existingEnv = fs.existsSync(apiEnvPath)
+    ? fs.readFileSync(apiEnvPath, "utf-8")
+    : null;
+  if (existingEnv) {
+    for (const [name, value] of Object.entries(
+      envWriter.parseEnvFileValues(existingEnv),
+    )) {
+      if (!(name in envValues)) {
+        envValues[name] = value;
+      }
+    }
+  }
+  if (setupMode === "selfhost") {
+    for (const [name, value] of Object.entries(
+      collectMachineSecrets(existingEnv),
+    )) {
+      envValues[name] = value;
+    }
   }
 
   try {
@@ -81,6 +123,24 @@ export async function runEnvSetup(
     return;
   }
   await delay(1000);
+}
+
+/**
+ * Seed env values from `gaia up --llm-key/--llm-provider` so the flagged
+ * provider works on first boot. "custom" providers are runtime-configured via
+ * the web wizard — no key is written here; the up flow prints the wizard URL
+ * after boot instead.
+ */
+function applyLlmFlagAnswers(
+  envValues: Record<string, string>,
+  options?: EnvSetupOptions,
+): void {
+  if (!options?.llmKey) return;
+  if (options.llmProvider === "openrouter") {
+    envValues["OPENROUTER_API_KEY"] = options.llmKey;
+  } else if (options.llmProvider === "gemini") {
+    envValues["GOOGLE_API_KEY"] = options.llmKey;
+  }
 }
 
 async function collectInfisicalEnv(
@@ -101,31 +161,14 @@ async function collectInfisicalEnv(
     infisicalConfig.INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET;
 }
 
-async function collectManualEnv(
-  store: CLIStore,
-  repoPath: string,
-  envValues: Record<string, string>,
-  setupMode: envParser.SetupMode,
-): Promise<void> {
-  store.setStatus("Parsing environment variables...");
-  let categories: envParser.EnvCategory[];
-  try {
-    categories = await envParser.parseSettings(repoPath);
-    categories = envParser.applyModeDefaults(categories, setupMode);
-  } catch (e) {
-    if (setupMode === "selfhost") {
-      throw new Error(
-        "Manual environment setup requires Python to parse config schema.\n" +
-          "For self-host mode, we recommend using Infisical for secret management.\n" +
-          "Alternatively, install Python 3.11+ and try again.\n\n" +
-          `Original error: ${(e as Error).message}`,
-      );
-    }
-    throw new Error(`Failed to parse settings: ${(e as Error).message}`);
-  }
-
-  const alternativeGroupNames = new Set<string>();
+/** Pairs categories that are alternatives of each other (e.g. OpenRouter vs
+ * Gemini — configure either one) and marks both sides as handled. */
+function pairAlternativeGroups(categories: envParser.EnvCategory[]): {
+  alternativePairs: envParser.EnvCategory[][];
+  alternativeGroupNames: Set<string>;
+} {
   const alternativePairs: envParser.EnvCategory[][] = [];
+  const alternativeGroupNames = new Set<string>();
   const processedAlternatives = new Set<string>();
 
   for (const category of categories) {
@@ -145,6 +188,22 @@ async function collectManualEnv(
       }
     }
   }
+  return { alternativePairs, alternativeGroupNames };
+}
+
+async function collectManualEnv(
+  store: CLIStore,
+  envValues: Record<string, string>,
+  setupMode: envParser.SetupMode,
+): Promise<void> {
+  store.setStatus("Parsing environment variables...");
+  const categories = envParser.applyModeDefaults(
+    envParser.loadVendoredSchema(),
+    setupMode,
+  );
+
+  const { alternativePairs, alternativeGroupNames } =
+    pairAlternativeGroups(categories);
 
   const singleVarGroups = categories.filter(
     (c) => c.variables.length === 1 && !alternativeGroupNames.has(c.name),

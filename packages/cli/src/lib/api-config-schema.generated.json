@@ -1,0 +1,492 @@
+[
+  {
+    "requiredInProd": true,
+    "allRequired": true,
+    "variables": [
+      {
+        "name": "MONGO_DB",
+        "required": true,
+        "category": "MongoDB Connection",
+        "description": "MongoDB database connection",
+        "affectedFeatures": "All database operations, user data, and application state",
+        "defaultValue": null,
+        "docsUrl": "https://www.mongodb.com/docs/manual/reference/connection-string/"
+      }
+    ],
+    "name": "MongoDB Connection",
+    "description": "MongoDB database connection",
+    "affectedFeatures": "All database operations, user data, and application state",
+    "docsUrl": "https://www.mongodb.com/docs/manual/reference/connection-string/"
+  },
+  {
+    "requiredInProd": true,
+    "allRequired": true,
+    "variables": [
+      {
+        "name": "REDIS_URL",
+        "required": true,
+        "category": "Redis Connection",
+        "description": "Redis cache and queue service",
+        "affectedFeatures": "Caching, rate limiting, and task scheduling",
+        "defaultValue": null,
+        "docsUrl": "https://redis.io/docs/connect/clients/"
+      }
+    ],
+    "name": "Redis Connection",
+    "description": "Redis cache and queue service",
+    "affectedFeatures": "Caching, rate limiting, and task scheduling",
+    "docsUrl": "https://redis.io/docs/connect/clients/"
+  },
+  {
+    "requiredInProd": true,
+    "allRequired": true,
+    "variables": [
+      {
+        "name": "POSTGRES_URL",
+        "required": false,
+        "category": "PostgreSQL Connection",
+        "description": "PostgreSQL database connection",
+        "affectedFeatures": "Relational data storage and queries",
+        "defaultValue": null,
+        "docsUrl": "https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING"
+      }
+    ],
+    "name": "PostgreSQL Connection",
+    "description": "PostgreSQL database connection",
+    "affectedFeatures": "Relational data storage and queries",
+    "docsUrl": "https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING"
+  },
+  {
+    "requiredInProd": true,
+    "allRequired": true,
+    "variables": [
+      {
+        "name": "CHROMADB_HOST",
+        "required": false,
+        "category": "ChromaDB Connection",
+        "description": "ChromaDB vector database connection",
+        "affectedFeatures": "Vector storage and semantic search capabilities",
+        "defaultValue": null,
+        "docsUrl": "https://docs.trychroma.com/"
+      },
+      {
+        "name": "CHROMADB_PORT",
+        "required": false,
+        "category": "ChromaDB Connection",
+        "description": "ChromaDB vector database connection",
+        "affectedFeatures": "Vector storage and semantic search capabilities",
+        "defaultValue": null,
+        "docsUrl": "https://docs.trychroma.com/"
+      }
+    ],
+    "name": "ChromaDB Connection",
+    "description": "ChromaDB vector database connection",
+    "affectedFeatures": "Vector storage and semantic search capabilities",
+    "docsUrl": "https://docs.trychroma.com/"
+  },
+  {
+    "requiredInProd": true,
+    "allRequired": true,
+    "variables": [
+      {
+        "name": "RABBITMQ_URL",
+        "required": false,
+        "category": "RabbitMQ Connection",
+        "description": "RabbitMQ message queue connection",
+        "affectedFeatures": "Asynchronous task processing and job queue",
+        "defaultValue": null,
+        "docsUrl": "https://www.rabbitmq.com/uri-spec.html"
+      }
+    ],
+    "name": "RabbitMQ Connection",
+    "description": "RabbitMQ message queue connection",
+    "affectedFeatures": "Asynchronous task processing and job queue",
+    "docsUrl": "https://www.rabbitmq.com/uri-spec.html"
+  },
+  {
+    "requiredInProd": true,
+    "allRequired": true,
+    "variables": [
+      {
+        "name": "WORKOS_API_KEY",
+        "required": false,
+        "category": "WorkOS Authentication",
+        "description": "WorkOS authentication service",
+        "affectedFeatures": "User authentication, login, and session management",
+        "defaultValue": null,
+        "docsUrl": "https://workos.com/docs/reference/api-keys"
+      },
+      {
+        "name": "WORKOS_CLIENT_ID",
+        "required": false,
+        "category": "WorkOS Authentication",
+        "description": "WorkOS authentication service",
+        "affectedFeatures": "User authentication, login, and session management",
+        "defaultValue": null,
+        "docsUrl": "https://workos.com/docs/reference/api-keys"
+      },
+      {
+        "name": "WORKOS_COOKIE_PASSWORD",
+        "required": false,
+        "category": "WorkOS Authentication",
+        "description": "WorkOS authentication service",
+        "affectedFeatures": "User authentication, login, and session management",
+        "defaultValue": null,
+        "docsUrl": "https://workos.com/docs/reference/api-keys"
+      }
+    ],
+    "name": "WorkOS Authentication",
+    "description": "WorkOS authentication service",
+    "affectedFeatures": "User authentication, login, and session management",
+    "docsUrl": "https://workos.com/docs/reference/api-keys"
+  },
+  {
+    "requiredInProd": true,
+    "allRequired": true,
+    "variables": [
+      {
+        "name": "CLOUDINARY_CLOUD_NAME",
+        "required": false,
+        "category": "Cloudinary Media Storage",
+        "description": "Cloudinary media storage service",
+        "affectedFeatures": "File uploads, image storage, and support ticket attachments",
+        "defaultValue": null,
+        "docsUrl": "https://cloudinary.com/documentation/cloudinary_credentials"
+      },
+      {
+        "name": "CLOUDINARY_API_KEY",
+        "required": false,
+        "category": "Cloudinary Media Storage",
+        "description": "Cloudinary media storage service",
+        "affectedFeatures": "File uploads, image storage, and support ticket attachments",
+        "defaultValue": null,
+        "docsUrl": "https://cloudinary.com/documentation/cloudinary_credentials"
+      },
+      {
+        "name": "CLOUDINARY_API_SECRET",
+        "required": false,
+        "category": "Cloudinary Media Storage",
+        "description": "Cloudinary media storage service",
+        "affectedFeatures": "File uploads, image storage, and support ticket attachments",
+        "defaultValue": null,
+        "docsUrl": "https://cloudinary.com/documentation/cloudinary_credentials"
+      }
+    ],
+    "name": "Cloudinary Media Storage",
+    "description": "Cloudinary media storage service",
+    "affectedFeatures": "File uploads, image storage, and support ticket attachments",
+    "docsUrl": "https://cloudinary.com/documentation/cloudinary_credentials"
+  },
+  {
+    "requiredInProd": true,
+    "allRequired": false,
+    "variables": [
+      {
+        "name": "DEEPGRAM_API_KEY",
+        "required": false,
+        "category": "Speech Processing",
+        "description": "Speech-to-text transcription service",
+        "affectedFeatures": "Audio transcription and voice interaction",
+        "defaultValue": null,
+        "docsUrl": "https://deepgram.com/"
+      }
+    ],
+    "name": "Speech Processing",
+    "description": "Speech-to-text transcription service",
+    "affectedFeatures": "Audio transcription and voice interaction",
+    "docsUrl": "https://deepgram.com/"
+  },
+  {
+    "requiredInProd": true,
+    "allRequired": true,
+    "variables": [
+      {
+        "name": "OPENAI_API_KEY",
+        "required": false,
+        "category": "OpenAI Integration",
+        "description": "OpenAI API integration (alternative to Google AI)",
+        "affectedFeatures": "AI chat, text generation, and language processing",
+        "defaultValue": null,
+        "docsUrl": "https://platform.openai.com/api-keys"
+      }
+    ],
+    "name": "OpenAI Integration",
+    "description": "OpenAI API integration (alternative to Google AI)",
+    "affectedFeatures": "AI chat, text generation, and language processing",
+    "docsUrl": "https://platform.openai.com/api-keys",
+    "alternativeGroup": "Google AI"
+  },
+  {
+    "requiredInProd": true,
+    "allRequired": true,
+    "variables": [
+      {
+        "name": "GOOGLE_API_KEY",
+        "required": false,
+        "category": "Google AI",
+        "description": "Google AI services (alternative to OpenAI)",
+        "affectedFeatures": "Google AI and ML capabilities",
+        "defaultValue": null,
+        "docsUrl": "https://console.cloud.google.com/apis/credentials"
+      }
+    ],
+    "name": "Google AI",
+    "description": "Google AI services (alternative to OpenAI)",
+    "affectedFeatures": "Google AI and ML capabilities",
+    "docsUrl": "https://console.cloud.google.com/apis/credentials",
+    "alternativeGroup": "OpenAI Integration"
+  },
+  {
+    "requiredInProd": true,
+    "allRequired": true,
+    "variables": [
+      {
+        "name": "TAVILY_API_KEY",
+        "required": false,
+        "category": "Tavily Web Search",
+        "description": "Tavily AI-powered web search integration",
+        "affectedFeatures": "Web search capabilities, image search, news search, and content extraction",
+        "defaultValue": null,
+        "docsUrl": "https://tavily.com/#api"
+      }
+    ],
+    "name": "Tavily Web Search",
+    "description": "Tavily AI-powered web search integration",
+    "affectedFeatures": "Web search capabilities, image search, news search, and content extraction",
+    "docsUrl": "https://tavily.com/#api"
+  },
+  {
+    "requiredInProd": true,
+    "allRequired": true,
+    "variables": [
+      {
+        "name": "FIRECRAWL_API_KEY",
+        "required": false,
+        "category": "Firecrawl Web Scraping",
+        "description": "Firecrawl web scraping and content extraction service",
+        "affectedFeatures": "Advanced web content extraction, URL processing, and page scraping",
+        "defaultValue": null,
+        "docsUrl": "https://www.firecrawl.dev/"
+      }
+    ],
+    "name": "Firecrawl Web Scraping",
+    "description": "Firecrawl web scraping and content extraction service",
+    "affectedFeatures": "Advanced web content extraction, URL processing, and page scraping",
+    "docsUrl": "https://www.firecrawl.dev/"
+  },
+  {
+    "requiredInProd": true,
+    "allRequired": true,
+    "variables": [
+      {
+        "name": "LLAMA_INDEX_KEY",
+        "required": false,
+        "category": "Llama Index",
+        "description": "Llama Index for document processing and retrieval",
+        "affectedFeatures": "Advanced document indexing, RAG capabilities, and structured data retrieval",
+        "defaultValue": null,
+        "docsUrl": "https://docs.llamaindex.ai/"
+      }
+    ],
+    "name": "Llama Index",
+    "description": "Llama Index for document processing and retrieval",
+    "affectedFeatures": "Advanced document indexing, RAG capabilities, and structured data retrieval",
+    "docsUrl": "https://docs.llamaindex.ai/"
+  },
+  {
+    "requiredInProd": true,
+    "allRequired": true,
+    "variables": [
+      {
+        "name": "RESEND_API_KEY",
+        "required": false,
+        "category": "Resend Email Service",
+        "description": "Resend email delivery service",
+        "affectedFeatures": "Email notifications and communication",
+        "defaultValue": null,
+        "docsUrl": "https://resend.com/docs/api-reference/api-keys"
+      },
+      {
+        "name": "RESEND_AUDIENCE_ID",
+        "required": false,
+        "category": "Resend Email Service",
+        "description": "Resend email delivery service",
+        "affectedFeatures": "Email notifications and communication",
+        "defaultValue": null,
+        "docsUrl": "https://resend.com/docs/api-reference/api-keys"
+      },
+      {
+        "name": "EMAIL_UNSUBSCRIBE_SECRET",
+        "required": false,
+        "category": "Resend Email Service",
+        "description": "Resend email delivery service",
+        "affectedFeatures": "Email notifications and communication",
+        "defaultValue": null,
+        "docsUrl": "https://resend.com/docs/api-reference/api-keys"
+      }
+    ],
+    "name": "Resend Email Service",
+    "description": "Resend email delivery service",
+    "affectedFeatures": "Email notifications and communication",
+    "docsUrl": "https://resend.com/docs/api-reference/api-keys"
+  },
+  {
+    "requiredInProd": true,
+    "allRequired": true,
+    "variables": [
+      {
+        "name": "OPENWEATHER_API_KEY",
+        "required": false,
+        "category": "Weather Service",
+        "description": "OpenWeather API for weather data",
+        "affectedFeatures": "Weather forecasts and current conditions",
+        "defaultValue": null,
+        "docsUrl": "https://openweathermap.org/api"
+      }
+    ],
+    "name": "Weather Service",
+    "description": "OpenWeather API for weather data",
+    "affectedFeatures": "Weather forecasts and current conditions",
+    "docsUrl": "https://openweathermap.org/api"
+  },
+  {
+    "requiredInProd": true,
+    "allRequired": true,
+    "variables": [
+      {
+        "name": "COMPOSIO_KEY",
+        "required": false,
+        "category": "Composio Integration",
+        "description": "Composio integration service",
+        "affectedFeatures": "Composio platform integration and webhook processing",
+        "defaultValue": null,
+        "docsUrl": "https://docs.composio.dev/"
+      },
+      {
+        "name": "COMPOSIO_WEBHOOK_SECRET",
+        "required": false,
+        "category": "Composio Integration",
+        "description": "Composio integration service",
+        "affectedFeatures": "Composio platform integration and webhook processing",
+        "defaultValue": null,
+        "docsUrl": "https://docs.composio.dev/"
+      }
+    ],
+    "name": "Composio Integration",
+    "description": "Composio integration service",
+    "affectedFeatures": "Composio platform integration and webhook processing",
+    "docsUrl": "https://docs.composio.dev/"
+  },
+  {
+    "requiredInProd": true,
+    "allRequired": true,
+    "variables": [
+      {
+        "name": "E2B_API_KEY",
+        "required": false,
+        "category": "E2B Code Execution",
+        "description": "E2B secure code execution environment",
+        "affectedFeatures": "Code execution and sandboxed environments",
+        "defaultValue": null,
+        "docsUrl": "https://e2b.dev/docs"
+      }
+    ],
+    "name": "E2B Code Execution",
+    "description": "E2B secure code execution environment",
+    "affectedFeatures": "Code execution and sandboxed environments",
+    "docsUrl": "https://e2b.dev/docs"
+  },
+  {
+    "requiredInProd": true,
+    "allRequired": true,
+    "variables": [
+      {
+        "name": "DODO_PAYMENTS_API_KEY",
+        "required": false,
+        "category": "Dodo Payments",
+        "description": "Dodo payment processing service",
+        "affectedFeatures": "Payment processing and subscription management",
+        "defaultValue": null,
+        "docsUrl": "https://docs.dodopayments.com/"
+      },
+      {
+        "name": "DODO_WEBHOOK_PAYMENTS_SECRET",
+        "required": false,
+        "category": "Dodo Payments",
+        "description": "Dodo payment processing service",
+        "affectedFeatures": "Payment processing and subscription management",
+        "defaultValue": null,
+        "docsUrl": "https://docs.dodopayments.com/"
+      }
+    ],
+    "name": "Dodo Payments",
+    "description": "Dodo payment processing service",
+    "affectedFeatures": "Payment processing and subscription management",
+    "docsUrl": "https://docs.dodopayments.com/"
+  },
+  {
+    "requiredInProd": true,
+    "allRequired": true,
+    "variables": [
+      {
+        "name": "BLOG_BEARER_TOKEN",
+        "required": false,
+        "category": "Blog Management",
+        "description": "Blog content management",
+        "affectedFeatures": "Blog creation and management",
+        "defaultValue": null,
+        "docsUrl": null
+      }
+    ],
+    "name": "Blog Management",
+    "description": "Blog content management",
+    "affectedFeatures": "Blog creation and management"
+  },
+  {
+    "requiredInProd": true,
+    "allRequired": true,
+    "variables": [
+      {
+        "name": "SENTRY_DSN",
+        "required": false,
+        "category": "Sentry Monitoring",
+        "description": "Sentry error tracking and monitoring",
+        "affectedFeatures": "Error reporting and application monitoring",
+        "defaultValue": null,
+        "docsUrl": "https://docs.sentry.io/platforms/python/"
+      }
+    ],
+    "name": "Sentry Monitoring",
+    "description": "Sentry error tracking and monitoring",
+    "affectedFeatures": "Error reporting and application monitoring",
+    "docsUrl": "https://docs.sentry.io/platforms/python/"
+  },
+  {
+    "requiredInProd": false,
+    "allRequired": true,
+    "variables": [
+      {
+        "name": "POSTHOG_PROJECT_TOKEN",
+        "required": false,
+        "category": "Posthog Analytics",
+        "description": "Posthog analytics and event tracking",
+        "affectedFeatures": "User behavior analytics and event tracking",
+        "defaultValue": null,
+        "docsUrl": "https://posthog.com/docs/api"
+      },
+      {
+        "name": "POSTHOG_HOST",
+        "required": false,
+        "category": "Posthog Analytics",
+        "description": "Posthog analytics and event tracking",
+        "affectedFeatures": "User behavior analytics and event tracking",
+        "defaultValue": null,
+        "docsUrl": "https://posthog.com/docs/api"
+      }
+    ],
+    "name": "Posthog Analytics",
+    "description": "Posthog analytics and event tracking",
+    "affectedFeatures": "User behavior analytics and event tracking",
+    "docsUrl": "https://posthog.com/docs/api"
+  }
+]

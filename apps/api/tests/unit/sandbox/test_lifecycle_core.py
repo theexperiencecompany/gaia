@@ -244,7 +244,9 @@ async def test_missing_e2b_api_key_fails_before_any_sandbox_is_provisioned() -> 
     # an opaque auth error instead of naming the missing config.
     cls = _sandbox_class(_fake_sandbox())
     with (
-        patch.object(lifecycle.settings, "E2B_API_KEY", None),
+        patch.object(
+            lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value=None)
+        ),
         patch.object(lifecycle.settings, "E2B_TEMPLATE_ID", "tpl"),
         patch.object(lifecycle, "AsyncSandbox", cls),
     ):
@@ -259,7 +261,6 @@ async def test_missing_template_id_fails_before_any_sandbox_is_provisioned() -> 
     # user's files would silently not persist.
     cls = _sandbox_class(_fake_sandbox())
     with (
-        patch.object(lifecycle.settings, "E2B_API_KEY", "key"),
         patch.object(lifecycle.settings, "E2B_TEMPLATE_ID", None),
         patch.object(lifecycle, "AsyncSandbox", cls),
     ):
@@ -274,7 +275,6 @@ async def test_fresh_sandbox_is_created_with_the_full_lifetime_and_owner_metadat
     sbx = _fake_sandbox("sbx-new")
     cls = _sandbox_class(sbx)
     with (
-        patch.object(lifecycle.settings, "E2B_API_KEY", "key"),
         patch.object(lifecycle.settings, "E2B_TEMPLATE_ID", "gaia-coder"),
         patch.object(lifecycle, "AsyncSandbox", cls),
         patch.object(lifecycle, "_run_mount_script", AsyncMock()),
@@ -285,6 +285,9 @@ async def test_fresh_sandbox_is_created_with_the_full_lifetime_and_owner_metadat
     assert kwargs["template"] == "gaia-coder"
     assert kwargs["timeout"] == SANDBOX_LIFETIME_SECONDS
     assert kwargs["metadata"] == {"user_id": "u1", "shard_id": "2"}
+    # The resolved credential rides on the create call — the SDK must never
+    # depend on an env var for it (the key may live only in the store).
+    assert kwargs["api_key"] == "test-e2b-key"
 
 
 async def test_a_fresh_sandbox_is_mounted_with_its_own_shard_credentials() -> None:
@@ -293,7 +296,6 @@ async def test_a_fresh_sandbox_is_mounted_with_its_own_shard_credentials() -> No
     sbx = _fake_sandbox()
     mount = AsyncMock()
     with (
-        patch.object(lifecycle.settings, "E2B_API_KEY", "key"),
         patch.object(lifecycle.settings, "E2B_TEMPLATE_ID", "gaia-coder"),
         patch.object(lifecycle.settings, "JUICEFS_META_URL_TEMPLATE", "postgres://db/jfs{shard}"),
         patch.object(lifecycle, "AsyncSandbox", _sandbox_class(sbx)),
@@ -516,6 +518,8 @@ async def test_connect_refreshes_the_server_side_lifetime_of_a_resumed_sandbox()
     with patch.object(lifecycle, "AsyncSandbox", cls):
         assert await lifecycle._connect_sandbox("sbx-old") is sbx
     assert cls.connect.await_args.kwargs["timeout"] == SANDBOX_LIFETIME_SECONDS
+    # The credential rides on the connect call, resolved store-first.
+    assert cls.connect.await_args.kwargs["api_key"] == "test-e2b-key"
 
 
 async def test_connect_failure_returns_none_so_acquire_falls_through_to_a_fresh_create() -> None:
@@ -693,7 +697,6 @@ async def test_a_resumed_sandbox_is_remounted_before_it_is_used() -> None:
 def _acquire_patches(sbx: AsyncMock, repo: AsyncMock) -> list[Any]:
     """Patch only the true boundaries: e2b, Mongo, the limiter, host JuiceFS."""
     return [
-        patch.object(lifecycle.settings, "E2B_API_KEY", "key"),
         patch.object(lifecycle.settings, "E2B_TEMPLATE_ID", "gaia-coder"),
         patch.object(lifecycle, "AsyncSandbox", _sandbox_class(sbx)),
         patch.object(lifecycle, "e2b_sandbox_repository", repo),

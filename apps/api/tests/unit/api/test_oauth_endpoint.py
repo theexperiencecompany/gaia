@@ -74,7 +74,7 @@ class TestLoginWorkOS:
     """GET /api/v1/oauth/login/workos"""
 
     @patch("app.api.v1.endpoints.oauth.redis_cache")
-    @patch("app.api.v1.endpoints.oauth.workos")
+    @patch("app.api.v1.endpoints.oauth._workos_client", create=True)
     async def test_login_workos_redirect(
         self,
         mock_workos: MagicMock,
@@ -90,7 +90,7 @@ class TestLoginWorkOS:
         assert "workos.example.com" in response.headers["location"]
 
     @patch("app.api.v1.endpoints.oauth.redis_cache")
-    @patch("app.api.v1.endpoints.oauth.workos")
+    @patch("app.api.v1.endpoints.oauth._workos_client", create=True)
     async def test_login_workos_with_return_url(
         self,
         mock_workos: MagicMock,
@@ -117,7 +117,7 @@ class TestLoginWorkOS:
 class TestLoginWorkOSMobile:
     """GET /api/v1/oauth/login/workos/mobile"""
 
-    @patch("app.api.v1.endpoints.oauth.workos")
+    @patch("app.api.v1.endpoints.oauth._workos_client", create=True)
     @patch("app.api.v1.endpoints.oauth._store_mobile_redirect", new_callable=AsyncMock)
     async def test_login_mobile_returns_url(
         self,
@@ -144,7 +144,7 @@ class TestWorkOSMobileCallback:
     """GET /api/v1/oauth/workos/mobile/callback"""
 
     @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
-    @patch("app.api.v1.endpoints.oauth.workos")
+    @patch("app.api.v1.endpoints.oauth._workos_client", create=True)
     @patch(
         "app.api.v1.endpoints.oauth._get_and_delete_mobile_redirect",
         new_callable=AsyncMock,
@@ -184,7 +184,7 @@ class TestWorkOSMobileCallback:
         assert "error=missing_code" in response.headers["location"]
 
     @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
-    @patch("app.api.v1.endpoints.oauth.workos")
+    @patch("app.api.v1.endpoints.oauth._workos_client", create=True)
     @patch(
         "app.api.v1.endpoints.oauth._get_and_delete_mobile_redirect",
         new_callable=AsyncMock,
@@ -214,7 +214,7 @@ class TestWorkOSMobileCallback:
 class TestLoginWorkOSDesktop:
     """GET /api/v1/oauth/login/workos/desktop"""
 
-    @patch("app.api.v1.endpoints.oauth.workos")
+    @patch("app.api.v1.endpoints.oauth._workos_client", create=True)
     async def test_login_desktop_redirect(
         self,
         mock_workos: MagicMock,
@@ -236,7 +236,7 @@ class TestWorkOSDesktopCallback:
     """GET /api/v1/oauth/workos/desktop/callback"""
 
     @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
-    @patch("app.api.v1.endpoints.oauth.workos")
+    @patch("app.api.v1.endpoints.oauth._workos_client", create=True)
     async def test_desktop_callback_success(
         self,
         mock_workos: MagicMock,
@@ -261,7 +261,7 @@ class TestWorkOSDesktopCallback:
         assert "error=missing_code" in response.headers["location"]
 
     @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
-    @patch("app.api.v1.endpoints.oauth.workos")
+    @patch("app.api.v1.endpoints.oauth._workos_client", create=True)
     async def test_desktop_callback_exception(
         self,
         mock_workos: MagicMock,
@@ -286,7 +286,7 @@ class TestWorkOSCallback:
     """GET /api/v1/oauth/workos/callback"""
 
     @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
-    @patch("app.api.v1.endpoints.oauth.workos")
+    @patch("app.api.v1.endpoints.oauth._workos_client", create=True)
     @patch("app.api.v1.endpoints.oauth.redis_cache")
     async def test_web_callback_success(
         self,
@@ -316,7 +316,7 @@ class TestWorkOSCallback:
         assert "error=missing_code" in response.headers["location"]
 
     @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
-    @patch("app.api.v1.endpoints.oauth.workos")
+    @patch("app.api.v1.endpoints.oauth._workos_client", create=True)
     @patch("app.api.v1.endpoints.oauth.redis_cache")
     async def test_web_callback_with_return_url(
         self,
@@ -337,7 +337,7 @@ class TestWorkOSCallback:
         assert "/settings" in response.headers["location"]
 
     @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
-    @patch("app.api.v1.endpoints.oauth.workos")
+    @patch("app.api.v1.endpoints.oauth._workos_client", create=True)
     @patch("app.api.v1.endpoints.oauth.redis_cache")
     async def test_web_callback_exception(
         self,

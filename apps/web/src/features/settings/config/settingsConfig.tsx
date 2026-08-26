@@ -13,13 +13,18 @@ import {
   VoiceIdIcon,
   WhatsappIcon,
 } from "@icons";
+import Image from "next/image";
+import type { ReactNode } from "react";
 import { PostageStampIcon } from "@/components/shared/icons";
+import { providerFaviconUrl } from "@/features/settings/api/providersApi";
 
 export interface SettingsMenuItem {
   key: string;
   label: string;
   // Icons are SVG components — accept standard SVG props
   icon?: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  /** Pre-rendered brand mark for entries without an @icons glyph (e.g. favicons). */
+  iconElement?: ReactNode;
   href?: string;
   action?: () => void;
   color?: "danger" | "default";
@@ -45,6 +50,21 @@ export const settingsPageItems: SettingsMenuItem[] = [
     label: "Linked Accounts",
     icon: Link04Icon,
     href: "/settings/linked-accounts",
+  },
+  {
+    key: "providers",
+    label: "AI Providers",
+    iconElement: (
+      <Image
+        src={providerFaviconUrl("opencode.ai")}
+        alt=""
+        width={18}
+        height={18}
+        className="mr-1 rounded-[4px] object-contain"
+        unoptimized
+      />
+    ),
+    href: "/settings/providers",
   },
   {
     key: "notifications",
@@ -112,6 +132,12 @@ export const settingsPageItems: SettingsMenuItem[] = [
 
 /** Settings sections that only make sense inside the desktop app. */
 export const DESKTOP_ONLY_SETTINGS_KEYS = new Set(["desktop"]);
+
+/**
+ * Settings sections that only make sense when the instance bills — hidden
+ * from navigation and redirected away on self-host (billing_enabled=false).
+ */
+export const BILLING_ONLY_SETTINGS_KEYS = new Set(["subscription", "usage"]);
 
 export const socialMediaItems: SettingsMenuItem[] = [
   {

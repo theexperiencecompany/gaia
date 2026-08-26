@@ -51,6 +51,7 @@ export class CLIStore extends EventEmitter {
   private emitTimer: ReturnType<typeof setTimeout> | null = null;
   private emitPending = false;
   private readonly autoResolveInputs: Map<string, unknown> = new Map();
+  private answerResolvers: Array<(id: string, meta?: unknown) => unknown> = [];
 
   /**
    * Mark an input request id as auto-resolved instead of blocking on a UI
@@ -59,6 +60,19 @@ export class CLIStore extends EventEmitter {
    */
   setAutoResolve(id: string, value: unknown = "exit"): void {
     this.autoResolveInputs.set(id, value);
+  }
+
+  /**
+   * Register a values layer consulted when an input request would otherwise
+   * block on a UI prompt. Resolvers run in registration order (first
+   * non-undefined answer wins); returning undefined passes control to the
+   * next resolver, then to the interactive prompt.
+   *
+   * Used by `gaia up` to resolve prompt answers from CLI flags → saved
+   * config → infrastructure defaults BEFORE any waitForInput blocks.
+   */
+  pushAnswerResolver(resolve: (id: string, meta?: unknown) => unknown): void {
+    this.answerResolvers.push(resolve);
   }
 
   /**
@@ -157,6 +171,14 @@ export class CLIStore extends EventEmitter {
       this.state.inputRequest = null;
       this.emitNow();
       return Promise.resolve(this.autoResolveInputs.get(id));
+    }
+    for (const resolve of this.answerResolvers) {
+      const value = resolve(id, meta);
+      if (value !== undefined) {
+        this.state.inputRequest = null;
+        this.emitNow();
+        return Promise.resolve(value);
+      }
     }
     this.state.inputRequest = { id, meta };
     this.emitNow();

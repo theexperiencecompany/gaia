@@ -14,6 +14,7 @@ from enum import Enum
 from typing import Any
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
+from app.config.settings import settings
 from app.constants.platform_links import IMESSAGE_PENDING_REGISTRATION_TTL
 from app.db.repositories.pending_platform_registrations import (
     pending_platform_registration_repository,
@@ -184,6 +185,9 @@ async def platform_requires_upgrade(user_id: str, platform: str) -> bool:
 
 async def require_platform_plan(user_id: str, platform: str) -> None:
     """Raise the standard 429 upsell when a free user tries to link a paid-only platform."""
+    if not settings.billing_enabled:
+        # No billing ⇒ premium platforms are linkable by everyone.
+        return
     if await platform_requires_upgrade(user_id, platform):
         raise RateLimitExceededException(
             feature=f"{platform}_linking",

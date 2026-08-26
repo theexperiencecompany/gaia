@@ -67,11 +67,22 @@ class DodoPaymentService:
                     environment=environment,
                 )
         except Exception as e:
-            log.error(
-                f"{LogTag.PAYMENT} Failed to instantiate dodo payments",
-                error=str(e),
-                error_type=type(e).__name__,
-            )
+            # Under ENV=selfhost Dodo is intentionally absent (billing is not a
+            # self-host concept; the Free plan auto-seeds) — expected state, so
+            # it logs as info rather than an alarming startup ERROR. Every other
+            # environment treats the failure as the real problem it is.
+            if not settings.billing_enabled:
+                log.info(
+                    f"{LogTag.PAYMENT} Dodo payments not configured — "
+                    "billing disabled on self-host",
+                    error=str(e),
+                )
+            else:
+                log.error(
+                    f"{LogTag.PAYMENT} Failed to instantiate dodo payments",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
 
     async def get_plans(self, active_only: bool = True) -> list[PlanResponse]:
         """Get subscription plans with caching."""

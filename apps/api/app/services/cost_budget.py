@@ -35,6 +35,7 @@ from app.config.rate_limits import (
     get_reset_time,
     get_time_window_key,
 )
+from app.config.settings import settings
 from app.constants.llm import (
     BUDGET_WRAPUP_REMAINING_FRACTION,
     DAILY_BUDGET_TTL_SECONDS,
@@ -282,6 +283,12 @@ async def get_budget_stop_reason(
     (``user_id`` missing) or the plan lookup itself errors (infra hiccup) —
     both warn loudly so the gap stays visible, never silently skipped.
     """
+    if not settings.billing_enabled:
+        # Self-hosted instances record cost but never wall a run (billing is
+        # disabled there) — and no wrap-up notice either, since there is no
+        # allowance to run out of.
+        return BudgetCheck(None, None, None)
+
     if user_id is None:
         log.warning(
             f"{LogTag.AGENT} Budget check skipped — no user_id in configurable "

@@ -206,6 +206,19 @@ class TestTavilyProvider:
             mock_settings.TAVILY_API_KEY = ""
             assert TavilyProvider().is_configured() is False
 
+    def test_is_configured_true_via_runtime_credential_snapshot(self) -> None:
+        """Env key absent but a Settings-saved credential exists → configured."""
+        from app.utils.search.providers.tavily import TavilyProvider
+
+        provider = TavilyProvider()
+        with (
+            patch("app.utils.search.providers.tavily.settings") as mock_settings,
+            patch("app.utils.search.providers.tavily.runtime_provider_config") as mock_runtime,
+        ):
+            mock_settings.TAVILY_API_KEY = ""
+            mock_runtime.return_value = {"api_key": "stored-key"}  # pragma: allowlist secret
+            assert provider.is_configured() is True
+
     async def test_search_maps_payload_to_search_response(self) -> None:
         from app.utils.search.providers.tavily import TavilyProvider
 
@@ -230,9 +243,15 @@ class TestTavilyProvider:
             ) as mock_thread,
             patch("app.utils.search.providers.tavily.settings") as mock_settings,
         ):
-            mock_settings.TAVILY_API_KEY = "tvly-key"  # pragma: allowlist secret
-            mock_thread.return_value = payload
-            result = await provider.search("test query", 5)
+            mock_settings.TAVILY_API_KEY = ""
+            # The active key now resolves through the credential service
+            # (store entry → env fallback); pin that seam, not Mongo.
+            with patch.object(
+                TavilyProvider, "_active_api_key", new_callable=AsyncMock
+            ) as mock_key:
+                mock_key.return_value = "tvly-key"  # pragma: allowlist secret
+                mock_thread.return_value = payload
+                result = await provider.search("test query", 5)
 
         assert result.provider == "tavily"
         assert result.answer == "The answer"
@@ -260,8 +279,12 @@ class TestTavilyProvider:
             patch("app.utils.search.providers.tavily.settings") as mock_settings,
         ):
             mock_settings.TAVILY_API_KEY = "tvly-key"  # pragma: allowlist secret
-            mock_thread.return_value = payload
-            result = await TavilyProvider().search("q", 3)
+            with patch.object(
+                TavilyProvider, "_active_api_key", new_callable=AsyncMock
+            ) as mock_key:
+                mock_key.return_value = "tvly-key"  # pragma: allowlist secret
+                mock_thread.return_value = payload
+                result = await TavilyProvider().search("q", 3)
 
         assert len(result.results) == 1
         assert result.results[0].url == "https://good.com"

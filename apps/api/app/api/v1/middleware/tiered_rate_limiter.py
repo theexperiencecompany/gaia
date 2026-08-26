@@ -154,6 +154,11 @@ class TieredRateLimiter:
         feature_key: str,
         user_plan: PlanType,
     ) -> dict[str, UsageInfo]:
+        # Self-hosted instances track usage but never enforce it (billing is
+        # disabled): every raise below is skipped while counters, snapshots and
+        # activity rollups continue exactly as on SaaS.
+        enforce = settings.ENV != "selfhost"
+
         current_limits = get_limits_for_plan(feature_key, user_plan)
         usage_info = {}
 
@@ -161,7 +166,7 @@ class TieredRateLimiter:
         # access to the feature — the per-period loop below skips 0 limits, so
         # without this check a fully-zeroed plan would be unlimited instead of
         # blocked. plan_required is set when a paid plan does have access.
-        if current_limits.day <= 0 and current_limits.month <= 0:
+        if enforce and current_limits.day <= 0 and current_limits.month <= 0:
             paid_limits = get_feature_limits(feature_key).pro
             paid_has_access = paid_limits.day > 0 or paid_limits.month > 0
             plan_required = "pro" if (user_plan == PlanType.FREE and paid_has_access) else None
@@ -183,7 +188,7 @@ class TieredRateLimiter:
                 used=current_usage, limit=limit, reset_time=reset_time
             )
 
-            if current_usage >= limit:
+            if enforce and current_usage >= limit:
                 free_limits = get_limits_for_plan(feature_key, PlanType.FREE)
                 is_plan_gated = getattr(free_limits, period.value) == 0
                 plan_required = "pro" if (user_plan == PlanType.FREE and is_plan_gated) else None
@@ -220,7 +225,7 @@ class TieredRateLimiter:
                         current_val = int(current_val) if current_val else 0
 
                         # Double-check limit hasn't been exceeded by concurrent requests
-                        if current_val >= limit:
+                        if enforce and current_val >= limit:
                             await pipe.unwatch()
                             free_limits = get_limits_for_plan(feature_key, PlanType.FREE)
                             is_plan_gated = getattr(free_limits, period.value) == 0

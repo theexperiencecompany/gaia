@@ -21,6 +21,9 @@ from e2b import AsyncSandbox
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
+from app.services.providers.provider_credentials_service import (
+    resolve as resolve_e2b_config,
+)
 from app.services.sandbox.artifact_watcher import ArtifactWatcher
 from app.services.sandbox.shard_router import shard_for
 from app.services.storage.metrics import set_sandbox_pool_size
@@ -124,25 +127,30 @@ _pool_singleton: SandboxPool | None = None
 
 @lazy_provider(
     name="e2b_sandbox_pool",
-    required_keys=[settings.E2B_API_KEY],
+    required_keys=[],
     strategy=MissingKeyStrategy.WARN,
-    warning_message=(
-        "E2B_API_KEY is not configured. Coding tools (bash/read/write/edit) "
-        "will return errors until it is set."
-    ),
 )
-def init_sandbox_pool() -> SandboxPool:
+async def init_sandbox_pool() -> SandboxPool:
     """Lazy-provider factory; also memoizes the module-level singleton.
 
-    Registered with `@lazy_provider` purely to expose the E2B_API_KEY
-    dependency to provider_registration. The `@lazy_provider` decorator
-    wraps the return value, so callers should use `get_sandbox_pool()` to
-    get the unwrapped `SandboxPool` instance.
+    Registered with `@lazy_provider` purely to surface E2B configuration
+    problems during provider warmup; callers use `get_sandbox_pool()` to get
+    the unwrapped `SandboxPool` instance. The key resolves store-first with an
+    env fallback, so this warning reflects what a sandbox acquisition will
+    actually find — an import-time check could not (a stored credential only
+    becomes visible once Mongo is reachable).
     """
     global _pool_singleton
     if _pool_singleton is None:
         log.info(f"{LogTag.SANDBOX} initializing pool")
         _pool_singleton = SandboxPool()
+    config = await resolve_e2b_config("e2b")
+    if config is None:
+        log.warning(
+            "E2B is not configured (no stored credential and no E2B_API_KEY): "
+            "hosted sandboxes are unavailable. On self-host, coding tools "
+            "fall back to the local Docker backend."
+        )
     return _pool_singleton
 
 

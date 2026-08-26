@@ -1,0 +1,13 @@
+# False positive: generic-api-key reads build_user_context kwargs
+# (auth_provider=auth_provider, impersonated=True) as key=value credentials.
+# Fixed going forward by splitting the call one-kwarg-per-line (the lone
+# identifier falls below the rule's entropy bar); this entry silences the
+# original single-line commit already on the branch.
+fa4d4185200a547d33ff265635d244ec70a349fc:apps/api/app/api/v1/middleware/auth.py:generic-api-key:276
+apps/api/tests/unit/db/repositories/test_bot_sessions.py:generic-api-key
+
+# Pre-existing test fixture — high-entropy session keys in bot session claim tests
+apps/api/tests/unit/db/repositories/test_bot_sessions.py:generic-api-key
+apps/api/tests/contracts/test_bot_sessions_repository.py:generic-api-key
+/Users/aryan/Projects/gaia.feat-self-host-experience/2e5d60be1c046230d32accb99ac7ea7a85928fa0pps/api/tests/unit/db/repositories/test_bot_sessions.py:generic-api-key
+bc9015e37e3dc1c76c463c1ef30a6308bae58cd8:.secrets.baseline:generic-api-key

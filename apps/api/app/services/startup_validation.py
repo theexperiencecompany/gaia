@@ -2,8 +2,10 @@
 Startup validation for GAIA.
 """
 
+from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.db.repositories.plans import plan_repository
+from app.services.bootstrap.plan_seeder import seed_free_plan_if_missing
 from shared.py.wide_events import log
 
 SEED_PLANS_COMMAND = (
@@ -37,9 +39,22 @@ async def validate_startup_requirements() -> None:
     log.set(component="startup_validation", phase="startup")
     log.info("Starting startup scripts validation...")
 
-    if await is_payment_setup():
+    payment_ok = await is_payment_setup()
+    if not payment_ok and not settings.DODO_PAYMENTS_API_KEY:
+        # No payment provider configured (selfhost/dev): the Dodo setup script
+        # cannot run at all, so provision the Free row instead of demanding it.
+        # With Dodo configured this never fires — a Dodo instance missing its
+        # plans is a real misconfiguration and keeps the remedy below.
+        payment_ok = await seed_free_plan_if_missing()
+        if not payment_ok:
+            # The seeder returns False only when plans already exist (another
+            # process seeded between the two counts), so booting is correct.
+            payment_ok = await is_payment_setup()
+    if payment_ok:
         return
 
+    # Only a Dodo-configured instance reaches the raise: without a key, the
+    # seeder above either provisioned the Free row or confirmed plans exist.
     remedies = [f"Payment plans not set up — run: {SEED_PLANS_COMMAND}"]
 
     log.error("Setup incomplete!")

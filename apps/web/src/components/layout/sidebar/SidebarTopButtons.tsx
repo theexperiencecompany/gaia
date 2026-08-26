@@ -21,6 +21,7 @@ import {
   usePricing,
   useUserSubscriptionStatus,
 } from "@/features/pricing/hooks/usePricing";
+import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
 import { usePathname } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { usePricingModalStore } from "@/stores/pricingModalStore";
@@ -32,6 +33,9 @@ export default function SidebarTopButtons() {
   const { data: subscriptionStatus } = useUserSubscriptionStatus();
   const { plans } = usePricing();
   const openPricingModal = usePricingModalStore((s) => s.openModal);
+  const { data: setupStatus } = useSetupStatus();
+  // Self-host instances have no billing — the promo makes no sense there.
+  const billingHidden = setupStatus?.billing_enabled === false;
   const { notifications } = useNotifications({
     status: NotificationStatus.DELIVERED,
     limit: 50,
@@ -100,8 +104,9 @@ export default function SidebarTopButtons() {
 
   return (
     <div className="flex flex-col">
-      {/* Only show Upgrade to Pro button when user doesn't have an active subscription */}
-      {!subscriptionStatus?.is_subscribed && (
+      {/* Only show Upgrade to Pro button when billing exists and the user
+          doesn't have an active subscription */}
+      {!billingHidden && !subscriptionStatus?.is_subscribed && (
         <SidebarPromo price={price} onUpgrade={openPricingModal} />
       )}
 

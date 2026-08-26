@@ -1,63 +1,75 @@
 ---
 title: "CLI Setup"
-description: "Set up GAIA using the interactive CLI wizard, which handles repository cloning, environment configuration, and service management."
+description: "Set up and manage a self-hosted GAIA instance from the terminal with gaia up, gaia doctor, and service management commands."
 icon: "terminal"
 ---
 
-## CLI-Based Setup
-
-The GAIA CLI is the primary way to set up GAIA. It handles repository setup, environment configuration, and service management through an interactive wizard.
+The GAIA CLI is the primary way to set up self-hosted GAIA. One command starts the whole stack and hands you off to the browser to finish setup — no hand-editing environment files.
 
 <Info>
   For installation instructions, see [CLI Installation](/cli/installation). For
   the full command reference, see [CLI Commands](/cli/commands).
 </Info>
 
-## Quick Start
+## Install
 
 <Snippet file="cli-install.mdx" />
 
-```bash
-# Run the setup wizard
-gaia init
+Or with the standalone installer (no Node.js needed):
 
-# Clone a specific branch
-gaia init --branch master
+```bash
+curl -fsSL https://heygaia.io/install.sh | sh
 ```
 
-## What the Wizard Does
+## Quick Start
 
-The `gaia init` command walks you through:
+```bash
+gaia up
+```
+
+That's the whole setup. When the command finishes it prints `http://localhost:3000` — open it, create your admin account, paste an AI provider key, and start chatting. The browser-side steps are covered in [Self-hosting overview](/self-hosting/overview).
+
+## What `gaia up` Does
 
 <Steps>
-  <Step title="Prerequisites Check">
-    Verifies Git and Docker are installed, then checks for port conflicts and suggests alternatives. Mise is only checked for developer mode.
+  <Step title="Prerequisite check">
+    Verifies Docker is installed and running. If Docker is missing, the CLI offers to install it for you instead of failing.
   </Step>
 
-<Step title="Repository Setup">
-  Clones the GAIA repository to your chosen directory with progress tracking.
-</Step>
+  <Step title="Repository setup">
+    Reuses an existing GAIA checkout if you have one; otherwise clones the repository (default: `~/gaia`).
+  </Step>
 
-<Step title="Tool Installation (Developer Mode)">
-  Installs required development tools (Node.js, Python, uv, Nx) via Mise.
-</Step>
+  <Step title="Environment configuration">
+    Writes minimal `.env` files with self-host defaults: `ENV=selfhost` and `AUTH_MODE=local`. The three required machine secrets (`AGENT_SECRET`, `BOT_SESSION_TOKEN_SECRET`, `EMAIL_UNSUBSCRIBE_SECRET`) are generated automatically — you never see or type them. Port conflicts are resolved by picking free ports.
+  </Step>
 
-<Step title="Environment Configuration">
-  Choose between **Self-Host (Docker)** or **Developer Mode (Local)**, then
-  configure environment variables either: - **Manually**: Interactive prompts
-  for each variable with descriptions and defaults - **Via Infisical**: Enter
-  your Infisical credentials for secret management
-</Step>
+  <Step title="Start the stack">
+    Pulls the published images (falling back to a local build if needed) and starts every service via Compose.
+  </Step>
 
-  <Step title="Project Setup">
-    - Self-Host mode: Builds/pulls and starts Docker services
-    - Developer mode: Runs `mise setup` to install dependencies and initialize services
+  <Step title="Hand-off">
+    Prints the web URL so you can finish setup in the browser at http://localhost:3000/setup.
   </Step>
 </Steps>
 
+## Command Reference
+
+| Command        | What it does                                                        |
+| -------------- | ------------------------------------------------------------------- |
+| `gaia up`      | One-command start: checks prerequisites, configures, starts         |
+| `gaia doctor`  | Diagnoses a broken stack and prints a named fix per problem          |
+| `gaia init`    | Full interactive wizard (clone, configure, start)                    |
+| `gaia setup`   | Re-configure an existing GAIA repository                             |
+| `gaia start`   | Start services (add `--pull --build` after updating)                 |
+| `gaia stop`    | Stop services                                                        |
+| `gaia status`  | Show which services are running                                      |
+| `gaia logs`    | Stream logs                                                          |
+| `gaia dev`     | Run in development mode (for contributors — see [Development setup](/developers/development-setup)) |
+
 ## Already Have the Repo?
 
-If you've already cloned GAIA and just need to configure it, use `gaia setup` instead:
+If you've already cloned GAIA, run the management commands from inside the repository, or reconfigure it directly:
 
 ```bash
 cd /path/to/gaia
@@ -66,28 +78,21 @@ gaia setup
 
 This skips cloning and goes straight to environment configuration and project setup.
 
-## Running GAIA After Setup
-
-```bash
-# Self-host mode
-gaia start
-
-# Developer mode (Nx TUI)
-gaia dev
-gaia dev full
-
-# Utilities
-gaia logs
-gaia status
-gaia stop
-gaia setup
-```
-
 ## Monitoring Logs
 
 Use `gaia logs` to stream logs for currently running services.
 
 In developer mode, `gaia dev` runs in the foreground and shows Nx TUI output in the same terminal. Keep that terminal open, and use another terminal for `gaia logs` when needed.
+
+## Diagnosing Problems
+
+When something isn't working, run:
+
+```bash
+gaia doctor
+```
+
+It walks the whole stack in order — Docker daemon, containers, API health endpoint, setup status (models seeded, plans seeded, provider configured, admin account created), web reachability, disk headroom — and prints what's broken with a specific fix for each problem.
 
 ## Port Conflict Handling
 

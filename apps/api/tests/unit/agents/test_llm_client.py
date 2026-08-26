@@ -13,7 +13,7 @@ Covers:
 
 import asyncio
 from collections.abc import Iterator
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
@@ -87,6 +87,14 @@ def _make_llm_provider(name: str) -> dict[str, Any]:
 
 
 class TestGetAvailableProviders:
+    # Availability now follows the runtime config snapshot (credential store →
+    # env fallback); these tests pin the REGISTRY half of the lookup, so they
+    # seed configs for every provider whose availability isn't under test.
+    _CONFIGURED: ClassVar[dict[str, dict[str, str | None]]] = {
+        "gemini": {"api_key": "g-key", "base_url": None, "model": None, "preset": None},
+        "openrouter": {"api_key": "sk-or", "base_url": None, "model": None, "preset": None},
+    }
+
     @patch("app.agents.llm.client.providers")
     def test_all_providers_available(self, mock_providers: MagicMock) -> None:
         gemini_inst = _make_fake_provider("gemini")
@@ -100,7 +108,8 @@ class TestGetAvailableProviders:
 
         mock_providers.get.side_effect = _get
 
-        result = _get_available_providers()
+        with patch.dict(client_module._runtime_configs, self._CONFIGURED):
+            result = _get_available_providers()
 
         assert "gemini" in result
         assert "openrouter" in result
@@ -125,13 +134,15 @@ class TestGetAvailableProviders:
 
         mock_providers.get.side_effect = _get
 
-        result = _get_available_providers()
+        # Both providers are configured; only gemini has a registry entry.
+        with patch.dict(client_module._runtime_configs, self._CONFIGURED):
+            result = _get_available_providers()
 
         assert list(result.keys()) == ["gemini"]
 
     def test_unregistered_provider_is_skipped_not_fatal(self) -> None:
-        """custom_llm is registered only when ENV=development, so in production
-        the registry has no such key. Against the REAL registry (which raises
+        """custom_llm is not registered under SaaS production, so the registry
+        has no such key. Against the REAL registry (which raises
         KeyError on an unregistered name, unlike the mock the sibling tests use)
         that killed init_llm, and with it every agent graph.
         """
@@ -141,7 +152,19 @@ class TestGetAvailableProviders:
         registry.register("gemini_llm", lambda: gemini_inst)
         registry.register("openrouter_llm", lambda: openrouter_inst)
 
-        with patch("app.agents.llm.client.providers", registry):
+        custom_configured = {
+            **self._CONFIGURED,
+            "custom": {
+                "api_key": "sk-custom",
+                "base_url": "http://localhost:1",
+                "model": "test/model",
+                "preset": None,
+            },
+        }
+        with (
+            patch("app.agents.llm.client.providers", registry),
+            patch.dict(client_module._runtime_configs, custom_configured),
+        ):
             result = _get_available_providers()
 
         assert result == {"gemini": gemini_inst, "openrouter": openrouter_inst}
@@ -475,6 +498,9 @@ class TestGetDefaultLlm:
         _build_default_llm.cache_clear()
         yield
         _build_default_llm.cache_clear()
+        # Tests below seed the runtime-config snapshot directly; drop it so a
+        # seeded key can't leak into other tests.
+        client_module._runtime_configs.pop("openrouter", None)
 
     @patch("app.agents.llm.client.ChatOpenRouter")
     @patch("app.agents.llm.client.settings")
@@ -482,7 +508,14 @@ class TestGetDefaultLlm:
         self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
     ) -> None:
         mock_settings.GAIA_SIM_MODE = False
-        mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
+        # Config arrives through the runtime snapshot (what the credential
+        # service resolves); client.settings is patched only for sim mode.
+        client_module._runtime_configs["openrouter"] = {
+            "api_key": "or-key",  # pragma: allowlist secret
+            "base_url": None,
+            "model": None,
+            "preset": None,
+        }
         mock_chat_openrouter.return_value = MagicMock()
 
         assert get_default_llm() is mock_chat_openrouter.return_value
@@ -504,7 +537,12 @@ class TestGetDefaultLlm:
         self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
     ) -> None:
         mock_settings.GAIA_SIM_MODE = False
-        mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
+        client_module._runtime_configs["openrouter"] = {
+            "api_key": "or-key",  # pragma: allowlist secret
+            "base_url": None,
+            "model": None,
+            "preset": None,
+        }
         mock_chat_openrouter.side_effect = lambda **_: MagicMock()
 
         assert get_default_llm() is get_default_llm()
@@ -1275,15 +1313,15 @@ class TestRegisterLlmProviders:
 
 class TestConstants:
     def test_provider_models_keys(self) -> None:
-        assert set(PROVIDER_MODELS.keys()) == {"gemini", "openrouter", "custom"}
+        assert set(PROVIDER_MODELS.keys()) == {"gemini", "openrouter", "ollama", "custom"}
 
     def test_provider_priority_values(self) -> None:
-        assert set(PROVIDER_PRIORITY.values()) == {"gemini", "openrouter", "custom"}
+        assert set(PROVIDER_PRIORITY.values()) == {"gemini", "openrouter", "ollama", "custom"}
 
     def test_provider_priority_is_ordered(self) -> None:
         sorted_keys = sorted(PROVIDER_PRIORITY.keys())
         providers_in_order = [PROVIDER_PRIORITY[k] for k in sorted_keys]
-        assert providers_in_order == ["openrouter", "gemini", "custom"]
+        assert providers_in_order == ["openrouter", "gemini", "ollama", "custom"]
 
     def test_retryable_exceptions_contains_expected_types(self) -> None:
         from google.genai.errors import ServerError

@@ -11,6 +11,12 @@ export interface GaiaConfig {
   setupComplete: boolean;
   setupMethod: "manual" | "infisical";
   repoPath: string;
+  /**
+   * Saved non-secret answers from previous runs (ports, paths). Provider
+   * keys must NEVER be persisted here — they come from flags or the web
+   * wizard only.
+   */
+  values?: Record<string, string>;
   createdAt: string;
   updatedAt: string;
 }

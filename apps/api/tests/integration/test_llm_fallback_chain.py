@@ -30,6 +30,7 @@ from app.agents.llm.client import (
     init_llm,
     register_llm_providers,
 )
+from app.agents.llm.types import LLMProviderName
 from app.config.model_pricing import (
     DEFAULT_PRICING,
     ModelPricing,
@@ -315,7 +316,17 @@ class TestGetAvailableProviders:
         mock_openrouter_llm = _make_mock_llm("openrouter_llm")
         registry = self._build_registry({"openrouter_llm": mock_openrouter_llm})
 
-        with patch("app.agents.llm.client.providers", registry):
+        # Availability is decided by the runtime credential snapshot now
+        # (store entry → env fallback), not by import-time required_keys.
+        def fake_config(name):
+            if name is LLMProviderName.OPENROUTER:
+                return {"api_key": "test-key"}
+            return None
+
+        with (
+            patch("app.agents.llm.client.providers", registry),
+            patch("app.agents.llm.client._provider_config", side_effect=fake_config),
+        ):
             available = _get_available_providers()
 
         assert "openrouter" in available

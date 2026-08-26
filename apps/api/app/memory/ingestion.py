@@ -12,6 +12,7 @@ from datetime import UTC, date as date_type, datetime, timedelta
 import time
 import uuid
 
+from app.config.settings import settings
 from app.constants.memory import (
     AGENDA_CATEGORY_PATH,
     AGENDA_ITEM_TTL_DAYS,
@@ -91,6 +92,10 @@ async def _free_cap_remaining(user_id: str, growth: int) -> int | None:
     resolving here keeps one canonical check instead of threading plan_type
     through every path.
     """
+    if not settings.billing_enabled:
+        # No billing ⇒ no plan tiers ⇒ memory is uncapped on self-hosted
+        # instances.
+        return None
     try:
         plan = await payment_service.get_cached_plan_type(user_id)
     except Exception as e:

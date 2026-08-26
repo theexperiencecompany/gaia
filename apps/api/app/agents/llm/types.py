@@ -17,6 +17,7 @@ class LLMProviderName(StrEnum):
     GEMINI = "gemini"
     OPENROUTER = "openrouter"
     CUSTOM = "custom"
+    OLLAMA = "ollama"
 
 
 class DevModelOption(TypedDict):
@@ -45,6 +46,7 @@ class LLMProviderKey(StrEnum):
     GEMINI = "gemini_llm"
     OPENROUTER = "openrouter_llm"
     CUSTOM = "custom_llm"
+    OLLAMA = "ollama_llm"
 
 
 # configurable_fields() returns a RunnableConfigurableFields, not a BaseChatModel,

@@ -41,6 +41,30 @@ async def resolve_dev_bypass_user(
     return target_email, await user_repository.get_by_email(target_email)
 
 
+def with_local_onboarding_completed(onboarding: Mapping[str, Any] | None) -> dict[str, Any]:
+    """The effective onboarding subdoc for every reader of stored onboarding state.
+
+    AUTH_MODE=local (self-host) has no hosted onboarding pipeline (Gmail scan,
+    name capture…), so a stored completion value can never mean anything there:
+    BOTH surfaces that read the subdoc — ``build_user_context``
+    (``request.state.user``, which gates chat clients on ``onboarding.completed``)
+    and the status endpoint (``onboarding_service.get_user_onboarding_status``) —
+    report ``completed=True`` regardless of the stored value. Force, not default:
+    honoring a stored False would gate a local admin out of chat forever. The
+    phase is defaulted too, but never clobbers a real stored one.
+
+    AUTH_MODE=workos deployments are returned untouched (a defensive copy).
+    Synthesis is read-only per call — nothing is written back to Mongo.
+    """
+    merged = dict(onboarding or {})
+    if settings.AUTH_MODE != "local":
+        return merged
+    merged["completed"] = True
+    if not merged.get("phase"):
+        merged["phase"] = "completed"
+    return merged
+
+
 def build_user_context(
     user_data: dict[str, Any], *, auth_provider: str, **extra: bool
 ) -> AuthenticatedUser:
@@ -64,6 +88,10 @@ def build_user_context(
         **extra,
     }
     context.pop("_id", None)
+    # Self-host has no hosted onboarding pipeline: report completed regardless
+    # of stored state (see with_local_onboarding_completed — the ONE synthesis
+    # policy, shared with onboarding_service so the surfaces cannot drift).
+    context["onboarding"] = with_local_onboarding_completed(context.get("onboarding"))
     # Correct by construction: assembled right above from an already-validated
     # UserDocument plus the auth-path flags. cast(), not isinstance() (item 12) —
     # the spread of `user_data` is what mypy can't follow, not the shape itself.

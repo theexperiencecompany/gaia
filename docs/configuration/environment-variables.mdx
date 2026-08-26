@@ -8,11 +8,12 @@ icon: "key"
 
 GAIA is several apps (API, web, bots) talking to several services (PostgreSQL, MongoDB, Redis, LLM providers, OAuth integrations). Environment variables are how each app finds those services and authenticates with them. If you're self-hosting or developing locally, this page is the reference for what goes in each `.env` file and what happens when something is missing.
 
-You rarely need all of them: a minimal local setup needs only the database URLs and auth keys shown in Manual Setup below. Everything else enables a specific feature, skip a key and that feature is disabled, but the app still runs.
+You rarely need all of them: a minimal setup needs only the database URLs plus auth configuration (and self-host instances get even that generated for them). Everything else enables a specific feature, skip a key and that feature is disabled, but the app still runs.
 
-GAIA uses Pydantic settings to load environment variables with validation. Settings are defined in `apps/api/app/config/settings.py` with two modes:
+GAIA uses Pydantic settings to load environment variables with validation. Settings are defined in `apps/api/app/config/settings.py` with three modes:
 
 - **Development**: Most keys optional, missing ones just disable features
+- **Self-host** (`ENV=selfhost`): Only infra connections and machine-local secrets are required; user-facing provider keys are configured at runtime instead
 - **Production**: All integration keys required for full functionality
 
 <Note>
@@ -20,7 +21,7 @@ GAIA uses Pydantic settings to load environment variables with validation. Setti
 </Note>
 
 <Tip>
-  **Automated Setup**: The [GAIA CLI](/cli/installation) automatically discovers required environment variables from your codebase using Python AST parsing (for API) and source analysis (for Web). Run `gaia init` to skip manual configuration.
+  **Automated Setup**: Self-hosting? Run `gaia up` — it writes a complete working configuration (`ENV=selfhost`), generates every required secret, and starts the stack. See [Self-hosting overview](/self-hosting/overview). The [GAIA CLI](/cli/installation) can also discover required variables interactively via `gaia init`.
 </Tip>
 
 ---
@@ -40,10 +41,12 @@ GAIA uses Pydantic settings to load environment variables with validation. Setti
     ENV=development
     MONGO_DB=mongodb://mongo:27017/gaia 
     REDIS_URL=redis://redis:6379
-    WORKOS_API_KEY=your-workos-api-key 
-    WORKOS_CLIENT_ID=your-workos-client-id
-    WORKOS_COOKIE_PASSWORD=your-32-char-random-secret 
+    AUTH_MODE=local
     ```
+    `AUTH_MODE=local` enables email-and-password sign-in with no external auth
+    provider. If you use WorkOS instead (`AUTH_MODE=workos`, the default), set
+    the three WorkOS variables shown in [Authentication & OAuth](#authentication-oauth)
+    instead.
   </Step>
   <Step title="Start development">
     ```bash 
@@ -58,16 +61,43 @@ GAIA uses Pydantic settings to load environment variables with validation. Setti
 
 ### Always Required
 
-These are required in **both** development and production:
+These are required in **every** mode:
 
 | Variable                 | Description                               |
 | ------------------------ | ----------------------------------------- |
-| `ENV`                    | `development` or `production`             |
+| `ENV`                    | `development`, `production`, or `selfhost` |
 | `MONGO_DB`               | MongoDB connection string                 |
 | `REDIS_URL`              | Redis connection string                   |
-| `WORKOS_API_KEY`         | WorkOS API key for authentication         |
-| `WORKOS_CLIENT_ID`       | WorkOS client ID                          |
-| `WORKOS_COOKIE_PASSWORD` | Secret for session cookies (min 32 chars) |
+
+In production and self-host, these are also required:
+
+| Variable                    | Description                                                          |
+| --------------------------- | -------------------------------------------------------------------- |
+| `POSTGRES_URL`              | PostgreSQL connection (optional in development)                      |
+| `RABBITMQ_URL`              | RabbitMQ connection (optional in development)                        |
+| `AGENT_SECRET`              | Voice agent authentication secret                                    |
+| `BOT_SESSION_TOKEN_SECRET`  | Secret for bot session tokens (min 32 chars)                          |
+| `EMAIL_UNSUBSCRIBE_SECRET`  | Secret for signing unsubscribe links                                 |
+
+<Tip>
+  Self-hosting? `gaia up` writes all of the above for you — database URLs come
+  from the Compose stack and the three secrets are generated automatically.
+</Tip>
+
+### Instance & Auth Mode
+
+| Variable           | Default    | Description                                                                                     |
+| ------------------ | ---------- | ----------------------------------------------------------------------------------------------- |
+| `AUTH_MODE`        | `workos`   | `local` (email + password sign-in) or `workos` (AuthKit hosted UI). Self-host uses `local`.      |
+| `INSTANCE_SECRET`  | generated  | Signs local sessions and derives the key that encrypts stored provider credentials. Optional env override — if unset, a random secret is generated on first boot and persisted in the database, surviving container recreation. Set it explicitly for stricter setups. |
+| `OLLAMA_BASE_URL`  | `http://host.docker.internal:11434` | Ollama endpoint as seen by the backend. Inside Docker use `host.docker.internal`; native runs use `localhost`. |
+
+<Note>
+  In self-host mode, AI provider keys (OpenRouter, Gemini, Ollama, OpenCode,
+  Nous Research, Tavily) are configured at runtime in **Settings → AI
+  Providers** rather than via environment variables. The corresponding env
+  vars still work as fallbacks — runtime configuration wins when both exist.
+</Note>
 
 ### Environment & Deployment
 
@@ -97,12 +127,23 @@ These are required in **both** development and production:
 
 | Variable                    | Required  | Description                          |
 | --------------------------- | --------- | ------------------------------------ |
+| `WORKOS_API_KEY`            | Only when `AUTH_MODE=workos` | WorkOS API key for authentication |
+| `WORKOS_CLIENT_ID`          | Only when `AUTH_MODE=workos` | WorkOS client ID                 |
+| `WORKOS_COOKIE_PASSWORD`    | Only when `AUTH_MODE=workos` | Secret for session cookies (min 32 chars) |
 | `GOOGLE_CLIENT_ID`          | Prod only | Google OAuth client ID               |
 | `GOOGLE_CLIENT_SECRET`      | Prod only | Google OAuth client secret           |
 | `DISCORD_OAUTH_CLIENT_ID`   | Optional  | Discord OAuth app client ID          |
 | `DISCORD_OAUTH_CLIENT_SECRET` | Optional | Discord OAuth app client secret     |
 | `SLACK_OAUTH_CLIENT_ID`     | Optional  | Slack OAuth app client ID            |
 | `SLACK_OAUTH_CLIENT_SECRET` | Optional  | Slack OAuth app client secret        |
+
+<Note>
+  `AUTH_MODE` selects the sign-in method: `workos` routes users through
+  WorkOS's AuthKit hosted UI, while `local` enables first-party email +
+  password accounts (the self-host default — the first account created becomes
+  the instance admin and registration closes after it). The three `WORKOS_*`
+  variables are validated and required only when `AUTH_MODE=workos`.
+</Note>
 
 <Note>
   Computed OAuth callback URLs are generated automatically: -
@@ -121,10 +162,20 @@ These are required in **both** development and production:
 
 ### AI & Machine Learning
 
-| Variable         | Description                   |
-| ---------------- | ----------------------------- |
-| `OPENAI_API_KEY` | OpenAI API key for GPT models |
-| `GOOGLE_API_KEY` | Google AI API key for Gemini  |
+<Tip>
+  Self-host: configure these in the app under **Settings → AI Providers** —
+  no env vars needed. The keys below are fallbacks and apply to hosted
+  deployments.
+</Tip>
+
+| Variable             | Description                            |
+| -------------------- | -------------------------------------- |
+| `OPENROUTER_API_KEY` | OpenRouter API key                     |
+| `OPENAI_API_KEY`     | OpenAI API key                         |
+| `GOOGLE_API_KEY`     | Google AI API key for Gemini           |
+| `OLLAMA_BASE_URL`    | Ollama endpoint (see [Instance & Auth Mode](#instance-auth-mode)) |
+
+OpenAI-compatible gateways (OpenCode, Nous Research, or any custom endpoint) are also configured through **Settings → AI Providers**.
 
 ---
 
@@ -195,6 +246,12 @@ optional and have sensible defaults.
 | `DODO_PAYMENTS_API_KEY`        | Dodo Payments API key     |
 | `DODO_WEBHOOK_PAYMENTS_SECRET` | Dodo webhook verification |
 
+<Note>
+  Self-host instances never contact Dodo — no payment keys are needed. The
+  Free plan is provisioned automatically on first boot and billing UI stays
+  hidden.
+</Note>
+
 ---
 
 ### Voice Agent
@@ -237,7 +294,7 @@ Set these in `apps/web/.env`:
 
 ## Full Example
 
-<Accordion title="Complete apps/api/.env example">
+<Accordion title="Complete apps/api/.env example (development, local auth)">
 ```bash
 # Environment
 ENV=development
@@ -253,18 +310,21 @@ CHROMADB_HOST=chromadb
 CHROMADB_PORT=8000
 RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
 
-# Auth (required)
+# Auth — email + password, no external provider needed
 
-WORKOS_API_KEY=sk_test_xxxx
-WORKOS_CLIENT_ID=client_xxxx
-WORKOS_COOKIE_PASSWORD=your-32-character-random-secret
+AUTH_MODE=local
+
+# To use WorkOS instead, set AUTH_MODE=workos and add:
+# WORKOS_API_KEY=sk_test_xxxx
+# WORKOS_CLIENT_ID=client_xxxx
+# WORKOS_COOKIE_PASSWORD=your-32-character-random-secret
 
 # Google OAuth (optional in dev)
 
 GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=GOCSPX-xxxx
 
-# AI (add what you need)
+# AI (add what you need — or configure in Settings → AI Providers)
 
 OPENAI_API_KEY=sk-xxxx
 GOOGLE_API_KEY=AIza-xxxx
@@ -288,11 +348,35 @@ POSTHOG_API_KEY=phc_xxxx
 ```
 </Accordion>
 
+<Accordion title="Minimal apps/api/.env example (self-host)">
+`gaia up` generates this for you — shown here for reference:
+
+```bash
+ENV=selfhost
+AUTH_MODE=local
+
+MONGO_DB=mongodb://mongo:27017/gaia
+REDIS_URL=redis://redis:6379
+POSTGRES_URL=postgresql://postgres:postgres@postgres:5432/langgraph
+CHROMADB_HOST=chromadb
+CHROMADB_PORT=8080
+RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+
+# Generated per machine by gaia up — never commit these anywhere
+AGENT_SECRET=<generated>
+BOT_SESSION_TOKEN_SECRET=<generated>
+EMAIL_UNSUBSCRIBE_SECRET=<generated>
+```
+
+Everything else is optional. AI provider keys are added at runtime in
+**Settings → AI Providers**; Infisical is never contacted.
+</Accordion>
+
 ---
 
 ## CLI Auto-Discovery
 
-The GAIA CLI can automatically discover and configure environment variables:
+For self-hosting, `gaia up` is all you need — it writes a complete working configuration without asking you anything. For finer control over an existing checkout:
 
 ```bash
 # Interactive setup with auto-discovery
@@ -302,9 +386,9 @@ gaia init
 gaia setup
 ```
 
-The CLI auto-discovery process:
+The interactive process:
 
-- **Parses `settings.py`**: Uses Python AST parsing to extract all environment variable definitions
+- **Reads the config schema**: Extracts every environment variable definition with types and defaults
 - **Scans `.env.example`**: Identifies required variables from example files
 - **Prompts for missing values**: Interactive prompts for any undefined variables
 - **Validates configuration**: Ensures all critical variables are properly set

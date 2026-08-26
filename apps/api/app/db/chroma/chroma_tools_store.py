@@ -7,7 +7,6 @@ from typing import Any, NotRequired, Protocol, TypedDict, cast
 
 from chromadb.api.models.AsyncCollection import AsyncCollection
 from chromadb.api.types import Where
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langgraph.store.base import PutOp
 
 from app.agents.core.subagents.registry import all_subagents
@@ -523,20 +522,22 @@ async def initialize_chroma_tools_store() -> ChromaStore:
     """
     tool_registry = await get_tool_registry()
     chroma_client = await ChromaClient.get_client()
-    raw_embeddings = await providers.aget("google_embeddings")
+    # Registered by init_embeddings() in app/agents/tools/core/store.py —
+    # Google when a key exists, LOCAL fastembed under bare self-host. The
+    # two backends have different vector sizes; the instance declares its own.
+    embeddings = await providers.aget("google_embeddings")
 
-    if raw_embeddings is None:
+    if embeddings is None:
         raise RuntimeError("Embeddings not available")
 
-    # Registered by init_embeddings() in app/agents/tools/core/store.py.
-    embeddings = cast(GoogleGenerativeAIEmbeddings, raw_embeddings)
+    dims = getattr(embeddings, "embedding_dims", 768)
 
     store = ChromaStore(
         client=chroma_client,
         collection_name="langgraph_tools_store",
         index={
             "embed": embeddings,
-            "dims": 768,
+            "dims": dims,
             "fields": ["description"],
         },
     )

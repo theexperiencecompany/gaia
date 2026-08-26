@@ -35,6 +35,7 @@ from app.services.onboarding.intelligence_job import (
 )
 from app.services.onboarding.post_onboarding_service import seed_initial_user_data
 from app.services.workflow.service import WorkflowService
+from app.utils.auth_utils import with_local_onboarding_completed
 from shared.py.wide_events import log
 
 
@@ -218,6 +219,12 @@ async def get_user_onboarding_status(user_id: str) -> OnboardingStatusResponse:
             raise HTTPException(status_code=404, detail="User not found")
 
         onboarding_data = user.onboarding or {}
+
+        # Self-host has no hosted onboarding pipeline: report completed
+        # regardless of stored state. auth_utils.with_local_onboarding_completed
+        # is the ONE synthesis policy — build_user_context applies the same one,
+        # so request.state.user and this endpoint can never disagree again.
+        onboarding_data = with_local_onboarding_completed(onboarding_data)
 
         return OnboardingStatusResponse(
             completed=onboarding_data.get("completed", False),

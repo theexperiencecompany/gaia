@@ -4,15 +4,31 @@ import { Command } from "commander";
 import { CLI_COMMAND_DESCRIPTIONS } from "../../../libs/shared/ts/src/cli/command-manifest.js";
 import { bridgeCommand } from "./commands/bridge/command.js";
 import { runDev } from "./commands/dev/handler.js";
+import { runDoctor } from "./commands/doctor/handler.js";
 import { runInit } from "./commands/init/handler.js";
 import { runSetup } from "./commands/setup/handler.js";
 import { runStart } from "./commands/start/handler.js";
 import { runStatus } from "./commands/status/handler.js";
 import { runStop } from "./commands/stop/handler.js";
 import { runLogs } from "./commands/stream-logs/handler.js";
+import { runUp } from "./commands/up/handler.js";
 import { CLI_VERSION } from "./lib/version.js";
 
 const program = new Command();
+
+/** Raw parsed options for `gaia up` (commander negates --no-start to `start`). */
+interface UpCliOptions {
+  yes?: boolean;
+  llmKey?: string;
+  llmProvider?: string;
+  apiPort?: number;
+  webPort?: number;
+  pull?: boolean;
+  build?: boolean;
+  /** False when --no-start is passed (commander negatable option). */
+  start?: boolean;
+  forceDevTree?: boolean;
+}
 
 program
   .name("gaia")
@@ -30,6 +46,38 @@ program
   });
 
 program
+  .command("up")
+  .description(CLI_COMMAND_DESCRIPTIONS.up)
+  .option("--yes", "Accept all defaults (no prompts)")
+  .option("--llm-key <key>", "LLM API key for first boot")
+  .option(
+    "--llm-provider <provider>",
+    "LLM provider for --llm-key: openrouter, gemini, or custom",
+  )
+  .option("--api-port <port>", "Host port for the API", Number.parseInt)
+  .option("--web-port <port>", "Host port for the web app", Number.parseInt)
+  .option("--pull", "Pull pre-built images only (fail instead of building)")
+  .option("-b, --build", "Build images locally before starting")
+  .option("--no-start", "Configure environment only; do not start services")
+  .option(
+    "--force-dev-tree",
+    "Allow operating on a developer checkout that is not the recorded install",
+  )
+  .action(async (options: UpCliOptions) => {
+    const { start, ...rest } = options;
+    await runUp({
+      ...rest,
+      llmProvider:
+        rest.llmProvider === "openrouter" ||
+        rest.llmProvider === "gemini" ||
+        rest.llmProvider === "custom"
+          ? rest.llmProvider
+          : undefined,
+      noStart: start === false,
+    });
+  });
+
+program
   .command("setup")
   .description(CLI_COMMAND_DESCRIPTIONS.setup)
   .action(async () => {
@@ -41,6 +89,13 @@ program
   .description(CLI_COMMAND_DESCRIPTIONS.status)
   .action(async () => {
     await runStatus();
+  });
+
+program
+  .command("doctor")
+  .description(CLI_COMMAND_DESCRIPTIONS.doctor)
+  .action(async () => {
+    await runDoctor();
   });
 
 program

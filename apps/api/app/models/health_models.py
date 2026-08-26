@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-Environment = Literal["production", "development"]
+Environment = Literal["production", "development", "selfhost"]
 
 
 class HealthResponse(BaseModel):

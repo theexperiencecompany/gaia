@@ -21,8 +21,9 @@ export const createLogHandler =
   };
 
 /**
- * Runs git and docker prerequisite checks.
- * Sets store error and returns null on hard failure (git or docker missing).
+ * Runs git and docker prerequisite checks. Docker is ensured (with an
+ * interactive install offer on apt-based Linux); sets store error and returns
+ * null on hard failure (git missing, or Docker unavailable).
  */
 export async function runBasePrerequisiteChecks(store: CLIStore): Promise<{
   gitStatus: string;
@@ -42,45 +43,24 @@ export async function runBasePrerequisiteChecks(store: CLIStore): Promise<{
     git: gitStatus,
   });
 
-  const dockerInfo = await prereqs.checkDockerDetailed();
-  const dockerStatus = dockerInfo.working ? "success" : "error";
-  store.updateData("checks", {
-    ...store.currentState.data.checks,
-    docker: dockerStatus,
-  });
-  if (!dockerInfo.working) {
-    store.updateData("dockerError", dockerInfo.errorMessage);
-  }
-
-  const failedChecks: Array<{ name: string; message?: string }> = [];
-  if (gitStatus === "error") failedChecks.push({ name: "Git" });
-  if (dockerStatus === "error")
-    failedChecks.push({ name: "Docker", message: dockerInfo.errorMessage });
-
-  if (failedChecks.length > 0) {
-    const errorLines: string[] = ["Prerequisites failed:"];
-    for (const check of failedChecks) {
-      errorLines.push(
-        `  • ${check.name}: ${check.message || "Not installed or not working"}`,
-      );
-    }
-    errorLines.push("\nInstallation guides:");
-    if (gitStatus === "error")
-      errorLines.push(`  • Git: ${prereqs.PREREQUISITE_URLS.git}`);
-    if (dockerStatus === "error") {
-      if (dockerInfo.installed) {
-        errorLines.push(
-          `  • Docker: Start Docker Desktop or run 'sudo systemctl start docker'`,
-        );
-      } else {
-        errorLines.push(`  • Docker: ${prereqs.PREREQUISITE_URLS.docker}`);
-      }
-    }
-    store.setError(new Error(errorLines.join("\n")));
+  if (gitStatus === "error") {
+    store.setError(
+      new Error(
+        `Prerequisites failed:\n  • Git: Not installed or not working\n\nInstallation guide:\n  • Git: ${prereqs.PREREQUISITE_URLS.git}`,
+      ),
+    );
     return null;
   }
 
-  return { gitStatus, dockerStatus, dockerInfo };
+  try {
+    await prereqs.ensureDocker(store);
+  } catch (e) {
+    store.setError(e as Error);
+    return null;
+  }
+
+  const dockerInfo = await prereqs.checkDockerDetailed();
+  return { gitStatus, dockerStatus: "success", dockerInfo };
 }
 
 /**

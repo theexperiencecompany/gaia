@@ -24,6 +24,7 @@ from app.utils.auth_utils import (
     build_user_context,
     resolve_dev_bypass_user,
 )
+from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE, resolve_session_token
 from shared.py.wide_events import log
 
 
@@ -83,9 +84,20 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         exclude_paths: list[str] | None = None,
     ) -> None:
         super().__init__(app)
-        self.workos = workos_client or AsyncWorkOSClient(
-            api_key=settings.WORKOS_API_KEY,
-            client_id=settings.WORKOS_CLIENT_ID,
+        # Only AUTH_MODE="workos" has a WorkOS client: local (self-host) mode
+        # runs with no WorkOS credentials configured, so constructing the
+        # client there would either raise or carry a useless None-keyed client.
+        self.workos: AsyncWorkOSClient | None = (
+            workos_client
+            if workos_client is not None
+            else (
+                AsyncWorkOSClient(
+                    api_key=settings.WORKOS_API_KEY,
+                    client_id=settings.WORKOS_CLIENT_ID,
+                )
+                if settings.AUTH_MODE == "workos"
+                else None
+            )
         )
         self.exclude_paths = exclude_paths or [
             "/docs",
@@ -94,7 +106,6 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             "/oauth/login",
             "/oauth/workos/callback",
             "/oauth/google/callback",
-            "/user/logout",
             "/health",
             "/api/v1/bot",
             "/api/v1/webhook",
@@ -125,6 +136,19 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             # Trailing slash keeps this from also matching "/api/v1/device".
             "/api/v1/dev/",
         ]
+        # Local-mode-only public surfaces (self-hosting): signup/login must be
+        # reachable before any session exists, and the setup wizard's status
+        # probe and provider catalog are read pre-auth. In workos mode these
+        # stay authenticated (and their routers are unmounted entirely) so
+        # hosted deployments expose neither a password-registration surface
+        # nor infra booleans publicly.
+        if settings.AUTH_MODE == "local":
+            self.exclude_paths += [
+                "/api/v1/auth/signup",
+                "/api/v1/auth/login",
+                "/api/v1/setup/status",
+                "/api/v1/setup/catalog",
+            ]
         # Routes that also accept an "Authorization: Bearer <agent JWT>" in
         # addition to a WorkOS session cookie.
         self.agent_only_paths = ["/api/v1/chat-stream"]
@@ -150,6 +174,12 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
 
         if self.dev_bypass_email:
             return await self._dispatch_dev_bypass(request, call_next)
+
+        # Self-host mode: authenticate via the local session JWT instead of
+        # WorkOS. Everything below (agent-token fallback, cookie refresh) is
+        # WorkOS-specific and skipped entirely.
+        if settings.AUTH_MODE == "local":
+            return await self._dispatch_local_session(request, call_next)
 
         wos_session = request.cookies.get("wos_session")
         if not wos_session:
@@ -189,35 +219,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                 )
                 # Don't block request on auth failures - routes can handle this
 
-        accepts_agent_token = request.url.path in self.agent_only_paths or any(
-            request.url.path.startswith(p) for p in self.agent_only_path_prefixes
-        )
-        if not request.state.authenticated and accepts_agent_token:
-            auth_header = request.headers.get("Authorization")
-            agent_info = None
-            if auth_header and auth_header.startswith("Bearer "):
-                token = auth_header.split(" ", 1)[1]
-                agent_info = verify_agent_token(token)
-            if agent_info:
-                try:
-                    user_data = await user_repository.get(str(agent_info["user_id"]))
-                except Exception as e:
-                    log.error(
-                        f"{LogTag.API} Invalid user_id in agent token",
-                        error_type=type(e).__name__,
-                        error=str(e),
-                    )
-                    user_data = None
-                if user_data is not None:
-                    # Same shape as the WorkOS session path — the shared builder
-                    # spreads the full doc so the agent token carries timezone +
-                    # onboarding (custom instructions, preferences, writing style).
-                    # Hand-picking fields here dropped them, so voice mode lost the
-                    # user's system instructions.
-                    request.state.user = build_user_context(
-                        user_to_legacy_dict(user_data), auth_provider="workos", impersonated=True
-                    )
-                    request.state.authenticated = True
+        await self._try_agent_fallback(request, auth_provider="workos")
 
         self._publish_user(request)
         response = await call_next(request)
@@ -233,6 +235,51 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             )
 
         return response
+
+    async def _try_agent_fallback(self, request: Request, *, auth_provider: str) -> None:
+        """Authenticate via an agent JWT when session auth left the request anonymous.
+
+        One implementation for BOTH dispatch branches (WorkOS and local
+        session): voice/desktop clients present an ``AGENT_SECRET``-signed JWT
+        instead of a browser cookie, and only on the agent-only paths. A
+        session that already authenticated wins — this runs only when
+        ``request.state.authenticated`` is still falsy, and never downgrades it.
+        """
+        if getattr(request.state, "authenticated", False):
+            return
+        accepts_agent_token = request.url.path in self.agent_only_paths or any(
+            request.url.path.startswith(p) for p in self.agent_only_path_prefixes
+        )
+        if not accepts_agent_token:
+            return
+
+        auth_header = request.headers.get("Authorization")
+        agent_info = None
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ", 1)[1]
+            agent_info = verify_agent_token(token)
+        if agent_info:
+            try:
+                user_data = await user_repository.get(str(agent_info["user_id"]))
+            except Exception as e:
+                log.error(
+                    f"{LogTag.API} Invalid user_id in agent token",
+                    error_type=type(e).__name__,
+                    error=str(e),
+                )
+                user_data = None
+            if user_data is not None:
+                # Same shape as the session paths — the shared builder spreads
+                # the full doc so the agent token carries timezone + onboarding
+                # (custom instructions, preferences, writing style).
+                # Hand-picking fields here dropped them, so voice mode lost the
+                # user's system instructions.
+                request.state.user = build_user_context(
+                    user_to_legacy_dict(user_data),
+                    auth_provider=auth_provider,
+                    impersonated=True,
+                )
+                request.state.authenticated = True
 
     async def _dispatch_dev_bypass(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
@@ -277,6 +324,71 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             user_to_legacy_dict(user_data), auth_provider="workos", dev_bypass=True
         )
         request.state.authenticated = True
+        self._publish_user(request)
+        return await call_next(request)
+
+    async def _dispatch_local_session(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        """Authenticate a local (self-host) session JWT and pass through.
+
+        Mirrors the WorkOS path's posture: an absent, invalid, or expired
+        session leaves ``request.state.user`` as ``None`` and the request flows
+        on — route handlers enforce auth via ``get_current_user``. The token is
+        read from the ``gaia_session`` cookie, with the same ``Authorization:
+        Bearer`` fallback the WorkOS path offers non-browser clients. Unlike
+        WorkOS there is no refresh step: tokens carry a fixed 30-day expiry.
+
+        The agent-JWT fallback is shared with the WorkOS branch so LiveKit
+        voice turns authenticate identically in self-host mode.
+        """
+        request.state.user = None
+        request.state.authenticated = False
+        request.state.new_session = None
+
+        token: str | None = request.cookies.get(LOCAL_SESSION_COOKIE)
+        if not token:
+            auth_header = request.headers.get("Authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                token = auth_header.split(" ", 1)[1]
+
+        if token:
+            try:
+                user_id = await resolve_session_token(token)
+            except Exception as e:
+                # Same stance as the WorkOS path below: a broken secret store
+                # must surface in logs/Sentry, not masquerade as a plain 401.
+                log.error(
+                    f"{LogTag.API} local session verification error",
+                    auth_failure=type(e).__name__,
+                    path=request.url.path,
+                    method=request.method,
+                    error=str(e),
+                )
+                user_id = None
+
+            if user_id:
+                try:
+                    user_data = await user_repository.get(user_id)
+                except Exception as e:
+                    log.error(
+                        f"{LogTag.API} Invalid user_id in local session token",
+                        error_type=type(e).__name__,
+                        error=str(e),
+                    )
+                    user_data = None
+                if user_data is not None:
+                    request.state.user = build_user_context(
+                        user_to_legacy_dict(user_data), auth_provider="email"
+                    )
+                    request.state.authenticated = True
+                else:
+                    request.state.auth_failure = "unknown_local_session_user"
+            else:
+                request.state.auth_failure = "invalid_or_expired_session"
+
+        await self._try_agent_fallback(request, auth_provider="email")
+
         self._publish_user(request)
         return await call_next(request)
 

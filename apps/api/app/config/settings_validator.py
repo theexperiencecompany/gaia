@@ -345,6 +345,15 @@ class SettingsValidator:
         self.missing_groups = []
 
         for group in self.groups:
+            # Local-auth instances run without WorkOS entirely, so its trio is
+            # only meaningful (and required) when AUTH_MODE selects WorkOS.
+            # Matched by name so group registration stays unchanged — this file
+            # is parsed structurally by the CLI (see module docstring).
+            if (
+                group.name == "WorkOS Authentication"
+                and getattr(settings_obj, "AUTH_MODE", "workos") != "workos"
+            ):
+                continue
             missing_keys = []
 
             for key in group.keys:

@@ -14,7 +14,11 @@ The context manager handles:
     stale across a pause/resume cycle
   - debounced pause-on-idle when refcount returns to zero
 
-The yielded object is a live `AsyncSandbox` from `e2b`.
+The yielded object is a live `AsyncSandbox` from `e2b` — except on self-host
+instances without an E2B key, where the local Docker-exec backend yields a
+duck-typed `LocalDockerSandbox` instead (see `local_sandbox.py`); everything
+above that object boundary is bypassed, because pool/Mongo/pause/mount state
+is E2B-specific.
 """
 
 from __future__ import annotations
@@ -44,7 +48,15 @@ from app.constants.sandbox import (
 from app.db.repositories.e2b_sandboxes import e2b_sandbox_repository
 from app.decorators import enforce_rate_limit
 from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState
+from app.services.providers.provider_credentials_service import (
+    resolve as resolve_e2b_config,
+)
 from app.services.sandbox.artifact_watcher import start_watcher_for
+from app.services.sandbox.local_sandbox import (
+    LocalDockerSandbox,
+    get_local_sandbox,
+    pop_local_sandbox,
+)
 from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
 from app.services.sandbox.shard_router import shard_for, shard_meta_url
 from app.services.storage import (
@@ -75,6 +87,73 @@ class SandboxAcquisitionError(RuntimeError):
 
 class SandboxRateLimitError(SandboxAcquisitionError):
     """Raised when the user has exhausted their sandbox-creation rate limit."""
+
+
+async def _resolved_e2b_api_key() -> str | None:
+    """The E2B key from the credential store, falling back to the environment.
+
+    Single seam for every E2B routing/creation decision in this module: a key
+    saved in Settings (provider ``e2b``) works without a restart and wins over
+    ``E2B_API_KEY``. The service caches resolutions for 60s, so repeated
+    checks per acquire are free.
+    """
+    config = await resolve_e2b_config("e2b")
+    return config["api_key"] if config else None
+
+
+async def use_local_sandbox() -> bool:
+    """True when coding sandboxes should be local Docker-exec containers.
+
+    Self-host without a resolvable E2B credential is the only mode that routes
+    here: hosted plans always have E2B, and self-host WITH a key gets the real
+    (paused-VM) experience. Checked per acquire so adding a key — to .env or
+    Settings — switches the backend on the next call with no restart.
+    """
+    if settings.ENV != "selfhost":
+        return False
+    return await _resolved_e2b_api_key() is None
+
+
+@contextlib.asynccontextmanager
+async def _acquire_local_sandbox(user_id: str) -> AsyncIterator[LocalDockerSandbox]:
+    """`acquire_sandbox` contract for the local Docker-exec backend.
+
+    Mirrors the E2B path's guarantees using only what a local container has:
+      - per-user serialization via the shared pool lock registry
+      - first-call container start; a stopped container is restarted in place
+      - death-eviction — a tool-op failure followed by a dead container drops
+        the cached handle so the next acquire provisions a fresh container,
+        exactly like the E2B health-probe eviction
+
+    Deliberately absent, because each is meaningless for a local container:
+    JuiceFS mount script + canary (`/workspace` is a plain Docker volume, not
+    a FUSE mount), Mongo pause/resume records and idle beta_pause scheduling
+    (a sleeping `sleep infinity` container costs nothing), and the artifact
+    watcher (`files.watch_dir` is envd-only; host-side listing stays
+    authoritative).
+    """
+    pool = get_sandbox_pool()
+    lock = await pool.get_lock(user_id)
+    await lock.acquire()
+    try:
+        sbx = get_local_sandbox(user_id)
+        async with fs_timer(FsOps.SBX_ACQUIRE):
+            await sbx.ensure_started()
+        _record(operation="acquire", source="local_docker", sandbox_id=sbx.sandbox_id)
+        try:
+            yield sbx
+        except Exception:
+            # Same contract as the E2B branch below: if a tool op failed AND
+            # the container died underneath it, evict so the next acquire
+            # doesn't hand out the same corpse.
+            if not await sbx.is_running():
+                _record(health_ok=False)
+                pop_local_sandbox(user_id)
+                with contextlib.suppress(Exception):
+                    await sbx.kill()
+            raise
+    finally:
+        lock.release()
 
 
 def _now() -> datetime:
@@ -199,7 +278,8 @@ async def _enforce_creation_limit(user_id: str) -> None:
 
 async def _create_fresh_sandbox(user_id: str, shard_id: int) -> AsyncSandbox:
     """Provision a new E2B sandbox for the user, run mount script, return handle."""
-    if not settings.E2B_API_KEY:
+    e2b_api_key = await _resolved_e2b_api_key()
+    if not e2b_api_key:
         raise SandboxAcquisitionError("E2B_API_KEY is not configured")
     if not settings.E2B_TEMPLATE_ID:
         raise SandboxAcquisitionError("E2B_TEMPLATE_ID is not configured")
@@ -221,6 +301,7 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int) -> AsyncSandbox:
             template=settings.E2B_TEMPLATE_ID,
             timeout=SANDBOX_LIFETIME_SECONDS,
             metadata={"user_id": user_id, "shard_id": str(shard_id)},
+            api_key=e2b_api_key,
         )
     sandbox_id = getattr(sbx, "sandbox_id", None)
     _record(
@@ -377,12 +458,16 @@ async def _connect_sandbox(sandbox_id: str) -> AsyncSandbox | None:
     separate `resume()` in the SDK. Passing `timeout` refreshes the sandbox's
     server-side lifetime so a resumed sandbox doesn't inherit the SDK's short
     default. Bounded so a hung E2B control-plane call falls through to a fresh
-    create instead of stalling the agent.
+    create instead of stalling the agent. The API key resolves store-first so
+    connect works when the key lives in Settings rather than the environment.
     """
+    e2b_api_key = await _resolved_e2b_api_key()
     async with fs_timer(FsOps.SBX_CONNECT_RESUME):
         try:
             return await asyncio.wait_for(
-                AsyncSandbox.connect(sandbox_id, timeout=SANDBOX_LIFETIME_SECONDS),
+                AsyncSandbox.connect(
+                    sandbox_id, timeout=SANDBOX_LIFETIME_SECONDS, api_key=e2b_api_key
+                ),
                 timeout=SANDBOX_CONNECT_TIMEOUT_SECONDS,
             )
         except Exception as e:
@@ -718,14 +803,23 @@ async def pause_sandbox_for_user(user_id: str) -> bool:
 
 
 @contextlib.asynccontextmanager
-async def acquire_sandbox(user_id: str) -> AsyncIterator[AsyncSandbox]:
+async def acquire_sandbox(user_id: str) -> AsyncIterator[AsyncSandbox | LocalDockerSandbox]:
     """Context manager that yields a live `AsyncSandbox` for the user.
 
     Serializes against concurrent calls for the same user. Schedules a
     debounced pause when the last in-flight call finishes.
+
+    On self-host without an E2B key the yielded object is a duck-typed
+    `LocalDockerSandbox` (docker-exec against a sibling container) and the
+    E2B pool/pause/Mongo machinery below is bypassed entirely.
     """
     if not user_id:
         raise SandboxAcquisitionError("user_id is required")
+
+    if await use_local_sandbox():
+        async with _acquire_local_sandbox(user_id) as sbx:
+            yield sbx
+        return
 
     pool = get_sandbox_pool()
     lock = await pool.get_lock(user_id)
