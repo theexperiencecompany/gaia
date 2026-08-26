@@ -76,7 +76,7 @@
     "@heroui/user": "2.2.25",
     "@hookform/resolvers": "^5.4.0",
     "@livekit/components-react": "^2.9.23",
-    "@mcp-ui/client": "^6.1.1",
+    "@mcp-ui/client": "^7.1.1",
     "@mdx-js/loader": "^3.1.1",
     "@mdx-js/react": "^3.1.1",
     "@microsoft/fetch-event-source": "^2.0.1",
