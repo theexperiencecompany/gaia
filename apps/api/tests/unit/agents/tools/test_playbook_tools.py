@@ -1,8 +1,9 @@
-"""The three playbook tools, against a real parser and a fake collection.
+"""The three playbook tools, against the real validator and a fake collection.
 
 Only the two seams are stood in for: the workflow lookup and the playbook
-collection. The parse-and-validate path the tools gate on is the real one, so a
-rejected write is rejected for the reason production would reject it.
+collection. The shape check is the tool's own bound schema and the registry
+check is the real one, so a rejected write is rejected for the reason
+production would reject it.
 """
 
 from datetime import UTC, datetime
@@ -11,11 +12,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import BaseTool, tool
+from pydantic import ValidationError
 import pytest
 
 from app.agents.tools.playbook_tools import disable_playbook, read_playbook, write_playbook
-from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus
+from app.models.playbook_models import (
+    PlaybookAsk,
+    PlaybookDocument,
+    PlaybookRunStatus,
+    PlaybookStepInput,
+    playbook_body_from_input,
+)
 from app.models.workflow_models import TriggerConfig, TriggerType, WorkflowDocument
+from app.services.workflow.playbook.parser import parse_playbook
 
 TOOLS_MODULE = "app.agents.tools.playbook_tools"
 PARSER_MODULE = "app.services.workflow.playbook.parser"
@@ -93,15 +102,16 @@ def _existing(store: _FakePlaybookStore, raw_yaml: str) -> PlaybookDocument:
     return document
 
 
-NEW_YAML = """
-description: Read the day's events
-steps:
-  - id: agenda
-    tool: list_events
-    args:
-      calendar_id: primary
-synthesize: Say what is on today.
-"""
+NEW_STEPS: list[dict[str, Any]] = [
+    {"id": "agenda", "tool": "list_events", "args": {"calendar_id": "primary"}}
+]
+
+NEW_ARGS: dict[str, Any] = {
+    "workflow_id": WORKFLOW_ID,
+    "description": "Read the day's events",
+    "steps": NEW_STEPS,
+    "synthesize": "Say what is on today.",
+}
 
 OLD_YAML = (
     "description: Old\nsteps:\n  - id: one\n    tool: list_events\nsynthesize: Old synthesis.\n"
@@ -122,24 +132,53 @@ def workflows() -> MagicMock:
 
 @pytest.mark.unit
 class TestWritePlaybook:
-    async def test_invalid_yaml_writes_nothing_and_returns_the_error(
+    async def test_a_step_the_schema_does_not_know_never_reaches_the_tool(
         self, store: _FakePlaybookStore, workflows: MagicMock
     ) -> None:
+        # Regression: the playbook used to arrive as one YAML string, so an
+        # invented key like `goal` got all the way to the parser. The bound
+        # schema now refuses it before the tool body runs.
         before = _existing(store, OLD_YAML)
         with (
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
             patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
+            pytest.raises(ValidationError, match="goal"),
         ):
-            result = await write_playbook.ainvoke(
-                {"workflow_id": WORKFLOW_ID, "yaml": "description: [unclosed\nsteps:"},
+            await write_playbook.ainvoke(
+                {**NEW_ARGS, "steps": [{"id": "agenda", "goal": "read the events"}]},
                 config=_config(),
             )
 
-        assert result["success"] is False
-        assert result["error"] == "invalid_playbook"
-        assert "YAML" in result["message"]
         assert store.documents[(WORKFLOW_ID, USER_ID)] == before
+
+    async def test_a_tool_step_nested_under_a_handoff_child_is_refused(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        # Playbooks are depth-1: a handoff's children are plain tool calls, and
+        # the flat input model is what makes deeper nesting unrepresentable.
+        deeper = [
+            {
+                "handoff": "gmail",
+                "steps": [
+                    {
+                        "id": "mail",
+                        "tool": "list_events",
+                        "args": {},
+                        "steps": [{"id": "deeper", "tool": "list_events", "args": {}}],
+                    }
+                ],
+            }
+        ]
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
+            pytest.raises(ValidationError),
+        ):
+            await write_playbook.ainvoke({**NEW_ARGS, "steps": deeper}, config=_config())
+
+        assert store.documents == {}
 
     async def test_playbook_failing_validation_writes_nothing(
         self, store: _FakePlaybookStore, workflows: MagicMock
@@ -150,10 +189,7 @@ class TestWritePlaybook:
             patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
         ):
             result = await write_playbook.ainvoke(
-                {
-                    "workflow_id": WORKFLOW_ID,
-                    "yaml": "description: d\nsteps:\n  - id: one\n    tool: send_owl\nsynthesize: s\n",
-                },
+                {**NEW_ARGS, "steps": [{"id": "one", "tool": "send_owl", "args": {}}]},
                 config=_config(),
             )
 
@@ -170,16 +206,45 @@ class TestWritePlaybook:
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
             patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
         ):
-            result = await write_playbook.ainvoke(
-                {"workflow_id": WORKFLOW_ID, "yaml": NEW_YAML}, config=_config()
-            )
+            result = await write_playbook.ainvoke(NEW_ARGS, config=_config())
 
         assert result["success"] is True
         assert len(store.documents) == 1
         stored = store.documents[(WORKFLOW_ID, USER_ID)]
-        assert stored.raw_yaml == NEW_YAML
         assert stored.description == "Read the day's events"
         assert stored.workflow_hash != "stale"
+
+    async def test_the_stored_yaml_parses_back_to_the_arguments_it_was_written_from(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        # raw_yaml is what read_playbook hands the agent to edit, so it has to
+        # be the same document the arguments described, not an approximation.
+        steps: list[dict[str, Any]] = [
+            {"id": "agenda", "tool": "list_events", "args": {"calendar_id": "primary"}},
+            {
+                "handoff": "gmail",
+                "steps": [{"id": "mail", "tool": "list_events", "args": {"calendar_id": "$now"}}],
+            },
+        ]
+        ask = {"subject": {"prompt": "one subject line", "uses": ["agenda", "mail"]}}
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
+        ):
+            result = await write_playbook.ainvoke(
+                {**NEW_ARGS, "steps": steps, "ask": ask}, config=_config()
+            )
+
+        assert result["success"] is True
+        stored = store.documents[(WORKFLOW_ID, USER_ID)]
+        expected = playbook_body_from_input(
+            description="Read the day's events",
+            steps=[PlaybookStepInput.model_validate(step) for step in steps],
+            synthesize="Say what is on today.",
+            ask={"subject": PlaybookAsk.model_validate(ask["subject"])},
+        )
+        assert parse_playbook(stored.raw_yaml) == expected
 
     async def test_unknown_workflow_is_refused(
         self, store: _FakePlaybookStore, workflows: MagicMock
@@ -189,9 +254,7 @@ class TestWritePlaybook:
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
         ):
-            result = await write_playbook.ainvoke(
-                {"workflow_id": WORKFLOW_ID, "yaml": NEW_YAML}, config=_config()
-            )
+            result = await write_playbook.ainvoke(NEW_ARGS, config=_config())
 
         assert result["error"] == "workflow_not_found"
         assert store.documents == {}

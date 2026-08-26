@@ -7,7 +7,7 @@ the finished result. Two reasons, both load-bearing:
   tool registry; comms binds exactly ``call_executor`` / ``cancel_executor`` /
   the memory tools and is built with ``disable_retrieve_tools=True``
   (``build_graph.py``), so a check delivered at narration time asks for a tool
-  the narrator cannot reach — and risks being re-voiced into the user's message.
+  the narrator cannot reach, and risks being re-voiced into the user's message.
 * The executor already has its own calls in context when it finishes, so the
   judgement is made against what actually happened without rendering a trace
   back to it. A trace read at narration time would be the PREVIOUS run's
@@ -15,7 +15,7 @@ the finished result. Two reasons, both load-bearing:
 """
 
 PLAYBOOK_CHECK_BRIEF = """<playbook_check>
-This workflow has no working playbook. When you have finished the work above — and only then — decide whether the sequence you just ran is worth freezing so future runs can replay it instead of reasoning it out again.
+This workflow has no working playbook. When you have finished the work above (and only then), decide whether the sequence you just ran is worth freezing so future runs can replay it instead of reasoning it out again.
 
 Answer these five briefly, in plain words, against the calls you actually made:
 1. Which of your calls were discovery (finding an id, a channel, a folder, a file, recovering from an error) rather than the work itself? Those must not go in a playbook.
@@ -24,7 +24,11 @@ Answer these five briefly, in plain words, against the calls you actually made:
 4. What did you have to write or judge from content, rather than copy straight out of a result? Each of those becomes an $ask.
 5. Would this exact order of calls work tomorrow, unchanged? Answer no if the order depended on what you found, if you reacted to a result mid-run, or if a step only made sense given today's data.
 
-If 5 is yes, call write_playbook with YAML carrying description, steps, synthesize, and ask for anything from question 4. If 5 is no, do not call it — say in one line which question made it a no.
+If 5 is no, do not call write_playbook. Say in one line which question made it a no.
+
+If 5 is yes, call write_playbook. Its arguments carry the shape: a description, the steps in the order you ran them, a synthesize brief, and an ask entry for each thing you had to write. A step is EITHER a tool call OR a handoff carrying the steps that subagent ran.
+
+Use the real tool names and argument names you actually called. They are checked against the live tools, and a playbook naming a tool that does not exist is refused.
 </playbook_check>"""
 
 

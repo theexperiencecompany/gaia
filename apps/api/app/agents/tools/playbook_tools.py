@@ -15,12 +15,14 @@ from langchain_core.tools import tool
 from app.constants.log_tags import LogTag
 from app.db.repositories.playbooks import playbook_repository
 from app.db.repositories.workflows import workflow_repository
-from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus
-from app.services.workflow.playbook.parser import (
-    PlaybookParseError,
-    parse_playbook,
-    validate_playbook,
+from app.models.playbook_models import (
+    PlaybookAsk,
+    PlaybookDocument,
+    PlaybookRunStatus,
+    PlaybookStepInput,
+    playbook_body_from_input,
 )
+from app.services.workflow.playbook.parser import dump_playbook, validate_playbook
 from app.services.workflow.playbook.workflow_hash import workflow_hash
 from app.utils.workflow_utils import error_response, get_user_id, success_response
 from shared.py.wide_events import log
@@ -30,18 +32,21 @@ from shared.py.wide_events import log
 async def write_playbook(
     config: RunnableConfig,
     workflow_id: Annotated[str, "The workflow this playbook replays."],
-    yaml: Annotated[
-        str,
-        "The whole playbook document as YAML: description, steps, synthesize, "
-        "and ask when a step needs text a model has to write.",
-    ],
+    description: Annotated[str, "What this playbook does, in one or two lines."],
+    steps: Annotated[list[PlaybookStepInput], "The calls to replay, in the order you made them."],
+    synthesize: Annotated[str, "How to write the run's result for the user."],
+    ask: Annotated[
+        dict[str, PlaybookAsk] | None,
+        "Named slots a model fills at replay, for text you had to write rather "
+        "than copy out of a result. Reference one as $ask.<name>.",
+    ] = None,
 ) -> dict[str, Any]:
     """
     Freeze a workflow's settled tool sequence as a playbook, so later runs execute
     it instead of reasoning it out again.
 
-    The document is parsed and checked against the real tools before anything is
-    stored: if it does not check out, NOTHING is written and the problems come
+    The steps are checked against the real tools before anything is stored: if a
+    tool or an argument does not exist, NOTHING is written and the problems come
     back so you can fix them and call this again. A successful write replaces the
     workflow's previous playbook entirely, which is also how you revise one.
 
@@ -55,11 +60,7 @@ async def write_playbook(
         if workflow is None:
             return error_response("workflow_not_found", f"No workflow {workflow_id} for this user.")
 
-        try:
-            body = parse_playbook(yaml)
-        except PlaybookParseError as exc:
-            log.warning(f"{LogTag.TOOL} write_playbook: unparseable", error_type="parse")
-            return error_response("invalid_playbook", exc.message)
+        body = playbook_body_from_input(description, steps, synthesize, ask)
 
         validation = await validate_playbook(body)
         if not validation.valid:
@@ -76,7 +77,7 @@ async def write_playbook(
                 workflow_id=workflow_id,
                 user_id=user_id,
                 workflow_hash=workflow_hash(workflow.prompt, workflow.steps),
-                raw_yaml=yaml,
+                raw_yaml=dump_playbook(body),
                 created_at=now,
                 updated_at=now,
                 **body.model_dump(),

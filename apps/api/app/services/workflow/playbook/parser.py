@@ -86,6 +86,38 @@ def parse_playbook(raw_yaml: str) -> PlaybookBody:
         ) from exc
 
 
+def dump_playbook(body: PlaybookBody) -> str:
+    """Serialize a playbook body to the YAML document the agent reads and edits.
+
+    The inverse of ``parse_playbook``: keys come out in authored order and
+    unset optional keys are left out entirely, so a stored playbook reads like
+    something a person wrote rather than a dump of every model field.
+    """
+    document: dict[str, Any] = {
+        "description": body.description,
+        "steps": [_dump_step(step) for step in body.steps],
+    }
+    if body.ask:
+        document["ask"] = {name: ask.model_dump() for name, ask in body.ask.items()}
+    document["synthesize"] = body.synthesize
+    return yaml.safe_dump(document, sort_keys=False, allow_unicode=True)
+
+
+def _dump_step(step: PlaybookStep) -> dict[str, Any]:
+    node: dict[str, Any] = {}
+    if step.id:
+        node["id"] = step.id
+    if step.tool:
+        node["tool"] = step.tool
+    if step.args:
+        node["args"] = step.args
+    if step.handoff:
+        node["handoff"] = step.handoff
+    if step.steps:
+        node["steps"] = [_dump_step(child) for child in step.steps]
+    return node
+
+
 async def validate_playbook(body: PlaybookBody) -> PlaybookValidation:
     """Check a parsed playbook against the live tool registry.
 

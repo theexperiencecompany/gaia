@@ -12,6 +12,7 @@ compilable and stays on the agent path, which is the correct outcome rather
 than a gap to fill with branches.
 """
 
+from collections.abc import Sequence
 from datetime import datetime
 from enum import Enum
 from typing import Any, Self
@@ -108,6 +109,92 @@ class PlaybookBody(BaseModel):
     steps: list[PlaybookStep] = Field(min_length=1)
     ask: dict[str, PlaybookAsk] = Field(default_factory=dict)
     synthesize: str = Field(description="How to write the run's user-facing result")
+
+
+#: The placeholder vocabulary, spelled out for the tool-boundary schema. A JSON
+#: Schema cannot express "this string may be a reference", so the model only
+#: learns the namespaces if the ``args`` description carries them.
+_ARGS_DESCRIPTION = (
+    "The call's arguments, exactly as the tool takes them. A value may be a "
+    "placeholder resolved at replay: $now, $today, $now + 1d; $user.email, "
+    "$user.name, $user.timezone; $trigger.<path>; $steps.<step_id>.<path>; "
+    "$last_run.<TOOL_NAME>.<path>; $ask.<name>."
+)
+
+
+class PlaybookHandoffStepInput(BaseModel):
+    """A tool call recorded inside a handoff, as the authoring tool takes it.
+
+    Flat by design: playbooks are depth-1, so a handoff's children are always
+    plain tool calls. Modelling that here instead of reusing ``PlaybookStep``
+    keeps the tool's JSON Schema free of the self-``$ref`` that several
+    function-calling providers mishandle.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(description="Referencable name for this call, e.g. $steps.<id>.field")
+    tool: str = Field(description="Exact name of the tool this step calls")
+    args: dict[str, Any] = Field(default_factory=dict, description=_ARGS_DESCRIPTION)
+
+    def to_step(self) -> PlaybookStep:
+        return PlaybookStep(id=self.id, tool=self.tool, args=self.args)
+
+
+class PlaybookStepInput(BaseModel):
+    """One top-level step as the authoring tool takes it: a tool call, or a
+    handoff carrying the plain tool calls that subagent ran."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(default="", description="Referencable name, e.g. $steps.<id>.field")
+    tool: str | None = Field(
+        default=None, description="Exact name of the tool this step calls, for a tool step"
+    )
+    args: dict[str, Any] = Field(default_factory=dict, description=_ARGS_DESCRIPTION)
+    handoff: str | None = Field(
+        default=None, description="Subagent id, for a handoff step. Leave 'tool' unset."
+    )
+    steps: list[PlaybookHandoffStepInput] = Field(
+        default_factory=list,
+        description="The tool calls the handoff's subagent ran. Only a handoff carries these.",
+    )
+
+    @model_validator(mode="after")
+    def exactly_one_shape(self) -> Self:
+        if bool(self.tool) == bool(self.handoff):
+            raise ValueError(
+                f"step {self.id or '<unnamed>'}: set exactly one of 'tool' or 'handoff'"
+            )
+        if self.handoff and not self.steps:
+            raise ValueError(f"handoff {self.handoff}: carries no steps, so it would do nothing")
+        if self.tool and self.steps:
+            raise ValueError(f"step {self.id or self.tool}: only a handoff may carry nested steps")
+        return self
+
+    def to_step(self) -> PlaybookStep:
+        return PlaybookStep(
+            id=self.id,
+            tool=self.tool,
+            args=self.args,
+            handoff=self.handoff,
+            steps=[child.to_step() for child in self.steps],
+        )
+
+
+def playbook_body_from_input(
+    description: str,
+    steps: Sequence[PlaybookStepInput],
+    synthesize: str,
+    ask: dict[str, PlaybookAsk] | None,
+) -> PlaybookBody:
+    """Turn the tool boundary's flat arguments into the stored playbook body."""
+    return PlaybookBody(
+        description=description,
+        steps=[step.to_step() for step in steps],
+        ask=ask or {},
+        synthesize=synthesize,
+    )
 
 
 class PlaybookDocument(PlaybookBody, MongoDocument):

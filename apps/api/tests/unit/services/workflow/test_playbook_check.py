@@ -16,11 +16,18 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+from pydantic import ValidationError
 import pytest
 
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
 from app.agents.prompts.playbook_prompts import PLAYBOOK_CHECK_BRIEF
-from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus
+from app.agents.tools.playbook_tools import write_playbook
+from app.models.playbook_models import (
+    PlaybookDocument,
+    PlaybookRunStatus,
+    PlaybookStep,
+    PlaybookStepInput,
+)
 from app.services.workflow.playbook.check import playbook_check_brief
 
 MODULE = "app.services.workflow.playbook.check"
@@ -35,9 +42,9 @@ def _playbook(status: PlaybookRunStatus) -> PlaybookDocument:
         workflow_id=WORKFLOW_ID,
         user_id=USER_ID,
         workflow_hash="h",
-        raw_yaml="description: d\nsteps: []\nsynthesize: s\n",
+        raw_yaml="description: d\nsteps:\n  - id: s1\n    tool: create_todo\n    args: {}\nsynthesize: s\n",
         description="d",
-        steps=[],
+        steps=[PlaybookStep(id="s1", tool="create_todo", args={})],
         synthesize="s",
         last_run_status=status,
         created_at=now,
@@ -119,3 +126,28 @@ def test_write_playbook_is_statically_bound_to_the_executor():
     executor_block = source.split('agent_name="executor_agent"', 1)[1].split("]", 1)[0]
 
     assert '"write_playbook"' in executor_block
+
+
+def test_the_tools_own_schema_carries_the_step_shape():
+    """The binding, not the prompt, is what teaches the model the shape.
+
+    Regression: the playbook arrived as one opaque YAML string, so the bound
+    schema said only "argument 2 is a string" and a live run invented a `goal`
+    field three times running. The structure has to be in the schema, and a key
+    that is not in it has to be refused.
+    """
+    schema = write_playbook.tool_call_schema.model_json_schema()
+
+    assert {"workflow_id", "description", "steps", "synthesize", "ask"} <= set(schema["properties"])
+    step = schema["$defs"][PlaybookStepInput.__name__]
+    assert {"id", "tool", "args", "handoff", "steps"} <= set(step["properties"])
+
+    child_name = step["properties"]["steps"]["items"]["$ref"].rsplit("/", 1)[-1]
+    child = schema["$defs"][child_name]
+    assert {"id", "tool", "args"} <= set(child["properties"])
+    # Depth-1 by construction: the child cannot carry steps, so the schema has
+    # no self-$ref for a provider to mishandle.
+    assert "steps" not in child["properties"]
+
+    with pytest.raises(ValidationError, match="goal"):
+        PlaybookStepInput.model_validate({"id": "agenda", "goal": "read the events"})
