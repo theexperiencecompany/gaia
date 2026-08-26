@@ -52,7 +52,7 @@ GAIA now texts you on iMessage, asks before it does anything destructive, and ca
 - **Memory Hygiene**: A memory is only retired when a newer one genuinely restates it, so facts about you stop disappearing.
 - **No Internal Paths in Replies**: GAIA no longer leaks internal server file paths into its answers.
 - **Platform Results Are Continuable**: Results delivered to a linked platform are now recorded in the conversation, so you can reply and keep going.
-- **Security Fixes**: Audited SSRF, IDOR, auth, and webhook findings across the codebase were remediated, along with 192 dependency advisories.
+- **Security Fixes**: Audited SSRF, IDOR, auth, and webhook findings across the codebase were remediated, along with 192 of 196 outstanding dependency advisories.
 
 ### Performance
 - **Cheaper, Faster Turns**: The prompt prefix is now stable across a conversation, so follow-up turns hit the provider's cache instead of re-paying for the whole history.
@@ -91,12 +91,12 @@ GAIA now texts you on iMessage, asks before it does anything destructive, and ca
 - **Canvas Documents**: The canvas document viewer 404'd on every open; it loads again.
 - **Landing Pages**: Fixed an infinite prefetch loop and a navbar hydration mismatch on production landing pages.
 - **Recovering From Stale Assets**: A deploy mid-session no longer leaves you on a broken route — the app reloads the route instead.
-- **Private Browsing**: When the browser blocks local storage, the app degrades gracefully instead of failing to load.
+- **Private Browsing**: When the browser refuses to open the local database the chat history is cached in — a private window, or hardened privacy settings — that layer quietly turns itself off instead of breaking the page.
 - **Search Listings**: Page titles are single-brand, utility pages are noindexed, and the sitemap reports honest signals.
 - **Texting GAIA on a Non-Apple Device**: The iMessage page now shows the number to text instead of a deep link only Apple devices could open.
 
 ### Infrastructure
-- **Next.js 16.3 and TypeScript 7**: The web app moved onto the new native TypeScript compiler, which made builds and type-checking noticeably faster.
+- **Next.js 16.3 and TypeScript 7**: The web app moved to Next.js 16.3 and onto TypeScript 7's new native compiler, which made builds and type-checking noticeably faster.
 - **One Deploy Path**: Removed the leftover Vercel setup, and a change that touches both the backend and the web app now ships them together instead of one at a time.
 - **Cleaner Error Reports**: Crashes caused by browser extensions no longer show up as GAIA errors, so what's left is actually ours.
 
@@ -114,6 +114,7 @@ GAIA now texts you on iMessage, asks before it does anything destructive, and ca
 - **Attachments and Inbox Tools**: The desktop app picks up local document extraction and the Gmail inbox summary alongside the rest of the apps.
 
 ### Bug Fixes
+- **Links Open Where They Should**: A link to another site now opens in your normal browser instead of taking over the app window, and links using a non-web scheme are refused rather than handed to the operating system.
 - **Security Fixes**: Picked up the monorepo-wide security and dependency remediations.
 
 ## [Bots v1.6.0](https://github.com/theexperiencecompany/gaia/releases/tag/bots-v1.6.0)

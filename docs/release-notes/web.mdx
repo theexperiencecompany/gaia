@@ -24,12 +24,12 @@ icon: "browser"
 - **Canvas Documents**: The canvas document viewer 404'd on every open; it loads again.
 - **Landing Pages**: Fixed an infinite prefetch loop and a navbar hydration mismatch on production landing pages.
 - **Recovering From Stale Assets**: A deploy mid-session no longer leaves you on a broken route — the app reloads the route instead.
-- **Private Browsing**: When the browser blocks local storage, the app degrades gracefully instead of failing to load.
+- **Private Browsing**: When the browser refuses to open the local database the chat history is cached in — a private window, or hardened privacy settings — that layer quietly turns itself off instead of breaking the page.
 - **Search Listings**: Page titles are single-brand, utility pages are noindexed, and the sitemap reports honest signals.
 - **Texting GAIA on a Non-Apple Device**: The iMessage page now shows the number to text instead of a deep link only Apple devices could open.
 
 ### Infrastructure
-- **Next.js 16.3 and TypeScript 7**: The web app moved onto the new native TypeScript compiler, which made builds and type-checking noticeably faster.
+- **Next.js 16.3 and TypeScript 7**: The web app moved to Next.js 16.3 and onto TypeScript 7's new native compiler, which made builds and type-checking noticeably faster.
 - **One Deploy Path**: Removed the leftover Vercel setup, and a change that touches both the backend and the web app now ships them together instead of one at a time.
 - **Cleaner Error Reports**: Crashes caused by browser extensions no longer show up as GAIA errors, so what's left is actually ours.
 

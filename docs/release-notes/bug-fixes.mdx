@@ -21,7 +21,7 @@ icon: "bug"
 - **Memory Hygiene**: A memory is only retired when a newer one genuinely restates it, so facts about you stop disappearing.
 - **No Internal Paths in Replies**: GAIA no longer leaks internal server file paths into its answers.
 - **Platform Results Are Continuable**: Results delivered to a linked platform are now recorded in the conversation, so you can reply and keep going.
-- **Security Fixes**: Audited SSRF, IDOR, auth, and webhook findings across the codebase were remediated, along with 192 dependency advisories.
+- **Security Fixes**: Audited SSRF, IDOR, auth, and webhook findings across the codebase were remediated, along with 192 of 196 outstanding dependency advisories.
 
 ## [Web v0.23.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.23.0)
 - **Failures Are Visible**: When the model fails, the chat now says so instead of stalling, and it stops piling retry on retry.
@@ -30,7 +30,7 @@ icon: "bug"
 - **Canvas Documents**: The canvas document viewer 404'd on every open; it loads again.
 - **Landing Pages**: Fixed an infinite prefetch loop and a navbar hydration mismatch on production landing pages.
 - **Recovering From Stale Assets**: A deploy mid-session no longer leaves you on a broken route — the app reloads the route instead.
-- **Private Browsing**: When the browser blocks local storage, the app degrades gracefully instead of failing to load.
+- **Private Browsing**: When the browser refuses to open the local database the chat history is cached in — a private window, or hardened privacy settings — that layer quietly turns itself off instead of breaking the page.
 - **Search Listings**: Page titles are single-brand, utility pages are noindexed, and the sitemap reports honest signals.
 - **Texting GAIA on a Non-Apple Device**: The iMessage page now shows the number to text instead of a deep link only Apple devices could open.
 
@@ -38,6 +38,7 @@ icon: "bug"
 - **Chat Streaming and Sync**: Fixed streaming correctness, brought markdown rendering to parity with the web app, and repaired conversation sync so threads match across devices.
 
 ## [Desktop v0.6.0](https://github.com/theexperiencecompany/gaia/releases/tag/desktop-v0.6.0)
+- **Links Open Where They Should**: A link to another site now opens in your normal browser instead of taking over the app window, and links using a non-web scheme are refused rather than handed to the operating system.
 - **Security Fixes**: Picked up the monorepo-wide security and dependency remediations.
 
 ## [Bots v1.6.0](https://github.com/theexperiencecompany/gaia/releases/tag/bots-v1.6.0)
