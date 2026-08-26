@@ -25,6 +25,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from pymongo.errors import DuplicateKeyError
+
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.models.bot_models import BotSessionDocument
 
@@ -113,16 +115,33 @@ def plan_merge(
 
 
 async def apply_merge(merge: SessionMerge) -> bool:
-    """Write one planned merge. False when the row moved between plan and write."""
+    """Write one planned merge. False when the world moved between plan and write.
+
+    Both rows can change under the plan: a workflow delivery can claim the
+    canonical key while a RENAME onto it is in flight (the unique index turns
+    that into ``DuplicateKeyError``), and a REPOINT's canonical row can vanish
+    before the write lands. Either way the answer is False with nothing
+    deleted — the legacy row stays, and the next flagged message replans
+    against the world as it is then. Failing the user's message over a
+    once-per-user bookkeeping fold would be backwards.
+    """
     if merge.action is MergeAction.RENAME:
-        return await bot_session_repository.rename_session_key(
-            session_key=merge.legacy_key,
-            new_session_key=merge.canonical_key,
-            channel_id=dm_channel_of(merge.canonical_key),
-        )
-    if merge.action is MergeAction.REPOINT:
-        await bot_session_repository.repoint_conversation(
+        try:
+            return await bot_session_repository.rename_session_key(
+                session_key=merge.legacy_key,
+                new_session_key=merge.canonical_key,
+                channel_id=dm_channel_of(merge.canonical_key),
+            )
+        except DuplicateKeyError:
+            return False
+    if (
+        merge.action is MergeAction.REPOINT
+        and not await bot_session_repository.repoint_conversation(
             session_key=merge.canonical_key,
             conversation_id=merge.surviving_conversation_id,
         )
+    ):
+        # Deleting the legacy row now would strand its (newer) conversation
+        # with no session pointing at it.
+        return False
     return await bot_session_repository.delete_by_session_key(merge.legacy_key) > 0

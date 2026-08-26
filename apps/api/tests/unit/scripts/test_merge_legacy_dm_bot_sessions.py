@@ -15,8 +15,11 @@ import pytest
 
 from app.models.bot_models import BotSessionDocument
 from app.scripts.merge_legacy_dm_bot_sessions import _apply_merges, canonical_key_for
+from pymongo.errors import DuplicateKeyError
+
 from app.services.bot_session_merge import (
     MergeAction,
+    apply_merge,
     dm_channel_of,
     last_used,
     plan_merge,
@@ -47,15 +50,19 @@ class _FakeRepository:
     def __init__(self, *, renamed: bool = True, deleted: int = 1) -> None:
         self.renamed = renamed
         self.deleted = deleted
+        self.repointed = True
+        self.rename_raises: Exception | None = None
         self.calls: list[tuple[str, dict[str, Any]]] = []
 
     async def rename_session_key(self, **kwargs: Any) -> bool:
         self.calls.append(("rename_session_key", kwargs))
+        if self.rename_raises is not None:
+            raise self.rename_raises
         return self.renamed
 
     async def repoint_conversation(self, **kwargs: Any) -> bool:
         self.calls.append(("repoint_conversation", kwargs))
-        return True
+        return self.repointed
 
     async def delete_by_session_key(self, session_key: str) -> int:
         self.calls.append(("delete_by_session_key", {"session_key": session_key}))
@@ -197,6 +204,45 @@ def test_dm_channel_of_takes_the_channel_segment_not_the_user() -> None:
     alone cannot tell "last segment" from "middle segment". A key where they
     differ can — and the last segment is what gets stamped onto the row."""
     assert dm_channel_of("discord:user-1:channel-9") == "channel-9"
+
+
+class TestAWriteRacedByAnotherClaim:
+    """Between plan and write another actor can move either row: a workflow
+    delivery claiming the canonical key mid-RENAME (the unique index turns
+    that into DuplicateKeyError), or the canonical row vanishing mid-REPOINT.
+    Both must answer False with the legacy row left in place — never a failed
+    user request, never a stranded conversation — so the next flagged message
+    replans against the world as it is then."""
+
+    async def test_a_rename_losing_the_canonical_key_race_is_a_no_op(
+        self, repository: _FakeRepository
+    ) -> None:
+        merge = plan_merge(
+            (legacy := _session(LEGACY_KEY, "conv-history", "2026-08-16T09:23:00+00:00")),
+            None,
+            canonical_key_for(legacy),
+        )
+        assert merge is not None
+        repository.rename_raises = DuplicateKeyError("E11000 duplicate key")
+
+        assert await apply_merge(merge) is False
+        assert not any(name == "delete_by_session_key" for name, _ in repository.calls)
+
+    async def test_a_repoint_that_matched_nothing_does_not_delete_the_legacy_row(
+        self, repository: _FakeRepository
+    ) -> None:
+        merge = plan_merge(
+            (legacy := _session(LEGACY_KEY, "conv-newer", "2026-08-17T10:00:00+00:00")),
+            _session(CANONICAL_KEY, "conv-older", "2026-08-16T09:23:00+00:00"),
+            canonical_key_for(legacy),
+        )
+        assert merge is not None
+        assert merge.action is MergeAction.REPOINT
+        repository.repointed = False  # the canonical row vanished after planning
+
+        assert await apply_merge(merge) is False
+        # Deleting now would strand conv-newer with no session pointing at it.
+        assert not any(name == "delete_by_session_key" for name, _ in repository.calls)
 
 
 class TestApplyMerges:
