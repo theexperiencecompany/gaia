@@ -83,6 +83,10 @@ def sources():
         yield
 
 
+async def _build(user_id: str = USER_ID) -> tuple[list[dict], set[str]]:
+    return await account_fs.build_account_projections(user_id)
+
+
 def _ids(files: list[dict]) -> set[str]:
     return {f["id"] for f in files}
 
@@ -90,7 +94,9 @@ def _ids(files: list[dict]) -> set[str]:
 @pytest.mark.unit
 class TestBuildAccountProjections:
     async def test_one_file_per_group_plus_every_linked_platform(self, sources) -> None:
-        files = await account_fs.build_account_projections(USER_ID)
+        files, failed = await _build()
+
+        assert not failed
 
         expected_groups = {
             "subscription",
@@ -110,7 +116,7 @@ class TestBuildAccountProjections:
             assert file["body"].endswith("\n")
 
     async def test_subscription_projection_carries_plan_shape(self, sources) -> None:
-        files = await account_fs.build_account_projections(USER_ID)
+        files, _ = await _build()
         subscription = next(f for f in files if f["id"] == "subscription")
 
         assert '"plan_type": "pro"' in subscription["body"]
@@ -118,14 +124,14 @@ class TestBuildAccountProjections:
         assert '"cancel_scheduled": false' in subscription["body"]
 
     async def test_selected_voice_resolves_the_name_from_the_catalog(self, sources) -> None:
-        files = await account_fs.build_account_projections(USER_ID)
+        files, _ = await _build()
         selected = next(f for f in files if f["id"] == "voices/selected")
 
         assert '"voice_id": "v-1"' in selected["body"]
         assert '"name": "Rachel"' in selected["body"]
 
     async def test_linked_platform_reports_connection_state_only(self, sources) -> None:
-        files = await account_fs.build_account_projections(USER_ID)
+        files, _ = await _build()
         telegram = next(f for f in files if f["id"] == "linked-telegram")
         discord = next(f for f in files if f["id"] == "linked-discord")
 
@@ -135,17 +141,24 @@ class TestBuildAccountProjections:
         assert '"connected_at": "2026-01-01"' in telegram["body"]
         assert '"connected": false' in discord["body"]
 
-    async def test_one_failing_source_skips_only_its_group(self, sources) -> None:
+    async def test_one_failing_source_skips_only_its_group_and_is_preserved_from_prune(
+        self, sources
+    ) -> None:
         with patch(
             f"{MODULE}.list_voices", new=AsyncMock(side_effect=RuntimeError("elevenlabs down"))
         ):
-            files = await account_fs.build_account_projections(USER_ID)
+            files, failed = await _build()
 
         ids = _ids(files)
         assert "voices/catalog" not in ids and "voices/selected" not in ids
         # The other groups still refreshed — one flaky provider must not blank
         # the whole account view.
         assert {"subscription", "usage", "notifications"} <= ids
+        # The failed group's previous on-disk projection must survive the prune.
+        assert failed == {
+            f"{ACCOUNT_DIR}/voices/catalog.json",
+            f"{ACCOUNT_DIR}/voices/selected.json",
+        }
 
     async def test_failing_link_source_drops_the_linked_files_but_keeps_the_rest(
         self, sources
@@ -154,10 +167,15 @@ class TestBuildAccountProjections:
             f"{MODULE}.PlatformLinkService.get_linked_platforms",
             new=AsyncMock(side_effect=RuntimeError("redis down")),
         ):
-            files = await account_fs.build_account_projections(USER_ID)
+            files, failed = await _build()
 
         assert not any(fid.startswith("linked-") for fid in _ids(files))
         assert "subscription" in _ids(files)
+        # Failed link source: its stale files are preserved, not re-projected
+        # as "not connected" from no data and not pruned away either.
+        assert failed == {
+            f"{ACCOUNT_DIR}/linked-accounts/{p.value}.json" for p in Platform
+        }
 
 
 @pytest.mark.unit

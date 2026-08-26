@@ -76,10 +76,9 @@ async def build_account_projections(
             continue
         files.append({"id": group, "path": f"{ACCOUNT_DIR}/{group}.json", "body": body})
 
-    linked, linked_failed = await _safe_linked_files(user_id)
+    linked, linked_failed_paths = await _safe_linked_files(user_id)
     files.extend(linked)
-    if linked_failed:
-        failed.update(p["path"] for p in linked)
+    failed.update(linked_failed_paths)
     return files, failed
 
 
@@ -128,23 +127,27 @@ async def _safe_body(
 
 async def _safe_linked_files(
     user_id: str,
-) -> tuple[list[AccountFileProjection], bool]:
-    """Linked-platform projections, plus whether the source failed this pass.
+) -> tuple[list[AccountFileProjection], set[str]]:
+    """Linked-platform projections, plus the paths to preserve from the prune.
 
-    On failure the caller keeps the previous files on disk (preserved from the
-    prune) instead of re-projecting them as "not connected" from no data — a
-    provider error must not look like the user unplugged everything.
+    On failure every platform file is preserved: a provider error must not look
+    like the user unplugged everything.
     """
     try:
-        return await _linked_account_bodies(user_id), False
+        return await _linked_account_bodies(user_id), set()
     except Exception as e:
+        stale = {
+            f"{ACCOUNT_DIR}/{ACCOUNT_LINKED_ACCOUNTS_DIRNAME}/{p.value}.json"
+            for p in Platform
+        }
         log.error(
             f"{LogTag.STORAGE} account projection failed — linked accounts skipped this pass",
             user={"id": user_id},
             error_type=type(e).__name__,
             error=str(e),
+            preserved=sorted(stale),
         )
-        return [], True
+        return [], stale
 
 
 async def _subscription_body(user_id: str) -> str:

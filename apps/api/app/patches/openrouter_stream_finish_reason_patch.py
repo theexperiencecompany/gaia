@@ -27,6 +27,3 @@ def apply() -> None:
         raise AttributeError("ChatStreamChoice has no finish_reason field; patch is stale")
     field.default = None
     ChatStreamChoice.model_rebuild(force=True)
-
-
-apply()
