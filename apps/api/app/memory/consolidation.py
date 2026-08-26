@@ -294,9 +294,13 @@ async def _rewrite_within_cap(
 
 
 # Whitespace the verifier may tidy while striking nothing: blank lines it
-# collapses, trailing spaces. Small enough that a placeholder response cannot
-# hide inside it.
-_SHRINK_SLACK_CHARS = 200
+# collapses, trailing spaces. Proportional, because a flat allowance is only
+# small relative to a long document — 200 characters is nothing against a 3,000
+# character profile and the whole thing against a 168 character one, which is
+# exactly the size of document that was replaced by "Let me process what's new
+# from" in production.
+_SHRINK_TOLERANCE = 0.05
+_MIN_SHRINK_TOLERANCE_CHARS = 16
 
 
 async def _strike_unsupported(
@@ -329,17 +333,22 @@ async def _strike_unsupported(
     # model did something else entirely: a run of this returned the placeholder
     # "## Document\n...document body..." with nothing struck, which is neither
     # None nor empty, so it was written verbatim over a 3,077-character profile.
+    original = content.strip()
     kept = verified.content.strip()
-    explained = sum(len(line) + 1 for line in verified.struck) + _SHRINK_SLACK_CHARS
-    lost = len(content.strip()) - len(kept)
-    if lost > explained:
+    # Only a line the document actually contained can explain its loss. Counting
+    # the reported strings unchecked would let a model claim any budget it liked
+    # by inventing them.
+    explained = sum(len(line) + 1 for line in verified.struck if line in original)
+    tolerance = max(_MIN_SHRINK_TOLERANCE_CHARS, int(len(original) * _SHRINK_TOLERANCE))
+    lost = len(original) - len(kept)
+    if lost > explained + tolerance:
         log.warning(
             "memory_consolidation_verification_failed",
             user_id=user_id,
             doc_type=doc_type.value,
             error_type="unexplained_document_shrink",
             lost_chars=lost,
-            explained_chars=explained,
+            explained_chars=explained + tolerance,
             struck_count=len(verified.struck),
         )
         return content

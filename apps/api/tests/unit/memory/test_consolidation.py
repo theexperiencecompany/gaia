@@ -344,7 +344,7 @@ class TestVerificationPass:
                 "doc_type": "user_md",
                 "error_type": "unexplained_document_shrink",
                 "lost_chars": len(profile) - len("## Document"),
-                "explained_chars": consolidation._SHRINK_SLACK_CHARS,
+                "explained_chars": int(len(profile) * consolidation._SHRINK_TOLERANCE),
                 "struck_count": 0,
             }
         ]
@@ -379,26 +379,51 @@ class TestVerificationPass:
 
         assert kept == profile
 
-    async def test_a_loss_exactly_the_size_of_the_slack_is_still_accepted(
+    async def test_the_profile_that_was_actually_destroyed_is_refused(
         self, boundaries: MagicMock
     ) -> None:
-        # The slack exists for whitespace the verifier tidies, so a loss of
-        # exactly that much is the most it can explain without striking a line.
-        slack = consolidation._SHRINK_SLACK_CHARS
-        document = "x" * 1000
-        boundaries.verify.return_value = VerifiedDocument(content="x" * (1000 - slack), struck=[])
+        """Verbatim from production: user 6a7a69f9's user.md, 168 characters,
+        replaced by 30 characters of the model narrating its own work. A flat
+        200-character allowance swallowed this entire document, which is why the
+        tolerance is proportional."""
+        profile = (
+            "# About the user\n## Identity\n- Gonzalo Blasco\n- GAIA account on the free "
+            "plan (daily usage limit). (as of 2026-08-13)\n\n## Work & projects\n\n"
+            "## Life & places\n\n## Routines"
+        )
+        assert len(profile) == 168
+        boundaries.verify.return_value = VerifiedDocument(
+            content="Let me process what's new from", struck=[]
+        )
+
+        kept = await consolidation._strike_unsupported(
+            USER, MemoryDocType.USER_MD, profile, [make_row()]
+        )
+
+        assert kept == profile
+
+    async def test_a_loss_within_the_tolerance_is_still_accepted(
+        self, boundaries: MagicMock
+    ) -> None:
+        # The tolerance covers whitespace the verifier tidies while striking
+        # nothing, so a loss of exactly that much is accepted.
+        document = "#" + "x" * 999
+        tolerance = int(len(document) * consolidation._SHRINK_TOLERANCE)
+        boundaries.verify.return_value = VerifiedDocument(
+            content="#" + "x" * (999 - tolerance), struck=[]
+        )
 
         kept = await consolidation._strike_unsupported(
             USER, MemoryDocType.USER_MD, document, [make_row()]
         )
 
-        assert kept == "x" * (1000 - slack)
+        assert kept == "#" + "x" * (999 - tolerance)
 
-    async def test_one_character_past_the_slack_is_refused(self, boundaries: MagicMock) -> None:
-        slack = consolidation._SHRINK_SLACK_CHARS
-        document = "x" * 1000
+    async def test_one_character_past_the_tolerance_is_refused(self, boundaries: MagicMock) -> None:
+        document = "#" + "x" * 999
+        tolerance = int(len(document) * consolidation._SHRINK_TOLERANCE)
         boundaries.verify.return_value = VerifiedDocument(
-            content="x" * (1000 - slack - 1), struck=[]
+            content="#" + "x" * (999 - tolerance - 1), struck=[]
         )
 
         kept = await consolidation._strike_unsupported(
@@ -407,33 +432,65 @@ class TestVerificationPass:
 
         assert kept == document
 
+    async def test_a_short_document_gets_the_floor_not_a_pittance(
+        self, boundaries: MagicMock
+    ) -> None:
+        # 5% of a 40-character document is 2 characters, too tight for ordinary
+        # whitespace tidying, so a floor applies.
+        document = "# About the user\n- one"
+        floor = consolidation._MIN_SHRINK_TOLERANCE_CHARS
+        assert int(len(document) * consolidation._SHRINK_TOLERANCE) < floor
+        kept_text = document[: len(document) - floor]
+        assert kept_text == kept_text.strip(), "fixture must not end in whitespace"
+        boundaries.verify.return_value = VerifiedDocument(content=kept_text, struck=[])
+
+        kept = await consolidation._strike_unsupported(
+            USER, MemoryDocType.USER_MD, document, [make_row()]
+        )
+
+        assert kept == kept_text
+
     async def test_a_struck_line_buys_exactly_its_own_length_and_newline(
         self, boundaries: MagicMock
     ) -> None:
-        # A struck line takes its newline with it, so it explains len + 1.
-        slack = consolidation._SHRINK_SLACK_CHARS
-        line = "y" * 50
-        document = "x" * 1000
-        budget = len(line) + 1 + slack
+        line = "- " + "y" * 60
+        document = f"# About\n{line}\n" + "x" * 900
+        tolerance = int(len(document.strip()) * consolidation._SHRINK_TOLERANCE)
+        budget = len(line) + 1 + tolerance
         boundaries.verify.return_value = VerifiedDocument(
-            content="x" * (1000 - budget), struck=[line]
+            content=document.strip()[: len(document.strip()) - budget], struck=[line]
         )
 
         kept = await consolidation._strike_unsupported(
             USER, MemoryDocType.USER_MD, document, [make_row()]
         )
 
-        assert kept == "x" * (1000 - budget)
+        assert len(kept) == len(document.strip()) - budget
 
     async def test_one_character_past_a_struck_lines_budget_is_refused(
         self, boundaries: MagicMock
     ) -> None:
-        slack = consolidation._SHRINK_SLACK_CHARS
-        line = "y" * 50
-        document = "x" * 1000
-        budget = len(line) + 1 + slack
+        line = "- " + "y" * 60
+        document = f"# About\n{line}\n" + "x" * 900
+        tolerance = int(len(document.strip()) * consolidation._SHRINK_TOLERANCE)
+        budget = len(line) + 1 + tolerance
         boundaries.verify.return_value = VerifiedDocument(
-            content="x" * (1000 - budget - 1), struck=[line]
+            content=document.strip()[: len(document.strip()) - budget - 1], struck=[line]
+        )
+
+        kept = await consolidation._strike_unsupported(
+            USER, MemoryDocType.USER_MD, document, [make_row()]
+        )
+
+        assert kept == document
+
+    async def test_a_line_the_document_never_had_buys_nothing(self, boundaries: MagicMock) -> None:
+        """Otherwise a model could claim any budget it liked by inventing the
+        lines it says it struck."""
+        document = "# About\n" + "x" * 900
+        invented = "- " + "z" * 400
+        boundaries.verify.return_value = VerifiedDocument(
+            content="# About\n" + "x" * 400, struck=[invented]
         )
 
         kept = await consolidation._strike_unsupported(
