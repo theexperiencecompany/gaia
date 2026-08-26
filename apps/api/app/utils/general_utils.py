@@ -64,7 +64,7 @@ def get_context_window(text: str, query: str, chars_before: int = 15, chars_afte
 def transform_gmail_message(msg: dict[str, Any]) -> dict[str, Any]:
     """Transform a Gmail API or Composio message into the frontend-friendly format,
     keeping every raw key alongside the derived ones."""
-    from dateutil.parser import parse as parse_date
+    from dateutil.parser import parse as parse_date  # noqa: PLC0415 -- cycle
 
     def get_sender(m: dict[str, Any]) -> str:
         return m.get("from") or m.get("sender") or ""

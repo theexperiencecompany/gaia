@@ -983,7 +983,7 @@ async def main() -> None:
     out_dir = Path(__file__).parent / "test_output"
     out_dir.mkdir(exist_ok=True)
 
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     report_path = out_dir / f"todo_test_report_{ts}.md"
     plan_path = out_dir / f"todo_improvement_plan_{ts}.md"
 

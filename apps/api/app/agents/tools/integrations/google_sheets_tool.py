@@ -72,7 +72,7 @@ def _sheets_proxy(
             user_id=user_id,
             toolkit=SHEETS_TOOLKIT,
             endpoint=endpoint,
-            method=method,  # type: ignore[arg-type]
+            method=method,  # type: ignore[arg-type]  # helper takes plain str; proxy_request_sync narrows to its ProxyMethod Literal
             body=body,
             query=query,
         ),

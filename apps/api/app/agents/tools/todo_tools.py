@@ -210,7 +210,7 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
                     "messages": [
                         ToolMessage(
                             content=(
-                                "Updated nothing — " + "; ".join(problems) + ". "
+                                "Updated nothing: " + "; ".join(problems) + ". "
                                 "Nothing in this batch was applied; fix the entry and resend "
                                 "the whole batch. Current task ids: "
                                 + (", ".join(todo_map) if todo_map else "none")
@@ -281,7 +281,7 @@ def create_todo_pre_model_hook(
     """
     del source  # intentionally unused — kept for signature stability
 
-    def todo_pre_model_hook(state: State, config: RunnableConfig, store: BaseStore) -> State:
+    def todo_pre_model_hook(state: State, config: RunnableConfig, store: BaseStore) -> State:  # noqa: ARG001 -- LangChain injects config/store via the tool-call signature
         messages = list(state.get("messages", []))
         if not messages:
             return state

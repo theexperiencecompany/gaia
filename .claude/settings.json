@@ -27,7 +27,7 @@
           },
           {
             "type": "command",
-            "command": "f=$(jq -r '.tool_input.file_path // empty'); [ -z \"$f\" ] && exit 0; root=$(git rev-parse --show-toplevel 2>/dev/null || pwd); case \"$f\" in *.ts|*.tsx|*.js|*.jsx) \"$root/node_modules/.bin/biome\" check --write \"$f\" 2>&1 || true;; *.py) uvx ruff format \"$f\" && uvx ruff check --fix \"$f\" || true;; esac"
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); [ -z \"$f\" ] && exit 0; root=$(git rev-parse --show-toplevel 2>/dev/null || pwd); case \"$f\" in *.ts|*.tsx|*.js|*.jsx) \"$root/node_modules/.bin/biome\" check --write \"$f\" 2>&1 || true;; *.py) uv run --project apps/api --group dev ruff format \"$f\" && uv run --project apps/api --group dev ruff check --fix \"$f\";; esac"
           }
         ]
       },

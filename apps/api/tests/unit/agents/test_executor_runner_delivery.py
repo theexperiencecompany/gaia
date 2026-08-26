@@ -10,6 +10,7 @@ Two invariants, both owned by ``result_delivery.py``:
   the user already saw, or resurrects an approval they already decided.
 """
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 from uuid import UUID
@@ -27,6 +28,7 @@ from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.models.chat_models import ConversationSource, MessageModel
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.services.analytics_service import AnalyticsEvents
+from shared.py.wide_events import log
 
 
 @pytest.fixture(autouse=True)
@@ -42,9 +44,10 @@ def _run(
     stream_id: str = "",
     task_id: str | None = None,
     bot_message_id: str | None = None,
+    workflow: bool = False,
 ) -> ExecutorRun:
     """A run context for delivery tests (defaults: live, non-workflow)."""
-    return ExecutorRun(
+    run = ExecutorRun(
         stream_id=stream_id,
         conversation_id="conv-1",
         user={"user_id": "user-1"},
@@ -52,7 +55,11 @@ def _run(
         task_id=task_id,
         user_message_id=None,
         bot_message_id=bot_message_id,
+        workflow_id="wf-1" if workflow else None,
+        workflow_title="Morning digest" if workflow else "",
+        active_todo_id="todo-9" if workflow else None,
     )
+    return run
 
 
 def _session_with_cards(stream_id: str) -> None:
@@ -63,7 +70,14 @@ def _session_with_cards(stream_id: str) -> None:
     )
 
 
-async def _deliver(conv_source, *, comms_text="result text", result_text="raw"):
+async def _deliver(
+    conv_source,
+    *,
+    comms_text="result text",
+    result_text="raw",
+    platform_delivered=True,
+    task_id=None,
+):
     """Run deliver_result with all I/O boundaries mocked.
 
     Returns (save_mock, platform_mock, ws_mock) for assertions. The real
@@ -79,12 +93,15 @@ async def _deliver(conv_source, *, comms_text="result text", result_text="raw"):
             rd, "_get_conversation_source", new_callable=AsyncMock, return_value=conv_source
         ),
         patch.object(
-            rd, "deliver_message_to_platform", new_callable=AsyncMock, return_value=True
+            rd,
+            "deliver_message_to_platform",
+            new_callable=AsyncMock,
+            return_value=platform_delivered,
         ) as platform,
         patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
     ):
         await rd.deliver_result(
-            _run(),
+            _run(task_id=task_id),
             result_text=result_text,
             result_type="final",
         )
@@ -138,6 +155,124 @@ class TestDeliverResultRouting:
             ConversationSource.WHATSAPP, comms_text="", result_text="raw executor output"
         )
         assert platform.await_args.args[2] == "raw executor output"
+
+
+class TestDeliveryOutcomeIsOnTheWideEvent:
+    """A finished run whose answer never reached the user still saved that answer
+    to the conversation, so nothing about the run looks wrong: the executor_run
+    event reads ``outcome: success`` either way. Only the delivery verdict tells
+    the two apart, so it has to be ON the event — a bare INFO line is not
+    queryable, and that is how a Telegram turn ended in silence with a green
+    wide event.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _fresh_wide_event(self) -> None:
+        log.reset()
+
+    async def test_a_failed_platform_send_is_recorded_as_undelivered(self) -> None:
+        await _deliver(ConversationSource.TELEGRAM, platform_delivered=False)
+
+        assert log.get()["result_delivery"]["delivered"] is False
+        assert log.get()["result_delivery"]["transport"] == "platform"
+        assert log.get()["result_delivery"]["source"] == "telegram"
+
+    async def test_a_failed_platform_send_raises_the_events_level(self) -> None:
+        """``delivered: false`` is only half the signal — an operator scanning for
+        broken runs filters on severity, so the drop must also be an error."""
+        await _deliver(ConversationSource.TELEGRAM, platform_delivered=False)
+
+        errors = log.get()["errors"]
+        assert len(errors) == 1
+        assert "NOT delivered" in errors[0]["msg"]
+        assert errors[0]["conversation_id"] == "conv-1"
+
+    async def test_the_undelivered_error_names_the_message_task_and_route(self) -> None:
+        """The error is the whole lead for "a user got silence": without the
+        message id there is nothing to look up, without the task id nothing ties
+        it to the run, and without the route nobody knows which delivery path
+        broke. An error that only says something failed cannot be actioned.
+        """
+        await _deliver(ConversationSource.TELEGRAM, platform_delivered=False, task_id="task-1")
+
+        (error,) = log.get()["errors"]
+        assert error["task_id"] == "task-1"
+        assert error["conversation_source"] == "telegram"
+        assert error["transport"] == "platform"
+        assert error["message_id"], "the saved message must be identified"
+
+    async def test_the_result_type_is_on_the_delivery_namespace(self) -> None:
+        """An errored run and a finished one deliver through the same path; the
+        result_type is what separates them when the delivery itself is fine."""
+        await _deliver(ConversationSource.TELEGRAM)
+
+        assert log.get()["result_delivery"]["result_type"] == "final"
+
+    async def test_a_successful_send_is_recorded_as_delivered_with_no_error(self) -> None:
+        await _deliver(ConversationSource.TELEGRAM)
+
+        assert log.get()["result_delivery"]["delivered"] is True
+        assert "errors" not in log.get()
+
+    async def test_the_narration_fallback_is_visible_separately_from_delivery(self) -> None:
+        """Comms failing and the send failing are different faults with the same
+        symptom (a useless message), so ``narrated`` is its own field."""
+        await _deliver(ConversationSource.TELEGRAM, comms_text="", result_text="raw output")
+
+        assert log.get()["result_delivery"]["narrated"] is False
+        assert log.get()["result_delivery"]["text_length"] == len("raw output")
+        assert log.get()["result_delivery"]["delivered"] is True
+
+
+class TestDeliveryOrigin:
+    """The provenance frame recorded into a platform thread when a workflow
+    result is delivered there — it is how a later turn backtracks to the
+    source, so the title, both machine ids, and their absence cases are
+    load-bearing."""
+
+    def test_names_the_title_and_both_ids(self) -> None:
+        run = _run(workflow=True)
+        assert rd._delivery_origin(run) == (
+            'workflow "Morning digest" (id wf-1), tracked todo (id todo-9)'
+        )
+
+    def test_an_untitled_workflow_has_no_quote_fragment(self) -> None:
+        run = _run(workflow=True)
+        run = replace(run, workflow_title="", active_todo_id=None)
+        assert rd._delivery_origin(run) == "workflow (id wf-1)"
+
+    def test_an_untracked_run_has_no_todo_clause(self) -> None:
+        run = _run(workflow=True)
+        run = replace(run, active_todo_id=None)
+        assert rd._delivery_origin(run) == 'workflow "Morning digest" (id wf-1)'
+
+
+class TestWorkflowResultReachesThePlatformDelivery:
+    """A finished workflow run hands its result to the platform-delivery path
+    with the run's own owner and provenance — a wrong user_id would deliver
+    into a stranger's chats, a wrong origin would orphan the trail."""
+
+    async def test_delivery_carries_the_runs_owner_and_origin(self) -> None:
+        with (
+            patch.object(
+                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="done"
+            ),
+            patch.object(rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[]),
+            patch.object(rd, "update_messages", new_callable=AsyncMock),
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
+            patch.object(
+                rd, "deliver_workflow_result_to_platforms", new_callable=AsyncMock
+            ) as deliver,
+            patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock) as notify,
+        ):
+            await rd.deliver_result(_run(workflow=True), result_text="done", result_type="final")
+
+        deliver.assert_awaited_once()
+        kwargs = deliver.await_args.kwargs
+        assert kwargs["user"] == {"user_id": "user-1"}
+        assert kwargs["user_id"] == "user-1"
+        assert kwargs["origin"] == ('workflow "Morning digest" (id wf-1), tracked todo (id todo-9)')
+        notify.assert_awaited_once()  # the in-app badge still fires alongside
 
 
 class TestGetConversationSource:

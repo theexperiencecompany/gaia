@@ -22,11 +22,11 @@ run = "uv run python -m src download-files"
 
 [tasks.lint]
 description = "Run ruff linter"
-run = "uvx ruff check src/"
+run = "uv run --group dev ruff check src/"
 
 [tasks.format]
 description = "Format code with ruff"
-run = "uvx ruff format src/"
+run = "uv run --group dev ruff format src/"
 
 [tasks.sync]
 description = "Install dependencies"

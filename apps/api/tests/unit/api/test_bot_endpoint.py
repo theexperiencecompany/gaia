@@ -6,16 +6,24 @@ routing, status codes, response bodies, and auth checks.
 
 import asyncio
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException
 from httpx import AsyncClient
 import pytest
 
-from app.api.v1.endpoints.bot import bot_chat_stream
+from app.api.v1.endpoints.bot import _bot_rate_limit_notice, bot_chat_stream
 from app.core.stream_manager import with_heartbeat
 from app.models.bot_models import BotChatRequest
-from app.models.payment_models import PlanType
+from app.models.payment_models import (
+    CreateSubscriptionResponse,
+    PlanDuration,
+    PlanResponse,
+    PlanType,
+    ProCheckout,
+)
 from app.services.analytics_service import AnalyticsEvents
 from shared.py.wide_events import log, log_context
 
@@ -773,9 +781,139 @@ class TestBotChatStream:
             event = dict(log.get())
 
         assert response.status_code == 200
+        assert event["operation"] == "bot_chat_stream"
         assert event["user"] == {"id": "uid1"}
         assert event["platform"] == "discord"
         assert event["outcome"] == "success"
+
+    @patch("app.api.v1.endpoints.bot.spawn_background_task", new=MagicMock())
+    @patch("app.api.v1.endpoints.bot.run_chat_stream_background", new=AsyncMock())
+    @patch(
+        "app.api.v1.endpoints.bot.create_bot_session_token",
+        new=MagicMock(return_value="tok"),
+    )
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.stream_manager")
+    @patch("app.api.v1.endpoints.bot.BotService")
+    @patch("app.api.v1.endpoints.bot.capture_event")
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
+    async def test_enforce_rate_limit_receives_platform_and_platform_user_id_in_order(
+        self,
+        mock_capture: MagicMock,
+        mock_bot_svc: MagicMock,
+        mock_sm: MagicMock,
+        mock_get_user: AsyncMock,
+    ):
+        """`BotService.enforce_rate_limit` is the flat per-platform anti-spam
+        gate — it must see the platform AND the platform user id, positionally
+        in that order, taken from the request body rather than swapped or
+        dropped."""
+        mock_get_user.return_value = {"user_id": "uid1", "_id": "uid1"}
+        mock_bot_svc.enforce_rate_limit = AsyncMock()
+        mock_bot_svc.get_or_create_session = AsyncMock(return_value="conv-1")
+        mock_bot_svc.load_conversation_history = AsyncMock(return_value=[])
+        mock_sm.start_stream = AsyncMock()
+
+        body = BotChatRequest(message="hi", platform="whatsapp", platform_user_id="wa_777")
+        request = MagicMock()
+        request.state = _make_request()
+
+        response = await bot_chat_stream(request, body)
+
+        assert response.status_code == 200
+        mock_bot_svc.enforce_rate_limit.assert_awaited_once_with("whatsapp", "wa_777")
+
+    @patch("app.api.v1.endpoints.bot.spawn_background_task", new=MagicMock())
+    @patch("app.api.v1.endpoints.bot.run_chat_stream_background", new=AsyncMock())
+    @patch(
+        "app.api.v1.endpoints.bot.create_bot_session_token",
+        new=MagicMock(return_value="tok"),
+    )
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.stream_manager")
+    @patch("app.api.v1.endpoints.bot.BotService")
+    @patch("app.api.v1.endpoints.bot.capture_event")
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
+    async def test_a_middleware_resolved_user_skips_the_platform_link_lookup(
+        self,
+        mock_capture: MagicMock,
+        mock_bot_svc: MagicMock,
+        mock_sm: MagicMock,
+        mock_get_user: AsyncMock,
+    ):
+        """When `BotAuthMiddleware` already put an authenticated user on
+        `request.state`, the handler must use it as-is rather than re-resolving
+        through `PlatformLinkService` — the DB round trip is a fallback for the
+        unlinked/legacy path, not the common one."""
+        mock_bot_svc.enforce_rate_limit = AsyncMock()
+        mock_bot_svc.get_or_create_session = AsyncMock(return_value="conv-1")
+        mock_bot_svc.load_conversation_history = AsyncMock(return_value=[])
+        mock_sm.start_stream = AsyncMock()
+
+        body = BotChatRequest(message="hi", platform="discord", platform_user_id="disc_1")
+        request = MagicMock()
+        request.state = _make_request(
+            user={"user_id": "uid_from_middleware", "_id": "uid_from_middleware"},
+            authenticated=True,
+        )
+
+        response = await bot_chat_stream(request, body)
+
+        assert response.status_code == 200
+        mock_get_user.assert_not_awaited()
+        mock_bot_svc.get_or_create_session.assert_awaited_once_with(
+            "discord",
+            "disc_1",
+            None,
+            {"user_id": "uid_from_middleware", "_id": "uid_from_middleware"},
+        )
+
+    @patch("app.api.v1.endpoints.bot.spawn_background_task", new=MagicMock())
+    @patch("app.api.v1.endpoints.bot.run_chat_stream_background", new=AsyncMock())
+    @patch(
+        "app.api.v1.endpoints.bot.create_bot_session_token",
+        new=MagicMock(return_value="tok"),
+    )
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.stream_manager")
+    @patch("app.api.v1.endpoints.bot.BotService")
+    @patch("app.api.v1.endpoints.bot.capture_event")
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
+    async def test_a_state_user_without_authenticated_flag_still_falls_back(
+        self,
+        mock_capture: MagicMock,
+        mock_bot_svc: MagicMock,
+        mock_sm: MagicMock,
+        mock_get_user: AsyncMock,
+    ):
+        """`request.state.user` alone is not enough — `authenticated` must also
+        be true, or a stale/partial state object would be trusted."""
+        mock_get_user.return_value = {"user_id": "uid_from_lookup", "_id": "uid_from_lookup"}
+        mock_bot_svc.enforce_rate_limit = AsyncMock()
+        mock_bot_svc.get_or_create_session = AsyncMock(return_value="conv-1")
+        mock_bot_svc.load_conversation_history = AsyncMock(return_value=[])
+        mock_sm.start_stream = AsyncMock()
+
+        body = BotChatRequest(message="hi", platform="discord", platform_user_id="disc_1")
+        request = MagicMock()
+        request.state = _make_request(
+            user={"user_id": "uid_from_middleware", "_id": "uid_from_middleware"},
+            authenticated=False,
+        )
+
+        response = await bot_chat_stream(request, body)
+
+        assert response.status_code == 200
+        mock_get_user.assert_awaited_once_with("discord", "disc_1")
 
 
 # ---------------------------------------------------------------------------
@@ -867,6 +1005,83 @@ class TestBotChatStreamBody:
         assert '"text": "world"' in body
         assert '"done": true' in body
         assert '"conversation_id": "conv-1"' in body
+
+    async def test_a_rate_limit_card_reaches_the_bot_as_a_notice_for_this_user(
+        self, client: AsyncClient
+    ):
+        """The web-only rate-limit card is the one frame the translator must
+        convert, not drop — and it is minted for the RESOLVED user, so the
+        checkout link inside it attributes to their account.
+
+        It converts to a typed ``notice`` frame, never to reply text: text
+        belongs to the assistant message in flight, so a notice sent that way
+        went down with any message that got discarded (a handoff preamble, a
+        rewritten draft) and the user hit a wall in silence."""
+
+        async def walled() -> AsyncGenerator[str, None]:
+            yield (
+                'data: {"tool_data": {"tool_name": "rate_limit_data",'
+                ' "data": {"feature": "chat_messages", "current_plan": "free"}}}\n\n'
+            )
+            yield "data: [DONE]\n\n"
+
+        mint = AsyncMock(return_value="upgrade-link-notice")
+        with patch("app.api.v1.endpoints.bot._bot_rate_limit_notice", mint):
+            body = await self._collect(client, walled())
+
+        mint.assert_awaited_once_with(
+            {
+                "tool_data": {
+                    "tool_name": "rate_limit_data",
+                    "data": {"feature": "chat_messages", "current_plan": "free"},
+                }
+            },
+            "uid1",
+        )
+        assert 'data: {"notice": {"text": "upgrade-link-notice"}}' in body
+        assert 'data: {"text"' not in body
+
+    async def test_a_non_rate_limit_card_yields_no_notice_frame(self, client: AsyncClient):
+        async def other_card() -> AsyncGenerator[str, None]:
+            yield 'data: {"tool_data": {"tool_name": "memory_data", "data": {}}}\n\n'
+            yield "data: [DONE]\n\n"
+
+        mint = AsyncMock(return_value=None)
+        with patch("app.api.v1.endpoints.bot._bot_rate_limit_notice", mint):
+            body = await self._collect(client, other_card())
+
+        mint.assert_awaited_once_with(
+            {"tool_data": {"tool_name": "memory_data", "data": {}}}, "uid1"
+        )
+        assert '"notice"' not in body
+
+    async def test_a_message_boundary_reaches_the_bot_intact(self, client: AsyncClient):
+        """The one web frame the translator forwards verbatim.
+
+        A bot needs it twice over: to close a bubble, and — when ``discarded`` —
+        to take back a handoff preamble it has already shown the user. Both the
+        key and the payload underneath it are the contract, so this reads the
+        frame back rather than checking the word appears somewhere.
+        """
+
+        async def retracted_then_replaced() -> AsyncGenerator[str, None]:
+            yield 'data: {"response": "let me get that set up"}\n\n'
+            yield 'data: {"message_boundary": {"message_id": "m1", "discarded": true}}\n\n'
+            yield 'data: {"response": "all set up now."}\n\n'
+            yield "data: [DONE]\n\n"
+
+        body = await self._collect(client, retracted_then_replaced())
+
+        frames = [
+            json.loads(line[len("data: ") :])
+            for line in body.splitlines()
+            if line.startswith("data: ")
+        ]
+        assert {"message_boundary": {"message_id": "m1", "discarded": True}} in frames
+        # The boundary is a frame of its own, never reply text — and it must not
+        # end the turn: the replacement message comes after it.
+        assert {"text": "all set up now."} in frames
+        assert {"done": True, "conversation_id": "conv-1"} in frames
 
     async def test_the_session_token_is_the_first_thing_the_bot_receives(self, client: AsyncClient):
         """The bot stores this to authenticate follow-up calls for the turn."""
@@ -1128,3 +1343,86 @@ class TestBotChatStreamMetering:
             )
 
         limiter.assert_not_awaited()
+
+
+class TestBotRateLimitNotice:
+    """Rate limits reach bots as text, so the upgrade path has to be a link.
+
+    Bots drop `tool_data`, so the web's RateLimitCard (and its pricing-modal CTA)
+    never renders for them. A checkout link is the only one-tap route a WhatsApp
+    or Telegram user has.
+    """
+
+    @staticmethod
+    def _card(current_plan: str = PlanType.FREE.value) -> dict[str, object]:
+        return {
+            "tool_data": {
+                "tool_name": "rate_limit_data",
+                "data": {"feature": "chat_messages", "current_plan": current_plan},
+            }
+        }
+
+    async def test_free_user_gets_a_real_checkout_link(self) -> None:
+        checkout = AsyncMock(
+            return_value=ProCheckout(
+                plan=PlanResponse(
+                    id="plan_pro",
+                    dodo_product_id="prod_pro",
+                    name="Pro",
+                    amount=3000,
+                    currency="USD",
+                    duration=PlanDuration.MONTHLY,
+                    is_active=True,
+                    created_at=datetime(2026, 1, 1, tzinfo=UTC),
+                    updated_at=datetime(2026, 1, 1, tzinfo=UTC),
+                ),
+                checkout=CreateSubscriptionResponse(
+                    subscription_id="cs_1",
+                    payment_link="https://checkout.dodopayments.com/s/cs_1",
+                    status="payment_link_created",
+                ),
+            )
+        )
+        with patch("app.api.v1.endpoints.bot.payment_service.create_pro_checkout", checkout):
+            notice = await _bot_rate_limit_notice(self._card(), "user_1")
+
+        assert notice is not None
+        assert "chat messages limit" in notice
+        assert "[Upgrade to Pro](https://checkout.dodopayments.com/s/cs_1)" in notice
+        checkout.assert_awaited_once_with("user_1")
+
+    async def test_dodo_failure_degrades_to_the_pricing_page(self) -> None:
+        """A marketing link must never cost the user their reply."""
+        log.reset()
+        with patch(
+            "app.api.v1.endpoints.bot.payment_service.create_pro_checkout",
+            AsyncMock(side_effect=RuntimeError("dodo down")),
+        ):
+            notice = await _bot_rate_limit_notice(self._card(), "user_1")
+
+        assert notice is not None
+        assert "/pricing)" in notice
+        # The fallback is loud: the wide event carries a bounded operation and
+        # failure reason (never provider error text), not a silent degrade.
+        assert log.get()["warnings"] == [
+            {
+                "msg": "[PAYMENT] Could not mint bot upgrade link, falling back to pricing page",
+                "user": {"id": "user_1"},
+                "payment": {"operation": "bot_upgrade_link"},
+                "failure_reason": "checkout_unavailable",
+                "error_type": "RuntimeError",
+            }
+        ]
+
+    async def test_pro_user_gets_no_pitch_and_no_session(self) -> None:
+        checkout = AsyncMock()
+        with patch("app.api.v1.endpoints.bot.payment_service.create_pro_checkout", checkout):
+            notice = await _bot_rate_limit_notice(self._card(PlanType.PRO.value), "user_1")
+
+        assert notice is not None
+        assert "Upgrade" not in notice
+        checkout.assert_not_awaited()
+
+    async def test_other_tool_cards_are_left_alone(self) -> None:
+        chunk = {"tool_data": {"tool_name": "memory_data", "data": {}}}
+        assert await _bot_rate_limit_notice(chunk, "user_1") is None

@@ -26,7 +26,11 @@ from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
-from app.constants.memory import DEFAULT_MEMORY_IMPORTANCE, FORGET_REASON_MAX_CHARS
+from app.constants.memory import (
+    DEFAULT_MEMORY_IMPORTANCE,
+    FORGET_REASON_MAX_CHARS,
+    MemoryShelfLife,
+)
 from app.db.postgresql import Base
 
 # Weighted FTS document: content carries weight A, the category folder path
@@ -51,6 +55,15 @@ class MemoryRecord(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     kind: Mapped[str] = mapped_column(String(20), nullable=False)  # MemoryKind
+    # MemoryShelfLife. Decides expiry (see ingestion._forget_after) and which
+    # rows may feed a core document — a value that was only true "as of" a
+    # moment must never be consolidated into the always-injected identity doc.
+    shelf_life: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default=MemoryShelfLife.DURABLE.value,
+        server_default=MemoryShelfLife.DURABLE.value,
+    )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     category_path: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     occurred_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

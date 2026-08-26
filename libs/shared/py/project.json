@@ -9,15 +9,20 @@
     "lint": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uvx ruff check .",
+        "command": "uvx ruff@0.14.13 check .",
         "cwd": "{projectRoot}"
       },
-      "cache": true
+      "cache": true,
+      "inputs": [
+        "default",
+        "{workspaceRoot}/libs/shared/py/pyproject.toml",
+        "{workspaceRoot}/apps/api/pyproject.toml"
+      ]
     },
     "format": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uvx ruff format .",
+        "command": "uvx ruff@0.14.13 format .",
         "cwd": "{projectRoot}"
       }
     }

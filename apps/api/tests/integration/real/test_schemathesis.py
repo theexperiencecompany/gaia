@@ -58,10 +58,7 @@ from pymongo import MongoClient
 import pytest
 
 from app.db.mongodb.mongodb import MONGO_DATABASE_NAME
-from app.db.repositories.ai_models import AiModelsRepository
 from app.db.repositories.plans import PlansRepository
-from app.models.models_models import ModelProvider
-from app.models.payment_models import PlanType
 from tests.helpers import pick_free_port
 
 pytestmark = [
@@ -146,15 +143,15 @@ def _tail(log_path: Path, limit: int = 20000) -> str:
 def _seeded_startup_requirements(mongodb_url: str) -> Iterator[None]:
     """Satisfy the app's own startup gate before booting it.
 
-    ``app/services/startup_validation.py`` aborts boot when the ``ai_models`` or
-    ``subscription_plans`` collections are empty, deliberately: a deployment
-    missing its catalog should fail loudly rather than serve. CI's Mongo is
+    ``app/services/startup_validation.py`` aborts boot when the
+    ``subscription_plans`` collection is empty, deliberately: a deployment
+    missing its plans should fail loudly rather than serve. CI's Mongo is
     empty and nothing seeds it, so the real server could never start there —
-    which is why this suite failed only in CI, while a developer's Mongo (seeded
-    long ago by scripts/seed_models.py) let it pass locally.
+    which is why this suite failed only in CI, while a developer's Mongo let it
+    pass locally.
 
-    The seeded rows exist to clear that gate, nothing more: no operation in
-    ``SCOPED_OPERATIONS`` reads either collection. Only ever inserted into an
+    The seeded row exists to clear that gate, nothing more: no operation in
+    ``SCOPED_OPERATIONS`` reads the collection. Only ever inserted into an
     EMPTY collection, and only what we inserted is removed afterwards, so a
     developer's real catalog is never touched.
     """
@@ -166,20 +163,6 @@ def _seeded_startup_requirements(mongodb_url: str) -> Iterator[None]:
     seeded: list[tuple[str, object]] = []
 
     fixtures: dict[str, dict[str, object]] = {
-        AiModelsRepository.collection_name: {
-            "model_id": "schemathesis-precondition",
-            "name": "Schemathesis Precondition Model",
-            "model_provider": ModelProvider.OPENAI.value,
-            "inference_provider": ModelProvider.OPENAI.value,
-            "provider_model_name": "gpt-4o-mini",
-            "max_tokens": 1024,
-            "available_in_plans": [PlanType.FREE.value],
-            "lowest_tier": PlanType.FREE.value,
-            "is_active": True,
-            "is_default": False,
-            "created_at": now,
-            "updated_at": now,
-        },
         PlansRepository.collection_name: {
             "name": "Schemathesis Precondition Plan",
             "amount": 0,

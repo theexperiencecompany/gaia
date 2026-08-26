@@ -88,7 +88,7 @@ def _cap(text: str, *, truncated: bool) -> str:
     if truncated or len(text) > MAX_FILTER_OUTPUT_CHARS:
         return (
             text[:MAX_FILTER_OUTPUT_CHARS]
-            + f"\n... [truncated at {MAX_FILTER_OUTPUT_CHARS} chars — narrow your query]"
+            + f"\n... [truncated at {MAX_FILTER_OUTPUT_CHARS} chars: narrow your query]"
         )
     return text
 
@@ -110,7 +110,7 @@ async def run_file_filter(
     """
     try:
         user_id = get_user_id(config)
-        abs_path, rel = canonical_rel(path, session_id=get_session_id(config))
+        _abs_path, rel = canonical_rel(path, session_id=get_session_id(config))
     except ValueError as e:
         return f"Error: {e}"
 

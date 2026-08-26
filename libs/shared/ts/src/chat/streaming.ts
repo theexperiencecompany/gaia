@@ -52,6 +52,11 @@ export type ChatStreamEvent =
   | { type: "error"; error: string }
   | { type: "model_fallback"; model?: string }
   | { type: "response"; chunk: string }
+  // End of one assistant message. `discarded` means that message turned out to
+  // carry tool calls, so the text it streamed was a handoff preamble and the
+  // real reply is the NEXT message — the wire hands over the text before the
+  // tool call, so the client has already rendered it and has to take it back.
+  | { type: "message_boundary"; messageId: string; discarded: boolean }
   | {
       type: "conversation_initialized";
       conversation_id?: string;
@@ -158,6 +163,19 @@ const extractResponse = (payload: JsonObject): ChatStreamEvent[] => {
     events.push({ type: "response", chunk: payload.response });
   }
   return events;
+};
+
+const extractMessageBoundary = (payload: JsonObject): ChatStreamEvent[] => {
+  const boundary = payload.message_boundary;
+  if (!isObject(boundary) || typeof boundary.discarded !== "boolean") return [];
+  return [
+    {
+      type: "message_boundary",
+      messageId:
+        typeof boundary.message_id === "string" ? boundary.message_id : "",
+      discarded: boundary.discarded,
+    },
+  ];
 };
 
 const extractFollowUpActions = (payload: JsonObject): ChatStreamEvent[] =>
@@ -405,6 +423,7 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
     ...extractError(payload),
     ...extractModelFallback(payload),
     ...extractResponse(payload),
+    ...extractMessageBoundary(payload),
     ...extractFollowUpActions(payload),
     ...extractProgress(payload),
     ...extractToolData(payload),

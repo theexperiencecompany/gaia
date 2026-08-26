@@ -245,6 +245,14 @@ def test_load_bounded_read_caps_input(tmp_path: Path, monkeypatch: pytest.Monkey
     assert 0 < len(records) < 100  # only the bounded prefix was parsed
 
 
+def test_a_truncated_input_says_the_results_may_be_incomplete() -> None:
+    """The note is the only thing between a partial answer and a confident wrong
+    one: the model sees matches and no reason to doubt them unless this says so."""
+    assert query_json_tool._format_result([{"n": 1}], dropped=0, truncated=True).endswith(
+        "\n\n[input truncated (file too large): results may be incomplete]"
+    )
+
+
 def test_load_caps_jsonl_record_count(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(query_json_tool, "MAX_QUERY_RECORDS", 5)
     records, _, truncated = _load_records(_jsonl(tmp_path, [{"n": i} for i in range(50)]))

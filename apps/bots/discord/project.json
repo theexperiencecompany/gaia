@@ -71,7 +71,7 @@
     "docker:build": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "docker build --platform linux/amd64 -f apps/bots/Dockerfile --build-arg BOT_NAME=discord -t apps-bots-discord:latest -t bot-discord:latest -t ghcr.io/theexperiencecompany/gaia-bot-discord:latest .",
+        "command": "docker buildx build --platform linux/amd64 --cache-from type=registry,ref=ghcr.io/theexperiencecompany/gaia-bot-discord:buildcache --cache-to type=registry,ref=ghcr.io/theexperiencecompany/gaia-bot-discord:buildcache,mode=max,image-manifest=true,oci-mediatypes=true,compression=zstd --build-arg BOT_NAME=discord -f apps/bots/Dockerfile -t apps-bots-discord:latest -t bot-discord:latest -t ghcr.io/theexperiencecompany/gaia-bot-discord:latest --load .",
         "cwd": "."
       },
       "cache": true,

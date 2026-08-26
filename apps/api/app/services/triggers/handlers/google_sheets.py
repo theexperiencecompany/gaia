@@ -59,7 +59,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
 
     async def get_config_options(
         self,
-        trigger_name: str,
+        trigger_name: str,  # noqa: ARG002 -- framework contract
         field_name: str,
         user_id: str,
         integration_id: str,

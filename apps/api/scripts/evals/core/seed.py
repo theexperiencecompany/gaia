@@ -273,7 +273,7 @@ def _with_resolved_token_source(record: dict[str, Any], suite: str) -> dict[str,
     return {**record, "tokens": {**tokens, "source": resolved}}
 
 
-class LegacyTracesPresent(RuntimeError):
+class LegacyTracesPresentError(RuntimeError):
     """A seed would duplicate traces instead of updating them."""
 
 
@@ -293,7 +293,7 @@ def _refuse_to_double(project: str, traces: list[CaseTrace]) -> None:
     expected = {opiksink.trace_id_for(project, trace) for trace in traces}
     legacy = opiksink.legacy_case_traces(project, expected)
     if legacy:
-        raise LegacyTracesPresent(
+        raise LegacyTracesPresentError(
             f"{project}: {legacy} case trace(s) predate derived ids, so seeding would add "
             f"duplicates rather than update them. Rebuild the project instead: "
             f"`python -m scripts.evals ingest` (or seed --reset for this project alone)."

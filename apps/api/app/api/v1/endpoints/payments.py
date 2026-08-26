@@ -30,7 +30,7 @@ router = APIRouter()
 @router.get("/plans", response_model=list[PlanResponse])
 @limiter.limit("30/minute")
 # evlog-map-disable-next-line audit -- read-only plan catalog lookup, no state change to audit
-async def get_plans_endpoint(request: Request, active_only: bool = True) -> list[PlanResponse]:
+async def get_plans_endpoint(request: Request, active_only: bool = True) -> list[PlanResponse]:  # noqa: ARG001 -- slowapi's @limiter.limit requires request in the handler signature
     """Get all available subscription plans."""
     log.set(payment={"operation": "get_plans"})
     try:
@@ -47,7 +47,7 @@ async def get_plans_endpoint(request: Request, active_only: bool = True) -> list
 @router.post("/subscriptions")
 @limiter.limit("5/minute")
 async def create_subscription_endpoint(
-    request: Request,
+    request: Request,  # noqa: ARG001 -- framework contract
     subscription_data: CreateSubscriptionRequest,
     user_id: str = Depends(get_user_id),
 ) -> CreateSubscriptionResponse:
@@ -93,7 +93,7 @@ async def create_subscription_endpoint(
 @router.post("/subscriptions/cancel", response_model=UserSubscriptionStatus)
 @limiter.limit("5/minute")
 async def cancel_subscription_endpoint(
-    request: Request,
+    request: Request,  # noqa: ARG001 -- framework contract
     user_id: str = Depends(get_user_id),
 ) -> UserSubscriptionStatus:
     """Cancel the user's subscription at the end of the current billing period."""
@@ -131,7 +131,7 @@ async def cancel_subscription_endpoint(
 @router.post("/verify-payment", response_model=PaymentVerificationResponse)
 @limiter.limit("20/minute")
 async def verify_payment_endpoint(
-    request: Request,
+    request: Request,  # noqa: ARG001 -- framework contract
     user_id: str = Depends(get_user_id),
 ) -> PaymentVerificationResponse:
     """Verify if user's payment has been completed."""
@@ -157,7 +157,7 @@ async def verify_payment_endpoint(
 @limiter.limit("60/minute")
 # evlog-map-disable-next-line audit -- read-only subscription status lookup, no state change to audit
 async def get_subscription_status_endpoint(
-    request: Request,
+    request: Request,  # noqa: ARG001 -- framework contract
     user_id: str = Depends(get_user_id),
 ) -> UserSubscriptionStatus:
     """Get user's current subscription status."""

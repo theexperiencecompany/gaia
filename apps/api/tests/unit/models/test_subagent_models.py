@@ -34,7 +34,7 @@ def _make_subagent(**overrides: object) -> Subagent:
         "config": _make_config(),
     }
     fields.update(overrides)
-    return Subagent(**fields)  # type: ignore[arg-type]
+    return Subagent(**fields)  # type: ignore[arg-type]  # fixture spreads an untyped defaults dict into the model
 
 
 class TestSubagentConstruction:
@@ -73,13 +73,13 @@ class TestSubagentImmutability:
         subagent = _make_subagent()
 
         with pytest.raises(dataclasses.FrozenInstanceError):
-            subagent.id = "mutated"  # type: ignore[misc]
+            subagent.id = "mutated"  # type: ignore[misc]  # deliberate write asserts FrozenInstanceError
 
     def test_frozen_blocks_optional_field_assignment(self) -> None:
         subagent = _make_subagent()
 
         with pytest.raises(dataclasses.FrozenInstanceError):
-            subagent.short_name = "x"  # type: ignore[misc]
+            subagent.short_name = "x"  # type: ignore[misc]  # deliberate write asserts FrozenInstanceError
 
 
 class TestSubagentEquality:

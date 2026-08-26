@@ -83,7 +83,10 @@ export function useConversationQuery(conversationId: string | null) {
     queryKey: chatKeys.messages(conversationId!),
     queryFn: () => fetchMessagesFromApi(conversationId!),
     enabled: !!conversationId && !conversationId.startsWith("temp-"),
-    staleTime: 5 * 60 * 1000,
+    // Short staleness window: the cache-first seed still renders instantly,
+    // but revisiting a conversation revalidates against the API quickly
+    // enough that messages sent from other devices actually appear.
+    staleTime: 15_000,
   });
 }
 
@@ -91,7 +94,7 @@ export function useConversationsQuery() {
   return useQuery({
     queryKey: chatKeys.conversations(),
     queryFn: fetchConversationsList,
-    staleTime: 2 * 60 * 1000,
+    staleTime: 15_000,
   });
 }
 
@@ -128,9 +131,30 @@ export function useChatQueryClient() {
       chatKeys.conversations(),
       (prev) => {
         if (!prev) return prev;
-        return prev.map((c) =>
+        const next = prev.map((c) =>
           c.id === conversationId ? { ...c, ...updates } : c,
         );
+        // Keep the AsyncStorage seed in sync so the next launch matches.
+        chatDb.saveConversations(next).catch((err) => {
+          console.warn("[queries] Failed to persist conversations:", err);
+        });
+        return next;
+      },
+    );
+  };
+
+  /** Optimistically drop a conversation from the list (and local seed). */
+  const removeConversationFromCache = (conversationId: string) => {
+    queryClient.setQueryData<Conversation[]>(
+      chatKeys.conversations(),
+      (prev) => {
+        if (!prev) return prev;
+        const next = prev.filter((c) => c.id !== conversationId);
+        chatDb.saveConversations(next).catch((err) => {
+          console.warn("[queries] Failed to persist conversations:", err);
+        });
+        chatDb.deleteConversation(conversationId).catch(() => undefined);
+        return next;
       },
     );
   };
@@ -141,5 +165,6 @@ export function useChatQueryClient() {
     invalidateMessages,
     prefetchMessages,
     updateConversationInCache,
+    removeConversationFromCache,
   };
 }

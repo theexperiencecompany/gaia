@@ -63,49 +63,81 @@ class TestComposeTaskBrief:
         )
 
 
+async def _dispatched_brief(tool_args: dict, configurable: dict) -> str:
+    """Invoke call_executor and return the brief it handed to _dispatch_executor."""
+    with patch(
+        "app.agents.tools.executor_tool._dispatch_executor",
+        new=AsyncMock(return_value="Task accepted"),
+    ) as mock_dispatch:
+        await call_executor.ainvoke(tool_args, config={"configurable": configurable})
+    return mock_dispatch.call_args.kwargs["task"]
+
+
 class TestCallExecutorComposition:
     async def test_acceptance_criteria_reach_the_dispatched_task(self):
         """call_executor must dispatch the COMPOSED brief (task + criteria)."""
-        config = {"configurable": {"thread_id": "conv-1"}}
-        with patch(
-            "app.agents.tools.executor_tool._dispatch_executor",
-            new=AsyncMock(return_value="Task accepted"),
-        ) as mock_dispatch:
-            await call_executor.ainvoke(
-                {
-                    "task": "triage my inbox",
-                    "acceptance_criteria": ["promos archived", "important flagged"],
-                    "verbatim_request": "please triage my inbox",
-                },
-                config=config,
-            )
+        dispatched_task = await _dispatched_brief(
+            {
+                "task": "triage my inbox",
+                "acceptance_criteria": ["promos archived", "important flagged"],
+            },
+            {"thread_id": "conv-1", "user_request": "please triage my inbox"},
+        )
 
-        dispatched_task = mock_dispatch.call_args.kwargs["task"]
         assert "triage my inbox" in dispatched_task
         assert "Definition of done" in dispatched_task
         assert "- promos archived" in dispatched_task
         assert "- important flagged" in dispatched_task
         assert "please triage my inbox" in dispatched_task
 
-    async def test_verbatim_request_folds_into_dispatched_task(self):
-        config = {"configurable": {"thread_id": "conv-1"}}
-        with patch(
-            "app.agents.tools.executor_tool._dispatch_executor",
-            new=AsyncMock(return_value="Task accepted"),
-        ) as mock_dispatch:
-            await call_executor.ainvoke(
-                {
-                    "task": "triage inbox",
-                    "acceptance_criteria": ["promos archived"],
-                    "verbatim_request": "clear my inbox pls",
-                },
-                config=config,
-            )
 
-        assert (
-            "Original request (verbatim):\nclear my inbox pls"
-            in mock_dispatch.call_args.kwargs["task"]
+class TestVerbatimRequestComesFromTheServer:
+    """The verbatim ask is read off configurable, never re-typed by the comms model.
+
+    Routing it through the model made it a model output: asked to emit the full
+    task AND re-transcribe a request that may run to MAX_MESSAGE_LENGTH, the
+    comms model degenerates — repeating tokens and spilling the schema's own key
+    names into `acceptance_criteria`. The server already holds the user's words,
+    so the model is no longer asked for them.
+    """
+
+    async def test_verbatim_request_folds_in_without_the_model_supplying_it(self):
+        dispatched_task = await _dispatched_brief(
+            {"task": "triage inbox", "acceptance_criteria": ["promos archived"]},
+            {"thread_id": "conv-1", "user_request": "clear my inbox pls"},
         )
+
+        assert dispatched_task.startswith("Original request (verbatim):\nclear my inbox pls")
+
+    async def test_the_model_cannot_supply_a_verbatim_request_at_all(self):
+        """The arg is gone from the schema, so a garbled one can never be accepted."""
+        assert "verbatim_request" not in call_executor.args
+
+    async def test_a_long_request_is_carried_unclipped(self):
+        """`user_messages` is clipped to HIL_JUDGE_MAX_TURN_CHARS (800); the verbatim
+        backstop must not be, or long asks — exactly the ones that broke the model —
+        silently lose their tail."""
+        long_request = "archive the promo from " + ", ".join(
+            f"sender{n}@example.com" for n in range(200)
+        )
+        assert len(long_request) > 800
+
+        dispatched_task = await _dispatched_brief(
+            {"task": "triage inbox", "acceptance_criteria": ["promos archived"]},
+            {"thread_id": "conv-1", "user_request": long_request},
+        )
+
+        assert long_request in dispatched_task
+
+    async def test_absent_user_request_leaves_the_brief_verbatim_free(self):
+        """Non-chat roots (workflow triggers) have no literal user turn."""
+        dispatched_task = await _dispatched_brief(
+            {"task": "triage inbox", "acceptance_criteria": ["promos archived"]},
+            {"thread_id": "conv-1"},
+        )
+
+        assert "Original request (verbatim)" not in dispatched_task
+        assert dispatched_task.startswith("triage inbox")
 
 
 if __name__ == "__main__":

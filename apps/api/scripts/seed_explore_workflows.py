@@ -1124,7 +1124,7 @@ def create_workflow_document(config: dict[str, Any], user_id: str) -> dict[str, 
 
 async def create_backup() -> str:
     """Create a backup of existing explore workflows."""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     backup_file = f"explore_workflows_backup_{timestamp}.json"
 
     try:
@@ -1147,7 +1147,7 @@ async def create_backup() -> str:
 
 def _write_backup_file(backup_file: str, existing: list[dict[str, Any]]) -> None:
     """Write the backup JSON synchronously (called from async context)."""
-    with open(backup_file, "w") as f:
+    with Path(backup_file).open("w") as f:
         json.dump(existing, f, indent=2, default=str)
 
 

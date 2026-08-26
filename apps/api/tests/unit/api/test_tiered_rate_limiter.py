@@ -35,26 +35,26 @@ class TestRateLimitExceededException:
     def test_basic_exception(self) -> None:
         exc = RateLimitExceededException("file_upload")
         assert exc.status_code == 429
-        assert exc.detail["error"] == "rate_limit_exceeded"  # type: ignore[index]
-        assert exc.detail["feature"] == "file_upload"  # type: ignore[index]
-        assert "plan_required" not in exc.detail  # type: ignore[operator]
-        assert "reset_time" not in exc.detail  # type: ignore[operator]
+        assert exc.detail["error"] == "rate_limit_exceeded"  # type: ignore[index]  # HTTPException.detail is typed str upstream but carries a dict here
+        assert exc.detail["feature"] == "file_upload"  # type: ignore[index]  # HTTPException.detail is typed str upstream but carries a dict here
+        assert "plan_required" not in exc.detail
+        assert "reset_time" not in exc.detail
 
     def test_with_plan_required(self) -> None:
         exc = RateLimitExceededException("file_upload", plan_required="pro")
-        assert exc.detail["plan_required"] == "pro"  # type: ignore[index]
-        assert "Upgrade to Pro" in exc.detail["message"]  # type: ignore[index]
+        assert exc.detail["plan_required"] == "pro"  # type: ignore[index]  # HTTPException.detail is typed str upstream but carries a dict here
+        assert "Upgrade to Pro" in exc.detail["message"]  # type: ignore[index]  # HTTPException.detail is typed str upstream but carries a dict here
 
     def test_with_reset_time(self) -> None:
         reset = datetime(2026, 4, 1, tzinfo=UTC)
         exc = RateLimitExceededException("file_upload", reset_time=reset)
-        assert exc.detail["reset_time"] == reset.isoformat()  # type: ignore[index]
+        assert exc.detail["reset_time"] == reset.isoformat()  # type: ignore[index]  # HTTPException.detail is typed str upstream but carries a dict here
 
     def test_with_all_fields(self) -> None:
         reset = datetime(2026, 4, 1, tzinfo=UTC)
         exc = RateLimitExceededException("file_upload", plan_required="pro", reset_time=reset)
-        assert exc.detail["plan_required"] == "pro"  # type: ignore[index]
-        assert exc.detail["reset_time"] == reset.isoformat()  # type: ignore[index]
+        assert exc.detail["plan_required"] == "pro"  # type: ignore[index]  # HTTPException.detail is typed str upstream but carries a dict here
+        assert exc.detail["reset_time"] == reset.isoformat()  # type: ignore[index]  # HTTPException.detail is typed str upstream but carries a dict here
 
 
 # ---------------------------------------------------------------------------
@@ -347,7 +347,7 @@ class TestSyncUsageRealTime:
             limit=0,
             reset_time=datetime(2026, 4, 1, tzinfo=UTC),
         )
-        self.limiter._collect_feature_usage = AsyncMock(return_value=[usage])  # type: ignore[method-assign]
+        self.limiter._collect_feature_usage = AsyncMock(return_value=[usage])  # type: ignore[method-assign]  # test monkeypatches the limiter method with an AsyncMock
 
         await self.limiter._sync_usage_real_time("user1", "chat_messages", PlanType.PRO)
 
@@ -361,7 +361,7 @@ class TestSyncUsageRealTime:
         new_callable=AsyncMock,
     )
     async def test_no_usage_means_no_snapshot(self, mock_save: AsyncMock) -> None:
-        self.limiter._collect_feature_usage = AsyncMock(return_value=[])  # type: ignore[method-assign]
+        self.limiter._collect_feature_usage = AsyncMock(return_value=[])  # type: ignore[method-assign]  # test monkeypatches the limiter method with an AsyncMock
 
         await self.limiter._sync_usage_real_time("user1", "chat_messages", PlanType.PRO)
 
@@ -369,7 +369,7 @@ class TestSyncUsageRealTime:
 
     @patch("app.api.v1.middleware.tiered_rate_limiter.log")
     async def test_error_logged_not_raised(self, mock_log: MagicMock) -> None:
-        self.limiter._collect_feature_usage = AsyncMock(  # type: ignore[method-assign]
+        self.limiter._collect_feature_usage = AsyncMock(  # type: ignore[method-assign]  # test monkeypatches the limiter method with an AsyncMock
             side_effect=RuntimeError("boom")
         )
 
@@ -512,7 +512,7 @@ class TestTieredRateLimitDecorator:
         mock_limiter.check_and_increment = AsyncMock(return_value={})
 
         @tiered_rate_limit("file_upload")
-        async def my_endpoint(user: dict = None) -> str:  # type: ignore[assignment]
+        async def my_endpoint(user: dict = None) -> str:
             return "ok"
 
         result = await my_endpoint(user={"user_id": "u1"})
@@ -549,7 +549,7 @@ class TestTieredRateLimitDecorator:
         from fastapi import HTTPException
 
         @tiered_rate_limit("file_upload")
-        async def my_endpoint(user: dict = None) -> str:  # type: ignore[assignment]
+        async def my_endpoint(user: dict = None) -> str:
             return "ok"
 
         with pytest.raises(HTTPException) as exc_info:
@@ -567,7 +567,7 @@ class TestTieredRateLimitDecorator:
         mock_limiter.check_and_increment = AsyncMock(return_value={})
 
         @tiered_rate_limit("file_upload")
-        async def my_endpoint(user: dict = None) -> str:  # type: ignore[assignment]
+        async def my_endpoint(user: dict = None) -> str:
             return "ok"
 
         await my_endpoint(user={"user_id": "u1"})

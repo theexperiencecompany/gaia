@@ -368,7 +368,7 @@ async def run_chain(
         # the NEXT test's executor onto its own stream id.
         await redis_cache.delete(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
         if subagent is not None:
-            providers.reset(SUBAGENT_AGENT)
+            await providers.areset(SUBAGENT_AGENT)
 
     frames = [chunk async for chunk in stream_manager.subscribe_stream(stream_id)]
     run.transcript = Transcript.from_sse("".join(frames))
@@ -472,7 +472,7 @@ class TestCommsToExecutor:
         assert run.transcript.args("retrieve_tools") == {"exact_tool_names": ["create_flowchart"]}
         assert (
             run.transcript.result_for("retrieve_tools")
-            == "Bound 1 tools — call them directly:\n  - create_flowchart"
+            == "Bound 1 tools, call them directly:\n  - create_flowchart"
         )
 
     async def test_every_card_precedes_its_own_result_across_both_tiers(self) -> None:

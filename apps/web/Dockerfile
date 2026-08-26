@@ -20,10 +20,13 @@ ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 
 # Copy all package manifests first for better cache signal.
-# The RUN --mount cache below persists regardless, but putting
-# manifests before source means the cache key changes only on
-# lockfile/package.json changes.
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# .npmrc rides along: node-linker=hoisted must not arrive only via
+# `COPY . .` after the install (it changes module layout used by next build).
+# patches/ too: root package.json's pnpm.patchedDependencies references
+# these files — install fails with ENOENT without them (proved in CI:
+# "pnpm: ENOENT ... /app/patches/dmg-builder.patch").
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY patches ./patches/
 COPY apps/web/package.json         ./apps/web/
 COPY apps/desktop/package.json     ./apps/desktop/
 COPY apps/mobile/package.json      ./apps/mobile/
@@ -33,14 +36,18 @@ COPY apps/bots/telegram/package.json ./apps/bots/telegram/
 COPY packages/cli/package.json     ./packages/cli/
 COPY libs/shared/ts/package.json   ./libs/shared/ts/
 
-# Copy source (.dockerignore excludes **/node_modules, **/.next, etc.)
-COPY . .
-
-# Install with a persistent pnpm store cache.
-# On cache hit: pnpm reuses downloaded tarballs — install is ~10s.
-# On cache miss: full download, same as before.
+# Install BEFORE copying source. Consider the two layouts on a fresh
+# GitHub-hosted runner (BuildKit cache mounts start EMPTY every job):
+#   old: COPY . . then install -> every commit re-ran the full install;
+#   new: manifests then install -> the install RUN layer is served from the
+#        registry layer cache (build-push-action cache-from type=registry,
+#        ghcr gaia-web:buildcache) and only
+#        re-runs when a manifest/lockfile changes.
 RUN --mount=type=cache,id=gaia-pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --store-dir /pnpm/store
+
+# Copy source (.dockerignore excludes **/node_modules, **/.next, etc.)
+COPY . .
 
 # Build-time API URL baked into the JS bundle. At container startup,
 # docker-entrypoint.sh replaces this placeholder with the real URL

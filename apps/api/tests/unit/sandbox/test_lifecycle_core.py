@@ -614,7 +614,9 @@ async def test_both_the_workspace_and_the_skills_subtree_are_seeded_host_side() 
 async def test_a_missing_host_juicefs_mount_does_not_block_sandbox_creation() -> None:
     # Native dev has no /mnt/jfs; mount.sh then takes its ephemeral branch.
     with patch.object(
-        lifecycle, "ensure_user_workspace", AsyncMock(side_effect=JuiceFSUnavailable("no mount"))
+        lifecycle,
+        "ensure_user_workspace",
+        AsyncMock(side_effect=JuiceFSUnavailable("no mount")),
     ):
         await lifecycle._seed_user_subtrees("u1")
 

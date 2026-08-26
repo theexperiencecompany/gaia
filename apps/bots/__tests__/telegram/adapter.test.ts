@@ -82,7 +82,7 @@ vi.mock("@grammyjs/types", () => ({}));
 // the returned module, so we never touch the shared mock file.
 // ---------------------------------------------------------------------------
 
-vi.mock("@gaia/shared", async () => {
+vi.mock("@gaia/shared/bots", async () => {
   const { makeGaiaSharedMock } = await import("../shared/mocks/gaiaSharedBase");
   const real = await import("../../../../libs/shared/ts/src/bots/utils");
   return makeGaiaSharedMock("telegram", {
@@ -139,7 +139,7 @@ import {
   MEDIA_READ_TIMEOUT_MS,
   renderForPlatform,
   richMessageToMarkdown,
-} from "@gaia/shared";
+} from "@gaia/shared/bots";
 import type { Message } from "@grammyjs/types";
 import {
   extractTelegramMedia,

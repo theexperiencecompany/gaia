@@ -19,7 +19,7 @@ import {
   htmlToPlainText,
   PLATFORM_MARKDOWN,
   renderForPlatform,
-} from "@gaia/shared";
+} from "@gaia/shared/bots";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
@@ -634,6 +634,45 @@ describe("formatBotError", () => {
     const err = new GaiaApiError("Rate limited", 429);
     const result = formatBotError(err);
     expect(result).toContain("too fast");
+  });
+
+  it("prefers the server's message over the generic throttle line", () => {
+    // Every 429 used to render "you're sending messages too fast", which is
+    // wrong for the budget wall — waiting does not fix it. FastAPI nests the
+    // real copy under `detail` for the rate-limit family.
+    const err = {
+      response: {
+        status: 429,
+        data: {
+          detail: {
+            error: "rate_limit_exceeded",
+            feature: "chat_messages",
+            message:
+              "You've used today's AI usage allowance. Upgrade to Pro for higher limits.",
+            plan_required: "pro",
+          },
+        },
+      },
+    };
+
+    const result = formatBotError(err);
+    expect(result).toContain("today's AI usage allowance");
+    expect(result).not.toContain("too fast");
+  });
+
+  it("uses a plain-string 429 detail as-is", () => {
+    // The bot's flat anti-spam limiter raises HTTPException with a bare string.
+    const err = {
+      response: {
+        status: 429,
+        data: {
+          detail:
+            "Rate limit exceeded. Please wait before sending more messages.",
+        },
+      },
+    };
+
+    expect(formatBotError(err)).toContain("Rate limit exceeded");
   });
 
   it("returns timeout message for timeout errors", () => {

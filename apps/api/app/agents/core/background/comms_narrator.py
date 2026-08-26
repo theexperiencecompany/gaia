@@ -6,7 +6,7 @@ handed to the comms agent as internal context (a HumanMessage framed in an
 persona. This module owns that single invocation.
 """
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
 from app.agents.llm.lane import AgentRole
@@ -139,5 +139,37 @@ async def record_executor_cancellation(
             f"{LogTag.AGENT} Failed to record executor cancellation",
             conversation_id=conversation_id,
             task_id=task_id,
+            error=str(e),
+        )
+
+
+async def record_platform_delivery(conversation_id: str, text: str) -> None:
+    """Append a message delivered straight to a platform chat (outside any comms
+    turn) to that conversation's checkpoint thread.
+
+    Workflow results pushed into the user's Telegram/WhatsApp sessions are saved
+    to MongoDB and sent by the bots without passing through the graph — but the
+    next bot turn reads its history from the checkpoint, so without this write
+    GAIA has no memory of results it just delivered. Silent ``aupdate_state``
+    write, no model call. Best-effort: the message is already sent, so a failure
+    here must not break delivery.
+    """
+    if not text.strip():
+        return
+    try:
+        comms_graph = await GraphManager.get_graph("comms_agent")
+        await comms_graph.aupdate_state(
+            {"configurable": {"thread_id": conversation_id}},
+            {"messages": [AIMessage(content=text)]},
+            as_node="agent",
+        )
+        log.info(
+            f"{LogTag.AGENT} Recorded platform delivery in conversation thread",
+            conversation_id=conversation_id,
+        )
+    except Exception as e:  # delivery already happened; never break the caller
+        log.error(
+            f"{LogTag.AGENT} Failed to record platform delivery in conversation thread",
+            conversation_id=conversation_id,
             error=str(e),
         )

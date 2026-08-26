@@ -9,7 +9,7 @@ from pathlib import Path
 import time
 from typing import Any
 
-from livekit import rtc  # type: ignore[attr-defined]
+from livekit import rtc  # type: ignore[attr-defined]  # livekit __init__ untyped upstream
 from livekit.agents import (
     Agent,
     AgentFalseInterruptionEvent,

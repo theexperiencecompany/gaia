@@ -28,7 +28,7 @@ from app.agents.tools.core.tool_runtime_config import (
 )
 from app.constants.general import FINISH_TASK_NAME
 from app.override.langgraph_bigtool.create_agent import create_agent
-from tests.helpers import PassthroughFakeLLM
+from tests.helpers import BindableToolsFakeModel, PassthroughFakeLLM
 
 
 @tool
@@ -237,7 +237,9 @@ async def _run_provider_subagent_factory(
         await SubAgentFactory.create_provider_subagent(
             provider="provider",
             name="provider_agent",
-            llm=MagicMock(),
+            # A real chat LLM always carries a context-window profile
+            # (init_*_llm pin it); fractional-token middleware requires it.
+            llm=BindableToolsFakeModel(responses=[], profile={"max_input_tokens": 1_000_000}),
             tool_space="provider_space",
             use_direct_tools=use_direct_tools,
             disable_retrieve_tools=disable_retrieve_tools,
@@ -378,6 +380,15 @@ async def test_spawned_retrieve_cannot_bind_back_an_excluded_tool():
     assert "subagent:gmail" not in result["tools_to_bind"]
     assert "handoff" not in result["tools_to_bind"]
     assert "normal_tool" in result["tools_to_bind"]
+    # Refusing is only half of it: the response has to tell the subagent to STOP
+    # asking and hand the work back, or it retries the same bind until it runs
+    # out of steps. This sentence is the entire instruction.
+    assert (
+        "main executor, not this subagent. Do not retry binding them; finish "
+        "your task here and let the executor handle them."
+    ) in " ".join(
+        result["response"] if isinstance(result["response"], list) else [result["response"]]
+    )
 
 
 @pytest.mark.asyncio
@@ -604,7 +615,9 @@ async def test_base_subagent_wiring_uses_shared_tool_runtime_helpers():
         await SubAgentFactory.create_provider_subagent(
             provider="provider",
             name="provider_agent",
-            llm=MagicMock(),
+            # A real chat LLM always carries a context-window profile
+            # (init_*_llm pin it); fractional-token middleware requires it.
+            llm=BindableToolsFakeModel(responses=[], profile={"max_input_tokens": 1_000_000}),
             tool_space="provider_space",
             use_direct_tools=True,
             disable_retrieve_tools=True,
@@ -615,6 +628,62 @@ async def test_base_subagent_wiring_uses_shared_tool_runtime_helpers():
     assert "retrieve_tools_coroutine" not in captured_kwargs
     assert "read" in captured_kwargs["initial_tool_ids"]
     assert "normal_tool" in captured_kwargs["initial_tool_ids"]
+    # A subagent runs no end-graph hook, and the kwarg has to say so under
+    # exactly this name — anything else and create_agent silently falls back to
+    # its own default. The memory hook is the one that matters: a subagent sees
+    # the thread comms already ingested, so hooking it here re-extracts one
+    # conversation once per subagent per turn and bills for every pass.
+    assert captured_kwargs["end_graph_hooks"] == []
+
+
+@pytest.mark.asyncio
+async def test_provider_subagent_defaults_tool_space_to_general():
+    """``tool_space`` defaults to "general" — the literal string, not "GENERAL"
+    or any other spelling — and that default must actually reach the
+    middleware that scopes what the subagent (and anything it spawns) may call."""
+    provider_tool = normal_tool
+    full_tools = {"normal_tool": normal_tool, "vfs_read": vfs_read, "search_memory": normal_tool}
+    dummy_registry = _DummyRegistry([provider_tool], full_tools)
+
+    def _fake_create_agent(**kwargs: Any):
+        return _DummyBuilder(kwargs)
+
+    captured_middleware_kwargs: dict[str, Any] = {}
+
+    def _fake_create_subagent_middleware(**kwargs: Any):
+        captured_middleware_kwargs.update(kwargs)
+        return []
+
+    with (
+        patch(
+            "app.agents.core.subagents.base_subagent.get_tools_store",
+            new=AsyncMock(return_value=MagicMock()),
+        ),
+        patch(
+            "app.agents.core.subagents.base_subagent.get_tool_registry",
+            new=AsyncMock(return_value=dummy_registry),
+        ),
+        patch(
+            "app.agents.core.subagents.base_subagent.create_agent",
+            new=_fake_create_agent,
+        ),
+        patch(
+            "app.agents.core.subagents.base_subagent.create_subagent_middleware",
+            new=_fake_create_subagent_middleware,
+        ),
+        patch(
+            "app.agents.core.subagents.base_subagent.get_checkpointer_manager",
+            new=AsyncMock(return_value=SimpleNamespace(get_checkpointer=object)),
+        ),
+    ):
+        await SubAgentFactory.create_provider_subagent(
+            provider="provider",
+            name="provider_agent",
+            llm=BindableToolsFakeModel(responses=[], profile={"max_input_tokens": 1_000_000}),
+            # tool_space intentionally omitted — must default to "general".
+        )
+
+    assert captured_middleware_kwargs["subagent_tool_space"] == "general"
 
 
 @pytest.mark.asyncio
@@ -895,7 +964,7 @@ class TestDiscoveryZeroMatchSignal:
         a subagent, and offering an unconnected integration as if it worked."""
         assert _render(["x"], total_candidates=1)["next"] == (
             "Bind with retrieve_tools(exact_tool_names=[...]) then call the tool. "
-            'Subagents are NOT bindable — use handoff(subagent_id="<id>", task="..."). '
+            'Subagents are NOT bindable: use handoff(subagent_id="<id>", task="..."). '
             "Anything under subagents_needing_connection is unusable until the user "
             "connects it, so ask them first."
         )
@@ -941,7 +1010,7 @@ async def _bind(names: list[str], registry_tools: list[str]):
 async def test_binding_announces_what_the_model_may_now_call():
     result = await _bind(["normal_tool"], ["normal_tool"])
 
-    assert result["response_text"] == "Bound 1 tools — call them directly:\n  - normal_tool"
+    assert result["response_text"] == "Bound 1 tools, call them directly:\n  - normal_tool"
 
 
 @pytest.mark.asyncio
@@ -960,7 +1029,7 @@ async def test_a_resolved_alias_is_named_back_so_the_model_stops_using_it():
     result = await _bind(["normal-tool"], ["normal_tool"])
 
     assert (
-        "Resolved to their canonical names — use these from now on: normal-tool -> normal_tool"
+        "Resolved to their canonical names, use these from now on: normal-tool -> normal_tool"
         in result["response_text"]
     )
 

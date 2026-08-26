@@ -18,14 +18,18 @@ runs:
         version: 10.17.1
 
     - name: Setup Node.js
-      uses: actions/setup-node@v7
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.1
       with:
         node-version: "22.15.1"
         cache: "pnpm"
+        cache-dependency-path: pnpm-lock.yaml
 
     - name: Install dependencies
       shell: bash
-      run: pnpm install --frozen-lockfile --prefer-offline
+      run: |
+        echo "::group::pnpm install"
+        pnpm install --frozen-lockfile --prefer-offline
+        echo "::endgroup::"
 
     - name: Set NX_CLOUD_ACCESS_TOKEN
       if: false # Nx Cloud plan exceeded — restore condition to re-enable: inputs.nx-cloud-access-token != ''

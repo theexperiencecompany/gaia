@@ -67,7 +67,7 @@ PLATFORM_CONFIGS = {
         get_client_secret=lambda: settings.DISCORD_OAUTH_CLIENT_SECRET,
         get_redirect_uri=lambda: settings.DISCORD_OAUTH_REDIRECT_URI,
         user_info_url="https://discord.com/api/users/@me",
-        extract_user_id=lambda token_data, access_token: "",  # uses user_info_url instead
+        extract_user_id=lambda _token_data, _access_token: "",  # uses user_info_url instead
         extra_token_headers={"Content-Type": "application/x-www-form-urlencoded"},
     ),
     "slack": PlatformOAuthConfig(
@@ -77,7 +77,7 @@ PLATFORM_CONFIGS = {
         get_client_secret=lambda: settings.SLACK_OAUTH_CLIENT_SECRET,
         get_redirect_uri=lambda: settings.SLACK_OAUTH_REDIRECT_URI,
         user_info_url="https://slack.com/api/users.identity",
-        extract_user_id=lambda token_data, access_token: token_data["authed_user"]["id"],
+        extract_user_id=lambda token_data, _access_token: token_data["authed_user"]["id"],
         # User token lives under authed_user, not at the top level
         get_user_access_token=lambda data: data.get("authed_user", {}).get("access_token"),
         # users.identity returns {"user": {"id": ..., "name": ...}}
@@ -105,7 +105,8 @@ async def _handle_platform_oauth_callback(
     config: PlatformOAuthConfig,
 ) -> RedirectResponse:
     """Generic OAuth callback handler for all platforms."""
-    from app.services.oauth.oauth_state_service import validate_and_consume_oauth_state
+    # Deferred import: deferred import kept out of module load path
+    from app.services.oauth import oauth_state_service  # noqa: PLC0415 -- deferred
 
     fallback_path = "/settings?section=linked-accounts"
 
@@ -123,7 +124,7 @@ async def _handle_platform_oauth_callback(
         )
 
     # Validate state token
-    state_data = await validate_and_consume_oauth_state(state)
+    state_data = await oauth_state_service.validate_and_consume_oauth_state(state)
     if not state_data:
         return RedirectResponse(
             url=_redirect_url(settings.FRONTEND_URL, fallback_path, oauth_error="invalid_state")

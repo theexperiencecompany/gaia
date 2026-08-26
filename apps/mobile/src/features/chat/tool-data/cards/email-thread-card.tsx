@@ -1,14 +1,9 @@
-import { Card, Chip, PressableFeedback } from "heroui-native";
-import { useState } from "react";
+import { Chip } from "heroui-native";
 import { View } from "react-native";
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
-import { AppIcon, ArrowDown01Icon, Mail01Icon } from "@/components/icons";
+import { AppIcon, Mail01Icon } from "@/components/icons";
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { Text } from "@/components/ui/text";
+import { CollapsibleCard } from "@/features/chat/tool-data/primitives";
 
 // ---------------------------------------------------------------------------
 // Types — mirror the web `EmailThreadData` shape from
@@ -145,14 +140,14 @@ function MessageItem({ message, isLast }: MessageItemProps) {
               {senderName}
             </Text>
             {!!senderEmail && senderEmail !== senderName && (
-              <Text className="text-xs text-[#8e8e93] flex-1" numberOfLines={1}>
+              <Text className="text-xs text-zinc-400 flex-1" numberOfLines={1}>
                 {senderEmail}
               </Text>
             )}
           </View>
         </View>
         {!!timeLabel && (
-          <Text className="text-xs text-[#8e8e93] shrink-0 ml-2">
+          <Text className="text-xs text-zinc-400 shrink-0 ml-2">
             {timeLabel}
           </Text>
         )}
@@ -195,96 +190,53 @@ function MessageItem({ message, isLast }: MessageItemProps) {
 // ---------------------------------------------------------------------------
 
 export function EmailThreadCard({ data }: { data: EmailThreadData }) {
-  const [expanded, setExpanded] = useState(true);
   const messages = data.messages ?? [];
   const messageCount = messages.length;
 
-  const rotation = useSharedValue(expanded ? 180 : 0);
-  const chevronStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${rotation.value}deg` }],
-  }));
-
-  const toggle = () => {
-    const next = !expanded;
-    setExpanded(next);
-    rotation.value = withTiming(next ? 180 : 0, { duration: 180 });
-  };
-
   return (
-    <Card
-      variant="secondary"
-      className="mx-4 my-2 rounded-2xl bg-[#171920] overflow-hidden"
+    <CollapsibleCard
+      customIcon={
+        <View className="w-6 h-6 rounded-md bg-white/8 items-center justify-center">
+          <AppIcon icon={Mail01Icon} size={14} color="#e4e4e7" />
+        </View>
+      }
+      title="Fetched Email Thread"
+      trailing={
+        messageCount > 0 ? (
+          <Chip
+            size="sm"
+            variant="secondary"
+            color="default"
+            className="bg-white/10"
+          >
+            <Chip.Label>
+              {messageCount} msg{messageCount !== 1 ? "s" : ""}
+            </Chip.Label>
+          </Chip>
+        ) : undefined
+      }
     >
-      <Card.Body className="py-0 px-0">
-        {/* Header — Mail01Icon + label + msg count + chevron */}
-        <PressableFeedback onPress={toggle}>
-          <View className="flex-row items-center gap-3 px-4 py-3">
-            <View className="w-6 h-6 rounded-md bg-white/8 items-center justify-center">
-              <AppIcon icon={Mail01Icon} size={14} color="#e4e4e7" />
-            </View>
-            <View className="flex-1 min-w-0">
-              <Text
-                className="text-sm font-medium text-foreground"
-                numberOfLines={1}
-              >
-                Fetched Email Thread
-              </Text>
-              {!!data.subject && (
-                <Text
-                  className="text-xs text-[#8e8e93] mt-0.5"
-                  numberOfLines={1}
-                >
-                  {data.subject}
-                </Text>
-              )}
-            </View>
-            {messageCount > 0 && (
-              <Chip
-                size="sm"
-                variant="secondary"
-                color="default"
-                className="bg-white/10"
-              >
-                <Chip.Label>
-                  {messageCount} msg{messageCount !== 1 ? "s" : ""}
-                </Chip.Label>
-              </Chip>
-            )}
-            <Animated.View style={chevronStyle}>
-              <AppIcon
-                icon={ArrowDown01Icon}
-                size={14}
-                color="#8e8e93"
-                strokeWidth={2}
-              />
-            </Animated.View>
-          </View>
-        </PressableFeedback>
+      {/* Subject — mirrors the web card's header subtitle */}
+      {!!data.subject && (
+        <Text className="text-xs text-zinc-400 mb-2" numberOfLines={1}>
+          {data.subject}
+        </Text>
+      )}
 
-        {/* Messages — visible when expanded */}
-        {expanded && (
-          <View className="border-t border-white/8">
-            {messageCount > 0 ? (
-              messages.map((message, index) => (
-                <MessageItem
-                  key={
-                    message.id ||
-                    `msg-${message.from || index}-${message.time || index}`
-                  }
-                  message={message}
-                  isLast={index === messageCount - 1}
-                />
-              ))
-            ) : (
-              <View className="px-4 py-3">
-                <Text className="text-sm text-[#8e8e93]">
-                  No messages in thread
-                </Text>
-              </View>
-            )}
-          </View>
-        )}
-      </Card.Body>
-    </Card>
+      {messageCount > 0 ? (
+        messages.map((message, index) => (
+          <MessageItem
+            key={
+              message.id ||
+              `msg-${message.from || index}-${message.time || index}`
+            }
+            message={message}
+            isLast={index === messageCount - 1}
+          />
+        ))
+      ) : (
+        <Text className="text-sm text-zinc-400">No messages in thread</Text>
+      )}
+    </CollapsibleCard>
   );
 }

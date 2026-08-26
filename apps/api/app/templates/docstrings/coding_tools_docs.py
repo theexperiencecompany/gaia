@@ -13,13 +13,13 @@ The command runs in your session's working directory by default. The
 sandbox has Python, Node.js, and common Linux tools. Anything you install
 via `pip install` or `npm install` persists across conversations because
 the workspace is on a durable filesystem. The sandbox user has no `sudo`
-and cannot install system packages — use the language-level package
+and cannot install system packages: use the language-level package
 managers instead.
 
 Path conventions inside your session:
 - Relative paths resolve against your session root. Put intermediate work in
   `./scratch/`.
-- Files in `./user-uploaded/` are user-attached and read-only — copy them to
+- Files in `./user-uploaded/` are user-attached and read-only: copy them to
   `./scratch/` before modifying.
 - Anything you place in `./artifacts/` is shown to the user in the chat
   UI: HTML, Markdown, and images render inline; other types appear as
@@ -69,7 +69,7 @@ inspect code you've written, uploaded files, or data. The file must be inside
 the workspace.
 
 Image files (png, jpg, jpeg, webp, gif) are returned as the actual image when
-the model can view images, or as a detailed text description otherwise —
+the model can view images, or as a detailed text description otherwise;
 `offset`/`limit` are ignored for images.
 
 PARAMETERS:
@@ -95,12 +95,12 @@ WRITE_TOOL = """
 Write content to a file in the persistent workspace, overwriting if it exists.
 
 Creates parent directories as needed. Refuses to write outside the workspace.
-Use `edit` if you want to change part of an existing file — `write` always
+Use `edit` if you want to change part of an existing file: `write` always
 replaces the whole file.
 
 PARAMETERS:
 - path (str): Workspace path. Relative paths resolve against your session
-  root. Writing into `./user-uploaded/` is rejected (read-only) — copy to
+  root. Writing into `./user-uploaded/` is rejected (read-only); copy to
   `./scratch/` first.
 - content (str): Full file contents.
 
@@ -110,7 +110,7 @@ EXAMPLES:
 ✅ write("artifacts/report.html", "<h1>Done</h1>")
 
 Files written under `./artifacts/` are surfaced to the user through the
-chat UI — HTML, Markdown, and images render inline; other types appear as
+chat UI: HTML, Markdown, and images render inline; other types appear as
 download cards.
 """
 
@@ -118,22 +118,22 @@ EDIT_TOOL = """
 Replace a string inside an existing file in the workspace.
 
 The replacement is exact: `old_string` must appear verbatim in the file. By
-default it must appear exactly once — set `replace_all=True` to replace every
+default it must appear exactly once; set `replace_all=True` to replace every
 occurrence (e.g. renaming a variable).
 
 PARAMETERS:
 - path (str): Path to an existing workspace file. Relative paths resolve
   against your session root. Editing `./user-uploaded/` is rejected
-  (read-only) — copy to `./scratch/` first.
+  (read-only); copy to `./scratch/` first.
 - old_string (str): The exact text to replace. Include enough context to make
   it unique.
 - new_string (str): Text to substitute. May be empty (to delete the match).
 - replace_all (bool): If true, replaces every occurrence. Default false.
 
 ERRORS:
-- "File not found" — path doesn't exist
-- "old_string not found" — verbatim match failed; re-read the file
-- "old_string appears N times" — disambiguate by adding context, or pass
+- "File not found": path doesn't exist
+- "old_string not found": verbatim match failed; re-read the file
+- "old_string appears N times": disambiguate by adding context, or pass
   `replace_all=True`
 
 EXAMPLES:
@@ -145,7 +145,7 @@ QUERY_JSON_TOOL = """
 Query a single JSON or JSONL workspace file: filter, project, sort, count, dedupe, group.
 
 Built for mining files that a tool offloaded (e.g. a large Gmail fetch writes a
-JSONL file, one JSON object per line — each line a record). Extracts just what
+JSONL file, one JSON object per line, each line a record). Extracts just what
 you need instead of reading the whole file back into context. Read-only.
 
 PARAMETERS:

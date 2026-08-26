@@ -65,7 +65,8 @@ class MCPClientPool:
                 )
 
             # Create new client (local import to avoid circular dependency)
-            from app.services.mcp.mcp_client import MCPClient
+            # Deferred import: breaks circular dependency: mcp_client imports this pool module
+            from app.services.mcp.mcp_client import MCPClient  # noqa: PLC0415 -- breaks
 
             client = MCPClient(user_id=user_id)
             self._clients[user_id] = PooledClient(client=client)

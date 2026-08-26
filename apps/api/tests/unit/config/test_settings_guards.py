@@ -45,7 +45,8 @@ def _fake_chat_openrouter(captured: dict[str, object]) -> type:
             captured.update(kwargs)
             self.client = SimpleNamespace(sdk_configuration=SimpleNamespace(retry_config=None))
 
-        def configurable_fields(self, **_: object) -> "_FakeChatOpenRouter":
+        def configurable_fields(self, **kwargs: object) -> "_FakeChatOpenRouter":
+            captured.update({f"cf_{k}": v for k, v in kwargs.items()})
             return self
 
     return _FakeChatOpenRouter
@@ -192,3 +193,100 @@ def test_development_allows_http_dodo_base_url(monkeypatch):
     settings_obj = get_settings()
 
     assert settings_obj.DODO_PAYMENTS_BASE_URL == "http://localhost:8899"
+
+
+def test_init_openrouter_llm_pins_context_window_profile(monkeypatch):
+    """Every chat LLM must carry its context-window profile: fractional-token
+    middleware reads it at graph build and raises otherwise."""
+    from app.agents.llm import client
+    from app.agents.llm.client import PROVIDER_MODELS
+    from app.constants.llm import (
+        DEFAULT_LLM_TEMPERATURE,
+        DEFAULT_MAX_TOKENS,
+        OPENROUTER_APP_CATEGORIES,
+        OPENROUTER_APP_TITLE,
+        OPENROUTER_MAX_OUTPUT_TOKENS,
+        OPENROUTER_REASONING,
+    )
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(client, "ChatOpenRouter", _fake_chat_openrouter(captured))
+    monkeypatch.setattr(client.settings, "ENV", "development")
+    monkeypatch.setattr(client.settings, "GAIA_SIM_MODE", False)
+    monkeypatch.setattr(client.settings, "OPENROUTER_API_KEY", "sk-test")
+
+    llm = client.init_openrouter_llm().loader_func()
+
+    assert captured["model"] == PROVIDER_MODELS["openrouter"]
+    assert captured["temperature"] == DEFAULT_LLM_TEMPERATURE
+    assert captured["max_tokens"] == OPENROUTER_MAX_OUTPUT_TOKENS
+    assert captured["app_url"] == client.settings.FRONTEND_URL
+    assert captured["app_title"] == OPENROUTER_APP_TITLE
+    assert captured["app_categories"] == OPENROUTER_APP_CATEGORIES
+    assert captured["reasoning"] == OPENROUTER_REASONING
+    assert captured["streaming"] is True
+    assert captured["stream_usage"] is True
+    assert llm.profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
+
+
+def test_init_gemini_llm_pins_context_window_profile(monkeypatch):
+    from app.agents.llm import client
+    from app.agents.llm.client import PROVIDER_MODELS
+    from app.constants.llm import DEFAULT_MAX_TOKENS
+
+    captured: dict[str, object] = {}
+
+    class _FakeChatGoogle:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        def configurable_fields(self, **kwargs: object) -> "_FakeChatGoogle":
+            captured.update({f"cf_{k}": v for k, v in kwargs.items()})
+            return self
+
+    monkeypatch.setattr(client, "ChatGoogleGenerativeAI", _FakeChatGoogle)
+    monkeypatch.setattr(client.settings, "GAIA_SIM_MODE", False)
+    monkeypatch.setattr(client.settings, "GOOGLE_API_KEY", "g-test", raising=False)
+
+    llm = client.init_gemini_llm().loader_func()
+
+    assert captured["model"] == PROVIDER_MODELS["gemini"]
+    # the model field must stay wired through configurable_fields — dropping
+    # it silently breaks per-request model selection
+    assert captured["cf_model"] is client._MODEL_FIELD
+    assert llm.profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
+
+
+def test_init_custom_llm_wires_every_kwarg_and_profile(monkeypatch):
+    """The DEV_LLM_* endpoint must receive every construction kwarg intact,
+    including its context-window profile and configurable model field."""
+    from app.agents.llm import client
+    from app.agents.llm.types import LLMProviderName
+    from app.constants.llm import (
+        DEFAULT_LLM_TEMPERATURE,
+        DEFAULT_MAX_TOKENS,
+        DEV_LLM_MAX_OUTPUT_TOKENS,
+    )
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(client, "ChatOpenRouter", _fake_chat_openrouter(captured))
+    monkeypatch.setattr(client.settings, "ENV", "development")
+    monkeypatch.setattr(client.settings, "GAIA_SIM_MODE", False)
+    # PROVIDER_MODELS freezes at import from the ambient env; CI has no
+    # DEV_LLM_MODEL, so pin the entry the production code reads.
+    monkeypatch.setitem(client.PROVIDER_MODELS, LLMProviderName.CUSTOM, "deepseek-v4-flash")
+    monkeypatch.setattr(client.settings, "DEV_LLM_BASE_URL", "http://localhost:9999/v1")
+    monkeypatch.setattr(client.settings, "DEV_LLM_API_KEY", "sk-dev")
+    monkeypatch.setattr(client.settings, "DEV_LLM_MODEL", "deepseek-v4-flash")
+
+    llm = client.init_custom_llm().loader_func()
+
+    assert captured["model"] == "deepseek-v4-flash"
+    assert captured["temperature"] == DEFAULT_LLM_TEMPERATURE
+    assert str(captured["base_url"]) == "http://localhost:9999/v1"
+    assert str(captured["api_key"]) == "sk-dev"
+    assert captured["max_tokens"] == DEV_LLM_MAX_OUTPUT_TOKENS
+    assert captured["streaming"] is True
+    assert captured["stream_usage"] is True
+    assert llm.profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
+    assert captured["cf_model_name"] is client._MODEL_FIELD

@@ -17,7 +17,7 @@ from shared.py.wide_events import log
 # Create the FastAPI application
 log.info(f"{LogTag.STARTUP} Starting application initialization...")
 app_creation_start = time.time()
-app: FastAPI = create_app()  # type: ignore[no-redef]
+app: FastAPI = create_app()  # type: ignore[no-redef]  # `import app.patches` above binds the package name; this rebinds it to the ASGI app
 init_sentry()
 
 log.info(

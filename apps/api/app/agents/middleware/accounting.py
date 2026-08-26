@@ -32,7 +32,7 @@ from langchain.agents.middleware.types import (
 )
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
-from langgraph.config import get_config, get_stream_writer
+from langgraph.config import get_stream_writer
 from langgraph.runtime import Runtime
 
 from app.agents.llm.lane import ModelLane
@@ -50,7 +50,7 @@ from app.constants.llm import (
 )
 from app.constants.log_tags import LogTag
 from app.decorators.rate_limiting import build_rate_limit_card
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import agent_configurable, current_run_config
 from app.models.payment_models import PlanType
 from app.services.cost_budget import (
     BUDGET_WRAPUP_NOTICE,
@@ -58,23 +58,12 @@ from app.services.cost_budget import (
     get_budget_stop_reason,
     is_budget_wrapup_threshold,
 )
-from app.services.llm_metering import extract_message_usage, record_llm_call
+from app.services.llm_metering import (
+    extract_generation_id,
+    extract_message_usage,
+    record_llm_call,
+)
 from shared.py.wide_events import ModelContext, log
-
-
-def _current_config() -> RunnableConfig:
-    """Return the active ``RunnableConfig`` for the current graph run.
-
-    LangChain's middleware hook signature is ``(state, runtime)`` — it does
-    not hand the config in as a parameter. ``get_config()`` reads the config
-    from LangGraph's runnable context-var (the same mechanism nodes use).
-    Returns an empty dict when called outside a runnable context so this
-    helper never raises on the sync fallback paths.
-    """
-    try:
-        return get_config()
-    except RuntimeError:
-        return RunnableConfig()
 
 
 def _latest_ai_message(messages: list[AnyMessage]) -> AIMessage | None:
@@ -172,7 +161,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         in :meth:`awrap_model_call`, which can short-circuit the invocation.
         """
         del state, runtime  # state not consulted in this pre-call hook yet
-        config = _current_config()
+        config = current_run_config()
         thread_id = self._thread_id(config)
         self._start_ts[thread_id] = time.monotonic()
         return None
@@ -202,7 +191,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         ``create_agent._maybe_inject_wrapup``) so the model lands the plane
         with what it has instead of dying mid-tool-call on the hard stop.
         """
-        config = _current_config()
+        config = current_run_config()
         configurable = agent_configurable(config)
         user_id = configurable.get("user_id")
         root_request_id = configurable.get("root_request_id")
@@ -283,7 +272,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         if ai_msg is None:
             return None
 
-        config = _current_config()
+        config = current_run_config()
         configurable = agent_configurable(config)
         thread_id = self._thread_id(config)
         lane = ModelLane.from_configurable(configurable.get(LANE_FIELD_ID))
@@ -382,6 +371,13 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             reasoning_tokens=reasoning_tokens,
             cost_usd=total_cost,
             step_index=step_index,
+            # Which UPSTREAM served this call. ``provider`` above is the lane's
+            # configured provider (always "openrouter"), which cannot answer the
+            # question a zero-cache call raises: did the request land on a
+            # different upstream that holds no warm prefix, or did the prefix
+            # break? This id resolves to the serving provider through
+            # OpenRouter's generation-metadata endpoint, spending no model call.
+            generation_id=extract_generation_id(ai_msg),
         )
 
         # Recursion high-water-mark — emitted once per thread when the run
@@ -406,14 +402,14 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
     # when the graph is compiled without an async runtime).
     def before_model(self, state: AgentState[Any], runtime: Runtime[Any]) -> dict[str, Any] | None:
         del state, runtime
-        thread_id = self._thread_id(_current_config())
+        thread_id = self._thread_id(current_run_config())
         self._start_ts[thread_id] = time.monotonic()
         return None
 
     def after_model(self, state: AgentState[Any], runtime: Runtime[Any]) -> dict[str, Any] | None:
         del state, runtime
         # Cost calc is async-only; in sync mode we still want the HWM signal.
-        thread_id = self._thread_id(_current_config())
+        thread_id = self._thread_id(current_run_config())
         step_index = self._next_step(thread_id)
         hwm_cap = max(1, int(self.recursion_limit * RECURSION_HWM_FRACTION))
         if step_index >= hwm_cap and thread_id not in self._hwm_emitted:

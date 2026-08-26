@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# mypy: ignore-errors
+# mypy: ignore-errors -- admin one-off script; typing not maintained here
 """
 Grant or revoke Pro access for a user in the local dev MongoDB.
 

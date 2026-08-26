@@ -20,7 +20,11 @@ import pytest
 from app.config.rate_limits import RateLimitPeriod
 from app.db.redis import redis_cache
 from app.services import cost_budget
-from app.services.cost_budget import get_cost, get_request_tokens, record_model_call_usage
+from app.services.cost_budget import (
+    get_cost,
+    get_request_tokens,
+    record_model_call_usage,
+)
 from shared.py.wide_events import log
 
 USER = "u-metering"
@@ -44,7 +48,6 @@ def rollup() -> Iterator[AsyncMock]:
         yield mock
 
 
-@pytest.mark.unit
 class TestChargedSpend:
     """The agent middleware's route: work the user actively asked for."""
 
@@ -128,12 +131,17 @@ class TestAuxiliarySpend:
             reasoning_tokens=0,
         )
 
-    async def test_leaves_the_request_ceiling_alone_without_a_request_id(self) -> None:
+    async def test_leaves_the_request_ceiling_alone_without_a_request_id(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
         await record_model_call_usage(
             USER, 0.02, None, input_tokens=400, output_tokens=300, charge_to_budget=False
         )
 
         assert await get_request_tokens(REQUEST) == 0
+        # Not just unread under this request's id — nothing was written at all.
+        # The counter key must never be minted for an unattributed call.
+        assert await fake_redis.dbsize() == 0
 
     async def test_still_counts_tokens_when_a_request_id_is_present(self) -> None:
         # An auxiliary call made from inside a turn still bounds that turn's
@@ -144,6 +152,37 @@ class TestAuxiliarySpend:
 
         assert await get_request_tokens(REQUEST) == 700
         assert await get_cost(USER, RateLimitPeriod.DAY) == 0.0
+
+
+@pytest.mark.unit
+class TestRequestCounterBoundaries:
+    """The ceiling counts every billable token, and ONLY billable tokens —
+    pinned at the exact boundaries (1 token, 0 billable) where an off-by-one
+    or a flipped comparison would otherwise be invisible."""
+
+    async def test_a_single_billable_token_is_still_counted(self) -> None:
+        await record_model_call_usage(
+            None, 0.0, REQUEST, input_tokens=1, output_tokens=0, charge_to_budget=False
+        )
+
+        assert await get_request_tokens(REQUEST) == 1
+
+    async def test_zero_billable_tokens_writes_no_counter(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        # Fully cache-served with no output: the ceiling must not see the call,
+        # not even as a zero — the key itself must not exist.
+        await record_model_call_usage(
+            None,
+            0.0,
+            REQUEST,
+            input_tokens=1000,
+            cached_tokens=1000,
+            output_tokens=0,
+            charge_to_budget=False,
+        )
+
+        assert await fake_redis.keys("req_tokens:*") == []
 
 
 @pytest.mark.unit
@@ -255,6 +294,88 @@ class TestTokenOnlyCalls:
         )
 
         assert await get_request_tokens(REQUEST) == 15
+
+    @pytest.mark.regression
+    async def test_cached_input_does_not_count_against_the_request_ceiling(self) -> None:
+        """The ceiling bounds runaway loops, not cache economics.
+
+        A cached prompt prefix rides every model call in a turn nearly free —
+        an ordinary retrieve→bind→act turn re-sends ~30k cached tokens per call
+        and blew the 300k free ceiling (82% of it cache reads) before the agent
+        could deliver its result. Only uncached input counts as work here.
+        """
+        await record_model_call_usage(
+            USER,
+            0.01,
+            REQUEST,
+            input_tokens=1000,
+            output_tokens=100,
+            cached_tokens=900,
+            charge_to_budget=True,
+        )
+        await record_model_call_usage(
+            USER,
+            0.01,
+            REQUEST,
+            input_tokens=1000,
+            output_tokens=100,
+            cached_tokens=1000,  # fully cache-served call moves nothing
+            charge_to_budget=True,
+        )
+
+        assert await get_request_tokens(REQUEST) == 300
+
+    async def test_cached_tokens_exceeding_input_clamp_at_zero_uncached(self) -> None:
+        """Malformed provider usage (cache_read > input) must not make the
+        counter go backwards — output still counts, uncached floors at 0."""
+        await record_model_call_usage(
+            USER,
+            0.01,
+            REQUEST,
+            input_tokens=100,
+            output_tokens=50,
+            cached_tokens=500,
+            charge_to_budget=True,
+        )
+
+        assert await get_request_tokens(REQUEST) == 50
+
+    async def test_a_fully_cache_served_call_with_no_output_moves_nothing(
+        self, rollup: AsyncMock
+    ) -> None:
+        """Nothing fresh entered the tree, so the ceiling sees nothing — but the
+        call was still real work and must keep its durable booking."""
+        await record_model_call_usage(
+            USER,
+            0.01,
+            REQUEST,
+            input_tokens=1000,
+            output_tokens=0,
+            cached_tokens=1000,
+            charge_to_budget=True,
+        )
+
+        assert await get_request_tokens(REQUEST) == 0
+        rollup.assert_awaited_once()
+        assert rollup.await_args.kwargs["cached_tokens"] == 1000
+
+    async def test_an_ordinary_multi_call_turn_stays_well_under_the_ceiling(self) -> None:
+        """The production shape that used to trip the wall: ~10 model calls per
+        turn, each re-sending a ~30k prompt of which ~25k is cached prefix.
+        Raw tokens cross 300k; the work is ~58k."""
+        for _ in range(10):
+            await record_model_call_usage(
+                USER,
+                0.008,
+                REQUEST,
+                input_tokens=30_000,
+                output_tokens=800,
+                cached_tokens=25_000,
+                charge_to_budget=True,
+            )
+
+        # Raw would be 308_000; only the fresh 5_800/call counts here.
+        assert await get_request_tokens(REQUEST) == 58_000
 
     async def test_a_failed_rollup_is_named_in_the_warning(self, rollup: AsyncMock) -> None:
         """Fail-open is only safe if the failure is findable: the operation label
