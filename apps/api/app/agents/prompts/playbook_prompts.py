@@ -17,18 +17,18 @@ the finished result. Two reasons, both load-bearing:
 PLAYBOOK_CHECK_BRIEF = """<playbook_check>
 This workflow has no working playbook. When you have finished the work above (and only then), decide whether the sequence you just ran is worth freezing so future runs can replay it instead of reasoning it out again.
 
-Answer these five briefly, in plain words, against the calls you actually made:
+Work through these five for yourself, against the calls you actually made. This is your own reasoning, not part of the run's result:
 1. Which of your calls were discovery (finding an id, a channel, a folder, a file, recovering from an error) rather than the work itself? Those must not go in a playbook.
 2. Which args are fixed on every run, and what does each of the others become? The placeholder vocabulary is: $now, $today, $now + 1d; $user.email, $user.name, $user.timezone; $trigger.<path>; $steps.<step_id>.<path> and $steps.<step_id>.file; $last_run.<TOOL_NAME>.<path>; $ask.<name>.
 3. What has to carry over to the next run (a cursor, a last seen id, a timestamp) so it does not redo work or repeat something someone would notice?
 4. What did you have to write or judge from content, rather than copy straight out of a result? Each of those becomes an $ask.
 5. Would this exact order of calls work tomorrow, unchanged? Answer no if the order depended on what you found, if you reacted to a result mid-run, or if a step only made sense given today's data.
 
-If 5 is no, do not call write_playbook. Say in one line which question made it a no.
+If 5 is yes, call write_playbook. Its arguments carry the shape: a description, the steps in the order you ran them, a synthesize brief, and an ask entry for each thing you had to write. A step is EITHER a tool call OR a handoff carrying the steps that subagent ran. Use the real tool names and argument names you actually called, since they are checked against the live tools and a playbook naming a tool that does not exist is refused.
 
-If 5 is yes, call write_playbook. Its arguments carry the shape: a description, the steps in the order you ran them, a synthesize brief, and an ask entry for each thing you had to write. A step is EITHER a tool call OR a handoff carrying the steps that subagent ran.
+If 5 is no, call nothing.
 
-Use the real tool names and argument names you actually called. They are checked against the live tools, and a playbook naming a tool that does not exist is refused.
+Either way, keep all of this out of what you return. The result you hand back is the workflow's own output, the thing the user asked for, and nothing else. Do not narrate the check, do not list your answers, do not mention playbooks or freezing or this decision at all. Whether you called the tool is the entire record of it.
 </playbook_check>"""
 
 

@@ -1,10 +1,16 @@
 """Replay a playbook: run its recorded sequence for real, without a model driving it.
 
-The steps go through the same tool registry, the same HIL gate and the same
-per-call timeout the agent path uses, because a replay is not a simulation: it
-sends the email. What it does NOT do is think. There is no graph, no model in the
-loop, and exactly one model call in the whole run, which fills every ``$ask``
+Each step runs inside a real agent graph (``create_agent``) driven by
+``ScriptedModel``, which emits the recorded call and nothing else. That is what
+makes a replay use the same machinery an agentic run uses — the pregel runtime,
+the stream writer, the metadata copy, the middleware stack and the HIL gate —
+rather than a hand-supplied imitation of it. What a replay does NOT do is think:
+there is exactly one model call in the whole run, which fills every ``$ask``
 field and writes the user-facing result in one pass.
+
+A step is its own graph invocation because a playbook step addresses the results
+of the steps before it (``$steps.x.y``, ``$ask.z``), so the call to emit is not
+known until its predecessor has answered.
 
 Two properties are load-bearing:
 
@@ -16,7 +22,6 @@ Two properties are load-bearing:
   the worker's call, not this module's.
 """
 
-import asyncio
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -26,32 +31,27 @@ from uuid import uuid4
 from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
-from langgraph.types import Command
 from pydantic import BaseModel, Field
 
 from app.agents.core.subagents.base_subagent import build_scoped_tool_dict
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.llm.client import ainvoke_structured, metered_config
-from app.agents.middleware.runtime_adapter import (
-    BigtoolToolRuntime,
-    create_tool_call_request,
-)
+from app.agents.middleware.factory import create_middleware_stack
 from app.agents.prompts.playbook_prompts import PLAYBOOK_NARRATION_PROMPT
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.agents.tools.core.tool_runtime_config import (
     ToolRuntimeConfig,
     build_provider_parent_tool_runtime_config,
 )
-from app.agents.workspace.offload import pop_offload_descriptor, read_offload
-from app.constants.llm import TOOL_EXECUTION_TIMEOUT_SECONDS, TOOL_TIMEOUT_EXEMPT_TOOLS
+from app.agents.workspace.offload import read_offload
+from app.constants.hil import HIL_STATUS_KWARG
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.models.agent_models import AgentConfigurable
 from app.models.playbook_models import PlaybookAsk, PlaybookDocument, PlaybookStep
 from app.models.workflow_execution_models import RESULT_DIGEST_MAX_CHARS, RecordedCall
-from app.override.langgraph_bigtool.dynamic_tool_node import format_tool_error
+from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.utils import State
-from app.services.hil.gate import decide_tool_call
 from app.services.workflow.playbook.evaluator import (
     PlaceholderError,
     PlaybookUser,
@@ -61,6 +61,7 @@ from app.services.workflow.playbook.evaluator import (
     parse_result,
     resolve_args,
 )
+from app.services.workflow.playbook.scripted_model import ScriptedCall, ScriptedModel
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 
@@ -71,6 +72,13 @@ _SUMMARY_MAX_CHARS = 120
 #: The tool name a handoff node records itself under, matching what the agent
 #: path emits for the same delegation.
 _HANDOFF_TOOL = "handoff"
+
+#: What a replayed step's graph is metered and logged as.
+_REPLAY_AGENT_NAME = "playbook_replay"
+
+#: A replayed step is one tool call plus the turn that ends the loop. The ceiling
+#: exists only so a tool whose result loops the graph cannot run away.
+_REPLAY_RECURSION_LIMIT = 8
 
 
 class PlaybookAskAnswer(BaseModel):
@@ -109,21 +117,14 @@ class _ToolSpace:
 
     Top level is the full registry. Inside a handoff it is the subagent's own
     scoped tool set and runtime config, which is the boundary a delegated call
-    already had. Reproduced here without building the subagent's graph, since a
-    replay has no model for one to serve.
+    already had. The handoff's children replay against that scoped mapping in
+    their own scripted graphs — never the subagent's real graph, which would put
+    a thinking model back in a run that has no thinking in it.
     """
 
     tools: Mapping[str, BaseTool]
     runtime: ToolRuntimeConfig | None
     subagent_id: str | None
-
-
-@dataclass(frozen=True, slots=True)
-class _ToolOutcome:
-    """A tool call that came back: its text, and the file it offloaded to."""
-
-    text: str
-    file: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,7 +249,7 @@ async def _run_handoff(
 async def _run_tool_step(
     playbook: PlaybookDocument, step: PlaybookStep, run: _Run, space: _ToolSpace
 ) -> _StepFailure | None:
-    """Resolve, gate, execute and record one tool call."""
+    """Resolve one recorded call and replay it through a graph, then record it."""
     tool_name = step.tool or ""
     position = run.position
 
@@ -264,82 +265,81 @@ async def _run_tool_step(
     except PlaceholderError as exc:
         return _StepFailure(position, tool_name, exc.message)
 
-    call_id = f"pb_{uuid4().hex[:12]}"
-    config = cast(RunnableConfig, {"configurable": _configurable_for(run, space)})
-    request = create_tool_call_request(
-        tool_call={"name": tool_name, "args": args, "id": call_id},
-        tool=space.tools[tool_name],
-        state=cast(State, {"messages": []}),
-        runtime=BigtoolToolRuntime.from_graph_context(
-            config=config, tool_name=tool_name, tool_call_id=call_id
-        ),
-    )
+    message = await _replay_call(ScriptedCall(name=tool_name, args=args), run, space)
+    if message is None:
+        return _StepFailure(position, tool_name, "the graph produced no result for this call")
 
-    # The gate's verdict IS the result when it returns one: the call was refused,
-    # and a background replay has no live client to ask, so it stays refused.
+    text = message.content if isinstance(message.content, str) else str(message.content)
+
+    # The gate's verdict IS the result: the call was refused and never ran, and a
+    # background replay has no live client to ask, so it stays refused.
     # Deliberately not recorded — nothing was attempted, and a trace entry here
     # would tell the next run's `$last_run` that this tool answered.
-    blocked = await decide_tool_call(request)
-    if blocked is not None:
-        return _StepFailure(position, tool_name, f"refused by the approval gate: {blocked.content}")
+    if message.additional_kwargs.get(HIL_STATUS_KWARG):
+        return _StepFailure(position, tool_name, f"refused by the approval gate: {text}")
 
-    outcome = await _invoke(space.tools[tool_name], tool_name, call_id, args, config)
-    if isinstance(outcome, str):
-        _record(run, tool_name, space.subagent_id, args, outcome)
-        return _StepFailure(position, tool_name, outcome)
+    if message.status == "error":
+        _record(run, tool_name, space.subagent_id, args, text)
+        return _StepFailure(position, tool_name, text)
 
-    digest = _record(run, tool_name, space.subagent_id, args, outcome.text)
+    digest = _record(run, tool_name, space.subagent_id, args, text)
     if step.id:
-        run.steps[step.id] = StepResult(value=parse_result(outcome.text), file=outcome.file)
+        info = read_offload(message)
+        run.steps[step.id] = StepResult(
+            value=parse_result(text), file=info["path"] if info else None
+        )
     run.completed.append(f"{step.id or tool_name} ({tool_name}) -> {digest[:_SUMMARY_MAX_CHARS]}")
     return None
 
 
-async def _invoke(
-    tool: BaseTool,
-    tool_name: str,
-    call_id: str,
-    args: dict[str, Any],
-    config: RunnableConfig,
-) -> _ToolOutcome | str:
-    """Run one tool under the same timeout the graph applies. A ``str`` IS the error."""
-    tool_input: dict[str, Any] = {
-        "name": tool_name,
-        "args": args,
-        "id": call_id,
-        "type": "tool_call",
-    }
-    try:
-        if tool_name in TOOL_TIMEOUT_EXEMPT_TOOLS:
-            result = await tool.ainvoke(tool_input, config=config)
-        else:
-            async with asyncio.timeout(TOOL_EXECUTION_TIMEOUT_SECONDS):
-                result = await tool.ainvoke(tool_input, config=config)
-    except TimeoutError:
-        return (
-            f"timed out after {TOOL_EXECUTION_TIMEOUT_SECONDS}s; the operation may or may not "
-            "have completed on the provider side"
-        )
-    except Exception as exc:
-        return format_tool_error(exc)
+async def _replay_call(call: ScriptedCall, run: _Run, space: _ToolSpace) -> ToolMessage | None:
+    """Run one recorded call through its own scripted graph; ``None`` if it produced none.
 
-    if isinstance(result, Command):
-        # A Command is a graph state update. There is no graph here, so applying
-        # it is impossible, and treating it as a result would silently drop the
-        # tool's whole effect.
-        return f"{tool_name} returns a graph state update, which a playbook replay cannot apply"
+    Everything a tool needs at runtime — the pregel runtime behind
+    ``get_stream_writer()``, the middleware chain, the HIL gate and the per-call
+    timeout — comes from the graph, exactly as it does for an agent turn. Only
+    ``metadata`` is still set by hand, for the same reason ``build_agent_config``
+    sets it on every agent run: LangGraph does not derive it from ``configurable``
+    and ``get_user_id_from_config`` reads only ``metadata``.
 
-    if isinstance(result, ToolMessage):
-        if result.status == "error":
-            return str(result.content)
-        info = read_offload(result)
-        text = result.content if isinstance(result.content, str) else str(result.content)
-    else:
-        # A self-offloading tool hands its descriptor back inside a dict result
-        # rather than on a message, so it is popped before the rest is read.
-        info = pop_offload_descriptor(result)
-        text = result if isinstance(result, str) else str(result)
-    return _ToolOutcome(text=text, file=info["path"] if info else None)
+    Retrieval is off because a replay never discovers tools — it runs calls a real
+    run already made — so the space's whole tool set is bound from the start. So
+    are accounting and summarization: a scripted turn is not a model call and has
+    no history to summarize.
+    """
+    builder = create_agent(
+        llm=ScriptedModel(script=[call]),
+        tool_registry=space.tools,
+        agent_name=_REPLAY_AGENT_NAME,
+        disable_retrieve_tools=True,
+        initial_tool_ids=list(space.tools),
+        middleware=create_middleware_stack(
+            agent_name=_REPLAY_AGENT_NAME,
+            chat_llm=None,
+            enable_accounting=False,
+            enable_summarization=False,
+            enable_subagent=False,
+        ),
+    )
+    configurable = _configurable_for(run, space)
+    state = cast(
+        State,
+        await builder.compile().ainvoke(
+            cast(State, {"messages": [], "todos": []}),
+            config=cast(
+                RunnableConfig,
+                {
+                    "configurable": configurable,
+                    "metadata": {"user_id": configurable.get("user_id")},
+                    "recursion_limit": _REPLAY_RECURSION_LIMIT,
+                },
+            ),
+        ),
+    )
+    return next(
+        (message for message in reversed(state["messages"]) if isinstance(message, ToolMessage)),
+        None,
+    )
 
 
 def _record(
