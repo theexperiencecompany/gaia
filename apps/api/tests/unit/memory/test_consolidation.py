@@ -308,6 +308,140 @@ class TestVerificationPass:
             }
         ]
 
+    async def test_a_placeholder_answer_does_not_replace_the_document(
+        self, boundaries: MagicMock
+    ) -> None:
+        """This is the run that cost a real profile. The verifier answered with
+        the literal placeholder '## Document\\n...document body...' and struck
+        nothing. It is neither None nor empty, so it was written over a 3,077
+        character user.md, and every prompt after that carried 31 characters."""
+        profile = "# About the user\n" + "\n".join(f"- fact number {i}" for i in range(80))
+        boundaries.verify.return_value = VerifiedDocument(
+            content="## Document\n...document body...", struck=[]
+        )
+
+        kept = await consolidation._strike_unsupported(
+            USER, MemoryDocType.USER_MD, profile, [make_row()]
+        )
+
+        assert kept == profile
+
+    async def test_an_unexplained_shrink_is_reported_on_the_wide_event(
+        self, boundaries: MagicMock
+    ) -> None:
+        profile = "# About\n" + "\n".join(f"- fact number {i}" for i in range(80))
+        boundaries.verify.return_value = VerifiedDocument(content="## Document", struck=[])
+
+        async with captured_wide_event() as event:
+            await consolidation._strike_unsupported(
+                USER, MemoryDocType.USER_MD, profile, [make_row()]
+            )
+
+        assert event["warnings"] == [
+            {
+                "msg": "memory_consolidation_verification_failed",
+                "user_id": USER,
+                "doc_type": "user_md",
+                "error_type": "unexplained_document_shrink",
+                "lost_chars": len(profile) - len("## Document"),
+                "explained_chars": consolidation._SHRINK_SLACK_CHARS,
+                "struck_count": 0,
+            }
+        ]
+
+    async def test_a_shrink_the_struck_lines_account_for_is_accepted(
+        self, boundaries: MagicMock
+    ) -> None:
+        # The loss here IS the struck lines, which is the verifier doing its job.
+        lie = "- " + "a lie that runs on for a while " * 12
+        document = f"# About\n{lie}\n- something true"
+        boundaries.verify.return_value = VerifiedDocument(
+            content="# About\n- something true", struck=[lie]
+        )
+
+        kept = await consolidation._strike_unsupported(
+            USER, MemoryDocType.USER_MD, document, [make_row()]
+        )
+
+        assert kept == "# About\n- something true"
+
+    async def test_a_stub_is_refused_even_when_it_claims_to_have_struck_something(
+        self, boundaries: MagicMock
+    ) -> None:
+        profile = "# About\n" + "\n".join(f"- fact number {i}" for i in range(80))
+        boundaries.verify.return_value = VerifiedDocument(
+            content="## Document", struck=["- fact number 1"]
+        )
+
+        kept = await consolidation._strike_unsupported(
+            USER, MemoryDocType.USER_MD, profile, [make_row()]
+        )
+
+        assert kept == profile
+
+    async def test_a_loss_exactly_the_size_of_the_slack_is_still_accepted(
+        self, boundaries: MagicMock
+    ) -> None:
+        # The slack exists for whitespace the verifier tidies, so a loss of
+        # exactly that much is the most it can explain without striking a line.
+        slack = consolidation._SHRINK_SLACK_CHARS
+        document = "x" * 1000
+        boundaries.verify.return_value = VerifiedDocument(content="x" * (1000 - slack), struck=[])
+
+        kept = await consolidation._strike_unsupported(
+            USER, MemoryDocType.USER_MD, document, [make_row()]
+        )
+
+        assert kept == "x" * (1000 - slack)
+
+    async def test_one_character_past_the_slack_is_refused(self, boundaries: MagicMock) -> None:
+        slack = consolidation._SHRINK_SLACK_CHARS
+        document = "x" * 1000
+        boundaries.verify.return_value = VerifiedDocument(
+            content="x" * (1000 - slack - 1), struck=[]
+        )
+
+        kept = await consolidation._strike_unsupported(
+            USER, MemoryDocType.USER_MD, document, [make_row()]
+        )
+
+        assert kept == document
+
+    async def test_a_struck_line_buys_exactly_its_own_length_and_newline(
+        self, boundaries: MagicMock
+    ) -> None:
+        # A struck line takes its newline with it, so it explains len + 1.
+        slack = consolidation._SHRINK_SLACK_CHARS
+        line = "y" * 50
+        document = "x" * 1000
+        budget = len(line) + 1 + slack
+        boundaries.verify.return_value = VerifiedDocument(
+            content="x" * (1000 - budget), struck=[line]
+        )
+
+        kept = await consolidation._strike_unsupported(
+            USER, MemoryDocType.USER_MD, document, [make_row()]
+        )
+
+        assert kept == "x" * (1000 - budget)
+
+    async def test_one_character_past_a_struck_lines_budget_is_refused(
+        self, boundaries: MagicMock
+    ) -> None:
+        slack = consolidation._SHRINK_SLACK_CHARS
+        line = "y" * 50
+        document = "x" * 1000
+        budget = len(line) + 1 + slack
+        boundaries.verify.return_value = VerifiedDocument(
+            content="x" * (1000 - budget - 1), struck=[line]
+        )
+
+        kept = await consolidation._strike_unsupported(
+            USER, MemoryDocType.USER_MD, document, [make_row()]
+        )
+
+        assert kept == document
+
     async def test_a_document_with_no_source_facts_skips_the_check(
         self, boundaries: MagicMock
     ) -> None:

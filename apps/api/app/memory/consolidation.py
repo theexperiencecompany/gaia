@@ -293,6 +293,12 @@ async def _rewrite_within_cap(
     return None
 
 
+# Whitespace the verifier may tidy while striking nothing: blank lines it
+# collapses, trailing spaces. Small enough that a placeholder response cannot
+# hide inside it.
+_SHRINK_SLACK_CHARS = 200
+
+
 async def _strike_unsupported(
     user_id: str, doc_type: MemoryDocType, content: str, facts: list[MemoryRecord]
 ) -> str:
@@ -318,6 +324,25 @@ async def _strike_unsupported(
             error_type="llm_returned_empty",
         )
         return content
+    # The verifier only ever removes whole lines, so what the document loses has
+    # to be the lines it says it struck. When the arithmetic does not add up the
+    # model did something else entirely: a run of this returned the placeholder
+    # "## Document\n...document body..." with nothing struck, which is neither
+    # None nor empty, so it was written verbatim over a 3,077-character profile.
+    kept = verified.content.strip()
+    explained = sum(len(line) + 1 for line in verified.struck) + _SHRINK_SLACK_CHARS
+    lost = len(content.strip()) - len(kept)
+    if lost > explained:
+        log.warning(
+            "memory_consolidation_verification_failed",
+            user_id=user_id,
+            doc_type=doc_type.value,
+            error_type="unexplained_document_shrink",
+            lost_chars=lost,
+            explained_chars=explained,
+            struck_count=len(verified.struck),
+        )
+        return content
     if verified.struck:
         log.warning(
             "memory_consolidation_struck_unsupported",
@@ -326,7 +351,7 @@ async def _strike_unsupported(
             error_type="unsupported_document_lines",
             struck_count=len(verified.struck),
         )
-    return verified.content.strip()
+    return kept
 
 
 def _system_prompt(doc_type: MemoryDocType, user_name: str) -> str:
