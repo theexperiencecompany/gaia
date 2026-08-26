@@ -12,6 +12,7 @@ from chromadb.api.models.AsyncCollection import AsyncCollection
 from langgraph.store.base import PutOp
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.constants.chroma import GEMINI_EMBEDDING_DIM
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.db.chroma.chromadb import ChromaClient
@@ -271,7 +272,7 @@ async def initialize_chroma_triggers_store() -> ChromaStore:
         collection_name="langgraph_triggers_store",
         index={
             "embed": embeddings,
-            "dims": 768,
+            "dims": GEMINI_EMBEDDING_DIM,
             "fields": ["rich_description"],
         },
     )

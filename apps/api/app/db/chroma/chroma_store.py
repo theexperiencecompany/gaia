@@ -41,6 +41,10 @@ from shared.py.wide_events import VectorContext, log
 FilterValue = str | int | float | bool | None | dict[str, Any] | list[Any]
 
 
+class ChromaBatchWriteError(RuntimeError):
+    """Raised when one or more writes in a ChromaDB batch failed."""
+
+
 class ChromaStore(BaseStore):
     """ChromaDB-backed store with vector search capabilities.
 
@@ -565,6 +569,14 @@ class ChromaStore(BaseStore):
                     doc_id=d,
                     error_type=type(exc).__name__,
                 )
+            # Returning normally here reported success to the caller, which then
+            # logged "Successfully updated tools in ChromaDB" over a batch that
+            # wrote nothing. Raise so the caller sees the write actually failed;
+            # the indexers already catch this and log a verdict.
+            raise ChromaBatchWriteError(
+                f"{len(failures)} of {len(results)} ChromaDB writes failed "
+                f"(first: {type(failures[0][1]).__name__}: {failures[0][1]})"
+            ) from failures[0][1]
 
     async def _delete_item(self, doc_id: str, collection: AsyncCollection) -> None:
         """Delete a single item.

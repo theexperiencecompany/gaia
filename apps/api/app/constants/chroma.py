@@ -11,3 +11,10 @@ Tunables for the ChromaDB-backed LangGraph store.
 # ~72 fds baseline usage, so 20 clears it with wide margin even when startup
 # fans out indexing across every provider toolkit concurrently.
 MAX_CONCURRENT_CHROMA_WRITES = 20
+
+# Native output width of models/gemini-embedding-001 (app/agents/tools/core/store.py),
+# which embeds every vector in the tools and triggers collections. ChromaDB pins a
+# collection's dimensionality from the first vectors written to it, so this must match
+# the model or every later write is rejected with InvalidArgumentError. Distinct from
+# EMBEDDING_DIM (app/constants/memory.py) — that is the memory subsystem's own model.
+GEMINI_EMBEDDING_DIM = 3072

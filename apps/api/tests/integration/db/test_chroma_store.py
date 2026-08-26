@@ -34,7 +34,7 @@ from langgraph.store.base import GetOp, PutOp, SearchOp
 import pytest
 
 from app.constants.chroma import MAX_CONCURRENT_CHROMA_WRITES
-from app.db.chroma.chroma_store import ChromaStore
+from app.db.chroma.chroma_store import ChromaBatchWriteError, ChromaStore
 from app.db.chroma.chroma_tools_store import (
     _build_put_operations,
     _compute_tool_diff,
@@ -461,11 +461,13 @@ class TestChromaStoreSearch:
         # Exactly 2 items should be returned — not 0, not 3.
         assert len(results[0]) == 2
 
-    async def test_partial_failure_in_gather_does_not_block_successful_puts(self, chroma_store):
+    async def test_partial_failure_completes_other_puts_but_still_raises(self, chroma_store):
         """_apply_put_ops uses asyncio.gather(return_exceptions=True).
 
-        If one upsert task raises, the others should still complete and their
-        items should be retrievable afterwards.
+        If one upsert task raises, the others must still complete and their
+        items must be retrievable afterwards — but the batch must NOT report
+        success. It previously returned normally, so callers logged
+        "Successfully updated tools in ChromaDB" over a batch that dropped rows.
 
         ChromaStore uses __slots__, so we patch at the class level to avoid
         the 'read-only attribute' error from patch.object on the instance.
@@ -483,7 +485,10 @@ class TestChromaStoreSearch:
                 raise RuntimeError("Simulated upsert failure")
             return await original_upsert_item(self_arg, doc_id, op, collection)
 
-        with patch.object(type(chroma_store), "_upsert_item", selective_upsert):
+        with (
+            patch.object(type(chroma_store), "_upsert_item", selective_upsert),
+            pytest.raises(ChromaBatchWriteError, match="1 of 2"),
+        ):
             await chroma_store.abatch(
                 [
                     PutOp(
