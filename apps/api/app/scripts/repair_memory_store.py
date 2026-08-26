@@ -351,6 +351,11 @@ def main() -> None:
     contradictory = set(args.keep_ids or []) & set(args.retire_ids or [])
     if contradictory:
         parser.error(f"--keep-ids and --retire-ids both name {', '.join(sorted(contradictory))}")
+    # A memory id belongs to one user, so a batch cannot honour one: every user
+    # after the id's owner would reject it as unknown, and under --apply the
+    # users before it are already committed, leaving the batch half repaired.
+    if (args.keep_ids or args.retire_ids) and len(args.user) > 1:
+        parser.error("--keep-ids and --retire-ids name rows of one user, so pass a single --user")
     raise SystemExit(asyncio.run(_run(args)))
 
 

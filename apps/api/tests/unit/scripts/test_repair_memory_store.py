@@ -713,8 +713,6 @@ class TestCommandLine:
             [
                 "--user",
                 "u1",
-                "--user",
-                "u2",
                 "--apply",
                 "--retire-ids",
                 "mem-1",
@@ -729,7 +727,7 @@ class TestCommandLine:
 
         assert code == 0
         (args,) = captured
-        assert args.user == ["u1", "u2"]
+        assert args.user == ["u1"]
         assert args.apply is True
         assert args.retire_ids == ["mem-1", "mem-2"]
         assert args.state_age_days == 30
@@ -757,7 +755,9 @@ class TestCommandLine:
             main()
 
         assert raised.value.code == 2
-        assert f"'{bad}' is not a share between 0.0 and 1.0" in capsys.readouterr().err
+        assert capsys.readouterr().err.endswith(
+            f"argument --extends-containment: {bad!r} is not a share between 0.0 and 1.0\n"
+        )
 
     def test_a_containment_that_is_not_a_number_refuses_to_start(self) -> None:
         with (
@@ -815,7 +815,43 @@ class TestCommandLine:
             main()
 
         assert raised.value.code == 2
-        assert "--keep-ids and --retire-ids both name m1, m2" in capsys.readouterr().err
+        assert capsys.readouterr().err.endswith(
+            "repair_memory_store: error: --keep-ids and --retire-ids both name m1, m2\n"
+        )
+
+    @pytest.mark.parametrize("flag", ["--keep-ids", "--retire-ids"])
+    def test_naming_rows_across_a_batch_of_users_refuses_to_start(
+        self, flag: str, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # Under --apply the first user would already be committed by the time
+        # the second rejected the id, leaving the batch half repaired.
+        with (
+            patch(
+                "sys.argv",
+                ["repair_memory_store", "--user", "u1", "--user", "u2", flag, "m1", "--apply"],
+            ),
+            pytest.raises(SystemExit) as raised,
+        ):
+            main()
+
+        assert raised.value.code == 2
+        # endswith, not `in`: a mutant that pads the message still contains it.
+        assert capsys.readouterr().err.endswith(
+            "repair_memory_store: error: --keep-ids and --retire-ids name rows of "
+            "one user, so pass a single --user\n"
+        )
+
+    def test_a_batch_without_ids_is_still_allowed(self) -> None:
+        captured, code = self._run_main(["--user", "u1", "--user", "u2"])
+
+        assert code == 0
+        assert captured[0].user == ["u1", "u2"]
+
+    def test_one_user_with_ids_is_allowed(self) -> None:
+        captured, code = self._run_main(["--user", "u1", "--keep-ids", "m1"])
+
+        assert code == 0
+        assert captured[0].keep_ids == ["m1"]
 
     def test_a_run_with_no_user_refuses_to_start(self) -> None:
         with patch("sys.argv", ["repair_memory_store"]), pytest.raises(SystemExit) as raised:
