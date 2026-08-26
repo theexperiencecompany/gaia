@@ -52,7 +52,12 @@ def mock_resend():
         patch(
             f"{PROVIDER_MOD}.resolve_resend_config",
             new=AsyncMock(
-                return_value={"api_key": "re-stored", "base_url": None, "model": None, "preset": None}
+                return_value={
+                    "api_key": "re-stored",
+                    "base_url": None,
+                    "model": None,
+                    "preset": None,
+                }
             ),
         ),
     ):

@@ -24,6 +24,7 @@ class TestBuildGoogleOAuthUrl:
         """Bind build_google_oauth_url's credential source: the store→env
         resolution itself lives in token_repository (covered there); this echo
         keeps client_id sourced from the (mocked) env like today's flows."""
+
         async def _resolve() -> tuple[str, str] | None:
             client_id = oauth_utils_module.settings.GOOGLE_CLIENT_ID
             return (client_id, "resolved-secret") if client_id else None

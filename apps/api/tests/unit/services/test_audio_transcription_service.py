@@ -83,9 +83,7 @@ class TestTranscribeAudio:
             "preset": None,
         }
         mock_instance = MagicMock()
-        mock_instance.audio.transcriptions.create = AsyncMock(
-            return_value=MagicMock(text="hi")
-        )
+        mock_instance.audio.transcriptions.create = AsyncMock(return_value=MagicMock(text="hi"))
         mock_client_cls.return_value = mock_instance
 
         result = await transcribe_audio(

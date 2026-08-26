@@ -521,8 +521,7 @@ def init_composio_service() -> ComposioService:
         api_key = settings.COMPOSIO_KEY
     if not api_key:
         raise RuntimeError(
-            "COMPOSIO_KEY is not set in settings and no composio credential "
-            "is stored"
+            "COMPOSIO_KEY is not set in settings and no composio credential is stored"
         )
     return ComposioService(api_key)
 

@@ -251,9 +251,7 @@ async def test_acquire_sandbox_routes_selfhost_no_key_to_a_real_container() -> N
     try:
         with (
             patch.object(settings, "ENV", "selfhost"),
-            patch.object(
-                lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value=None)
-            ),
+            patch.object(lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value=None)),
         ):
             async with acquire_sandbox(uid) as sbx:
                 assert isinstance(sbx, LocalDockerSandbox)

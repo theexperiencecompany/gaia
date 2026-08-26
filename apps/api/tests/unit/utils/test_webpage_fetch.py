@@ -97,9 +97,7 @@ async def test_default_fetchers_resolve_the_firecrawl_key_from_the_store() -> No
 
     firecrawl = next(f for f in fetchers if isinstance(f, FirecrawlFetcher))
     assert firecrawl.is_configured() is True
-    with patch(
-        "app.utils.webpage_fetch.FirecrawlApp", return_value=MagicMock()
-    ) as mock_app:
+    with patch("app.utils.webpage_fetch.FirecrawlApp", return_value=MagicMock()) as mock_app:
         firecrawl._get_client()
     assert mock_app.call_args.kwargs["api_key"] == "fc-stored"
 

@@ -73,9 +73,7 @@ class TestAddMarketingContact:
         provider_credentials_service (Mongo) at send time, which no unit test
         may touch."""
         config = {"api_key": "re-stored", "base_url": None, "model": None, "preset": None}
-        with patch(
-            f"{RESEND_PROVIDER}.resolve_resend_config", new=AsyncMock(return_value=config)
-        ):
+        with patch(f"{RESEND_PROVIDER}.resolve_resend_config", new=AsyncMock(return_value=config)):
             yield
 
     @patch(f"{RESEND_PROVIDER}.settings")

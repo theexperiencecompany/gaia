@@ -43,9 +43,7 @@ def _selfhost_no_key() -> Iterator[None]:
     """Settings flipped to 'self-host with NO resolvable E2B credential'."""
     with (
         patch.object(lifecycle.settings, "ENV", "selfhost"),
-        patch.object(
-            lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value=None)
-        ),
+        patch.object(lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value=None)),
     ):
         yield
 
@@ -60,17 +58,13 @@ async def test_use_local_sandbox_requires_selfhost_and_no_resolvable_key() -> No
     stored in Settings (or env) keeps self-host on real E2B."""
     with (
         patch.object(lifecycle.settings, "ENV", "selfhost"),
-        patch.object(
-            lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value="k")
-        ),
+        patch.object(lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value="k")),
     ):
         assert await lifecycle.use_local_sandbox() is False
 
     with (
         patch.object(lifecycle.settings, "ENV", "selfhost"),
-        patch.object(
-            lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value=None)
-        ),
+        patch.object(lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value=None)),
     ):
         assert await lifecycle.use_local_sandbox() is True
 
@@ -125,9 +119,7 @@ async def test_production_without_a_key_stays_on_the_e2b_path(
     error = AsyncMock(side_effect=lifecycle.SandboxAcquisitionError("E2B_API_KEY"))
     with (
         patch.object(lifecycle.settings, "ENV", "production"),
-        patch.object(
-            lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value=None)
-        ),
+        patch.object(lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value=None)),
         patch.object(lifecycle, "_acquire_or_create", error),
     ):
         with pytest.raises(lifecycle.SandboxAcquisitionError, match="E2B_API_KEY"):

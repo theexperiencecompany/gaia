@@ -244,9 +244,7 @@ async def test_missing_e2b_api_key_fails_before_any_sandbox_is_provisioned() -> 
     # an opaque auth error instead of naming the missing config.
     cls = _sandbox_class(_fake_sandbox())
     with (
-        patch.object(
-            lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value=None)
-        ),
+        patch.object(lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value=None)),
         patch.object(lifecycle.settings, "E2B_TEMPLATE_ID", "tpl"),
         patch.object(lifecycle, "AsyncSandbox", cls),
     ):
