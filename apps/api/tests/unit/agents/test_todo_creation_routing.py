@@ -13,7 +13,50 @@ from app.agents.prompts.todo_prompts import (
     TODO_SYSTEM_PROMPT,
     deadline_routing_nudge,
 )
-from app.agents.tools.todo_tools import create_todo_pre_model_hook
+from app.agents.tools.todo_tools import _latest_human_text, create_todo_pre_model_hook
+
+
+class TestLatestHumanText:
+    def _msg(self, kind: str, content: object):
+        if kind == "human":
+            return HumanMessage(content=content)
+        from langchain_core.messages import AIMessage
+
+        return AIMessage(content=content)
+
+    def test_returns_the_most_recent_human_message_not_the_first(self):
+        messages = [
+            self._msg("human", "older question"),
+            self._msg("ai", "answer"),
+            self._msg("human", "Remind me 3 days before my visa appointment"),
+        ]
+        assert _latest_human_text(messages) == "Remind me 3 days before my visa appointment"
+
+    def test_skips_non_human_messages_scanning_backwards(self):
+        messages = [
+            self._msg("human", "the real request"),
+            self._msg("ai", "a later reply"),
+        ]
+        assert _latest_human_text(messages) == "the real request"
+
+    def test_no_human_message_yields_none(self):
+        assert _latest_human_text([self._msg("ai", "hi")]) is None
+        assert _latest_human_text([]) is None
+
+    def test_empty_string_content_is_none_not_empty(self):
+        assert _latest_human_text([HumanMessage(content="")]) is None
+
+    def test_string_parts_of_content_blocks_are_joined(self):
+        content = ["check", "my documents"]
+        assert _latest_human_text([HumanMessage(content=content)]) == "check my documents"
+
+    def test_dict_content_blocks_contribute_their_text_field(self):
+        content = [{"type": "text", "text": "before"}, {"type": "image_url", "image_url": "x"}]
+        assert _latest_human_text([HumanMessage(content=content)]) == "before"
+
+    def test_all_empty_content_blocks_are_none(self):
+        content = [{"type": "text", "text": ""}]
+        assert _latest_human_text([HumanMessage(content=content)]) is None
 
 
 class TestDeadlineRoutingNudge:

@@ -414,6 +414,9 @@ class TestBuildExecutorGraph:
 
         assert kwargs["require_finish_to_end"] is True
         assert "save_learned_skill" in kwargs["initial_tool_ids"]
+        # The tracked-todo terminal contract: without this id bound up front the
+        # executor cannot end a scheduled run, and every run burns the retry ladder.
+        assert "finish_todo_run" in kwargs["initial_tool_ids"]
 
     async def test_yields_compiled_graph_postgres(self):
         fake_cp = MagicMock(name="postgres_checkpointer")
