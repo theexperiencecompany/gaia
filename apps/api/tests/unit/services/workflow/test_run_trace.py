@@ -323,6 +323,43 @@ class TestResultDigest:
                 "subtasks",
             }
 
+    def test_a_bare_oversized_list_stays_a_valid_list(self) -> None:
+        raw = json.dumps([{"id": index, "pad": "p" * 80} for index in range(200)])
+
+        parsed = json.loads(build_result_digest(raw))
+
+        assert isinstance(parsed, list)
+        assert parsed and parsed[0]["id"] == 0
+        assert all(set(item) == {"id", "pad"} for item in parsed)
+
+    def test_it_sheds_the_biggest_list_and_keeps_the_rest_of_the_payload(self) -> None:
+        """A cursor sitting beside a huge list must survive the bounding."""
+        raw = json.dumps(
+            {
+                "next_cursor": "abc123",
+                "tags": ["a", "b"],
+                "items": [{"id": index, "pad": "p" * 80} for index in range(200)],
+            }
+        )
+
+        parsed = json.loads(build_result_digest(raw))
+
+        assert parsed["next_cursor"] == "abc123", "the cursor is the whole point of $last_run"
+        assert parsed["tags"] == ["a", "b"], "the small list must not be the one shed"
+        assert len(parsed["items"]) < 200
+
+    def test_an_oversized_payload_with_no_list_is_still_bounded(self) -> None:
+        raw = json.dumps({"blob": "b" * (RESULT_DIGEST_MAX_CHARS * 2)})
+
+        digest = build_result_digest(raw)
+
+        assert len(digest) <= RESULT_DIGEST_MAX_CHARS
+
+    def test_the_digest_spends_its_budget_on_content_not_whitespace(self) -> None:
+        digest = build_result_digest(json.dumps({"items": [{"id": i} for i in range(400)]}))
+
+        assert '", "' not in digest and '": ' not in digest, "must be compact JSON"
+
     def test_a_result_that_fits_is_kept_verbatim(self) -> None:
         assert build_result_digest('{"count": 3}') == '{"count": 3}'
 

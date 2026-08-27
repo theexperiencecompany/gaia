@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.messages import SystemMessage
 import pytest
 
+from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
 from app.helpers.message_helpers import (
     create_system_message,
     format_calendar_event_context,
@@ -390,3 +391,130 @@ class TestFormatFilesList:
         result = format_files_list(files, conversation_id="conv123")
         assert "read the file at its path" in result
         assert "/workspace/sessions/conv123/user-uploaded/a.txt.summary.md" in result
+
+
+class TestWorkflowExecutionMessageBranches:
+    """The branch choices and bounds inside ``format_workflow_execution_message``.
+
+    The existing tests above assert a title survives into the output, which a
+    great many wrong implementations also satisfy. These pin the decisions: which
+    template is chosen, where the email preview is cut, and whether a partially
+    replayed run's evidence reaches the agent — getting that last one wrong makes
+    the agent redo steps that already had side effects.
+    """
+
+    @staticmethod
+    def _selected() -> SelectedWorkflowData:
+        return SelectedWorkflowData(
+            id="wf_1",
+            title="Morning Brief",
+            description="desc",
+            prompt="do the thing",
+            steps=[{"title": "S1", "category": "c1", "description": "d1"}],
+        )
+
+    @staticmethod
+    def _no_db_workflow():
+        return patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_gmail_trigger_selects_the_email_template(self) -> None:
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={
+                    "type": "gmail",
+                    "email_data": {"sender": "a@b.com", "subject": "Subj", "message_text": "Body"},
+                    "triggered_at": "2026-08-27T00:00:00Z",
+                },
+            )
+
+        assert "a@b.com" in result
+        assert "Subj" in result
+        assert "2026-08-27T00:00:00Z" in result
+
+    @pytest.mark.asyncio
+    async def test_a_non_gmail_trigger_does_not_select_the_email_template(self) -> None:
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={"type": "schedule", "triggered_at": "2026-08-27T00:00:00Z"},
+            )
+
+        assert "a@b.com" not in result
+        assert "Morning Brief" in result
+
+    @pytest.mark.asyncio
+    async def test_a_long_email_body_is_previewed_not_pasted_whole(self) -> None:
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={
+                    "type": "gmail",
+                    "email_data": {"sender": "a@b.com", "subject": "S", "message_text": "x" * 500},
+                },
+            )
+
+        assert "x" * 200 + "..." in result
+        assert "x" * 201 not in result
+
+    @pytest.mark.asyncio
+    async def test_a_short_email_body_is_not_marked_truncated(self) -> None:
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={
+                    "type": "gmail",
+                    "email_data": {"sender": "a@b.com", "subject": "S", "message_text": "short"},
+                },
+            )
+
+        assert "short" in result
+        assert "short..." not in result
+
+    @pytest.mark.asyncio
+    async def test_a_stopped_replay_tells_the_agent_what_already_ran(self) -> None:
+        """Without this the agent repeats steps whose side effects already happened."""
+        note = "<already_ran>sent the digest email</already_ran>"
+
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={PLAYBOOK_FALLBACK_CONTEXT_KEY: note},
+            )
+
+        assert result.endswith(note)
+
+    @pytest.mark.asyncio
+    async def test_the_same_evidence_reaches_an_email_triggered_fallback(self) -> None:
+        note = "<already_ran>archived 3 threads</already_ran>"
+
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={
+                    "type": "gmail",
+                    "email_data": {"sender": "a@b.com", "subject": "S", "message_text": "m"},
+                    PLAYBOOK_FALLBACK_CONTEXT_KEY: note,
+                },
+            )
+
+        assert result.endswith(note)
+        assert "a@b.com" in result
+
+    @pytest.mark.asyncio
+    async def test_an_ordinary_run_carries_no_replay_evidence(self) -> None:
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(self._selected(), user_id="u1")
+
+        assert "already_ran" not in result

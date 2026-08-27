@@ -43,7 +43,8 @@ def build_result_digest(output: object) -> str:
 
 
 def _compact(value: object) -> str:
-    return json.dumps(value, separators=(",", ":"), default=str)
+    """Compact JSON, so the bound buys content rather than whitespace."""
+    return json.dumps(value, separators=(",", ":"))
 
 
 def _bounded_json(value: object) -> str:
