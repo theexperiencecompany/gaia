@@ -209,14 +209,18 @@ jobs:
       fail-fast: false
       matrix:
         slice:
-          - { name: unit, paths: "tests/unit tests/contracts tests/meta" }
-          - { name: integration, paths: "tests/integration tests/e2e tests/stress" }
+          # node: only the device-bridge e2e test (integration slice) drives the
+          # real `gaia bridge` CLI via tsx; the unit slice skips the Node setup.
+          - { name: unit, paths: "tests/unit tests/contracts tests/meta", node: "false" }
+          - { name: integration, paths: "tests/integration tests/e2e tests/stress", node: "true" }
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
           fetch-depth: 1
       - uses: ./.github/actions/setup-python-test-env
+        with:
+          node: ${{ matrix.slice.node }}
       - name: Detect parallelism
         id: par
         run: |

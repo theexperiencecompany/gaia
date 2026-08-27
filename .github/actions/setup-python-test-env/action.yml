@@ -7,10 +7,20 @@ description: >
   daemon. Mirrors the topology of `dagger call test-python` so the suite runs
   identically in CI and in the local Dagger harness.
 
+inputs:
+  node:
+    description: >
+      Install Node + pnpm deps. Only tests/integration/real/test_device_bridge_e2e.py
+      needs them (it drives the real `gaia bridge` CLI via tsx); a lane that
+      does not run that file should pass "false" and skip ~45s warm / minutes cold.
+    required: false
+    default: "true"
+
 runs:
   using: composite
   steps:
     - name: Setup Node.js + pnpm
+      if: inputs.node == 'true'
       uses: ./.github/actions/setup-node-pnpm
 
     # The self-hosted box keeps its NVMe between runs, so uv's cache lives
@@ -52,6 +62,18 @@ runs:
         # compiler cache).
         prune-cache: true
 
+    # Container boot (image pull on a cold daemon, then 10-30s of Postgres /
+    # Mongo / RabbitMQ / Chroma readiness) is pure waiting, and uv sync is
+    # mostly I/O — they overlap. Started here, joined after the sync.
+    - name: Start service containers (background)
+      shell: bash
+      run: |
+        set -euo pipefail
+        LOG="/tmp/gaia-test-services-${RUNNER_INDEX:-0}.start.log"
+        nohup bash scripts/ci/start-test-services.sh > "$LOG" 2>&1 < /dev/null &
+        echo "$!" > "/tmp/gaia-test-services-${RUNNER_INDEX:-0}.start.pid"
+        echo "services starting in background (pid $!, log $LOG)"
+
     - name: Sync Python dependencies
       shell: bash
       # --no-build (Sonar S8541) is impossible: pysher ships no wheel in any
@@ -59,9 +81,20 @@ runs:
       # the same audited code as every other install path.
       run: uv sync --frozen --package gaia --group backend --group dev # NOSONAR githubactions:S8541
 
-    - name: Start service containers
+    - name: Wait for service containers
       shell: bash
-      run: bash scripts/ci/start-test-services.sh
+      run: |
+        set -euo pipefail
+        PIDF="/tmp/gaia-test-services-${RUNNER_INDEX:-0}.start.pid"; LOG="/tmp/gaia-test-services-${RUNNER_INDEX:-0}.start.log"
+        pid="$(cat "$PIDF")"
+        # `wait` only works on children of this shell; poll the pid instead.
+        while kill -0 "$pid" 2>/dev/null; do sleep 1; done
+        cat "$LOG"
+        # The script writes the resolved URLs to GITHUB_ENV itself, but that
+        # file is per-step: re-publish from the services env file it wrote.
+        ENVF="/tmp/gaia-test-services-${RUNNER_INDEX:-0}.env"
+        [ -f "$ENVF" ] || { echo "::error::service containers did not come up"; exit 1; }
+        grep -v '^GAIA_TEST_CONTAINERS=' "$ENVF" >> "$GITHUB_ENV"
 
     # The service URLs (and their per-runner port offsets) are written to
     # $GITHUB_ENV by start-test-services.sh above — it owns the port
@@ -107,8 +140,21 @@ runs:
 
     # On self-hosted this is a no-op after the first run: the models are
     # already on disk and the loaders return immediately.
+    # Self-hosted has no cache-hit signal (the GH cache steps are skipped
+    # there), so decide from the disk: a populated model dir means nothing
+    # to fetch — and this step loads ~1.4 GB of ONNX into RAM just to check.
+    - name: Check embedding models on disk
+      id: models-on-disk
+      shell: bash
+      run: |
+        if [ -n "$(find "$MODEL_CACHE_DIR" -name 'model*.onnx' -size +10M 2>/dev/null | head -n 1)" ]; then
+          echo "present=true" >> "$GITHUB_OUTPUT"; echo "embedding models already on disk"
+        else
+          echo "present=false" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Prefetch embedding models
-      if: steps.model-cache.outputs.cache-hit != 'true'
+      if: steps.model-cache.outputs.cache-hit != 'true' && steps.models-on-disk.outputs.present != 'true'
       shell: bash
       working-directory: apps/api
       # Goes through the app's own loaders, so the models, cache dir and ONNX
