@@ -11,7 +11,7 @@
 
 </div>
 
-GAIA is a personal AI assistant that does the work you shouldn't be doing by hand. Connect Gmail and it triages your inbox every morning, drafts your replies and turns emails into todos. Connect your calendar and it briefs you before every meeting.
+GAIA is a personal AI assistant that can automate your whole day. Connect Gmail and it triages your inbox every morning, drafts your replies and turns emails into todos. Connect your calendar and it briefs you before every meeting.
 
 You set none of that up. It's running the moment you connect.
 
@@ -19,7 +19,7 @@ And when something needs you, it comes to you — on iMessage, WhatsApp, Telegra
 
 ## Why GAIA
 
-Your day is full of work that isn't your job — triaging mail, prepping for meetings, chasing updates, copying tasks between tools. Each one costs two minutes. Together they cost your afternoon.
+Gmail, Calendar, Slack, Notion, Linear — different tools, same problem: your day fills with work that isn't your job. Triaging mail, prepping for meetings, chasing updates, copying tasks between apps. Each one costs two minutes. Together they cost your afternoon.
 
 **GAIA does that layer for you.** It does the work, then tells you when it's done.
 
@@ -59,7 +59,7 @@ This is how most people should use GAIA — you skip standing up Postgres, Mongo
 
 <a href="https://heygaia.io/install"><img src="apps/web/public/images/screenshots/cli.png" alt="GAIA CLI" width="500" /></a>
 
-Prefer your own machines? You get your own keys and models, no caps, and your data on your disks — in exchange for running real infrastructure.
+Prefer your own machines? You get your own keys and models, no caps, your data on your disks, and a bundled Grafana dashboard to watch it all — in exchange for running real infrastructure.
 
 > [!IMPORTANT]
 > The licence is **noncommercial**. Personal and non-profit self-hosting is free; running GAIA inside a business needs an [enterprise licence](https://heygaia.io/contact).
