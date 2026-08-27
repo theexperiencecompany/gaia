@@ -32,6 +32,7 @@ class AgentTag(StrEnum):
     PLATFORM_DELIVERY = "platform_delivery"
     DELIVERY_INSTRUCTIONS = "delivery_instructions"
     SUBAGENT_RESULT = "subagent_result"
+    SUBAGENT_CALL_RECORD = "subagent_call_record"
     STYLE_CORRECTION = "style_correction"
     LAST_RUN = "last_run"
     PLAYBOOK_FALLBACK = "playbook_fallback"

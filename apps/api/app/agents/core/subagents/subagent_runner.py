@@ -108,10 +108,16 @@ class SubagentOutcome:
     ``interrupt`` carries the payload the gate passed to ``interrupt()``. When it
     is set the graph is checkpointed mid-run and ``text`` is meaningless — the
     caller must bubble the pause up rather than treat it as an answer.
+
+    ``run_messages`` are THIS run's tool-bearing messages captured off the
+    stream — the agent node's AIMessages (complete tool_calls) and the
+    ToolMessages answering them. Workflow handoffs render them into the call
+    record the executor transcribes playbook steps from (see ``call_record``).
     """
 
     text: str
     interrupt: dict[str, Any] | None = None
+    run_messages: tuple[AnyMessage, ...] = ()
 
     @property
     def paused(self) -> bool:
@@ -357,6 +363,7 @@ async def execute_subagent_stream(
     emitted_tool_calls: set[str] = set()
     tool_ran = False
     pending_approvals: list[dict[str, Any]] = []
+    run_messages: list[AnyMessage] = []
 
     # Inject the UUID subagent_id into configurable so nested spawn_subagent
     # tool calls can read the correct parent_subagent_id via
@@ -429,6 +436,15 @@ async def execute_subagent_stream(
                 # would replay stale tool cards into the current stream.
                 if node_name != "agent":
                     continue
+                # The agent node's update is the one place this run's complete
+                # tool_calls (exact names + args) appear — "messages" mode only
+                # streams them as partial chunks. Captured for the call record.
+                if isinstance(state_update, dict):
+                    run_messages.extend(
+                        msg
+                        for msg in state_update.get("messages", [])
+                        if getattr(msg, "tool_calls", None)
+                    )
                 # Use shared helper to extract and format tool entries
                 entries = await extract_tool_entries_from_update(
                     state_update=state_update,
@@ -452,6 +468,7 @@ async def execute_subagent_stream(
             )
             if isinstance(payload[0], ToolMessage):
                 tool_ran = True
+                run_messages.append(payload[0])
             continue
 
         if stream_mode == "custom":
@@ -461,7 +478,11 @@ async def execute_subagent_stream(
     # A pause is not a result: the narration-only heuristic below would misread a
     # half-finished run as "planning text" and tell the parent to re-issue it.
     if pending_approvals:
-        return SubagentOutcome(text=complete_message, interrupt=merge_approvals(pending_approvals))
+        return SubagentOutcome(
+            text=complete_message,
+            interrupt=merge_approvals(pending_approvals),
+            run_messages=tuple(run_messages),
+        )
 
     # A subagent that only narrated and never ran a tool didn't do the work — return
     # an actionable signal so the parent re-issues the handoff instead of treating the
@@ -483,7 +504,7 @@ async def execute_subagent_stream(
             "messages_count": len(ctx.initial_state.get("messages", [])),
         }
     )
-    return SubagentOutcome(text=final_message)
+    return SubagentOutcome(text=final_message, run_messages=tuple(run_messages))
 
 
 def _snapshot_messages(snapshot: StateSnapshot) -> list[AnyMessage]:

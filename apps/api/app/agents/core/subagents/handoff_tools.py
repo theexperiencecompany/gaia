@@ -15,6 +15,7 @@ import time
 from typing import Annotated, Any
 from uuid import uuid4
 
+from langchain_core.messages import AnyMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, InjectedToolCallId, tool
 from langgraph.config import get_stream_writer
@@ -32,6 +33,7 @@ from app.agents.core.background.session import (
 )
 from app.agents.core.background.subagent_runner import run_subagent_background
 from app.agents.core.graph_manager import CompiledAgentGraph
+from app.agents.core.subagents.call_record import append_call_record
 from app.agents.core.subagents.provider_subagents import (
     SubagentUnavailableError,
     create_subagent_for_user,
@@ -529,8 +531,13 @@ async def _run_blocking_handoff(
     integration_id: str,
     tool_call_id: str,
     probe_parked: bool = False,
+    record_calls: bool = False,
 ) -> str:
-    """Run a handoff subagent synchronously, emitting lifecycle SSE events."""
+    """Run a handoff subagent synchronously, emitting lifecycle SSE events.
+
+    ``record_calls`` (workflow runs only) appends the subagent's successful tool
+    calls to the result so the executor can transcribe them into a playbook.
+    """
     writer = get_stream_writer()
     # Stable across replays so an approval pause reuses the same UI row instead of
     # orphaning the paused one and opening a duplicate on resume.
@@ -581,6 +588,7 @@ async def _run_blocking_handoff(
     # first pass (pausing the executor) and returns THIS gate's own decision on the
     # replay — recovery fast-forwards to the latest park, so an earlier gate's already
     # -applied decision must not be replayed onto it (matched out by approval_id).
+    run_messages: list[AnyMessage] = list(outcome.run_messages)
     while outcome.paused:
         decision = resume_for_gate(outcome.interrupt)
         outcome = await execute_subagent_stream(
@@ -590,6 +598,7 @@ async def _run_blocking_handoff(
             subagent_id=sa_id,
             resume=Command(resume=decision),
         )
+        run_messages.extend(outcome.run_messages)
 
     writer(
         {
@@ -599,6 +608,8 @@ async def _run_blocking_handoff(
             )
         }
     )
+    if record_calls:
+        return append_call_record(outcome.text, run_messages)
     return outcome.text
 
 
@@ -744,6 +755,11 @@ async def handoff(
         # per-handoff checkpoint probe in _run_blocking_handoff is gated on this.
         probe_parked = bool(configurable.get(HIL_RESUME_CONFIG_KEY))
 
+        # Workflow runs get the subagent's actual calls appended to the result
+        # so write_playbook transcribes real tool names/args instead of guessing
+        # them. Chat runs are untouched — no extra text, no extra tokens.
+        record_calls = bool(configurable.get("workflow_id"))
+
         ctx, integration_metadata, error = await prepare_subagent_execution(
             subagent_id=subagent_id,
             task=task,
@@ -811,6 +827,7 @@ async def handoff(
                     integration_id,
                     tool_call_id,
                     probe_parked,
+                    record_calls,
                 )
                 return (
                     "[WARNING: background handoff fell back to blocking: "
@@ -863,6 +880,7 @@ async def handoff(
                     tool_category=bg_cat,
                     icon_url=bg_icon,
                     integration_id=integration_id,
+                    record_calls=record_calls,
                 )
             )
             log.info(
@@ -877,7 +895,13 @@ async def handoff(
 
         # Blocking (default): execute synchronously and return result.
         return await _run_blocking_handoff(
-            ctx, integration_metadata, agent_name, integration_id, tool_call_id, probe_parked
+            ctx,
+            integration_metadata,
+            agent_name,
+            integration_id,
+            tool_call_id,
+            probe_parked,
+            record_calls,
         )
 
     except GraphBubbleUp:

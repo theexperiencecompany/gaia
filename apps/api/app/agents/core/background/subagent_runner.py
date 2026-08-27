@@ -19,6 +19,7 @@ from app.agents.core.background.session import (
     decrement_pending_subagents,
     release_bg_integration,
 )
+from app.agents.core.subagents.call_record import append_call_record
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     execute_subagent_stream,
@@ -43,6 +44,7 @@ async def run_subagent_background(
     tool_category: str | None = None,
     icon_url: str | None = None,
     integration_id: str | None = None,
+    record_calls: bool = False,
 ) -> None:
     """Run a provider subagent in the background and store its result.
 
@@ -59,6 +61,9 @@ async def run_subagent_background(
         stream_id: Active SSE stream ID for tool event publishing.
         integration_metadata: Optional icon/name metadata for tool events.
         integration_id: Releases this integration's background slot on exit.
+        record_calls: Workflow runs only — append the subagent's successful tool
+            calls to the stored result so the executor can transcribe them into
+            a playbook (see ``call_record``).
     """
     conversation_id = str(ctx.configurable.get("conversation_id", ""))
     # This task outlives the spawning executor turn, so it needs its own
@@ -101,7 +106,11 @@ async def run_subagent_background(
             if outcome.paused:
                 await _park(ctx, outcome.interrupt or {}, stream_id)
                 return
-            result = outcome.text
+            result = (
+                append_call_record(outcome.text, outcome.run_messages)
+                if record_calls
+                else outcome.text
+            )
             duration_ms = int((time.monotonic() - start_time) * 1000)
 
             if subagent_id:

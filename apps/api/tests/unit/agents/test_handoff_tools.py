@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.messages import AIMessage, ToolMessage
 import pytest
 
 from app.agents.core.subagents.handoff_tools import (
@@ -15,6 +16,7 @@ from app.agents.core.subagents.handoff_tools import (
     index_custom_mcp_as_subagent,
 )
 from app.agents.core.subagents.provider_subagents import SubagentUnavailableError
+from app.agents.core.subagents.subagent_runner import SubagentOutcome
 from app.db.repositories.user_integrations import user_integration_repository
 from app.models.integration_models import Integration
 from app.models.mcp_config import MCPConfig, SubAgentConfig
@@ -870,3 +872,92 @@ class TestBackgroundHandoffWithoutAStream:
             "[WARNING: background handoff fell back to blocking: "
             "stream_id not propagated into executor configurable] subagent ran"
         )
+
+
+@pytest.mark.unit
+class TestWorkflowHandoffCarriesTheSubagentsCallRecord:
+    """A workflow run's executor transcribes playbook steps from the handoff
+    result — it never sees the subagent's own tool calls, so without the record
+    it guesses names and args (invented ``max_results`` for GMAIL_FETCH_MESSAGES
+    whose real arg is ``max_messages``). A chat run must stay byte-identical to
+    the plain subagent text: no extra text, no extra tokens."""
+
+    @staticmethod
+    def _outcome() -> SubagentOutcome:
+        return SubagentOutcome(
+            text="subagent ran",
+            run_messages=(
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "GMAIL_FETCH_MESSAGES",
+                            "args": {"max_messages": 5},
+                            "id": "tc1",
+                        }
+                    ],
+                ),
+                ToolMessage(content="ok", tool_call_id="tc1"),
+            ),
+        )
+
+    @contextmanager
+    def _running_subagent(self) -> Iterator[None]:
+        """Real ``_run_blocking_handoff`` over a faked subagent stream — the
+        record append under test lives inside it, so it must not be mocked."""
+        ctx = SimpleNamespace(
+            agent_name="gmail_agent",
+            integration_id="gmail",
+            configurable={},
+            config={},
+        )
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools.prepare_subagent_execution",
+                new_callable=AsyncMock,
+                return_value=(ctx, None, None),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools._has_parked_subagent",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.get_stream_writer",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.execute_subagent_stream",
+                new_callable=AsyncMock,
+                return_value=self._outcome(),
+            ),
+        ):
+            yield
+
+    async def test_a_workflow_run_gets_the_record_appended(self) -> None:
+        with self._running_subagent():
+            result = await handoff.coroutine(
+                subagent_id="gmail",
+                task="Fetch the unread messages.",
+                config={
+                    "configurable": {
+                        "user_id": "u1",
+                        "thread_id": "t1",
+                        "workflow_id": "wf1",
+                    }
+                },
+            )
+
+        assert result.startswith("subagent ran")
+        assert "<subagent_call_record>" in result
+        assert 'GMAIL_FETCH_MESSAGES({"max_messages":5})' in result
+
+    async def test_a_chat_run_result_is_untouched(self) -> None:
+        with self._running_subagent():
+            result = await handoff.coroutine(
+                subagent_id="gmail",
+                task="Fetch the unread messages.",
+                config={"configurable": {"user_id": "u1", "thread_id": "t1"}},
+            )
+
+        assert result == "subagent ran"

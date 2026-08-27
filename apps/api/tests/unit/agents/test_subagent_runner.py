@@ -6,6 +6,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import (
+    AIMessage,
     AIMessageChunk,
     HumanMessage,
     SystemMessage,
@@ -366,6 +367,62 @@ class TestExecuteSubagentStream:
 
         output = stream_writer.call_args[0][0]["tool_output"]["output"]
         assert output == long_content
+
+    @pytest.mark.asyncio
+    async def test_run_messages_capture_the_agents_tool_calls_and_their_results(self):
+        """The outcome carries this run's tool-bearing messages — the agent
+        node's complete AIMessages plus the ToolMessages answering them — which
+        is what the workflow call record is built from."""
+        ai = AIMessage(
+            content="",
+            tool_calls=[
+                {"name": "GMAIL_FETCH_MESSAGES", "args": {"max_messages": 5}, "id": "tc-1"}
+            ],
+        )
+        tool_msg = ToolMessage(content="ok", tool_call_id="tc-1")
+
+        async def _fake_astream(*args, **kwargs):
+            yield ("updates", {"agent": {"messages": [ai]}})
+            yield ("messages", (tool_msg, {}))
+
+        mock_graph = MagicMock()
+        mock_graph.astream = _fake_astream
+        ctx = _make_ctx(subagent_graph=mock_graph)
+
+        with (
+            patch("app.agents.core.subagents.subagent_runner.log"),
+            # The SSE tool-card formatting is not under test — and unpatched it
+            # reaches the real tool registry provider.
+            patch(
+                "app.agents.core.subagents.subagent_runner.extract_tool_entries_from_update",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+        ):
+            result = await execute_subagent_stream(ctx)
+
+        assert result.run_messages == (ai, tool_msg)
+
+    @pytest.mark.asyncio
+    async def test_run_messages_skip_non_agent_node_updates(self):
+        """Pre-model hooks replay historical AIMessages in their updates; those
+        must not leak stale tool calls into the record."""
+        stale = AIMessage(
+            content="",
+            tool_calls=[{"name": "OLD_TOOL", "args": {}, "id": "tc-old"}],
+        )
+
+        async def _fake_astream(*args, **kwargs):
+            yield ("updates", {"filter_messages_node": {"messages": [stale]}})
+
+        mock_graph = MagicMock()
+        mock_graph.astream = _fake_astream
+        ctx = _make_ctx(subagent_graph=mock_graph)
+
+        with patch("app.agents.core.subagents.subagent_runner.log"):
+            result = await execute_subagent_stream(ctx)
+
+        assert result.run_messages == ()
 
     @pytest.mark.asyncio
     async def test_updates_emit_tool_data(self):
