@@ -204,7 +204,8 @@ def test_init_openrouter_llm_pins_context_window_profile(monkeypatch):
         DEFAULT_LLM_TEMPERATURE,
         DEFAULT_MAX_TOKENS,
         OPENROUTER_APP_CATEGORIES,
-        OPENROUTER_APP_TITLE,
+        OPENROUTER_DEV_APP_TITLE,
+        OPENROUTER_DEV_APP_URL,
         OPENROUTER_MAX_OUTPUT_TOKENS,
         OPENROUTER_REASONING,
     )
@@ -220,8 +221,10 @@ def test_init_openrouter_llm_pins_context_window_profile(monkeypatch):
     assert captured["model"] == PROVIDER_MODELS["openrouter"]
     assert captured["temperature"] == DEFAULT_LLM_TEMPERATURE
     assert captured["max_tokens"] == OPENROUTER_MAX_OUTPUT_TOKENS
-    assert captured["app_url"] == client.settings.FRONTEND_URL
-    assert captured["app_title"] == OPENROUTER_APP_TITLE
+    # ENV is development here, so attribution must be the fixed dev identity —
+    # a localhost FRONTEND_URL referer lands in OpenRouter's "unknown app" bucket.
+    assert captured["app_url"] == OPENROUTER_DEV_APP_URL
+    assert captured["app_title"] == OPENROUTER_DEV_APP_TITLE
     assert captured["app_categories"] == OPENROUTER_APP_CATEGORIES
     assert captured["reasoning"] == OPENROUTER_REASONING
     assert captured["streaming"] is True

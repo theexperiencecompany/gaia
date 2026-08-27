@@ -111,8 +111,18 @@ extend-exclude = [
   # author. Linting them only yields findings we would be fixing in someone
   # else's file, and reformatting them turns every upstream update into a
   # conflict. Excluded from the Python scanners (also bandit and xenon below).
+  # Both trees are vendored: .agents/skills is the harness-agnostic copy and
+  # .claude/skills is the Claude Code copy of the same upstream skills.
   ".agents",
+  ".claude/skills",
 ]
+
+# Honour the exclusions above even when a file is named explicitly on the
+# command line. Without this, pre-commit (which passes staged paths) and CI's
+# changed-files mode (`ruff check $FILES`) both bypass extend-exclude, so an
+# excluded file is linted by every surface except the whole-repo walk — which
+# is how vendored skill scripts came to be reformatted in place.
+force-exclude = true
 
 [tool.ruff.lint]
 # Strict, monorepo-wide rule set (matches the rules the user explicitly opted into).

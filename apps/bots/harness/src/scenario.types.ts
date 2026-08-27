@@ -3,7 +3,7 @@
  * plus transcript assertions checked against the recorded events.
  */
 
-import type { PlatformName } from "@gaia/shared";
+import type { PlatformName } from "@gaia/shared/bots";
 
 /** Assertions checked against the transcript events a single turn produced. */
 export interface ScenarioAssertion {

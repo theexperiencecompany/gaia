@@ -318,9 +318,13 @@ DEV_LLM_MAX_OUTPUT_TOKENS = 64_000
 # OpenRouter app attribution (https://openrouter.ai/docs/app-attribution). The
 # OpenRouter client surfaces these as the HTTP-Referer / X-Title /
 # X-OpenRouter-Categories headers so GAIA appears on OpenRouter's app rankings.
-# The referer URL is the public site (settings.FRONTEND_URL); title + categories
-# are fixed app identity.
+# In production the referer is the public site (settings.FRONTEND_URL);
+# development sends a fixed synthetic referer instead, because a localhost
+# FRONTEND_URL cannot be attributed and the traffic lands in the dashboard's
+# "unknown app" bucket — indistinguishable from a misconfigured caller.
 OPENROUTER_APP_TITLE = "GAIA"
+OPENROUTER_DEV_APP_URL = "https://dev.heygaia.io"
+OPENROUTER_DEV_APP_TITLE = "GAIA (dev)"
 OPENROUTER_APP_CATEGORIES = ["personal-agent", "general-chat"]
 
 # DEV-ONLY model menu (ENV=development). The dev chat-header selector sends one of

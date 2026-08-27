@@ -1,5 +1,47 @@
 # Changelog
 
+## [1.6.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.5.0...bots-v1.6.0) (2026-08-25)
+
+
+### Features
+
+* agent-first harness — deterministic e2e testing, direct agent invocation, and a leaner CI ([#877](https://github.com/theexperiencecompany/gaia/issues/877)) ([16d7e7e](https://github.com/theexperiencecompany/gaia/commit/16d7e7e494b54c1188d66024cae3df1b786e4423))
+* **analytics:** unify PostHog identity on stable user IDs and add core event capture ([#1007](https://github.com/theexperiencecompany/gaia/issues/1007)) ([45e843d](https://github.com/theexperiencecompany/gaia/commit/45e843d4bb7519a3849a7b1491395b1ba9cc4665))
+* **bots:** iMessage platform via Photon/Spectrum with Pro gating ([#1016](https://github.com/theexperiencecompany/gaia/issues/1016)) ([8b054d9](https://github.com/theexperiencecompany/gaia/commit/8b054d999ca3791fc9bf141a581a0cbac1a1a4fd))
+* **dev:** flag-based dev auth bypass, real login by default ([#883](https://github.com/theexperiencecompany/gaia/issues/883)) ([2c70109](https://github.com/theexperiencecompany/gaia/commit/2c70109bdf5ea087c91a5cf57df2a15e34501170))
+* **devx:** ci:local, ci:remote, pr:comments — agent-legible shipping gates ([#1093](https://github.com/theexperiencecompany/gaia/issues/1093)) ([efd45e0](https://github.com/theexperiencecompany/gaia/commit/efd45e0960831e5e729703f6d891ddddda9679c4))
+* Extract PDF/DOCX/XLSX/PPTX/CSV locally via anydoc + pdf-inspector ([#890](https://github.com/theexperiencecompany/gaia/issues/890)) ([e6c71c4](https://github.com/theexperiencecompany/gaia/commit/e6c71c4285347c134a5db6857cb46926033e97c6))
+* **gmail:** inbox summary tool, body normalization, and agent docs ([#783](https://github.com/theexperiencecompany/gaia/issues/783)) ([0edf4a4](https://github.com/theexperiencecompany/gaia/commit/0edf4a4e9e705e337d52cb6502c184da4d3d1144))
+* **mobile:** unified streaming tool chain with subagent + HIL visibility, card contract sweep ([#1098](https://github.com/theexperiencecompany/gaia/issues/1098)) ([0924ce2](https://github.com/theexperiencecompany/gaia/commit/0924ce2e77dfab5643e719e379cf7892de33240e))
+* **observability:** wide-event enforcement across all surfaces — evlog gates, Babel bots scanner, min-score rework, gate simplification ([#884](https://github.com/theexperiencecompany/gaia/issues/884)) ([5040dca](https://github.com/theexperiencecompany/gaia/commit/5040dca5373f11f28394d234469e4d1c3cd6fb45))
+
+
+### Bug Fixes
+
+* **agents:** root-cause fixes for Telegram reply quality, memory hygiene, executor grounding and bot sessions ([#1094](https://github.com/theexperiencecompany/gaia/issues/1094)) ([11995af](https://github.com/theexperiencecompany/gaia/commit/11995af04d752a6025d4c7d4ec998138ecaf0f95))
+* **api:** drop removed ast aliases so config schema dump works on Python 3.12+ ([#878](https://github.com/theexperiencecompany/gaia/issues/878)) ([beebc92](https://github.com/theexperiencecompany/gaia/commit/beebc92c7b97487dcbc8ff5004932c43b3e45281))
+* **bots:** ship the grpc peer deps the photon sdk resolves at runtime ([#1049](https://github.com/theexperiencecompany/gaia/issues/1049)) ([f0e211b](https://github.com/theexperiencecompany/gaia/commit/f0e211bfa412c61b70ad2ccae31b740ba51ecdb8))
+* **bots:** stop the imessage bundle colliding on createRequire ([#1048](https://github.com/theexperiencecompany/gaia/issues/1048)) ([dc94d99](https://github.com/theexperiencecompany/gaia/commit/dc94d9956fe0909c4e5527b9929a5dba01270c4d))
+* **bots:** stop truncating replies and losing bubbles; one splitter for message breaks ([#1051](https://github.com/theexperiencecompany/gaia/issues/1051)) ([c542095](https://github.com/theexperiencecompany/gaia/commit/c5420959cecab7a55fdf7f7879aa0fd827189461))
+* **ci:** publish versioned imessage bot images so the deploy can pin them ([#1050](https://github.com/theexperiencecompany/gaia/issues/1050)) ([19ec4c1](https://github.com/theexperiencecompany/gaia/commit/19ec4c114280bf850985af7729ca9352ddafe835))
+* **ci:** register bot projects as docker releases so they get immutable tags ([#1011](https://github.com/theexperiencecompany/gaia/issues/1011)) ([2b1d208](https://github.com/theexperiencecompany/gaia/commit/2b1d2087b17fae78c7ce26b17309a36528fb7875))
+* **quality:** repair lint errors blocking the PR quality gate ([#870](https://github.com/theexperiencecompany/gaia/issues/870)) ([d4b5605](https://github.com/theexperiencecompany/gaia/commit/d4b56055eb6e3e938f2dd2e85ba36c28f7d2bdce))
+* **security:** remediate 192 of 196 Dependabot alerts ([#860](https://github.com/theexperiencecompany/gaia/issues/860)) ([9984705](https://github.com/theexperiencecompany/gaia/commit/99847059fee66f46c6a7f94cd3569047f4eec470))
+* **security:** remediate audited SSRF/IDOR/auth/webhook findings across the monorepo ([#848](https://github.com/theexperiencecompany/gaia/issues/848)) ([13f36fc](https://github.com/theexperiencecompany/gaia/commit/13f36fc07485d47b99f68d9e9e8b291d6aa1101c))
+* **workflows:** JSON-safe tool payloads, reschedule-safe scheduled fires, break-sentinel variants ([#1067](https://github.com/theexperiencecompany/gaia/issues/1067)) ([0aa3d54](https://github.com/theexperiencecompany/gaia/commit/0aa3d54dd8ef0655fbd8a624fa315bcd8a1cb3a8))
+
+
+### Performance Improvements
+
+* **cache:** keep the prompt prefix stable so conversations actually hit the provider cache ([#1025](https://github.com/theexperiencecompany/gaia/issues/1025)) ([a44916d](https://github.com/theexperiencecompany/gaia/commit/a44916ddbf70ef6b1e605d20dcf91eb2049a4264))
+* **ci:** PR gate 13.4m→8.9m; parallel gate-safe master docker phase; GHCR registry layer cache ([#1064](https://github.com/theexperiencecompany/gaia/issues/1064)) ([46b5ecc](https://github.com/theexperiencecompany/gaia/commit/46b5eccdcd9c7ac114a7bacf482e2a346bd601c2))
+* Docker layer cache moves from type=gha to GHCR type=registry ([46b5ecc](https://github.com/theexperiencecompany/gaia/commit/46b5eccdcd9c7ac114a7bacf482e2a346bd601c2))
+
+
+### Reverts
+
+* .next/cache seeding into the docker-web context (9a49586ca + ([46b5ecc](https://github.com/theexperiencecompany/gaia/commit/46b5eccdcd9c7ac114a7bacf482e2a346bd601c2))
+
 ## [1.5.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.4.1...bots-v1.5.0) (2026-07-03)
 
 

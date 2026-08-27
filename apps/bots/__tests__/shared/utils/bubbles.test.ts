@@ -13,7 +13,7 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { segmentIntoBubbles } from "@gaia/shared";
+import { segmentIntoBubbles } from "@gaia/shared/bots";
 import { describe, expect, it } from "vitest";
 
 const BREAK = "<NEW_MESSAGE_BREAK>";

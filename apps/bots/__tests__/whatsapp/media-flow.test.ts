@@ -58,7 +58,7 @@ vi.mock("@hono/node-server", () => ({
   serve: vi.fn(),
 }));
 
-vi.mock("@gaia/shared", async () => {
+vi.mock("@gaia/shared/bots", async () => {
   const { makeGaiaSharedMock } = await import("../shared/mocks/gaiaSharedBase");
   // Wire the REAL pure helpers the adapter imports so the error/unsupported
   // paths assert production copy, not a stub.
@@ -91,7 +91,7 @@ import {
   handleStreamingChat,
   MEDIA_READ_TIMEOUT_MS,
   readResponseBytesCapped,
-} from "@gaia/shared";
+} from "@gaia/shared/bots";
 import { WhatsAppAdapter } from "../../whatsapp/src/adapter";
 import type { ExtractedMedia } from "../../whatsapp/src/webhook.types";
 

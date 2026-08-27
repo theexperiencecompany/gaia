@@ -46,7 +46,7 @@ import {
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,
   withWideEvent,
-} from "@gaia/shared";
+} from "@gaia/shared/bots";
 import type { Message } from "@grammyjs/types";
 import { Bot, type Context, GrammyError, InputFile } from "grammy";
 
@@ -580,6 +580,7 @@ export class TelegramAdapter extends BaseBotAdapter {
           platform: "telegram",
           platformUserId: userId,
           channelId: chatId.toString(),
+          isDm: ctx.chat?.type === "private",
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),
@@ -887,6 +888,7 @@ export class TelegramAdapter extends BaseBotAdapter {
       platform: "telegram",
       userId,
       channelId: chatId?.toString(),
+      isDm: !isGroup,
       profile,
 
       send: async (text: string): Promise<SentMessage> => {

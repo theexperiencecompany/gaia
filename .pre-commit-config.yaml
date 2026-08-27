@@ -36,10 +36,8 @@ repos:
         # fails the commit so the corrected files get re-staged.
         args: [--fix, --exit-non-zero-on-fix]
         priority: 0
-        exclude: ^\.claude/skills/.*/scripts/
       - id: ruff-format
         priority: 0
-        exclude: ^\.claude/skills/.*/scripts/
 
   - repo: local
     hooks:

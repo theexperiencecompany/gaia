@@ -12,7 +12,7 @@ import {
   type IncomingMedia,
   MEDIA_READ_TIMEOUT_MS,
   mediaKindFromMime,
-} from "@gaia/shared";
+} from "@gaia/shared/bots";
 import { type Message, MessageFlags } from "discord.js";
 
 /** A Discord attachment/sticker normalised for the shared media pipeline. */
