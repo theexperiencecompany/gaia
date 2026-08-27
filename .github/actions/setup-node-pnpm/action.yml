@@ -92,9 +92,14 @@ runs:
       run: |
         set -euo pipefail
         KEY="$(sha256sum pnpm-lock.yaml | cut -c1-16)"
-        DIR="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/${RUNNER_NAME:-default}/node_modules/${KEY}"
+        # The persisted tree MUST itself be named node_modules: Node resolves
+        # the symlink to its real path before walking up for dependencies, so
+        # a package at <store>/<key>/nx/... looks for <store>/<key>/node_modules
+        # and finds nothing ("Cannot find module 'tslib'" on the first run of
+        # this). <store>/<key>/node_modules/nx/... walks up correctly.
+        DIR="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/${RUNNER_NAME:-default}/node_modules-store/${KEY}/node_modules"
         mkdir -p "$DIR"
-        touch "$DIR"   # mtime = last use, for LRU pruning
+        touch "$(dirname "$DIR")"   # mtime = last use, for LRU pruning
         rm -rf node_modules
         ln -s "$DIR" node_modules
         echo "node_modules (persistent, lockfile ${KEY}): $DIR ($(du -sh "$DIR" 2>/dev/null | cut -f1))"
