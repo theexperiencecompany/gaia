@@ -117,6 +117,17 @@ trim_lru "${CACHE_ROOT}/uv"         "$UV_BUDGET_GB"   "uv cache"
 trim_lru "${CACHE_ROOT}/nx-remote"  "${NX_REMOTE_BUDGET_GB:-9}" "nx remote cache"
 for d in "${CACHE_ROOT}"/*/nx-cache;   do trim_lru "$d" "$NX_BUDGET_GB"   "nx cache ($(basename "$(dirname "$d")"))"; done
 for d in "${CACHE_ROOT}"/*/nextjs;     do trim_lru "$d" "$NEXT_BUDGET_GB" "next cache ($(basename "$(dirname "$d")"))"; done
+# node_modules trees: keep the newest NM_KEEP lockfile hashes per runner.
+NM_KEEP="${NM_KEEP:-2}"
+for d in "${CACHE_ROOT}"/*/node_modules; do
+  [[ -d "$d" ]] || continue
+  old="$(find "$d" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' 2>/dev/null | sort -rn | tail -n +$((NM_KEEP + 1)) | cut -d' ' -f2-)"
+  if [[ -n "$old" ]]; then
+    echo "[prune] $(basename "$(dirname "$d")")/node_modules: $(echo "$old" | wc -l) tree(s) beyond newest ${NM_KEEP}"
+    # shellcheck disable=SC2086
+    run rm -rf $old
+  fi
+done
 
 # --- stopped test-service containers, by exact name pattern -----------------
 # Only containers this repo's CI creates, and only ones that already exited.

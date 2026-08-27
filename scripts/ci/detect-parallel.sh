@@ -62,7 +62,11 @@ fi
 # instead of exhausting RAM and swap (observed: 46 GB + 8 GB swap full,
 # load 42, every core busy thrashing).
 MEM_AVAIL_GB="$(free -g 2>/dev/null | awk '/^Mem:/{print $7}' || echo "$MEM_GB")"
-PER_WORKER_GB="${PYTEST_WORKER_GB:-2.5}"
+# 2.5 GB was the in-process-model figure; with the embedding sidecar the
+# measured peak is 1.04-1.05 GB per worker (profiling matrix, 16 and 24
+# workers). 1.5 keeps margin without cutting workers when two lanes share
+# the box. Set PYTEST_WORKER_GB=2.5 if running without the sidecar.
+PER_WORKER_GB="${PYTEST_WORKER_GB:-1.5}"
 HEADROOM_GB=4   # OS, docker, the runner agent, the coordinating pytest process
 MEM_WORKERS="$(awk -v a="$MEM_AVAIL_GB" -v w="$PER_WORKER_GB" -v h="$HEADROOM_GB" 'BEGIN{n=int((a-h)/w); if(n<1)n=1; print n}')"
 if (( MEM_WORKERS < PYTEST_XDIST_N )); then

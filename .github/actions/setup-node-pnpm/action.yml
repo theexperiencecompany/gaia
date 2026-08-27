@@ -77,8 +77,33 @@ runs:
         ln -s "$NX_DIR" .nx/cache
         echo "Nx cache (persistent, no GH cache): $NX_DIR ($(du -sh "$NX_DIR" 2>/dev/null | cut -f1))"
 
+    # actions/checkout runs `git clean -ffdx` before every job, which deletes
+    # node_modules — so on the persistent box pnpm re-links ~4 GB out of the
+    # store every single job (measured: 45-49s with a fully warm store). Keep
+    # node_modules in a per-runner directory keyed by the lockfile hash and
+    # symlink it in; the install below then verifies it in a few seconds.
+    # Cost: pnpm's node_modules is hardlinks into the content-addressed store,
+    # so a persisted tree adds little beyond the store itself. Per runner (not
+    # shared) because pnpm rewrites the tree in place during install.
+    # prune-cache.sh keeps only the newest few lockfile hashes per runner.
+    - name: Link persistent node_modules (self-hosted)
+      if: runner.environment == 'self-hosted'
+      shell: bash
+      run: |
+        set -euo pipefail
+        KEY="$(sha256sum pnpm-lock.yaml | cut -c1-16)"
+        DIR="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/${RUNNER_NAME:-default}/node_modules/${KEY}"
+        mkdir -p "$DIR"
+        touch "$DIR"   # mtime = last use, for LRU pruning
+        rm -rf node_modules
+        ln -s "$DIR" node_modules
+        echo "node_modules (persistent, lockfile ${KEY}): $DIR ($(du -sh "$DIR" 2>/dev/null | cut -f1))"
+
     - name: Install dependencies
       shell: bash
+      # On self-hosted the persisted tree is usually complete, so this is a
+      # verification pass; --prefer-offline keeps it off the network when the
+      # store already has everything.
       run: pnpm install --frozen-lockfile --prefer-offline
 
     - name: Set NX_CLOUD_ACCESS_TOKEN

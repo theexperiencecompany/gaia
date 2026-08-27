@@ -157,6 +157,8 @@ PATH=${RUNNER_PATH}
 MISE_NODE_COREPACK=1
 RUNNER_INDEX=${idx}
 RUNNER_LOCAL_CACHE=${LOCAL_CACHE}
+ACTIONS_RUNNER_HOOK_JOB_STARTED=${LOCAL_CACHE}/hooks/job-started.sh
+ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${LOCAL_CACHE}/hooks/job-completed.sh
 ${NX_REMOTE_ENV}
 ENVFILE
 
@@ -251,6 +253,15 @@ seed_workdir() {
     rm -rf "$dest"
   fi
 }
+
+# Job hooks: the runner runs these before and after every job with the job's
+# environment. They give ephemeral-grade hygiene (see hooks/job-started.sh)
+# without per-job re-registration.
+HOOK_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/hooks"
+mkdir -p "${LOCAL_CACHE}/hooks"
+install -m 0755 "$HOOK_SRC"/job-started.sh "$HOOK_SRC"/job-completed.sh "${LOCAL_CACHE}/hooks/" 2>/dev/null \
+  && echo "[setup] Job hooks installed to ${LOCAL_CACHE}/hooks" \
+  || echo "::warning::job hooks not found beside setup.sh"
 
 # One templated user unit serves every instance: `gaia-runner@2` runs the
 # runner in actions-runner-gaia-home-2. Restart=always covers the runner

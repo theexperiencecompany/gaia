@@ -189,16 +189,27 @@ jobs:
           /usr/bin/time -v bash -c 'pnpm exec nx run-many -t build -p "$AFFECTED_TS_PROJECTS" --parallel="$NX_PARALLEL" 2>&1 | tail -n 60' 2>&1 | tee /tmp/build.time
           echo "Build: OK (parallel=$NX_PARALLEL)"
 
-  # ── Test Python (live services) — scales linearly to 16 workers on 16c --
+  # ── Test Python — two lanes on two runner instances ──────────────────────
+  # One 16-worker run measured 183s; the box has four runner instances, so the
+  # suite is split by directory into two jobs that run concurrently and the
+  # wall clock becomes max(unit, integration) instead of the sum. Sharding on
+  # one machine only became viable once the embedding sidecar took a worker
+  # from ~2.7 GB to ~1 GB — two 12-16 worker lanes now fit in RAM together.
+  # Each lane writes its own coverage data; the `coverage` job below combines
+  # them and enforces the threshold, so coverage never blocks either lane.
   test-python:
+    name: test-python (${{ matrix.slice.name }})
     needs: [select-runner, detect]
     if: needs.detect.outputs.has_python == 'true'
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 22
+    strategy:
+      fail-fast: false
+      matrix:
+        slice:
+          - { name: unit, paths: "tests/unit tests/contracts tests/meta" }
+          - { name: integration, paths: "tests/integration tests/e2e tests/stress" }
     steps:
-      # Depth 1 is enough: this lane runs pytest and the flake gate, neither of
-      # which reads git history. Full history is a 242 MB fetch, which on the
-      # home runner's residential uplink cost more than the tests it gated.
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
@@ -207,41 +218,69 @@ jobs:
       - name: Detect parallelism
         id: par
         run: |
-          PY=$(bash scripts/ci/detect-parallel.sh --pytest)
-          PYN=$(bash scripts/ci/detect-parallel.sh --pytest-n)
+          PY=$(bash scripts/ci/detect-parallel.sh --pytest-n)
           echo "py=$PY" >> "$GITHUB_OUTPUT"
-          echo "pyn=$PYN" >> "$GITHUB_OUTPUT"
-          echo "pytest xdist=$PY (n=$PYN) on $(nproc) vCPUs"
-      - name: Run Python tests (timed, 16-way)
+          echo "pytest xdist n=$PY on $(nproc) vCPUs ($(free -g | awk '/^Mem:/{print $7}')G available)"
+      - name: Run Python tests (${{ matrix.slice.name }})
         working-directory: apps/api
         env:
-          # coverage's sys.monitoring core (Python 3.12+, coverage 7.4+). The
-          # default C tracer intercepts every line event and was the single
-          # largest per-test overhead; sysmon reduces it to a few percent.
-          # Line coverage only — branch coverage under sysmon needs 3.14 — and
-          # this suite measures lines ([coverage:run] sets no branch=true).
           COVERAGE_CORE: sysmon
+          COVERAGE_FILE: .coverage.${{ matrix.slice.name }}
         run: |
-          echo "Runner: ${{ needs.select-runner.outputs.runner_label }} (self_hosted=${{ needs.select-runner.outputs.is_self_hosted }}) nproc=$(nproc) xdist=${{ steps.par.outputs.py }} coverage_core=$COVERAGE_CORE"
-          # --dist worksteal: idle workers pull from busy ones' queues. The
-          # default `load` scheduler hands out fixed chunks up front, so the
-          # 15s memory tests strand a worker while the others sit finished.
+          echo "Runner: ${{ needs.select-runner.outputs.runner_label }} (self_hosted=${{ needs.select-runner.outputs.is_self_hosted }}) nproc=$(nproc) xdist=${{ steps.par.outputs.py }} slice=${{ matrix.slice.name }}"
           /usr/bin/time -v bash ../../scripts/ci/run-tests-flake-gate.sh \
-            uv run --frozen pytest -n ${{ steps.par.outputs.py }} --dist worksteal -m 'not composio and not model_onboarding and not schemathesis' \
+            uv run --frozen pytest -n ${{ steps.par.outputs.py }} --dist worksteal ${{ matrix.slice.paths }} \
+            -m 'not composio and not model_onboarding and not schemathesis' \
             --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
-            --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=80 \
-            --junitxml=test-results/pytest.xml --durations=50 2>&1 | tee /tmp/pytest.time
-          echo "Python tests: OK (xdist=${{ steps.par.outputs.py }})"
-
-      # Self-hosted runners are reused, so a container left running holds its
-      # host port and the NEXT job on this box dies with
-      # "bind: address already in use" (exit 125). Observed on run
-      # 33101684877, where a leaked chroma on :8000 failed the lane.
+            --cov=app --cov-report= \
+            --junitxml=test-results/pytest-${{ matrix.slice.name }}.xml --durations=30 2>&1 | tee /tmp/pytest.time
+          echo "Python tests (${{ matrix.slice.name }}): OK (xdist=${{ steps.par.outputs.py }})"
+      - name: Upload coverage data
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.slice.name }}
+          path: apps/api/.coverage.${{ matrix.slice.name }}
+          include-hidden-files: true
+          retention-days: 1
       - name: Tear down service containers and sidecar
         if: always()
         run: |
           bash scripts/ci/stop-embedding-sidecar.sh
           bash scripts/ci/stop-test-services.sh
+
+  # ── Coverage gate — its own job, off the test lanes' critical path ────────
+  coverage:
+    needs: [select-runner, detect, test-python]
+    if: needs.detect.outputs.has_python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.8.17"
+          enable-cache: true
+          prune-cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-*
+          path: apps/api
+          merge-multiple: true
+      - name: Combine and gate (80%)
+        working-directory: apps/api
+        run: |
+          set -euo pipefail
+          ls -la .coverage.* 
+          uv run --frozen --package gaia --group dev coverage combine .coverage.unit .coverage.integration
+          uv run --frozen --package gaia --group dev coverage report --fail-under=80 | tail -n 5
+          uv run --frozen --package gaia --group dev coverage xml -o coverage.xml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: apps/api/coverage.xml
+          retention-days: 7
 
   # ── Test TypeScript — Nx parallel scales with cores ----------------------
   test-typescript:
@@ -371,7 +410,7 @@ jobs:
   quality-gate:
     name: quality-gate (hybrid)
     if: always()
-    needs: [select-runner, detect, probe, build, test-python, test-typescript, docker-image]
+    needs: [select-runner, detect, probe, build, test-python, coverage, test-typescript, docker-image]
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -383,8 +422,9 @@ jobs:
           printf "  %-16s %s\n" "build:" "${{ needs.build.result }}"
           printf "  %-16s %s\n" "test-python:" "${{ needs.test-python.result }}"
           printf "  %-16s %s\n" "test-typescript:" "${{ needs.test-typescript.result }}"
+          printf "  %-16s %s\n" "coverage:" "${{ needs.coverage.result }}"
           printf "  %-16s %s\n" "docker-image:" "${{ needs.docker-image.result }}"
-          for r in "${{ needs.detect.result }}" "${{ needs.probe.result }}" "${{ needs.build.result }}" "${{ needs.test-python.result }}" "${{ needs.test-typescript.result }}" "${{ needs.docker-image.result }}"; do
+          for r in "${{ needs.detect.result }}" "${{ needs.probe.result }}" "${{ needs.build.result }}" "${{ needs.test-python.result }}" "${{ needs.coverage.result }}" "${{ needs.test-typescript.result }}" "${{ needs.docker-image.result }}"; do
             if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
               echo "::error::Required job $r"
               exit 1
