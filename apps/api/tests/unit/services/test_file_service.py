@@ -243,6 +243,33 @@ class TestFileServiceUpload:
             },
         )
 
+    @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
+    async def test_the_wide_event_carries_the_callers_conversation_id(
+        self,
+        mock_del_cache,
+        mock_file_repo,
+        mock_cloudinary_upload,
+        mock_chroma_client,
+        mock_sandbox_mirror,
+    ):
+        """`_log_upload_context` is pinned on its own below, but nothing proved
+        upload() hands it the real conversation id — dropping it there degrades
+        every upload's wide event to "" and no other assertion notices."""
+        mock_cloudinary_upload.return_value = {
+            "secure_url": "https://res.cloudinary.com/test/uploaded.pdf"
+        }
+
+        with _summary("This is a summary"), patch("app.services.files.service.log") as log:
+            await FileService.upload(
+                file=_upload_file_mock(),
+                user_id="user-abc",
+                conversation_id="conv-1",
+            )
+
+        contexts = [c.kwargs["file"] for c in log.set.call_args_list if "file" in c.kwargs]
+        assert len(contexts) == 1
+        assert contexts[0]["conversation_id"] == "conv-1"
+
     async def test_missing_filename_raises_400(self):
         file = _upload_file_mock(filename=None)
 

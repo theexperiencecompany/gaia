@@ -386,10 +386,10 @@ def record_fs_op(
     stats.count += 1
     stats.total_ms += duration_ms
     stats.max_ms = max(stats.max_ms, duration_ms)
-    # Strictly positive: a negative count (a caller passing a signed delta by
-    # mistake) must not push the running total below zero.
-    if byte_count > 0:
-        stats.bytes += byte_count
+    # Clamped rather than branched: a negative count (a caller passing a signed
+    # delta by mistake) must not push the running total below zero, and adding
+    # a clamped zero is the same no-op the branch was there to produce.
+    stats.bytes += max(byte_count, 0)
     if error is not None:
         stats.errors += 1
         stats.last_error_type = type(error).__name__

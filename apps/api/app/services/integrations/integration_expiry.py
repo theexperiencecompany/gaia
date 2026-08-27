@@ -54,12 +54,13 @@ INTEGRATION_STATUS_UPDATE_EVENT = "integration_status_update"
 class ExpiryOptions:
     """Why the connection is being expired, and what the expiry should trigger."""
 
-    # Required, not defaulted: both callers pass it explicitly, and a default
-    # here silently decides which detection path an expiry reads as when a
-    # future caller omits it.
+    # Required, not defaulted: every caller passes both explicitly. A default
+    # `trigger` silently decides which detection path an expiry reads as, and a
+    # default `notify` silently decides whether the user hears about it — both
+    # are the caller's call, and neither should be inherited by omission.
     trigger: ExpiryTrigger
+    notify: bool
     reason: str | None = None
-    notify: bool = False
     connected_account_id: str | None = None
     paused_workflows: Sequence[str] = ()
 

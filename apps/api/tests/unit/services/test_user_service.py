@@ -139,6 +139,22 @@ class TestUpdateUserProfile:
             updated_at=None,
         )
 
+    async def test_a_legacy_account_with_no_name_or_email_degrades_to_empty_strings(
+        self, mock_repo
+    ):
+        """The response schema types name/email as `str`, but a legacy account
+        can carry neither. Both degrade to "" — not to None (which would fail
+        validation and 500 the whole update) and not to any other filler."""
+        mock_get, mock_update = mock_repo
+        bare = UserDocument(id=str(ObjectId()), email=None, name=None)
+        mock_get.return_value = bare
+        mock_update.return_value = bare.model_copy(update={"updated_at": UPDATED_AT})
+
+        result = await update_user_profile(bare.id, name="Nino")
+
+        assert result.name == ""
+        assert result.email == ""
+
     async def test_raises_404_when_user_not_found(self, mock_repo):
         mock_get, _ = mock_repo
         mock_get.return_value = None

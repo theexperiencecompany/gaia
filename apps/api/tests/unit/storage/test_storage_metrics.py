@@ -655,6 +655,15 @@ def test_a_registration_failure_for_an_unknown_collector_is_not_swallowed() -> N
         _register_once(f"never_registered_{uuid4().hex}", boom)
 
 
+def test_a_single_byte_is_recorded_on_both_surfaces(op: str) -> None:
+    # The smallest positive count: a `> 1` guard on either surface would drop
+    # it while every larger fixture in this file still passed.
+    record_fs_op(op, duration_ms=1.0, byte_count=1)
+
+    assert peek_fs_metrics()[op]["bytes"] == 1
+    assert byte_total(op) == 1.0
+
+
 def test_a_negative_byte_count_records_no_bytes(op: str) -> None:
     # `if byte_count:` and `if byte_count > 0:` differ exactly here — a
     # negative count must not touch either surface.
