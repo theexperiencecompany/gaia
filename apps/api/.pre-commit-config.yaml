@@ -10,6 +10,10 @@ repos:
         stages: [pre-commit]
         priority: 0
 
+  # prek runs this nested config with the working directory set to apps/api
+  # ("Running hooks for `apps/api`"), so entries are relative to apps/api —
+  # repo-root tools live at ../../tools. Root-relative paths here fail with
+  # "can't open file 'apps/api/tools/...'" the moment a hook actually fires.
   - repo: local
     hooks:
       - id: bandit
@@ -30,24 +34,26 @@ repos:
       - id: outbound-topology-parity
         name: Outbound topology parity (Python <-> TypeScript)
         language: system
-        entry: python3 apps/api/scripts/check_outbound_topology_parity.py
-        files: ^(apps/api/(app/models/chat_models\.py|scripts/check_outbound_topology_parity\.py)|libs/shared/ts/src/bots/consumer/topology\.ts)$
+        entry: python3 scripts/check_outbound_topology_parity.py
+        # libs/shared/ts/src/bots/consumer/topology.ts is outside apps/api and cannot
+        # be matched from this nested config; the root config must guard that side.
+        files: ^(app/models/chat_models\.py|scripts/check_outbound_topology_parity\.py)$
         pass_filenames: false
         priority: 0
 
       - id: gaia-python-lints
         name: GAIA custom Python lints (route contract, service classes, wide events)
         language: system
-        entry: python3 tools/lints/run.py apps/api/app
-        files: ^(apps/api/app/.*\.py|tools/lints/.*\.py)$
+        entry: python3 ../../tools/lints/run.py app
+        files: ^app/.*\.py$
         pass_filenames: false
         priority: 0
 
       - id: gaia-ignore-ratchet
         name: Ruff ignore-list ratchet (ignore / per-file-ignores may only shrink)
         language: system
-        entry: python3 tools/lints/check_ignore_ratchet.py
-        files: ^(pyproject\.toml|tools/lints/(check_ignore_ratchet\.py|ignore_ratchet_baseline\.txt))$
+        entry: python3 ../../tools/lints/check_ignore_ratchet.py
+        files: ^pyproject\.toml$
         pass_filenames: false
         priority: 0
 
@@ -56,7 +62,7 @@ repos:
     hooks:
       - id: mypy
         args: [--ignore-missing-imports]
-        files: ^apps/api/app/
+        files: ^app/
         additional_dependencies:
           - types-redis
           - types-requests
