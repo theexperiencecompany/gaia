@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.db.repositories.playbooks import PlaybooksRepository
@@ -92,6 +93,39 @@ class TestPlaybooksRepository:
             await repo.record_run_outcome("wf_nothing", USER_ID, PlaybookRunStatus.SUCCESS) is None
         )
 
+    async def test_record_run_outcome_scoped_to_the_replayed_playbook(self, repo) -> None:
+        """A replay that finishes after the agent re-authored the playbook must
+        not stamp the old sequence's verdict on the new one."""
+        replayed = await repo.create(make_doc())
+        assert (
+            await repo.record_run_outcome(
+                WORKFLOW_ID, USER_ID, PlaybookRunStatus.FAILED, playbook_id=replayed.playbook_id
+            )
+            is not None
+        )
+        await repo.delete_for_workflow(WORKFLOW_ID, USER_ID)
+        rewritten = await repo.create(make_doc(description="second"))
+
+        stale = await repo.record_run_outcome(
+            WORKFLOW_ID, USER_ID, PlaybookRunStatus.FAILED, playbook_id=replayed.playbook_id
+        )
+
+        assert stale is None
+        reread = await repo.get_for_workflow(WORKFLOW_ID, USER_ID)
+        assert reread is not None
+        assert reread.playbook_id == rewritten.playbook_id
+        assert reread.last_run_status is PlaybookRunStatus.NOT_RUN
+
+    async def test_record_run_outcome_by_id_cannot_reach_another_users_playbook(self, repo) -> None:
+        created = await repo.create(make_doc())
+        assert (
+            await repo.record_run_outcome(
+                WORKFLOW_ID, "attacker", PlaybookRunStatus.SUCCESS, playbook_id=created.playbook_id
+            )
+            is None
+        )
+        assert await repo.get_for_workflow(WORKFLOW_ID, USER_ID) == created
+
     async def test_delete_for_workflow_removes_it_then_reports_false(self, repo) -> None:
         await repo.create(make_doc())
         assert await repo.delete_for_workflow(WORKFLOW_ID, USER_ID) is True
@@ -113,3 +147,29 @@ class TestPlaybooksRepository:
         for value in (created.created_at, created.updated_at):
             assert value.tzinfo is not None
             assert value.utcoffset().total_seconds() == 0
+
+
+class TestPlaybooksUniqueIndexSurface:
+    """The one-per-workflow index lives on the real collection, not the ephemeral
+    fixture — recreate it here to prove the DuplicateKeyError surface the
+    repository's upsert retry depends on, and that the upsert itself never
+    trips it."""
+
+    async def _create_indexes(self, raw_collection) -> None:
+        # Mirrors app/db/mongodb/indexes.py::create_playbook_indexes.
+        await raw_collection.create_index([("workflow_id", 1), ("user_id", 1)], unique=True)
+
+    async def test_a_second_document_for_the_workflow_raises(self, repo, raw_collection) -> None:
+        await self._create_indexes(raw_collection)
+        await repo.create(make_doc())
+        with pytest.raises(DuplicateKeyError):
+            await repo.create(make_doc(description="duplicate"))
+
+    async def test_upsert_over_an_existing_playbook_keeps_one_document(
+        self, repo, raw_collection
+    ) -> None:
+        await self._create_indexes(raw_collection)
+        first = await repo.upsert_for_workflow(make_doc())
+        second = await repo.upsert_for_workflow(make_doc(description="second"))
+        assert second.playbook_id == first.playbook_id
+        assert await raw_collection.count_documents({"workflow_id": WORKFLOW_ID}) == 1
