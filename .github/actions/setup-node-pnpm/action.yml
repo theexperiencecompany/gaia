@@ -97,12 +97,30 @@ runs:
         # a package at <store>/<key>/nx/... looks for <store>/<key>/node_modules
         # and finds nothing ("Cannot find module 'tslib'" on the first run of
         # this). <store>/<key>/node_modules/nx/... walks up correctly.
-        DIR="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/${RUNNER_NAME:-default}/node_modules-store/${KEY}/node_modules"
+        BASE="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/${RUNNER_NAME:-default}/node_modules-store/${KEY}"
+        DIR="$BASE/node_modules"
         mkdir -p "$DIR"
-        touch "$(dirname "$DIR")"   # mtime = last use, for LRU pruning
+        touch "$BASE"   # mtime = last use, for LRU pruning
         rm -rf node_modules
         ln -s "$DIR" node_modules
-        echo "node_modules (persistent, lockfile ${KEY}): $DIR ($(du -sh "$DIR" 2>/dev/null | cut -f1))"
+        # Workspace packages get their own node_modules (real packages under
+        # node-linker=hoisted, ~60 MB across six dirs). If those are missing
+        # pnpm treats the install as incomplete and re-links all ~4,000
+        # packages — three minutes on a warm store. Persist them at
+        # $BASE/pkgs/<rel>/node_modules: from that real path Node's walk-up
+        # passes $BASE/pkgs/<rel>/node_modules, ..., and reaches
+        # $BASE/node_modules — the root tree — so hoisted deps still resolve.
+        n=0
+        for abs in $(pnpm -r ls --depth -1 --parseable 2>/dev/null); do
+          pkg="${abs#"$PWD"/}"
+          [ "$pkg" = "$abs" ] && continue   # the root itself
+          NM="$BASE/pkgs/$pkg/node_modules"
+          mkdir -p "$NM"
+          rm -rf "$pkg/node_modules"
+          ln -s "$NM" "$pkg/node_modules"
+          n=$((n+1))
+        done
+        echo "node_modules (persistent, lockfile ${KEY}): $DIR ($(du -sh "$DIR" 2>/dev/null | cut -f1)) + ${n} workspace package trees"
 
     - name: Install dependencies
       shell: bash
