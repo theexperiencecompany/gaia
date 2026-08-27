@@ -100,9 +100,15 @@ Only include sections that have content:
 - **Features**: New user-facing functionality
 - **Bug Fixes**: Things that were broken and are now fixed
 - **Improvements**: Enhancements to existing functionality, refactors, DX
-- **Infrastructure**: CI/CD, Docker, deployment, tooling
+- **Infrastructure**: Deployment and release, CI, observability and alerting, test infrastructure, internal architecture, and self-hosting. Anything that does not change what a user can do, but that a contributor or self-hoster would want to know about.
 - **Performance**: Speed and latency improvements
-- **Documentation**: Docs, guides, blog posts
+- **Documentation**: Docs, guides, policies, blog posts
+
+`Foundation` and `Content` were used in a few early entries and are retired --
+fold that content into `Infrastructure` (stack, tooling, architecture) or
+`Features` (things a user can now do). Do not introduce new heading names: a
+heading with no `CAT_MAP` entry in `scripts/generate-changelog-pages.js` is
+dropped from the category pages without warning.
 
 ## Ordering
 

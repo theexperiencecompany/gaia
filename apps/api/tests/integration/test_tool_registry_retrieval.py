@@ -33,6 +33,7 @@ from app.db.chroma.chroma_tools_store import (
     _get_existing_tools_from_chroma,
     index_tools_to_store,
 )
+from app.db.chroma.noop_embedding import NoOpEmbeddingFunction
 
 # ---------------------------------------------------------------------------
 # Deterministic embedding function for semantic retrieval tests
@@ -107,26 +108,7 @@ class _DeterministicEmbeddings(Embeddings):
 # ---------------------------------------------------------------------------
 
 
-class _NoOpEmbeddingFunction:
-    def __call__(self, input: list[str]) -> list[list[float]]:
-        return [[0.0] * 384 for _ in input]
-
-    @staticmethod
-    def name() -> str:
-        return "test-noop"
-
-    def get_config(self) -> dict[str, str]:
-        return {"name": "test-noop"}
-
-    @staticmethod
-    def build_from_config(config: dict) -> "_NoOpEmbeddingFunction":
-        return _NoOpEmbeddingFunction()
-
-    def is_legacy(self) -> bool:
-        return False
-
-
-_NOOP_EF = _NoOpEmbeddingFunction()
+_NOOP_EF = NoOpEmbeddingFunction()
 
 
 class _AsyncCollectionWrapper:

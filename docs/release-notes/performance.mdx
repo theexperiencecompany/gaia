@@ -4,6 +4,16 @@ description: "All performance improvements shipped across GAIA releases."
 icon: "gauge"
 ---
 
+<Update label="Aug 26, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
+
+## [API v0.22.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.22.0)
+- **Cheaper, Faster Turns**: The prompt prefix is now stable across a conversation, so follow-up turns hit the provider's cache instead of re-paying for the whole history.
+- **Leaner Tool Results**: Large tool outputs are compacted into a digest before they reach the model, keeping long tool chains fast.
+- **Long Conversations Stay Light**: Saved conversation state no longer stacks a fresh copy of the system prompt on every run, which had been quietly growing the cost of every follow-up.
+- **Steadier Memory Search**: Embedding and vector writes are now bounded, fixing the file-handle exhaustion that could stall memory lookups under load.
+
+</Update>
+
 <Update label="Jun 30, 2026" description="API, Web, Desktop, Mobile, Bots">
 
 ## [API v0.21.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.21.0)
