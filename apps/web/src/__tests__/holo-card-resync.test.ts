@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
-
-import { mergeIncomingCard } from "@/components/ui/holo-card/HoloCardEditor";
 import type { HoloCardDisplayData } from "@/components/ui/holo-card/types";
+import { mergeIncomingCard } from "@/components/ui/holo-card/utils";
 
 // What the API returns before Gmail is connected: a placeholder bio and the
 // generic name, plus whatever overlay the user has saved.
