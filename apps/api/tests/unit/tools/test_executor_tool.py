@@ -972,7 +972,6 @@ class TestStoppedReplayRecordReachesTheExecutor:
     exactly as the worker wrote it.
     """
 
-    @pytest.mark.regression
     async def test_the_fallback_note_reaches_the_brief_verbatim(
         self,
         fake_redis: fakeredis.aioredis.FakeRedis,

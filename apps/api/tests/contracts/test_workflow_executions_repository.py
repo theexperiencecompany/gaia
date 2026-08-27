@@ -116,7 +116,6 @@ class TestWorkflowExecutionsRepository:
 
         assert await repo.find_latest_with_trace(_uid("missing"), owner) is None
 
-    @pytest.mark.regression
     async def test_find_latest_with_trace_returns_a_failed_run_that_ran_steps(self, repo):
         """A fire that ran steps (with side effects) and then failed carries its
         trace on a FAILED record. Hiding it showed the next run the fire before,
