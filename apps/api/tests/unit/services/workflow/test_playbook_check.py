@@ -81,6 +81,33 @@ async def test_a_lookup_failure_costs_the_check_not_the_run():
         assert await playbook_check_brief(WORKFLOW_ID, USER_ID) == ""
 
 
+@pytest.mark.asyncio
+async def test_a_swallowed_lookup_failure_is_still_reported():
+    """The one swallow in this path must stay visible in the wide event.
+
+    Returning "" on a lookup failure is deliberate, but a silent swallow would
+    make a permanently broken playbooks collection look exactly like a workflow
+    that simply never qualified — the check would stop happening and nothing
+    anywhere would say why.
+    """
+    with (
+        patch(
+            f"{MODULE}.playbook_repository.get_for_workflow",
+            AsyncMock(side_effect=RuntimeError("mongo down")),
+        ),
+        patch(f"{MODULE}.log.warning") as warning,
+    ):
+        await playbook_check_brief(WORKFLOW_ID, USER_ID)
+
+    warning.assert_called_once()
+    message, kwargs = warning.call_args[0][0], warning.call_args[1]
+    assert "playbook_check_brief" in message
+    assert "lookup failed" in message
+    assert kwargs["workflow_id"] == WORKFLOW_ID
+    assert kwargs["error_type"] == "RuntimeError"
+    assert kwargs["error"] == "mongo down"
+
+
 def test_the_check_closes_the_executor_brief():
     brief = compose_executor_brief(
         "do the thing",

@@ -457,3 +457,55 @@ class TestToolRegistryAsync:
     # was deleted in the resilience rewrite. MCP tools now live exclusively
     # inside MCPClient; per-subagent builds read them live. Coverage for that
     # path lives in tests/integration/agents/test_subagent_handoff.py.
+
+
+@pytest.mark.unit
+class TestInitializeCategories:
+    """The category map itself, which nothing asserted before.
+
+    ``_initialize_categories`` is the single place every in-repo tool is bound
+    to a category, and the category is what retrieval, the HIL risk gate and the
+    frontend icon all key on. A registration silently dropped or renamed here
+    makes a tool unreachable rather than broken, so nothing fails loudly.
+    """
+
+    @pytest.fixture
+    def registry(self) -> ToolRegistry:
+        registry = ToolRegistry()
+        registry._initialize_categories()
+        return registry
+
+    #: One tool per category, so a dropped or renamed registration is caught.
+    EXPECTED = {
+        "write_playbook": "playbooks",
+        "read_playbook": "playbooks",
+        "disable_playbook": "playbooks",
+        "create_tracked_todo": "tracked_todos",
+        "finish_task": "control",
+    }
+
+    def test_every_named_tool_lands_in_its_category(self, registry: ToolRegistry) -> None:
+        for tool_name, category in self.EXPECTED.items():
+            assert registry.get_category_of_tool(tool_name) == category, (
+                f"{tool_name} must stay in the {category!r} category"
+            )
+
+    def test_the_playbook_category_holds_exactly_its_three_tools(
+        self, registry: ToolRegistry
+    ) -> None:
+        names = {tool.name for tool in registry._categories["playbooks"].tools}
+
+        assert names == {"write_playbook", "read_playbook", "disable_playbook"}
+
+    def test_playbook_tools_are_curated_as_non_destructive(self, registry: ToolRegistry) -> None:
+        """An empty set and ``None`` mean different things at the HIL gate.
+
+        ``None`` sends a tool to the LLM risk classifier; an explicit empty set
+        says "curated, none of these are destructive". Writing a playbook has no
+        side effect on the user's data, so it must be the latter — passing None
+        would put an in-repo tool back in front of the classifier on every call.
+        """
+        for tool in registry._categories["playbooks"].tools:
+            assert tool.destructive is False, (
+                f"{tool.name} must be curated non-destructive, not left to the classifier"
+            )
