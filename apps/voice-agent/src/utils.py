@@ -80,7 +80,7 @@ def extract_meta_data(md: str | None) -> ParticipantMeta:
         return ParticipantMeta()
 
 
-def _extract_text_from_content(content: list) -> str:  # type: ignore[type-arg]
+def _extract_text_from_content(content: list) -> str:
     """Extract plain text from a LiveKit ChatContext content list."""
     parts = []
     for c in content:

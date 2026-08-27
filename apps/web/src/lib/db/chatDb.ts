@@ -1,4 +1,4 @@
-import Dexie, { type Table } from "dexie";
+import Dexie, { type IndexableType, type Table } from "dexie";
 import { EventEmitter } from "events";
 
 import type { ToolDataEntry } from "@/config/registries/toolRegistry";
@@ -137,6 +137,18 @@ class ChatDexie extends Dexie {
   public conversations!: Table<IConversation, string>;
   public messages!: Table<IMessage, string>;
 
+  /**
+   * Resolves to whether IndexedDB persistence is usable for this session.
+   * iOS Safari refuses to open the database entirely under private browsing,
+   * storage pressure, or the long-standing WebKit bug — the open throws
+   * `DOMException: UnknownError: Unable to open database file on disk`.
+   * Probed once and cached; see `run`. Also flips to `false` when a later
+   * operation rejects (a transaction can fail after a successful open, e.g.
+   * under storage pressure), so one failure degrades the whole session
+   * instead of leaking uncaught rejections.
+   */
+  private usable: Promise<boolean> | null = null;
+
   constructor() {
     super("ChatDatabase");
 
@@ -149,73 +161,120 @@ class ChatDexie extends Dexie {
     this.messages = this.table("messages");
   }
 
+  /**
+   * Whether IndexedDB persistence is usable this session. Attempts to open the
+   * database once and caches the verdict; a failed open resolves to `false`
+   * rather than rejecting, so callers degrade gracefully instead of surfacing
+   * an uncaught rejection.
+   */
+  private isUsable(): Promise<boolean> {
+    if (this.usable === null) {
+      this.usable = this.open()
+        .then(() => true)
+        .catch((error: unknown) => {
+          console.error(
+            "IndexedDB unavailable — chat history will not persist this session:",
+            error,
+          );
+          return false;
+        });
+    }
+    return this.usable;
+  }
+
+  /**
+   * Run a Dexie operation, degrading to `fallback` when IndexedDB persistence
+   * is unavailable. This is the single guard for the whole store: callers keep
+   * awaiting a resolved promise instead of every write becoming an uncaught
+   * rejection on iOS Safari. A rejection from the operation itself (open
+   * succeeded but the write/transaction failed) degrades the same way — the
+   * session latches to unavailable and the fallback is returned. Event
+   * emissions live outside this gate, so the in-memory store still updates
+   * live and only cross-reload persistence is lost.
+   */
+  private async run<T>(fallback: T, operation: () => Promise<T>): Promise<T> {
+    if (!(await this.isUsable())) return fallback;
+    try {
+      return await operation();
+    } catch (error: unknown) {
+      console.error(
+        "IndexedDB unavailable — chat history will not persist this session:",
+        error,
+      );
+      this.usable = Promise.resolve(false);
+      return fallback;
+    }
+  }
+
   public getConversation(id: string): Promise<IConversation | undefined> {
-    return this.conversations.get(id);
+    return this.run(undefined, () => this.conversations.get(id));
   }
 
   public getAllConversations(): Promise<IConversation[]> {
-    return this.conversations.orderBy("updatedAt").reverse().toArray();
+    return this.run([], () =>
+      this.conversations.orderBy("updatedAt").reverse().toArray(),
+    );
   }
 
   public async putConversation(conversation: IConversation): Promise<string> {
-    const existing = await this.conversations.get(conversation.id);
-    const id = await messageQueue.enqueue(async () => {
-      return await this.conversations.put(conversation);
-    });
+    const existing = await this.run(undefined, () =>
+      this.conversations.get(conversation.id),
+    );
+    await this.run(undefined, () =>
+      messageQueue.enqueue(() => this.conversations.put(conversation)),
+    );
     if (existing) {
       dbEventEmitter.emitConversationUpdated(conversation);
     } else {
       dbEventEmitter.emitConversationAdded(conversation);
     }
-    return id;
+    return conversation.id;
   }
 
   public async putConversationsBulk(
     conversations: IConversation[],
   ): Promise<string[]> {
-    // await this.conversations.bulkPut(conversations);
-    // return conversations.map((conversation) => conversation.id);
-    await messageQueue.enqueue(async () => {
-      await this.conversations.bulkPut(conversations);
-      conversations.forEach((conv) =>
-        dbEventEmitter.emitConversationAdded(conv),
-      );
-    });
+    await this.run(undefined, () =>
+      messageQueue.enqueue(() => this.conversations.bulkPut(conversations)),
+    );
+    conversations.forEach((conv) => dbEventEmitter.emitConversationAdded(conv));
     return conversations.map((conversation) => conversation.id);
   }
 
   public getMessagesForConversation(
     conversationId: string,
   ): Promise<IMessage[]> {
-    return this.messages
-      .where("conversationId")
-      .equals(conversationId)
-      .sortBy("createdAt");
+    return this.run([], () =>
+      this.messages
+        .where("conversationId")
+        .equals(conversationId)
+        .sortBy("createdAt"),
+    );
   }
 
   public getAllMessages(): Promise<IMessage[]> {
-    return this.messages.orderBy("createdAt").toArray();
+    return this.run([], () => this.messages.orderBy("createdAt").toArray());
   }
 
   public async getConversationIdsWithMessages(): Promise<string[]> {
-    const conversationIds = await this.messages
-      .orderBy("conversationId")
-      .keys();
+    const conversationIds = await this.run([], () =>
+      this.messages.orderBy("conversationId").keys(),
+    );
     return Array.from(new Set(conversationIds)) as string[];
   }
 
   public async putMessage(message: IMessage): Promise<string> {
-    const id = await messageQueue.enqueue(async () => {
-      return await this.messages.put(message);
-    });
+    await this.run(undefined, () =>
+      messageQueue.enqueue(() => this.messages.put(message)),
+    );
     dbEventEmitter.emitMessageUpserted(message);
-    return id;
+    return message.id;
   }
 
   public async putMessagesBulk(messages: IMessage[]): Promise<string[]> {
-    await messageQueue.enqueue(async () => {
-      await this.messages.bulkPut(messages);
-    });
+    await this.run(undefined, () =>
+      messageQueue.enqueue(() => this.messages.bulkPut(messages)),
+    );
     messages.forEach((message) => dbEventEmitter.emitMessageUpserted(message));
     return messages.map((message) => message.id);
   }
@@ -228,15 +287,17 @@ class ChatDexie extends Dexie {
     userMessage: IMessage | null,
     botMessage: IMessage | null,
   ): Promise<{ userMessage: IMessage | null; botMessage: IMessage | null }> {
-    await messageQueue.enqueue(() =>
-      (this as Dexie).transaction("rw", this.messages, async () => {
-        if (userMessage) {
-          await this.messages.put(userMessage);
-        }
-        if (botMessage) {
-          await this.messages.put(botMessage);
-        }
-      }),
+    await this.run(undefined, () =>
+      messageQueue.enqueue(() =>
+        (this as Dexie).transaction("rw", this.messages, async () => {
+          if (userMessage) {
+            await this.messages.put(userMessage);
+          }
+          if (botMessage) {
+            await this.messages.put(botMessage);
+          }
+        }),
+      ),
     );
 
     // Emit events after successful transaction
@@ -254,11 +315,13 @@ class ChatDexie extends Dexie {
     temporaryId: string,
     message: IMessage,
   ): Promise<void> {
-    await messageQueue.enqueue(() =>
-      (this as Dexie).transaction("rw", this.messages, async () => {
-        await this.messages.delete(temporaryId);
-        await this.messages.put(message);
-      }),
+    await this.run(undefined, () =>
+      messageQueue.enqueue(() =>
+        (this as Dexie).transaction("rw", this.messages, async () => {
+          await this.messages.delete(temporaryId);
+          await this.messages.put(message);
+        }),
+      ),
     );
     dbEventEmitter.emitMessageUpserted(message);
   }
@@ -266,18 +329,20 @@ class ChatDexie extends Dexie {
   public async deleteConversationAndMessages(
     conversationId: string,
   ): Promise<void> {
-    await messageQueue.enqueue(() =>
-      (this as Dexie).transaction(
-        "rw",
-        this.conversations,
-        this.messages,
-        async () => {
-          await this.messages
-            .where("conversationId")
-            .equals(conversationId)
-            .delete();
-          await this.conversations.delete(conversationId);
-        },
+    await this.run(undefined, () =>
+      messageQueue.enqueue(() =>
+        (this as Dexie).transaction(
+          "rw",
+          this.conversations,
+          this.messages,
+          async () => {
+            await this.messages
+              .where("conversationId")
+              .equals(conversationId)
+              .delete();
+            await this.conversations.delete(conversationId);
+          },
+        ),
       ),
     );
   }
@@ -291,22 +356,23 @@ class ChatDexie extends Dexie {
   ): Promise<void> {
     if (conversationIds.length === 0) return;
 
-    await messageQueue.enqueue(() =>
-      (this as Dexie).transaction(
-        "rw",
-        this.conversations,
-        this.messages,
-        async () => {
-          // Delete all messages for these conversations
-          for (const conversationId of conversationIds) {
+    await this.run(undefined, () =>
+      messageQueue.enqueue(() =>
+        (this as Dexie).transaction(
+          "rw",
+          this.conversations,
+          this.messages,
+          async () => {
+            // Delete all messages for these conversations in one indexed
+            // query — same rw transaction, no sequential await loop.
             await this.messages
               .where("conversationId")
-              .equals(conversationId)
+              .anyOf(conversationIds)
               .delete();
-          }
-          // Delete the conversations themselves
-          await this.conversations.bulkDelete(conversationIds);
-        },
+            // Delete the conversations themselves
+            await this.conversations.bulkDelete(conversationIds);
+          },
+        ),
       ),
     );
 
@@ -319,13 +385,15 @@ class ChatDexie extends Dexie {
     content: string,
   ): Promise<void> {
     let updatedMessage: IMessage | undefined;
-    await messageQueue.enqueue(async () => {
-      const message = await this.messages.get(messageId);
-      if (message) {
-        updatedMessage = { ...message, content, updatedAt: new Date() };
-        await this.messages.put(updatedMessage);
-      }
-    });
+    await this.run(undefined, () =>
+      messageQueue.enqueue(async () => {
+        const message = await this.messages.get(messageId);
+        if (message) {
+          updatedMessage = { ...message, content, updatedAt: new Date() };
+          await this.messages.put(updatedMessage);
+        }
+      }),
+    );
     if (updatedMessage) {
       dbEventEmitter.emitMessageUpserted(updatedMessage);
     }
@@ -338,17 +406,19 @@ class ChatDexie extends Dexie {
     updates: Partial<IMessage>,
   ): Promise<IMessage | undefined> {
     let updatedMessage: IMessage | undefined;
-    await messageQueue.enqueue(async () => {
-      const message = await this.messages.get(messageId);
-      if (message) {
-        updatedMessage = {
-          ...message,
-          ...updates,
-          updatedAt: new Date(),
-        };
-        await this.messages.put(updatedMessage);
-      }
-    });
+    await this.run(undefined, () =>
+      messageQueue.enqueue(async () => {
+        const message = await this.messages.get(messageId);
+        if (message) {
+          updatedMessage = {
+            ...message,
+            ...updates,
+            updatedAt: new Date(),
+          };
+          await this.messages.put(updatedMessage);
+        }
+      }),
+    );
     if (updatedMessage) {
       dbEventEmitter.emitMessageUpserted(updatedMessage);
     }
@@ -360,13 +430,15 @@ class ChatDexie extends Dexie {
     status: IMessage["status"],
   ): Promise<void> {
     let updatedMessage: IMessage | undefined;
-    await messageQueue.enqueue(async () => {
-      const message = await this.messages.get(messageId);
-      if (message) {
-        updatedMessage = { ...message, status, updatedAt: new Date() };
-        await this.messages.put(updatedMessage);
-      }
-    });
+    await this.run(undefined, () =>
+      messageQueue.enqueue(async () => {
+        const message = await this.messages.get(messageId);
+        if (message) {
+          updatedMessage = { ...message, status, updatedAt: new Date() };
+          await this.messages.put(updatedMessage);
+        }
+      }),
+    );
     if (updatedMessage) {
       dbEventEmitter.emitMessageUpserted(updatedMessage);
     }
@@ -378,29 +450,31 @@ class ChatDexie extends Dexie {
     updatedData?: Partial<IMessage>,
   ): Promise<void> {
     let finalMessage: IMessage | undefined;
-    await messageQueue.enqueue(() =>
-      (this as Dexie).transaction("rw", this.messages, async () => {
-        const message = await this.messages.get(optimisticId);
-        if (!message) {
-          console.warn(`Optimistic message ${optimisticId} not found`);
-          return;
-        }
+    await this.run(undefined, () =>
+      messageQueue.enqueue(() =>
+        (this as Dexie).transaction("rw", this.messages, async () => {
+          const message = await this.messages.get(optimisticId);
+          if (!message) {
+            console.warn(`Optimistic message ${optimisticId} not found`);
+            return;
+          }
 
-        // Create the replacement message with the new backend ID
-        // IndexedDB cannot change primary key via update(), so we delete + put
-        finalMessage = {
-          ...message,
-          id: backendId,
-          messageId: backendId,
-          optimistic: false,
-          updatedAt: new Date(),
-          ...updatedData,
-        };
+          // Create the replacement message with the new backend ID
+          // IndexedDB cannot change primary key via update(), so we delete + put
+          finalMessage = {
+            ...message,
+            id: backendId,
+            messageId: backendId,
+            optimistic: false,
+            updatedAt: new Date(),
+            ...updatedData,
+          };
 
-        // Atomically delete old + add new within transaction
-        await this.messages.delete(optimisticId);
-        await this.messages.put(finalMessage);
-      }),
+          // Atomically delete old + add new within transaction
+          await this.messages.delete(optimisticId);
+          await this.messages.put(finalMessage);
+        }),
+      ),
     );
     if (finalMessage) {
       dbEventEmitter.emitMessageIdReplaced(optimisticId, finalMessage);
@@ -411,31 +485,35 @@ class ChatDexie extends Dexie {
     conversationId: string,
     messages: IMessage[],
   ): Promise<void> {
-    await messageQueue.enqueue(async () => {
-      await (this as Dexie).transaction("rw", this.messages, async () => {
-        await this.messages.bulkPut(messages);
-        dbEventEmitter.emitMessagesSynced(conversationId, messages);
-      });
-    });
+    await this.run(undefined, () =>
+      messageQueue.enqueue(() =>
+        (this as Dexie).transaction("rw", this.messages, async () => {
+          await this.messages.bulkPut(messages);
+        }),
+      ),
+    );
+    dbEventEmitter.emitMessagesSynced(conversationId, messages);
   }
 
   public async clearAll(): Promise<void> {
-    const conversationIds = await messageQueue.enqueue(async () => {
-      const ids = await this.conversations.toCollection().primaryKeys();
-      await (this as Dexie).transaction(
-        "rw",
-        this.conversations,
-        this.messages,
-        async () => {
-          await this.messages.clear();
-          await this.conversations.clear();
-        },
-      );
-      return ids;
-    });
+    const conversationIds = await this.run<IndexableType[]>([], () =>
+      messageQueue.enqueue(async () => {
+        const ids = await this.conversations.toCollection().primaryKeys();
+        await (this as Dexie).transaction(
+          "rw",
+          this.conversations,
+          this.messages,
+          async () => {
+            await this.messages.clear();
+            await this.conversations.clear();
+          },
+        );
+        return ids;
+      }),
+    );
 
     // Emit event for store synchronization
-    dbEventEmitter.emitConversationsDeletedBulk(conversationIds);
+    dbEventEmitter.emitConversationsDeletedBulk(conversationIds as string[]);
   }
 
   public async cleanupOrphanedOptimisticMessages(
@@ -444,17 +522,18 @@ class ChatDexie extends Dexie {
     const cutoffTime = Date.now() - maxAgeMinutes * 60 * 1000;
     let deletedCount = 0;
 
-    await messageQueue.enqueue(async () => {
-      const allMessages = await this.messages.toArray();
-      const orphaned = allMessages.filter(
-        (m) => m.optimistic && m.createdAt.getTime() < cutoffTime,
-      );
+    await this.run(undefined, () =>
+      messageQueue.enqueue(async () => {
+        const allMessages = await this.messages.toArray();
+        const orphaned = allMessages.filter(
+          (m) => m.optimistic && m.createdAt.getTime() < cutoffTime,
+        );
+        const orphanedIds = orphaned.map((m) => m.id);
 
-      for (const msg of orphaned) {
-        await this.messages.delete(msg.id);
-        deletedCount++;
-      }
-    });
+        await this.messages.bulkDelete(orphanedIds);
+        deletedCount = orphaned.length;
+      }),
+    );
 
     return deletedCount;
   }
@@ -464,13 +543,15 @@ class ChatDexie extends Dexie {
     updates: Partial<IConversation>,
   ): Promise<void> {
     let updated: IConversation | undefined;
-    await messageQueue.enqueue(async () => {
-      const existing = await this.conversations.get(conversationId);
-      if (existing) {
-        updated = { ...existing, ...updates, updatedAt: new Date() };
-        await this.conversations.put(updated);
-      }
-    });
+    await this.run(undefined, () =>
+      messageQueue.enqueue(async () => {
+        const existing = await this.conversations.get(conversationId);
+        if (existing) {
+          updated = { ...existing, ...updates, updatedAt: new Date() };
+          await this.conversations.put(updated);
+        }
+      }),
+    );
     if (updated) {
       dbEventEmitter.emitConversationUpdated(updated);
     }

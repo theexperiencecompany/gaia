@@ -122,7 +122,7 @@ export default function MCPSupportDemo() {
                     {tool.name}
                   </span>
                   <span className="text-xs text-zinc-500">
-                    — {tool.description}
+                    : {tool.description}
                   </span>
                 </div>
               ))}

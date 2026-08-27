@@ -159,7 +159,7 @@ async def _verdict(request: ToolCallRequest) -> ToolMessage | _Pending | None:
         policy = await resolve_policy(request, context.user_id, call.name)
     except GraphBubbleUp:
         raise
-    except Exception as e:  # noqa: BLE001 — an approval gate must fail closed
+    except Exception as e:  # an approval gate must fail closed
         log.error(
             f"{LogTag.HIL} Gate check failed for ; denying",
             name=call.name,
@@ -273,7 +273,7 @@ async def _decide(
         return _Pending(approval_id, call.name, summary, integration_name)
     except GraphBubbleUp:
         raise
-    except Exception as e:  # noqa: BLE001 — an approval gate must fail closed
+    except Exception as e:  # an approval gate must fail closed
         log.error(
             f"{LogTag.HIL} Could not publish approval for ; denying",
             name=call.name,

@@ -296,3 +296,20 @@ class TestBackgroundParking:
             await run_subagent_background(self._ctx(), STREAM)  # must not raise
 
         decrement.assert_called_once_with(STREAM)
+
+    async def test_a_wake_failure_does_not_raise_the_create_task_coroutine(self) -> None:
+        """The wake check runs in the task's finally block, after the counter has
+        already been decremented — a Redis blip here must not blow up the
+        fire-and-forget coroutine (create_task swallows the exception silently,
+        so an uncaught raise here is invisible except as a lost wake-up)."""
+        done = SubagentOutcome(text="done")
+        with (
+            patch(f"{RUNNER}.make_redis_stream_writer", MagicMock()),
+            patch(f"{RUNNER}.execute_subagent_stream", AsyncMock(return_value=done)),
+            patch(f"{RUNNER}.append_bg_subagent_result", AsyncMock()),
+            patch(f"{RUNNER}.decrement_pending_subagents", MagicMock()) as decrement,
+            patch(f"{RUNNER}.is_executor_busy", AsyncMock(side_effect=RuntimeError("redis down"))),
+        ):
+            await run_subagent_background(self._ctx(), STREAM)  # must not raise
+
+        decrement.assert_called_once_with(STREAM)

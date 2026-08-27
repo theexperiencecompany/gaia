@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# mypy: ignore-errors
+# mypy: ignore-errors -- admin one-off script; typing not maintained here
 """
 Grant or revoke Pro access for a user in the local dev MongoDB.
 
@@ -34,11 +34,11 @@ except Exception as e:
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from motor.motor_asyncio import AsyncIOMotorClient  # noqa: E402
-import redis.asyncio as aioredis  # noqa: E402
+from motor.motor_asyncio import AsyncIOMotorClient
+import redis.asyncio as aioredis
 
-from app.config.settings import settings  # noqa: E402
-from app.constants.cache import SUBSCRIPTION_PLAN_CACHE_PREFIX  # noqa: E402
+from app.config.settings import settings
+from app.constants.cache import SUBSCRIPTION_PLAN_CACHE_PREFIX
 
 DEV_SUBSCRIPTION_PREFIX = "dev_"
 

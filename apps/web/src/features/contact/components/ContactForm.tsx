@@ -10,7 +10,6 @@ import {
   SUPPORT_REQUEST_TYPES,
 } from "@/features/support/constants/supportConstants";
 import { useContactSupport } from "@/features/support/hooks/useContactSupport";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 type Props = React.ComponentProps<"form"> & {
   initialType?: string;
@@ -33,12 +32,6 @@ export default function ContactForm({
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-
-    trackEvent(ANALYTICS_EVENTS.SUPPORT_FORM_SUBMITTED, {
-      request_type: formData.type,
-      title_length: formData.title.length,
-      description_length: formData.description.length,
-    });
 
     await submitRequest();
   }

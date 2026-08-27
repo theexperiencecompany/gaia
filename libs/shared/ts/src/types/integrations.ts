@@ -20,7 +20,32 @@ export type IntegrationCategory =
   | "capabilities"
   | "other";
 
-export type IntegrationStatusValue = "connected" | "not_connected" | "created";
+/**
+ * Connection state of one integration for one user. `expired` means it was
+ * connected and the upstream grant died — the UI must offer Reconnect, not a
+ * first-time Connect. Synced with the backend `UserIntegrationStatus` plus the
+ * derived `not_connected` (no record at all).
+ */
+export type IntegrationStatusValue =
+  | "connected"
+  | "not_connected"
+  | "created"
+  | "expired";
+
+/**
+ * The `integration_connection_required` chat payload — the agent asking the user
+ * to get an integration working. `expired` separates a connection that died from
+ * one that was never set up, so the card can say "Reconnect" instead of hiding
+ * the breakage behind a first-time "Connect". Absent on messages streamed before
+ * the field existed.
+ *
+ * Emitted by `apps/api/app/utils/integration_checker.py`.
+ */
+export interface IntegrationConnectionData {
+  integration_id: string;
+  message: string;
+  expired?: boolean;
+}
 
 export type IntegrationAuthType = "oauth" | "bearer" | "none";
 
@@ -63,13 +88,13 @@ export interface Integration {
 
 /**
  * Represents the connection status record for a user's integration.
- * Note: status is restricted to "created" | "connected" because this represents
- * the database record state. The broader Integration.status ("not_connected" | "error")
- * is derived at the API layer based on whether a UserIntegration record exists.
+ * Note: status excludes "not_connected" because this represents the database
+ * record state. That value is derived at the API layer based on whether a
+ * UserIntegration record exists.
  */
 export interface UserIntegration {
   integrationId: string;
-  status: "created" | "connected";
+  status: "created" | "connected" | "expired";
   createdAt: string;
   connectedAt?: string;
   integration: MarketplaceIntegration;
@@ -121,6 +146,12 @@ export interface CommunityIntegration {
 export interface IntegrationStatusRecord {
   integrationId: string;
   connected: boolean;
+  /**
+   * The raw backend status. `connected` alone cannot tell a never-connected
+   * integration from one whose grant died, so any surface rendering a CTA reads
+   * this (via `integrationConnectionState`) instead of saying "Connect" for both.
+   */
+  status: IntegrationStatusValue;
   lastConnected?: string;
   error?: string;
   metadata?: Record<string, unknown>;
@@ -140,7 +171,9 @@ export interface MyIntegrationItem {
   category: string;
   source: "platform" | "custom";
   managedBy: IntegrationManagedBy;
-  status: "connected" | "created" | "not_connected";
+  status: IntegrationStatusValue;
+  /** ISO timestamp of when the upstream grant died. Only set when `status` is `expired`. */
+  expiredAt?: string | null;
   requiresAuth: boolean;
   authType?: IntegrationAuthType | null;
   isFeatured: boolean;

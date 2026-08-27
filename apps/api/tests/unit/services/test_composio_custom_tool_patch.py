@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 from composio.core.models.custom_tools import CustomTool
 
 # Importing the patch module triggers the monkey-patch at import time.
-import app.patches.composio_custom_tool_patch as patch_module  # noqa: F401
+import app.patches.composio_custom_tool_patch as patch_module
 
 _PRIVATE_AUTH_METHOD = "_CustomTool__get_auth_credentials"
 

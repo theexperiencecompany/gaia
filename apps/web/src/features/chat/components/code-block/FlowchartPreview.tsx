@@ -47,9 +47,14 @@ const FlowchartPreview: React.FC<FlowchartPreviewProps> = ({ children }) => {
   const mermaidRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1.5);
   const [position, setPosition] = useState({ x: 0, y: 0 });
+  const positionRef = useRef(position);
   const [isDragging, setIsDragging] = useState(false);
   const isDraggingRef = useRef(false);
   const startPositionRef = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    positionRef.current = position;
+  }, [position]);
 
   // Load mermaid SDK once on mount and re-render the diagram when content
   // changes. This used to live in CodeBlock.tsx, which forced the mermaid
@@ -73,13 +78,11 @@ const FlowchartPreview: React.FC<FlowchartPreviewProps> = ({ children }) => {
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     isDraggingRef.current = true;
     setIsDragging(true);
-    setPosition((prev) => {
-      startPositionRef.current = {
-        x: e.clientX - prev.x,
-        y: e.clientY - prev.y,
-      };
-      return prev;
-    });
+    const prev = positionRef.current;
+    startPositionRef.current = {
+      x: e.clientX - prev.x,
+      y: e.clientY - prev.y,
+    };
   }, []);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
@@ -94,6 +97,32 @@ const FlowchartPreview: React.FC<FlowchartPreviewProps> = ({ children }) => {
   const handleMouseUp = useCallback(() => {
     isDraggingRef.current = false;
     setIsDragging(false);
+  }, []);
+
+  // Keyboard parity for the pointer-driven pan: arrow keys nudge the diagram,
+  // so the viewport stays operable without a mouse. (tabIndex on this
+  // role="application" surface is exempted from noNoninteractiveTabindex via a
+  // file-scoped Biome override — see biome.json — because a pannable canvas has
+  // no native HTML equivalent; this is the WAI-ARIA APG canvas pattern.)
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const PAN_STEP = 40;
+    switch (e.key) {
+      case "ArrowLeft":
+        setPosition((prev) => ({ ...prev, x: prev.x + PAN_STEP }));
+        break;
+      case "ArrowRight":
+        setPosition((prev) => ({ ...prev, x: prev.x - PAN_STEP }));
+        break;
+      case "ArrowUp":
+        setPosition((prev) => ({ ...prev, y: prev.y + PAN_STEP }));
+        break;
+      case "ArrowDown":
+        setPosition((prev) => ({ ...prev, y: prev.y - PAN_STEP }));
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
   }, []);
 
   const handleDownload = () => {
@@ -113,6 +142,7 @@ const FlowchartPreview: React.FC<FlowchartPreviewProps> = ({ children }) => {
     document.body.appendChild(downloadLink);
     downloadLink.click();
     document.body.removeChild(downloadLink);
+    URL.revokeObjectURL(svgUrl);
   };
 
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -136,8 +166,15 @@ const FlowchartPreview: React.FC<FlowchartPreviewProps> = ({ children }) => {
 
   return (
     <div className="relative h-[50vh] overflow-hidden bg-white p-4">
+      {/* Pan/zoom viewport — a custom application region, not a button (drag
+          is not click): focusable, arrow keys pan, buttons zoom/reset. */}
       <div
         className={`absolute top-0 left-0 h-full w-full ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
+        role="application"
+        aria-roledescription="diagram viewport"
+        aria-label="Diagram viewport. Use the arrow keys to pan; zoom and reset are on the toolbar buttons."
+        tabIndex={0}
+        onKeyDown={handleKeyDown}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}

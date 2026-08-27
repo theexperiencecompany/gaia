@@ -142,7 +142,7 @@ async def judge_intent(
         verdict = await _ask_judge(
             user_id, turns, tool_name, description, args, summary, prior_calls
         )
-    except Exception as e:  # noqa: BLE001 — a judge failure must fall back to asking
+    except Exception as e:  # a judge failure must fall back to asking
         log.warning(
             f"{LogTag.HIL} intent judge failed for ; asking",
             tool_name=tool_name,

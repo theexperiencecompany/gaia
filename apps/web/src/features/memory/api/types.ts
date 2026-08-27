@@ -23,12 +23,7 @@ export type MemorySourceType =
   | "manual"
   | "migration";
 
-export type MemoryDocType =
-  | "user_md"
-  | "memory_md"
-  | "agenda_md"
-  | "people_md"
-  | "insights_md";
+export type MemoryDocType = "user_md" | "memory_md" | "agenda_md" | "people_md";
 
 export interface MemoryEntityRef {
   id: string;

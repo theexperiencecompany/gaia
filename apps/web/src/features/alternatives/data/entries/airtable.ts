@@ -7,7 +7,7 @@ export const entry: AlternativeData = {
   category: "productivity-suite",
   tagline: "Flexible database-spreadsheet hybrid for teams and individuals",
   painPoints: [
-    "Team plan is $20/seat/month — expensive as teams grow",
+    "Team plan is $20/seat/month, expensive as teams grow",
     "No proactive AI assistant; Airtable AI is an add-on at extra cost",
     "Building useful bases requires significant time investment",
     "No email or calendar integration for automatic data capture",
@@ -31,7 +31,7 @@ export const entry: AlternativeData = {
     "airtable alternative 2026",
   ],
   whyPeopleLook:
-    "Airtable's database-spreadsheet hybrid is uniquely flexible — relational fields, gallery views, Gantt charts, and automations all in one tool. But that flexibility comes at a price: $20/seat/month for the Team plan, plus an AI add-on. Building and maintaining Airtable bases is a project in itself, and the platform has no proactive intelligence. It does not read your email, does not know about scheduling conflicts, and does not surface what you should work on today. Users who want their productivity tool to be proactive rather than a database they maintain find Airtable insufficient.",
+    "Airtable's database-spreadsheet hybrid is uniquely flexible: relational fields, gallery views, Gantt charts, and automations all in one tool. But that flexibility comes at a price of $20/seat/month for the Team plan, plus an AI add-on. Building and maintaining Airtable bases is a project in itself, and the platform has no proactive intelligence. It does not read your email, does not know about scheduling conflicts, and does not surface what you should work on today. Users who want their productivity tool to be proactive rather than a database they maintain find Airtable insufficient.",
   gaiaFitScore: 3,
   gaiaReplaces: [
     "Task tracking without building and maintaining database bases",
@@ -40,7 +40,7 @@ export const entry: AlternativeData = {
     "Project status tracking via natural language instead of database views",
   ],
   gaiaAdvantages: [
-    "Zero base-building required — GAIA works immediately with existing tools",
+    "Zero base-building required: GAIA works immediately with existing tools",
     "Proactive task and workflow management without per-seat pricing",
     "Email and calendar integrated directly, not via third-party automations",
     "Open-source and self-hostable with no data stored in third-party databases",

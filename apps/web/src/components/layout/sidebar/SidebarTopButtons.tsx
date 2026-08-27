@@ -12,10 +12,8 @@ import {
 } from "@icons";
 import Link from "next/link";
 import React from "react";
-import {
-  getNavigationShortcut,
-  ShortcutKeysDisplay,
-} from "@/config/keyboardShortcuts";
+import { ShortcutKeysDisplay } from "@/config/keyboardShortcuts";
+import { getNavigationShortcut } from "@/config/keyboardShortcutsData";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import {
   usePricing,
@@ -26,6 +24,51 @@ import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { usePricingModalStore } from "@/stores/pricingModalStore";
 import { NotificationStatus } from "@/types/features/notificationTypes";
 import { SidebarPromo } from "./SidebarPromo";
+
+const buttonData = [
+  {
+    route: "/dashboard",
+    icon: <Home11Icon />,
+    label: "Home",
+  },
+  // Temporarily disabled — Calendar feature is not yet ready.
+  // {
+  //   route: "/calendar",
+  //   icon: <Calendar03Icon />,
+  //   label: "Calendar",
+  // },
+  {
+    route: "/todos",
+    icon: <CheckListIcon />,
+    label: "Tasks",
+  },
+  {
+    route: "/integrations",
+    icon: <ConnectIcon />,
+    label: "Integrations",
+  },
+  // {
+  //   route: "/mail",
+  //   icon: <Mail01Icon />,
+  //   label: "Mail",
+  // },
+  {
+    route: "/workflows",
+    icon: <ZapIcon />,
+    label: "Workflows",
+  },
+  {
+    route: "/c",
+    icon: <MessageMultiple02Icon />,
+    label: "Chats",
+  },
+
+  // {
+  //   route: "/browser",
+  //   icon: <AiBrowserIcon height={23} width={23} />,
+  //   label: "Use Browser",
+  // },
+];
 
 export default function SidebarTopButtons() {
   const pathname = usePathname();
@@ -52,51 +95,6 @@ export default function SidebarTopButtons() {
     }
     return pathname === route;
   };
-
-  const buttonData = [
-    {
-      route: "/dashboard",
-      icon: <Home11Icon />,
-      label: "Home",
-    },
-    // Temporarily disabled — Calendar feature is not yet ready.
-    // {
-    //   route: "/calendar",
-    //   icon: <Calendar03Icon />,
-    //   label: "Calendar",
-    // },
-    {
-      route: "/todos",
-      icon: <CheckListIcon />,
-      label: "Tasks",
-    },
-    {
-      route: "/integrations",
-      icon: <ConnectIcon />,
-      label: "Integrations",
-    },
-    // {
-    //   route: "/mail",
-    //   icon: <Mail01Icon />,
-    //   label: "Mail",
-    // },
-    {
-      route: "/workflows",
-      icon: <ZapIcon />,
-      label: "Workflows",
-    },
-    {
-      route: "/c",
-      icon: <MessageMultiple02Icon />,
-      label: "Chats",
-    },
-
-    // {
-    //   route: "/browser",
-    //   icon: <AiBrowserIcon height={23} width={23} />,
-    //   label: "Use Browser",
-    // },
-  ];
 
   return (
     <div className="flex flex-col">

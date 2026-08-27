@@ -38,10 +38,10 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.db.mongodb.collections import get_async_collection  # noqa: E402
-from app.models.scheduler_models import ScheduledTaskStatus  # noqa: E402
-from app.services.workflow.scheduler import WorkflowScheduler  # noqa: E402
-from app.utils.cron_utils import get_next_run_time  # noqa: E402
+from app.db.mongodb.collections import get_async_collection
+from app.models.scheduler_models import ScheduledTaskStatus
+from app.services.workflow.scheduler import WorkflowScheduler
+from app.utils.cron_utils import get_next_run_time
 
 workflows_collection = get_async_collection("workflows")
 

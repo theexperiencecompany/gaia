@@ -2,14 +2,14 @@ export const DUMMY_EMAILS = [
   {
     id: "e1",
     from: "Sarah Chen <sarah@sequoia.com>",
-    subject: "Re: Series A — Follow-up from yesterday",
+    subject: "Re: Series A, follow-up from yesterday",
     time: new Date(Date.now() - 1800000).toISOString(),
     thread_id: "th_001",
   },
   {
     id: "e2",
     from: "Alex Rivera <alex@linear.app>",
-    subject: "PR Review: feat/auth-refactor — 23 files changed",
+    subject: "PR Review: feat/auth-refactor, 23 files changed",
     time: new Date(Date.now() - 3600000).toISOString(),
     thread_id: "th_002",
   },
@@ -30,7 +30,7 @@ export const DUMMY_EMAILS = [
   {
     id: "e5",
     from: "David Kim <david@notion.so>",
-    subject: "Partnership opportunity — Notion x GAIA integration",
+    subject: "Partnership opportunity: Notion x GAIA integration",
     time: new Date(Date.now() - 21600000).toISOString(),
     thread_id: "th_005",
   },
@@ -45,7 +45,7 @@ const tomorrowStr = tomorrow.toISOString().slice(0, 10);
 export const DUMMY_EVENTS = [
   {
     id: "ev1",
-    summary: "Standup — Engineering",
+    summary: "Standup: Engineering",
     description: "",
     start: {
       dateTime: `${todayStr}T09:30:00`,
@@ -64,7 +64,7 @@ export const DUMMY_EVENTS = [
   },
   {
     id: "ev2",
-    summary: "1:1 with Sarah — Product Review",
+    summary: "1:1 with Sarah: Product Review",
     description: "",
     start: {
       dateTime: `${todayStr}T11:00:00`,
@@ -83,7 +83,7 @@ export const DUMMY_EVENTS = [
   },
   {
     id: "ev3",
-    summary: "Investor Call — Sequoia",
+    summary: "Investor Call: Sequoia",
     description: "",
     start: {
       dateTime: `${todayStr}T14:00:00`,
@@ -102,7 +102,7 @@ export const DUMMY_EVENTS = [
   },
   {
     id: "ev4",
-    summary: "Design Review — Mobile App",
+    summary: "Design Review: Mobile App",
     description: "",
     start: {
       dateTime: `${tomorrowStr}T10:00:00`,
@@ -141,7 +141,7 @@ export const DUMMY_CALENDARS = [
 export const DUMMY_TODOS = [
   {
     id: "td1",
-    title: "Review PR #412 — auth refactor",
+    title: "Review PR #412: auth refactor",
     description: "Alex requested review on feat/auth-refactor",
     completed: false,
     priority: "high" as const,
@@ -175,7 +175,7 @@ export const DUMMY_TODOS = [
   {
     id: "td4",
     title: "Fix memory leak in agent loop",
-    description: "Issue #412 — reported by 3 users",
+    description: "Issue #412: reported by 3 users",
     completed: false,
     priority: "high" as const,
     due_date: todayStr,

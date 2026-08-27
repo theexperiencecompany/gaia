@@ -23,7 +23,7 @@ GAIA is an open source project, and we welcome contributions of all kinds:
 ## Pull Requests
 
 - Ensure code style, tests, and docs are up to date
-- Use the [PR template](https://docs.heygaia.io/developers/contributing#pr-description-template)
+- Fill in the PR template that loads automatically (`.github/pull_request_template.md`), deleting the sections that do not apply
 - No merge conflicts with `master` branch
 
 ## Code of Conduct

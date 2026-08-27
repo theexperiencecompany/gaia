@@ -7,10 +7,19 @@
     }
   },
   "useDaemonProcess": false,
-  "defaultBase": "develop",
+  "defaultBase": "master",
   "namedInputs": {
     "default": ["{projectRoot}/**/*"],
-    "production": ["!{projectRoot}/**/*.spec.ts", "!{projectRoot}/**/*.test.ts"]
+    "production": [
+      "!{projectRoot}/**/*.spec.ts",
+      "!{projectRoot}/**/*.test.ts"
+    ],
+    "python": [
+      "{workspaceRoot}/pyproject.toml",
+      "{workspaceRoot}/uv.lock",
+      "{workspaceRoot}/apps/api/pyproject.toml",
+      "{workspaceRoot}/libs/shared/py/**/*"
+    ]
   },
   "targetDefaults": {
     "sync": {
@@ -85,7 +94,7 @@
         "projects": ["api", "voice-agent"],
         "projectsRelationship": "independent",
         "docker": {
-          "groupPreVersionCommand": "npx nx run-many -t docker:build -p api,voice-agent --skipNxCache",
+          "groupPreVersionCommand": "npx nx run-many -t docker:build -p api,voice-agent --parallel --skipNxCache",
           "skipVersionActions": true,
           "registryUrl": "ghcr.io"
         },
@@ -98,11 +107,12 @@
           "bot-discord",
           "bot-slack",
           "bot-telegram",
-          "bot-whatsapp"
+          "bot-whatsapp",
+          "bot-imessage"
         ],
         "projectsRelationship": "fixed",
         "docker": {
-          "groupPreVersionCommand": "npx nx run-many -t docker:build -p bot-discord,bot-slack,bot-telegram,bot-whatsapp --skipNxCache",
+          "groupPreVersionCommand": "npx nx run-many -t docker:build -p bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage --parallel --skipNxCache",
           "skipVersionActions": true,
           "registryUrl": "ghcr.io"
         },

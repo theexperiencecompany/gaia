@@ -32,7 +32,7 @@ export const entry: AlternativeData = {
     "smart scheduling AI",
   ],
   whyPeopleLook:
-    "Clockwise is excellent at defragmenting team calendars and creating focus time windows, but its intelligence ends at the calendar. It has no awareness of your email, no ability to create tasks from communication, and no proactive workflow assistance. For individuals who want a broader AI assistant — one that manages their entire productivity stack, not just their calendar — Clockwise falls short.",
+    "Clockwise is excellent at defragmenting team calendars and creating focus time windows, but its intelligence ends at the calendar. It has no awareness of your email, no ability to create tasks from communication, and no proactive workflow assistance. For individuals who want a broader AI assistant (one that manages their entire productivity stack, not just their calendar), Clockwise falls short.",
   gaiaFitScore: 3,
   gaiaReplaces: [
     "Focus time protection through calendar-aware scheduling",

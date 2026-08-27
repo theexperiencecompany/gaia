@@ -48,8 +48,10 @@ const InboxTodosView: React.FC<InboxTodosViewProps> = memo(({ onRefresh }) => {
 
   const updateTodoRef = useRef(updateTodo);
   const deleteTodoRef = useRef(deleteTodo);
-  updateTodoRef.current = updateTodo;
-  deleteTodoRef.current = deleteTodo;
+  useEffect(() => {
+    updateTodoRef.current = updateTodo;
+    deleteTodoRef.current = deleteTodo;
+  });
 
   const handleTodoUpdate = useCallback(
     async (todoId: string, updates: TodoUpdate) => {

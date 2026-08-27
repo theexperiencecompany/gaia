@@ -24,7 +24,7 @@ from app.models.trigger_config import TriggerConfig
 # not only where an entrypoint remembers to `import app.patches`. Without the
 # user_id-injection patch, custom tools 500 with "Missing user_id in
 # auth_credentials".
-import app.patches  # noqa: F401
+import app.patches  # noqa: F401 -- applies monkeypatches on import; must run before patched SDKs are used
 from app.services.composio.custom_tools.registry import custom_tools_registry
 from app.services.composio.langchain_composio_service import (
     LangchainProvider,
@@ -81,10 +81,16 @@ class ComposioService:
                 else settings.COMPOSIO_REDIRECT_URI
             )
 
+            # `link()`, not `initiate()`: the legacy POST /api/v3/connected_accounts
+            # behind initiate() is being retired for Composio-managed OAuth (cutover
+            # 2026-07-03), after which it raises
+            # ComposioLegacyConnectedAccountsEndpointRetiredError. Same return shape
+            # and same allow_multiple semantics; the redirect now points at
+            # Composio's hosted Connect Link rather than straight at the provider.
             loop = asyncio.get_event_loop()
             connection_request = await loop.run_in_executor(
                 None,
-                lambda: self.composio.connected_accounts.initiate(
+                lambda: self.composio.connected_accounts.link(
                     user_id=user_id,
                     auth_config_id=config.auth_config_id,
                     callback_url=callback_url,
@@ -115,7 +121,7 @@ class ComposioService:
         log.info(f"{LogTag.COMPOSIO} Loading toolkit...", tool_kit=tool_kit)
 
         tools = await asyncio.to_thread(
-            lambda: self.composio.tools.get(  # type: ignore[call-overload]
+            lambda: self.composio.tools.get(
                 user_id="",
                 toolkits=[tool_kit],
                 limit=1000,
@@ -134,7 +140,7 @@ class ComposioService:
         master_schema_mod = schema_modifier(tools=tool_names)(master_schema_modifier)
 
         tools = await asyncio.to_thread(
-            lambda: self.composio.tools.get(  # type: ignore[call-overload]
+            lambda: self.composio.tools.get(
                 user_id="",
                 toolkits=[tool_kit],
                 modifiers=[

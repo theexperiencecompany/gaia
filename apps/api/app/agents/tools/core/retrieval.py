@@ -10,6 +10,7 @@ This module provides the retrieve_tools function factory that supports:
 
 import asyncio
 from collections.abc import Awaitable, Callable
+import json
 from typing import (
     Annotated,
     Any,
@@ -38,6 +39,7 @@ from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import search_public_integrations
 from app.models.agent_models import agent_configurable
 from app.models.chat_models import ConversationSource
+from app.override.langgraph_bigtool.utils import RetrieveToolsResult
 from app.services.integrations.integration_service import (
     get_user_available_tool_namespaces,
 )
@@ -112,20 +114,20 @@ REQUIRED: pass exactly ONE of `query` (to discover by intent) or `exact_tool_nam
 guidance instead of binding anything. If you are looking for a capability, pass
 query="what you want to do".
 
-—DISCOVERY MODE (query)
+DISCOVERY MODE (query)
 Semantic search that returns tool names matching your intent. Tools are NOT loaded yet.
 
 Rules:
 - This is semantic vector search over tool names and descriptions. Phrase the query in
   natural language using the INTEGRATION'S NAME ("github", "gmail", "notion") and the
-  action — NEVER an id, uuid, slug, or internal key. Ids carry no semantic meaning, so
+  action, NEVER an id, uuid, slug, or internal key. Ids carry no semantic meaning, so
   they embed to noise and return irrelevant tools. Search "list github pull requests",
   not the repo/connection id.
 - One well-formed query is enough for most tasks. Do not retry unless results are clearly irrelevant.
 - Do not search repeatedly to be thorough. If the first result looks right, move to binding.
 - Comma-separated intents work: "list pull requests, get repo info"
 
-—BINDING MODE (exact_tool_names)
+BINDING MODE (exact_tool_names)
 Loads tools by exact name so they can be called. Use this after discovery or when you already know the name.
 
 Rules:
@@ -133,7 +135,7 @@ Rules:
 - Unknown or invalid names are silently ignored
 - You CANNOT call a tool that has not been bound first
 
-—STANDARD WORKFLOW
+STANDARD WORKFLOW
 Step 1: retrieve_tools(query="your intent")         → discover tool names
 Step 2: retrieve_tools(exact_tool_names=["TOOL_A"]) → bind for execution
 Step 3: Call the tool directly
@@ -146,21 +148,21 @@ task="..."). Do NOT call retrieve_tools again to "bind" it, and never call
 retrieve_tools with an empty exact_tool_names. Trying to bind a subagent is the
 single most common mistake here: there is no bind step for a subagent.
 
-—EFFICIENCY RULES (follow these strictly)
+EFFICIENCY RULES (follow these strictly)
 - Do not call retrieve_tools more than twice for a single task unless the first discovery returned completely irrelevant results
 - Do not discover the same intent twice with different wording unless the first returned nothing useful
 - Do not bind tools you are not going to call immediately
 - Once a tool is bound and returns results, use those results. Do not search for alternative tools.
 
-—TOOL NAME FORMAT
+TOOL NAME FORMAT
 Tools follow ALLCAPS_SNAKE_CASE naming: "GITHUB_LIST_PULL_REQUESTS", "GMAIL_SEND_EMAIL"
 Internal tools follow snake_case: "plan_tasks", "vfs_read"
 
-—ARGS
+ARGS
 query:
     Natural language description of what you want to do.
     Be specific about the action and name the integration in plain words
-    ("github", "gmail", "notion") — NOT an id, uuid, or slug. This is semantic
+    ("github", "gmail", "notion"), NOT an id, uuid, or slug. This is semantic
     vector search; ids do not embed and will not match.
     Example: "list pull requests", "send email", "create github issue"
 
@@ -168,11 +170,11 @@ exact_tool_names:
     List of exact tool names to load and make executable.
     Example: ["GITHUB_LIST_PULL_REQUESTS", "GITHUB_GET_PULL_REQUEST"]
 
-—RETURNS
+RETURNS
 response: tool names discovered or validated
 tools_to_bind: tools that are now loaded and ready to call
 
-—EXAMPLES
+EXAMPLES
 
 Simple read task:
   retrieve_tools(query="list pull requests")
@@ -198,7 +200,7 @@ Write task with verification:
 
 _RETRIEVE_TOOLS_SUBAGENT_SECTION = """
 
-—SUBAGENT TOOLS
+SUBAGENT TOOLS
 Discovery may also return subagent tools alongside regular tools.
 - Subagent tool format: "subagent:gmail", "subagent:fb9dfd7e05f8"
 - To USE a subagent, call handoff(subagent_id="gmail", task="...") directly.
@@ -207,13 +209,6 @@ Discovery may also return subagent tools alongside regular tools.
   binding step, handoff works immediately on the subagent id (the part after
   "subagent:").
 - They cannot be executed directly as tools."""
-
-
-class RetrieveToolsResult(TypedDict):
-    """Result from retrieve_tools function."""
-
-    tools_to_bind: list[str]
-    response: list[str]
 
 
 class ScoredToolHit(TypedDict):
@@ -531,6 +526,101 @@ def _deduplicate_and_sort(
     return [str(r["id"]) for r in unique_results[:limit]]
 
 
+def _split_subagent_entry(entry: str) -> tuple[str, str | None]:
+    """``subagent:<id> (Name)`` -> (id, name)."""
+    tail = entry[len("subagent:") :]
+    if " (" in tail and tail.endswith(")"):
+        subagent_id, name = tail.split(" (", 1)
+        return subagent_id, name[:-1]
+    return tail, None
+
+
+def _render_discovery_response(
+    final_tools: list[str],
+    tool_registry: ToolRegistry,
+    connected_integrations: dict[str, str | None],
+    internal_subagents: set[str],
+    query: str | None,
+    total_candidates: int,
+    limit: int,
+) -> str:
+    """Render discovery hits as JSON in three buckets: bind, handoff, connect.
+
+    Availability is the only axis that changes what the model may do next, so it
+    is the top-level split. ``internal_subagents`` is required to tell a built-in
+    capability (always usable) from an integration the user has not connected —
+    without it every built-in was reported as needing a connection it has none of.
+    """
+    bindable: list[str] = []
+    subagents: list[tuple[str, str | None]] = []
+    for entry in final_tools:
+        if entry.startswith("subagent:"):
+            subagents.append(_split_subagent_entry(entry))
+        else:
+            bindable.append(entry)
+
+    def _tool_entry(name: str) -> dict[str, Any]:
+        category = tool_registry.get_category_of_tool(name)
+        meta = tool_registry.get_tool_meta(name)
+        entry: dict[str, Any] = {
+            "name": name,
+            "source": connected_integrations.get(category) or category
+            if category in connected_integrations
+            else "gaia",
+        }
+        if meta and meta.destructive:
+            entry["needs_approval"] = True
+        return entry
+
+    def _subagent_entry(sid: str, name: str | None) -> dict[str, str]:
+        return {"id": sid, "name": name} if name else {"id": sid}
+
+    ready = [_subagent_entry(s, n) for s, n in subagents if s in internal_subagents]
+    connected = [
+        _subagent_entry(s, n)
+        for s, n in subagents
+        if s in connected_integrations and s not in internal_subagents
+    ]
+    needs_connecting = [
+        _subagent_entry(s, n)
+        for s, n in subagents
+        if s not in connected_integrations and s not in internal_subagents
+    ]
+
+    payload: dict[str, Any] = {
+        "tools_to_bind": [_tool_entry(n) for n in bindable],
+        "subagents_builtin": ready,
+        "subagents_connected": connected,
+        "subagents_needing_connection": needs_connecting,
+    }
+    if total_candidates > limit:
+        payload["truncated"] = {"shown": len(final_tools), "total": total_candidates}
+
+    # Keyed off the SEARCH, not off what is listed: built-in subagents are injected
+    # unconditionally, so a zero-match search still returns entries. Reporting that
+    # as a find is what sent the model into re-querying the same dead index.
+    if total_candidates == 0:
+        payload["search_matched_nothing"] = True
+        payload["next"] = (
+            "The search matched NOTHING; anything listed above is a built-in that is "
+            "always offered, not a hit. Retry ONCE with a broader query naming the "
+            "action ('send email', not a product name). If you already know the exact "
+            "tool name, skip search and call retrieve_tools(exact_tool_names=[...]). "
+            "Otherwise tell the user the capability is unavailable. Never repeat the "
+            "same query."
+        )
+    else:
+        payload["next"] = (
+            "Bind with retrieve_tools(exact_tool_names=[...]) then call the tool. "
+            'Subagents are NOT bindable: use handoff(subagent_id="<id>", task="..."). '
+            "Anything under subagents_needing_connection is unusable until the user "
+            "connects it, so ask them first."
+        )
+    if query:
+        payload["query"] = query
+    return json.dumps(payload, indent=2)
+
+
 def _inject_available_subagents(
     discovered_tools: list[str],
     internal_subagents: set[str],
@@ -715,6 +805,8 @@ def get_retrieve_tools_function(
             unknown_tool_names: list[str] = []
             out_of_scope_tool_names: list[str] = []
             requested_subagents: list[str] = []
+            # requested name -> canonical name, for the aliases we silently resolved
+            renamed_tools: dict[str, str] = {}
             for tool_name in exact_tool_names:
                 if tool_name.startswith("subagent:"):
                     # Subagents are handed off to, never bound. When subagents are
@@ -737,6 +829,8 @@ def get_retrieve_tools_function(
                     validated_tool_names.append(tool_name)
                 elif canonical := known_by_canonical.get(tool_name.replace("-", "_")):
                     validated_tool_names.append(canonical)
+                    if canonical != tool_name:
+                        renamed_tools[tool_name] = canonical
                 elif tool_name in global_tool_names_set:
                     # Known globally, but not in this agent's scope.
                     out_of_scope_tool_names.append(tool_name)
@@ -760,12 +854,12 @@ def get_retrieve_tools_function(
                 )
 
             log.set(
-                tool_retrieval=dict(
-                    mode="binding",
-                    tools_requested=len(exact_tool_names),
-                    tools_bound=len(validated_tool_names),
-                    tools_filtered=len(exact_tool_names) - len(validated_tool_names),
-                )
+                tool_retrieval={
+                    "mode": "binding",
+                    "tools_requested": len(exact_tool_names),
+                    "tools_bound": len(validated_tool_names),
+                    "tools_filtered": len(exact_tool_names) - len(validated_tool_names),
+                }
             )
 
             # Bind valid tools regardless; add corrective guidance for subagent /
@@ -781,13 +875,31 @@ def get_retrieve_tools_function(
                 response.append(
                     "These tools are not available inside this subagent and cannot be "
                     f"bound here: {', '.join(out_of_scope_tool_names)}. They belong to the "
-                    "main executor, not this subagent — do not retry binding them; finish "
+                    "main executor, not this subagent. Do not retry binding them; finish "
                     "your task here and let the executor handle them."
                 )
+
+            bind_lines: list[str] = []
+            if validated_tool_names:
+                bind_lines.append(f"Bound {len(validated_tool_names)} tools, call them directly:")
+                bind_lines.extend(f"  - {name}" for name in validated_tool_names)
+            if renamed_tools:
+                bind_lines.append(
+                    "Resolved to their canonical names, use these from now on: "
+                    + ", ".join(f"{req} -> {canon}" for req, canon in renamed_tools.items())
+                )
+            if unknown_tool_names:
+                bind_lines.append(
+                    f"Not found, nothing bound: {', '.join(unknown_tool_names)}. "
+                    "Do not retry these names; run retrieve_tools(query=...) to find "
+                    "what actually exists."
+                )
+            bind_lines.extend(line for line in response if line not in validated_tool_names)
 
             return RetrieveToolsResult(
                 tools_to_bind=validated_tool_names,
                 response=response,
+                response_text="\n".join(bind_lines),
             )
 
         # Get user context (skips subagent computation when include_subagents=False)
@@ -888,21 +1000,21 @@ def get_retrieve_tools_function(
             final_tools = discovered_tools
 
         log.set(
-            tool_retrieval=dict(
-                mode="discovery",
-                query=query,
-                tool_space=tool_space,
-                user_id=user_id,
-                namespaces_searched=sorted(user_namespaces),
-                tools_discovered=len(final_tools),
-                chroma_hits=chroma_hits,
-                public_hits=public_hits,
-                per_namespace_hits=per_namespace_hits,
-                candidates_after_filter=len(all_results),
-                chroma_preview=chroma_preview,
-            )
+            tool_retrieval={
+                "mode": "discovery",
+                "query": query,
+                "tool_space": tool_space,
+                "user_id": user_id,
+                "namespaces_searched": sorted(user_namespaces),
+                "tools_discovered": len(final_tools),
+                "chroma_hits": chroma_hits,
+                "public_hits": public_hits,
+                "per_namespace_hits": per_namespace_hits,
+                "candidates_after_filter": len(all_results),
+                "chroma_preview": chroma_preview,
+            }
         )
-        if chroma_hits == 0 and tool_space != "general":
+        if chroma_hits == 0:
             log.warning(
                 f"{LogTag.TOOL} retrieve_tools: 0 ChromaDB hits — check that index_tools_to_store actually wrote docs for this namespace",
                 tool_space=tool_space,
@@ -912,6 +1024,15 @@ def get_retrieve_tools_function(
         return RetrieveToolsResult(
             tools_to_bind=[],
             response=final_tools,
+            response_text=_render_discovery_response(
+                final_tools,
+                tool_registry,
+                connected_integrations,
+                internal_subagents,
+                query,
+                len(all_results),
+                limit,
+            ),
         )
 
     # Assign the LLM-facing docstring from pre-built constants

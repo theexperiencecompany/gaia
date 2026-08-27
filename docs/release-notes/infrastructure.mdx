@@ -1,0 +1,58 @@
+---
+title: "Infrastructure"
+description: "Deployment, CI, observability, testing, and internal architecture work shipped across GAIA releases."
+icon: "screwdriver-wrench"
+---
+
+<Update label="Aug 26, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
+
+## [API v0.22.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.22.0)
+- **Safer Deploys**: Every build now gets a permanent tag, so rolling back means returning to an exact known-good version. If a build never makes it to production, we get alerted instead of never noticing.
+- **A Faster CI Gate**: Checks on a pull request dropped from 13.4 to 8.9 minutes. Five of them had been quietly measuring an easier thing than they claimed to; they now measure the real one.
+- **One Branch**: The `develop` branch is gone. Everything merges straight to `master`.
+- **Silenced Warnings Have to Explain Themselves**: Every ignored lint or type error now records why it's there, and the cleanup removed all the stale ones nobody could account for.
+- **Everything Logs the Same Way**: API, bots, and background workers now share one logging format, and the alerts were rewritten so that when one fires, it says what actually broke.
+- **Tests That Run the Real Agent**: We can now drive the agent end to end and get the same result every time, so tests exercise real behaviour instead of stand-ins.
+- **A Typed Database Layer**: All 33 collections go through typed code now, and model pricing moved into the codebase instead of a table that could quietly drift out of date.
+- **Easier Self-Hosting**: Simpler local setup, a configurable sandbox region for EU deployments, and one identity for all secrets.
+
+## [Web v0.23.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.23.0)
+- **Next.js 16.3 and TypeScript 7**: The web app moved to Next.js 16.3 and onto TypeScript 7's new native compiler, which made builds and type-checking noticeably faster.
+- **One Deploy Path**: Removed the leftover Vercel setup, and a change that touches both the backend and the web app now ships them together instead of one at a time.
+- **Cleaner Error Reports**: Crashes caused by browser extensions no longer show up as GAIA errors, so what's left is actually ours.
+
+## [Bots v1.6.0](https://github.com/theexperiencecompany/gaia/releases/tag/bots-v1.6.0)
+- **Every Bot Ships Like a Real Service**: All the bots, iMessage included, now release under exact version tags a deploy can pin to.
+- **A Dead Bot Gets Noticed**: The iMessage bot is health-checked like the others, so if it goes down we hear about it before you do.
+
+</Update>
+
+<Update label="Feb 20, 2026" description="Bots, CLI">
+
+## [Bots v1.0.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.0.0...bots-v1.1.0)
+- **Shared Adapter Pattern**: `BaseBotAdapter` in `@gaia/shared` establishing the unified command dispatch system, GAIA API client, and platform-agnostic `RichMessageTarget` interface used by all three bots
+- **Bot API Key Authentication**: Dedicated middleware for authenticating bot-to-API requests independently from user session auth
+- **Nx Monorepo Integration**: All three bot packages integrated into the Nx workspace with build, lint, type-check, and release targets
+- **Docker Support**: Dockerfiles for each bot for containerized deployment alongside the rest of the GAIA stack
+- **E2E Test Package**: Dedicated `bots-e2e` test package with Vitest infrastructure for cross-bot integration testing
+
+</Update>
+
+<Update label="Dec 21, 2025" description="API, Web, Mobile, Desktop">
+
+## [API v0.12.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.12.0)
+- **Independent per-app versioning**: Migrated from monorepo-wide versioning to per-app release-please configuration, enabling each app to release on its own cadence
+- **Docker Compose deploy path**: Fixed production file path reference in the deploy workflow
+
+</Update>
+
+<Update label="Dec 19, 2025">
+
+## [Mobile v0.1.0](https://github.com/theexperiencecompany/gaia/releases/tag/mobile-v0.1.0)
+- **Expo SDK 54**: Built on Expo SDK 54 with Expo Router v6, React Compiler enabled, and the new React Native architecture turned on
+- **UI Component Library**: 18+ reusable components built on @rn-primitives, avatar, button, card, checkbox, dialog, dropdown-menu, input, popover, raised-button, select, skeleton, toggle, tooltip, and more
+- **NativeWind Styling**: Tailwind CSS for React Native with a surface color system, custom spacing, and full light and dark theme support
+- **Icon System**: @hugeicons/react-native and Lucide React Native for consistent iconography across the app
+- **Feature-Based Architecture**: Code organized into features/auth/ and features/chat/ with co-located components, hooks, utilities, and types
+
+</Update>

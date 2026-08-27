@@ -38,6 +38,7 @@ import pytest
 from app.agents.core.graph_builder import build_graph as build_graph_module
 from app.agents.core.graph_builder.build_graph import build_comms_graph
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
+from app.agents.core.nodes import pre_model_hooks as pre_model_hooks_module
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
@@ -175,7 +176,13 @@ def _recording_hook(name: str, real: Callable, calls: list[str]) -> Callable:
 
 @contextlib.contextmanager
 def _record_hook_execution(names: list[str]) -> Iterator[list[str]]:
-    """Patch the named hooks in build_graph's namespace with recording wrappers.
+    """Patch the named hooks with recording wrappers, in whichever module the
+    graph builder resolves them from.
+
+    Pre-model hooks are composed in ``pre_model_hooks``; the end-graph hooks are
+    still named directly in ``build_graph``. Patched where each is looked up,
+    because patching the definition site would leave the already-imported name
+    in the composer untouched and the recorder silently empty.
 
     Yields the list the wrappers append to, so a test can assert exactly which
     hooks the compiled graph ran and in what order.
@@ -183,10 +190,13 @@ def _record_hook_execution(names: list[str]) -> Iterator[list[str]]:
     calls: list[str] = []
     with contextlib.ExitStack() as stack:
         for name in names:
-            real = getattr(build_graph_module, name)
-            stack.enter_context(
-                patch.object(build_graph_module, name, _recording_hook(name, real, calls))
+            module = next(
+                (m for m in (pre_model_hooks_module, build_graph_module) if hasattr(m, name)),
+                None,
             )
+            assert module is not None, f"no module exposes hook {name!r} to patch"
+            real = getattr(module, name)
+            stack.enter_context(patch.object(module, name, _recording_hook(name, real, calls)))
         yield calls
 
 
@@ -721,9 +731,9 @@ class TestPreModelHooksExecution:
 
     async def test_manage_system_prompts_keeps_latest_only(self, pg_checkpointer):
         """Send multiple non-memory system prompts. The
-        manage_system_prompts_node keeps only the latest one before the
-        LLM call, but the checkpoint retains all of them (pre-model hooks
-        modify state ephemerally). The graph must complete without error."""
+        manage_system_prompts_node keeps only the latest one, and since the
+        prompt-accumulation fix that pruning is durable: the stale copy is
+        tombstoned out of the checkpoint too."""
         from langgraph.store.memory import InMemoryStore
 
         fake_llm = create_fake_llm(["System prompt managed"])
@@ -753,15 +763,16 @@ class TestPreModelHooksExecution:
             config=config,
         )
 
-        # Both system prompts remain in persisted state (pre-model hooks
-        # only modify ephemerally for the LLM call)
+        # Only the latest system prompt persists — the stale copy is
+        # tombstoned out of the checkpoint by the model node.
         system_msgs = [m for m in result["messages"] if m.type == "system"]
         non_memory = [
             m for m in system_msgs if not m.additional_kwargs.get("memory_message", False)
         ]
-        assert len(non_memory) == 2, (
-            f"Both system prompts should remain in persisted state, found {len(non_memory)}"
+        assert len(non_memory) == 1, (
+            f"Exactly the latest system prompt should persist, found {len(non_memory)}"
         )
+        assert "New system prompt" in str(non_memory[0].content)
 
         # Graph completed with AI response
         ai_msgs = [m for m in result["messages"] if isinstance(m, AIMessage)]

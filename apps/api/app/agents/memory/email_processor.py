@@ -277,7 +277,7 @@ async def fetch_emails_for_onboarding(
                 query=query,
                 max_results=remaining,
                 page_token=page_token,
-                format=fmt,
+                message_format=fmt,
                 include_payload=not metadata_mode,
                 verbose=not metadata_mode,
             )
@@ -876,8 +876,8 @@ async def _discover_and_store_linked_profiles(
                 continue  # Skip same platform
 
             # Build regex pattern from URL template
-            url_template: str = config["url_template"]  # type: ignore[assignment]
-            regex_pattern: str = config["regex_pattern"]  # type: ignore[assignment]
+            url_template: str = config["url_template"]
+            regex_pattern: str = config["regex_pattern"]
 
             # Skip if same domain (e.g., github.com profile linking to github.com)
             platform_domain = url_template.split("/")[2]
@@ -918,7 +918,7 @@ async def _discover_and_store_linked_profiles(
 
         # Crawl and store discovered profiles in background
         crawl_tasks = []
-        for key, profile_info in discovered_profiles.items():
+        for profile_info in discovered_profiles.values():
             platform = profile_info["platform"]
             url = profile_info["url"]
             task = crawl_profile_url(url, platform, semaphore)

@@ -38,7 +38,9 @@ Usage:
     await stream_manager.cancel_stream(stream_id)
 """
 
+import asyncio
 from collections.abc import AsyncGenerator
+from contextlib import suppress
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 import json
@@ -54,6 +56,8 @@ from app.constants.cache import (
 )
 from app.constants.log_tags import LogTag
 from app.constants.streaming import (
+    SSE_KEEPALIVE_FRAME,
+    SSE_KEEPALIVE_INTERVAL_SECONDS,
     STREAM_CANCELLED_SIGNAL,
     STREAM_DONE_SIGNAL,
     STREAM_ERROR_SIGNAL,
@@ -251,7 +255,7 @@ class StreamManager:
     async def subscribe_stream(
         cls,
         stream_id: str,
-        keepalive_interval: float = 15,
+        keepalive_interval: float = SSE_KEEPALIVE_INTERVAL_SECONDS,
         last_event_id: str | None = None,
     ) -> AsyncGenerator[str, None]:
         """
@@ -292,7 +296,7 @@ class StreamManager:
                     # event. SSE comment format (": keepalive") triggers
                     # onmessage with empty data in @microsoft/fetch-event-source
                     # due to a spec non-compliance, causing JSON.parse("") errors.
-                    yield 'data: {"keepalive":true}\n\n'
+                    yield SSE_KEEPALIVE_FRAME
                     continue
 
                 for _key, entries in results:
@@ -347,6 +351,13 @@ class StreamManager:
                     f"{LogTag.STARTUP} Stream ended without receiving any chunks",
                     stream_id=stream_id,
                 )
+
+    @classmethod
+    async def has_events(cls, stream_id: str) -> bool:
+        """Whether the stream's replayable event log still exists (pre-TTL)."""
+        if not redis_cache.redis:
+            return False
+        return bool(await redis_cache.redis.exists(f"{STREAM_EVENTS_PREFIX}{stream_id}"))
 
     @classmethod
     async def _publish(cls, stream_id: str, message: str) -> None:
@@ -491,6 +502,55 @@ class StreamManager:
 
         # Notify subscribers of error
         await cls._publish(stream_id, STREAM_ERROR_SIGNAL)
+
+
+async def with_heartbeat(
+    frames: AsyncGenerator[str, None],
+    interval: float = SSE_KEEPALIVE_INTERVAL_SECONDS,
+) -> AsyncGenerator[str, None]:
+    """Forward ``frames``, injecting a keepalive whenever nothing has been
+    yielded for ``interval`` seconds.
+
+    ``subscribe_stream`` only emits its own keepalive when the Redis event log
+    is idle, which is not the same thing as the socket being idle: a consumer
+    that FILTERS frames (the bot translator drops web-only frames like
+    ``tool_data``) leaves the connection silent for as long as the turn stays
+    busy. A reverse proxy reads that silence as a dead upstream and hangs up
+    mid-turn — nginx's stock ``proxy_read_timeout`` is 60s.
+
+    Wrapping at the point bytes leave makes that impossible regardless of what
+    any stage upstream decides to swallow, so no proxy in the path needs to be
+    configured to tolerate a long-running stream.
+    """
+    iterator = frames.__aiter__()
+    pending: asyncio.Task[str] | None = None
+    try:
+        while True:
+            if pending is None:
+                pending = asyncio.ensure_future(iterator.__anext__())
+            try:
+                # shield keeps the in-flight read alive across a heartbeat: the
+                # timeout cancels the wrapper, not the pull from the event log.
+                frame = await asyncio.wait_for(asyncio.shield(pending), interval)
+            except TimeoutError:
+                yield SSE_KEEPALIVE_FRAME
+                continue
+            except StopAsyncIteration:
+                return
+            pending = None
+            yield frame
+    finally:
+        if pending is not None:
+            # Await the cancellation before closing: the task is suspended
+            # INSIDE frames.__anext__(), so the generator is still running and
+            # aclose() would raise "asynchronous generator is already running"
+            # — leaving the event-log subscription to be closed by GC instead
+            # of here. This is the ordinary disconnect: a client that drops
+            # while the turn is quiet always has a pull in flight.
+            pending.cancel()
+            with suppress(asyncio.CancelledError, StopAsyncIteration):
+                await pending
+        await frames.aclose()
 
 
 # Module-level singleton for convenient imports

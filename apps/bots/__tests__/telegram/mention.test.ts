@@ -14,7 +14,7 @@
  * conversion behavior — a test here fails if the production formatter regresses.
  */
 
-import { convertToTelegramHtml } from "@gaia/shared";
+import { convertToTelegramHtml } from "@gaia/shared/bots";
 import { describe, expect, it } from "vitest";
 import {
   hasTelegramMention,

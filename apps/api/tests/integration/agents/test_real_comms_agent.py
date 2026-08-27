@@ -20,8 +20,9 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+from langchain_core.language_models import LanguageModelInput
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.runnables import RunnableConfig
 import pytest
 
 # ---------------------------------------------------------------------------
@@ -31,7 +32,11 @@ import pytest
 from app.agents.core.graph_builder.build_graph import build_comms_graph
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.config.settings import settings
-from tests.helpers import create_fake_llm, create_fake_llm_with_tool_calls
+from tests.helpers import (
+    BindableToolsFakeModel,
+    create_fake_llm,
+    create_fake_llm_with_tool_calls,
+)
 
 
 @pytest.fixture
@@ -124,7 +129,7 @@ def _follow_up_node_io_patches(
     node's internal slicing/prompt/guard logic runs for real.
     """
     if writer_fn is None:
-        writer_fn = lambda _: None  # noqa: E731
+        writer_fn = lambda _: None  # noqa: E731  # default no-op writer for an optional hook parameter
 
     if capabilities is None:
         capabilities = {"tool_names": []}
@@ -388,15 +393,13 @@ class TestRealCommsAgent:
             "The graph should have produced a new AIMessage with no pending tool calls."
         )
 
-    async def test_pre_model_hook_does_not_persist_to_checkpoint(self, comms_graph_simple):
+    async def test_pre_model_hook_pruning_persists_to_checkpoint(self, comms_graph_simple):
         """
-        manage_system_prompts_node runs as a pre_model_hook — it modifies the
-        messages passed to the model ephemerally (filtering duplicates for the
-        LLM call), but those modifications are NOT written back to the checkpoint.
-        The persisted graph state still retains all original messages
-        (LangGraph's append reducer). This test verifies the graph completes
-        without error and produces an AI response when fed duplicate non-memory
-        system prompts, and that both system prompts remain in the checkpoint.
+        manage_system_prompts_node keeps one system prompt per slot, and since
+        the prompt-accumulation fix that pruning is DURABLE: the model node
+        tombstones the stale copies out of the checkpoint (RemoveMessage), so a
+        long-lived thread holds exactly one prompt per slot instead of one per
+        run. Conversation messages are untouched.
         """
         config = _thread_config()
 
@@ -416,16 +419,21 @@ class TestRealCommsAgent:
         ai_messages = [m for m in result["messages"] if m.type == "ai"]
         assert len(ai_messages) >= 1, "Graph should have produced at least one AIMessage"
 
-        # Both system messages remain in the persisted state because
-        # pre_model_hooks only filter for the LLM call, not the checkpoint.
+        # Only the latest static prompt survives in the persisted state; the
+        # stale copy is tombstoned out so checkpointed threads stay bounded.
         system_messages = [m for m in result["messages"] if m.type == "system"]
         non_memory = [
             m for m in system_messages if not m.additional_kwargs.get("memory_message", False)
         ]
-        assert len(non_memory) == 2, (
-            f"Both non-memory system prompts should remain in persisted state; "
-            f"found {len(non_memory)}"
+        assert len(non_memory) == 1, (
+            f"Exactly the latest non-memory system prompt should persist; found {len(non_memory)}"
         )
+        assert "New system prompt." in str(non_memory[0].content)
+
+        # The conversation itself is never pruned.
+        human_contents = [str(m.content) for m in result["messages"] if m.type == "human"]
+        assert "First message." in human_contents
+        assert "Second message." in human_contents
 
     # ------------------------------------------------------------------
     # 3. Tool routing
@@ -826,11 +834,15 @@ class TestRealCommsAgent:
         # The LLM raises TimeoutError immediately when invoked
         timeout_error = TimeoutError("LLM request timed out")
 
-        class TimeoutFakeLLM(FakeMessagesListChatModel):
-            def bind_tools(self, tools: Any, **kwargs: Any) -> "TimeoutFakeLLM":
-                return self
-
-            async def ainvoke(self, *args, **kwargs):
+        class TimeoutFakeLLM(BindableToolsFakeModel):
+            async def ainvoke(
+                self,
+                input: LanguageModelInput,
+                config: RunnableConfig | None = None,
+                *,
+                stop: list[str] | None = None,
+                **kwargs: object,
+            ) -> AIMessage:
                 raise timeout_error
 
         fake_llm = TimeoutFakeLLM(responses=[])

@@ -28,6 +28,7 @@ from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.scheduler_models import ScheduledTaskStatus
 from app.models.workflow_models import (
+    DeactivationReason,
     PublicWorkflowRow,
     TriggerConfig,
     TriggerType,
@@ -36,6 +37,11 @@ from app.models.workflow_models import (
     WorkflowUpdate,
 )
 from app.utils.creator import creator_lookup_stage
+
+# The scheduler's occurrence field, written by every arm/re-arm path and pinned
+# by the stale-fire claim gate. One constant keeps the dotted key from drifting
+# between the writers and the gate.
+NEXT_RUN_FIELD = "trigger_config.next_run"
 
 # Cron-driven workflows only carry a non-empty ``repeat``; manual / integration /
 # todo workflows default to status="scheduled" with ``scheduled_at=now``, so the
@@ -193,6 +199,20 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         if trigger_name is not None:
             query["trigger_config.trigger_name"] = trigger_name
         return await self._find(query)
+
+    async def find_activated_for_user(self, user_id: str) -> list[WorkflowDocument]:
+        """Every activated workflow a user owns — the dormancy sweep's pause set."""
+        return await self._find({"user_id": user_id, "activated": True})
+
+    async def find_paused_for_reason(
+        self, user_id: str, reason: DeactivationReason
+    ) -> list[WorkflowDocument]:
+        """A user's workflows the system paused for ``reason`` — the only ones an
+        automatic resume may touch. A workflow the user switched off themselves
+        carries no reason and is therefore never matched."""
+        return await self._find(
+            {"user_id": user_id, "activated": False, "deactivated_reason": reason.value}
+        )
 
     async def find_stale_executing(self, cutoff: datetime) -> list[WorkflowDocument]:
         """Activated workflows wedged in EXECUTING since before ``cutoff`` — the
@@ -436,16 +456,21 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
                     "trigger_config.composio_trigger_ids": trigger_ids,
                     "status": ScheduledTaskStatus.SCHEDULED.value,
                     "scheduled_at": next_run,
-                    "trigger_config.next_run": next_run,
+                    NEXT_RUN_FIELD: next_run,
+                    "deactivated_reason": None,
                 }
             },
             scope=REPO_GLOBAL_SCOPE,
         )
 
-    async def deactivate(self, workflow_id: str, user_id: str) -> WorkflowDocument | None:
+    async def deactivate(
+        self, workflow_id: str, user_id: str, *, reason: DeactivationReason | None = None
+    ) -> WorkflowDocument | None:
         """Deactivate the user's workflow (disable its trigger and clear Composio
         ids). Liveness is governed by ``activated``; a deferred fire is rejected by
-        the claim gate. Returns the after state, or ``None`` when not found."""
+        the claim gate. ``reason`` marks a system pause so an automatic resume can
+        tell it apart from a user switching the workflow off (which passes none).
+        Returns the after state, or ``None`` when not found."""
         return await self._apply_raw_update(
             {"_id": workflow_id, "user_id": user_id},
             {
@@ -453,6 +478,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
                     "activated": False,
                     "trigger_config.enabled": False,
                     "trigger_config.composio_trigger_ids": [],
+                    "deactivated_reason": reason.value if reason else None,
                 }
             },
             scope=REPO_GLOBAL_SCOPE,
@@ -471,19 +497,30 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             {"_id": workflow_id}, {"$set": set_fields}, scope=REPO_GLOBAL_SCOPE
         )
 
-    async def claim_for_execution(self, workflow_id: str) -> bool:
+    async def claim_for_execution(
+        self, workflow_id: str, *, expected_next_run: datetime | None = None
+    ) -> bool:
         """Atomically claim a live, idle workflow for a fire (SCHEDULED -> EXECUTING).
 
         Returns ``False`` — and the caller skips the fire — when the workflow is not
         both ``activated`` and ``status="scheduled"`` (a concurrent recovery scan
         already claimed it, or it was deactivated but a deferred job fired anyway).
+
+        ``expected_next_run`` pins the occurrence the fire was armed for: ARQ has
+        no job cancellation, so after a reschedule the old deferred job still
+        fires — but ``trigger_config.next_run`` has moved on, and the mismatch
+        rejects it. Jobs enqueued before this stamp existed pass ``None`` and
+        claim exactly as before.
         """
+        filter_: dict[str, Any] = {
+            "_id": workflow_id,
+            "activated": True,
+            "status": ScheduledTaskStatus.SCHEDULED.value,
+        }
+        if expected_next_run is not None:
+            filter_[NEXT_RUN_FIELD] = expected_next_run
         result = await self._apply_raw_update(
-            {
-                "_id": workflow_id,
-                "activated": True,
-                "status": ScheduledTaskStatus.SCHEDULED.value,
-            },
+            filter_,
             {"$set": {"status": ScheduledTaskStatus.EXECUTING.value}},
             scope=REPO_GLOBAL_SCOPE,
         )
@@ -520,7 +557,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         if repeat is not None:
             set_fields["repeat"] = repeat
         if not isinstance(next_run, _Unset):
-            set_fields["trigger_config.next_run"] = next_run
+            set_fields[NEXT_RUN_FIELD] = next_run
         result = await self._apply_raw_update(
             filter_, {"$set": set_fields}, scope=REPO_GLOBAL_SCOPE
         )
@@ -573,12 +610,13 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         *,
         title: str,
         description: str,
+        prompt: str,
         steps: list[WorkflowStep],
         trigger_config: TriggerConfig,
         composio_trigger_ids: list[str],
     ) -> WorkflowDocument | None:
-        """Re-apply a system workflow's original definition (title/description/steps/
-        trigger_config), preserving liveness, stats and ``created_at``. ``next_run``
+        """Re-apply a system workflow's original definition (title/description/prompt/
+        steps/trigger_config), preserving liveness, stats and ``created_at``. ``next_run``
         stays a native datetime (python-mode dump), consistent with create/re-arm."""
         trigger_doc = trigger_config.model_dump()
         trigger_doc["composio_trigger_ids"] = composio_trigger_ids
@@ -588,6 +626,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
                 "$set": {
                     "title": title,
                     "description": description,
+                    "prompt": prompt,
                     "steps": [s.model_dump() for s in steps],
                     "trigger_config": trigger_doc,
                 }

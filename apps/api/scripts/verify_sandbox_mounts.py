@@ -29,17 +29,17 @@ _BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_BACKEND_ROOT))
 load_dotenv(_BACKEND_ROOT / ".env")
 
-from app.config.secrets import inject_infisical_secrets  # noqa: E402
+from app.config.secrets import inject_infisical_secrets
 
 inject_infisical_secrets()
 
-from app.config.settings import settings  # noqa: E402
-from app.services.sandbox.lifecycle import (  # noqa: E402
+from app.config.settings import settings
+from app.services.sandbox.lifecycle import (
     _mount_env,
     _release_juicefs_sessions,
     _run_mount_script,
 )
-from app.services.sandbox.shard_router import shard_for  # noqa: E402
+from app.services.sandbox.shard_router import shard_for
 
 TEST_USER = f"verify-{uuid.uuid4().hex[:8]}"
 CONV = f"conv-{uuid.uuid4().hex[:8]}"
@@ -75,7 +75,7 @@ async def sh(sbx, cmd: str, *, user: str = "user", timeout: int = 60, envs: dict
     try:
         r = await sbx.commands.run(cmd, user=user, timeout=timeout, envs=envs or {})
         return 0, (r.stdout or ""), (r.stderr or "")
-    except Exception as e:  # noqa: BLE001 - probe helper, surface code/output
+    except Exception as e:  # probe helper, surface code/output
         return (
             int(getattr(e, "exit_code", 1) or 1),
             getattr(e, "stdout", "") or "",
@@ -108,7 +108,7 @@ async def main() -> int:
         try:
             await _run_mount_script(sbx, env)
             check(True, "mount.sh ran (exit 0)")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             check(False, "mount.sh ran (exit 0)", str(e)[:160])
 
         print("\nVerifying mounts...", flush=True)
@@ -209,7 +209,7 @@ async def main() -> int:
         print("\nKilling sandbox...", flush=True)
         try:
             await sbx.kill()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             print(f"  kill error: {e}")
 
     npass = sum(_results)

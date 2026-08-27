@@ -22,6 +22,7 @@ from app.schemas.voice_schemas import (
     VoiceSelectionResponse,
     VoiceTokenResponse,
 )
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.voice_service import (
     get_user_voice,
     list_voices,
@@ -130,6 +131,10 @@ async def select_voice(
     selected = await set_user_voice(user["user_id"], payload.voice_id)
     # May differ from the requested id when a library voice was added to the account.
     log.set(selected_voice_id=selected)
+    capture_context_event(
+        AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
+        {"setting": "voice", "voice_id": selected},
+    )
     return VoiceSelectionResponse(selected_voice_id=selected)
 
 
@@ -147,4 +152,8 @@ async def star_voice(
         starred=payload.starred,
     )
     starred_ids = await set_voice_star(user["user_id"], voice_id, payload.starred)
+    capture_context_event(
+        AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
+        {"setting": "voice_star", "voice_id": voice_id, "is_starred": payload.starred},
+    )
     return StarredVoicesResponse(starred_voice_ids=starred_ids)

@@ -22,7 +22,7 @@ tests:
               service: api
             exp_annotations:
               description: >-
-                Every product surface goes through this API — web and desktop chat, mobile, all four bots, and the voice agent. Users are seeing failed sends, blank conversations and broken integrations. Check the API Logs dashboard to find which handler is erroring, then the application logs for the exception behind it.
+                Every product surface goes through this API — web and desktop chat, mobile, all five bots, and the voice agent. Users are seeing failed sends, blank conversations and broken integrations. Check the API Logs dashboard to find which handler is erroring, then the application logs for the exception behind it.
               runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-api-5xx
               __dashboardUid__: gaia-api-prometheus
               __panelId__: '2'

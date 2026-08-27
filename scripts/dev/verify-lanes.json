@@ -1,0 +1,254 @@
+{
+  "$comment": "GAIA verify lanes \u2014 local mirror of CI quality gates (.github/workflows/code-quality.yml + main.yml). name matches the CI job/step (rows may be step-granular). scope = extended regex over changed paths; lane runs if ANY file matches (--all overrides). heavy=true needs --with-heavy. timeout_s hard cap; expiry -> status=timeout (exit 2). require_cmd: any missing -> skipped(missing-tool). command runs at repo root \u2014 keep byte-parity with the CI job's own repro line. Edit a workflow lane and this file in the SAME commit. INTENTIONALLY NOT MIRRORED (CI-only): build, build-images, test-python-coverage (coverage>=70%, diff-cover>=90%, schemathesis fuzz), regression-proof, test-device-bridge, validate-release-manifest, test-harness-tools, trivy-scan (advisory), changelog-sync (auto-fix PR job). Known deltas: py-tests mirrors via Dagger not byte-parity flake-gate shards; alert-rules needs locally installed pint/promtool (CI pins v0.87.0/v3.1.0 from release tarballs); whole-repo scopes are stricter than CI's changed-file scoping (safe direction). Post-merge note: master pinned bandit/xenon/interrogate and split ignore-ratchet into ignore-whys + ignore-staleness + tool-pins (2026-08 merge of origin/master).",
+  "schema_version": 1,
+  "lanes": [
+    {
+      "name": "biome",
+      "scope": "\\.(ts|tsx|js|jsx|mjs|cjs|json|jsonc|css)$",
+      "heavy": false,
+      "timeout_s": 300,
+      "require_cmd": [],
+      "command": "pnpm run quality:lint"
+    },
+    {
+      "name": "deps",
+      "scope": "\\.(ts|tsx|js|jsx|json)$|^pnpm-lock\\.yaml$|^packages/",
+      "heavy": false,
+      "timeout_s": 120,
+      "require_cmd": [],
+      "command": "pnpm run quality:deps && pnpm run quality:pkg-json"
+    },
+    {
+      "name": "circular",
+      "scope": "\\.(ts|tsx|js|jsx)$",
+      "heavy": false,
+      "timeout_s": 180,
+      "require_cmd": [],
+      "command": "pnpm run quality:circular"
+    },
+    {
+      "name": "file-size",
+      "scope": "\\.(ts|tsx|js|jsx|mjs|cjs)$",
+      "heavy": false,
+      "timeout_s": 120,
+      "require_cmd": [],
+      "command": "pnpm run quality:size"
+    },
+    {
+      "name": "types-location",
+      "scope": "\\.(ts|tsx|js)$",
+      "heavy": false,
+      "timeout_s": 120,
+      "require_cmd": [],
+      "command": "node scripts/ci/check-types-location.mjs --enforce"
+    },
+    {
+      "name": "components-per-file",
+      "scope": "\\.tsx$",
+      "heavy": false,
+      "timeout_s": 120,
+      "require_cmd": [],
+      "command": "pnpm run quality:components"
+    },
+    {
+      "name": "duplicates",
+      "scope": "\\.(ts|tsx|js|jsx|py)$",
+      "heavy": false,
+      "timeout_s": 240,
+      "require_cmd": [],
+      "command": "pnpm run quality:dupe"
+    },
+    {
+      "name": "package-hygiene",
+      "scope": "^packages/cli/|^pnpm-lock\\.yaml$",
+      "heavy": false,
+      "timeout_s": 600,
+      "require_cmd": [],
+      "command": "pnpm run quality:publint && pnpm run quality:attw"
+    },
+    {
+      "name": "type-check",
+      "scope": "\\.(ts|tsx|js|jsx)$|^tsconfig|^nx\\.json$",
+      "heavy": false,
+      "timeout_s": 900,
+      "require_cmd": [],
+      "command": "pnpm exec nx run-many -t type-check --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage"
+    },
+    {
+      "name": "suppression-ratchet",
+      "scope": "\\.(ts|tsx|js|jsx|py)$",
+      "heavy": false,
+      "timeout_s": 120,
+      "require_cmd": [],
+      "command": "python3 tools/lints/check_suppressions.py"
+    },
+    {
+      "name": "dead-code",
+      "scope": "\\.(ts|tsx|py)$",
+      "heavy": false,
+      "timeout_s": 600,
+      "require_cmd": [],
+      "command": "bash scripts/dead-code-check.sh --strict --verbose"
+    },
+    {
+      "name": "python-ruff",
+      "scope": "\\.py$|^pyproject\\.toml$|^ruff\\.toml$",
+      "heavy": false,
+      "timeout_s": 180,
+      "require_cmd": [],
+      "command": "uvx --no-build ruff@0.14.13 check . && uvx --no-build ruff@0.14.13 format --check ."
+    },
+    {
+      "name": "python-mypy",
+      "scope": "\\.py$|^pyproject\\.toml$|^uv\\.lock$",
+      "heavy": false,
+      "timeout_s": 900,
+      "require_cmd": [],
+      "command": "uv run --project apps/api --frozen --group backend --group dev mypy apps/api/app apps/voice-agent/src libs/shared/py tools/lints --ignore-missing-imports"
+    },
+    {
+      "name": "custom-lints",
+      "scope": "\\.py$|^tools/lints/",
+      "heavy": false,
+      "timeout_s": 120,
+      "require_cmd": [],
+      "command": "python3 tools/lints/run.py apps/api/app"
+    },
+    {
+      "name": "ignore-whys",
+      "scope": "^pyproject\\.toml$|^tools/lints/(check_ignore_ratchet\\.py|ignore_ratchet_baseline\\.txt)",
+      "heavy": false,
+      "timeout_s": 120,
+      "require_cmd": [],
+      "command": "python3 tools/lints/check_ignore_whys.py"
+    },
+    {
+      "name": "ignore-staleness",
+      "scope": "^pyproject\\.toml$|^tools/lints/",
+      "heavy": false,
+      "timeout_s": 120,
+      "require_cmd": [],
+      "command": "python3 tools/lints/check_ignore_staleness.py"
+    },
+    {
+      "name": "tool-pins",
+      "scope": "\\.(py|toml)$|^tools/lints/|^\\.pre-commit-config\\.yaml$",
+      "heavy": false,
+      "timeout_s": 120,
+      "require_cmd": [],
+      "command": "python3 tools/lints/check_tool_pins.py"
+    },
+    {
+      "name": "interrogate",
+      "scope": "\\.py$|^pyproject\\.toml$",
+      "heavy": false,
+      "timeout_s": 180,
+      "require_cmd": [],
+      "command": "uvx --no-build interrogate==1.7.0 -c pyproject.toml apps/api apps/voice-agent libs/shared/py"
+    },
+    {
+      "name": "xenon",
+      "scope": "\\.py$|^pyproject\\.toml$",
+      "heavy": false,
+      "timeout_s": 180,
+      "require_cmd": [],
+      "command": "uvx --no-build xenon==0.9.3 --max-absolute F --max-modules E --max-average B apps/api apps/voice-agent libs/shared/py -e 'apps/api/tests/**' -e 'apps/api/scripts/**' -e 'libs/shared/py/tests/**'"
+    },
+    {
+      "name": "bandit",
+      "scope": "\\.py$|^pyproject\\.toml$",
+      "heavy": false,
+      "timeout_s": 300,
+      "require_cmd": [],
+      "command": "uvx --no-build bandit@1.9.4 -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low"
+    },
+    {
+      "name": "pip-audit",
+      "scope": "^uv\\.lock$|^pyproject\\.toml$",
+      "heavy": true,
+      "timeout_s": 600,
+      "require_cmd": ["uv"],
+      "command": "uv export --frozen --no-emit-workspace -o /tmp/gaia-verify-requirements.txt && uvx --no-build pip-audit==2.10.1 --strict --skip-editable --disable-pip --ignore-vuln GHSA-wj6h-64fc-37mp --ignore-vuln PYSEC-2026-1325 -r /tmp/gaia-verify-requirements.txt"
+    },
+    {
+      "name": "observability-evlog-tests",
+      "scope": "\\.py$|^tools/(evlog_map|logcheck)/",
+      "heavy": false,
+      "timeout_s": 300,
+      "require_cmd": [],
+      "command": "uvx --no-build pytest@9.1.1 tools/evlog_map tools/logcheck -q"
+    },
+    {
+      "name": "observability-map",
+      "scope": "\\.py$|^apps/bots/|^libs/shared/ts/",
+      "heavy": false,
+      "timeout_s": 300,
+      "require_cmd": [],
+      "command": "python3 tools/evlog_map --github-summary --no-write --min-score 100 && node scripts/ci/evlog-map-bots.mjs --min-score 100"
+    },
+    {
+      "name": "observability-ratchet",
+      "scope": "\\.py$",
+      "heavy": false,
+      "timeout_s": 120,
+      "require_cmd": [],
+      "command": "scripts/ci/evlog-ratchet.sh"
+    },
+    {
+      "name": "wide-event-conformance",
+      "scope": "\\.(py|ts|tsx)$",
+      "heavy": false,
+      "timeout_s": 300,
+      "require_cmd": [],
+      "command": "python3 scripts/ci/wide-event-conformance/run.py --show-capture"
+    },
+    {
+      "name": "alert-rules",
+      "scope": "^tools/alert-rules/|^infra/docker/observability/|^config/pint\\.hcl$",
+      "heavy": true,
+      "timeout_s": 600,
+      "require_cmd": ["pint", "promtool"],
+      "command": "uv run --no-build tools/alert-rules/extract_promql.py -o tools/alert-rules/gaia-rules.yaml --test-dir tools/alert-rules/tests && pint --no-color --offline --config config/pint.hcl lint tools/alert-rules/gaia-rules.yaml && promtool check rules tools/alert-rules/gaia-rules.yaml && promtool test rules tools/alert-rules/tests/*.yaml"
+    },
+    {
+      "name": "gitleaks",
+      "scope": ".",
+      "heavy": false,
+      "timeout_s": 300,
+      "require_cmd": ["gitleaks"],
+      "command": "gitleaks detect --no-banner --redact -c .gitleaks.toml"
+    },
+    {
+      "name": "semgrep",
+      "scope": "\\.py$",
+      "heavy": true,
+      "timeout_s": 900,
+      "require_cmd": ["docker"],
+      "command": "docker run --rm --volume \"$PWD:/src\" --workdir /src semgrep/semgrep@sha256:b68f9b68483955b85042dac7b4533757779625a02dcf91e470da4c2df1b430be semgrep scan --config tools/semgrep/p-python.yaml apps/api/app --error --metrics=off"
+    },
+    {
+      "name": "test-mutation",
+      "scope": "\\.py$|^apps/api/tests/",
+      "heavy": true,
+      "timeout_s": 3600,
+      "require_cmd": ["uv"],
+      "command": "uv sync --frozen --package gaia --group backend --group dev && bash scripts/ci/mutation-plan.sh && bash scripts/ci/mutation-shard.sh"
+    },
+    {
+      "name": "ts-tests",
+      "scope": "\\.(ts|tsx)$",
+      "heavy": true,
+      "timeout_s": 1800,
+      "require_cmd": [],
+      "command": "pnpm exec nx run-many -t test --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage"
+    },
+    {
+      "name": "py-tests",
+      "scope": "\\.py$",
+      "heavy": true,
+      "timeout_s": 3600,
+      "require_cmd": ["dagger"],
+      "command": "mise run test:python"
+    }
+  ]
+}

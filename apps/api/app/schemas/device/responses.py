@@ -32,7 +32,7 @@ class DeviceTokenResponse(BaseModel):
     """Short-lived connect JWT plus the rotated refresh credential."""
 
     access_token: str
-    token_type: str = "Bearer"  # noqa: S105 - token type label, not a secret
+    token_type: str = "Bearer"
     expires_in: int
     refresh_token: str
 

@@ -31,7 +31,7 @@ export const entry: AlternativeData = {
     "craft alternative 2026",
   ],
   whyPeopleLook:
-    "Craft earns rave reviews for its visual design, block-based editing, and smooth performance on Apple devices. It is a genuinely excellent document creation tool. But document creation is still a manual, time-consuming activity — you have to write everything, organize everything, and search for everything yourself. Craft's AI writing features help you write faster, but they do not connect to your email, calendar, or tasks to build context automatically. Users who want a tool that manages their knowledge proactively rather than requiring them to author it find Craft insufficient.",
+    "Craft earns rave reviews for its visual design, block-based editing, and smooth performance on Apple devices. It is a genuinely excellent document creation tool. But document creation is still a manual, time-consuming activity. You have to write everything, organize everything, and search for everything yourself. Craft's AI writing features help you write faster, but they do not connect to your email, calendar, or tasks to build context automatically. Users who want a tool that manages their knowledge proactively rather than requiring them to author it find Craft insufficient.",
   gaiaFitScore: 3,
   gaiaReplaces: [
     "Knowledge retrieval via semantic search without manual document organization",
@@ -40,7 +40,7 @@ export const entry: AlternativeData = {
     "Task creation from document content without manual entry",
   ],
   gaiaAdvantages: [
-    "Knowledge is built passively from email and calendar — no manual document creation",
+    "Knowledge is built passively from email and calendar: no manual document creation",
     "Proactive surfacing of relevant knowledge based on current work context",
     "Open-source and self-hostable; Craft is closed-source SaaS",
     "Full productivity assistant including email, tasks, and calendar",
@@ -61,7 +61,7 @@ export const entry: AlternativeData = {
     {
       question: "Is GAIA better than Craft for knowledge retrieval?",
       answer:
-        "Yes. GAIA's semantic search and graph-based memory surface knowledge across email, calendar, tasks, and imported notes — providing much broader context than Craft's document search.",
+        "Yes. GAIA's semantic search and graph-based memory surface knowledge across email, calendar, tasks, and imported notes, providing much broader context than Craft's document search.",
     },
     {
       question: "Is GAIA cheaper than Craft?",

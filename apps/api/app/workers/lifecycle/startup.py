@@ -21,14 +21,14 @@ os.environ.setdefault("GAIA_SERVICE_NAME", "arq_worker")
 
 configure_file_logging("./logs/worker")
 
-from app.constants.log_tags import LogTag  # noqa: E402
-from app.core.provider_registration import (  # noqa: E402
+from app.constants.log_tags import LogTag
+from app.core.provider_registration import (
     setup_warnings,
     unified_startup,
 )
-from app.utils.browser_reaper import start_browser_reaper  # noqa: E402
-from app.workers.metrics import start_metrics_server  # noqa: E402
-from shared.py.wide_events import log, log_context  # noqa: E402
+from app.utils.browser_reaper import start_browser_reaper
+from app.workers.metrics import start_metrics_server
+from shared.py.wide_events import log, log_context
 
 # Set up common warning filters
 setup_warnings()

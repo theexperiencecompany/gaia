@@ -8,7 +8,7 @@ export const entry: AlternativeData = {
   tagline: "AI-powered auto-scheduling that fits tasks into your calendar",
   painPoints: [
     "Expensive at $19–$34/month for what is essentially a smart calendar",
-    "Can feel rigid — auto-scheduling overrides personal scheduling preferences",
+    "Can feel rigid: auto-scheduling overrides personal scheduling preferences",
     "No email integration; tasks must still be manually entered",
     "Limited to calendar and tasks; does not manage the rest of your workflow",
     "Scheduling conflicts require manual intervention to resolve",
@@ -32,7 +32,7 @@ export const entry: AlternativeData = {
     "smart scheduling AI",
   ],
   whyPeopleLook:
-    "Motion's AI auto-scheduling is genuinely impressive — it slots your tasks into available calendar blocks and reschedules them when meetings pop up. But at $19–$34/month, it is expensive for a single-purpose tool, and it has a fundamental blind spot: it cannot read your email. Tasks still need to be manually entered, which means the cognitive load of inbox triage remains entirely on you. GAIA addresses the full picture by connecting email, calendar, and tasks into one proactive system where tasks are created from emails automatically and scheduled with calendar awareness.",
+    "Motion's AI auto-scheduling is genuinely impressive: it slots your tasks into available calendar blocks and reschedules them when meetings pop up. But at $19–$34/month, it is expensive for a single-purpose tool, and it has a fundamental blind spot: it cannot read your email. Tasks still need to be manually entered, which means the cognitive load of inbox triage remains entirely on you. GAIA addresses the full picture by connecting email, calendar, and tasks into one proactive system where tasks are created from emails automatically and scheduled with calendar awareness.",
   gaiaFitScore: 4,
   gaiaReplaces: [
     "Automatic task creation from email so no manual entry is needed",
@@ -44,7 +44,7 @@ export const entry: AlternativeData = {
     "Email-native: tasks are created automatically from Gmail content",
     "Proactive alerts about calendar conflicts and upcoming deadlines",
     "Free tier available; self-hosting is always free",
-    "50+ integrations beyond calendar — manages your entire digital workflow",
+    "50+ integrations beyond calendar: manages your entire digital workflow",
     "Open-source codebase vs. Motion's closed, proprietary system",
   ],
   migrationSteps: [
@@ -67,7 +67,7 @@ export const entry: AlternativeData = {
     {
       question: "Can GAIA create tasks from email like Motion cannot?",
       answer:
-        "Yes, this is one of GAIA's core strengths. It reads your Gmail and can automatically create, prioritize, and schedule tasks from email content — something Motion requires you to do manually.",
+        "Yes, this is one of GAIA's core strengths. It reads your Gmail and can automatically create, prioritize, and schedule tasks from email content, something Motion requires you to do manually.",
     },
     {
       question: "Does GAIA handle meeting scheduling like Motion?",

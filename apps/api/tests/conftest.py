@@ -8,7 +8,7 @@ Provides:
 - Reusable fake user and auth fixtures
 """
 
-from collections.abc import AsyncGenerator, Iterator
+from collections.abc import AsyncGenerator, Callable, Iterator
 import contextlib
 from contextlib import asynccontextmanager
 import importlib
@@ -32,6 +32,16 @@ os.environ["ENV"] = "development"
 # prod-guard off, and because the key is now present, load_dotenv(override=False)
 # — called at settings import — will not re-inject a value from the developer's .env.
 os.environ["DEV_AUTH_BYPASS_EMAIL"] = ""
+# Same problem, same fix, for the other dev overrides that change behaviour
+# rather than carry a secret — the credential fence below never sees them
+# because they are not credential-shaped, and it would run too late anyway:
+# get_settings() is lru_cached and already resolved during collection.
+# DEV_UNLIMITED_RATE_LIMITS lifts the limits the rate-limiter tests assert (11
+# false failures on a machine that sets it); GAIA_SIM_MODE routes every LLM
+# call to the local stub. Both are typed `bool`, so the neutral value must be
+# parseable — "" is a pydantic bool_parsing error, not an "off".
+os.environ["DEV_UNLIMITED_RATE_LIMITS"] = "false"
+os.environ["GAIA_SIM_MODE"] = "false"
 os.environ.setdefault(
     "MONGO_DB",
     "mongodb://localhost:27017/gaia_test?serverSelectionTimeoutMS=100&connectTimeoutMS=100",
@@ -66,6 +76,28 @@ os.environ["LANGFUSE_PUBLIC_KEY"] = ""
 os.environ["LANGFUSE_SECRET_KEY"] = ""
 os.environ["LANGFUSE_HOST"] = ""
 
+# chromadb phones home on every client start and collection create, and its
+# telemetry client is a background thread doing network I/O. Beyond being an
+# external call the suite never asserts on, that thread is what makes the
+# process fork-hostile: mutmut re-runs a test file inside a fork, and the
+# child died on SIGTRAP (exit -5) before writing a byte, so every mutant of
+# chroma_store came back "suspicious" and the module could never be graded.
+os.environ["ANONYMIZED_TELEMETRY"] = "False"
+
+# HOST leaks into the model's context: fetchers.py renders the public artifact
+# URL from it, so the effective prompt — and the recorded context snapshots —
+# differ between a dev box with apps/api/.env (localhost) and CI without one
+# (the production default). Pinned so the rendered context is the same
+# everywhere; the snapshots were recorded against this value.
+os.environ["HOST"] = "http://localhost:8000"
+
+# Same reasoning for PostHog: analytics capture must never reach a live
+# project from the suite. Forced off (not setdefault) BEFORE the settings
+# import below — the provider's required_keys are bound at decoration time
+# from the settings singleton, so a developer's .env token must not leak in.
+os.environ["POSTHOG_PROJECT_TOKEN"] = ""
+os.environ["POSTHOG_HOST"] = ""
+
 # Arm the Infisical fence BEFORE any app import: settings.py calls get_settings()
 # at import time (via the module-level `settings` singleton), and the import
 # chain below (payment_models -> ... -> app.config.settings) would dial the real
@@ -80,11 +112,14 @@ _early_infisical_patch.start()
 # app.db.repositories.base -> app.db.redis -> app.config.settings, which
 # instantiates settings at import time. Without ENV set first, that resolves to
 # ProductionSettings and fails validation (CI has no production keys).
-from app.models.payment_models import (  # noqa: E402
+from app.config.posthog import init_posthog
+from app.core.lazy_loader import MissingKeyStrategy, providers
+from app.models.payment_models import (
     PlanType,
     SubscriptionStatus,
     UserSubscriptionStatus,
 )
+from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
 
 # ---------------------------------------------------------------------------
 # Infrastructure mock strategy
@@ -152,7 +187,7 @@ for p in _patches:
 # future refactor that binds or resolves inject_infisical_secrets at import
 # time inside settings.py would silently defeat every patch above. These
 # asserts pin the two bindings that matter. importlib (not a top-level
-# import) so the E402 suppression-ratchet stays clean: a from-import here
+# import) so the E402 rule stays clean: a from-import here
 # would also be a module-level import after the patch loop.
 _secrets_module = importlib.import_module("app.config.secrets")
 _settings_module = importlib.import_module("app.config.settings")
@@ -163,6 +198,19 @@ assert isinstance(_settings_module.inject_infisical_secrets, MagicMock), (
 assert isinstance(_secrets_module.inject_infisical_secrets, MagicMock), (
     "hermetic fence broken: secrets.inject_infisical_secrets is not mocked"
 )
+
+# Register the PostHog provider the way production startup does
+# (unified_startup -> provider_registration -> init_posthog). The test app's
+# lifespan is a no-op, so without this the provider is never registered and
+# every capture_context_event/capture_event call raises KeyError from
+# providers.get("posthog") — turning instrumented endpoints into 500s. With
+# POSTHOG_PROJECT_TOKEN blanked above, the SILENT-strategy loader resolves to
+# None: capture calls no-op (log.debug + return) instead of raising. Tests
+# that assert specific capture behavior patch the endpoint's own binding, so
+# they are unaffected. importlib (not a top-level import) for the same reason
+# as the settings imports above.
+_posthog_module = importlib.import_module("app.config.posthog")
+_posthog_module.init_posthog()
 
 # ---------------------------------------------------------------------------
 # Hermetic environment fence
@@ -233,6 +281,16 @@ def _hermetic_environment() -> Iterator[None]:
         os.environ["LANG"] = "C.UTF-8"
         os.environ["LC_ALL"] = "C.UTF-8"
         os.environ["PYTHONHASHSEED"] = "0"
+        # Process identity the worker stamps at import (app/workers/lifecycle/
+        # startup.py setdefaults GAIA_SERVICE_NAME=arq_worker before its app
+        # imports, so the first emitted log line already carries the Promtail
+        # label). Any test importing that chain would otherwise leak the var and
+        # trip the pollution guard below — e.g. test_worker_smoke, or any
+        # single-file selection that is the only importer of app.worker. Pinning
+        # it here keeps the guard's baseline complete: under tests the process
+        # is not the worker, and env_context() falls through "" to the default
+        # service name.
+        os.environ.setdefault("GAIA_SERVICE_NAME", "")
         yield
     finally:
         os.environ.clear()
@@ -557,3 +615,39 @@ def route_enqueue_via_pool():
                 patch(f"{module}.enqueue_worker_job", side_effect=_forward, create=True)
             )
         yield
+
+
+@pytest.fixture
+def posthog_provider() -> Iterator[Callable[..., None]]:
+    """Install a controllable "posthog" provider under the real registry.
+
+    The env fence blanks ``POSTHOG_PROJECT_TOKEN``, so the production provider
+    is unavailable for the whole suite. Tests go through the real registry
+    rather than patching ``providers`` because the provider NAME is part of
+    what they pin: a lookup under any other key finds nothing, and the code
+    under test then silently attributes nobody. Production's provider is
+    re-registered on teardown.
+    """
+
+    def install(*, available: bool, client: object | None) -> None:
+        providers.register(
+            name="posthog",
+            loader_func=lambda: client,
+            required_keys=[] if available else [""],
+            strategy=MissingKeyStrategy.SILENT,
+        )
+
+    yield install
+    init_posthog()
+
+
+@pytest.fixture(autouse=True)
+def _reset_limit_origin() -> Iterator[None]:
+    """Keep a run's limit origin from leaking between tests.
+
+    arq gives each job its own task, so a job cannot leak into the next one.
+    Tests share one, so a case that marks a background run would otherwise make
+    later cases mail the wrong email.
+    """
+    yield
+    mark_run_origin(LimitHitOrigin.INTERACTIVE)

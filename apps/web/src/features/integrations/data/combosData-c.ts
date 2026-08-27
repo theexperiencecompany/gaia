@@ -20,7 +20,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       "developer task management",
     ],
     intro:
-      "Developers often juggle GitHub issues and pull requests alongside personal tasks in Todoist, but the two systems never talk to each other. An issue gets assigned in GitHub, but it never makes it onto your Todoist today list. A PR review sits waiting while you work through a Todoist task board that has no awareness of your code queue. The result is context-switching overhead and work falling through the cracks between two separate workflows.\n\nGAIA connects GitHub and Todoist so your development work and personal task management stay aligned. When a GitHub issue is assigned to you or a PR requests your review, GAIA can instantly create a corresponding Todoist task with the right project, priority, and due date. When you close the issue or merge the PR, GAIA marks the Todoist task complete so your list stays clean without manual updates.\n\nThis integration is especially useful for solo developers and small teams who rely on Todoist for personal productivity but live in GitHub for actual development. Instead of maintaining two separate to-do systems, you get a single Todoist inbox that reflects everything on your plate — code work included.",
+      "Developers often juggle GitHub issues and pull requests alongside personal tasks in Todoist, but the two systems never talk to each other. An issue gets assigned in GitHub, but it never makes it onto your Todoist today list. A PR review sits waiting while you work through a Todoist task board that has no awareness of your code queue. The result is context-switching overhead and work falling through the cracks between two separate workflows.\n\nGAIA connects GitHub and Todoist so your development work and personal task management stay aligned. When a GitHub issue is assigned to you or a PR requests your review, GAIA can instantly create a corresponding Todoist task with the right project, priority, and due date. When you close the issue or merge the PR, GAIA marks the Todoist task complete so your list stays clean without manual updates.\n\nThis integration is especially useful for solo developers and small teams who rely on Todoist for personal productivity but live in GitHub for actual development. Instead of maintaining two separate to-do systems, you get a single Todoist inbox that reflects everything on your plate, code work included.",
     useCases: [
       {
         title: "Auto-create tasks from assigned GitHub issues",
@@ -52,7 +52,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         step: "Connect GitHub and Todoist to GAIA",
         description:
-          "Authenticate your GitHub account and Todoist workspace in GAIA's integration settings using OAuth. GAIA only requests the permissions it needs — repository read access for GitHub and task write access for Todoist.",
+          "Authenticate your GitHub account and Todoist workspace in GAIA's integration settings using OAuth. GAIA only requests the permissions it needs: repository read access for GitHub and task write access for Todoist.",
       },
       {
         step: "Configure your sync preferences",
@@ -166,7 +166,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         question: "Does this integration work with ClickUp's custom statuses?",
         answer:
-          'Yes. GAIA reads your ClickUp workspace\'s custom status definitions and lets you map GitHub events to any status in your workflow — whether that\'s "Code Review," "QA Testing," "Deployed," or any other custom status your team has defined.',
+          'Yes. GAIA reads your ClickUp workspace\'s custom status definitions and lets you map GitHub events to any status in your workflow, whether that\'s "Code Review," "QA Testing," "Deployed," or any other custom status your team has defined.',
       },
     ],
   },
@@ -191,7 +191,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       "design handoff automation",
     ],
     intro:
-      "Design and engineering teams work in parallel — designers in Figma, developers in GitHub — but the handoff between the two is rarely smooth. Developers hunt for the right Figma frame while the designer has already moved to the next screen. Designers have no idea when their designs have shipped to production. Reviews happen in separate tools with no shared context, and version mismatches between the design file and the live implementation go unnoticed until QA catches them.\n\nGAIA connects GitHub and Figma to create a continuous link between design specifications and the code that implements them. When a developer opens a pull request, GAIA can automatically attach the relevant Figma frame or component as a comment on the PR so reviewers can compare design intent against implementation without leaving GitHub. When that PR merges, GAIA notifies the designer in Figma (or via their preferred channel) so they can verify the implementation and sign off.\n\nThis integration is a game-changer for product teams practicing design-led development. Designers stay in the loop on engineering progress without polling developers, developers always have the right spec attached to their PR, and nothing ships that the design team hasn't been able to review.",
+      "Design and engineering teams work in parallel (designers in Figma, developers in GitHub), but the handoff between the two is rarely smooth. Developers hunt for the right Figma frame while the designer has already moved to the next screen. Designers have no idea when their designs have shipped to production. Reviews happen in separate tools with no shared context, and version mismatches between the design file and the live implementation go unnoticed until QA catches them.\n\nGAIA connects GitHub and Figma to create a continuous link between design specifications and the code that implements them. When a developer opens a pull request, GAIA can automatically attach the relevant Figma frame or component as a comment on the PR so reviewers can compare design intent against implementation without leaving GitHub. When that PR merges, GAIA notifies the designer in Figma (or via their preferred channel) so they can verify the implementation and sign off.\n\nThis integration is a game-changer for product teams practicing design-led development. Designers stay in the loop on engineering progress without polling developers, developers always have the right spec attached to their PR, and nothing ships that the design team hasn't been able to review.",
     useCases: [
       {
         title: "Attach Figma specs to pull requests automatically",
@@ -206,7 +206,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         title: "Track design implementation status in Figma",
         description:
-          "GAIA updates Figma frame annotations or comments with GitHub PR status — open, in review, merged, or reverted — giving designers a real-time implementation tracker directly inside their design files.",
+          "GAIA updates Figma frame annotations or comments with GitHub PR status (open, in review, merged, or reverted), giving designers a real-time implementation tracker directly inside their design files.",
       },
       {
         title: "Flag design-code mismatches for review",
@@ -228,12 +228,12 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         step: "Set up your design-to-code mapping",
         description:
-          "Tell GAIA how to match GitHub branches or PRs to Figma pages and frames — whether by naming convention, explicit Figma links in PR descriptions, or component names. You can configure notification preferences for designers per file or page.",
+          "Tell GAIA how to match GitHub branches or PRs to Figma pages and frames, whether by naming convention, explicit Figma links in PR descriptions, or component names. You can configure notification preferences for designers per file or page.",
       },
       {
         step: "GAIA bridges design and code automatically",
         description:
-          "GAIA handles the communication between Figma and GitHub continuously. Design specs appear on PRs without developer effort, and designers receive automatic updates when their work ships — no Slack pings or status meetings required.",
+          "GAIA handles the communication between Figma and GitHub continuously. Design specs appear on PRs without developer effort, and designers receive automatic updates when their work ships. No Slack pings or status meetings required.",
       },
     ],
     faqs: [
@@ -301,7 +301,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         title: "Daily contributor digest in Discord",
         description:
-          "Each day GAIA posts a digest of the previous day's GitHub activity to Discord — merged PRs, resolved issues, new contributors, and open PRs awaiting review — keeping the entire community informed at a glance.",
+          "Each day GAIA posts a digest of the previous day's GitHub activity to Discord (merged PRs, resolved issues, new contributors, and open PRs awaiting review), keeping the entire community informed at a glance.",
       },
     ],
     howItWorks: [
@@ -449,12 +449,12 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       "developer kanban automation",
     ],
     intro:
-      "Small development teams and indie developers often use Trello for its simple kanban boards and GitHub for source control, but keeping a Trello board up to date with what is actually happening in GitHub is a manual, error-prone process. A card stays in 'In Progress' long after the PR has merged. Cards in 'Ready for Review' have no link back to the actual GitHub PR. The Trello board that started as a live project tracker becomes a stale to-do list that nobody trusts.\n\nGAIA connects GitHub and Trello so the board updates itself as code moves through the development pipeline. When a developer pushes a branch tied to a Trello card, GAIA moves the card to 'In Progress.' When the PR is opened, the card moves to 'In Review' and a GitHub link appears in the card. When the PR merges, the card moves to 'Done' automatically. The board reflects the real state of the project at all times.\n\nThis integration is perfect for small product teams, freelancers managing client projects in Trello, and any team that wants the simplicity of Trello with the automation power of a connected engineering workflow. No plugins, no Trello Power-Ups required — GAIA handles the bridge.",
+      "Small development teams and indie developers often use Trello for its simple kanban boards and GitHub for source control, but keeping a Trello board up to date with what is actually happening in GitHub is a manual, error-prone process. A card stays in 'In Progress' long after the PR has merged. Cards in 'Ready for Review' have no link back to the actual GitHub PR. The Trello board that started as a live project tracker becomes a stale to-do list that nobody trusts.\n\nGAIA connects GitHub and Trello so the board updates itself as code moves through the development pipeline. When a developer pushes a branch tied to a Trello card, GAIA moves the card to 'In Progress.' When the PR is opened, the card moves to 'In Review' and a GitHub link appears in the card. When the PR merges, the card moves to 'Done' automatically. The board reflects the real state of the project at all times.\n\nThis integration is perfect for small product teams, freelancers managing client projects in Trello, and any team that wants the simplicity of Trello with the automation power of a connected engineering workflow. No plugins, no Trello Power-Ups required. GAIA handles the bridge.",
     useCases: [
       {
         title: "Move Trello cards through lists based on PR status",
         description:
-          "GAIA maps GitHub PR lifecycle events to Trello list transitions. Opening a PR moves the card to 'Code Review,' a passed CI run moves it to 'Ready to Merge,' and a successful merge moves it to 'Done' — all without the developer touching Trello.",
+          "GAIA maps GitHub PR lifecycle events to Trello list transitions. Opening a PR moves the card to 'Code Review,' a passed CI run moves it to 'Ready to Merge,' and a successful merge moves it to 'Done', all without the developer touching Trello.",
       },
       {
         title: "Create Trello cards from GitHub issues",
@@ -491,7 +491,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         step: "GAIA automates your Trello board from GitHub",
         description:
-          "GAIA listens for GitHub webhook events and moves, updates, and comments on Trello cards accordingly. Your board becomes a live, accurate reflection of development progress that the whole team — technical and non-technical — can follow.",
+          "GAIA listens for GitHub webhook events and moves, updates, and comments on Trello cards accordingly. Your board becomes a live, accurate reflection of development progress that the whole team (technical and non-technical) can follow.",
       },
     ],
     faqs: [
@@ -620,12 +620,12 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       "developer meeting automation",
     ],
     intro:
-      "Code reviews that require synchronous discussion are a common bottleneck in engineering workflows. A reviewer leaves a complex comment on a GitHub PR, the developer responds in a thread, and the back-and-forth takes days to resolve what a ten-minute Zoom call could address immediately. But scheduling that call requires leaving GitHub, opening a calendar, finding available time, creating a Zoom link, and sharing it — a process that rarely happens quickly enough to prevent the PR from stalling.\n\nGAIA connects GitHub and Zoom to make synchronous code review as easy as leaving a comment. A developer or reviewer can ask GAIA to schedule a code review meeting directly from a PR comment, and GAIA will find available time, create a Zoom meeting, and post the link back to the PR thread within seconds. After the meeting ends, GAIA posts a summary of the discussion back to the GitHub issue or PR as a comment, creating a permanent record of decisions made without anyone having to manually document the call.\n\nThis integration is valuable for distributed engineering teams where asynchronous code review occasionally requires a quick sync, for engineering managers who want all architectural decisions documented in GitHub regardless of how they were made, and for any team that wants to reduce the friction between async and sync collaboration in their development workflow.",
+      "Code reviews that require synchronous discussion are a common bottleneck in engineering workflows. A reviewer leaves a complex comment on a GitHub PR, the developer responds in a thread, and the back-and-forth takes days to resolve what a ten-minute Zoom call could address immediately. But scheduling that call requires leaving GitHub, opening a calendar, finding available time, creating a Zoom link, and sharing it, a process that rarely happens quickly enough to prevent the PR from stalling.\n\nGAIA connects GitHub and Zoom to make synchronous code review as easy as leaving a comment. A developer or reviewer can ask GAIA to schedule a code review meeting directly from a PR comment, and GAIA will find available time, create a Zoom meeting, and post the link back to the PR thread within seconds. After the meeting ends, GAIA posts a summary of the discussion back to the GitHub issue or PR as a comment, creating a permanent record of decisions made without anyone having to manually document the call.\n\nThis integration is valuable for distributed engineering teams where asynchronous code review occasionally requires a quick sync, for engineering managers who want all architectural decisions documented in GitHub regardless of how they were made, and for any team that wants to reduce the friction between async and sync collaboration in their development workflow.",
     useCases: [
       {
         title: "Schedule code review meetings from PR comments",
         description:
-          "When a developer comments '@gaia schedule review meeting' on a pull request, GAIA checks participants' calendars, finds the next available slot, creates a Zoom meeting, and posts the join link back to the PR thread — all within seconds.",
+          "When a developer comments '@gaia schedule review meeting' on a pull request, GAIA checks participants' calendars, finds the next available slot, creates a Zoom meeting, and posts the join link back to the PR thread, all within seconds.",
       },
       {
         title: "Post Zoom meeting summaries to GitHub issues",
@@ -640,7 +640,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         title: "Notify PR participants when a review meeting is scheduled",
         description:
-          "When a Zoom meeting is scheduled for a specific PR, GAIA automatically notifies all PR participants — author, reviewers, and commenters — via GitHub comment and email so no one misses the synchronous discussion.",
+          "When a Zoom meeting is scheduled for a specific PR, GAIA automatically notifies all PR participants (author, reviewers, and commenters) via GitHub comment and email so no one misses the synchronous discussion.",
       },
       {
         title:
@@ -768,7 +768,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       },
       {
         question:
-          "What happens if a ClickUp task is deleted — does GAIA delete the Notion page?",
+          "What happens if a ClickUp task is deleted: does GAIA delete the Notion page?",
         answer:
           "No. GAIA does not delete Notion content by default when a ClickUp task is removed. Instead, it updates the Notion page with a 'Task deleted in ClickUp' status note. Deletion must be explicitly configured or performed manually to prevent accidental data loss.",
       },
@@ -815,7 +815,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         title: "Generate Notion project summaries from Trello board state",
         description:
-          "GAIA can generate a structured Notion page summarizing the current state of a Trello board — cards by list, overdue cards, recently completed work, and upcoming deadlines — providing a narrative project status update that complements the visual kanban view.",
+          "GAIA can generate a structured Notion page summarizing the current state of a Trello board (cards by list, overdue cards, recently completed work, and upcoming deadlines), providing a narrative project status update that complements the visual kanban view.",
       },
       {
         title: "Archive Trello board history to Notion",
@@ -902,7 +902,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         title: "Notify designers when Notion specs are updated",
         description:
-          "When a product manager updates a Notion feature spec, GAIA notifies the assigned designer with a summary of what changed so they can update the Figma design accordingly — closing the feedback loop between product and design without a manual handoff meeting.",
+          "When a product manager updates a Notion feature spec, GAIA notifies the assigned designer with a summary of what changed so they can update the Figma design accordingly, closing the feedback loop between product and design without a manual handoff meeting.",
       },
       {
         title: "Generate Notion design review checklists from Figma components",
@@ -1086,7 +1086,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         step: "Connect Notion and Microsoft Teams to GAIA",
         description:
-          "Authenticate your Notion workspace and Microsoft Teams organization through GAIA's integration settings. GAIA uses OAuth for both platforms and only requests the minimum permissions needed — message send for Teams and page read/write for Notion.",
+          "Authenticate your Notion workspace and Microsoft Teams organization through GAIA's integration settings. GAIA uses OAuth for both platforms and only requests the minimum permissions needed: message send for Teams and page read/write for Notion.",
       },
       {
         step: "Configure your information flow rules",
@@ -1140,12 +1140,12 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       "business metrics Notion database",
     ],
     intro:
-      "Founders, product managers, and business teams use Notion to run their operations and Stripe to process payments, but revenue data stays siloed inside Stripe's dashboard. Key metrics like MRR, churn rate, and new subscriptions are not visible in the Notion workspace where strategy is planned and OKRs are tracked. Payment failures require manual investigation in Stripe rather than appearing automatically in the operational context where action items are managed. The business intelligence that lives in Stripe never finds its way into the Notion workspace where decisions are made.\n\nGAIA connects Stripe and Notion to bring revenue data into your operational hub. Key Stripe metrics can be synced to a Notion database on a regular schedule, giving you an always-current financial snapshot alongside your product plans and team OKRs. Payment events — successful charges, subscription starts, cancellations, and failed payments — can be routed to Notion pages as notifications so the right people can act on them without needing Stripe dashboard access.\n\nThis integration is especially valuable for SaaS founders using Notion as their company operating system, for finance teams that want revenue metrics in the same workspace as their planning documents, and for customer success teams that need to see payment and subscription status alongside their customer notes in Notion.",
+      "Founders, product managers, and business teams use Notion to run their operations and Stripe to process payments, but revenue data stays siloed inside Stripe's dashboard. Key metrics like MRR, churn rate, and new subscriptions are not visible in the Notion workspace where strategy is planned and OKRs are tracked. Payment failures require manual investigation in Stripe rather than appearing automatically in the operational context where action items are managed. The business intelligence that lives in Stripe never finds its way into the Notion workspace where decisions are made.\n\nGAIA connects Stripe and Notion to bring revenue data into your operational hub. Key Stripe metrics can be synced to a Notion database on a regular schedule, giving you an always-current financial snapshot alongside your product plans and team OKRs. Payment events (successful charges, subscription starts, cancellations, and failed payments) can be routed to Notion pages as notifications so the right people can act on them without needing Stripe dashboard access.\n\nThis integration is especially valuable for SaaS founders using Notion as their company operating system, for finance teams that want revenue metrics in the same workspace as their planning documents, and for customer success teams that need to see payment and subscription status alongside their customer notes in Notion.",
     useCases: [
       {
         title: "Daily revenue metrics in a Notion database",
         description:
-          "GAIA pulls key Stripe metrics — MRR, ARR, new subscriptions, churned revenue, active customers — on a daily schedule and writes them to a structured Notion database so your revenue dashboard lives in the same workspace as your company goals and plans.",
+          "GAIA pulls key Stripe metrics (MRR, ARR, new subscriptions, churned revenue, active customers) on a daily schedule and writes them to a structured Notion database so your revenue dashboard lives in the same workspace as your company goals and plans.",
       },
       {
         title: "New subscription alerts in Notion",
@@ -1172,7 +1172,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         step: "Connect Notion and Stripe to GAIA",
         description:
-          "Authenticate your Notion workspace and connect your Stripe account using a restricted Stripe API key with read-only access. GAIA never writes to Stripe — it only reads revenue data and event webhooks to populate your Notion workspace.",
+          "Authenticate your Notion workspace and connect your Stripe account using a restricted Stripe API key with read-only access. GAIA never writes to Stripe; it only reads revenue data and event webhooks to populate your Notion workspace.",
       },
       {
         step: "Configure your metrics and alert preferences",
@@ -1198,9 +1198,9 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
           "Yes. If you operate multiple businesses or brands with separate Stripe accounts, GAIA can sync data from each account into the same Notion workspace, using a source property in the database to distinguish which account each entry belongs to.",
       },
       {
-        question: "How current is the Stripe data in Notion — is it real-time?",
+        question: "How current is the Stripe data in Notion: is it real-time?",
         answer:
-          "Event-based data like new subscriptions, cancellations, and payment failures is synced in near real-time via Stripe webhooks. Aggregate metrics like MRR and ARR are synced on the schedule you configure — daily is the default, but hourly is available for teams that need more frequent updates.",
+          "Event-based data like new subscriptions, cancellations, and payment failures is synced in near real-time via Stripe webhooks. Aggregate metrics like MRR and ARR are synced on the schedule you configure. Daily is the default, but hourly is available for teams that need more frequent updates.",
       },
     ],
   },
@@ -1225,7 +1225,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       "database sync automation",
     ],
     intro:
-      "Notion and Airtable are both powerful database tools, and many teams use both — Notion for documentation-rich, narrative-style databases and Airtable for structured, spreadsheet-like data that requires complex filtering, formulas, and API access. But when the same records need to exist in both systems, teams face a painful choice: maintain two separate databases manually, or accept that one will always be out of date.\n\nGAIA eliminates this dilemma by keeping Notion databases and Airtable bases synchronized automatically. Records created in Airtable appear in Notion. Updates made to Notion properties propagate to Airtable fields. Teams can use whichever interface suits their workflow — Airtable's grid for data analysis, Notion's page view for narrative context — and always see the same underlying data. Data migration from Notion to Airtable (or vice versa) can be initiated with a single GAIA command rather than a manual export-import cycle.\n\nThis integration is valuable for operations teams that need Airtable's relational database power alongside Notion's wiki capabilities, for content teams that manage editorial calendars in both tools, and for any organization transitioning between the two platforms and needing a smooth, automated migration path.",
+      "Notion and Airtable are both powerful database tools, and many teams use both: Notion for documentation-rich, narrative-style databases and Airtable for structured, spreadsheet-like data that requires complex filtering, formulas, and API access. But when the same records need to exist in both systems, teams face a painful choice: maintain two separate databases manually, or accept that one will always be out of date.\n\nGAIA eliminates this dilemma by keeping Notion databases and Airtable bases synchronized automatically. Records created in Airtable appear in Notion. Updates made to Notion properties propagate to Airtable fields. Teams can use whichever interface suits their workflow (Airtable's grid for data analysis, Notion's page view for narrative context) and always see the same underlying data. Data migration from Notion to Airtable (or vice versa) can be initiated with a single GAIA command rather than a manual export-import cycle.\n\nThis integration is valuable for operations teams that need Airtable's relational database power alongside Notion's wiki capabilities, for content teams that manage editorial calendars in both tools, and for any organization transitioning between the two platforms and needing a smooth, automated migration path.",
     useCases: [
       {
         title: "Bidirectional database sync between Notion and Airtable",
@@ -1235,7 +1235,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         title: "Migrate data from Notion to Airtable on demand",
         description:
-          "When your team decides to move a Notion database to Airtable, GAIA handles the migration automatically — mapping Notion properties to Airtable field types, preserving relations where possible, and validating the migrated records to ensure data integrity.",
+          "When your team decides to move a Notion database to Airtable, GAIA handles the migration automatically, mapping Notion properties to Airtable field types, preserving relations where possible, and validating the migrated records to ensure data integrity.",
       },
       {
         title: "Use Airtable for data analysis, Notion for narrative context",
@@ -1257,12 +1257,12 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         step: "Connect Notion and Airtable to GAIA",
         description:
-          "Authenticate your Notion workspace and Airtable account in GAIA's integration settings. Select the Notion databases and Airtable bases that should be linked, and configure the sync direction — one-way push, one-way pull, or fully bidirectional.",
+          "Authenticate your Notion workspace and Airtable account in GAIA's integration settings. Select the Notion databases and Airtable bases that should be linked, and configure the sync direction: one-way push, one-way pull, or fully bidirectional.",
       },
       {
         step: "Map fields between Notion and Airtable",
         description:
-          "GAIA guides you through matching Notion property types to Airtable field types. For properties with no direct equivalent, GAIA offers mapping options — for example, Notion rich text to an Airtable long text field or a Notion multi-select to an Airtable multiple select.",
+          "GAIA guides you through matching Notion property types to Airtable field types. For properties with no direct equivalent, GAIA offers mapping options, for example Notion rich text to an Airtable long text field or a Notion multi-select to an Airtable multiple select.",
       },
       {
         step: "GAIA syncs your databases continuously",
@@ -1280,7 +1280,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         question: "Can GAIA handle Airtable formula fields during sync?",
         answer:
-          "Airtable formula fields are read-only computed values. GAIA can read and push formula field results to Notion as static values, but it does not replicate Airtable formulas in Notion — the formula logic itself stays in Airtable and only the computed result is synced.",
+          "Airtable formula fields are read-only computed values. GAIA can read and push formula field results to Notion as static values, but it does not replicate Airtable formulas in Notion; the formula logic itself stays in Airtable and only the computed result is synced.",
       },
       {
         question:
@@ -1311,7 +1311,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       "file and documentation management",
     ],
     intro:
-      "Teams that use Notion as their primary wiki and Google Drive for file storage inevitably end up with two parallel organizational systems that do not know each other exists. A Notion project page has no link to the Drive folder with the relevant files. A Drive folder full of project assets has no connection to the Notion page where the project is documented. Finding everything related to a project means hunting across two separate systems with different organizational logic.\n\nGAIA creates a unified organizational layer between Notion and Google Drive. When a Notion project page is created, GAIA can automatically create a corresponding Google Drive folder and link it in the Notion page. When a new file is added to a Drive folder, GAIA can attach it to the linked Notion page as an embedded file reference. The result is a project ecosystem where documentation and files are always connected — click from the Notion page to the Drive folder, or from Drive back to the Notion context.\n\nThis integration is essential for content teams managing production assets, design teams linking deliverables to project specs, and any knowledge-intensive organization that wants a single entry point to all project-related information regardless of whether it lives in a Google Doc or a Notion page.",
+      "Teams that use Notion as their primary wiki and Google Drive for file storage inevitably end up with two parallel organizational systems that do not know each other exists. A Notion project page has no link to the Drive folder with the relevant files. A Drive folder full of project assets has no connection to the Notion page where the project is documented. Finding everything related to a project means hunting across two separate systems with different organizational logic.\n\nGAIA creates a unified organizational layer between Notion and Google Drive. When a Notion project page is created, GAIA can automatically create a corresponding Google Drive folder and link it in the Notion page. When a new file is added to a Drive folder, GAIA can attach it to the linked Notion page as an embedded file reference. The result is a project ecosystem where documentation and files are always connected: click from the Notion page to the Drive folder, or from Drive back to the Notion context.\n\nThis integration is essential for content teams managing production assets, design teams linking deliverables to project specs, and any knowledge-intensive organization that wants a single entry point to all project-related information regardless of whether it lives in a Google Doc or a Notion page.",
     useCases: [
       {
         title: "Auto-create Drive folders when Notion projects are created",
@@ -1326,7 +1326,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         title: "Mirror Notion workspace structure in Google Drive",
         description:
-          "GAIA can generate a Google Drive folder hierarchy that mirrors your Notion workspace structure — creating team, project, and document-level folders that correspond to your Notion pages — so file storage and documentation share the same organizational logic.",
+          "GAIA can generate a Google Drive folder hierarchy that mirrors your Notion workspace structure (creating team, project, and document-level folders that correspond to your Notion pages) so file storage and documentation share the same organizational logic.",
       },
       {
         title: "Sync Google Doc titles with Notion page titles",
@@ -1397,7 +1397,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       "meeting documentation automation",
     ],
     intro:
-      "Zoom meetings generate enormous amounts of valuable information — decisions, action items, project updates, and strategic discussions — but almost none of it gets documented in a systematic way. Meeting notes end up in someone's personal document, never linked to the Notion pages where the relevant projects are tracked. Transcripts pile up in Zoom's cloud storage, unsearchable and disconnected from the rest of the team's knowledge base. The same decisions get made in meetings repeatedly because no one can find the record of the previous discussion.\n\nGAIA automatically bridges Zoom and Notion to capture every meeting's value into your knowledge base. When a Zoom meeting ends, GAIA generates a structured summary from the transcript — highlighting key decisions, action items, participants, and topics discussed — and posts it to the designated Notion page. Recurring meetings build a chronological archive of notes in Notion automatically. Action items extracted from meeting transcripts become Notion tasks linked to the right project pages.\n\nThis integration transforms how organizations use meeting time. Participants can focus on the conversation instead of frantic note-taking. Anyone who misses a meeting can read the Notion summary in minutes. Leaders can track decisions and commitments across all meetings from a central Notion database. The institutional knowledge generated in Zoom finally has a permanent, organized home.",
+      "Zoom meetings generate enormous amounts of valuable information (decisions, action items, project updates, and strategic discussions), but almost none of it gets documented in a systematic way. Meeting notes end up in someone's personal document, never linked to the Notion pages where the relevant projects are tracked. Transcripts pile up in Zoom's cloud storage, unsearchable and disconnected from the rest of the team's knowledge base. The same decisions get made in meetings repeatedly because no one can find the record of the previous discussion.\n\nGAIA automatically bridges Zoom and Notion to capture every meeting's value into your knowledge base. When a Zoom meeting ends, GAIA generates a structured summary from the transcript (highlighting key decisions, action items, participants, and topics discussed) and posts it to the designated Notion page. Recurring meetings build a chronological archive of notes in Notion automatically. Action items extracted from meeting transcripts become Notion tasks linked to the right project pages.\n\nThis integration transforms how organizations use meeting time. Participants can focus on the conversation instead of frantic note-taking. Anyone who misses a meeting can read the Notion summary in minutes. Leaders can track decisions and commitments across all meetings from a central Notion database. The institutional knowledge generated in Zoom finally has a permanent, organized home.",
     useCases: [
       {
         title: "Auto-generate meeting notes in Notion after every Zoom call",
@@ -1407,7 +1407,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         title: "Extract and create Notion tasks from action items",
         description:
-          "GAIA parses Zoom transcripts for commitments and action items — 'John will send the report by Friday,' 'we need to update the pricing page' — and creates corresponding Notion tasks assigned to the right team members with appropriate due dates.",
+          "GAIA parses Zoom transcripts for commitments and action items ('John will send the report by Friday,' 'we need to update the pricing page') and creates corresponding Notion tasks assigned to the right team members with appropriate due dates.",
       },
       {
         title: "Build a searchable meeting archive in Notion",
@@ -1434,7 +1434,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         step: "Configure your meeting note preferences",
         description:
-          "Tell GAIA how to structure meeting notes in Notion — which properties to populate, how to format summaries, how to identify action items, and how to match meetings to the right Notion project pages. You can configure different templates for different meeting types.",
+          "Tell GAIA how to structure meeting notes in Notion: which properties to populate, how to format summaries, how to identify action items, and how to match meetings to the right Notion project pages. You can configure different templates for different meeting types.",
       },
       {
         step: "GAIA documents every meeting in Notion automatically",
@@ -1481,7 +1481,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       "sales documentation workflow",
     ],
     intro:
-      "Sales teams live in HubSpot while the broader organization — product, customer success, engineering — works in Notion. The result is that customer context stays locked inside HubSpot, accessible only to sales team members. Important customer feedback, special agreements, implementation notes, and relationship history never make it into the Notion workspace where product decisions are made and customer success plans are documented. When a deal closes, the context that sales built up over months of relationship development rarely transfers to the team that will actually deliver the product.\n\nGAIA connects HubSpot and Notion to make customer intelligence accessible across the organization. HubSpot contacts, companies, and deals can be synced to Notion databases where product, engineering, and success teams can add context, documentation, and notes alongside the CRM data. When a deal moves to a new stage in HubSpot, the linked Notion page updates automatically. When a customer success manager adds implementation notes to Notion, GAIA can push key data points back to the HubSpot record.\n\nThis integration is transformative for customer-centric organizations that want to break down the silos between sales, product, and success. It is especially valuable during the critical handoff from sales to implementation, where all the context a sales rep built needs to flow immediately to the people responsible for delivering on the promise.",
+      "Sales teams live in HubSpot while the broader organization (product, customer success, engineering) works in Notion. The result is that customer context stays locked inside HubSpot, accessible only to sales team members. Important customer feedback, special agreements, implementation notes, and relationship history never make it into the Notion workspace where product decisions are made and customer success plans are documented. When a deal closes, the context that sales built up over months of relationship development rarely transfers to the team that will actually deliver the product.\n\nGAIA connects HubSpot and Notion to make customer intelligence accessible across the organization. HubSpot contacts, companies, and deals can be synced to Notion databases where product, engineering, and success teams can add context, documentation, and notes alongside the CRM data. When a deal moves to a new stage in HubSpot, the linked Notion page updates automatically. When a customer success manager adds implementation notes to Notion, GAIA can push key data points back to the HubSpot record.\n\nThis integration is transformative for customer-centric organizations that want to break down the silos between sales, product, and success. It is especially valuable during the critical handoff from sales to implementation, where all the context a sales rep built needs to flow immediately to the people responsible for delivering on the promise.",
     useCases: [
       {
         title: "Sync HubSpot deals to a Notion pipeline database",
@@ -1513,7 +1513,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         step: "Connect Notion and HubSpot to GAIA",
         description:
-          "Authenticate your Notion workspace and HubSpot portal through GAIA's integration settings. Select which HubSpot objects — contacts, companies, deals, or tickets — should sync to Notion, and which Notion databases should receive them.",
+          "Authenticate your Notion workspace and HubSpot portal through GAIA's integration settings. Select which HubSpot objects (contacts, companies, deals, or tickets) should sync to Notion, and which Notion databases should receive them.",
       },
       {
         step: "Configure your data mapping and sync rules",
@@ -1540,7 +1540,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       },
       {
         question:
-          "Is bidirectional sync safe — could Notion changes overwrite important HubSpot data?",
+          "Is bidirectional sync safe: could Notion changes overwrite important HubSpot data?",
         answer:
           "GAIA's bidirectional sync is carefully managed. By default, GAIA only writes to HubSpot fields that you explicitly designate as writable, and all Notion-to-HubSpot sync is logged. We recommend starting with one-way HubSpot-to-Notion sync and enabling bidirectional sync selectively after validating the field mappings.",
       },
@@ -1567,7 +1567,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       "GitHub Jira workflow",
     ],
     intro:
-      "Most engineering teams use both GitHub for code and Jira for project tracking, but keeping them synchronized is a constant manual chore. A developer merges a PR and forgets to move the Jira ticket to Done. A Jira issue gets closed by a product manager before the code is even reviewed. The sprint board drifts out of sync with the actual state of the codebase, and velocity reports become unreliable.\n\nGAIA automates the handoff between GitHub and Jira so the two systems stay consistent without anyone having to remember to update both. When a PR is opened, GAIA transitions the linked Jira ticket to In Review. When the PR is merged, the ticket moves to Done automatically. When a Jira issue is created and added to a sprint, GAIA can open a corresponding GitHub issue or branch to match.\n\nFor engineering managers, this means sprint boards that accurately reflect code reality. For developers, it means one less context switch—write the code, merge the PR, and trust that the project tracker will catch up on its own.",
+      "Most engineering teams use both GitHub for code and Jira for project tracking, but keeping them synchronized is a constant manual chore. A developer merges a PR and forgets to move the Jira ticket to Done. A Jira issue gets closed by a product manager before the code is even reviewed. The sprint board drifts out of sync with the actual state of the codebase, and velocity reports become unreliable.\n\nGAIA automates the handoff between GitHub and Jira so the two systems stay consistent without anyone having to remember to update both. When a PR is opened, GAIA transitions the linked Jira ticket to In Review. When the PR is merged, the ticket moves to Done automatically. When a Jira issue is created and added to a sprint, GAIA can open a corresponding GitHub issue or branch to match.\n\nFor engineering managers, this means sprint boards that accurately reflect code reality. For developers, it means one less context switch: write the code, merge the PR, and trust that the project tracker will catch up on its own.",
     useCases: [
       {
         title: "Auto-transition Jira tickets on PR events",
@@ -1582,7 +1582,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         title: "Post PR review status to Jira ticket comments",
         description:
-          "GAIA posts a comment on the Jira ticket whenever the linked PR receives a review—approved, changes requested, or commented—so product managers can follow code review progress without needing GitHub access.",
+          "GAIA posts a comment on the Jira ticket whenever the linked PR receives a review (approved, changes requested, or commented) so product managers can follow code review progress without needing GitHub access.",
       },
       {
         title: "Failed CI notification on Jira tickets",
@@ -1657,7 +1657,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       "GitHub HubSpot workflow",
     ],
     intro:
-      "Sales and engineering teams operate in separate worlds—one focused on deals and customer relationships in HubSpot, the other tracking code and releases in GitHub. When a customer's requested feature finally ships, the sales rep who promised it often finds out days later, missing the opportunity to re-engage the prospect at exactly the right moment.\n\nGAIA creates a live connection between GitHub and HubSpot so engineering releases automatically surface in your CRM. When a release is published in GitHub, GAIA logs it as an activity on relevant HubSpot deals and accounts, notifies the owning AE, and can even trigger a follow-up task to reach out to customers who requested that feature.\n\nFor product-led growth companies, this integration also lets you tie engagement signals from GitHub—like when an enterprise customer first uses a new API endpoint—back to the HubSpot contact record, giving your sales team richer context for their conversations.",
+      "Sales and engineering teams operate in separate worlds: one focused on deals and customer relationships in HubSpot, the other tracking code and releases in GitHub. When a customer's requested feature finally ships, the sales rep who promised it often finds out days later, missing the opportunity to re-engage the prospect at exactly the right moment.\n\nGAIA creates a live connection between GitHub and HubSpot so engineering releases automatically surface in your CRM. When a release is published in GitHub, GAIA logs it as an activity on relevant HubSpot deals and accounts, notifies the owning AE, and can even trigger a follow-up task to reach out to customers who requested that feature.\n\nFor product-led growth companies, this integration also lets you tie engagement signals from GitHub (like when an enterprise customer first uses a new API endpoint) back to the HubSpot contact record, giving your sales team richer context for their conversations.",
     useCases: [
       {
         title: "Notify sales reps when requested features ship",
@@ -1694,7 +1694,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         step: "Map GitHub events to HubSpot records",
         description:
-          "Define how GitHub releases map to HubSpot deals—by customer label, milestone name, or repository. Configure which events create tasks, log activities, or send notifications to deal owners.",
+          "Define how GitHub releases map to HubSpot deals: by customer label, milestone name, or repository. Configure which events create tasks, log activities, or send notifications to deal owners.",
       },
       {
         step: "GAIA keeps sales informed as code ships",
@@ -1749,7 +1749,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       "GitHub Salesforce workflow",
     ],
     intro:
-      "Enterprise sales cycles often hinge on engineering commitments—a prospect is waiting for a specific feature before signing, or a renewal is contingent on a bug fix being resolved. Yet in most organizations, the Salesforce opportunity and the GitHub milestone tracking that work exist in complete isolation. Account executives learn about releases through Slack messages or hallway conversations rather than automated, reliable notifications.\n\nGAIA creates a live connection between GitHub and Salesforce so engineering output automatically surfaces in your CRM. When a release is published in GitHub, GAIA logs the event against the relevant Salesforce opportunities and accounts, notifies the owning AE, and can advance the opportunity stage if the release satisfies a committed deliverable.\n\nFor enterprise engineering teams, this integration also works in reverse: when a high-value Salesforce opportunity is marked Closed Won, GAIA can create a GitHub milestone for the onboarding work, ensuring implementation starts immediately with full context about what was promised.",
+      "Enterprise sales cycles often hinge on engineering commitments: a prospect is waiting for a specific feature before signing, or a renewal is contingent on a bug fix being resolved. Yet in most organizations, the Salesforce opportunity and the GitHub milestone tracking that work exist in complete isolation. Account executives learn about releases through Slack messages or hallway conversations rather than automated, reliable notifications.\n\nGAIA creates a live connection between GitHub and Salesforce so engineering output automatically surfaces in your CRM. When a release is published in GitHub, GAIA logs the event against the relevant Salesforce opportunities and accounts, notifies the owning AE, and can advance the opportunity stage if the release satisfies a committed deliverable.\n\nFor enterprise engineering teams, this integration also works in reverse: when a high-value Salesforce opportunity is marked Closed Won, GAIA can create a GitHub milestone for the onboarding work, ensuring implementation starts immediately with full context about what was promised.",
     useCases: [
       {
         title: "Log GitHub releases to Salesforce opportunity timelines",
@@ -1815,7 +1815,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
         question:
           "Is this secure for enterprise Salesforce orgs with strict data policies?",
         answer:
-          "Yes. GAIA uses OAuth 2.0 with Salesforce's standard connected app mechanism. No GitHub code or sensitive data is stored in Salesforce—only metadata like release names, dates, and links.",
+          "Yes. GAIA uses OAuth 2.0 with Salesforce's standard connected app mechanism. No GitHub code or sensitive data is stored in Salesforce, only metadata like release names, dates, and links.",
       },
     ],
   },
@@ -1840,7 +1840,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       "developer Teams notifications",
     ],
     intro:
-      "Microsoft Teams is the communication hub for many enterprise engineering teams, yet GitHub activity—PR reviews, issue escalations, release announcements—rarely surfaces there without manual effort. Developers have to monitor GitHub notifications separately, copy-paste important updates into Teams manually, and remind teammates about pending code reviews through ad-hoc messages.\n\nGAIA automates the flow of GitHub events into Microsoft Teams so your entire organization stays informed about code activity in the tools they already use. PR review requests appear in the relevant Teams channel. Release notes are posted when a new version ships. Critical bugs trigger adaptive card notifications that the team can act on without leaving Teams.\n\nFor enterprise organizations where Teams is the standard, this integration is essential for bridging the gap between the developer-facing GitHub workflow and the broader business communication happening in Teams, ensuring visibility without forcing non-developers to monitor GitHub directly.",
+      "Microsoft Teams is the communication hub for many enterprise engineering teams, yet GitHub activity (PR reviews, issue escalations, release announcements) rarely surfaces there without manual effort. Developers have to monitor GitHub notifications separately, copy-paste important updates into Teams manually, and remind teammates about pending code reviews through ad-hoc messages.\n\nGAIA automates the flow of GitHub events into Microsoft Teams so your entire organization stays informed about code activity in the tools they already use. PR review requests appear in the relevant Teams channel. Release notes are posted when a new version ships. Critical bugs trigger adaptive card notifications that the team can act on without leaving Teams.\n\nFor enterprise organizations where Teams is the standard, this integration is essential for bridging the gap between the developer-facing GitHub workflow and the broader business communication happening in Teams, ensuring visibility without forcing non-developers to monitor GitHub directly.",
     useCases: [
       {
         title: "PR review requests posted to Teams",
@@ -1896,7 +1896,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
         question:
           "Does GAIA work with Teams private channels and guest access?",
         answer:
-          "GAIA can post to public and private Teams channels that the GAIA bot has been added to. Guest access permissions are respected—GAIA will only post to channels where it has been explicitly granted access.",
+          "GAIA can post to public and private Teams channels that the GAIA bot has been added to. Guest access permissions are respected; GAIA will only post to channels where it has been explicitly granted access.",
       },
       {
         question:
@@ -1933,7 +1933,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       "GitHub Stripe workflow",
     ],
     intro:
-      "Payment engineering is high stakes—a breaking change to Stripe integration code or a billing feature shipped without coordinated Stripe product configuration can result in failed charges, broken checkouts, and revenue loss. Yet many engineering teams manage their GitHub and Stripe workflows in complete isolation, without guardrails that catch dangerous coordination errors before they reach production.\n\nGAIA connects GitHub and Stripe to add safety and coordination to payment engineering workflows. When a PR touches Stripe-related files, GAIA automatically flags it for extra review scrutiny and checks against current Stripe API versions. When a billing feature is deployed via a GitHub release, GAIA can verify that the corresponding Stripe product or price configuration has been updated before the release goes live.\n\nFor SaaS engineering teams, this integration provides the coordination layer between code deployments and billing infrastructure that currently relies on manual checklists and Slack reminders, replacing tribal knowledge with automated guardrails.",
+      "Payment engineering is high stakes: a breaking change to Stripe integration code or a billing feature shipped without coordinated Stripe product configuration can result in failed charges, broken checkouts, and revenue loss. Yet many engineering teams manage their GitHub and Stripe workflows in complete isolation, without guardrails that catch dangerous coordination errors before they reach production.\n\nGAIA connects GitHub and Stripe to add safety and coordination to payment engineering workflows. When a PR touches Stripe-related files, GAIA automatically flags it for extra review scrutiny and checks against current Stripe API versions. When a billing feature is deployed via a GitHub release, GAIA can verify that the corresponding Stripe product or price configuration has been updated before the release goes live.\n\nFor SaaS engineering teams, this integration provides the coordination layer between code deployments and billing infrastructure that currently relies on manual checklists and Slack reminders, replacing tribal knowledge with automated guardrails.",
     useCases: [
       {
         title: "Flag PRs that touch payment code for extra review",
@@ -2024,7 +2024,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       "GitHub Airtable workflow",
     ],
     intro:
-      "Airtable's flexible database structure makes it the go-to tool for custom project tracking, roadmapping, and engineering metrics—but keeping an Airtable base in sync with GitHub is a manual, time-consuming process. Issues get logged in GitHub but never make it to the roadmap base. PRs are merged but the corresponding Airtable record stays stuck in In Progress. Leadership dashboards built in Airtable are always a few days behind reality.\n\nGAIA syncs GitHub and Airtable in real time so your custom project databases are always accurate. Issues created in GitHub appear in your Airtable roadmap base automatically. PR status changes update the corresponding Airtable record. Releases trigger new rows in your release tracking base with the relevant metadata.\n\nFor product-engineering teams that have built custom Airtable workflows for planning and reporting, this integration removes the manual data entry burden that makes those workflows unsustainable at scale.",
+      "Airtable's flexible database structure makes it the go-to tool for custom project tracking, roadmapping, and engineering metrics, but keeping an Airtable base in sync with GitHub is a manual, time-consuming process. Issues get logged in GitHub but never make it to the roadmap base. PRs are merged but the corresponding Airtable record stays stuck in In Progress. Leadership dashboards built in Airtable are always a few days behind reality.\n\nGAIA syncs GitHub and Airtable in real time so your custom project databases are always accurate. Issues created in GitHub appear in your Airtable roadmap base automatically. PR status changes update the corresponding Airtable record. Releases trigger new rows in your release tracking base with the relevant metadata.\n\nFor product-engineering teams that have built custom Airtable workflows for planning and reporting, this integration removes the manual data entry burden that makes those workflows unsustainable at scale.",
     useCases: [
       {
         title: "Sync GitHub issues to an Airtable roadmap base",
@@ -2044,7 +2044,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         title: "Weekly engineering metrics compiled into Airtable",
         description:
-          "GAIA compiles weekly engineering metrics—issues opened and closed, PRs merged, releases shipped—into an Airtable summary record that feeds your leadership reporting views automatically.",
+          "GAIA compiles weekly engineering metrics (issues opened and closed, PRs merged, releases shipped) into an Airtable summary record that feeds your leadership reporting views automatically.",
       },
       {
         title: "Map GitHub labels to Airtable select fields",
@@ -2061,7 +2061,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         step: "Map GitHub fields to Airtable columns",
         description:
-          "Configure how GitHub data maps to your Airtable schema—which GitHub fields populate which Airtable columns, how to handle new GitHub labels, and whether to create new records or update existing ones.",
+          "Configure how GitHub data maps to your Airtable schema: which GitHub fields populate which Airtable columns, how to handle new GitHub labels, and whether to create new records or update existing ones.",
       },
       {
         step: "GAIA keeps your Airtable base synchronized with GitHub",
@@ -2073,12 +2073,12 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         question: "Can GAIA sync data from Airtable back to GitHub?",
         answer:
-          "Yes. Two-way sync is supported—if you update an issue status in Airtable, GAIA can update the corresponding GitHub issue label or assignee. This is useful for product managers who manage priority in Airtable but want changes reflected in GitHub.",
+          "Yes. Two-way sync is supported: if you update an issue status in Airtable, GAIA can update the corresponding GitHub issue label or assignee. This is useful for product managers who manage priority in Airtable but want changes reflected in GitHub.",
       },
       {
         question: "Does GAIA work with Airtable's linked records feature?",
         answer:
-          "Yes. GAIA can create linked records in Airtable—for example, linking a PR record to the issue records it closes—preserving the relational structure of your data rather than flattening everything into a single table.",
+          "Yes. GAIA can create linked records in Airtable, for example linking a PR record to the issue records it closes, preserving the relational structure of your data rather than flattening everything into a single table.",
       },
       {
         question: "Can I use Airtable automations alongside GAIA's sync?",
@@ -2088,7 +2088,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         question: "How does GAIA handle GitHub issues that are deleted?",
         answer:
-          "When a GitHub issue is deleted, GAIA can either delete the corresponding Airtable record, mark it as deleted in a status field, or leave it as an archived record—depending on your configuration preference.",
+          "When a GitHub issue is deleted, GAIA can either delete the corresponding Airtable record, mark it as deleted in a status field, or leave it as an archived record, depending on your configuration preference.",
       },
     ],
   },
@@ -2176,7 +2176,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
         question:
           "Is this useful for teams that don't currently do video reviews?",
         answer:
-          "Absolutely. GAIA's prompts are configurable—you can start with only suggesting Looms for very large PRs or specific repositories, gradually normalizing the practice without overwhelming the team with new process requirements.",
+          "Absolutely. GAIA's prompts are configurable: you can start with only suggesting Looms for very large PRs or specific repositories, gradually normalizing the practice without overwhelming the team with new process requirements.",
       },
       {
         question:
@@ -2207,7 +2207,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       "Notion Jira workflow",
     ],
     intro:
-      "Product and engineering teams frequently maintain separate workspaces for the same information—requirements live in Notion pages while the corresponding Jira epics and tickets are maintained independently. When the Notion spec changes, the Jira tickets rarely update to match. When a Jira ticket's scope evolves during development, the Notion document doesn't reflect the change. Teams spend hours reconciling two sets of documentation that should be in sync.\n\nGAIA bridges Notion and Jira so that documentation and project tracking reinforce each other rather than drifting apart. When a Notion requirements page is finalized, GAIA can generate the corresponding Jira epic and user stories automatically. When a Jira ticket is updated with new acceptance criteria, GAIA updates the linked Notion section. When a sprint closes in Jira, GAIA updates the Notion project doc with the outcomes.\n\nFor product-engineering teams that use Notion as their spec repository and Jira as their sprint board, this integration eliminates the manual overhead of maintaining parallel documentation, ensuring that everyone—regardless of which tool they prefer—has access to accurate, current information.",
+      "Product and engineering teams frequently maintain separate workspaces for the same information: requirements live in Notion pages while the corresponding Jira epics and tickets are maintained independently. When the Notion spec changes, the Jira tickets rarely update to match. When a Jira ticket's scope evolves during development, the Notion document doesn't reflect the change. Teams spend hours reconciling two sets of documentation that should be in sync.\n\nGAIA bridges Notion and Jira so that documentation and project tracking reinforce each other rather than drifting apart. When a Notion requirements page is finalized, GAIA can generate the corresponding Jira epic and user stories automatically. When a Jira ticket is updated with new acceptance criteria, GAIA updates the linked Notion section. When a sprint closes in Jira, GAIA updates the Notion project doc with the outcomes.\n\nFor product-engineering teams that use Notion as their spec repository and Jira as their sprint board, this integration eliminates the manual overhead of maintaining parallel documentation, ensuring that everyone, regardless of which tool they prefer, has access to accurate, current information.",
     useCases: [
       {
         title: "Generate Jira epics and stories from Notion specs",
@@ -2244,7 +2244,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         step: "Map Notion pages to Jira objects",
         description:
-          "Define which Notion databases correspond to which Jira projects, how Notion properties map to Jira fields, and which triggers—like a Notion status change—should create or update Jira tickets.",
+          "Define which Notion databases correspond to which Jira projects, how Notion properties map to Jira fields, and which triggers (like a Notion status change) should create or update Jira tickets.",
       },
       {
         step: "GAIA keeps your docs and tickets in sync",
@@ -2267,7 +2267,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       },
       {
         question:
-          "What happens when a Jira ticket is deleted—does GAIA delete the Notion page?",
+          "What happens when a Jira ticket is deleted: does GAIA delete the Notion page?",
         answer:
           "No. GAIA does not delete Notion pages when a Jira ticket is removed. Instead, it marks the linked Notion record as archived or removes the Jira link property, leaving the documentation intact.",
       },
@@ -2309,7 +2309,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         title: "Sync account health data to Notion dashboards",
         description:
-          "GAIA pulls Salesforce account health indicators—renewal date, ARR, product tier, support tier—into a Notion database so your customer success team has a live dashboard without toggling between tools.",
+          "GAIA pulls Salesforce account health indicators (renewal date, ARR, product tier, support tier) into a Notion database so your customer success team has a live dashboard without toggling between tools.",
       },
       {
         title: "Create Notion meeting prep pages from Salesforce opportunities",
@@ -2390,7 +2390,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       "Notion Loom workflow",
     ],
     intro:
-      "Loom videos capture knowledge in a way that written documentation can't—a product walkthrough, a design critique, a process explanation—but video content is notoriously hard to search and organize. Recordings pile up in Loom without being linked to the relevant Notion pages where they would provide the most context. Knowledge shared in a video gets lost when someone new joins the team because no one connected it to the written documentation.\n\nGAIA bridges Notion and Loom so that video and written knowledge reinforce each other. When a Loom is recorded and shared with GAIA, it is automatically embedded in the relevant Notion page based on the video's title and content. GAIA can also extract the Loom transcript and generate a structured Notion document from it, making video knowledge searchable and scannable.\n\nFor teams that rely heavily on async video communication, this integration transforms a scattered Loom library into a structured, searchable knowledge base anchored in Notion, ensuring that important knowledge shared in video format is never lost.",
+      "Loom videos capture knowledge in a way that written documentation can't (a product walkthrough, a design critique, a process explanation), but video content is notoriously hard to search and organize. Recordings pile up in Loom without being linked to the relevant Notion pages where they would provide the most context. Knowledge shared in a video gets lost when someone new joins the team because no one connected it to the written documentation.\n\nGAIA bridges Notion and Loom so that video and written knowledge reinforce each other. When a Loom is recorded and shared with GAIA, it is automatically embedded in the relevant Notion page based on the video's title and content. GAIA can also extract the Loom transcript and generate a structured Notion document from it, making video knowledge searchable and scannable.\n\nFor teams that rely heavily on async video communication, this integration transforms a scattered Loom library into a structured, searchable knowledge base anchored in Notion, ensuring that important knowledge shared in video format is never lost.",
     useCases: [
       {
         title: "Auto-embed Loom recordings in Notion pages by topic",
@@ -2427,7 +2427,7 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       {
         step: "Configure video routing and transcript rules",
         description:
-          "Define how Loom videos are matched to Notion pages—by video title, tags, or workspace folder—and configure whether GAIA should embed the video, generate a transcript document, extract action items, or all three.",
+          "Define how Loom videos are matched to Notion pages (by video title, tags, or workspace folder) and configure whether GAIA should embed the video, generate a transcript document, extract action items, or all three.",
       },
       {
         step: "GAIA builds your video knowledge base automatically",

@@ -127,7 +127,7 @@ const SMART_CHAT_MESSAGES: ChatMessage[] = [
     id: "sc5",
     role: "assistant",
     content:
-      "PR #42 needs your attention most — a reviewer requested changes 2 days ago. PR #38 is ready for you to review. PR #35 is still a draft.",
+      "PR #42 needs your attention most: a reviewer requested changes 2 days ago. PR #38 is ready for you to review. PR #35 is still a draft.",
     delay: 700,
   },
 ];

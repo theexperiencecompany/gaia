@@ -21,7 +21,7 @@ function EMSlackDemo() {
       phase2Time="9:22 AM"
       phase2Question="what's the status on the payments integration?"
       phase3Time="9:22 AM"
-      phase3Response="Payments integration (ENG-380) is 80% done. feat/payments-stripe merged last Thursday. Remaining: webhook handling (ENG-391, in review by Alex — 3 days) and error states (ENG-394, not started). Estimated ship: Monday if ENG-391 merges today."
+      phase3Response="Payments integration (ENG-380) is 80% done. feat/payments-stripe merged last Thursday. Remaining: webhook handling (ENG-391, in review by Alex, 3 days) and error states (ENG-394, not started). Estimated ship: Monday if ENG-391 merges today."
     />
   );
 }

@@ -18,7 +18,6 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
-import { wallpapers } from "@/config/wallpapers";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
@@ -264,13 +263,6 @@ export function IntegrationDetailClient({
 
   return (
     <div className="relative">
-      <Image
-        src={wallpapers.integration.webp}
-        alt="GAIA Marketplace Wallpaper"
-        priority
-        fill
-        className="mask-[linear-gradient(to_bottom,transparent_0%,black_20%,black_80%,transparent_100%)] object-cover opacity-15 z-0 w-screen fixed h-screen left-0 top-0 max-h-screen"
-      />
       <div className="flex min-h-screen w-screen justify-center overflow-y-auto pt-34 pb-20 relative z-1">
         <div className="container mx-auto w-full max-w-5xl space-y-5">
           {/* Breadcrumbs */}

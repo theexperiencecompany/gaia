@@ -7,9 +7,9 @@ export const entry: AlternativeData = {
   category: "automation",
   tagline: "No-code automation connecting thousands of apps with Zaps",
   painPoints: [
-    "Expensive at scale — task limits hit quickly on paid plans",
+    "Expensive at scale, with task limits hit quickly on paid plans",
     "Automations are reactive triggers, not proactive AI intelligence",
-    "No conversational interface — everything requires GUI configuration",
+    "No conversational interface, so everything requires GUI configuration",
     "Debugging broken Zaps requires technical knowledge",
     "Cannot take multi-step agentic actions with context and memory",
   ],
@@ -33,7 +33,7 @@ export const entry: AlternativeData = {
     "Zapier alternative with AI reasoning",
   ],
   whyPeopleLook:
-    "Zapier revolutionized no-code automation, but it is showing its age in the AI era. Its Zap model is built around simple trigger-action pairs — when X happens, do Y. This works well for straightforward automations but breaks down when you need context, judgment, or multi-step reasoning. GAIA brings AI-native automation: instead of configuring rigid trigger-action rules, you describe what you want in natural language and GAIA handles the orchestration across your tools, with full awareness of your email, calendar, and task context.",
+    "Zapier revolutionized no-code automation, but it is showing its age in the AI era. Its Zap model is built around simple trigger-action pairs: when X happens, do Y. This works well for straightforward automations but breaks down when you need context, judgment, or multi-step reasoning. GAIA brings AI-native automation: instead of configuring rigid trigger-action rules, you describe what you want in natural language and GAIA handles the orchestration across your tools, with full awareness of your email, calendar, and task context.",
   gaiaFitScore: 4,
   gaiaReplaces: [
     "Email-triggered task creation and calendar event generation",
@@ -44,7 +44,7 @@ export const entry: AlternativeData = {
   ],
   gaiaAdvantages: [
     "AI-native: workflows use reasoning, not just trigger-action pairs",
-    "Conversational workflow creation — no GUI drag-and-drop required",
+    "Conversational workflow creation, no GUI drag-and-drop required",
     "Open-source and self-hostable vs. Zapier's closed SaaS",
     "Flat pricing without per-task or per-Zap limits",
     "Persistent memory across automations maintains context over time",
@@ -69,7 +69,7 @@ export const entry: AlternativeData = {
     {
       question: "Can GAIA automate workflows without knowing how to code?",
       answer:
-        "Yes. GAIA's workflow builder accepts natural language descriptions. You describe what you want to happen and GAIA handles the technical implementation — similar to Zapier's no-code approach but with AI reasoning built in.",
+        "Yes. GAIA's workflow builder accepts natural language descriptions. You describe what you want to happen and GAIA handles the technical implementation, similar to Zapier's no-code approach but with AI reasoning built in.",
     },
     {
       question: "Can GAIA and Zapier be used together?",
@@ -80,27 +80,27 @@ export const entry: AlternativeData = {
   comparisonRows: [
     {
       feature: "Interface",
-      gaia: "Conversational natural language — describe what you want and GAIA builds the automation",
+      gaia: "Conversational natural language: describe what you want and GAIA builds the automation",
       competitor:
-        "GUI-based Zap builder — select trigger app, trigger event, action app, and action via a step-by-step form editor",
+        "GUI-based Zap builder: select trigger app, trigger event, action app, and action via a step-by-step form editor",
     },
     {
       feature: "Trigger types",
       gaia: "AI-driven triggers including email content analysis, calendar changes, and contextual conditions based on meaning",
       competitor:
-        "Event-based triggers from 7,000+ apps — when a specific event fires, the Zap runs; no content-level reasoning",
+        "Event-based triggers from 7,000+ apps: when a specific event fires, the Zap runs; no content-level reasoning",
     },
     {
       feature: "AI capabilities",
-      gaia: "AI reasoning between every workflow step — reads content, classifies intent, makes decisions, and adapts based on context",
+      gaia: "AI reasoning between every workflow step: reads content, classifies intent, makes decisions, and adapts based on context",
       competitor:
         "Zapier AI adds a ChatGPT step within a Zap; the overall workflow logic remains static trigger-action pairs",
     },
     {
       feature: "Setup complexity",
-      gaia: "Minimal — describe what you want in plain English; no step-by-step form filling or connector configuration",
+      gaia: "Minimal: describe what you want in plain English; no step-by-step form filling or connector configuration",
       competitor:
-        "Moderate — requires selecting apps, mapping fields, testing each step, and managing auth for every connected app",
+        "Moderate: requires selecting apps, mapping fields, testing each step, and managing auth for every connected app",
     },
     {
       feature: "Pricing",

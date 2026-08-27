@@ -42,7 +42,7 @@ def normalize_schema_refs(schema: object) -> object:
 
     if defs_key and schema[defs_key]:
         # Check if any keys are numeric strings
-        numeric_keys = [k for k in schema[defs_key].keys() if k.isdigit()]
+        numeric_keys = [k for k in schema[defs_key] if k.isdigit()]
 
         if numeric_keys:
             log.warning(

@@ -15,6 +15,7 @@ export const aeonik = localFont({
   ],
   variable: "--font-aeonik",
   display: "swap",
-  preload: false,
+  // Display font for marketing headings (mapped to --font-serif) — on the LCP path.
+  preload: true,
   fallback: ["system-ui", "sans-serif"],
 });

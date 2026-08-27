@@ -45,7 +45,7 @@ async def _run(
                 assert sbx is sandbox
                 if body_error is not None:
                     raise body_error
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             raised = e
         yield user_id, pool, coll, sched, raised
     pool.evict(user_id)  # cleanup any survivor

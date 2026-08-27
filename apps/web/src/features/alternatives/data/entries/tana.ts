@@ -11,8 +11,8 @@ export const entry: AlternativeData = {
     "Steep learning curve for Supertags, schemas, and node-based thinking",
     "Plus plan at $10/month for AI features and Google Calendar sync",
     "AI features automate within Tana but do not connect to email or external workflows",
-    "Outliner format does not suit everyone — forces a node-first mental model",
-    "Knowledge is only as good as what you put in — no automatic data capture",
+    "Outliner format does not suit everyone, forcing a node-first mental model",
+    "Knowledge is only as good as what you put in, with no automatic data capture",
   ],
   metaTitle: "Best Tana Alternative in 2026",
   metaDescription:
@@ -32,7 +32,7 @@ export const entry: AlternativeData = {
     "tana alternative 2026",
   ],
   whyPeopleLook:
-    "Tana has attracted a passionate community with its powerful Supertags, AI automation within nodes, and the promise of treating every piece of information as a connected, reusable object. For users who invest the time, it becomes an extraordinarily flexible system. But that investment is substantial — understanding Supertags, schemas, and Tana's node-based model takes weeks. More importantly, Tana's AI automates within the tool itself; it has no awareness of your email, cannot read your Gmail, and does not connect to your broader digital workflow. Users who want knowledge management that works passively alongside their existing tools look for alternatives.",
+    "Tana has attracted a passionate community with its powerful Supertags, AI automation within nodes, and the promise of treating every piece of information as a connected, reusable object. For users who invest the time, it becomes an extraordinarily flexible system. But that investment is substantial: understanding Supertags, schemas, and Tana's node-based model takes weeks. More importantly, Tana's AI automates within the tool itself; it has no awareness of your email, cannot read your Gmail, and does not connect to your broader digital workflow. Users who want knowledge management that works passively alongside their existing tools look for alternatives.",
   gaiaFitScore: 3,
   gaiaReplaces: [
     "Automatic knowledge capture from email threads without manual node creation",
@@ -41,7 +41,7 @@ export const entry: AlternativeData = {
     "Calendar event context stored and retrievable without daily journaling",
   ],
   gaiaAdvantages: [
-    "Zero learning curve — GAIA works immediately without schemas or Supertags",
+    "Zero learning curve: GAIA works immediately without schemas or Supertags",
     "Knowledge is captured automatically from email and calendar data",
     "Proactive surfacing means relevant context appears without querying",
     "Open-source and self-hostable; Tana is closed-source SaaS",
@@ -57,7 +57,7 @@ export const entry: AlternativeData = {
     {
       question: "Does GAIA have Tana's Supertag system?",
       answer:
-        "GAIA does not have Supertags. Its graph-based memory automatically infers entity types and relationships from your digital activity — achieving similar structured knowledge without requiring manual schema design.",
+        "GAIA does not have Supertags. Its graph-based memory automatically infers entity types and relationships from your digital activity, achieving similar structured knowledge without requiring manual schema design.",
     },
     {
       question: "Is GAIA easier to learn than Tana?",
@@ -72,7 +72,7 @@ export const entry: AlternativeData = {
     {
       question: "Can GAIA connect to Gmail like Tana cannot?",
       answer:
-        "Yes. GAIA's native Gmail integration is one of its core strengths. It reads email threads, builds context from correspondence, creates tasks from emails, and connects email activity to calendar events — capabilities Tana does not offer.",
+        "Yes. GAIA's native Gmail integration is one of its core strengths. It reads email threads, builds context from correspondence, creates tasks from emails, and connects email activity to calendar events, capabilities Tana does not offer.",
     },
   ],
 };

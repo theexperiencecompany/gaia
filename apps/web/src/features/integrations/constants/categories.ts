@@ -2,8 +2,31 @@
  * Integration category utilities
  *
  * Categories are derived dynamically from backend integrations data.
- * This file only provides display labels and utility functions.
+ * This file provides the browse taxonomy, display labels, and utility
+ * functions — the single source of truth for category presentation.
  */
+
+export interface IntegrationCategory {
+  key: string;
+  label: string;
+}
+
+/**
+ * Browse taxonomy for the marketplace filter chips.
+ */
+export const INTEGRATION_CATEGORIES: IntegrationCategory[] = [
+  { key: "all", label: "All" },
+  { key: "productivity", label: "Productivity" },
+  { key: "communication", label: "Communication" },
+  { key: "developer", label: "Developer" },
+  { key: "analytics", label: "Analytics" },
+  { key: "finance", label: "Finance" },
+  { key: "ai-ml", label: "AI & ML" },
+  { key: "education", label: "Education" },
+  { key: "personal", label: "Personal" },
+  { key: "capabilities", label: "Capabilities" },
+  { key: "other", label: "Other" },
+];
 
 /**
  * Get display label for a category ID

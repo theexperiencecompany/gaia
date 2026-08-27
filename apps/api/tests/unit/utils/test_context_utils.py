@@ -1,6 +1,8 @@
 """Unit tests for context_utils: execute_tool, fetch_all_providers, resolve_providers."""
 
 from concurrent.futures import TimeoutError as FuturesTimeout
+from datetime import UTC, datetime, timedelta
+import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -25,6 +27,13 @@ _NAMESPACES_PATCH = (
 class _SampleOutputModel(BaseModel):
     name: str
     count: int
+
+
+class _DatedOutputModel(BaseModel):
+    """Model with a datetime field — the python/json dump modes differ on it."""
+
+    name: str
+    run_at: datetime
 
 
 class _StrictOutputModel(BaseModel):
@@ -94,6 +103,24 @@ class TestExecuteTool:
         result = execute_tool("SOME_TOOL", {}, "user_123", output_model=_SampleOutputModel)
 
         assert result == {"name": "Test", "count": 42}
+
+    @patch(_COMPOSIO_SERVICE_PATCH)
+    @pytest.mark.regression
+    def test_output_model_datetimes_come_back_json_safe(self, mock_get_service: MagicMock) -> None:
+        """The return crosses into agent text as JSON — a validated datetime must
+        be an ISO string, not the native object json.dumps cannot encode."""
+        run_at = datetime.now(UTC) + timedelta(hours=1)
+        mock_get_service.return_value = _make_composio_service(
+            {"successful": True, "data": {"name": "Job", "run_at": run_at}}
+        )
+
+        result = execute_tool("SOME_TOOL", {}, "user_123", output_model=_DatedOutputModel)
+
+        json.dumps(result)
+        assert isinstance(result["run_at"], str)
+        # Pydantic's JSON mode renders UTC with a Z suffix; parse it back to
+        # compare instants rather than pin one spelling.
+        assert datetime.fromisoformat(result["run_at"].replace("Z", "+00:00")) == run_at
 
     @patch(_COMPOSIO_SERVICE_PATCH)
     def test_with_output_model_validation_fails_returns_raw_data(

@@ -53,7 +53,7 @@ class TestBaseAppSettingsDefaults:
     def test_extra_fields_allowed(self):
         with patch.dict(os.environ, {}, clear=True):
             settings = BaseAppSettings(CUSTOM_FIELD="hello")
-        assert settings.CUSTOM_FIELD == "hello"  # type: ignore[attr-defined]
+        assert settings.CUSTOM_FIELD == "hello"
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +140,7 @@ class TestCommonSettingsDefaults:
     def test_extra_fields_allowed(self):
         with patch.dict(os.environ, {}, clear=True):
             settings = CommonSettings(SOME_EXTRA="value")
-        assert settings.SOME_EXTRA == "value"  # type: ignore[attr-defined]
+        assert settings.SOME_EXTRA == "value"
 
 
 # ---------------------------------------------------------------------------

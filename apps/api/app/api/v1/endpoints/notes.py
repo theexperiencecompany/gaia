@@ -11,6 +11,7 @@ from app.constants.log_tags import LogTag
 from app.decorators import tiered_rate_limit
 from app.models.notes_models import NoteModel, NoteResponse
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.notes_service import (
     create_note_service,
     delete_note,
@@ -33,6 +34,7 @@ async def create_note_endpoint(
     log.set(operation="create_note")
     try:
         result = await create_note_service(note, user["user_id"])
+        capture_context_event(AnalyticsEvents.NOTE_CREATED)
         log.set(outcome="success")
         return result
     except HTTPException:
@@ -114,6 +116,7 @@ async def update_note_endpoint(
     log.set(operation="update_note")
     try:
         result = await update_note(note_id, note, user["user_id"])
+        capture_context_event(AnalyticsEvents.NOTE_UPDATED)
         log.set(note_id=note_id)
         log.set(outcome="success")
         return result
@@ -143,6 +146,7 @@ async def delete_note_endpoint(
     log.set(operation="delete_note")
     try:
         await delete_note(note_id, user["user_id"])
+        capture_context_event(AnalyticsEvents.NOTE_DELETED)
         log.set(note_id=note_id)
         log.set(outcome="success")
     except HTTPException:

@@ -34,7 +34,7 @@ import re
 import sys
 from typing import Any
 
-import yaml  # type: ignore[import-untyped]
+import yaml
 
 BACKEND_DIR = Path(__file__).parent.parent
 DEFAULT_OUTPUT_DIR = BACKEND_DIR.parent.parent / ".agents" / "plans" / "composio_tools_output"
@@ -44,10 +44,10 @@ if not os.getenv("ENV"):
     os.environ["ENV"] = "development"
 
 
-from composio import Composio  # noqa: E402
+from composio import Composio
 
-from app.config.oauth_config import OAUTH_INTEGRATIONS  # noqa: E402
-from app.config.settings import settings  # noqa: E402
+from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.settings import settings
 
 TOOL_NAME_PATTERN = re.compile(r"\b([A-Z][A-Z0-9]+(?:_[A-Z0-9]+)+)\b")
 CUSTOM_TOOL_FILE_PATTERNS = [

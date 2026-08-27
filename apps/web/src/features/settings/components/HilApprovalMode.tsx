@@ -8,7 +8,6 @@ import { useRouter } from "next/navigation";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useHilPreferences } from "@/features/settings/hooks/useHilPreferences";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
 const MODES: { key: HilMode; label: string; description: string }[] = [
@@ -36,10 +35,6 @@ export function HilApprovalMode() {
   const handleChange = async (next: HilMode) => {
     try {
       await setMode(next);
-      trackEvent(ANALYTICS_EVENTS.SETTINGS_PREFERENCES_CHANGED, {
-        setting: "hil_approvals",
-        mode: next,
-      });
     } catch {
       toast.error("Failed to update approval mode");
     }

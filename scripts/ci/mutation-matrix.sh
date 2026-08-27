@@ -14,7 +14,20 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 
 CHANGED_PY="$(scripts/ci/changed-files.sh py)"
-if [ -z "$CHANGED_PY" ] || [ "$CHANGED_PY" = "__FULL__" ]; then
+if [ -z "$CHANGED_PY" ]; then
+  echo '[]'
+  exit 0
+fi
+if [ "$CHANGED_PY" = "__FULL__" ]; then
+  # Push / workflow_dispatch events have no PR diff to target mutants at, and
+  # this check is inherently diff-based (mutation-matrix.py mutates only
+  # changed lines) — there is no "full repo" equivalent to run instead, and
+  # faking one across every apps/api/app module would blow the lane's 30 min
+  # budget many times over. The gate already ran against this exact diff on
+  # the PR before merge; skip rather than silently report zero mutants as if
+  # nothing needed proving. Logged so a push-triggered run doesn't read as
+  # "nothing to mutate" when it actually means "not applicable here".
+  echo "mutation-matrix: push/full-scan event — skipping (diff-based check; already gated on the originating PR)" >&2
   echo '[]'
   exit 0
 fi

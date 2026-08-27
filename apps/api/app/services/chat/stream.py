@@ -29,6 +29,7 @@ from app.agents.core.background.executor_capture import (
 )
 from app.constants.artifacts import ARTIFACT_FORWARDER_SUBSCRIBE_TIMEOUT
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT, VOICE_EXECUTOR_RESULT_TIMEOUT_S
+from app.constants.chat import GENERIC_TURN_ERROR, RECURSION_LIMIT_MESSAGE
 from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED, HIL_CLASSIFIER_HISTORY_TURNS
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
@@ -41,6 +42,7 @@ from app.models.stream_events import (
     MainResponseCompleteFrame,
 )
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.chat.artifact_forwarder import forward_artifact_events
 from app.services.chat.chunks import process_data_chunk
 from app.services.chat.persistence import (
@@ -61,6 +63,7 @@ from app.services.platform_message_service import is_bot_platform
 from app.services.storage import flush_fs_metrics
 from app.utils.agent_utils import format_sse_data, format_sse_response
 from app.utils.chat_utils import generate_and_update_description
+from app.utils.message_breaks import strip_partial_message_break
 from app.utils.stream_utils import reconstruct_subagent_groups
 from shared.py.wide_events import ChatContext, get_trace_id, log, wide_task
 
@@ -256,6 +259,27 @@ async def _run_chat_stream(
         await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
         await stream_manager.complete_stream(stream_id)
 
+        # The turn reached a terminal state: capture the milestone. Cancelled
+        # turns finish the same happy path (the driver ends the stream with a
+        # `cancelled` nostream marker), so branch on the flag the loop recorded.
+        if user_id:
+            event_props: dict[str, Any] = {
+                "conversation_id": conversation_id,
+                "voice_mode": body.voice_mode,
+                "is_new_conversation": is_new_conversation,
+            }
+            if source:
+                event_props["source"] = source
+            capture_event(
+                user_id,
+                (
+                    AnalyticsEvents.CHAT_MESSAGE_CANCELLED
+                    if state.is_cancelled
+                    else AnalyticsEvents.CHAT_MESSAGE_COMPLETED
+                ),
+                event_props,
+            )
+
     except Exception as e:  # surface to client + flag the stream
         # Persist the SAME user-facing text we stream (friendly for a recursion
         # stop), not the raw exception — a reload shows what the user saw.
@@ -326,7 +350,7 @@ async def _resolve_pending_approval_turn(
     try:
         history = _recent_history(body.messages)
         action = await resolve_pending_from_message(conversation_id, user_id, message, history)
-    except Exception as e:  # noqa: BLE001 — see below: chat must survive this
+    except Exception as e:  # see below: chat must survive this
         # This lookup sits on the critical path of EVERY chat message, for a feature most
         # users have switched off. If it fails, the only safe degradation is to run the
         # message as a normal turn: an approval the user answered stays pending (the sweep
@@ -561,12 +585,16 @@ async def _consume_agent_stream(
 
 
 def _parse_complete_message(chunk: str) -> tuple[str, bool]:
-    """Pull ``(complete_message, cancelled)`` out of a ``nostream: {...}`` marker."""
+    """Pull ``(complete_message, cancelled)`` out of a ``nostream: {...}`` marker.
+
+    A run cut short mid-sentinel leaves a truncated ``<NEW_MESSAGE_B`` on the
+    end; it must never reach the persisted turn, where every reader (web, bots,
+    the next turn's history) would render it as literal text.
+    """
     nostream_json = json.loads(chunk.removeprefix("nostream: "))
     if isinstance(nostream_json, dict):
-        return str(nostream_json.get("complete_message", "")), bool(
-            nostream_json.get("cancelled", False)
-        )
+        message = strip_partial_message_break(str(nostream_json.get("complete_message", "")))
+        return message, bool(nostream_json.get("cancelled", False))
     return "", False
 
 
@@ -633,15 +661,14 @@ async def _handle_stream_error(
     breaks the subscriber loop, so the error chunk must go on the wire first.
     """
     log.error(f"{LogTag.CHAT} Background stream error for", stream_id=stream_id, error=error)
-    # A recursion-limit stop is an expected degradation, not an infrastructure
-    # failure - never show the raw "Recursion limit of N reached..." internals.
     if isinstance(error, GraphRecursionError):
-        user_error = (
-            "I hit my step limit on this one before finishing. "
-            "Ask me to continue and I'll pick up where I left off."
-        )
+        user_error = RECURSION_LIMIT_MESSAGE
     else:
-        user_error = str(error)
+        # str(exc) is genuinely "" for some provider errors, and a blank string is
+        # falsy on the client: no error bubble renders and the turn is filtered out.
+        user_error = str(error).strip() or GENERIC_TURN_ERROR.format(
+            error_type=type(error).__name__
+        )
     await stream_manager.publish_chunk(
         stream_id, f"data: {json.dumps(ErrorFrame(error=user_error).model_dump())}\n\n"
     )

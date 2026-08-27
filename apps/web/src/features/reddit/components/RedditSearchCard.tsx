@@ -5,6 +5,7 @@ import { ArrowUp02Icon, BubbleChatIcon } from "@icons";
 import Link from "next/link";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { RedditIcon } from "@/components/shared/icons";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import type { RedditSearchData } from "@/types/features/redditTypes";
 
 interface RedditSearchCardProps {
@@ -25,7 +26,12 @@ function formatTime(timestamp: number): string {
   if (diffInSeconds < 604800)
     return `${Math.floor(diffInSeconds / 86400)}d ago`;
 
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  // UTC keeps the rendered date identical between SSR and the browser.
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
 }
 
 // Format number for display
@@ -58,6 +64,15 @@ export default function RedditSearchCard({
               href={`https://reddit.com${post?.permalink}`}
               key={post.id}
               target="_blank"
+              onClick={() => {
+                trackEvent(ANALYTICS_EVENTS.REDDIT_POST_VIEWED, {
+                  subreddit: post.subreddit,
+                  score: post.score,
+                  num_comments: post.num_comments,
+                  has_selftext: Boolean(post.selftext),
+                  has_external_link: Boolean(post.url),
+                });
+              }}
             >
               <div className="space-y-2">
                 {/* Header */}

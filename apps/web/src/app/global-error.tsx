@@ -6,6 +6,7 @@
 
 import * as Sentry from "@sentry/nextjs";
 import NextError from "next/error";
+import posthog from "posthog-js";
 import { useEffect, useState } from "react";
 
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
@@ -14,26 +15,35 @@ import {
   recoverFromChunkError,
 } from "@/lib/chunkErrorRecovery";
 
-export default function GlobalError({
-  error,
-}: {
+interface GlobalErrorProps {
   error: Error & { digest?: string };
-}) {
+}
+
+export default function GlobalError({ error }: GlobalErrorProps) {
+  // Keyed by the error instance: each new error remounts the view, so its
+  // recovery state is initialized from that error instead of being synced in
+  // an adjustment effect after the prop changes.
+  return <GlobalErrorView key={error.digest ?? error.message} error={error} />;
+}
+
+function GlobalErrorView({ error }: GlobalErrorProps) {
   const isChunk = isChunkLoadError(error);
+  // Blank while a stale-chunk recovery reload may be pending; flips to the
+  // error page below if recovery declines to reload.
   const [recovering, setRecovering] = useState(isChunk);
 
   useEffect(() => {
-    // Stale-asset chunk failure — reload once for fresh chunks. Skip Sentry:
-    // this is an expected deploy-boundary condition, not an app fault.
     if (isChunk && recoverFromChunkError(error) === "reloading") return;
     setRecovering(false);
     if (isChunk) return;
 
     Sentry.captureException(error);
+    posthog.captureException(error);
+    // Full diagnostics go through Sentry/captureException above; error
+    // message/stack can carry user content, so analytics only gets the stable
+    // type and digest.
     trackEvent(ANALYTICS_EVENTS.ERROR_OCCURRED, {
       error_type: "global_error",
-      error_message: error.message,
-      error_stack: error.stack,
       digest: error.digest,
     });
   }, [error, isChunk]);

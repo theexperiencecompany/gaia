@@ -77,11 +77,11 @@ def _make_refresh_result(
         pass
 
     result = _RefreshResult()
-    result.authenticated = authenticated  # type: ignore[attr-defined]
-    result.user = user  # type: ignore[attr-defined]
-    result.sealed_session = sealed_session  # type: ignore[attr-defined]
-    result.reason = reason  # type: ignore[attr-defined]
-    return result  # type: ignore[return-value]
+    result.authenticated = authenticated  # type: ignore[attr-defined]  # fake attaches result fields dynamically
+    result.user = user  # type: ignore[attr-defined]  # fake attaches result fields dynamically
+    result.sealed_session = sealed_session  # type: ignore[attr-defined]  # fake attaches result fields dynamically
+    result.reason = reason  # type: ignore[attr-defined]  # fake attaches result fields dynamically
+    return result  # type: ignore[return-value]  # helper is typed MagicMock but returns the richer fake
 
 
 def _make_session(

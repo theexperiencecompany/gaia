@@ -212,7 +212,7 @@ def main():
 
     # Save to JSON file
     output_file = Path(__file__).parent / "composio_triggers_output.json"
-    with open(output_file, "w") as f:
+    with output_file.open("w") as f:
         json.dump(all_triggers, f, indent=2, default=str)
 
     print(f"✓ Full output saved to: {output_file}")

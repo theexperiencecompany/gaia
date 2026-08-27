@@ -76,6 +76,8 @@ export default function WorkflowsSidebar() {
                 </span>
                 <WorkflowIcons
                   steps={workflow.steps || []}
+                  icon={workflow.icon}
+                  iconColor={workflow.icon_color}
                   iconSize={17}
                   maxIcons={3}
                   spacing="-space-x-3.5!"

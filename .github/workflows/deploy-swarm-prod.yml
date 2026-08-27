@@ -23,6 +23,26 @@ on:
         description: "Full image ref for digest rollback (e.g. ghcr.io/org/gaia@sha256:...)"
         required: false
         type: string
+      # Immutable per-commit tags to pin the stack to (nx production scheme
+      # YYMM.DD.<shortsha>; grafana uses the full commit sha). Empty deploys
+      # whatever :latest currently points at — the pre-parameterization
+      # behavior and the manual drift remedy. When set, :latest is re-pointed
+      # at the deployed images only after convergence succeeds.
+      apps_image_tag:
+        description: "Tag for gaia + gaia-voice-agent (empty = :latest)"
+        required: false
+        default: ""
+        type: string
+      bots_image_tag:
+        description: "Tag for the four bot images (empty = :latest)"
+        required: false
+        default: ""
+        type: string
+      grafana_image_tag:
+        description: "Tag for gaia-grafana (empty = :latest)"
+        required: false
+        default: ""
+        type: string
   workflow_call:
     inputs:
       action:
@@ -36,6 +56,18 @@ on:
       image_digest:
         required: false
         type: string
+      apps_image_tag:
+        required: false
+        default: ""
+        type: string
+      bots_image_tag:
+        required: false
+        default: ""
+        type: string
+      grafana_image_tag:
+        required: false
+        default: ""
+        type: string
 
 concurrency:
   group: swarm-prod-${{ github.ref }}
@@ -44,16 +76,18 @@ concurrency:
 jobs:
   deploy:
     if: inputs.action == 'deploy'
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     environment: production
     permissions:
       contents: read
-      # Pull the private gaia-grafana image on the swarm nodes via --with-registry-auth.
-      packages: read
+      # write, not read: besides pulling private images on the swarm nodes via
+      # --with-registry-auth, the post-convergence step re-points :latest at
+      # the deployed tags registry-side (docker buildx imagetools create).
+      packages: write
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Docker Swarm context
         uses: ./.github/actions/setup-swarm-context
@@ -63,13 +97,20 @@ jobs:
           ssh_user: ${{ secrets.PROD_VM_SSH_USER }}
 
       - name: Log in to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Deploy stack
+        env:
+          # Pin the stack to this run's immutable tags. Empty values fall
+          # through to the compose file's ${VAR:-latest} defaults, i.e. the
+          # pre-parameterization behavior.
+          GAIA_IMAGE_TAG: ${{ inputs.apps_image_tag }}
+          GAIA_BOTS_IMAGE_TAG: ${{ inputs.bots_image_tag }}
+          GAIA_GRAFANA_IMAGE_TAG: ${{ inputs.grafana_image_tag }}
         run: |
           set -euo pipefail
           # Observability configs ship as Swarm configs (stored in the cluster),
@@ -92,8 +133,22 @@ jobs:
 
       - name: Wait for convergence
         id: converge
+        env:
+          BOTS_IMAGE_TAG: ${{ inputs.bots_image_tag }}
+          GRAFANA_IMAGE_TAG: ${{ inputs.grafana_image_tag }}
         run: |
-          SERVICES="gaia-backend arq_worker voice-agent-worker"
+          # Every consumer of the apps image group — the :latest retag below
+          # moves the whole group's alias, so every service that will pull it
+          # on a future restart must be proven healthy first.
+          SERVICES="gaia-backend arq_worker embedding-sidecar voice-agent-worker"
+          # Bot/grafana aliases only move when their tags were deployed this
+          # run — extend the health gate to match exactly what will be retagged.
+          if [[ -n "${BOTS_IMAGE_TAG}" ]]; then
+            SERVICES="${SERVICES} discord-bot slack-bot telegram-bot whatsapp-bot imessage-bot"
+          fi
+          if [[ -n "${GRAFANA_IMAGE_TAG}" ]]; then
+            SERVICES="${SERVICES} grafana"
+          fi
           echo "Waiting for ${SERVICES} to converge (up to 5 minutes)..."
           DEADLINE=$(( $(date +%s) + 300 ))
 
@@ -138,6 +193,17 @@ jobs:
             sleep 15
           done
 
+      # Only after convergence proved the deploy healthy does :latest move —
+      # this is what makes :latest "what prod runs" instead of "what was last
+      # built". A failed deploy leaves :latest on the previous good images.
+      - name: Point :latest at the deployed images
+        if: success() && (inputs.apps_image_tag != '' || inputs.bots_image_tag != '' || inputs.grafana_image_tag != '')
+        env:
+          APPS_IMAGE_TAG: ${{ inputs.apps_image_tag }}
+          BOTS_IMAGE_TAG: ${{ inputs.bots_image_tag }}
+          GRAFANA_IMAGE_TAG: ${{ inputs.grafana_image_tag }}
+        run: bash scripts/ci/retag-latest-alias.sh from-env
+
       - name: Push deploy annotation to Loki
         if: success()
         env:
@@ -145,8 +211,9 @@ jobs:
         run: |
           [ -z "$LOKI_PUSH_URL" ] && exit 0
           TS_NS="$(date +%s%N)"
-          LINE=$(printf '{"event":"deploy","service":"api","sha":"%s","actor":"%s","ref":"%s"}' \
-            "${{ github.sha }}" "${{ github.actor }}" "${{ github.ref_name }}")
+          LINE=$(printf '{"event":"deploy","service":"api","sha":"%s","actor":"%s","ref":"%s","apps_tag":"%s","bots_tag":"%s"}' \
+            "${{ github.sha }}" "${{ github.actor }}" "${{ github.ref_name }}" \
+            "${{ inputs.apps_image_tag || 'latest' }}" "${{ inputs.bots_image_tag || 'latest' }}")
           PAYLOAD=$(jq -n \
             --arg ts "$TS_NS" \
             --arg line "$LINE" \
@@ -155,71 +222,80 @@ jobs:
             -H "Content-Type: application/json" \
             -d "$PAYLOAD"
 
+      # All Discord sends go through scripts/ci/notify-discord.sh (appleboy's
+      # action 400s on long messages and fragments comma-containing ones —
+      # see the script header). continue-on-error on the send steps only: the
+      # message is fully logged by the script either way, and a dropped
+      # webhook must not repaint an otherwise-decided run.
       - name: Notify Discord — deploy succeeded
         if: success()
-        uses: appleboy/discord-action@afc227330777ad298156a1f5233dfa1e885616db # v1.2.0
-        with:
-          webhook_url: ${{ secrets.DISCORD_WEBHOOK }}
-          username: "Gaia Deploy Bot"
-          color: "#48f442"
-          message: |
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          COLOR: "#48f442"
+          MESSAGE: |
             **Backend Deploy Succeeded**
             **Commit:** `${{ github.sha }}`
             **Branch:** ${{ github.ref_name }}
             **Actor:** ${{ github.actor }}
+            **Images:** apps `${{ inputs.apps_image_tag || 'latest' }}` / bots `${{ inputs.bots_image_tag || 'latest' }}` / grafana `${{ inputs.grafana_image_tag || 'latest' }}`
+        run: bash scripts/ci/notify-discord.sh
 
       - name: Notify Discord — Swarm auto-rollback
         if: failure() && steps.converge.outputs.rolled_back == 'true'
-        uses: appleboy/discord-action@afc227330777ad298156a1f5233dfa1e885616db # v1.2.0
-        with:
-          webhook_url: ${{ secrets.DISCORD_WEBHOOK }}
-          username: "Gaia Deploy Bot"
-          color: "#ffa500"
-          message: |
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          COLOR: "#ffa500"
+          MESSAGE: |
             **Backend Deploy Failed — Swarm Auto-Rolled Back**
-            The new image failed health checks and Swarm reverted to the previous revision.
+            The new image failed health checks and Swarm reverted to the previous revision. This deploy did not re-point `:latest`.
             **Commit:** `${{ github.sha }}`
             **Branch:** ${{ github.ref_name }}
             **Actor:** ${{ github.actor }}
+        run: bash scripts/ci/notify-discord.sh
 
       - name: Notify Discord — convergence timeout
         if: failure() && steps.converge.outputs.timed_out == 'true'
-        uses: appleboy/discord-action@afc227330777ad298156a1f5233dfa1e885616db # v1.2.0
-        with:
-          webhook_url: ${{ secrets.DISCORD_WEBHOOK }}
-          username: "Gaia Deploy Bot"
-          color: "#ff6b6b"
-          message: |
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          COLOR: "#ff6b6b"
+          MESSAGE: |
             **Backend Deploy Failed — Convergence Timeout**
-            gaia-backend, arq_worker, and voice-agent-worker did not all reach Running state within 5 minutes. Check `docker service ps gaia-prod_<service>` on the VM.
+            gaia-backend, arq_worker, and voice-agent-worker did not all reach Running state within 5 minutes. Check `docker service ps gaia-prod_<service>` on the VM. This deploy did not re-point `:latest`.
             **Commit:** `${{ github.sha }}`
             **Branch:** ${{ github.ref_name }}
             **Actor:** ${{ github.actor }}
+        run: bash scripts/ci/notify-discord.sh
 
       - name: Notify Discord — deploy failed
         if: failure() && steps.converge.outputs.rolled_back != 'true' && steps.converge.outputs.timed_out != 'true'
-        uses: appleboy/discord-action@afc227330777ad298156a1f5233dfa1e885616db # v1.2.0
-        with:
-          webhook_url: ${{ secrets.DISCORD_WEBHOOK }}
-          username: "Gaia Deploy Bot"
-          color: "#ff6b6b"
-          message: |
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          COLOR: "#ff6b6b"
+          MESSAGE: |
             **Backend Deploy Failed**
-            The deploy step failed before Swarm could start convergence (image pull, auth, or config error).
+            The deploy step failed before Swarm could start convergence (image pull, auth, or config error). This deploy did not re-point `:latest`.
             **Commit:** `${{ github.sha }}`
             **Branch:** ${{ github.ref_name }}
             **Actor:** ${{ github.actor }}
+        run: bash scripts/ci/notify-discord.sh
 
   rollback:
     if: github.event_name == 'workflow_dispatch' && inputs.action == 'rollback'
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     environment: production
     permissions:
       contents: read
+      # The post-rollback step re-points :latest at the rolled-back images
+      # registry-side (docker buildx imagetools create).
+      packages: write
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Docker Swarm context
         uses: ./.github/actions/setup-swarm-context
@@ -229,7 +305,7 @@ jobs:
           ssh_user: ${{ secrets.PROD_VM_SSH_USER }}
 
       - name: Log in to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -242,14 +318,17 @@ jobs:
         run: |
           if [ "$ROLLBACK_MODE" = "last" ]; then
             for svc in $(docker --context prod stack services gaia-prod --format '{{.Name}}' \
-              | grep -E 'gaia-backend|arq_worker|voice-agent-worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot'); do
+              | grep -E 'gaia-backend|arq_worker|embedding-sidecar|voice-agent-worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot|imessage-bot'); do
               echo "Rolling back $svc..."
               docker --context prod service rollback "$svc"
             done
           elif [ "$ROLLBACK_MODE" = "digest" ]; then
             [ -z "$IMAGE_DIGEST" ] && echo "image_digest required for digest mode" && exit 1
+            # Every service running the gaia image — a partial pin would leave
+            # the remainder on a different build than the :latest alias claims.
             docker --context prod service update --image "$IMAGE_DIGEST" gaia-prod_gaia-backend
             docker --context prod service update --image "$IMAGE_DIGEST" gaia-prod_arq_worker
+            docker --context prod service update --image "$IMAGE_DIGEST" gaia-prod_embedding-sidecar
           fi
 
       - name: Wait for rollback convergence
@@ -259,9 +338,9 @@ jobs:
         run: |
           if [ "$ROLLBACK_MODE" = "last" ]; then
             SERVICES=$(docker --context prod stack services gaia-prod --format '{{.Name}}' \
-              | grep -E 'gaia-backend|arq_worker|voice-agent-worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot')
+              | grep -E 'gaia-backend|arq_worker|embedding-sidecar|voice-agent-worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot|imessage-bot')
           else
-            SERVICES="gaia-prod_gaia-backend gaia-prod_arq_worker"
+            SERVICES="gaia-prod_gaia-backend gaia-prod_arq_worker gaia-prod_embedding-sidecar"
           fi
           echo "Waiting for services to stabilise (up to 3 minutes): $SERVICES"
           DEADLINE=$(( $(date +%s) + 180 ))
@@ -285,6 +364,22 @@ jobs:
             sleep 10
           done
 
+      # Keep the ":latest == what prod runs" invariant through rollbacks:
+      # re-point :latest at the images the rolled-back services now run,
+      # otherwise :latest keeps naming the bad build and any container
+      # restart (or tag-less redeploy) would re-pull it.
+      - name: Re-point :latest at the rolled-back images
+        # timed_out guard: a rollback that did not stabilise proves nothing
+        # about what prod runs — moving the alias then would re-introduce the
+        # exact lie this mechanism exists to kill.
+        if: success() && steps.converge.outputs.timed_out != 'true'
+        env:
+          ROLLBACK_MODE: ${{ inputs.rollback_mode }}
+          IMAGE_DIGEST: ${{ inputs.image_digest }}
+          DOCKER_CONTEXT: prod
+          STACK: gaia-prod
+        run: bash scripts/ci/retag-latest-alias.sh rolled-back
+
       - name: Push rollback annotation to Loki
         if: success()
         env:
@@ -305,28 +400,31 @@ jobs:
             -H "Content-Type: application/json" \
             -d "$PAYLOAD"
 
+      # Same notify convention as the deploy job: script send, logged either
+      # way, and a dropped webhook never repaints the run.
       - name: Notify Discord — rollback succeeded
         if: success()
-        uses: appleboy/discord-action@afc227330777ad298156a1f5233dfa1e885616db # v1.2.0
-        with:
-          webhook_url: ${{ secrets.DISCORD_WEBHOOK }}
-          username: "Gaia Deploy Bot"
-          color: "#ffa500"
-          message: |
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          COLOR: "#ffa500"
+          MESSAGE: |
             **Backend Rollback Succeeded**
             **Mode:** ${{ inputs.rollback_mode }}${{ inputs.image_digest && format(' (`{0}`)', inputs.image_digest) || '' }}
             **Actor:** ${{ github.actor }}
+            `:latest` now points at the rolled-back images.
             ${{ steps.converge.outputs.timed_out == 'true' && '⚠️ Note: not all services stabilised within 3 minutes — verify manually.' || '' }}
+        run: bash scripts/ci/notify-discord.sh
 
       - name: Notify Discord — rollback failed
         if: failure()
-        uses: appleboy/discord-action@afc227330777ad298156a1f5233dfa1e885616db # v1.2.0
-        with:
-          webhook_url: ${{ secrets.DISCORD_WEBHOOK }}
-          username: "Gaia Deploy Bot"
-          color: "#ff6b6b"
-          message: |
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          COLOR: "#ff6b6b"
+          MESSAGE: |
             **Backend Rollback Failed**
             **Mode:** ${{ inputs.rollback_mode }}
             **Actor:** ${{ github.actor }}
-            The rollback command itself failed. Production state is unknown — check the VM immediately.
+            The rollback job failed — the run log shows whether the rollback command itself or a follow-up step (`:latest` retag / Loki annotation) broke. Check the VM immediately.
+        run: bash scripts/ci/notify-discord.sh

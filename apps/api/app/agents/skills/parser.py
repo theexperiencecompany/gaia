@@ -7,7 +7,7 @@ Agent Skills spec (agentskills.io/specification).
 
 import re
 
-import yaml  # type: ignore[import-untyped]
+import yaml
 
 from app.agents.skills.models import SkillMetadata
 from app.utils.markdown_utils import split_yaml_frontmatter

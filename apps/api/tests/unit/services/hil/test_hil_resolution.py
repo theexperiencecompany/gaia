@@ -17,9 +17,9 @@ import pytest
 from app.schemas.hil_schemas import BatchDecisionOutcome
 from app.services.hil.resolution import (
     CANCELLED_FEEDBACK,
-    ApprovalNotResumable,
-    ApprovalRequestForbidden,
-    ApprovalRequestNotFound,
+    ApprovalNotResumableError,
+    ApprovalRequestForbiddenError,
+    ApprovalRequestNotFoundError,
     abandon_conversation_approvals,
     cancel_conversation_approvals,
     resolve_approval,
@@ -61,7 +61,7 @@ class TestAuthorization:
         with (
             patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=record)),
             patch(f"{MODULE}.mark_decided", new=AsyncMock()) as decided,
-            pytest.raises(ApprovalRequestForbidden),
+            pytest.raises(ApprovalRequestForbiddenError),
         ):
             await resolve_approval(approval_id="appr-1", user_id="attacker-id", kind="approve")
 
@@ -74,7 +74,7 @@ class TestAuthorization:
     ) -> None:
         with (
             patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=None)),
-            pytest.raises(ApprovalRequestNotFound),
+            pytest.raises(ApprovalRequestNotFoundError),
         ):
             await resolve_approval(approval_id="nope", user_id=USER_ID, kind="approve")
         assert resume.prepare.await_count == 0
@@ -91,7 +91,7 @@ class TestExactlyOnce:
         with (
             patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=record)),
             patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=False)),
-            pytest.raises(ApprovalRequestNotFound),
+            pytest.raises(ApprovalRequestNotFoundError),
         ):
             await resolve_approval(approval_id="appr-1", user_id=USER_ID, kind="approve")
 
@@ -181,7 +181,7 @@ class TestUnresumableRecords:
         with (
             patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=record)),
             patch(f"{MODULE}.mark_decided", new=AsyncMock()) as decided,
-            pytest.raises(ApprovalNotResumable),
+            pytest.raises(ApprovalNotResumableError),
         ):
             await resolve_approval(approval_id="appr-1", user_id=USER_ID, kind="approve")
 
@@ -217,7 +217,7 @@ class TestUnresumableRecords:
             patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=record)),
             patch(f"{MODULE}.is_executor_busy", new=AsyncMock(return_value=False)),
             patch(f"{MODULE}.mark_decided", new=AsyncMock()) as decided,
-            pytest.raises(ApprovalNotResumable),
+            pytest.raises(ApprovalNotResumableError),
         ):
             await resolve_approval(approval_id="appr-1", user_id=USER_ID, kind="approve")
 
@@ -333,6 +333,34 @@ class TestBatchDecisions:
         ]
         assert resume.prepare.await_count == 1  # only the real transition dispatched
 
+    async def test_an_infra_failure_on_one_item_is_reported_and_the_rest_still_process(
+        self, resume: Any
+    ) -> None:
+        # Unlike the known outcomes above (not_found/forbidden/not_resumable), this is an
+        # unclassified failure — e.g. Mongo timed out loading the record. It must not
+        # propagate out of the loop and abort every decision after it in the batch.
+        good = make_record(approval_id="a-good")
+
+        async def load(approval_id: str) -> Any:
+            if approval_id == "a-broken":
+                raise ConnectionError("mongo unreachable")
+            return good
+
+        with (
+            patch(f"{MODULE}.get_approval", new=AsyncMock(side_effect=load)),
+            patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=True)),
+        ):
+            outcomes = await resolve_approvals_batch(
+                USER_ID,
+                [("a-broken", "approve", None), ("a-good", "approve", None)],
+            )
+
+        assert outcomes == [
+            BatchDecisionOutcome(approval_id="a-broken", resolved=False, reason="error"),
+            BatchDecisionOutcome(approval_id="a-good", resolved=True, reason=None),
+        ]
+        assert resume.prepare.await_count == 1  # the item after the failure still dispatched
+
 
 class TestAbandonConversation:
     async def test_one_undecidable_record_does_not_strand_the_others(self, resume: Any) -> None:
@@ -426,6 +454,57 @@ class TestSweep:
 
         assert counts == {"expired": 0, "redispatched": 0}
         assert resume.runner.call_count == 0
+
+    async def test_one_bad_record_does_not_strand_the_rest_of_the_expiry_pass(
+        self, resume: Any
+    ) -> None:
+        # An unexpected failure expiring one record (e.g. a Mongo write error) must not
+        # abort the loop — every other expired record in the pass still has to resolve.
+        bad = make_record(approval_id="a-bad")
+        good = make_record(approval_id="a-good")
+
+        async def transition(approval_id: str, *args: Any, **kwargs: Any) -> bool:
+            if approval_id == "a-bad":
+                raise RuntimeError("mongo write failed")
+            return True
+
+        with (
+            patch(f"{MODULE}.list_expired_pending", new=AsyncMock(return_value=[bad, good])),
+            patch(f"{MODULE}.list_decided_unresumed", new=AsyncMock(return_value=[])),
+            patch(f"{MODULE}.mark_decided", new=AsyncMock(side_effect=transition)),
+        ):
+            counts = await sweep_approvals()
+
+        assert counts == {"expired": 1, "redispatched": 0}
+        assert resume.runner.call_count == 1  # only the good record's run resumed
+
+    async def test_one_failed_redispatch_does_not_abort_the_rest_of_the_sweep(
+        self, resume: Any
+    ) -> None:
+        # A failure re-dispatching one stranded record (e.g. Redis unreachable while
+        # claiming the resume slot) is retried next sweep — it must not stop the pass
+        # from redispatching the other stranded records.
+        bad = make_record(
+            approval_id="a-bad", conversation_id="conv-bad", status="approved", resumed_at=None
+        )
+        good = make_record(
+            approval_id="a-good", conversation_id="conv-good", status="approved", resumed_at=None
+        )
+
+        async def claim(conversation_id: str) -> bool:
+            if conversation_id == "conv-bad":
+                raise ConnectionError("redis unreachable")
+            return True
+
+        resume.claim.side_effect = claim
+        with (
+            patch(f"{MODULE}.list_expired_pending", new=AsyncMock(return_value=[])),
+            patch(f"{MODULE}.list_decided_unresumed", new=AsyncMock(return_value=[bad, good])),
+        ):
+            counts = await sweep_approvals()
+
+        assert counts == {"expired": 0, "redispatched": 1}
+        assert resume.runner.call_count == 1  # only the good record's run resumed
 
 
 class TestCancelledRunApprovals:

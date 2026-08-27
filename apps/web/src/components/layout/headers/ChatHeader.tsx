@@ -52,7 +52,7 @@ export default function ChatHeader() {
             aria-label="Pinned Messages"
             tooltip="Pinned Messages"
           >
-            <PinIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary" />
+            <PinIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-colors group-hover:text-primary" />
           </SidebarHeaderButton>
         </Link>
         <Link href={"/c"} onClick={prepareNewChat}>
@@ -60,7 +60,7 @@ export default function ChatHeader() {
             aria-label="Create new chat"
             tooltip="Create new chat"
           >
-            <BubbleChatAddIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary" />
+            <BubbleChatAddIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-colors group-hover:text-primary" />
           </SidebarHeaderButton>
         </Link>
         <NotificationCenter />

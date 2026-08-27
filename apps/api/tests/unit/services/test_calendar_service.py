@@ -7,6 +7,7 @@ those two seams and assert the shape of each request. Pure helpers
 """
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -27,6 +28,7 @@ from app.models.calendar_models import (
     GoogleCalendarEventsPage,
 )
 from app.services.calendar_service import (
+    _all_day_bounds,
     create_calendar_event,
     delete_calendar_event,
     fetch_calendar_events,
@@ -232,6 +234,53 @@ class TestSearchEventsInCalendar:
 # ---------------------------------------------------------------------------
 
 
+class _UTCOnlyDateTime(datetime):
+    """datetime stand-in whose local-time read lands on the previous day, so a
+    non-UTC clock in production code shows up as a wrong date, not a flake."""
+
+    @classmethod
+    def now(cls, tz: datetime | None = None) -> datetime:  # type: ignore[override]  # mirrors datetime.now's optional-tz signature deliberately
+        if tz is None:
+            return cls(2026, 6, 14, 20, 0)  # naive local read: previous day
+        return cls(2026, 6, 15, 2, 0, tzinfo=UTC)
+
+
+class TestAllDayBounds:
+    """The all-day defaulting rules: explicit bounds pass through, a missing end
+    becomes the next day, and a missing start defaults to today (UTC)."""
+
+    def test_a_start_with_no_end_ends_the_next_day(self) -> None:
+        # The Pydantic model requires both fields; the service still defends the
+        # partial shapes, so mutate after construction like the timed-event test.
+        event = EventCreateRequest(
+            summary="Trip", description="", start="2026-06-15", end="2026-06-20"
+        )
+        event.end = ""
+
+        start, end = _all_day_bounds(event)
+
+        assert start == GoogleCalendarEventDateTime(date="2026-06-15")
+        assert end == GoogleCalendarEventDateTime(date="2026-06-16")
+
+    @patch("app.services.calendar_service.datetime", _UTCOnlyDateTime)
+    def test_a_missing_start_defaults_to_today_on_the_utc_calendar(self) -> None:
+        """Google's end date is exclusive; the default must follow the UTC
+        calendar — the fake clock's local read is the previous day."""
+        event = EventCreateRequest(
+            summary="Today",
+            description="",
+            start="2026-06-15",
+            end="2026-06-16",
+        )
+        event.start = None
+        event.end = None
+
+        start, end = _all_day_bounds(event)
+
+        assert start == GoogleCalendarEventDateTime(date="2026-06-15")
+        assert end == GoogleCalendarEventDateTime(date="2026-06-16")
+
+
 class TestCreateCalendarEvent:
     async def test_creates_time_specific_event(self, mock_proxy):
         mock_proxy.return_value = {"id": "evt-1", "htmlLink": "x"}
@@ -266,6 +315,7 @@ class TestCreateCalendarEvent:
         assert body["start"] == {"date": "2025-01-15"}
         assert body["end"] == {"date": "2025-01-16"}
 
+    @patch("app.services.calendar_service.datetime", _UTCOnlyDateTime)
     async def test_with_meeting_room_adds_conference_data(self, mock_proxy):
         mock_proxy.return_value = {"id": "evt"}
         event = EventCreateRequest(
@@ -281,6 +331,12 @@ class TestCreateCalendarEvent:
             "type": "hangoutsMeet"
         }
         assert kwargs["query"]["conferenceDataVersion"] == "1"
+        # The request id is a uniqueness token minted from the UTC clock — the
+        # fake clock pins it exactly (a local-time read lands 6h+ off).
+        assert (
+            kwargs["body"]["conferenceData"]["createRequest"]["requestId"]
+            == f"meet_{int(datetime(2026, 6, 15, 2, 0, tzinfo=UTC).timestamp())}"
+        )
 
     async def test_missing_start_for_timed_event_raises(self, mock_proxy):
         event = EventCreateRequest(
@@ -318,6 +374,23 @@ class TestDeleteCalendarEvent:
         assert exc.value.status_code == 404
         assert "Event not found" in str(exc.value.detail)
 
+    async def test_percent_encodes_calendar_id_with_reserved_chars(self, mock_proxy):
+        """Google calendar IDs like 'user@group.calendar.google.com' or
+        '#contacts@group.v.calendar.google.com' contain '@'/'#'. Unencoded,
+        those characters break the URL path (404s or a truncated path)."""
+        mock_proxy.return_value = None
+        await delete_calendar_event(
+            EventDeleteRequest(
+                event_id="evt-1", calendar_id="#contacts@group.v.calendar.google.com"
+            ),
+            USER_ID,
+        )
+        endpoint = mock_proxy.call_args.kwargs["endpoint"]
+        assert "#contacts@group.v.calendar.google.com" not in endpoint
+        assert endpoint.endswith(
+            "/calendars/%23contacts%40group.v.calendar.google.com/events/evt-1"
+        )
+
 
 class TestUpdateCalendarEvent:
     async def test_updates_summary(self, mock_proxy):
@@ -334,6 +407,25 @@ class TestUpdateCalendarEvent:
         assert mock_proxy.call_args_list[0].kwargs["method"] == "GET"
         assert mock_proxy.call_args_list[1].kwargs["method"] == "PUT"
         assert mock_proxy.call_args_list[1].kwargs["body"]["summary"] == "New"
+
+    async def test_percent_encodes_calendar_id_with_reserved_chars(self, mock_proxy):
+        """Same bug as delete_calendar_event: the GET-existing + PUT-update
+        endpoint interpolates calendar_id/event_id unencoded."""
+        mock_proxy.side_effect = [
+            {"summary": "Old", "description": "d", "start": {}, "end": {}},
+            {"id": "evt", "summary": "New"},
+        ]
+        await update_calendar_event(
+            EventUpdateRequest(
+                event_id="evt",
+                calendar_id="user@group.calendar.google.com",
+                summary="New",
+            ),
+            USER_ID,
+        )
+        get_endpoint = mock_proxy.call_args_list[0].kwargs["endpoint"]
+        assert "user@group.calendar.google.com" not in get_endpoint
+        assert get_endpoint.endswith("/calendars/user%40group.calendar.google.com/events/evt")
 
 
 # ---------------------------------------------------------------------------

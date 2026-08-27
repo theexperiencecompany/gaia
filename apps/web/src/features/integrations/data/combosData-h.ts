@@ -173,7 +173,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
       "github notifications teams",
     ],
     intro:
-      "Engineering teams that use Microsoft Teams for communication need GitHub activity to surface in their chat, not buried in email notifications or the GitHub web interface. Pull requests waiting for review, failing CI pipelines, and new issue reports all require fast human attention that email simply cannot deliver.\n\nGAIA connects GitHub to Microsoft Teams so every relevant event — PR opened, review requested, CI failed, issue labeled — appears as a formatted Teams message in the right channel. Engineers spend less time checking GitHub manually and more time shipping code.",
+      "Engineering teams that use Microsoft Teams for communication need GitHub activity to surface in their chat, not buried in email notifications or the GitHub web interface. Pull requests waiting for review, failing CI pipelines, and new issue reports all require fast human attention that email simply cannot deliver.\n\nGAIA connects GitHub to Microsoft Teams so every relevant event (PR opened, review requested, CI failed, issue labeled) appears as a formatted Teams message in the right channel. Engineers spend less time checking GitHub manually and more time shipping code.",
     useCases: [
       {
         title: "Pull request review notifications",
@@ -482,7 +482,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
       "google drive notion workflow",
     ],
     intro:
-      "Google Drive and Notion serve complementary purposes — Drive stores raw files while Notion structures knowledge and projects. But teams often maintain two separate systems that don't reference each other, forcing colleagues to hunt through Drive for the file mentioned in a Notion page or vice versa.\n\nGAIA links Google Drive and Notion so files and documentation stay connected. Drive documents can be embedded in Notion pages automatically when projects start, and new Notion project pages trigger the creation of organized Drive folder structures. Your files and your documentation always know about each other.",
+      "Google Drive and Notion serve complementary purposes: Drive stores raw files while Notion structures knowledge and projects. But teams often maintain two separate systems that don't reference each other, forcing colleagues to hunt through Drive for the file mentioned in a Notion page or vice versa.\n\nGAIA links Google Drive and Notion so files and documentation stay connected. Drive documents can be embedded in Notion pages automatically when projects start, and new Notion project pages trigger the creation of organized Drive folder structures. Your files and your documentation always know about each other.",
     useCases: [
       {
         title: "Embed Drive files in Notion project pages",
@@ -737,7 +737,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
       {
         title: "Daily design activity digest",
         description:
-          "GAIA posts a morning summary of yesterday's Figma activity — new comments, resolved threads, and version changes — to the design Slack channel. The team starts each day aligned.",
+          "GAIA posts a morning summary of yesterday's Figma activity (new comments, resolved threads, and version changes) to the design Slack channel. The team starts each day aligned.",
       },
     ],
     howItWorks: [
@@ -1081,12 +1081,12 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
         question:
           "How frequently does GAIA update the Notion revenue dashboard?",
         answer:
-          "GAIA updates the dashboard on a schedule you configure — hourly, daily, or on every Stripe event. Real-time updates are available for critical metrics like new subscriptions.",
+          "GAIA updates the dashboard on a schedule you configure: hourly, daily, or on every Stripe event. Real-time updates are available for critical metrics like new subscriptions.",
       },
       {
         question: "Is sensitive billing data stored in Notion?",
         answer:
-          "GAIA lets you choose which Stripe fields to sync to Notion. Payment method details and full card numbers are never synced — only business-relevant data like plan and amount.",
+          "GAIA lets you choose which Stripe fields to sync to Notion. Payment method details and full card numbers are never synced, only business-relevant data like plan and amount.",
       },
     ],
   },
@@ -1110,12 +1110,12 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
       "airtable slack workflow",
     ],
     intro:
-      "Airtable bases hold structured data for projects, CRMs, inventories, and more, but changes to that data go unnoticed by teammates who are active in Slack. Important record updates — a deal moving to closed, a task marked complete, an inventory item hitting zero — need to surface in chat where the team can act on them.\n\nGAIA connects Airtable and Slack bidirectionally. Record changes in Airtable trigger formatted Slack notifications in the right channel, and Slack messages can create or update Airtable records without the sender ever opening a browser tab. Data flows where the team lives.",
+      "Airtable bases hold structured data for projects, CRMs, inventories, and more, but changes to that data go unnoticed by teammates who are active in Slack. Important record updates (a deal moving to closed, a task marked complete, an inventory item hitting zero) need to surface in chat where the team can act on them.\n\nGAIA connects Airtable and Slack bidirectionally. Record changes in Airtable trigger formatted Slack notifications in the right channel, and Slack messages can create or update Airtable records without the sender ever opening a browser tab. Data flows where the team lives.",
     useCases: [
       {
         title: "Record status change notifications in Slack",
         description:
-          "When an Airtable record status field changes — a deal closes, a task completes, a request is approved — GAIA posts a Slack notification to the relevant channel. Teams act on changes the moment they happen.",
+          "When an Airtable record status field changes (a deal closes, a task completes, a request is approved), GAIA posts a Slack notification to the relevant channel. Teams act on changes the moment they happen.",
       },
       {
         title: "Create Airtable records from Slack messages",
@@ -1130,7 +1130,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
       {
         title: "Daily Airtable summary digests in Slack",
         description:
-          "GAIA posts a morning digest of key Airtable metrics — open tasks, pipeline value, pending requests — to the team Slack channel. Everyone starts the day with the same data.",
+          "GAIA posts a morning digest of key Airtable metrics (open tasks, pipeline value, pending requests) to the team Slack channel. Everyone starts the day with the same data.",
       },
     ],
     howItWorks: [
@@ -1208,7 +1208,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
       {
         title: "Aggregate Airtable data in Notion dashboards",
         description:
-          "GAIA pulls summary metrics from Airtable — counts, sums, averages — and updates Notion dashboard pages daily. Leadership sees live operational data inside their Notion workspace.",
+          "GAIA pulls summary metrics from Airtable (counts, sums, averages) and updates Notion dashboard pages daily. Leadership sees live operational data inside their Notion workspace.",
       },
     ],
     howItWorks: [
@@ -1233,7 +1233,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
         question:
           "How does GAIA handle field type differences between Airtable and Notion?",
         answer:
-          "GAIA translates common field types automatically — Airtable select fields map to Notion select properties, Airtable dates map to Notion date properties. Custom mappings are available for edge cases.",
+          "GAIA translates common field types automatically: Airtable select fields map to Notion select properties, Airtable dates map to Notion date properties. Custom mappings are available for edge cases.",
       },
       {
         question: "Can GAIA sync Airtable attachments to Notion?",
@@ -1267,7 +1267,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
       "airtable google calendar sync",
     ],
     intro:
-      "Airtable bases are rich with date fields — project deadlines, content publish dates, event schedules, campaign launches — but those dates sit inside Airtable where they're invisible to anyone who manages their time in Google Calendar. Important deadlines get missed because they never made it onto anyone's calendar.\n\nGAIA bridges Airtable and Google Calendar by turning Airtable date records into Google Calendar events automatically. When a deadline is added or changed in Airtable, the corresponding calendar event is created or updated in real time. Your Airtable schedule becomes a live calendar that the whole team can see and act on.",
+      "Airtable bases are rich with date fields (project deadlines, content publish dates, event schedules, campaign launches), but those dates sit inside Airtable where they're invisible to anyone who manages their time in Google Calendar. Important deadlines get missed because they never made it onto anyone's calendar.\n\nGAIA bridges Airtable and Google Calendar by turning Airtable date records into Google Calendar events automatically. When a deadline is added or changed in Airtable, the corresponding calendar event is created or updated in real time. Your Airtable schedule becomes a live calendar that the whole team can see and act on.",
     useCases: [
       {
         title: "Turn Airtable project deadlines into calendar events",
@@ -1282,7 +1282,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
       {
         title: "Event management scheduling",
         description:
-          "Event records in Airtable — with venue, time, and organizer — generate detailed Google Calendar events with full descriptions. Event teams plan in Airtable and calendar invites are sent automatically.",
+          "Event records in Airtable (with venue, time, and organizer) generate detailed Google Calendar events with full descriptions. Event teams plan in Airtable and calendar invites are sent automatically.",
       },
       {
         title: "Deadline change propagation",
@@ -1312,7 +1312,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
         question:
           "Can GAIA sync to specific Google Calendars, not just the primary?",
         answer:
-          "Yes. During setup you choose which Google Calendar receives events from each Airtable table. Different tables can populate different calendars — a content calendar and a project calendar, for example.",
+          "Yes. During setup you choose which Google Calendar receives events from each Airtable table. Different tables can populate different calendars: a content calendar and a project calendar, for example.",
       },
       {
         question: "Does GAIA add Google Meet links to calendar events?",

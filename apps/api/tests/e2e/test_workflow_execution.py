@@ -417,7 +417,7 @@ class TestWorkflowExecution:
         )
 
         def _make_stub(name: str):
-            async def _stub(input: str = "") -> str:  # noqa: A002
+            async def _stub(input: str = "") -> str:
                 return f"stub:{name}"
 
             _stub.__name__ = name

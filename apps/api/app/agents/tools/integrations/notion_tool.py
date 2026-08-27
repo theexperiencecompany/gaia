@@ -110,14 +110,15 @@ def register_notion_custom_tools(composio: Composio) -> list[str]:
                 )
             else:
                 # ToolExecutionResponse.data is typed as a plain Dict, but real
-                # Notion API responses aren't guaranteed to match — keep the
-                # defensive isinstance check meaningful by widening the type here.
-                title_data = cast("object", title_response["data"])
-                # Extract title from results array
-                if isinstance(title_data, dict):
-                    results = title_data.get("results", [])
-                else:
-                    results = []
+                # Notion API responses aren't guaranteed to match — widen via
+                # annotation so the isinstance narrowing below is meaningful.
+                # (A runtime cast("object", …) here is a no-op the interpreter
+                # discards; an annotation widens without executable code.)
+                title_data: object = title_response["data"]
+                # Extract title from results array. No .get default: a missing
+                # key yields None, and isinstance(None, list) below already
+                # routes it to the no-title path — same as any non-list value.
+                results = title_data.get("results") if isinstance(title_data, dict) else []
                 if isinstance(results, list):
                     for item in results:
                         if item.get("type") == "title" and item.get("title"):

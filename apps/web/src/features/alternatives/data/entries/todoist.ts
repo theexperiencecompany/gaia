@@ -7,7 +7,7 @@ export const entry: AlternativeData = {
   category: "task-manager",
   tagline: "Popular cross-platform task manager with projects and labels",
   painPoints: [
-    "All task entry is still manual — no email or calendar intelligence",
+    "All task entry is still manual, with no email or calendar intelligence",
     "AI features limited to task breakdown suggestions, not proactive management",
     "No email integration to automatically create tasks from inbox",
     "Pro plan required for reminders, filters, and advanced features",
@@ -33,7 +33,7 @@ export const entry: AlternativeData = {
     "tasks from email AI",
   ],
   whyPeopleLook:
-    "Todoist is one of the most polished task managers available, with great design and cross-platform support. But at its core, it is a sophisticated list-maker — you still need to manually add every task, set every due date, and decide every priority. GAIA can actually integrate with Todoist as a backend while adding the proactive AI layer on top: automatically creating tasks from email, prioritizing based on calendar context, and nudging you before deadlines slip.",
+    "Todoist is one of the most polished task managers available, with great design and cross-platform support. But at its core, it is a sophisticated list-maker. You still need to manually add every task, set every due date, and decide every priority. GAIA can actually integrate with Todoist as a backend while adding the proactive AI layer on top: automatically creating tasks from email, prioritizing based on calendar context, and nudging you before deadlines slip.",
   gaiaFitScore: 5,
   gaiaReplaces: [
     "Automatic task creation from Gmail without manual entry",
@@ -43,7 +43,7 @@ export const entry: AlternativeData = {
     "Follow-up reminders generated from email threads",
   ],
   gaiaAdvantages: [
-    "GAIA integrates with Todoist directly — it can enhance rather than replace",
+    "GAIA integrates with Todoist directly: it can enhance rather than replace",
     "Proactive task creation from email means no manual task entry",
     "Calendar awareness sets realistic deadlines based on your schedule",
     "Free tier with meaningful task management without per-feature paywalls",
@@ -74,15 +74,15 @@ export const entry: AlternativeData = {
     {
       question: "Does GAIA have natural language task entry like Todoist?",
       answer:
-        "Yes. GAIA accepts natural language for task creation — you can say 'remind me to call Sarah tomorrow at 3pm' and GAIA will create the task with the right deadline.",
+        "Yes. GAIA accepts natural language for task creation. You can say 'remind me to call Sarah tomorrow at 3pm' and GAIA will create the task with the right deadline.",
     },
   ],
   comparisonRows: [
     {
       feature: "Task creation",
-      gaia: "Automatic task creation from Gmail emails — reads threads and creates tasks with deadlines and priorities without any manual input",
+      gaia: "Automatic task creation from Gmail emails: reads threads and creates tasks with deadlines and priorities without any manual input",
       competitor:
-        "Manual task entry via natural language, quick-add bar, or email forwarding — every task requires explicit capture",
+        "Manual task entry via natural language, quick-add bar, or email forwarding, and every task requires explicit capture",
     },
     {
       feature: "AI intelligence",
@@ -92,13 +92,13 @@ export const entry: AlternativeData = {
     },
     {
       feature: "Email integration",
-      gaia: "Deep Gmail integration — reads emails, creates tasks from action items, and tracks follow-ups automatically",
+      gaia: "Deep Gmail integration: reads emails, creates tasks from action items, and tracks follow-ups automatically",
       competitor:
         "Email forwarding to Todoist creates tasks, but no inbox reading, triage, or follow-up tracking",
     },
     {
       feature: "Calendar sync",
-      gaia: "Full Google Calendar integration — task deadlines are set with awareness of your meeting schedule and available time",
+      gaia: "Full Google Calendar integration: task deadlines are set with awareness of your meeting schedule and available time",
       competitor:
         "Task due dates appear in calendar view, but no intelligent scheduling based on calendar availability",
     },

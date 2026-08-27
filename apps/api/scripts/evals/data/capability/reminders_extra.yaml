@@ -78,13 +78,13 @@
   expected:
     category: reminders
     communicate: ["dentist"]
-    # `search_reminders_tool` is NOT demanded: it raises "Object of type
-    # datetime is not JSON serializable" on every call, and the agent that fell
-    # back to `list_user_reminders_tool` answered from the real reminder set and
-    # was failed for routing around a broken tool. The lookup is still gated —
-    # `answer_contains` + the judge reject an answer that names the wrong one.
+    # Fixed (#917): the tool used to die with "Object of type datetime is not
+    # JSON serializable" on every call, so this case routed around it via
+    # list_user_reminders_tool. It now returns ISO-serialised payloads and is
+    # demanded again; answer_contains + the judge still gate the match.
     tool_calls:
       - {tool: create_reminder_tool, min_calls: 2}
+      - {tool: search_reminders_tool}
     end_state:
       answer_contains: "dentist"
       reminders: [{count: 2}]

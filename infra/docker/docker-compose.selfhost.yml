@@ -192,6 +192,8 @@ services:
       - ../../apps/api/.env
     environment:
       WORKER_TYPE: arq_worker
+      # Wide-event identity — must equal the Promtail label (see prod compose).
+      GAIA_SERVICE_NAME: arq_worker
       PYTHONPATH: /app/apps/api
       # Session/sandbox background tasks touch the workspace, so the worker
       # needs the same JuiceFS mount as the backend.
@@ -217,27 +219,6 @@ services:
         condition: service_healthy
       mongo:
         condition: service_healthy
-    networks:
-      - gaia_network
-
-  seed-models:
-    container_name: seed-models
-    build:
-      context: ../..
-      dockerfile: apps/api/Dockerfile
-    env_file:
-      - ../../apps/api/.env
-    environment:
-      PYTHONPATH: /app/apps/api
-    # Same reason as arq_worker: drop the `uv run` wrapper so we don't hit
-    # the Permission denied on /app/uv.lock as appuser.
-    command: ["python", "scripts/seed_models.py", "--force"]
-    depends_on:
-      mongo:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    restart: "no"
     networks:
       - gaia_network
 

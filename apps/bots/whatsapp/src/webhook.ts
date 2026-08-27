@@ -111,6 +111,12 @@ export function extractMedia(event: KapsoMessageEvent): ExtractedMedia | null {
     kapso?.mediaData?.url ??
     undefined;
 
+  const sizeBytes =
+    kapso?.media_data?.byte_size ??
+    kapso?.media_data?.byteSize ??
+    kapso?.mediaData?.byteSize ??
+    undefined;
+
   const isVoiceNote =
     kind === "audio" && (type === "voice" || payload.voice === true);
 
@@ -122,5 +128,6 @@ export function extractMedia(event: KapsoMessageEvent): ExtractedMedia | null {
     caption: payload.caption,
     filename: payload.filename,
     prefetchedUrl,
+    sizeBytes,
   };
 }

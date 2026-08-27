@@ -140,6 +140,7 @@ class ModelContext(TypedDict, total=False):
     # `usage_metadata.input_token_details.cache_read` and
     # `cached_content_token_count`.
     cached_tokens: int
+    reasoning_tokens: int  # subset of output_tokens spent on hidden thinking, when reported
     cache_hit_rate: float  # cached_tokens / max(input_tokens, 1)
     credits_charged: float
     step_index: int  # monotonic step counter within a single agent run
@@ -230,6 +231,7 @@ class MemoryContext(TypedDict, total=False):
     # retain/consolidate write-path outcome.
     facts_extracted: int
     episode_entries: int
+    episode_entries_deduped: int
     entities_linked: int
     edges_added: int
     new_count: int
@@ -617,6 +619,16 @@ class WideEventLogger:
     def set(self, **kwargs: Any) -> None:
         """Merge structured context into the current request's wide event.
 
+        A namespace dict is merged INTO whatever is already on the event rather
+        than replacing it, so every layer of a request accumulates onto one
+        namespace instead of the last writer silently winning. A flat
+        ``fields.update()`` here is what erased ``trigger_type`` from 34,247 of
+        34,413 production workflow fires: the final ``set(workflow={...})``
+        carried no ``trigger_type``, so it took the whole namespace with it.
+        The merge is one level deep and dict-into-dict only — a scalar still
+        overwrites, because accumulating a namespace is the goal, not making
+        fields immutable.
+
         ``trace_id`` is the one field that also lives outside the event: it
         backs the ``_trace_id`` ContextVar that ``get_trace_id()`` returns and
         that ``spawn_logged_task`` hands to child work. Setting only the field
@@ -628,19 +640,22 @@ class WideEventLogger:
         trace_id = kwargs.get("trace_id")
         if trace_id:
             _trace_id.set(trace_id)
-        self._state().fields.update(kwargs)
+        fields = self._state().fields
+        for key, value in kwargs.items():
+            existing = fields.get(key)
+            if isinstance(existing, dict) and isinstance(value, dict):
+                fields[key] = {**existing, **value}
+            else:
+                fields[key] = value
 
     def set_ns(self, namespace: str, **kwargs: Any) -> None:
         """Merge ``kwargs`` into a nested ``namespace`` dict on the wide event.
 
-        ``set`` shallow-merges at the top level, so re-setting a nested dict
-        (e.g. ``set(sandbox={...})``) clobbers keys from earlier calls. ``set_ns``
-        read-merges into ``event[namespace]`` instead, preserving every field
-        accumulated across a multi-step path (the sandbox acquire path is the
-        canonical case — see ``SandboxContext``).
+        Identical to ``set(namespace={...})`` — kept because naming the namespace
+        explicitly reads better on a multi-step path, and because it is used
+        widely. It delegates so the two can never drift apart again.
         """
-        fields = self._state().fields
-        fields[namespace] = {**fields.get(namespace, {}), **kwargs}
+        self.set(**{namespace: kwargs})
 
     # --- Loguru-compatible message methods ---
     #

@@ -147,7 +147,7 @@ function NotificationScreen() {
             </span>
           </div>
           <p className="text-[9px] text-zinc-500 leading-relaxed">
-            Your 8am summary is ready — 3 tasks due, 2 emails to review, and
+            Your 8am summary is ready: 3 tasks due, 2 emails to review, and
             weather looks clear.
           </p>
         </div>

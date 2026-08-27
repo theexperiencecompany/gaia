@@ -1,13 +1,11 @@
+import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { Alert01Icon } from "@icons";
+import { Alert01Icon, RedoIcon } from "@icons";
 import {
   APPROVAL_REQUEST_TOOL_NAME,
   type ApprovalRequestData,
 } from "@shared/chat";
-import {
-  parseOpenUISegments,
-  splitByBreaksPreservingFences,
-} from "@shared/utils";
+import { parseOpenUISegments, splitMessageByBreaks } from "@shared/utils";
 import * as m from "motion/react-m";
 import dynamic from "next/dynamic";
 import React, { useId } from "react";
@@ -17,7 +15,6 @@ import {
   MESSAGE_BREAK_DURATION_SECONDS,
   MESSAGE_BREAK_EASE_OUT_QUART,
   MESSAGE_BREAK_STAGGER_SECONDS,
-  splitMessageByBreaks,
 } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
@@ -31,7 +28,11 @@ import {
 import TodoProgressSection from "../TodoProgressSection";
 import UnifiedToolThread from "../UnifiedToolThread";
 import { getTypedData, renderTool, type ToolDataUnion } from "./ToolRenderers";
-import { useSubagentSynthesis } from "./useSubagentSynthesis";
+import {
+  deriveProcessedToolKeys,
+  useSubagentSynthesis,
+} from "./useSubagentSynthesis";
+import { useToolRenderAudit } from "./useToolRenderAudit";
 
 // OpenUI components use bg-zinc-800 (same as the bubble) and must render
 // OUTSIDE the imessage-bubble — see bubbles/bot/CLAUDE.md.
@@ -61,7 +62,8 @@ function ReplyQuote({
         const el = document.getElementById(replyToMessage.id);
         if (el) {
           el.scrollIntoView({ behavior: "smooth", block: "center" });
-          el.style.transition = "all 0.3s ease";
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.style.transition = "scale 0.3s ease";
           el.style.scale = "1.02";
           setTimeout(() => {
             el.style.scale = "1";
@@ -83,8 +85,55 @@ function ReplyQuote({
   );
 }
 
-/** Quiet failed-response bubble shown when a bot turn died with no text. */
-function FailedResponse({ error }: Readonly<{ error: string }>) {
+/**
+ * The failure surface for a bot turn, in two shapes:
+ *  - `partial` — some text streamed before the turn died, so a bubble already
+ *    rendered above; this is a compact strip under it saying it was cut short.
+ *  - full bubble — nothing streamed, so this IS the message.
+ *
+ * Retry lives here rather than only in the hover actions row: that row is
+ * invisible until hover and suppressed on the last bubble while the
+ * conversation is busy, which is exactly when a failure appears.
+ */
+function FailedResponse({
+  error,
+  partial,
+  onRetry,
+  isRetrying,
+}: Readonly<{
+  error: string;
+  partial: boolean;
+  onRetry?: () => void;
+  isRetrying?: boolean;
+}>) {
+  const retryButton = onRetry && (
+    <Button
+      className="h-7 min-w-0 shrink-0 px-2 text-xs"
+      isDisabled={isRetrying}
+      onPress={onRetry}
+      radius="full"
+      size="sm"
+      startContent={
+        <div className={isRetrying ? "animate-spin" : ""}>
+          <RedoIcon height={13} width={13} />
+        </div>
+      }
+      variant="flat"
+    >
+      Retry
+    </Button>
+  );
+
+  if (partial) {
+    return (
+      <div className="mt-1 flex items-center gap-2 text-zinc-400">
+        <Alert01Icon className="shrink-0" height={15} width={15} />
+        <span className="text-xs">Response was cut short</span>
+        {retryButton}
+      </div>
+    );
+  }
+
   return (
     <div className="imessage-bubble imessage-from-them imessage-grouped-last">
       <div className="flex items-start gap-2">
@@ -93,9 +142,12 @@ function FailedResponse({ error }: Readonly<{ error: string }>) {
           height={17}
           width={17}
         />
-        <div className="flex flex-col gap-0.5">
-          <span className="text-sm text-zinc-200">This response failed</span>
-          <span className="line-clamp-2 text-xs text-zinc-400">{error}</span>
+        <div className="flex flex-col items-start gap-1.5">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-sm text-zinc-200">This response failed</span>
+            <span className="line-clamp-2 text-xs text-zinc-400">{error}</span>
+          </div>
+          {retryButton}
         </div>
       </div>
     </div>
@@ -309,6 +361,8 @@ export default function TextBubble({
   loading,
   replyToMessage,
   error,
+  onRetry,
+  isRetrying,
 }: Readonly<ChatBubbleBotProps>) {
   const baseId = useId();
 
@@ -339,6 +393,15 @@ export default function TextBubble({
   // and the remaining tool_data entries that render via TOOL_RENDERERS.
   const { timeline, processedTools } = useSubagentSynthesis(tool_data);
 
+  // One stable React key per processedTools entry. Derived from stream-stable
+  // structure (ids / tool name / creation timestamp), never payload content,
+  // so grouped cards like search results or approvals keep their identity —
+  // and their internal state — while their merged data grows each frame.
+  const processedToolKeys = deriveProcessedToolKeys(processedTools);
+
+  // Dev-only: record what this bubble did with each tool_data entry.
+  useToolRenderAudit(message_id, tool_data);
+
   // Tool calls currently blocked on a HIL approval, keyed by the shared
   // tool_call_id. Lets the tool row/subagent show "Waiting for approval"
   // instead of a generic spinner while the approval card handles the decision.
@@ -354,6 +417,20 @@ export default function TextBubble({
     return ids;
   }, [tool_data]);
 
+  // Settled decisions, keyed the same way — the tool's own row in the thread
+  // carries the outcome as a chip instead of a separate receipts block.
+  const approvalStatusByToolCallId = React.useMemo(() => {
+    const statuses = new Map<string, ApprovalRequestData["status"]>();
+    tool_data?.forEach((entry) => {
+      if (entry.tool_name !== APPROVAL_REQUEST_TOOL_NAME) return;
+      const data = entry.data as ApprovalRequestData | null;
+      if (data?.tool_call_id && data.status !== "pending") {
+        statuses.set(data.tool_call_id, data.status);
+      }
+    });
+    return statuses;
+  }, [tool_data]);
+
   return (
     <ApprovalResolveProvider value={resolveApproval}>
       {parsedContent.thinking && (
@@ -366,17 +443,18 @@ export default function TextBubble({
           timeline={timeline}
           isStreaming={!!loading}
           pendingApprovalToolCallIds={pendingApprovalToolCallIds}
+          approvalStatusByToolCallId={approvalStatusByToolCallId}
         />
       )}
 
       {processedTools.map((entry, index) => {
         const toolName = entry.tool_name;
-        const keyId = entry.timestamp || index;
+        const entryKey = processedToolKeys[index];
 
         if (toolName === "todo_progress") {
           const data = getTypedData(entry as ToolDataUnion, "todo_progress");
           return data ? (
-            <React.Fragment key={`${baseId}-tool-${toolName}-${keyId}`}>
+            <React.Fragment key={`${baseId}-tool-${entryKey}`}>
               <TodoProgressSection todo_progress={data} isStreaming={loading} />
             </React.Fragment>
           ) : null;
@@ -385,21 +463,8 @@ export default function TextBubble({
         const typedData = getTypedData(entry as ToolDataUnion, toolName);
         if (!typedData) return null;
 
-        const toolCallId =
-          typeof typedData === "object" &&
-          typedData !== null &&
-          "tool_call_id" in typedData
-            ? String(
-                (typedData as unknown as { tool_call_id?: string })
-                  .tool_call_id ?? "",
-              )
-            : "";
-        const toolKey = toolCallId
-          ? `${baseId}-tool-${toolName}-${toolCallId}`
-          : `${baseId}-tool-${toolName}-${index}`;
-
         return (
-          <React.Fragment key={toolKey}>
+          <React.Fragment key={`${baseId}-tool-${entryKey}`}>
             {renderTool(toolName, typedData, index)}
           </React.Fragment>
         );
@@ -415,20 +480,21 @@ export default function TextBubble({
           // Use cleaned text without thinking tags
           const displayText = parsedContent.cleanText || "";
           // Preserve :::openui fences when splitting so they aren't mangled.
-          const textParts = displayText.includes(":::openui")
-            ? splitByBreaksPreservingFences(displayText)
-            : splitMessageByBreaks(displayText);
+          const textParts = splitMessageByBreaks(displayText);
 
-          // Filter empty/whitespace-only parts up front so first/last/single
+          // Collect the non-empty parts in a single pass so first/last/single
           // reflect the *visible* list, not the array index. Without this, a
           // single visible part sandwiched between blanks (e.g. trailing break,
           // post-thinking residue) would lose its tail because `isLast` would
           // point at a non-rendered entry. Animation delays use the visible
           // index so blanks don't shift the stagger; the original index is kept
           // for keys to preserve React identity across re-renders.
-          const visibleParts = textParts
-            .map((part, originalIndex) => ({ part, originalIndex }))
-            .filter(({ part }) => part.trim());
+          const visibleParts: Array<{ part: string; originalIndex: number }> =
+            [];
+          for (const [originalIndex, part] of textParts.entries()) {
+            if (!part.trim()) continue;
+            visibleParts.push({ part, originalIndex });
+          }
 
           if (visibleParts.length === 0) return null;
 
@@ -481,12 +547,21 @@ export default function TextBubble({
           );
         })()}
 
-      {/* Failed turn with no response text — render a quiet error bubble so
-          reloads don't show an empty bubble. Mirror ChatBubbleBot's hasError
-          gating: a turn that should show as a text bubble is never an error. */}
-      {!!error &&
-        !shouldShowTextBubble(text, isConvoSystemGenerated, systemPurpose) &&
-        !parsedContent.cleanText.trim() && <FailedResponse error={error} />}
+      {/* Every errored turn surfaces its failure and a retry. With no text this
+          IS the message (a quiet error bubble, so reloads don't show an empty
+          one); with partial text it's a strip under the bubble that already
+          rendered, marking the answer as truncated rather than finished. */}
+      {!!error && (
+        <FailedResponse
+          error={error}
+          isRetrying={isRetrying}
+          onRetry={onRetry}
+          partial={
+            shouldShowTextBubble(text, isConvoSystemGenerated, systemPurpose) ||
+            !!parsedContent.cleanText.trim()
+          }
+        />
+      )}
     </ApprovalResolveProvider>
   );
 }

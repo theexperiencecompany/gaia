@@ -12,10 +12,13 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from uuid import uuid4
 
+from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.checkpoint.base import empty_checkpoint
+import psycopg
 import pytest
 
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
+from tests.e2e._harness.graph_run import comms_graph, run_graph
 
 # ---------------------------------------------------------------------------
 # Fixtures (postgres_url comes from service/conftest.py)
@@ -179,3 +182,85 @@ class TestThreadIsolation:
         latest = await checkpointer.aget_tuple(config)
         assert latest is not None
         assert latest.checkpoint["id"] == cp_b["id"]
+
+
+@pytest.mark.service
+class TestCheckpointStorageStaysBounded:
+    """Recurring runs on one thread must not re-store the prompt stack per run.
+
+    Production regression: every run injects a fresh system-prompt stack into
+    the thread; the pre-model filtering was request-only, so the checkpoint
+    accumulated one full stack per run (39 copies on one workflow thread) and
+    the end-graph hook node re-serialized the whole accumulated list into
+    ``checkpoint_writes`` on every run — 19 GB of Postgres from one database.
+    This drives the REAL comms graph against the REAL Postgres checkpointer and
+    measures actual stored bytes for the thread.
+    """
+
+    @pytest.mark.regression
+    async def test_recurring_runs_store_linear_not_quadratic_bytes(
+        self, manager: CheckpointerManager, postgres_url: str
+    ) -> None:
+        runs = 4
+        static_prompt = "You are GAIA. " + "x" * 60_000
+        stack_bytes = len(static_prompt)
+        thread_id = f"bounded-{uuid4()}"
+
+        def run_input(run_no: int) -> dict:
+            return {
+                "messages": [
+                    SystemMessage(content=f"{static_prompt} (run {run_no})"),
+                    SystemMessage(
+                        content=f"[dynamic context, run {run_no}]",
+                        additional_kwargs={"dynamic_context": True},
+                    ),
+                    HumanMessage(
+                        content=f"[current time: run {run_no}]",
+                        additional_kwargs={"time_context": True},
+                    ),
+                    HumanMessage(content=f"user message {run_no}"),
+                ],
+                "todos": [],
+            }
+
+        scripts = [f"reply {i}" for i in range(1, runs + 1)]
+        async with comms_graph(scripts, checkpointer_manager=manager) as graph:
+            for run_no in range(1, runs + 1):
+                await run_graph(graph, "", thread_id=thread_id, state=run_input(run_no))
+            snapshot = await graph.aget_state(
+                {"configurable": {"thread_id": thread_id, "user_id": "u-1"}}
+            )
+
+        statics = [
+            m
+            for m in snapshot.values["messages"]
+            if m.type == "system" and not m.additional_kwargs.get("dynamic_context")
+        ]
+        assert len(statics) == 1, (
+            f"{len(statics)} static prompt copies retained in the checkpointed thread; "
+            "stale copies must be tombstoned out"
+        )
+
+        async with await psycopg.AsyncConnection.connect(postgres_url) as conn:
+            cur = await conn.execute(
+                """
+                SELECT
+                  (SELECT coalesce(sum(length(blob)), 0) FROM checkpoint_writes
+                    WHERE thread_id = %(t)s)
+                + (SELECT coalesce(sum(length(blob)), 0) FROM checkpoint_blobs
+                    WHERE thread_id = %(t)s)
+                """,
+                {"t": thread_id},
+            )
+            row = await cur.fetchone()
+        total_bytes = int(row[0]) if row else 0
+
+        # Each run legitimately stores ~one prompt stack (the graph input write
+        # and its delta blob). The regression stored the full ACCUMULATED list
+        # again per run — super-linear growth that blows straight through this
+        # linear budget (measured: ~3.5x over it at 4 runs, growing per run).
+        budget = runs * stack_bytes * 3
+        assert total_bytes < budget, (
+            f"thread stored {total_bytes} bytes after {runs} runs "
+            f"(budget {budget}); checkpoint growth is super-linear again"
+        )

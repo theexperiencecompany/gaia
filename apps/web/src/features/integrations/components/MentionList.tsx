@@ -30,8 +30,14 @@ export const MentionList = forwardRef<MentionListHandle, MentionListProps>(
     const [selected, setSelected] = useState(0);
     const activeRef = useRef<HTMLButtonElement>(null);
 
-    // A new query yields a new list — start from the top.
-    useEffect(() => setSelected(0), [items]);
+    // A new query yields a new list — start from the top. Render-phase
+    // adjustment (React: "adjusting state when a prop changes") so the
+    // reset commits with the same frame as the new items.
+    const [prevItems, setPrevItems] = useState(items);
+    if (items !== prevItems) {
+      setPrevItems(items);
+      setSelected(0);
+    }
 
     // Keep the highlighted item visible when navigating past the fold.
     useEffect(() => {

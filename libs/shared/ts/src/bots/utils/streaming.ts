@@ -18,23 +18,26 @@
  *   await handleStreamingChat(gaia, request, editMessage, onAuth, onErr,
  *     STREAMING_DEFAULTS.discord);
  */
-import type { Analytics } from "../../analytics";
+import type { AnalyticsContext } from "../../analytics";
 import { BOT_EVENTS } from "../../analytics/events/bots";
 import type { ApprovalRequestData } from "../../chat";
-import {
-  NEW_MESSAGE_BREAK_TOKEN,
-  NEW_MESSAGE_BREAK_TOKEN_LENGTH,
-} from "../../utils/messageBreakUtils";
 import type { GaiaClient } from "../api";
-import type { ChatRequest } from "../types";
-import { formatBotError, PLATFORM_MARKDOWN } from "./formatters";
+import { BOT_STREAM_ERROR } from "../api/chat-stream";
+import type { ChatRequest, PlatformName } from "../types";
+import { segmentIntoBubbles } from "./bubbles";
+import { isMessageGoneError, retryAfterMs } from "./delivery-errors";
+import {
+  buildPlanRequiredMessage,
+  formatBotError,
+  PLATFORM_MARKDOWN,
+} from "./formatters";
 
 import {
   createBotLogger,
   hashLogIdentifier,
   sanitizeErrorForLog,
 } from "./logger";
-import { chunkResponse, truncateResponse } from "./text";
+import { chunkResponse, PLATFORM_LIMITS } from "./text";
 import { wideLog, withWideEvent } from "./wide-events";
 
 const logger = createBotLogger("shared", "streaming");
@@ -60,16 +63,13 @@ function formatApprovalPrompt(data: ApprovalRequestData): string {
 export interface StreamingOptions {
   editIntervalMs: number;
   streaming: boolean;
-  platform: "discord" | "slack" | "telegram" | "whatsapp";
+  platform: PlatformName;
 }
 
 export type MessageEditor = (text: string) => Promise<void>;
 export type NewMessageSender = (text: string) => Promise<MessageEditor>;
 
-export const STREAMING_DEFAULTS: Record<
-  "discord" | "slack" | "telegram" | "whatsapp",
-  StreamingOptions
-> = {
+export const STREAMING_DEFAULTS: Record<PlatformName, StreamingOptions> = {
   discord: {
     editIntervalMs: 1200,
     streaming: false,
@@ -90,6 +90,11 @@ export const STREAMING_DEFAULTS: Record<
     streaming: false,
     platform: "whatsapp",
   },
+  imessage: {
+    editIntervalMs: 2000,
+    streaming: false,
+    platform: "imessage",
+  },
 };
 
 /**
@@ -100,11 +105,13 @@ async function _handleStream(
     onChunk: (text: string) => void | Promise<void>,
     onDone: (fullText: string, conversationId: string) => void | Promise<void>,
     onError: (error: Error) => void | Promise<void>,
+    deliverOutOfBand: (text: string) => Promise<void>,
+    onMessageBoundary: (discarded: boolean) => Promise<void>,
   ) => Promise<string>,
   request: ChatRequest,
   gaia: GaiaClient,
   editMessage: MessageEditor,
-  sendNewMessage: NewMessageSender | null,
+  sendNewMessage: NewMessageSender,
   onAuthError: ((authUrl: string) => Promise<void>) | null,
   onGenericError: (formattedError: string) => Promise<void>,
   options: StreamingOptions,
@@ -115,20 +122,37 @@ async function _handleStream(
   // platform converter HERE, at the single chokepoint, so adapters receive
   // already-converted text and never call convertTo<Platform>Markdown inline.
   const render = PLATFORM_MARKDOWN[platform];
+  const emitGenericError = (text: string) => onGenericError(render(text));
   const wrappedEditMessage: MessageEditor = (text) => editMessage(render(text));
-  const wrappedSendNewMessage: NewMessageSender | null = sendNewMessage
-    ? async (text) => {
-        const editor = await sendNewMessage(render(text));
-        return (updatedText) => editor(render(updatedText));
-      }
-    : null;
+  const wrappedSendNewMessage: NewMessageSender = async (text) => {
+    const editor = await sendNewMessage(render(text));
+    return (updatedText) => editor(render(updatedText));
+  };
+
+  const limit = PLATFORM_LIMITS[platform];
+  /** Rendered length — the size the platform actually enforces. */
+  const measure = (text: string): number => render(text).length;
 
   let lastEditTime = 0;
   let editTimer: ReturnType<typeof setTimeout> | null = null;
-  let fullText = "";
+  /** Text streamed for the assistant message currently in flight. */
+  let pending = "";
   let streamDone = false;
   let currentEditor = wrappedEditMessage;
-  let sentText = "";
+  /** What the live bubble currently shows, so no-op edits are skipped. */
+  let shownText = "";
+  /** True once the live bubble holds finished text and must not be rewritten. */
+  let bubbleSealed = false;
+  /** Position of the next finished bubble in this reply, for the delivery event. */
+  let bubbleIndex = 0;
+  /**
+   * True while the live bubble holds text the backend has since retracted (a
+   * MOMENT-1 handoff preamble). It stays on screen — no platform lets us delete
+   * a message — until the real reply overwrites it in place.
+   */
+  let bubbleProvisional = false;
+  /** True once the stream's own error handler has told the user about a failure. */
+  let failureReported = false;
 
   // Serialization queue to prevent concurrent Telegram API calls
   // which cause out-of-order message updates
@@ -138,148 +162,244 @@ async function _handleStream(
     return opQueue;
   };
 
-  const updateDisplay = async (text: string) => {
-    // Strip any unprocessed break tags before displaying
-    const cleaned = text.replaceAll(NEW_MESSAGE_BREAK_TOKEN, "").trim();
-    if (!cleaned) return;
-    const truncated = truncateResponse(cleaned, platform);
-    if (truncated === sentText) return;
-    try {
-      await currentEditor(truncated);
-      sentText = truncated;
-    } catch (err) {
-      // Transient: the live bubble may have been deleted or the interaction
-      // expired. The next edit or finalizeDelivery recovers, so this is debug,
-      // not a failure — but it is logged so a persistent edit problem is visible.
-      logger.debug("stream_edit_skipped", sanitizeErrorForLog(err));
-    }
+  /**
+   * Delivers one finished bubble. It lands in the live bubble if that one is
+   * still open, otherwise in a new message. This is the only path that emits
+   * final text, and it never truncates — oversized input is chunked before it
+   * gets here.
+   */
+  const noteDelivered = (method: "edit" | "new", chars: number): void => {
+    logger.info("bubble_delivered", { method, index: bubbleIndex, chars });
   };
 
-  const handleNewMessageBreak = async () => {
-    if (!wrappedSendNewMessage) return;
-
-    while (fullText.includes(NEW_MESSAGE_BREAK_TOKEN)) {
-      const breakIndex = fullText.indexOf(NEW_MESSAGE_BREAK_TOKEN);
-      const beforeBreak = fullText.slice(0, breakIndex).trim();
-      const afterBreak = fullText.slice(
-        breakIndex + NEW_MESSAGE_BREAK_TOKEN_LENGTH,
-      );
-
-      if (beforeBreak && beforeBreak !== sentText) {
-        await updateDisplay(beforeBreak);
-      }
-
-      const afterTrimmed = afterBreak.trim();
-      if (!afterTrimmed) {
-        // Break at end of text with nothing after — just update current segment
-        fullText = "";
+  /**
+   * Puts finished text into the live bubble, reacting to WHY an edit failed.
+   *
+   * Every failure used to take the same branch — re-send the whole text as a
+   * new message — which on a rate limit or a network blip left the original
+   * bubble on screen and posted the reply a second time underneath it. Only a
+   * message that is genuinely gone justifies a new one.
+   */
+  const editFinished = async (text: string): Promise<void> => {
+    try {
+      await currentEditor(text);
+      noteDelivered("edit", text.length);
+      return;
+    } catch (err) {
+      if (isMessageGoneError(err)) {
+        // Nothing to edit any more, and this is the only copy of the text.
+        logger.info("stream_edit_recovered", sanitizeErrorForLog(err));
+        currentEditor = await wrappedSendNewMessage(text);
+        noteDelivered("new", text.length);
         return;
       }
-
-      currentEditor = await wrappedSendNewMessage(
-        afterTrimmed.replaceAll(NEW_MESSAGE_BREAK_TOKEN, "").trim() || "...",
-      );
-      fullText = afterTrimmed;
-      sentText =
-        afterTrimmed.replaceAll(NEW_MESSAGE_BREAK_TOKEN, "").trim() || "...";
+      const waitMs = retryAfterMs(err);
+      if (waitMs !== null) {
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+      }
+      try {
+        await currentEditor(text);
+        noteDelivered("edit", text.length);
+      } catch (retryErr) {
+        // Keep the bubble that is already there. Re-sending is what
+        // double-posted the reply, and the user is not better off with two.
+        logger.info("stream_edit_skipped", {
+          ...sanitizeErrorForLog(retryErr),
+          bubble_index: bubbleIndex,
+        });
+      }
     }
   };
 
-  const deliverOverflowChunk = async (chunk: string): Promise<void> => {
-    if (wrappedSendNewMessage) {
-      currentEditor = await wrappedSendNewMessage(chunk);
-      sentText = chunk;
-    } else {
-      // Adapter cannot post additional bubbles — best-effort fallback that
-      // keeps the legacy truncation behaviour for this single bubble.
-      const overflow = truncateResponse(chunk, platform);
-      try {
-        await currentEditor(overflow);
-        sentText = overflow;
-      } catch (err) {
-        // An overflow segment was dropped — the user is missing part of the
-        // response, so surface it rather than swallowing silently.
-        wideLog.warning(
-          "stream_overflow_chunk_dropped",
-          sanitizeErrorForLog(err),
-        );
-      }
+  const deliverBubble = async (text: string): Promise<void> => {
+    if (!text) return;
+    if (bubbleSealed) {
+      currentEditor = await wrappedSendNewMessage(text);
+      noteDelivered("new", text.length);
+    } else if (text !== shownText) {
+      await editFinished(text);
+    }
+    shownText = text;
+    bubbleSealed = true;
+    bubbleProvisional = false;
+    bubbleIndex += 1;
+  };
+
+  /**
+   * Shows in-progress text in the live bubble. Never final, so a failed edit is
+   * harmless — the next preview or the finished-bubble delivery supersedes it.
+   */
+  const previewBubble = async (text: string): Promise<void> => {
+    if (!text) return;
+    if (bubbleSealed) {
+      currentEditor = await wrappedSendNewMessage(text);
+      shownText = text;
+      bubbleSealed = false;
+      return;
+    }
+    if (text === shownText) return;
+    try {
+      await currentEditor(text);
+      shownText = text;
+      bubbleProvisional = false;
+    } catch (err) {
+      // Transient: the live bubble may have been deleted or the interaction
+      // expired. The next edit or the final delivery recovers — but a
+      // persistent edit problem is exactly how a bot goes quiet without
+      // failing, so it is a visible line, not a debug one.
+      logger.info("stream_edit_skipped", sanitizeErrorForLog(err));
     }
   };
 
   /**
-   * Final delivery: split ``text`` on any unprocessed ``<NEW_MESSAGE_BREAK>``
-   * markers, chunk each segment to the platform character limit, and deliver
-   * the chunks in order — first chunk edits the current bubble, every
-   * subsequent chunk is posted via ``sendNewMessage`` as a new bubble. Falls
-   * back to truncation only when the adapter cannot send additional bubbles.
+   * The messages a finished assistant message should be sent as: segmented into
+   * bubbles the way a person texts, then chunked to the platform's limit.
    *
-   * Used at the end of the stream so the user always receives the full
-   * response across as many bubbles as it takes, instead of a single bubble
-   * with a ``... (truncated)`` suffix.
+   * Segmentation is not optional politeness. The model is asked to split its
+   * own replies with the sentinel and across 42 consecutive production replies
+   * never once did, so "one sentinel-free reply" is the normal case, not the
+   * edge case — and it arrived as a single 4,358-character Telegram message.
    */
-  const finalizeDelivery = async (text: string): Promise<void> => {
-    const segments = text
-      .split(NEW_MESSAGE_BREAK_TOKEN)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (segments.length === 0) return;
+  const bubblesFor = (message: string): string[] =>
+    segmentIntoBubbles(message).flatMap((bubble) =>
+      chunkResponse(bubble, platform, render),
+    );
 
-    const allChunks = segments.flatMap((s) => chunkResponse(s, platform));
-    if (allChunks.length === 0) return;
+  /**
+   * What the live bubble should show for the text streamed so far: the bubbles
+   * this message will eventually be split into, joined back together.
+   *
+   * Segmenting here and throwing the split away is what keeps sentinels off the
+   * screen — whole ones, half-received ones, and the near-miss spellings the
+   * model emits (``<NEW_LINE_BREAK>``, ``[NEW_MESSAGE_BREAK]``) — and it makes
+   * the preview a prefix of what is finally delivered rather than a different
+   * rendering of it.
+   *
+   * Capped at the platform's rendered limit: a preview now holds a whole
+   * in-flight message, so it can outgrow the limit long before the boundary
+   * that splits it, and an oversized edit is rejected outright — which would
+   * freeze the bubble on whatever it last showed. Nothing is lost by capping:
+   * the full text is still in ``pending`` and goes out, split, at the boundary.
+   */
+  const previewFor = (streamed: string): string => {
+    const text = segmentIntoBubbles(streamed).join("\n\n");
+    if (measure(text) <= limit) return text;
+    return chunkResponse(text, platform, render)[0] ?? "";
+  };
 
-    const [firstChunk, ...remainingChunks] = allChunks;
-    if (firstChunk !== sentText) {
-      try {
-        await currentEditor(firstChunk);
-        sentText = firstChunk;
-      } catch (editError) {
-        // The live bubble may have been deleted/expired (streaming platforms),
-        // so fall back to a fresh message. This is the FINAL delivery of the
-        // whole response — if it can't be delivered at all, surface the failure
-        // instead of silently reporting success (a swallowed send here means the
-        // user got nothing while the bot logged chat_stream_completed).
-        if (wrappedSendNewMessage) {
-          currentEditor = await wrappedSendNewMessage(firstChunk);
-          sentText = firstChunk;
-        } else {
-          throw editError;
-        }
+  /**
+   * Delivers the assistant message that just ended, as the bubbles it should be
+   * split into: the first replaces the live preview, the rest are new messages.
+   *
+   * **Nothing is sealed before this point.** Segmentation used to run mid-stream
+   * — on every sentinel, and on every overflow — which sealed bubbles while the
+   * message was still in flight. A retraction can only reopen the ONE bubble
+   * still being edited, so a style-guard rewrite (which retracts its draft and
+   * streams a replacement) left every already-sealed draft bubble on screen and
+   * delivered the reply twice. Waiting for the boundary is what makes the
+   * retraction able to take back the whole message.
+   */
+  const flushMessage = async (): Promise<void> => {
+    // Take the text out of `pending` FIRST, then deliver it. The stream
+    // callback keeps appending while a delivery is in flight, so assigning to
+    // it after an await would overwrite — and silently drop — whatever arrived
+    // in the meantime.
+    const message = pending;
+    pending = "";
+    for (const bubble of bubblesFor(message)) {
+      await deliverBubble(bubble);
+    }
+  };
+
+  /**
+   * The backend has retracted the message currently on screen: its text was
+   * either a preamble to a handoff ("let me get the tasks created…") or a draft
+   * the style guard is about to rewrite, and the real reply is the NEXT message.
+   *
+   * No platform lets a bot unsend, and sending a correction would be a second
+   * message about a message. So the bubble is left un-sealed instead: the reply
+   * that arrives next overwrites it in place, and the user only ever sees one.
+   */
+  const discardCurrentMessage = (): void => {
+    if (!pending && !shownText) return;
+    pending = "";
+    // A SEALED bubble holds something that is not the retracted text — an
+    // approval prompt or a rate-limit notice, posted out of band. Reopening it
+    // would hand the replacement reply that message to overwrite, and the
+    // question the user still has to answer would disappear under it.
+    if (bubbleSealed) {
+      logger.info("bubble_discarded", { chars: 0, sealed: true });
+      return;
+    }
+    bubbleProvisional = true;
+    logger.info("bubble_discarded", { chars: shownText.length });
+  };
+
+  /**
+   * One assistant message has ended, and the backend has said whether it counts.
+   *
+   * This is the only place streamed text becomes final, so it is also the only
+   * place a retraction still has something to take back.
+   */
+  const handleMessageBoundary = async (discarded: boolean): Promise<void> => {
+    await enqueue(async () => {
+      // Non-streaming platforms (Discord, WhatsApp, iMessage) have shown
+      // nothing yet: the whole reply is delivered at stream end from
+      // ``finalText``, which the API already builds out of the KEPT messages
+      // only. Acting on a boundary here would deliver that text a second time.
+      if (!streaming) return;
+      if (discarded) {
+        discardCurrentMessage();
+        return;
       }
-    }
+      await flushMessage();
+    });
+  };
 
-    for (const chunk of remainingChunks) {
-      await deliverOverflowChunk(chunk);
-    }
+  /**
+   * Posts a message that is not part of the streamed reply — currently the HIL
+   * approval prompt, which the user has to answer while the agent is paused.
+   *
+   * It has to interrupt cleanly. The prompt must land BELOW the text the user
+   * has already read, and the adapters point "the current message" at the
+   * prompt the moment they send it — so whatever has streamed so far is
+   * delivered and sealed first, and the bubble is sealed again afterwards so
+   * the rest of the reply opens a fresh message instead of overwriting the
+   * question.
+   *
+   * This is therefore the one place a message is sealed before its boundary
+   * arrives, and it is deliberate: a retraction that follows finds a sealed
+   * bubble and correctly leaves the prompt alone (see discardCurrentMessage).
+   */
+  const deliverOutOfBand = async (text: string): Promise<void> => {
+    await enqueue(async () => {
+      await flushMessage();
+      await wrappedSendNewMessage(text);
+      bubbleSealed = true;
+    });
   };
 
   try {
     await streamFn(
       (chunk) => {
-        fullText += chunk;
+        pending += chunk;
         if (streamDone || !streaming) return;
 
         const now = Date.now();
-        if (
-          fullText.includes(NEW_MESSAGE_BREAK_TOKEN) ||
-          now - lastEditTime >= editIntervalMs
-        ) {
+        if (now - lastEditTime >= editIntervalMs) {
           lastEditTime = now;
           if (editTimer) {
             clearTimeout(editTimer);
             editTimer = null;
           }
-          enqueue(async () => {
-            await handleNewMessageBreak();
-            await updateDisplay(fullText);
-          });
+          enqueue(() => previewBubble(previewFor(pending)));
         } else if (!editTimer) {
           editTimer = setTimeout(
             () => {
               editTimer = null;
               if (!streamDone) {
                 lastEditTime = Date.now();
-                enqueue(() => updateDisplay(fullText));
+                enqueue(() => previewBubble(previewFor(pending)));
               }
             },
             editIntervalMs - (now - lastEditTime),
@@ -293,28 +413,41 @@ async function _handleStream(
           editTimer = null;
         }
 
-        // Wait for any in-flight operations to finish before final update
+        // Wait for any in-flight operations to finish before final delivery
         await opQueue;
 
-        // Non-streaming platforms (Discord, WhatsApp) haven't shown anything
-        // yet — adopt the full ``finalText``. Streaming platforms have been
-        // live-editing one bubble (and potentially split off prior bubbles
-        // via handleNewMessageBreak); ``fullText`` already holds the current
-        // segment, no reset needed.
+        // Non-streaming platforms (Discord, WhatsApp, iMessage) have shown
+        // nothing yet, so the whole reply is delivered here from ``finalText``.
+        // Streaming platforms delivered each message at its boundary;
+        // ``pending`` holds only a last message that never got one — a legacy
+        // stream, or one cut short by an error.
         if (!streaming) {
-          fullText = finalText;
-          sentText = "";
+          pending = finalText;
+          shownText = "";
+          bubbleSealed = false;
         }
 
-        await finalizeDelivery(fullText);
+        await flushMessage();
+
+        // A retracted preamble with nothing to replace it means the turn
+        // produced no reply at all. The preamble stays — a blank message is
+        // worse than the agent's own words — but it must be visible that it
+        // happened.
+        if (bubbleProvisional) {
+          logger.info("bubble_preamble_kept", { chars: shownText.length });
+        }
       },
       async (error) => {
         streamDone = true;
+        failureReported = true;
         if (editTimer) {
           clearTimeout(editTimer);
           editTimer = null;
         }
-        if (error.message === "not_authenticated" && onAuthError) {
+        if (
+          error.message === BOT_STREAM_ERROR.notAuthenticated &&
+          onAuthError
+        ) {
           try {
             const { authUrl } = await gaia.createLinkToken(
               request.platform,
@@ -322,17 +455,32 @@ async function _handleStream(
             );
             await onAuthError(authUrl);
           } catch {
-            await onGenericError(
+            await emitGenericError(
               "Failed to generate auth link. Please try /auth again.",
             );
           }
+        } else if (error.message === BOT_STREAM_ERROR.planRequired) {
+          await emitGenericError(
+            buildPlanRequiredMessage(gaia.getPricingUrl()),
+          );
         } else {
-          await onGenericError(formatBotError(error));
+          await emitGenericError(formatBotError(error));
         }
       },
+      deliverOutOfBand,
+      handleMessageBoundary,
     );
   } catch (error) {
-    await onGenericError(formatBotError(error));
+    // `streamChat` reports a non-retryable failure through `onError` and THEN
+    // rethrows it, so by the time it reaches here the user has already been
+    // told — reporting again delivered every rate limit and every dead backend
+    // as two identical messages. This catch is the net for failures that never
+    // reached `onError` at all, such as a throw out of a delivery callback.
+    if (failureReported) {
+      logger.info("stream_error_already_reported", sanitizeErrorForLog(error));
+      return;
+    }
+    await emitGenericError(formatBotError(error));
   }
 }
 
@@ -348,11 +496,11 @@ export async function handleStreamingChat(
   gaia: GaiaClient,
   request: ChatRequest,
   editMessage: MessageEditor,
-  sendNewMessage: NewMessageSender | null,
+  sendNewMessage: NewMessageSender,
   onAuthError: (authUrl: string) => Promise<void>,
   onGenericError: (formattedError: string) => Promise<void>,
   options: StreamingOptions,
-  analytics?: Analytics,
+  analytics?: AnalyticsContext,
 ): Promise<void> {
   // Latency + high-cardinality observability for the chat pipeline. user_hash
   // is the HMAC-hashed id (no PII). ttfb_ms = time to first streamed chunk.
@@ -393,30 +541,29 @@ async function runStreamingChat(
   gaia: GaiaClient,
   request: ChatRequest,
   editMessage: MessageEditor,
-  sendNewMessage: NewMessageSender | null,
+  sendNewMessage: NewMessageSender,
   onAuthError: (authUrl: string) => Promise<void>,
   onGenericError: (formattedError: string) => Promise<void>,
   options: StreamingOptions,
-  analytics: Analytics | undefined,
+  analytics: AnalyticsContext | undefined,
   userHash: string | undefined,
   channelHash: string | undefined,
 ): Promise<void> {
-  const distinctId = `${request.platform}:${request.platformUserId}`;
   const startMs = Date.now();
   let responseLength = 0;
   let hadError = false;
   let firstChunkMs: number | null = null;
   let chunkCount = 0;
+  let discardedMessages = 0;
+  let notices = 0;
   let conversationId = "";
 
-  analytics?.capture(distinctId, BOT_EVENTS.MESSAGE_RECEIVED, {
+  analytics?.client.capture(analytics.distinctId, BOT_EVENTS.MESSAGE_RECEIVED, {
     interaction_type: "chat",
-    channel_id: request.channelId,
     message_length: request.message.length,
   });
 
-  analytics?.capture(distinctId, BOT_EVENTS.CHAT_STARTED, {
-    channel_id: request.channelId,
+  analytics?.client.capture(analytics.distinctId, BOT_EVENTS.CHAT_STARTED, {
     message_length: request.message.length,
     streaming_enabled: options.streaming,
   });
@@ -445,38 +592,19 @@ async function runStreamingChat(
     });
     // Do not ship the raw error string — it can contain paths, request IDs,
     // or upstream-echoed tokens. `context` is enough to bucket failures.
-    analytics?.capture(distinctId, BOT_EVENTS.ERROR, {
+    analytics?.client.capture(analytics.distinctId, BOT_EVENTS.ERROR, {
       context: "chat:streaming",
-      channel_id: request.channelId,
       duration_ms: Date.now() - startMs,
     });
     await onGenericError(formattedError);
-  };
-
-  // HIL approval prompts are delivered out-of-band as their own message so a
-  // non-streaming platform (Discord/WhatsApp, which shows nothing until the
-  // stream ends) still surfaces the question while the agent is paused waiting.
-  const render = PLATFORM_MARKDOWN[options.platform];
-  const handleApprovalUpdate = async (data: ApprovalRequestData) => {
-    // Only the PENDING question needs an out-of-band message — a bot has no
-    // buttons, so the user answers in chat. Settled frames (an auto_approved
-    // receipt in auto mode, or a resumed decision) arrive MID-STREAM and are
-    // already narrated by the agent's streamed reply; posting them here fires
-    // sendNewMessage, which on editing platforms (Telegram/Slack) rebinds the
-    // live edit cursor and fragments/overwrites that reply.
-    if (data.status !== "pending") return;
-    const text = render(formatApprovalPrompt(data));
-    if (sendNewMessage) {
-      await sendNewMessage(text);
-    } else {
-      await editMessage(text);
-    }
   };
 
   const streamFn = (
     onChunk: (text: string) => void | Promise<void>,
     onDone: (fullText: string, conversationId: string) => void | Promise<void>,
     onError: (error: Error) => void | Promise<void>,
+    deliverOutOfBand: (text: string) => Promise<void>,
+    onMessageBoundary: (discarded: boolean) => Promise<void>,
   ) =>
     gaia.chatStream(
       request,
@@ -493,7 +621,33 @@ async function runStreamingChat(
         await onDone(fullText, convId);
       },
       onError,
-      handleApprovalUpdate,
+      // HIL approval prompts go out as their own message so a non-streaming
+      // platform (Discord/WhatsApp, which shows nothing until the stream ends)
+      // still surfaces the question while the agent is paused waiting.
+      //
+      // Only the PENDING question needs one — a bot has no buttons, so the user
+      // answers in chat. Settled frames (an auto_approved receipt in auto mode,
+      // or a resumed decision) arrive MID-STREAM and are already narrated by the
+      // agent's streamed reply, so posting them would fragment it.
+      async (data: ApprovalRequestData) => {
+        if (data.status !== "pending") return;
+        await deliverOutOfBand(formatApprovalPrompt(data));
+      },
+      // One assistant message ended. A kept one is segmented and delivered here
+      // and nowhere earlier; a discarded one (a handoff preamble, or a draft the
+      // style guard rewrote) is taken back off the screen.
+      async (discarded: boolean) => {
+        if (discarded) discardedMessages += 1;
+        await onMessageBoundary(discarded);
+      },
+      // A rate-limit notice is about the turn, not part of it. Out-of-band for
+      // the same reason the approval prompt is: it must survive the assistant
+      // message it arrived during being retracted, and it must reach a
+      // non-streaming platform that renders nothing until the stream ends.
+      async (text: string) => {
+        notices += 1;
+        await deliverOutOfBand(text);
+      },
     );
 
   try {
@@ -511,16 +665,21 @@ async function runStreamingChat(
     wideLog.set({
       ttfb_ms: firstChunkMs ?? undefined,
       chunk_count: chunkCount,
+      discarded_messages: discardedMessages,
+      notices_delivered: notices,
       response_length: responseLength,
       conversation_id: conversationId || undefined,
     });
     if (!hadError) {
-      analytics?.capture(distinctId, BOT_EVENTS.CHAT_COMPLETED, {
-        channel_id: request.channelId,
-        duration_ms: Date.now() - startMs,
-        response_length: responseLength,
-        streaming_enabled: options.streaming,
-      });
+      analytics?.client.capture(
+        analytics.distinctId,
+        BOT_EVENTS.CHAT_COMPLETED,
+        {
+          duration_ms: Date.now() - startMs,
+          response_length: responseLength,
+          streaming_enabled: options.streaming,
+        },
+      );
     }
   }
 }

@@ -22,6 +22,7 @@ import pytest
 
 from app.models.chat_models import ConversationModel
 from app.models.message_models import MessageRequestWithHistory
+from app.services.analytics_service import AnalyticsEvents
 from app.services.chat.chunks import (
     extract_response_text as _extract_response_text,
     extract_tool_data,
@@ -509,6 +510,25 @@ class TestRunChatStreamBackground:
         ):
             yield
 
+    @pytest.fixture(autouse=True)
+    def _no_live_artifact_forwarder(self) -> Iterator[None]:
+        """Force ``ArtifactForwarder`` onto its "Redis unavailable" fast path.
+
+        ``run_chat_stream_background`` spawns ``forward_artifact_events`` as a
+        background task for every turn with a ``user_id``. Its ``run()`` reads
+        the process-wide ``redis_cache`` singleton directly (not ``stream_manager``,
+        which the tests below already mock) — in a hermetic dev/test env
+        ``redis_cache.redis`` is ``None`` and it no-ops, but under CI's live-services
+        job (real Redis running, ``REDIS_URL`` pointing at it) it subscribes to a
+        real pub/sub channel and blocks in ``pubsub.listen()`` for the rest of the
+        turn, relying entirely on ``_finalize_stream``'s ``artifact_task.cancel()``
+        landing before test/CI timeouts to unblock it. ``tests/unit/`` must be fully
+        mocked and I/O-free (see ``tests/CLAUDE.md``), so pin the fast path here
+        instead of depending on ambient Redis connectivity/scheduling.
+        """
+        with patch("app.services.chat.artifact_forwarder.redis_cache.redis", None):
+            yield
+
     async def test_new_conversation_publishes_init_chunk(self, test_user, basic_body):
         """When conversation_id is None, an init chunk must be published first."""
 
@@ -601,6 +621,100 @@ class TestRunChatStreamBackground:
 
         published = [call.args[1] for call in sm.publish_chunk.call_args_list]
         assert "data: [DONE]\n\n" in published
+
+    async def test_captures_message_completed_on_success(self, test_user, existing_conv_body):
+        sm = _make_stream_manager_mock()
+        with (
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=AsyncMock(return_value=_done_only_stream()),
+            ),
+            patch(
+                "app.services.chat.stream.save_conversation_async",
+                new=AsyncMock(),
+            ),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+            patch("app.services.chat.stream.capture_event") as mock_capture,
+        ):
+            await run_chat_stream_background(
+                stream_id="stream_capture_complete",
+                body=existing_conv_body,
+                user=test_user,
+                conversation_id="conv_existing_123",
+            )
+
+        mock_capture.assert_called_once()
+        call_args = mock_capture.call_args
+        assert call_args.args[0] == "user_abc"
+        assert call_args.args[1] == AnalyticsEvents.CHAT_MESSAGE_COMPLETED
+        assert call_args.args[2] == {
+            "conversation_id": "conv_existing_123",
+            "voice_mode": False,
+            "is_new_conversation": False,
+        }
+
+    async def test_source_is_carried_onto_the_terminal_event(self, test_user, existing_conv_body):
+        """`source` is what lets one event name span web, desktop and bots.
+
+        Every other test leaves it None, so the branch that attaches it never
+        ran with a value — key and value were both free to drift.
+        """
+        sm = _make_stream_manager_mock()
+        with (
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=AsyncMock(return_value=_done_only_stream()),
+            ),
+            patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+            patch("app.services.chat.stream.capture_event") as mock_capture,
+        ):
+            await run_chat_stream_background(
+                stream_id="stream_capture_source",
+                body=existing_conv_body,
+                user=test_user,
+                conversation_id="conv_existing_123",
+                source="desktop",
+            )
+
+        assert mock_capture.call_args.args[2] == {
+            "conversation_id": "conv_existing_123",
+            "voice_mode": False,
+            "is_new_conversation": False,
+            "source": "desktop",
+        }
+
+    async def test_captures_message_cancelled_when_stream_cancelled(
+        self, test_user, existing_conv_body
+    ):
+        sm = _make_stream_manager_mock(is_cancelled=True)
+        with (
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=AsyncMock(return_value=_done_only_stream()),
+            ),
+            patch(
+                "app.services.chat.stream.save_conversation_async",
+                new=AsyncMock(),
+            ),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+            patch("app.services.chat.stream.capture_event") as mock_capture,
+        ):
+            await run_chat_stream_background(
+                stream_id="stream_capture_cancel",
+                body=existing_conv_body,
+                user=test_user,
+                conversation_id="conv_existing_123",
+            )
+
+        mock_capture.assert_called_once()
+        call_args = mock_capture.call_args
+        assert call_args.args[0] == "user_abc"
+        assert call_args.args[1] == AnalyticsEvents.CHAT_MESSAGE_CANCELLED
+        assert call_args.args[2]["conversation_id"] == "conv_existing_123"
 
     async def test_complete_stream_called_on_success(self, test_user, existing_conv_body):
         sm = _make_stream_manager_mock()

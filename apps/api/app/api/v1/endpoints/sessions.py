@@ -19,6 +19,7 @@ from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.db.repositories.conversations import conversation_repository
 from app.decorators import tiered_rate_limit
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.storage import (
     ArtifactInfo,
     JuiceFSUnavailable,
@@ -223,6 +224,7 @@ async def pin_artifact(
         raise HTTPException(status_code=404, detail="Artifact not found") from e
     except JuiceFSUnavailable as e:
         raise HTTPException(status_code=503, detail="Workspace storage offline") from e
+    capture_context_event(AnalyticsEvents.SESSION_ARTIFACT_PINNED)
     return JSONResponse(
         status_code=status.HTTP_201_CREATED,
         content=PinResponse(pinned_path=pinned_path).model_dump(),

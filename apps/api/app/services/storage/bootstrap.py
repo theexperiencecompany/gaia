@@ -42,7 +42,7 @@ from typing import Literal
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
-from app.services.storage.metrics import FsOps, record_fs_op  # noqa: F401
+from app.services.storage.metrics import FsOps, record_fs_op
 from shared.py.wide_events import log
 
 _ENCRYPTION_KEY_FILE = Path("/etc/gaia/jfs-master.pem")
@@ -224,11 +224,7 @@ def _run(
     invoking ``juicefs format`` — argv is visible to anyone with shell on the
     host via ``ps auxww`` during the format window.
     """
-    merged_env: dict[str, str] | None
-    if env is None:
-        merged_env = None
-    else:
-        merged_env = {**os.environ, **env}
+    merged_env: dict[str, str] | None = None if env is None else {**os.environ, **env}
     return subprocess.run(  # nosec B603 - argv list, no shell
         cmd,
         check=False,
@@ -413,7 +409,7 @@ def _bootstrap_loop() -> None:
     for attempt in range(1, attempts + 1):
         try:
             result = _bootstrap_once()
-        except Exception as e:  # noqa: BLE001 - never let the thread die silently
+        except Exception as e:  # never let the thread die silently
             log.warning(
                 f"{LogTag.STORAGE} bootstrap attempt errored",
                 error=str(e),

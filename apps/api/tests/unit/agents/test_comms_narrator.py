@@ -1,7 +1,7 @@
 """Behavior tests for app.agents.core.background.comms_narrator.
 
 Locks: the executor result is re-voiced through the comms graph as a
-HumanMessage with the right internal marker (never a SystemMessage — the
+HumanMessage framed in the right internal tag (never a SystemMessage — the
 regression the comment block warns about), the platform-delivery note is
 prepended for workflow delivery, and every degradation path returns an empty
 string instead of crashing the caller. Also the cancellation record appended
@@ -10,26 +10,30 @@ to the comms checkpoint.
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from app.agents.core.background.comms_narrator import (
     narrate_executor_result,
     record_executor_cancellation,
+    record_platform_delivery,
 )
 from app.agents.core.graph_manager import GraphUnavailableError
-from app.agents.prompts.comms_prompts import PLATFORM_DELIVERY_NOTE
-from app.constants.agents import (
-    EXECUTOR_CANCELLED_MARKER,
-    EXECUTOR_ERROR_MARKER,
-    EXECUTOR_RESULT_MARKER,
+from app.agents.llm.lane import AgentRole
+from app.agents.prompts.comms_prompts import (
+    INTERACTIVE_DELIVERY_NOTE,
+    PLATFORM_DELIVERY_NOTE,
 )
+from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.general import NEW_MESSAGE_BREAKER
+from app.constants.log_tags import LogTag
+from tests.helpers import captured_wide_event
 
 MODULE = "app.agents.core.background.comms_narrator"
 
 USER: dict = {"user_id": "user-1", "email": "u@gaia.local"}
 CONVERSATION_ID = "conv-1"
 RESULT_TEXT = f"Downloaded the report.{NEW_MESSAGE_BREAKER}It has 3 pages."
+CARD_NOTE = wrap_agent_payload(AgentTag.RETURNED_TO_FRONTEND, "a card is on screen")
 
 
 def _fake_comms_graph() -> MagicMock:
@@ -59,11 +63,39 @@ class TestNarrateExecutorResult:
         message = initial["messages"][0]
         assert isinstance(message, HumanMessage)
         assert message.name == "background_executor"
-        assert message.content == f"{EXECUTOR_RESULT_MARKER}\n{RESULT_TEXT}"
+        assert message.content == (
+            INTERACTIVE_DELIVERY_NOTE + wrap_agent_payload(AgentTag.EXECUTOR_RESULT, RESULT_TEXT)
+        )
         config = silent.await_args.args[2]
         assert config["configurable"]["conversation_id"] == CONVERSATION_ID
 
-    async def test_error_type_uses_the_error_marker(self) -> None:
+    async def test_the_users_onboarding_data_reaches_build_agent_config(self) -> None:
+        """``build_agent_config`` runs for real here (unmocked) — proves the
+        (preferences, writing_style) pair extracted from ``user["onboarding"]``
+        actually lands on the configurable this narration run carries, not just
+        that the extraction call doesn't crash."""
+        user_with_onboarding = {
+            **USER,
+            "onboarding": {
+                "preferences": {"profession": "engineer"},
+                "writing_style": {"summary": "terse"},
+            },
+        }
+        with (
+            _patch_graph(_fake_comms_graph()),
+            patch(
+                f"{MODULE}.execute_graph_silent", AsyncMock(return_value=("revoiced", {}))
+            ) as silent,
+        ):
+            await narrate_executor_result(
+                RESULT_TEXT, "result", CONVERSATION_ID, user_with_onboarding
+            )
+
+        config = silent.await_args.args[2]
+        assert config["configurable"]["user_preferences"] == {"profession": "engineer"}
+        assert config["configurable"]["writing_style"] == {"summary": "terse"}
+
+    async def test_error_type_uses_the_error_tag(self) -> None:
         with (
             _patch_graph(_fake_comms_graph()),
             patch(
@@ -73,7 +105,9 @@ class TestNarrateExecutorResult:
             await narrate_executor_result("boom", "error", CONVERSATION_ID, USER)
 
         initial = silent.await_args.args[1]
-        assert initial["messages"][0].content == f"{EXECUTOR_ERROR_MARKER}\nboom"
+        assert initial["messages"][0].content == (
+            INTERACTIVE_DELIVERY_NOTE + wrap_agent_payload(AgentTag.EXECUTOR_ERROR, "boom")
+        )
 
     async def test_workflow_delivery_prepends_the_platform_delivery_note(self) -> None:
         with (
@@ -87,13 +121,13 @@ class TestNarrateExecutorResult:
                 "result",
                 CONVERSATION_ID,
                 USER,
-                returned_note="[CARD_NOTE]",
+                returned_note=CARD_NOTE,
                 workflow_id="wf-1",
             )
 
         content = silent.await_args.args[1]["messages"][0].content
         assert content.startswith(PLATFORM_DELIVERY_NOTE)
-        assert EXECUTOR_RESULT_MARKER in content
+        assert f"<{AgentTag.EXECUTOR_RESULT}>" in content
 
     async def test_interactive_chat_prepends_the_returned_note(self) -> None:
         with (
@@ -103,18 +137,27 @@ class TestNarrateExecutorResult:
             ) as silent,
         ):
             await narrate_executor_result(
-                RESULT_TEXT, "result", CONVERSATION_ID, USER, returned_note="[CARD_NOTE]"
+                RESULT_TEXT, "result", CONVERSATION_ID, USER, returned_note=CARD_NOTE
             )
 
         content = silent.await_args.args[1]["messages"][0].content
-        assert content == f"[CARD_NOTE]{EXECUTOR_RESULT_MARKER}\n{RESULT_TEXT}"
+        # The card note comes first, then the bubble-split instruction, then the
+        # result — comms reads "already shown" before it decides how to split.
+        assert content == (
+            CARD_NOTE
+            + INTERACTIVE_DELIVERY_NOTE
+            + wrap_agent_payload(AgentTag.EXECUTOR_RESULT, RESULT_TEXT)
+        )
 
-    async def test_parroted_internal_markers_are_stripped(self) -> None:
+    async def test_parroted_internal_tags_are_stripped(self) -> None:
+        """A weak model that echoes the whole framed block back keeps its words
+        and loses the plumbing — both the open and the close tag."""
+        parroted = wrap_agent_payload(AgentTag.EXECUTOR_RESULT, "done")
         with (
             _patch_graph(_fake_comms_graph()),
             patch(
                 f"{MODULE}.execute_graph_silent",
-                AsyncMock(return_value=(f"{EXECUTOR_RESULT_MARKER} done", {})),
+                AsyncMock(return_value=(parroted, {})),
             ),
         ):
             text = await narrate_executor_result(RESULT_TEXT, "result", CONVERSATION_ID, USER)
@@ -137,7 +180,7 @@ class TestNarrateExecutorResult:
 
 
 class TestRecordExecutorCancellation:
-    async def test_cancellation_marker_is_appended_to_the_checkpoint(self) -> None:
+    async def test_cancellation_record_is_appended_to_the_checkpoint(self) -> None:
         graph = _fake_comms_graph()
         with _patch_graph(graph):
             await record_executor_cancellation(CONVERSATION_ID, "task-42", "send the email")
@@ -148,10 +191,16 @@ class TestRecordExecutorCancellation:
         assert call.kwargs["as_node"] == "tools"
         messages = call.args[1]["messages"]
         assert len(messages) == 1
-        content = messages[0].content
-        assert content.startswith(EXECUTOR_CANCELLED_MARKER)
-        assert "task-42" in content
-        assert "did NOT finish" in content
+        # The whole record, not a fragment of it: this text is the only thing
+        # that stops comms claiming a cancelled task finished, so every clause
+        # of the denial is load-bearing and a test that matched one phrase let
+        # the rest of the sentence be rewritten unnoticed.
+        assert messages[0].content == wrap_agent_payload(
+            AgentTag.EXECUTOR_CANCELLED,
+            "The background task task-42 ('send the email') was cancelled by the user "
+            "before it completed. It did NOT finish and will not deliver results — "
+            "do not claim otherwise.",
+        )
 
     async def test_unknown_task_id_is_named_as_unknown(self) -> None:
         graph = _fake_comms_graph()
@@ -166,3 +215,81 @@ class TestRecordExecutorCancellation:
         graph.aupdate_state = AsyncMock(side_effect=RuntimeError("checkpoint down"))
         with _patch_graph(graph):
             await record_executor_cancellation(CONVERSATION_ID, "task-42", "send the email")
+
+
+class TestRecordPlatformDelivery:
+    async def test_delivered_message_is_appended_to_the_checkpoint(self) -> None:
+        graph = _fake_comms_graph()
+        get_graph = AsyncMock(return_value=graph)
+        with patch(f"{MODULE}.GraphManager.get_graph", get_graph):
+            await record_platform_delivery(CONVERSATION_ID, "Report is ready. It has 3 pages.")
+
+        # The comms graph specifically — a wrong graph writes into a thread
+        # whose next turn would read a message it never sent.
+        get_graph.assert_awaited_once_with("comms_agent")
+        graph.aupdate_state.assert_awaited_once()
+        call = graph.aupdate_state.await_args
+        assert call.args[0] == {"configurable": {"thread_id": CONVERSATION_ID}}
+        # GAIA's own voice on that platform, so the next turn reads it as a
+        # message it already sent.
+        assert call.kwargs["as_node"] == "agent"
+        messages = call.args[1]["messages"]
+        assert len(messages) == 1
+        assert isinstance(messages[0], AIMessage)
+        assert messages[0].content == "Report is ready. It has 3 pages."
+
+    async def test_blank_text_is_a_no_op(self) -> None:
+        graph = _fake_comms_graph()
+        with _patch_graph(graph):
+            await record_platform_delivery(CONVERSATION_ID, "   ")
+
+        graph.aupdate_state.assert_not_called()
+
+    async def test_failure_to_record_is_swallowed_and_reported_on_the_wide_event(self) -> None:
+        """The message is already sent, so a checkpoint failure must not break
+        the caller — but it must be observable: log.error lands in the wide
+        event's errors[], and that entry is all an operator gets."""
+        graph = _fake_comms_graph()
+        graph.aupdate_state = AsyncMock(side_effect=RuntimeError("checkpoint down"))
+        with _patch_graph(graph):
+            async with captured_wide_event() as event:
+                await record_platform_delivery(CONVERSATION_ID, "hello")
+
+        (error,) = [e for e in event["errors"] if "platform delivery" in e["msg"]]
+        assert error["msg"] == (
+            f"{LogTag.AGENT} Failed to record platform delivery in conversation thread"
+        )
+        assert error["conversation_id"] == CONVERSATION_ID
+        assert error["error"] == "checkpoint down"
+
+
+class TestNarrationResolvesItsOwnCommsLane:
+    """Background narration is a top-level run with no parent to inherit from.
+
+    It has to resolve its OWN lane, at the comms tier — the same model the user's
+    interactive turns get, and the plan_type stamp the budget wall reads. Nothing
+    asserted this, so mutating the role or the agent name survived the suite.
+    """
+
+    async def test_it_asks_for_a_comms_lane_on_the_comms_agent(self) -> None:
+        graph = _fake_comms_graph()
+        built = AsyncMock(return_value={"configurable": {}})
+        with (
+            _patch_graph(graph),
+            patch(f"{MODULE}.build_agent_config", built),
+            patch(f"{MODULE}.execute_graph_silent", AsyncMock(return_value=("narrated", {}))),
+        ):
+            await narrate_executor_result(
+                result_text=RESULT_TEXT,
+                msg_type="final",
+                conversation_id=CONVERSATION_ID,
+                user=USER,
+            )
+
+        kwargs = built.await_args.kwargs
+        assert kwargs["role"] is AgentRole.COMMS
+        assert kwargs["agent_name"] == "comms_agent"
+        assert kwargs["conversation_id"] == CONVERSATION_ID
+        # No base_configurable: inheriting one would carry a stale lane from
+        # whatever run happened to be in flight.
+        assert "base_configurable" not in kwargs

@@ -6,7 +6,6 @@ import {
   type ChatStreamEvent,
   createTurnAccumulator,
   parseChatStreamEvent,
-  TOOL_CALLS_DATA_TOOL_NAME,
   type TurnAccumulator,
 } from "@shared/chat";
 import {
@@ -15,7 +14,7 @@ import {
   RateLimitError,
 } from "@/features/chat/api/chatApi";
 import { relayDesktopToolRequest } from "@/features/chat/utils/desktopToolBridge";
-import { readToolDataLoadingHints } from "@/features/chat/utils/loadingHints";
+import { loadingLabelForEvent } from "@/features/chat/utils/loadingHints";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
 import { streamLog, streamLogError } from "@/lib/streamLogger";
@@ -28,8 +27,10 @@ import { hasExecutorDelegation } from "./executorDelegation";
 import {
   buildTurnMessageRecord,
   buildUserMessageRecord,
+  resolveTurnOutcome,
   type TurnMessageMeta,
 } from "./messageRecord";
+import { StallWatchdog } from "./stallWatchdog";
 import type { SendArgs } from "./types";
 import { isViewingConversation, markConversationUnread } from "./unread";
 
@@ -50,6 +51,13 @@ const APPROVAL_STRANDED_TIMEOUT_MS = 8 * 60 * 60 * 1000;
 // cache of tape-derived state only: the event-log replay overwrites it on
 // resume, so staleness (≤ one interval) never affects correctness.
 const STREAM_PERSIST_INTERVAL_MS = 500;
+
+// How long a live stream may go completely silent before the turn is declared
+// dead. The backend emits a keepalive whenever its event log is idle (see
+// StreamManager.subscribe_stream), so silence this long means the connection or
+// the background task is gone, not that the model is thinking. Comfortably
+// above the server's keepalive cadence so a slow tool call can never trip it.
+const STREAM_STALL_TIMEOUT_MS = 90_000;
 
 export interface TurnSessionCallbacks {
   /** Session finished (any terminal path). Manager dispatches the queue. */
@@ -87,6 +95,13 @@ export class TurnSession {
   private readonly pendingApprovalIds = new Set<string>();
   private aborted = false;
   private readonly isNewConversation: boolean;
+  /** The comms agent delivered its answer. A connection that drops after this
+   *  lost only the executor tail, so the turn is complete, not truncated. */
+  private sawMainResponseComplete = false;
+  private readonly stallWatchdog = new StallWatchdog(
+    STREAM_STALL_TIMEOUT_MS,
+    () => this.handleStall(),
+  );
 
   constructor(key: string, args: SendArgs, callbacks: TurnSessionCallbacks) {
     this.key = key;
@@ -121,6 +136,9 @@ export class TurnSession {
     streamLog("lifecycle", "turn:start", {
       turnKey: this.key,
       conversationId: this.conversationId,
+      // Carried so an on-disk recording is self-describing: the reader can see
+      // which prompt produced the frames that follow.
+      detail: { prompt: this.inputText },
     });
 
     trackEvent(ANALYTICS_EVENTS.CHAT_STARTED, {
@@ -128,6 +146,7 @@ export class TurnSession {
       is_new_conversation: this.isNewConversation,
     });
 
+    this.stallWatchdog.arm();
     try {
       if (this.args.options.resumeStreamId) {
         await this.attachToStream(this.args.options.resumeStreamId);
@@ -142,7 +161,7 @@ export class TurnSession {
         // same send is rejected server-side instead of duplicating the turn.
         turnId: this.args.options.optimisticUserId,
         onMessage: (event) => this.handleSSEMessage(event),
-        onClose: () => void this.close(),
+        onClose: (sawDone) => void this.close(sawDone),
         onError: (err) => this.fail(err),
         controller: this.controller,
         fileData: this.args.options.fileData,
@@ -181,10 +200,25 @@ export class TurnSession {
           }
         });
       },
-      () => void this.close(),
+      (sawDone) => void this.close(sawDone),
       (err) => this.fail(err),
       this.controller.signal,
     );
+  }
+
+  /** The stream went silent past even the server's keepalive cadence. */
+  private handleStall(): void {
+    streamLogError("sse", "stream-stalled", {
+      turnKey: this.key,
+      conversationId: this.conversationId,
+      detail: { idleMs: STREAM_STALL_TIMEOUT_MS },
+    });
+    // Fail BEFORE aborting: aborting first lets the transport's AbortError
+    // reach fail() and claim the turn, which suppresses the user-facing toast.
+    this.fail(
+      new Error("The connection went quiet, so this response was stopped."),
+    );
+    this.controller.abort();
   }
 
   /** User pressed Stop: persist what streamed so far, then cancel everywhere. */
@@ -197,6 +231,7 @@ export class TurnSession {
       conversationId: this.conversationId,
     });
 
+    this.stallWatchdog.disarm();
     useStreamStore.getState().beginPendingSave();
     try {
       this.cancelFlush();
@@ -230,6 +265,8 @@ export class TurnSession {
     event: EventSourceMessage,
   ): Promise<string | undefined> {
     if (this.aborted) return "Stream was aborted";
+    // Any frame — keepalives included — proves the connection is still alive.
+    this.stallWatchdog.kick();
     if (!event.data) return undefined; // SSE comments dispatch empty events
 
     try {
@@ -273,7 +310,8 @@ export class TurnSession {
         return "Malformed stream frame";
 
       case "error":
-        toast.error(event.error);
+        // No toast here — fail() owns the user-facing message for every
+        // failure path, and toasting both places double-reports one error.
         return event.error;
 
       case "model_fallback":
@@ -289,13 +327,11 @@ export class TurnSession {
         this.handleMainResponseComplete();
         return undefined;
 
-      case "progress":
+      case "progress": {
         this.setSpinner(true);
-        this.setLoadingText(event.message, {
-          toolName: event.tool_name,
-          toolCategory: event.tool_category,
-        });
+        this.applyLoadingLabel(event);
         return undefined;
+      }
 
       case "conversation_initialized":
         await this.handleConversationInitialized(event);
@@ -311,6 +347,9 @@ export class TurnSession {
         return undefined;
 
       case "response":
+      // A discarded boundary retracts text that is already on screen, so it has
+      // to re-render exactly like an added delta does.
+      case "message_boundary":
       case "tool_data":
       case "tool_output":
       case "reasoning":
@@ -331,24 +370,19 @@ export class TurnSession {
 
   private accumulate(event: ChatStreamEvent): void {
     // Executor/tool activity after main_response_complete means the turn is
-    // still working — re-arm the loading indicator it may have cleared.
-    if (event.type !== "response" && event.type !== "follow_up_actions") {
+    // still working — re-arm the loading indicator it may have cleared. Text
+    // events are not activity: `message_boundary` only closes the message whose
+    // deltas just arrived, so it must not re-arm what they did not.
+    if (
+      event.type !== "response" &&
+      event.type !== "message_boundary" &&
+      event.type !== "follow_up_actions"
+    ) {
       this.setSpinner(true);
     }
 
     if (event.type === "tool_data") {
-      trackEvent(ANALYTICS_EVENTS.TOOL_USED, {
-        tool_name: event.entry.tool_name,
-        tool_category: event.entry.tool_category || "unknown",
-        timestamp: event.entry.timestamp || new Date().toISOString(),
-      });
-      if (event.entry.tool_name === TOOL_CALLS_DATA_TOOL_NAME) {
-        const hints = readToolDataLoadingHints(event.entry.data);
-        if (hints) {
-          const { message, ...toolInfo } = hints;
-          this.setLoadingText(message, toolInfo);
-        }
-      }
+      this.applyLoadingLabel(event);
       if (event.entry.tool_name === APPROVAL_REQUEST_TOOL_NAME) {
         this.handleApprovalFrame(
           event.entry.data as ApprovalRequestData | null,
@@ -356,12 +390,7 @@ export class TurnSession {
       }
     }
 
-    if (
-      event.type === "unknown" &&
-      event.payload.status === "generating_image"
-    ) {
-      this.setLoadingText("Generating image...");
-    }
+    if (event.type === "unknown") this.applyLoadingLabel(event);
 
     this.acc = applyStreamEvent(this.acc, event);
     streamLog("accumulator", `applied:${event.type}`, {
@@ -440,10 +469,6 @@ export class TurnSession {
       };
       try {
         await db.putConversation(conversation);
-        trackEvent(ANALYTICS_EVENTS.CHAT_CONVERSATION_CREATED, {
-          conversationId,
-          source: "chat",
-        });
       } catch (error) {
         console.error("Failed to save conversation to IndexedDB:", error);
       }
@@ -554,6 +579,7 @@ export class TurnSession {
   // ── Loading / composer UI ──────────────────────────────────────────────────
 
   private handleMainResponseComplete(): void {
+    this.sawMainResponseComplete = true;
     const store = useStreamStore.getState();
     // The comms agent acked — unlock the composer so the user can queue.
     store.updateSession(this.sessionKey, { composerLocked: false });
@@ -610,25 +636,21 @@ export class TurnSession {
     }
   }
 
-  private setLoadingText(
-    text: string,
-    toolInfo?: {
-      toolName?: string;
-      toolCategory?: string;
-      integrationName?: string;
-      iconUrl?: string;
-      showCategory?: boolean;
-    },
-  ): void {
+  /** Set the loading label if this event carries one. Shared with the executor
+   *  stream so both paths label a run the same way. */
+  private applyLoadingLabel(event: ChatStreamEvent): void {
+    const label = loadingLabelForEvent(event);
+    if (!label) return;
     useStreamStore
       .getState()
-      .setSessionLoadingText(this.sessionKey, text, toolInfo);
+      .setSessionLoadingText(this.sessionKey, label.text, label.toolInfo);
   }
 
   // ── Store / DB flushes ─────────────────────────────────────────────────────
 
   private buildRecord(
     status: IMessage["status"],
+    error: string | null = null,
   ): ReturnType<typeof buildTurnMessageRecord> | null {
     if (!this.conversationId || !this.botMessageId) return null;
     const meta: TurnMessageMeta = {
@@ -637,7 +659,7 @@ export class TurnSession {
       createdAt: this.botCreatedAt ?? new Date(),
       options: this.args.options,
     };
-    return buildTurnMessageRecord(meta, this.acc, status);
+    return buildTurnMessageRecord(meta, this.acc, status, error);
   }
 
   /** Batch accumulator flushes to one store write per animation frame. */
@@ -680,10 +702,11 @@ export class TurnSession {
 
   // ── Terminal paths ─────────────────────────────────────────────────────────
 
-  private async close(): Promise<void> {
+  private async close(sawDone: boolean): Promise<void> {
     if (this.closeHandled) return;
     this.closeHandled = true;
     this.cancelFlush();
+    this.stallWatchdog.disarm();
     streamLog("lifecycle", "turn:close", {
       turnKey: this.key,
       conversationId: this.conversationId,
@@ -695,7 +718,20 @@ export class TurnSession {
         return;
       }
 
-      const record = this.buildRecord("sent");
+      // A connection that ended without [DONE] and without the comms answer is
+      // a truncated turn — persisting it as "sent" makes a dead stream
+      // indistinguishable from a finished one.
+      const outcome = resolveTurnOutcome(
+        sawDone || this.sawMainResponseComplete,
+      );
+      if (outcome.status === "failed") {
+        streamLogError("lifecycle", "turn:truncated", {
+          turnKey: this.key,
+          conversationId: this.conversationId,
+        });
+      }
+
+      const record = this.buildRecord(outcome.status, outcome.error);
       if (record) {
         useChatStore.getState().addOrUpdateMessage(record);
         try {
@@ -720,7 +756,15 @@ export class TurnSession {
         markConversationUnread(this.conversationId);
       }
 
-      if (hasExecutorDelegation(this.acc.toolData)) {
+      // Only a turn that actually completed can be waiting on an executor tail.
+      // The normal delegation flow acks (main_response_complete) long before the
+      // executor streams, so a truncated turn here died before the hand-off was
+      // confirmed — park it as failed and retryable rather than spinning on a
+      // result that may never come.
+      if (
+        outcome.status === "sent" &&
+        hasExecutorDelegation(this.acc.toolData)
+      ) {
         this.enterAwaitingExecutor();
         return;
       }
@@ -776,6 +820,7 @@ export class TurnSession {
     if (this.closeHandled) return;
     this.closeHandled = true;
     this.cancelFlush();
+    this.stallWatchdog.disarm();
     streamLogError("lifecycle", "turn:error", {
       turnKey: this.key,
       conversationId: this.conversationId,
@@ -793,13 +838,14 @@ export class TurnSession {
       return;
     }
 
+    const reason =
+      error.message || "An error occurred while processing your message";
+
     if (error.name !== "AbortError") {
       // A usage-wall rejection already showed the rate-limit upsell toast at
       // the stream layer — a second generic toast would bury it.
       if (!(error instanceof RateLimitError)) {
-        toast.error(
-          error.message || "An error occurred while processing your message",
-        );
+        toast.error(reason);
       }
       // Give the user their prompt back to retry.
       useComposerStore.getState().setInputText(this.inputText);
@@ -807,8 +853,10 @@ export class TurnSession {
 
     // Content already flushed with status "sending" must still land in a
     // terminal state — mirror abort()'s finalization, with "failed" status.
+    // The reason rides ON the record: the toast is transient, so without it a
+    // reload shows an empty bubble and the failure disappears entirely.
     if (this.conversationId && this.botMessageId) {
-      const record = this.buildRecord("failed");
+      const record = this.buildRecord("failed", reason);
       if (record) {
         useChatStore.getState().addOrUpdateMessage(record);
         db.putMessage(record).catch((persistError) => {
@@ -821,7 +869,16 @@ export class TurnSession {
     }
 
     this.markUserMessageFailed();
-    useChatStore.getState().clearOptimisticMessage();
+    // A turn that never learned its conversation id persisted nothing, anywhere:
+    // the optimistic bubble is the only record of what the user sent, so clearing
+    // it erases the message from the thread and leaves just a fading toast. Mark
+    // it undelivered instead. Once ids exist the real rows are in IndexedDB and
+    // the optimistic copy is a duplicate that must go.
+    if (this.conversationId) {
+      useChatStore.getState().clearOptimisticMessage();
+    } else {
+      useChatStore.getState().markOptimisticMessageFailed();
+    }
     this.end();
   }
 
@@ -845,6 +902,7 @@ export class TurnSession {
       return;
     }
     this.markUserMessageFailed();
+    useChatStore.getState().markOptimisticMessageFailed();
     this.end();
   }
 
@@ -882,17 +940,19 @@ export class TurnSession {
         [])
       : [];
 
-    const history = stored
-      .filter(
-        (message) =>
-          message.role !== "system" &&
-          message.id !== optimisticId &&
-          message.content.trim().length > 0,
-      )
-      .map((message) => ({
-        role: message.role as "user" | "assistant",
-        content: message.content,
-      }));
+    const history: { role: "user" | "assistant"; content: string }[] = [];
+    for (const message of stored) {
+      if (
+        message.role !== "system" &&
+        message.id !== optimisticId &&
+        message.content.trim().length > 0
+      ) {
+        history.push({
+          role: message.role as "user" | "assistant",
+          content: message.content,
+        });
+      }
+    }
 
     if (this.args.userMessage.response.trim().length > 0) {
       history.push({ role: "user", content: this.args.userMessage.response });

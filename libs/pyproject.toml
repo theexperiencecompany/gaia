@@ -10,6 +10,7 @@ dependencies = [
   "pydantic-settings>=2.8.1",
   "python-dotenv>=1.0.0",
   "infisicalsdk>=1.0.7",
+  "posthog>=7.4.2",
 ]
 
 [dependency-groups]

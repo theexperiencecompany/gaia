@@ -9,6 +9,7 @@ import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useElectron } from "@/hooks/useElectron";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { getElectronAPI } from "@/lib/electron/api";
 import { toast } from "@/lib/toast";
 
@@ -45,6 +46,11 @@ export default function DesktopSettings() {
         if (!result.ok && result.error) {
           toast.error(result.error);
         }
+        if (result.ok) {
+          trackEvent(ANALYTICS_EVENTS.SETTINGS_DESKTOP_PREFERENCE_CHANGED, {
+            setting: "popup_shortcut",
+          });
+        }
         return result.ok;
       } catch {
         toast.error("Could not update the shortcut");
@@ -60,6 +66,10 @@ export default function DesktopSettings() {
     try {
       const ok = await api.setAppIcon(id);
       if (ok) {
+        trackEvent(ANALYTICS_EVENTS.SETTINGS_DESKTOP_PREFERENCE_CHANGED, {
+          setting: "app_icon",
+          app_icon_id: id,
+        });
         setSnapshot((prev) =>
           prev
             ? { ...prev, settings: { ...prev.settings, appIcon: id } }

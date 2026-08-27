@@ -51,6 +51,11 @@ async function emitBoundaryScenarios(): Promise<void> {
     { platform: PLATFORM, component: COMPONENT },
     async () => {
       wideLog.set({ operation: "demo" });
+      // Two writes of one namespace, with disjoint keys: both runtimes must
+      // ACCUMULATE them. A replacing `set` drops trigger_type here, which is
+      // exactly the production bug this scenario exists to pin.
+      wideLog.set({ workflow: { id: "wf_1", trigger_type: "schedule" } });
+      wideLog.set({ workflow: { status: "success" } });
       wideLog.warning("conformance_warning", { error_type: "SlowResponse" });
       wideLog.error(
         "conformance_error",

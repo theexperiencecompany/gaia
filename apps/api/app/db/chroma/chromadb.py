@@ -24,7 +24,10 @@ class ChromaClient:
     """
 
     @classmethod
-    async def get_client(cls, request: Request | None = None) -> AsyncClientAPI:
+    async def get_client(
+        cls,
+        request: Request | None = None,
+    ) -> AsyncClientAPI:
         """
         Get the ChromaDB client from the application state or from lazy providers.
 
@@ -115,7 +118,7 @@ class ChromaClient:
 
             # Ensure the collection exists using the synchronous constructor client
             try:
-                collections = constructor_client.list_collections()  # type: ignore[attr-defined]
+                collections = constructor_client.list_collections()
                 existing_names = [c.name for c in collections]
             except Exception:
                 existing_names = []
@@ -123,20 +126,20 @@ class ChromaClient:
             if collection_name not in existing_names:
                 if not create_if_not_exists:
                     raise RuntimeError(f"Collection '{collection_name}' not found")
-                constructor_client.create_collection(  # type: ignore[attr-defined]
+                constructor_client.create_collection(
                     name=collection_name,
                     metadata={"hnsw:space": "cosine"},
                 )
 
             return Chroma(
                 client=constructor_client,
-                collection_name=collection_name,  # type: ignore[arg-type]
+                collection_name=collection_name,
                 embedding_function=embedding_function,
             )
 
         providers.register(
             name=provider_name,
-            loader_func=_loader,  # type: ignore[arg-type]
+            loader_func=_loader,  # type: ignore[arg-type]  # langchain’s collection-loader callback param is untyped upstream
             required_keys=[settings.CHROMADB_HOST, settings.CHROMADB_PORT],
             strategy=MissingKeyStrategy.ERROR,
             auto_initialize=True,
@@ -175,7 +178,10 @@ async def init_chromadb_client() -> AsyncClientAPI:
     client = await chromadb.AsyncHttpClient(
         host=host,
         port=port,
-        settings=Settings(chroma_product_telemetry_impl=NOOP_PRODUCT_TELEMETRY_IMPL),
+        settings=Settings(
+            chroma_product_telemetry_impl=NOOP_PRODUCT_TELEMETRY_IMPL,
+            chroma_telemetry_impl=NOOP_PRODUCT_TELEMETRY_IMPL,
+        ),
     )
 
     response = await client.heartbeat()
@@ -241,7 +247,10 @@ def init_chromadb_constructor() -> ClientAPI:
     constructor_client = chromadb.HttpClient(
         host=host,
         port=port,
-        settings=Settings(chroma_product_telemetry_impl=NOOP_PRODUCT_TELEMETRY_IMPL),
+        settings=Settings(
+            chroma_product_telemetry_impl=NOOP_PRODUCT_TELEMETRY_IMPL,
+            chroma_telemetry_impl=NOOP_PRODUCT_TELEMETRY_IMPL,
+        ),
     )
 
     return constructor_client

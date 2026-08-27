@@ -17,8 +17,14 @@ from typing import Any
 from langchain_core.messages import BaseMessage
 from pydantic import BaseModel
 
-from app.constants.memory import MemoryEntityType, MemoryKind, ReconcileOutcome
+from app.constants.memory import (
+    MemoryEntityType,
+    MemoryKind,
+    MemoryShelfLife,
+    ReconcileOutcome,
+)
 from app.memory.schemas import (
+    AgendaUpdate,
     ExtractedEdge,
     ExtractedEntity,
     ExtractedFact,
@@ -28,6 +34,19 @@ from app.memory.schemas import (
 )
 
 _CANDIDATE_ID_PATTERN = re.compile(r"id=([0-9a-f-]{36})")
+
+
+def human_prompt(messages: list[BaseMessage]) -> str:
+    """Everything the model was shown after the system message, joined.
+
+    Positional reads (``messages[-1]``) are not safe here: extraction sends the
+    transcript AND a trailing volatile-context message (today's date, recently
+    stored facts) so the cacheable prefix stays byte-stable, while the other
+    operations send a single human message. A responder matching on prompt text
+    must see the whole human side either way.
+    """
+    return "\n".join(str(message.content) for message in messages if message.type != "system")
+
 
 CannedResponse = BaseModel | None | Callable[[list[BaseMessage]], BaseModel | None]
 
@@ -46,7 +65,7 @@ class RecordedCall:
 
     @property
     def human(self) -> str:
-        return str(self.messages[-1].content)
+        return human_prompt(self.messages)
 
 
 class FakeMemoryLLM:
@@ -92,6 +111,7 @@ def make_fact(
     *,
     category: str = "general",
     kind: MemoryKind = MemoryKind.FACT,
+    shelf_life: MemoryShelfLife = MemoryShelfLife.DURABLE,
     importance: float = 0.6,
     entities: list[tuple[str, str]] | None = None,
     edges: list[tuple[str, str, str]] | None = None,
@@ -101,6 +121,7 @@ def make_fact(
     return ExtractedFact(
         content=content,
         kind=kind,
+        shelf_life=shelf_life,
         category_path=category,
         importance=importance,
         entities=[
@@ -119,17 +140,21 @@ def make_batch(
     facts: list[ExtractedFact] | None = None,
     entries: list[str] | None = None,
     agenda: list[str] | None = None,
+    resolved_agenda: list[str] | None = None,
 ) -> ExtractedMemoryBatch:
     return ExtractedMemoryBatch(
         facts=facts or [],
         episode_entries=entries or [],
-        agenda_updates=agenda or [],
+        agenda_updates=[
+            *(AgendaUpdate(item=item, resolved=False) for item in agenda or []),
+            *(AgendaUpdate(item=item, resolved=True) for item in resolved_agenda or []),
+        ],
     )
 
 
 def candidate_ids_from_prompt(messages: list[BaseMessage]) -> list[str]:
     """Extract the existing-memory candidate ids the reconcile prompt offered."""
-    return _CANDIDATE_ID_PATTERN.findall(str(messages[-1].content))
+    return _CANDIDATE_ID_PATTERN.findall(human_prompt(messages))
 
 
 def reconcile_against_first_candidate(

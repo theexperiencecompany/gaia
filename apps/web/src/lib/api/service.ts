@@ -110,11 +110,13 @@ async function request<T = unknown>(
     // it via the login modal; never toast it as a generic error.
     const isAuthError = err.response?.status === 401;
 
-    // Track API errors in PostHog (client-only; analytics.ts is "use client")
+    // Track failed requests in PostHog (client-only; analytics.ts is "use client")
     if (globalThis.window !== undefined) {
-      trackEvent(ANALYTICS_EVENTS.API_ERROR, {
+      trackEvent(ANALYTICS_EVENTS.API_REQUEST_FAILED, {
         method,
-        url,
+        // Strip query strings — they can carry search terms, tokens, or other
+        // sensitive values that must never reach PostHog.
+        url: url.split("?")[0],
         status: err.response?.status,
         error_message: err.message,
       });

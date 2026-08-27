@@ -197,6 +197,10 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
             title="Trigger Workflow Executions",
             description="Automated workflow executions triggered by integrations",
         ),
+        # System-driven fires, not user actions: counting them let a user's own
+        # automation keep them "active" forever (masking dormancy) and inflated
+        # the activity heatmap / percentile badges with runs nobody performed.
+        counts_as_activity=False,
     ),
     # PRODUCTIVITY TOOLS (Generous - Core Value)
     "todo_operations": TieredRateLimits(
@@ -336,6 +340,15 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         info=FeatureInfo(
             title="Integration Cloning",
             description="Clone community integrations to your workspace",
+        ),
+    ),
+    "imessage_registration": TieredRateLimits(
+        # Abuse guard: each connect burns a seat in Photon's shared pool. Free is zeroed (Pro-only).
+        free=RateLimitConfig(day=0, month=0),
+        pro=RateLimitConfig(day=10, month=100),
+        info=FeatureInfo(
+            title="iMessage Registration",
+            description="Register a phone number on the GAIA iMessage pool",
         ),
     ),
 }

@@ -4,7 +4,7 @@ const HANDLED_ITEMS = [
   {
     id: "dev-1",
     icon: "github",
-    label: "3 PRs merged — standup draft ready",
+    label: "3 PRs merged: standup draft ready",
     detail: "45min saved",
     urgent: false,
   },
@@ -25,7 +25,7 @@ const HANDLED_ITEMS = [
   {
     id: "dev-4",
     icon: "sentry",
-    label: "1 production error flagged — P1 triage",
+    label: "1 production error flagged: P1 triage",
     detail: "flagged",
     urgent: true,
   },

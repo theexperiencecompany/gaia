@@ -15,6 +15,17 @@ UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS = 4000
 # normal traffic never gets near this.
 MAX_MESSAGE_LENGTH = 50_000
 
+# Shown when a turn dies and the provider exception carries no message of its
+# own. Names the exception type so a support report still identifies the failure.
+GENERIC_TURN_ERROR = "Something went wrong while generating this response ({error_type})."
+
+# A recursion-limit stop is an expected degradation, not an infrastructure
+# failure — never show the raw "Recursion limit of N reached..." internals.
+RECURSION_LIMIT_MESSAGE = (
+    "I hit my step limit on this one before finishing. "
+    "Ask me to continue and I'll pick up where I left off."
+)
+
 # Matches bot-emitted artifact references in three shapes — ``./artifacts/x``,
 # ``/artifacts/x``, and plain ``artifacts/x`` — so each can be rewritten to an
 # absolute backend URL. The reference must sit at the start of the string or

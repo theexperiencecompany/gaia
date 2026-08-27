@@ -8,13 +8,17 @@ from abc import ABC, abstractmethod
 import asyncio
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
+from http import HTTPStatus
 from typing import Any, Literal, TypedDict
+
+from composio_client import APIStatusError
 
 from app.constants.log_tags import LogTag
 from app.models.trigger_config import TriggerOption, TriggerOptionGroup
-from app.models.workflow_models import TriggerConfig, Workflow
+from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.tracked_todo_service import tracked_todo_service
+from app.services.triggers.batching import buffer_trigger_event, coalesce_window_seconds
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.utils.exceptions import TriggerRegistrationError
 from shared.py.wide_events import TriggerContext, log
@@ -156,6 +160,15 @@ class TriggerHandler(ABC):
                 )
                 log.debug(f"{LogTag.TRIGGER} Deleted trigger", trigger_id=trigger_id)
             except Exception as e:
+                # Composio answers 410 Gone when the trigger instance is already
+                # deleted — the desired end-state, so treat it as a no-op.
+                if isinstance(e, APIStatusError) and e.status_code == HTTPStatus.GONE:
+                    log.debug(
+                        f"{LogTag.TRIGGER} Trigger already gone on Composio, skipping",
+                        trigger_id=trigger_id,
+                        user_id=user_id,
+                    )
+                    continue
                 log.error(
                     f"{LogTag.TRIGGER} Failed to delete trigger",
                     trigger_id=trigger_id,
@@ -279,11 +292,11 @@ class TriggerHandler(ABC):
 
     async def get_config_options(
         self,
-        trigger_name: str,
-        field_name: str,
-        user_id: str,
-        integration_id: str,
-        parent_ids: list[str] | None = None,
+        trigger_name: str,  # noqa: ARG002 -- framework contract
+        field_name: str,  # noqa: ARG002 -- framework contract
+        user_id: str,  # noqa: ARG002 -- framework contract
+        integration_id: str,  # noqa: ARG002 -- framework contract
+        parent_ids: list[str] | None = None,  # noqa: ARG002 -- framework contract
         **_kwargs: str,
     ) -> Sequence[TriggerOption | TriggerOptionGroup]:
         """Get dynamic options for a trigger configuration field.
@@ -400,8 +413,11 @@ class TriggerHandler(ABC):
                     trigger_id=trigger_id,
                 )
                 return False
-            # Enrich context with tracked todos for signal matching
-            context: dict[str, Any] = {"trigger_data": data}
+            # Enrich context with tracked todos for signal matching. The
+            # trigger_type stamp is what lets the worker tell this run apart
+            # from a user's manual "run now" (unstamped, it defaulted to
+            # "manual" and was mislabeled in analytics and origin handling).
+            context: dict[str, Any] = {"trigger_type": TriggerType.INTEGRATION.value}
             if workflow.user_id not in signal_context_by_user:
                 try:
                     signal_context_by_user[
@@ -418,10 +434,20 @@ class TriggerHandler(ABC):
             if todos_context:
                 context["tracked_todos_context"] = todos_context
 
+            # A poll-based trigger fires once per item Composio found, so its
+            # events are batched into one run instead of one run each. Triggers
+            # with no declared interval stay immediate — a meeting reminder held
+            # back for its window is a missed meeting.
+            window_seconds = coalesce_window_seconds(workflow.trigger_config)
+            if window_seconds > 0 and await buffer_trigger_event(
+                workflow.id, workflow.user_id, data, window_seconds, context
+            ):
+                return True
+
             await WorkflowQueueService.queue_workflow_execution(
                 workflow.id,
                 workflow.user_id,
-                context=context,
+                context={**context, "trigger_data": data},
             )
             log.info(
                 "trigger_workflow_queued",

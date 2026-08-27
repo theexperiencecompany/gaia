@@ -33,9 +33,10 @@ jobs:
           fi
 
   release-please:
+    timeout-minutes: 10
     # Runs release-please and exposes per-component outputs for downstream workflows.
     needs: enforce-master-ref
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       releases_created: ${{ steps.release.outputs.releases_created }}
@@ -49,12 +50,12 @@ jobs:
       desktop_tag_name: ${{ steps.release.outputs['apps/desktop--tag_name'] }}
     steps:
       # Checkout so release-please can inspect manifest + package versions.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Main release orchestration step.
       - name: Run Release Please
         id: release
-        uses: googleapis/release-please-action@v4
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: config/release-please-config.json
@@ -65,6 +66,7 @@ jobs:
   # on /releases/latest to find desktop update metadata (latest-*.yml), so
   # we must ensure the newest desktop release stays marked as "Latest".
   preserve-desktop-latest:
+    timeout-minutes: 10
     needs: release-please
     if: needs.release-please.outputs.releases_created == 'true'
     runs-on: ubuntu-latest
@@ -84,24 +86,23 @@ jobs:
 
   # Trigger CLI publish workflow only when a new CLI release is produced.
   trigger-cli-publish:
+    timeout-minutes: 10
     needs: release-please
     if: needs.release-please.outputs.cli_release_created == 'true'
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     steps:
-      # Dispatch dedicated publish workflow with resolved tag/version inputs.
-      - name: Trigger CLI Publish Workflow
-        uses: actions/github-script@v7
+      # The script needs the repo checked out to run.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            await github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'publish-cli.yml',
-              ref: 'master',
-              inputs: {
-                tag: '${{ needs.release-please.outputs.cli_tag_name }}',
-                version: '${{ needs.release-please.outputs.cli_version }}'
-              }
-            });
-            console.log('CLI publish workflow triggered for tag: ${{ needs.release-please.outputs.cli_tag_name }}');
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Dispatch the dedicated publish workflow and block on its conclusion, so
+      # a failed publish fails this run too. A bare createWorkflowDispatch call
+      # succeeds as soon as GitHub accepts it and hides every publish failure.
+      - name: Publish CLI to npm
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release-please.outputs.cli_tag_name }}
+          VERSION: ${{ needs.release-please.outputs.cli_version }}
+        run: bash scripts/ci/dispatch-cli-publish.sh

@@ -6,10 +6,10 @@ export const AUTOMATION_FEATURES: FeatureData[] = [
     category: "Automation",
     icon: "WorkflowSquare10Icon",
     title: "Workflows",
-    tagline: "Describe an automation in plain language — GAIA builds it",
+    tagline: "Describe an automation in plain language, and GAIA builds it",
     headline: "Describe the automation. GAIA builds it.",
     subheadline:
-      "Tell GAIA what you want automated in plain language — it generates the steps, picks the integrations, configures the trigger, and runs it on schedule.",
+      "Tell GAIA what you want automated in plain language, and it generates the steps, picks the integrations, configures the trigger, and runs it on schedule.",
     benefits: [
       {
         icon: "LanguageCircleIcon",
@@ -53,7 +53,7 @@ export const AUTOMATION_FEATURES: FeatureData[] = [
       {
         question: "Can I edit a workflow after GAIA generates it?",
         answer:
-          "Yes. Each step is editable — change the action, modify parameters, reorder steps, or add new ones before activating.",
+          "Yes. Each step is editable: change the action, modify parameters, reorder steps, or add new ones before activating.",
       },
       {
         question: "What happens when a workflow step fails?",
@@ -75,7 +75,7 @@ export const AUTOMATION_FEATURES: FeatureData[] = [
       {
         title: "Auto-triage incoming GitHub issues",
         description:
-          "When a new issue is opened, a workflow reads it, assigns a label, creates a Linear ticket, and posts a Slack notification — all in under 10 seconds.",
+          "When a new issue is opened, a workflow reads it, assigns a label, creates a Linear ticket, and posts a Slack notification, all in under 10 seconds.",
       },
       {
         title: "Weekly competitive intelligence digest",
@@ -99,7 +99,7 @@ export const AUTOMATION_FEATURES: FeatureData[] = [
     tagline: "Run any task daily, weekly, or on any custom schedule",
     headline: "Set it once. Run it forever.",
     subheadline:
-      "Schedule any GAIA workflow to run at any frequency — from every 5 minutes to once a month — with per-workflow timezone support and execution tracking.",
+      "Schedule any GAIA workflow to run at any frequency, from every 5 minutes to once a month, with per-workflow timezone support and execution tracking.",
     benefits: [
       {
         icon: "Calendar02Icon",
@@ -125,7 +125,7 @@ export const AUTOMATION_FEATURES: FeatureData[] = [
         number: "01",
         title: "Set a schedule in plain language",
         description:
-          "Tell GAIA when to run — daily at 8am, every weekday, first Monday of the month — or use the visual cron builder.",
+          "Tell GAIA when to run (daily at 8am, every weekday, first Monday of the month), or use the visual cron builder.",
       },
       {
         number: "02",
@@ -149,7 +149,7 @@ export const AUTOMATION_FEATURES: FeatureData[] = [
       {
         question: "What happens if a scheduled run fails?",
         answer:
-          "GAIA logs the failure with an error message and marks the run as failed in the execution history. It does not retry automatically — trigger a manual re-run from the history panel.",
+          "GAIA logs the failure with an error message and marks the run as failed in the execution history. It does not retry automatically. Trigger a manual re-run from the history panel.",
       },
       {
         question: "Can I pause a schedule without deleting it?",
@@ -222,7 +222,7 @@ export const AUTOMATION_FEATURES: FeatureData[] = [
         number: "02",
         title: "Define the event condition",
         description:
-          "Specify which event fires the workflow — a new email from a specific sender, a PR merge, a Slack message in a specific channel.",
+          "Specify which event fires the workflow: a new email from a specific sender, a PR merge, a Slack message in a specific channel.",
       },
       {
         number: "03",
@@ -259,7 +259,7 @@ export const AUTOMATION_FEATURES: FeatureData[] = [
       {
         title: "Auto-label and reply to support emails",
         description:
-          "A support team wires a Gmail trigger so every email with 'bug' in the subject gets labeled, a task created in Linear, and an acknowledgment reply sent — all in under 10 seconds.",
+          "A support team wires a Gmail trigger so every email with 'bug' in the subject gets labeled, a task created in Linear, and an acknowledgment reply sent, all in under 10 seconds.",
       },
       {
         title: "PR merge notification to Slack",
@@ -283,7 +283,7 @@ export const AUTOMATION_FEATURES: FeatureData[] = [
     tagline: "Generate PDFs, DOCX, and HTML from any conversation",
     headline: "Any conversation becomes a document.",
     subheadline:
-      "Ask GAIA to generate a report, spec, or export — it produces a fully formatted PDF, DOCX, or HTML file, ready to download instantly.",
+      "Ask GAIA to generate a report, spec, or export, and it produces a fully formatted PDF, DOCX, or HTML file, ready to download instantly.",
     benefits: [
       {
         icon: "File01Icon",
@@ -375,7 +375,7 @@ export const AUTOMATION_FEATURES: FeatureData[] = [
     tagline: "Install or create custom skills to extend GAIA's capabilities",
     headline: "Teach GAIA new tricks.",
     subheadline:
-      "Install skills from GitHub to give GAIA new workflows, or create custom skills in plain language — extending what GAIA knows how to do without code.",
+      "Install skills from GitHub to give GAIA new workflows, or create custom skills in plain language, extending what GAIA knows how to do without code.",
     benefits: [
       {
         icon: "Github01Icon",
@@ -407,7 +407,7 @@ export const AUTOMATION_FEATURES: FeatureData[] = [
         number: "02",
         title: "Skill is indexed into GAIA's toolkit",
         description:
-          "Installed skills are available immediately — GAIA selects them automatically when a matching request comes in.",
+          "Installed skills are available immediately, and GAIA selects them automatically when a matching request comes in.",
       },
       {
         number: "03",
@@ -435,14 +435,14 @@ export const AUTOMATION_FEATURES: FeatureData[] = [
       {
         question: "Do skills work inside automated workflows?",
         answer:
-          "Yes. Skills are available as steps in the workflow builder — chain them with other actions or triggers.",
+          "Yes. Skills are available as steps in the workflow builder: chain them with other actions or triggers.",
       },
     ],
     useCases: [
       {
         title: "Reusable email triage skill",
         description:
-          "A team creates a custom skill that reads the inbox, labels emails by project, and creates Linear issues for anything flagged urgent — reused across multiple workflows.",
+          "A team creates a custom skill that reads the inbox, labels emails by project, and creates Linear issues for anything flagged urgent, reused across multiple workflows.",
       },
       {
         title: "GitHub repo summarizer from community",

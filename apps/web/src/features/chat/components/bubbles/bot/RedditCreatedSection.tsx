@@ -6,9 +6,14 @@ import type {
   RedditPostCreatedData,
 } from "@/types/features/redditTypes";
 
+// Stable empty defaults: inline `= []` creates a new array every render and
+// defeats prop-comparison in memoized children.
+const EMPTY_POSTS: RedditPostCreatedData[] = [];
+const EMPTY_COMMENTS: RedditCommentCreatedData[] = [];
+
 export default function RedditCreatedSection({
-  posts = [],
-  comments = [],
+  posts = EMPTY_POSTS,
+  comments = EMPTY_COMMENTS,
 }: {
   posts?: RedditPostCreatedData[];
   comments?: RedditCommentCreatedData[];

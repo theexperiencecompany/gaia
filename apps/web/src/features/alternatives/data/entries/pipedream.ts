@@ -9,7 +9,7 @@ export const entry: AlternativeData = {
     "Developer-focused workflow automation with code-first API integration",
   painPoints: [
     "Requires JavaScript/Node.js knowledge to build advanced workflows",
-    "Free plan limits to 3 active workflows — quickly constraining",
+    "Free plan limits to 3 active workflows, quickly constraining",
     "No personal AI assistant layer; purely an automation platform",
     "Debugging workflow errors requires developer-level understanding",
     "Not designed for non-technical users who want natural language automation",
@@ -32,7 +32,7 @@ export const entry: AlternativeData = {
     "pipedream alternative 2026",
   ],
   whyPeopleLook:
-    "Pipedream is a developer's dream for API integrations — code-first workflows with Node.js, HTTP triggers, cron schedules, and a massive library of pre-built actions. But its strengths are also its limitations: non-technical users cannot build meaningful workflows without JavaScript knowledge, and even technical users end up with a collection of automations rather than a proactive AI assistant. Pipedream executes workflows but does not think for you. Users who want AI-native automation with natural language setup and a proactive personal assistant layer look beyond Pipedream.",
+    "Pipedream is a developer's dream for API integrations: code-first workflows with Node.js, HTTP triggers, cron schedules, and a massive library of pre-built actions. But its strengths are also its limitations: non-technical users cannot build meaningful workflows without JavaScript knowledge, and even technical users end up with a collection of automations rather than a proactive AI assistant. Pipedream executes workflows but does not think for you. Users who want AI-native automation with natural language setup and a proactive personal assistant layer look beyond Pipedream.",
   gaiaFitScore: 3,
   gaiaReplaces: [
     "Natural language workflow creation replacing JavaScript code nodes",
@@ -41,7 +41,7 @@ export const entry: AlternativeData = {
     "Personal productivity automation without developer overhead",
   ],
   gaiaAdvantages: [
-    "Non-technical users can build workflows via natural language — no code required",
+    "Non-technical users can build workflows via natural language, no code required",
     "Proactive personal AI assistant beyond just automation execution",
     "Graph-based memory provides context across automation runs",
     "Open-source codebase inspectable and extendable without platform lock-in",
@@ -75,7 +75,7 @@ export const entry: AlternativeData = {
       question:
         "Is GAIA open-source like some Pipedream workflows are shareable?",
       answer:
-        "Yes. GAIA is fully open-source on GitHub. You can inspect the code, self-host, and contribute to the project — providing more transparency than Pipedream's closed cloud platform.",
+        "Yes. GAIA is fully open-source on GitHub. You can inspect the code, self-host, and contribute to the project, providing more transparency than Pipedream's closed cloud platform.",
     },
   ],
 };

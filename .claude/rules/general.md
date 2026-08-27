@@ -39,6 +39,18 @@ No magic strings or numbers anywhere in the codebase.
 - Group constants by domain in dedicated files (`constants/cache.py`, `constants/llm.py`, `src/config/`, `src/features/{feature}/constants.ts`)
 - Constants are the single source of truth — if the same value appears in two places, one of them should import from the other
 
+## Type Safety Ratchet
+
+Every file you touch leaves stricter than you found it, and never looser. Scope the tightening to the code you are already changing — a ratchet, not a licence to rewrite the file.
+
+- Close what is in front of you: `Any`, unparametrized generics (`dict`, `list`, `Callable`), untyped empty collections, a bare `str` holding a fixed set of values.
+- **Never introduce** a new `Any` or bare generic into a file that did not have one. Adding a hole is never in scope; closing one nearly always is.
+- A literal repeated at both a definition site and a lookup site (registry keys, event names, queue names, config keys) is an enum — when the value set is closed and this repo owns every member. When the values are external, open-ended, or owned by someone else's schema (provider model ids, third-party API fields), a named constant referenced from both sites is the right shape; an enum there claims a closed world we don't control and goes stale. Either way, nothing else enforces that the two sites stay in sync, and the drift is silent until production.
+- An existing annotation is a claim, not evidence. `Any` launders wrong types downstream, so confirm the real runtime type before trusting a neighbouring declaration.
+- Prove the tightening bites. A checker that was green before *and* after proves nothing changed — a decorative annotation is exactly as green as a load-bearing one.
+
+The full canon — including the `StrEnum` vs `(str, Enum)` trade-off and the `reveal_type` probe — is in `apps/api/CLAUDE.md` (Type Safety); frontend rules are in `apps/web/CLAUDE.md`.
+
 ## Feature-Based Organization
 
 Organize code by domain/feature, not by technical type.
@@ -52,6 +64,32 @@ Organize code by domain/feature, not by technical type.
 - A file that does two things should be two files
 - When a file exceeds ~200–300 lines, it is a signal to split by responsibility
 - No monolithic files that accumulate unrelated logic over time
+
+## No Pass-Through Wrappers
+
+Never write a function whose whole body is a call to another function. A one- or
+two-line wrapper that only unpacks arguments, renames a call, or guards a
+precondition before delegating is not an abstraction — it is a second name for
+something that already has one, and every reader now has to open two files to
+learn what one of them does.
+
+- **The test is whether the body does anything of its own.** Reshaping arguments,
+  a `None` guard, and `return other_thing(...)` are not "anything" — that is a
+  redirect. Real branching, real transformation of the result, or real assembly
+  of several calls is.
+- **The precondition belongs with the callee, not in a wrapper around it.** If a
+  read is meaningless without a `user_id`, the read itself should say so and
+  return empty — then no caller can forget the guard and no wrapper is needed.
+- **Signature mismatch is not a reason to add a layer — it is a reason to fix the
+  signature.** When callee and call site disagree on shape, change the callee to
+  take the shape the call site already has. Where that would cause an import
+  cycle, extract the shared type into a lower-level module (see Type Safety
+  Ratchet and `apps/api/CLAUDE.md` §10); do not paper over it with an adapter.
+- **A registry/table of callables is where these breed.** Uniform-signature
+  tables tempt you to write one tiny adapter per row. Make the real functions
+  match the table's signature and register them directly.
+- **Exception:** a wrapper that exists to give a genuinely non-obvious call a
+  domain name (and is used in more than one place) is documentation, and stays.
 
 ## Self-Documenting Code
 

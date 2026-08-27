@@ -10,6 +10,7 @@ from app.models.integration_models import (
     Integration,
     UpdateCustomIntegrationRequest,
 )
+from app.services.analytics_service import AnalyticsEvents
 from app.services.integrations.publish_service import PublishError
 
 # __init__.py: prefix="/integrations", custom.py router mounted at /custom
@@ -58,6 +59,7 @@ class TestCreateCustomIntegration:
             patch(
                 f"{_CUSTOM}.create_and_connect_custom_integration", new_callable=AsyncMock
             ) as mock_create,
+            patch(f"{_CUSTOM}.capture_context_event") as mock_capture,
         ):
             mock_mcp.return_value = MagicMock()
             mock_create.return_value = (
@@ -78,6 +80,32 @@ class TestCreateCustomIntegration:
             "oauthUrl": None,
             "error": None,
         }
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.INTEGRATION_CONNECTED,
+            {"integration_id": "i1", "auth_type": "none"},
+        )
+
+    async def test_create_bearer_integration_captures_auth_type(self, client: AsyncClient) -> None:
+        """A bearer-token connect reports auth_type=bearer."""
+        with (
+            patch(f"{_CUSTOM}.get_mcp_client", new_callable=AsyncMock) as mock_mcp,
+            patch(
+                f"{_CUSTOM}.create_and_connect_custom_integration", new_callable=AsyncMock
+            ) as mock_create,
+            patch(f"{_CUSTOM}.capture_context_event") as mock_capture,
+        ):
+            mock_mcp.return_value = MagicMock()
+            mock_create.return_value = (
+                _integration(),
+                {"status": "connected", "tools_count": 3},
+            )
+            resp = await client.post(BASE, json=_create_payload(bearer_token="tok-123"))
+
+        assert resp.status_code == 200
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.INTEGRATION_CONNECTED,
+            {"integration_id": "i1", "auth_type": "bearer"},
+        )
 
         mock_mcp.assert_awaited_once_with(user_id=FAKE_USER_ID)
         assert mock_create.await_count == 1

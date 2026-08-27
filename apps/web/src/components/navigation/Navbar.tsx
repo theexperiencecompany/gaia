@@ -4,7 +4,8 @@ import { Login02Icon, MessageMultiple02Icon } from "@icons";
 import NumberFlow from "@number-flow/react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ChevronDown, Github, StarFilledIcon } from "@/components/shared/icons";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { Button } from "@/components/ui/button";
@@ -16,23 +17,38 @@ import { usePathname } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { LogoWithContextMenu } from "../shared/LogoWithContextMenu";
 import { RaisedButton } from "../ui/raised-button";
+import { NavbarMenu } from "./NavbarMenu";
 
-// Lazy-load below-the-fold / interaction-triggered components to shrink the
-// initial bundle without altering visuals.
+// MobileMenu is lazy-loaded — it is only reachable on small screens.
 const MobileMenu = dynamic(() => import("@/components/navigation/MobileMenu"), {
   ssr: false,
 });
-const NavbarMenu = dynamic(
-  () => import("./NavbarMenu").then((m) => ({ default: m.NavbarMenu })),
-  { ssr: false },
-);
 const NAVBAR_ITEMS = [
   { type: "dropdown", label: "Product", menu: "product" },
   { type: "link", label: "Pricing", href: "/pricing" },
-  { type: "link", label: "About", href: "/about" },
   { type: "link", label: "Docs", href: "https://docs.heygaia.io" },
   { type: "dropdown", label: "Resources", menu: "resources" },
 ] as const;
+
+const emptySubscribe = () => () => {
+  /* no-op unsubscribe for server snapshot */
+};
+const getClientSnapshot = () => true;
+const getServerSnapshot = () => false;
+
+// Function to control backdrop blur
+function toggleBackdrop(show: boolean) {
+  const backdrop = document.getElementById("navbar-backdrop");
+  if (backdrop) {
+    if (show) {
+      backdrop.style.opacity = "1";
+      backdrop.style.pointerEvents = "none";
+    } else {
+      backdrop.style.opacity = "0";
+      backdrop.style.pointerEvents = "none";
+    }
+  }
+}
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -40,6 +56,9 @@ export default function Navbar() {
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [isScrolled, setIsScrolled] = useState(false);
+  const [menuAnchorX, setMenuAnchorX] = useState(0);
+  const [wrapperWidth, setWrapperWidth] = useState(0);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const { data: repoData } = useGitHubStars("theexperiencecompany/gaia");
 
   // GitHub stars: while loading, rapidly cycle random three-digit values so
@@ -73,8 +92,13 @@ export default function Navbar() {
   // mismatch. useUser() reads a persisted (localStorage) store that rehydrates
   // synchronously on the client, so a returning logged-in user would otherwise
   // render a different CTA on the first client render than the server sent.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  // `useSyncExternalStore` keeps the server/hydration snapshot false and flips
+  // to true on the client without an effect-driven extra render.
+  const mounted = useSyncExternalStore(
+    emptySubscribe,
+    getClientSnapshot,
+    getServerSnapshot,
+  );
   const isAuthenticated = mounted ? !!user.email : false;
 
   // Handle scroll to change navbar appearance
@@ -88,20 +112,6 @@ export default function Navbar() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Function to control backdrop blur
-  const toggleBackdrop = (show: boolean) => {
-    const backdrop = document.getElementById("navbar-backdrop");
-    if (backdrop) {
-      if (show) {
-        backdrop.style.opacity = "1";
-        backdrop.style.pointerEvents = "none";
-      } else {
-        backdrop.style.opacity = "0";
-        backdrop.style.pointerEvents = "none";
-      }
-    }
-  };
-
   // Handle mouse leave for navbar container
   const handleNavbarMouseLeave = () => {
     if (isMobileScreen) return;
@@ -111,8 +121,21 @@ export default function Navbar() {
     toggleBackdrop(false);
   };
 
-  const handleMouseEnter = (menu: string) => {
+  const handleMouseEnter = (
+    menu: string,
+    event: React.MouseEvent<HTMLButtonElement>,
+  ) => {
     if (isMobileScreen) return;
+
+    const wrapper = wrapperRef.current;
+    if (wrapper) {
+      const wrapperRect = wrapper.getBoundingClientRect();
+      const triggerRect = event.currentTarget.getBoundingClientRect();
+      setMenuAnchorX(
+        triggerRect.left - wrapperRect.left + triggerRect.width / 2,
+      );
+      setWrapperWidth(wrapperRect.width);
+    }
 
     setActiveDropdown(menu);
     setHoveredItem(menu);
@@ -127,35 +150,37 @@ export default function Navbar() {
     return () => toggleBackdrop(false);
   }, [pathname]);
 
+  // Desktop nav links — one pass over the config, skipping the Home link.
+  const navLinks: ReactNode[] = [];
+  for (const link of appConfig.links.main) {
+    if (link.href === "/") continue;
+    navLinks.push(
+      <LinkButton
+        key={link.href}
+        size="sm"
+        className={`text-sm font-medium ${pathname === link.href ? "text-primary" : "text-zinc-300 hover:text-zinc-100"}`}
+        href={link.href}
+        startContent={link.icon}
+        external={link.external}
+      >
+        {link.label}
+      </LinkButton>,
+    );
+  }
+
   return (
-    <div
-      className={`fixed top-0 left-0 z-50 w-full px-4 pt-4 transition-all duration-300`}
-    >
+    <div className="fixed top-0 left-0 z-50 w-full px-4 pt-4">
       <div
-        className={`relative mx-auto transition-all duration-300 w-full ${isScrolled ? "sm:w-6xl" : "sm:w-full"}`}
+        ref={wrapperRef}
+        className="relative mx-auto w-full max-w-7xl"
         onMouseLeave={handleNavbarMouseLeave}
       >
         <div
-          className={`navbar_content flex h-14 w-full items-center justify-between px-3 transition-all duration-300 ${activeDropdown ? "rounded-t-2xl bg-zinc-900" : isScrolled ? "rounded-2xl bg-zinc-900/30 backdrop-blur-md" : "rounded-2xl border-transparent bg-transparent"}`}
+          className={`navbar_content flex h-14 w-full items-center justify-between rounded-2xl px-3 transition-all duration-300 ${isScrolled || activeDropdown ? "bg-zinc-900/30 backdrop-blur-md" : "bg-transparent"}`}
         >
           <LogoWithContextMenu className="px-2" />
 
-          <div className="hidden items-center gap-1 sm:flex">
-            {appConfig.links.main
-              .filter((link) => link.href !== "/") // Filter out Home link for desktop nav
-              .map(({ href, label, icon, external }) => (
-                <LinkButton
-                  key={href}
-                  size="sm"
-                  className={`text-sm font-medium ${pathname === href ? "text-primary" : "text-zinc-300 hover:text-zinc-100"}`}
-                  href={href}
-                  startContent={icon}
-                  external={external}
-                >
-                  {label}
-                </LinkButton>
-              ))}
-          </div>
+          <div className="hidden items-center gap-1 sm:flex">{navLinks}</div>
 
           {isMobileScreen ? (
             <MobileMenu />
@@ -189,8 +214,8 @@ export default function Navbar() {
                     type="button"
                     key={item.menu}
                     className="relative flex h-9 cursor-pointer items-center rounded-xl px-4 py-2 text-sm text-zinc-200 capitalize transition-colors hover:text-zinc-100"
-                    onMouseEnter={() => {
-                      handleMouseEnter(item.menu);
+                    onMouseEnter={(event) => {
+                      handleMouseEnter(item.menu, event);
                       trackEvent(
                         ANALYTICS_EVENTS.NAVIGATION_NAVBAR_DROPDOWN_OPENED,
                         {
@@ -200,7 +225,7 @@ export default function Navbar() {
                     }}
                   >
                     {hoveredItem === item.menu && (
-                      <div className="absolute inset-0 h-full w-full rounded-xl bg-zinc-800 font-medium! transition-all duration-300 ease-out" />
+                      <div className="absolute inset-0 h-full w-full rounded-xl bg-zinc-800 font-medium!" />
                     )}
                     <div className="relative z-10 flex items-center gap-2">
                       <span>
@@ -291,7 +316,8 @@ export default function Navbar() {
         {activeDropdown && (
           <NavbarMenu
             activeMenu={activeDropdown}
-            // onClose={() => setActiveDropdown(null)}
+            anchorX={menuAnchorX}
+            wrapperWidth={wrapperWidth}
           />
         )}
       </div>

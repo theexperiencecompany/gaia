@@ -131,7 +131,13 @@ class TestDeepResearch:
             {"query": "obscure topic", "scope": "", "depth": 1, "focus_areas": None},
             config=_make_config(),
         )
-        assert "no sources were found" in result["error"]
+        # Pinned whole: an empty search is exactly when a model invents links,
+        # so the refusal has to name the ban rather than only report the miss.
+        assert result["error"] == (
+            "Search returned no results for the given query. "
+            "No URLs were found: do not fabricate links. "
+            "Try broadening the search or inform the user that no sources were found."
+        )
         assert result["data"] is None
 
     @pytest.mark.asyncio
@@ -153,6 +159,7 @@ class TestDeepResearch:
         _mock_cache: AsyncMock,
         _mock_cache_key: MagicMock,
         _mock_uid: MagicMock,
+        _patch_stream_writer: MagicMock,
     ) -> None:
         mock_decompose.return_value = ["sub-q1", "sub-q2"]
         mock_ddg.return_value = {"results": [{"url": "https://example.com"}]}
@@ -185,6 +192,21 @@ class TestDeepResearch:
         assert len(result["sources"]) == 2
         assert result["query"] == "AI trends"
         assert result["scope"] == "technical"
+        # The integrity note is what stops a research answer citing plausible
+        # URLs the search never returned — the whole reason the source list is
+        # handed over separately.
+        assert result["integrity_note"] == (
+            "All URLs in `sources` and `authoritative_urls` were returned by real search "
+            "queries. Only cite URLs from this list; never invent or guess URLs."
+        )
+        # The progress frame is keyed "progress"; the UI reads that key and
+        # nothing else, so a renamed key is a silently blank progress line.
+        progress = [
+            call.args[0]["progress"]
+            for call in _patch_stream_writer.call_args_list
+            if isinstance(call.args[0], dict) and "progress" in call.args[0]
+        ]
+        assert "Found 2 unique sources, fetching full content..." in progress
         mock_set_cache.assert_awaited_once()
 
     @pytest.mark.asyncio

@@ -9,6 +9,7 @@ import {
 } from "@heroui/dropdown";
 import { Tooltip } from "@heroui/tooltip";
 import { PlayIcon, RedoIcon, SparklesIcon, ZapIcon } from "@icons";
+import { isWorkflowStatusFresh } from "@shared/todos";
 import { useCallback, useEffect, useState } from "react";
 import { ChevronDown } from "@/components/shared/icons";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -65,6 +66,26 @@ function toWorkflowRunData(workflow: WorkflowType) {
   };
 }
 
+/**
+ * Map a workflow-status payload (API response or prefetch-cache entry) onto
+ * the component's local state. Exactly one of the two states applies.
+ */
+function applyWorkflowStatus(
+  status: {
+    has_workflow: boolean;
+    is_generating: boolean;
+    workflow: WorkflowType | null;
+  },
+  setWorkflow: (workflow: WorkflowType) => void,
+  setIsGenerating: (isGenerating: boolean) => void,
+): void {
+  if (status.is_generating) {
+    setIsGenerating(true);
+  } else if (status.has_workflow && status.workflow) {
+    setWorkflow(status.workflow);
+  }
+}
+
 interface WorkflowSectionProps {
   hideBg?: boolean;
   todoId: string;
@@ -111,30 +132,29 @@ export default function WorkflowSection({
 
   // Fetch on mount — check prefetch cache first for instant display
   useEffect(() => {
+    let mounted = true;
+
     const fetchWorkflow = async () => {
       // Use client-side prefetch cache if fresh (< 30s)
       const cached = useTodoStore.getState().workflowStatusCache[todoId];
-      if (cached && Date.now() - cached.cachedAt < 30_000) {
-        if (cached.is_generating) {
-          setIsGenerating(true);
-        } else if (cached.has_workflow && cached.workflow) {
-          setWorkflow(cached.workflow as WorkflowType);
-        }
+      if (isWorkflowStatusFresh(cached)) {
+        applyWorkflowStatus(cached, setWorkflow, setIsGenerating);
         return;
       }
 
       try {
         const status = await todoApi.getWorkflowStatus(todoId);
-        if (status.is_generating) {
-          setIsGenerating(true);
-        } else if (status.has_workflow && status.workflow) {
-          setWorkflow(status.workflow);
-        }
+        if (!mounted) return;
+        applyWorkflowStatus(status, setWorkflow, setIsGenerating);
       } catch (err) {
         console.error("Failed to fetch workflow:", err);
       }
     };
     fetchWorkflow();
+
+    return () => {
+      mounted = false;
+    };
   }, [todoId]);
 
   // Generate workflow (initial)

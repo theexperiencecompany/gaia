@@ -43,6 +43,9 @@ SELECT_NODE = "select_tools"
 TOOLS_NODE = "tools"
 #: Terminal node for ``finish_task``.
 FINISH_NODE = "finish_task"
+#: Where the completion guard sends a run back for one more pass instead of
+#: letting it end on demonstrably unfinished work.
+NUDGE_NODE = "nudge_continue"
 
 #: The memory engine double a comms graph was built with, so a test can assert
 #: passive ingestion actually ran.
@@ -93,6 +96,11 @@ class GraphRun:
     #: it on the way in and that rewrite never reaches the checkpoint, so this is
     #: the only place a hook's effect is observable.
     prompts: list[list[BaseMessage]] = field(default_factory=list)
+    #: Every node that emitted an update, in order — including nodes whose
+    #: update carried no messages (e.g. ``end_graph_hooks``, whose hooks are
+    #: side-effecting and write no channels). ``nodes()`` covers only the
+    #: message-bearing route.
+    visited: list[str] = field(default_factory=list)
     error: BaseException | None = None
 
     def last_prompt(self) -> list[BaseMessage]:
@@ -240,6 +248,26 @@ class RecordingFakeModel(BindableToolsFakeModel):
         return self._generate(messages, *args, **kwargs)
 
 
+#: What a scripted hand-off sends for `call_executor`'s required
+#: `acceptance_criteria`. The e2e suites are about graph wiring, not the tool's
+#: schema — that the field is required at all is pinned in
+#: `tests/unit/agents/test_executor_handoff_brief.py`. Filling it here keeps one
+#: schema change from rewriting fifty scripts by hand.
+SCRIPTED_ACCEPTANCE_CRITERIA = ["scripted e2e hand-off"]
+
+
+def call(name: str, args: dict[str, Any] | None = None, id: str = "c1") -> dict[str, Any]:
+    """One scripted tool call.
+
+    Lived in four e2e modules as identical copies until `acceptance_criteria`
+    became required and every one of them broke at once.
+    """
+    call_args = dict(args or {})
+    if name == "call_executor" and "acceptance_criteria" not in call_args:
+        call_args["acceptance_criteria"] = list(SCRIPTED_ACCEPTANCE_CRITERIA)
+    return {"name": name, "args": call_args, "id": id}
+
+
 def scripted_model(script: Sequence[Any]) -> RecordingFakeModel:
     """A fake model that replays ``script``, one entry per model call.
 
@@ -262,7 +290,7 @@ def scripted_model(script: Sequence[Any]) -> RecordingFakeModel:
             responses.append(AIMessage(content="", tool_calls=list(item)))
         else:
             responses.append(AIMessage(content=str(item)))
-    return RecordingFakeModel(responses=responses)
+    return RecordingFakeModel(responses=responses, profile={"max_input_tokens": 1_000_000})
 
 
 def call_all_tools_response_generator(
@@ -374,6 +402,7 @@ async def comms_graph(
     script: Sequence[Any],
     store: InMemoryStore | None = None,
     model: RecordingFakeModel | None = None,
+    checkpointer_manager: Any | None = None,
 ) -> AsyncIterator[Any]:
     """The REAL comms graph, with only the model and the external edges replaced.
 
@@ -425,7 +454,11 @@ async def comms_graph(
         patch.object(
             _build_graph, "get_tools_store", AsyncMock(return_value=store or InMemoryStore())
         ),
-        patch.object(_build_graph, "get_checkpointer_manager", AsyncMock(return_value=None)),
+        patch.object(
+            _build_graph,
+            "get_checkpointer_manager",
+            AsyncMock(return_value=checkpointer_manager),
+        ),
         patch(
             f"{node_module}.ainvoke_structured",
             new=AsyncMock(return_value=FollowUpActions(actions=[])),
@@ -442,7 +475,7 @@ async def comms_graph(
         ),
     ):
         async with _build_graph.build_comms_graph(
-            chat_llm=llm, in_memory_checkpointer=True
+            chat_llm=llm, in_memory_checkpointer=checkpointer_manager is None
         ) as graph:
             _SCRIPTED_MODELS[id(graph)] = llm
             _MEMORY_DOUBLES[id(graph)] = memory
@@ -501,6 +534,8 @@ async def run_graph(
     try:
         async for _mode, payload in graph.astream(initial, stream_mode=["updates"], config=config):
             for node, update in payload.items():
+                if not run.visited or run.visited[-1] != node:
+                    run.visited.append(node)
                 if not isinstance(update, dict):
                     continue
                 if "selected_tool_ids" in update:

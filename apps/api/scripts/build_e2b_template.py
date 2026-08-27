@@ -51,8 +51,8 @@ from e2b import Template
 # used by the other apps/api/scripts.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.agents.workspace.system_files import system_files  # noqa: E402
-from app.config.secrets import inject_infisical_secrets  # noqa: E402
+from app.agents.workspace.system_files import system_files
+from app.config.secrets import inject_infisical_secrets
 
 JUICEFS_VERSION = "1.3.0"
 JUICEFS_TARBALL = (

@@ -8,6 +8,6 @@ export default defineConfig({
   clean: true,
   noExternal: [/.*/],
   banner: {
-    js: `import{createRequire}from"module";const require=createRequire(import.meta.url);`,
+    js: `import{createRequire as __gaiaCreateRequire}from"module";const require=__gaiaCreateRequire(import.meta.url);`,
   },
 });

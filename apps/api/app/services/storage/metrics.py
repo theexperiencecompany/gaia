@@ -102,7 +102,7 @@ from dataclasses import dataclass, field
 import time
 from typing import Any, Final, NotRequired, TypedDict, TypeVar, cast
 
-from prometheus_client import (  # noqa: F401  # Gauge used via lambda factories below
+from prometheus_client import (  # Gauge used via lambda factories below
     REGISTRY,
     Counter,
     Gauge,
@@ -156,7 +156,7 @@ def _register_once(name: str, factory: Callable[[], _CollectorT]) -> _CollectorT
     try:
         return factory()
     except ValueError:
-        existing = REGISTRY._names_to_collectors.get(name)  # noqa: SLF001
+        existing = REGISTRY._names_to_collectors.get(name)
         if existing is None:
             raise
         return cast(_CollectorT, existing)
@@ -232,7 +232,7 @@ def set_sandbox_pool_size(kind: str, shard: str, n: int) -> None:
     """
     try:
         _SANDBOX_POOL_SIZE.labels(kind=kind, shard=shard).set(n)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.warning(
             "[metrics] sandbox_pool_size set failed",
             kind=kind,
@@ -404,7 +404,7 @@ def record_fs_op(
         _FS_OP_LAST_SEEN.labels(operation=op).set(time.time())
         if bytes > 0:
             _FS_OP_BYTES_TOTAL.labels(operation=op).inc(bytes)
-    except Exception as e:  # noqa: BLE001 — dashboard surface must not break callers
+    except Exception as e:  # dashboard surface must not break callers
         log.warning(
             "[metrics] prometheus observe failed",
             op=op,
@@ -426,7 +426,7 @@ def add_fs_bytes(op: str, n: int) -> None:
 
     try:
         _FS_OP_BYTES_TOTAL.labels(operation=op).inc(n)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.warning(
             "[metrics] prometheus bytes inc failed",
             op=op,
@@ -452,7 +452,7 @@ async def fs_timer(op: str, **labels: str) -> AsyncIterator[None]:
     err: BaseException | None = None
     try:
         _FS_OP_IN_FLIGHT.labels(operation=op).inc()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.warning(
             "[metrics] in_flight inc failed",
             op=op,
@@ -460,14 +460,14 @@ async def fs_timer(op: str, **labels: str) -> AsyncIterator[None]:
         )
     try:
         yield
-    except BaseException as exc:  # noqa: BLE001 — surfaced via re-raise
+    except BaseException as exc:  # surfaced via re-raise
         err = exc
         raise
     finally:
         elapsed_ms = (time.monotonic() - start) * 1000.0
         try:
             _FS_OP_IN_FLIGHT.labels(operation=op).dec()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             log.warning(
                 "[metrics] in_flight dec failed",
                 op=op,

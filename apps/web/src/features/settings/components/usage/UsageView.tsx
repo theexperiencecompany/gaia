@@ -4,46 +4,24 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Tab, Tabs } from "@heroui/tabs";
 import { Tooltip } from "@heroui/tooltip";
-import { Fire02Icon, InformationCircleIcon, SparklesIcon } from "@icons";
-import {
-  USAGE_DANGER_THRESHOLD,
-  USAGE_WARN_THRESHOLD,
-} from "@shared/constants/usage";
+import { Fire02Icon, SparklesIcon } from "@icons";
+import { USAGE_WARN_THRESHOLD } from "@shared/constants/usage";
 import type { FeatureUsage, UsageActivity, UsageSummary } from "@shared/types";
 import { formatCompactNumber, formatDate, formatDateUTC } from "@shared/utils";
 import { useMemo, useState } from "react";
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  Cell,
-  PolarAngleAxis,
-  RadialBar,
-  RadialBarChart,
-  ReferenceLine,
-  XAxis,
-  YAxis,
-} from "recharts";
 import BlurStack from "@/components/ui/blur-stack";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
+import { useRecharts } from "@/components/ui/chart-loader";
 import { cn } from "@/lib/utils";
 import type { UsageHistoryEntry } from "../../api/usageApi";
+import { DayByDay } from "./DayByDay";
+import { severityColor } from "./severityColor";
 import { ActivityBadge, UsageHeatmap } from "./UsageHeatmap";
+import { CARD, HEALTHY, InfoTip, NEAR } from "./usageChrome";
 
-const ACCENT = "#00bbff"; // brand blue — capacity meters
-const HEALTHY = "#30d158"; // apple green — the activity trend
-const NEAR = "#fbbf24"; // amber — approaching the limit
-const HIT = "#ff453a"; // vibrant red — limit reached
-
-/** Only the warning states borrow status hues; the "fine" state is the caller's
- * base color, so a glance separates fine / watch-out / maxed without a rainbow.
- * Thresholds are shared with mobile (see @shared/constants/usage). */
-function severityColor(percentage: number, base: string = ACCENT): string {
-  if (percentage >= USAGE_DANGER_THRESHOLD) return HIT;
-  if (percentage >= USAGE_WARN_THRESHOLD) return NEAR;
-  return base;
-}
+// recharts is heavy, so it loads on demand instead of shipping eagerly with
+// the settings page. The shared promise means every chart here triggers a
+// single chunk load.
 
 /** Fraction (0-1) of the current window already elapsed — the "you should be
  * here by now" mark. Simple: elapsed / total, from the window's reset time. */
@@ -69,26 +47,6 @@ function fmtTime(iso: string): string {
     hour: "numeric",
     minute: "2-digit",
   });
-}
-
-const CARD = "rounded-2xl bg-zinc-900/60";
-
-function InfoTip({ text }: { text: string }) {
-  return (
-    <Tooltip
-      content={text}
-      placement="top"
-      delay={150}
-      closeDelay={0}
-      classNames={{
-        content: "max-w-64 bg-zinc-800 text-xs text-zinc-300 shadow-xl",
-      }}
-    >
-      <span className="cursor-default text-zinc-600 transition-colors hover:text-zinc-400">
-        <InformationCircleIcon size={15} />
-      </span>
-    </Tooltip>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -124,11 +82,7 @@ export function UsageView({
       />
       <Trend history={history} summary={summary} primary={primary} />
       <div className="flex items-stretch gap-4">
-        <DailyBars
-          history={history}
-          primary={primary}
-          currentDayLimit={summary.features[primary]?.periods.day?.limit ?? 0}
-        />
+        {activity && <DayByDay activity={activity} />}
         {activity && <ActivityBadge tier={activity.tier} activity={activity} />}
       </div>
       {activity && <UsageHeatmap activity={activity} />}
@@ -163,6 +117,7 @@ function heroWindow(
 function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
   // Free has no monthly allowance to show, so its hero is daily-only.
   const [win, setWin] = useState<Period>(isPro ? "month" : "day");
+  const R = useRecharts();
   const { percent, resetIso } = heroWindow(summary, win);
   const used = Math.min(100, Math.round(percent));
 
@@ -201,28 +156,32 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
         </Tabs>
       )}
       <div className="relative size-32 shrink-0">
-        <ChartContainer config={{}} className="aspect-square size-32">
-          <RadialBarChart
-            data={[{ value: used }]}
-            innerRadius="76%"
-            outerRadius="100%"
-            startAngle={230}
-            endAngle={-50}
-          >
-            <PolarAngleAxis
-              type="number"
-              domain={[0, 100]}
-              tick={false}
-              axisLine={false}
-            />
-            <RadialBar
-              dataKey="value"
-              cornerRadius={10}
-              background={{ fill: "#27272a" }}
-              fill={severityColor(percent)}
-            />
-          </RadialBarChart>
-        </ChartContainer>
+        {R ? (
+          <ChartContainer config={{}} className="aspect-square size-32">
+            <R.RadialBarChart
+              data={[{ value: used }]}
+              innerRadius="76%"
+              outerRadius="100%"
+              startAngle={230}
+              endAngle={-50}
+            >
+              <R.PolarAngleAxis
+                type="number"
+                domain={[0, 100]}
+                tick={false}
+                axisLine={false}
+              />
+              <R.RadialBar
+                dataKey="value"
+                cornerRadius={10}
+                background={{ fill: "#27272a" }}
+                fill={severityColor(percent)}
+              />
+            </R.RadialBarChart>
+          </ChartContainer>
+        ) : (
+          <div className="aspect-square size-full rounded-full bg-zinc-800/60" />
+        )}
         {/* Pace tick: where usage "should" be at an even burn. Amber if ahead of it. */}
         {showPace && (
           <svg
@@ -270,198 +229,6 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
               : ""}
         </p>
       </div>
-    </section>
-  );
-}
-
-// --- Daily bars: messages per day, each day judged against ITS OWN stored
-// limit (snapshots persist the limit that applied that day). Coloring history
-// against today's limit fabricates hits after a plan change; per-day limits
-// stay honest. Cost has no per-day history yet, so these are message-%s only
-// (#12's daily cost rollup upgrades this to true usage-%).
-
-function DailyTooltip({
-  active,
-  payload,
-  asPct,
-}: {
-  active?: boolean;
-  payload?: {
-    payload: { label: string; messages: number; dayLimit: number };
-  }[];
-  /** Mirrors the chart's mode so every tooltip speaks ONE unit — per-day
-   * switching between "%" and "messages" reads as a glitch. */
-  asPct?: boolean;
-}) {
-  if (!active || !payload?.length) return null;
-  const { label, messages, dayLimit } = payload[0].payload;
-  const pct = dayLimit > 0 ? Math.round((messages / dayLimit) * 100) : 0;
-  return (
-    <div className="rounded-lg bg-zinc-800 px-2.5 py-1.5 text-xs shadow-xl">
-      <p className="mb-1 text-zinc-400">{label}</p>
-      <div className="flex items-center gap-1.5">
-        <span
-          className="size-2 rounded-[2px]"
-          style={{ backgroundColor: severityColor(pct, HEALTHY) }}
-        />
-        <span className="font-medium text-zinc-100">
-          {asPct
-            ? `${pct}% of that day's limit`
-            : `${messages} ${messages === 1 ? "message" : "messages"}`}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function DailyBars({
-  history,
-  primary,
-  currentDayLimit,
-}: {
-  history: UsageHistoryEntry[];
-  /** The feature key whose per-day activity these bars plot. */
-  primary: string;
-  /** The plan's current chat day limit — the yardstick % mode needs. Zero when
-   * the primary feature has no daily count cap (chat is cost-priced), which
-   * makes the bars fall back to plain message activity. */
-  currentDayLimit: number;
-}) {
-  const { data, daysHit, asPct, isEmpty } = useMemo(() => {
-    if (!history.length)
-      return { data: [], daysHit: 0, asPct: false, isEmpty: true };
-    const dayKey = (d: Date) =>
-      `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
-    const byDay = new Map<string, { used: number; limit: number }>();
-    for (const e of history) {
-      const d = new Date(e.date);
-      const day = e.features[primary]?.periods.day;
-      if (day?.used !== undefined) {
-        byDay.set(dayKey(d), { used: day.used, limit: day.limit ?? 0 });
-      }
-    }
-    // Trailing 30 days ending TODAY — never on the last day with data, which
-    // would present a month-old window as if it were current. Quiet recent
-    // days render as honest zero bars.
-    const end = Date.now();
-    const data = Array.from({ length: 30 }, (_, i) => {
-      const d = new Date(end - (29 - i) * 86_400_000);
-      const key = dayKey(d);
-      const entry = byDay.get(key);
-      return {
-        key,
-        label: formatDateUTC(d, "short"),
-        messages: entry?.used ?? 0,
-        dayLimit: entry?.limit ?? 0,
-      };
-    });
-    const daysHit = data.filter(
-      (d) => d.dayLimit > 0 && d.messages >= d.dayLimit,
-    ).length;
-    // Percent mode: heights are % of THAT DAY's limit, so bars agree with
-    // their colors and the guide line is a fixed 100% that is always true.
-    // Only meaningful when every stored day limit matches the user's CURRENT
-    // allowance — after a plan change, "% of a 3,000-message pro cap" draws
-    // sub-pixel invisible bars for a now-free user. Mixed or foreign limits
-    // fall back to honest raw counts (auto-scaled, colored by per-day severity).
-    const daysWithData = data.filter((d) => d.messages > 0);
-    const asPct =
-      daysWithData.length > 0 &&
-      currentDayLimit > 0 &&
-      daysWithData.every((d) => d.dayLimit === currentDayLimit);
-    const rows = data.map((d) => ({
-      ...d,
-      // `asPct` is decided from days that HAVE data, but this maps every day in
-      // the window — a quiet day carries dayLimit 0, so dividing unguarded
-      // yields NaN and the bar disappears. A day with no usage is 0% of its
-      // allowance.
-      value: asPct
-        ? d.dayLimit > 0
-          ? Math.round((d.messages / d.dayLimit) * 1000) / 10
-          : 0
-        : d.messages,
-    }));
-    return { data: rows, daysHit, asPct, isEmpty: daysWithData.length === 0 };
-  }, [history, primary, currentDayLimit]);
-
-  return (
-    <section className={cn(CARD, "flex min-w-0 flex-1 flex-col p-5")}>
-      <div className="mb-4 flex items-baseline justify-between">
-        <div className="flex items-center gap-1.5">
-          <p className="text-base font-semibold text-white">Day by day</p>
-          <InfoTip
-            text={
-              asPct
-                ? "Each bar is how much of that day's message limit you used — amber near it, red when hit."
-                : "Messages sent each day over the last 30 days."
-            }
-          />
-        </div>
-        {daysHit > 0 && (
-          <p className="text-[13px] text-zinc-500">
-            Limit hit on{" "}
-            <span className="font-medium text-zinc-300">
-              {daysHit} {daysHit === 1 ? "day" : "days"}
-            </span>
-          </p>
-        )}
-      </div>
-      {/* A month of zero-height bars reads as broken — quiet empty state
-          instead (e.g. workflow-automation users who never chat). */}
-      {isEmpty && (
-        <div className="flex min-h-0 w-full flex-1 items-center justify-center text-sm text-zinc-600">
-          No messages in the last 30 days.
-        </div>
-      )}
-      {!isEmpty && (
-        <ChartContainer
-          config={{ value: { label: "Messages", color: HEALTHY } }}
-          className="mt-2 aspect-auto min-h-0 w-full flex-1"
-        >
-          <BarChart
-            data={data}
-            margin={{ left: 0, right: 0, top: 10, bottom: 0 }}
-          >
-            <XAxis
-              dataKey="label"
-              tickLine={false}
-              axisLine={false}
-              tickMargin={12}
-              minTickGap={36}
-              tick={{ fill: "#71717a", fontSize: 11 }}
-            />
-            {asPct && <YAxis hide domain={[0, 118]} />}
-            {asPct && (
-              <ReferenceLine
-                y={100}
-                stroke="#3f3f46"
-                strokeDasharray="3 3"
-                label={{
-                  value: "daily limit",
-                  position: "top",
-                  fill: "#71717a",
-                  fontSize: 10,
-                }}
-              />
-            )}
-            <ChartTooltip
-              cursor={{ fill: "#ffffff08" }}
-              content={<DailyTooltip asPct={asPct} />}
-            />
-            <Bar dataKey="value" radius={5} maxBarSize={9}>
-              {data.map((d) => (
-                <Cell
-                  key={d.key}
-                  fill={severityColor(
-                    d.dayLimit > 0 ? (d.messages / d.dayLimit) * 100 : 0,
-                    HEALTHY,
-                  )}
-                />
-              ))}
-            </Bar>
-          </BarChart>
-        </ChartContainer>
-      )}
     </section>
   );
 }
@@ -764,6 +531,7 @@ function Trend({
   /** The feature key whose cumulative monthly activity is plotted. */
   primary: string;
 }) {
+  const R = useRecharts();
   const month = summary.features[primary]?.periods.month;
   const limit = month?.limit ?? 0;
   const resetIso = month?.reset_time;
@@ -830,67 +598,70 @@ function Trend({
           Nothing used yet this {monthName} — your trend will appear here.
         </div>
       )}
-      {!isEmpty && (
-        <ChartContainer
-          config={{ actual: { label: "Sent", color: HEALTHY } }}
-          className="aspect-[16/6] w-full"
-        >
-          <AreaChart
-            data={rows}
-            margin={{ left: 0, right: 0, top: 12, bottom: 0 }}
+      {!isEmpty &&
+        (R ? (
+          <ChartContainer
+            config={{ actual: { label: "Sent", color: HEALTHY } }}
+            className="aspect-[16/6] w-full"
           >
-            <defs>
-              <linearGradient id="trajFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={HEALTHY} stopOpacity={0.25} />
-                <stop offset="100%" stopColor={HEALTHY} stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <XAxis
-              dataKey="dom"
-              tickLine={false}
-              axisLine={false}
-              tickMargin={12}
-              minTickGap={40}
-              tickFormatter={(d) => `${monthName} ${d}`}
-              tick={{ fill: "#71717a", fontSize: 11 }}
-            />
-            <YAxis hide domain={[0, yMax]} />
-            {showLimit && (
-              <ReferenceLine
-                y={limit}
-                stroke="#52525b"
-                strokeDasharray="4 4"
-                label={{
-                  value: `${limit.toLocaleString()} limit`,
-                  position: "insideTopRight",
-                  fill: "#a1a1aa",
-                  fontSize: 10,
-                }}
+            <R.AreaChart
+              data={rows}
+              margin={{ left: 0, right: 0, top: 12, bottom: 0 }}
+            >
+              <defs>
+                <linearGradient id="trajFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={HEALTHY} stopOpacity={0.25} />
+                  <stop offset="100%" stopColor={HEALTHY} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <R.XAxis
+                dataKey="dom"
+                tickLine={false}
+                axisLine={false}
+                tickMargin={12}
+                minTickGap={40}
+                tickFormatter={(d) => `${monthName} ${d}`}
+                tick={{ fill: "#71717a", fontSize: 11 }}
               />
-            )}
-            <ChartTooltip content={<TrendTooltip monthName={monthName} />} />
-            <Area
-              dataKey="actual"
-              type="monotone"
-              stroke={HEALTHY}
-              strokeWidth={2}
-              fill="url(#trajFill)"
-              connectNulls
-              dot={false}
-            />
-            <Area
-              dataKey="projected"
-              type="monotone"
-              stroke={NEAR}
-              strokeWidth={2}
-              strokeDasharray="4 4"
-              fill="none"
-              connectNulls
-              dot={false}
-            />
-          </AreaChart>
-        </ChartContainer>
-      )}
+              <R.YAxis hide domain={[0, yMax]} />
+              {showLimit && (
+                <R.ReferenceLine
+                  y={limit}
+                  stroke="#52525b"
+                  strokeDasharray="4 4"
+                  label={{
+                    value: `${limit.toLocaleString()} limit`,
+                    position: "insideTopRight",
+                    fill: "#a1a1aa",
+                    fontSize: 10,
+                  }}
+                />
+              )}
+              <ChartTooltip content={<TrendTooltip monthName={monthName} />} />
+              <R.Area
+                dataKey="actual"
+                type="monotone"
+                stroke={HEALTHY}
+                strokeWidth={2}
+                fill="url(#trajFill)"
+                connectNulls
+                dot={false}
+              />
+              <R.Area
+                dataKey="projected"
+                type="monotone"
+                stroke={NEAR}
+                strokeWidth={2}
+                strokeDasharray="4 4"
+                fill="none"
+                connectNulls
+                dot={false}
+              />
+            </R.AreaChart>
+          </ChartContainer>
+        ) : (
+          <div className="aspect-[16/6] w-full rounded-lg bg-zinc-800/60" />
+        ))}
     </section>
   );
 }
@@ -918,17 +689,18 @@ function Tools({
         f.periods.day?.percentage ?? 0,
         f.periods.month?.percentage ?? 0,
       );
-    return Object.entries(summary.features)
-      .filter(([key]) => key !== primary)
-      .map(([key, f]) => ({ key, f, p: f.periods[period] }))
-      .filter(
-        (r): r is { key: string; f: FeatureUsage; p: PeriodData } =>
-          !!r.p && r.p.limit > 0,
-      )
-      .sort(
-        (a, b) =>
-          severity(b.f) - severity(a.f) || a.f.title.localeCompare(b.f.title),
-      );
+    // Single pass: skip the primary feature and unusable rows while building.
+    const rows: { key: string; f: FeatureUsage; p: PeriodData }[] = [];
+    for (const [key, f] of Object.entries(summary.features)) {
+      if (key === primary) continue;
+      const p = f.periods[period];
+      if (!p || p.limit <= 0) continue;
+      rows.push({ key, f, p });
+    }
+    return rows.sort(
+      (a, b) =>
+        severity(b.f) - severity(a.f) || a.f.title.localeCompare(b.f.title),
+    );
   }, [summary.features, primary, period]);
 
   const COLLAPSED = 8;

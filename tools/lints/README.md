@@ -5,7 +5,7 @@ for. Plain-Python AST checkers, stdlib only, one file per rule plus a shared
 runner. They run in the `static-python` CI job and the api pre-commit config.
 
 ```bash
-# Run against the API app tree (exits non-zero on any violation):
+# Run against the API app tree (exits non-zero on any violation or crashed rule):
 python3 tools/lints/run.py apps/api/app
 
 # Unit tests:
@@ -161,60 +161,87 @@ has no allowlist (the layer is new — it starts clean).
 
 ---
 
-## ignore-ratchet
+## ignore-whys
 
-Not an AST rule — a config ratchet, so it runs as its own script/hook rather than
-through `run.py`:
+Not an AST rule — a config check on the root ``pyproject.toml``:
 
 ```bash
-python3 tools/lints/check_ignore_ratchet.py           # check
-python3 tools/lints/check_ignore_ratchet.py --update  # record a deliberate change
+python3 tools/lints/check_ignore_whys.py
 ```
 
-**Rule:** the escape hatches in the root `pyproject.toml` may only ever *shrink*.
-Three kinds are tracked:
+**Rule:** every escape hatch in the root config must carry a why-comment —
+trailing on the entry's line, or in a comment block directly above it:
 
 | source | an escape hatch is |
 | --- | --- |
-| `[tool.ruff.lint] ignore` | a rule switched off everywhere |
-| `[tool.ruff.lint.per-file-ignores]` | a rule switched off for a path glob |
-| `[[tool.mypy.overrides]]` | a per-module setting that *weakens* checking |
+| ``[tool.ruff.lint] ignore`` | a rule switched off everywhere |
+| ``[tool.ruff.lint.per-file-ignores]`` | a rule switched off for a path glob |
+| ``[[tool.mypy.overrides]]`` | a per-module setting that *weakens* checking (rationale goes above the block header) |
 
-The check fails if a rule is added to either ruff list, a new file entry appears,
-or a mypy override starts weakening a check for a module it did not before.
+Adjacency is strict: a distant group comment does not cover a newly appended
+entry. One rationale may still document a short run of siblings by sitting
+directly above the first — but each entry must be able to point at its why.
 
-Only mypy *loosenings* count. The strict-island block that sets the same keys to
-`true` is a tightening and is deliberately untracked — this guards holes, not
-strictness. The edit it is really there to catch is widening an existing block's
-`module` list: dropping `"app.services.*"` in beside `"tests.*"` turns off type
-checking for every service and reads as a one-word diff.
+**Why this replaced the old set-ratchet:** a baseline that blocks additions
+cannot tell a load-bearing exemption from stale debt, and the stock never gets
+re-litigated. An escape hatch WITH a stated why is a decision; one WITHOUT is a
+hole. If you cannot state the reason in one sentence, fix the code instead of
+exempting it.
 
-**Why:** both lists are the residue of a cleanup campaign. They are the only two
-places a ruff rule can be switched off wholesale, and editing them is invisible
-in review in a way a failing check is not — a single line quietly re-opens
-exactly the hole the campaign closed. Comparing against the checked-in baseline
-turns "loosen the linter" from an unnoticed config edit into a conscious,
-reviewable decision.
+---
 
-**Baseline:** `tools/lints/ignore_ratchet_baseline.txt`, one line per escape
-hatch, sorted, checked in. Compared as a **set**, not a count — a count check
-passes when someone removes one entry and adds another. Line shapes:
+## suppression-hygiene
 
-```
-ignore<TAB><rule>
-per-file-ignores<TAB><glob><TAB><rule>
-mypy-override<TAB><module><TAB><setting>
+Not an AST rule — a stateless scan of every source file:
+
+```bash
+python3 tools/lints/check_suppressions.py            # whole tree
+python3 tools/lints/check_suppressions.py app/foo.py # scoped
 ```
 
-**Fix:** delete the offending rule from the list and fix the code it silences.
-If the exemption is genuinely warranted (a framework contract, a generated file),
-justify it in review and run `--update`; the baseline diff then shows the new
-escape hatch on its own line for a reviewer to accept or reject.
+**Rule:** an inline suppression may only exist at the offending line, WITH a
+written reason on that same line:
 
-**Removals always pass** — that is the ratchet turning. The check prints what was
-removed and suggests `--update` to lock the win in; until someone does, the
-baseline stays at the old high-water mark, so a removed entry can be re-added
-without failing. Running `--update` as part of the cleanup closes that window.
+```python
+builder = create_agent(**kwargs)  # type: ignore[arg-type]  # langgraph ships no stubs
+result = run(cmd)  # noqa: S603 -- operator-supplied command is the feature
+```
+
+```ts
+const x: any = load(); // biome-ignore lint/suspicious/noExplicitAny: gallery-only demo
+```
+
+The reason states the ROOT CAUSE (upstream typing gap, framework contract,
+deliberate choice). Another tool directive (``NOSONAR …``) is not a reason.
+The bar is presence; review judges quality.
+
+**There is no baseline and no memory.** Two stateless properties hold the line:
+
+1. HERE — a suppression without a why fails at its exact line.
+2. The compilers hunt staleness: mypy's ``warn_unused_ignores`` flags dead
+   ``# type: ignore``, ruff's RUF100 flags dead ``# noqa``, and biome emits
+   ``suppressions/unused`` for dead ``// biome-ignore`` (gated in CI). A
+   suppression that no longer masks anything breaks the build on its own —
+   strictly stronger than any growth ratchet, because nothing can rot silently.
+
+This replaces the old count-baseline (``config/suppressions-baseline.json``,
+deleted): counting suppressions was always a proxy for "every suppression is
+justified" — now the real invariant is enforced directly.
+
+### Staleness watchdog (per-file entries)
+
+Inline noqas clean themselves up via RUF100; config exemptions cannot. The
+suppression-hygiene lane therefore also runs:
+
+```bash
+python3 tools/lints/check_ignore_staleness.py
+```
+
+which re-runs every concrete `per-file-ignores` entry's rule against its file
+with only that entry stripped from a temp copy of the config — every other
+setting stays exactly as configured — and fails when an entry masks nothing
+anymore: delete it. Pattern globs are skipped: they are category policy, not
+per-file debt.
 
 ---
 
@@ -245,3 +272,41 @@ is a blanket.
 handler does not shift it and fire a false alarm. It grandfathers ten probe/parse
 sites that predate the rule. Like the `no-service-classes` allowlist it is a
 ratchet — remove an entry when the site is fixed, never add one.
+
+---
+
+## tool-dump-boundary
+
+**Rule:** every `model_dump()` call under `app/agents/tools/` must pass
+`mode="json"` literally. A bare call (or any other mode, or `**kwargs`) is
+reported.
+
+**Why:** Pydantic's two dump modes have opposite contracts — python mode keeps
+native `datetime` objects, JSON mode produces ISO strings — and they differ by
+three invisible characters at the call site. Inside the tools tree every dump
+crosses into model/SSE text, where python-mode output either crashes stdlib
+`json.dumps` (`TypeError: Object of type datetime is not JSON serializable`) or
+silently degrades to Python reprs. Issue #917 shipped exactly this:
+`search_reminders_tool` returned its serialization error on every call for
+months because one tool used a bare dump while the rest of the tree used
+`mode="json"`; the unit tests mocked `model_dump()` with plain strings and never
+saw it.
+
+**Scope** is deliberately the tools tree only. Service- and repository-layer
+dumps legitimately stay in python mode: those dicts persist to MongoDB as BSON
+dates, which the scheduler's `$lte` recovery scans match on — converting them to
+ISO strings would break scheduling silently.
+
+**Fix:** pass `mode="json"`. If a dump under `tools/` genuinely feeds a
+Mongo write rather than the model/stream boundary, that logic belongs in the
+service/repository layer anyway (see `repository-boundaries`).
+
+**Allowlist:** keyed `<path>::<enclosing function>` with an **audited call
+count**, grandfathering thirteen sites whose models the #917 audit verified are
+string-only (`ImageData`, `SearchResultItem`/`WebSearchResult`, the calendar
+wire models, `TodoLabelCount`) — both dump modes produce identical output
+there. The count is the ratchet, not just the entry: a *new* bare dump added to
+an allowlisted function pushes its count past the audited number and is
+reported, so a historical exemption can never absorb new code. An entry comes
+out when its model gains a datetime field and the calls take `mode="json"`;
+never raise a count.

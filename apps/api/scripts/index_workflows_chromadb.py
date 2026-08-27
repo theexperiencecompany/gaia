@@ -15,10 +15,10 @@ import sys
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from app.agents.tools.core.store import init_embeddings  # noqa: E402
-from app.db.chroma.chromadb import ChromaClient, init_chromadb_constructor  # noqa: E402
-from app.db.mongodb.collections import get_async_collection  # noqa: E402
-from shared.py.wide_events import log as logger  # noqa: E402
+from app.agents.tools.core.store import init_embeddings
+from app.db.chroma.chromadb import ChromaClient, init_chromadb_constructor
+from app.db.mongodb.collections import get_async_collection
+from shared.py.wide_events import log as logger
 
 workflows_collection = get_async_collection("workflows")
 

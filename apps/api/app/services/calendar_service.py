@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
 
@@ -30,11 +30,11 @@ from app.models.calendar_models import (
     GoogleConferenceSolutionKey,
 )
 from app.services.composio.proxy_client import ProxyMethod, proxy_request
+from app.utils.calendar_utils import CALENDAR_API_BASE, calendar_events_endpoint
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
 CALENDAR_TOOLKIT = "GOOGLECALENDAR"
-CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3"
 _DATE_FORMAT = "%Y-%m-%d"
 _EVENT_NOT_FOUND_DETAIL = "Event not found or access denied"
 
@@ -143,7 +143,7 @@ async def fetch_calendar_events(
     return GoogleCalendarEventsPage.model_validate(
         await _proxy(
             user_id,
-            endpoint=f"{CALENDAR_API_BASE}/calendars/{calendar_id}/events",
+            endpoint=calendar_events_endpoint(calendar_id),
             method="GET",
             query=query,
         )
@@ -405,10 +405,15 @@ def _all_day_bounds(
         end_date = _date_part(event.end)
     elif event.start:
         start_date = _date_part(event.start)
-        start_dt = datetime.strptime(start_date, _DATE_FORMAT)
-        end_date = (start_dt + timedelta(days=1)).strftime(_DATE_FORMAT)
+        # The bounds are date-only strings, so the +1 day is plain calendar
+        # arithmetic on the parsed wall date — no tz attachment needed (and a
+        # tz here would be invisible to the output, which is exactly the kind
+        # of dead surface mutation-equivalent mutants survive on).
+        end_date = (datetime.strptime(start_date, _DATE_FORMAT) + timedelta(days=1)).strftime(
+            _DATE_FORMAT
+        )
     else:
-        today = datetime.now()
+        today = datetime.now(UTC)
         start_date = today.strftime(_DATE_FORMAT)
         end_date = (today + timedelta(days=1)).strftime(_DATE_FORMAT)
 
@@ -478,7 +483,7 @@ async def create_calendar_event(
     if event.create_meeting_room:
         conference_data = GoogleConferenceData(
             createRequest=GoogleConferenceCreateRequest(
-                requestId=f"meet_{int(datetime.now().timestamp())}",
+                requestId=f"meet_{int(datetime.now(UTC).timestamp())}",
                 conferenceSolutionKey=GoogleConferenceSolutionKey(type="hangoutsMeet"),
             )
         )
@@ -499,7 +504,7 @@ async def create_calendar_event(
     created_event = GoogleCalendarEventResource.model_validate(
         await _proxy(
             user_id,
-            endpoint=f"{CALENDAR_API_BASE}/calendars/{calendar_id}/events",
+            endpoint=calendar_events_endpoint(calendar_id),
             method="POST",
             body=payload,
             query=query_params or None,
@@ -663,7 +668,7 @@ async def search_events_in_calendar(
     result = GoogleCalendarEventsPage.model_validate(
         await _proxy(
             user_id,
-            endpoint=f"{CALENDAR_API_BASE}/calendars/{calendar_id}/events",
+            endpoint=calendar_events_endpoint(calendar_id),
             method="GET",
             query=params,
         )
@@ -684,7 +689,7 @@ async def delete_calendar_event(
     try:
         await _proxy(
             user_id,
-            endpoint=f"{CALENDAR_API_BASE}/calendars/{calendar_id}/events/{event.event_id}",
+            endpoint=calendar_events_endpoint(calendar_id, event.event_id),
             method="DELETE",
         )
         return EventDeleteResponse(success=True, message="Event deleted successfully")
@@ -762,7 +767,7 @@ async def update_calendar_event(
 ) -> GoogleCalendarEventResource:
     """Update a calendar event using the Google Calendar API."""
     calendar_id = event.calendar_id or "primary"
-    endpoint = f"{CALENDAR_API_BASE}/calendars/{calendar_id}/events/{event.event_id}"
+    endpoint = calendar_events_endpoint(calendar_id, event.event_id)
 
     try:
         existing_event = GoogleCalendarEventResource.model_validate(

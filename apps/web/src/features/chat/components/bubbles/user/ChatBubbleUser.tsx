@@ -1,3 +1,5 @@
+import { Button } from "@heroui/button";
+import { RedoIcon } from "@icons";
 import Image from "next/image";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -21,7 +23,7 @@ function scrollToMessage(messageId: string) {
   const messageElement = document.getElementById(messageId);
   if (!messageElement) return;
   messageElement.scrollIntoView({ behavior: "smooth", block: "center" });
-  messageElement.style.transition = "all 0.3s ease";
+  messageElement.style.transition = "scale 0.3s ease";
   messageElement.style.scale = "1.02";
   setTimeout(() => {
     messageElement.style.scale = "1";
@@ -113,6 +115,7 @@ export default function ChatBubbleUser({
   selectedCalendarEvent,
   replyToMessage,
   queued,
+  failed,
   disableActions = false,
   onRetry,
   isRetrying,
@@ -211,8 +214,37 @@ export default function ChatBubbleUser({
           </div>
         )}
 
+        {/* Undelivered: a persistent label + retry, not the hover-only actions
+            row — a send that never landed must be visible without hovering. */}
+        {!disableActions && !queued && failed && (
+          <div
+            className={`flex items-center gap-2 ${hideAvatar ? "pr-1" : "pr-13"} pb-1`}
+          >
+            <span className="text-xs text-zinc-400 select-none">
+              Not delivered
+            </span>
+            {onRetry && (
+              <Button
+                className="h-7 min-w-0 px-2 text-xs"
+                isDisabled={isRetrying}
+                onPress={onRetry}
+                radius="full"
+                size="sm"
+                startContent={
+                  <div className={isRetrying ? "animate-spin" : ""}>
+                    <RedoIcon height={13} width={13} />
+                  </div>
+                }
+                variant="flat"
+              >
+                Retry
+              </Button>
+            )}
+          </div>
+        )}
+
         {/* Actions row below bubble, aligned under content (not avatar) */}
-        {!disableActions && !queued && (
+        {!disableActions && !queued && !failed && (
           <div
             className={`flex flex-col items-end gap-1 ${hideAvatar ? "pr-1" : "pr-13"} pb-1 opacity-0 transition-all group-hover:opacity-100`}
           >

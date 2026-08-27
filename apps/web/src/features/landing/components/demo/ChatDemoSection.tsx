@@ -18,6 +18,7 @@ import Link from "next/link";
 import {
   forwardRef,
   memo,
+  type ReactNode,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -31,6 +32,7 @@ import { RaisedButton } from "@/components/ui/raised-button";
 import { appConfig } from "@/config/appConfig";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import DummyComposer from "@/features/landing/components/demo/DummyComposer";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { InViewMount } from "../shared/InViewMount";
 import DemoCalendarView from "./calendar-demo/DemoCalendarView";
@@ -166,6 +168,57 @@ const OgImage = memo(function OgImage() {
     />
   );
 });
+
+interface DemoLoadingIndicatorProps {
+  conversationId: string;
+  visible: boolean;
+  icon: ReactNode;
+  text: string;
+  textKey: number;
+}
+
+/** Thinking row with animated label swaps; the boundary stays mounted so exit animations can run. */
+function DemoLoadingIndicator({
+  conversationId,
+  visible,
+  icon,
+  text,
+  textKey,
+}: DemoLoadingIndicatorProps) {
+  return (
+    <AnimatePresence mode="wait">
+      {visible && (
+        <m.div
+          key={`loading-${conversationId}-${textKey}`}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={tx}
+          className="mb-4 flex items-center gap-3"
+        >
+          {icon ?? <MiniWaveSpinner />}
+          <AnimatePresence mode="wait">
+            <m.span
+              key={textKey}
+              variants={slideUp}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={tx}
+              className="animate-shine bg-size-[200%_100%] w-fit bg-clip-text text-sm font-medium text-transparent"
+              style={{
+                backgroundImage:
+                  "linear-gradient(90deg, rgb(255 255 255 / 0.3) 20%, rgb(255 255 255) 50%, rgb(255 255 255 / 0.3) 80%)",
+              }}
+            >
+              {text}
+            </m.span>
+          </AnimatePresence>
+        </m.div>
+      )}
+    </AnimatePresence>
+  );
+}
 
 function ChatDemoWindow() {
   const [activePage, setActivePage] = useState<DemoPage>("chats");
@@ -454,9 +507,10 @@ function ChatDemoWindow() {
       <div
         className={cn(
           "overflow-hidden rounded-3xl h-[600px] sm:h-[720px] w-[95vw] sm:w-[85vw]",
+          "transition-[opacity,transform] duration-500 ease-out",
           isInView
-            ? "animate-in fade-in slide-in-from-bottom-6 zoom-in-95 duration-500"
-            : "opacity-0",
+            ? "opacity-100 translate-y-0 scale-100"
+            : "opacity-0 translate-y-6 scale-95",
         )}
         style={
           {
@@ -478,7 +532,7 @@ function ChatDemoWindow() {
               rel="noopener noreferrer"
               href={`https://${appConfig.site.domain}`}
             >
-              {appConfig.site.name} — {appConfig.site.domain}
+              {appConfig.site.name}: {appConfig.site.domain}
             </a>
           </div>
         </div>
@@ -561,6 +615,15 @@ function ChatDemoWindow() {
                                 <RaisedButton
                                   color={"#00bbff"}
                                   className="text-black!"
+                                  onClick={() => {
+                                    trackEvent(
+                                      ANALYTICS_EVENTS.CTA_GET_STARTED_CLICKED,
+                                      {
+                                        button_text: "Get Started",
+                                        location: "chat_demo",
+                                      },
+                                    );
+                                  }}
                                 >
                                   Get Started
                                   <ChevronRight width={16} height={16} />
@@ -624,37 +687,13 @@ function ChatDemoWindow() {
                     )}
 
                     {/* Loading indicator */}
-                    <AnimatePresence mode="wait">
-                      {showLoading && (
-                        <m.div
-                          key={`loading-${uc.id}-${loadingKey}`}
-                          initial={{ opacity: 0, y: 8 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -6 }}
-                          transition={tx}
-                          className="mb-4 flex items-center gap-3"
-                        >
-                          {toolIcon ?? <MiniWaveSpinner />}
-                          <AnimatePresence mode="wait">
-                            <m.span
-                              key={loadingKey}
-                              variants={slideUp}
-                              initial="initial"
-                              animate="animate"
-                              exit="exit"
-                              transition={tx}
-                              className="animate-shine bg-size-[200%_100%] w-fit bg-clip-text text-sm font-medium text-transparent"
-                              style={{
-                                backgroundImage:
-                                  "linear-gradient(90deg, rgb(255 255 255 / 0.3) 20%, rgb(255 255 255) 50%, rgb(255 255 255 / 0.3) 80%)",
-                              }}
-                            >
-                              {loadingText}
-                            </m.span>
-                          </AnimatePresence>
-                        </m.div>
-                      )}
-                    </AnimatePresence>
+                    <DemoLoadingIndicator
+                      conversationId={uc.id}
+                      visible={showLoading}
+                      icon={toolIcon}
+                      text={loadingText}
+                      textKey={loadingKey}
+                    />
 
                     {/* Bot row: tool calls → text → final card */}
                     <div
@@ -762,7 +801,7 @@ function ChatDemoWindow() {
       {/* Use case chips + retry — only for chat demo */}
       {activePage === "chats" && (
         <div
-          className={`relative mt-6 flex w-full flex-wrap items-center justify-end sm:justify-between gap-2 max-w-7xl px-4 sm:px-6 ${isInView ? "animate-in fade-in slide-in-from-bottom-3 duration-[400ms] delay-200" : "opacity-0"}`}
+          className={`relative mt-6 flex w-full flex-wrap items-center justify-end sm:justify-between gap-2 max-w-7xl px-4 sm:px-6 transition-[opacity,transform] duration-[400ms] ease-out ${isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"}`}
         >
           <div className="hidden sm:block" />
           <div className="flex flex-wrap items-center justify-center gap-2">
@@ -797,20 +836,12 @@ function ChatDemoWindow() {
 }
 
 /**
- * Section shell: the heading is server-rendered for SEO; the heavy animated demo
- * window is lazy-mounted only when it scrolls near the viewport.
+ * Section shell: the heavy animated demo window is lazy-mounted only when it
+ * scrolls near the viewport. Headless — it lives inside the hero section.
  */
 export default function ChatDemoSection() {
   return (
     <div className="relative flex w-full flex-col items-center">
-      <div className="mb-4 text-center">
-        <p className="mb-2 text-sm uppercase tracking-widest text-primary">
-          See it in action
-        </p>
-        <h2 className="text-5xl sm:text-6xl font-serif tracking-tight text-white font-normal">
-          Your GAIA, actually working
-        </h2>
-      </div>
       <InViewMount minHeight="600px" className="flex w-full justify-center">
         <ChatDemoWindow />
       </InViewMount>

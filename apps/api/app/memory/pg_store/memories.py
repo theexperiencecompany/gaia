@@ -5,12 +5,18 @@ Purely storage: no LLM calls, no embedding calls. Lineage rules live here
 filter); everything semantic happens upstream in the engine.
 """
 
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 import uuid
 
 from sqlalchemy import ColumnElement, Select, func, or_, select, update
 
-from app.constants.memory import FORGET_REASON_MAX_CHARS, MemoryRelationType
+from app.constants.memory import (
+    AGENDA_CATEGORY_PATH,
+    AGENDA_ITEM_TTL_DAYS,
+    FORGET_REASON_MAX_CHARS,
+    MemoryRelationType,
+)
 from app.memory.pg_store._session import (
     LIKE_ESCAPE_CHAR,
     escape_like,
@@ -19,9 +25,15 @@ from app.memory.pg_store._session import (
 )
 from app.models.memory_db_models import MemoryEntityLink, MemoryRecord
 
+_EXPIRY_FORGET_REASON = "expired"
+
 
 def _not_expired_clause() -> ColumnElement[bool]:
-    """Read-time expiry filter: ``forget_after`` is enforced on read, never swept."""
+    """Read-time expiry filter, belt to ``sweep_expired_memories``' braces.
+
+    The nightly sweep is what actually retires an expired row; this clause
+    keeps one from being read in the window between expiring and being swept.
+    """
     return (MemoryRecord.forget_after.is_(None)) | (MemoryRecord.forget_after > datetime.now(UTC))
 
 
@@ -279,18 +291,20 @@ async def get_facts_for_consolidation(
     user_id: str,
     *,
     category_prefixes: list[str] | None = None,
-    kind: str | None = None,
+    shelf_life: str | None = None,
     limit: int,
 ) -> list[MemoryRecord]:
     """Live memories feeding one core-document rewrite, newest first.
 
     ``category_prefixes`` match a folder exactly or as a subtree prefix
-    ('work' covers both 'work' and 'work/gaia'); ``kind`` narrows to
-    fact/experience. Both filters optional and AND-combined.
+    ('work' covers both 'work' and 'work/gaia'); ``shelf_life`` narrows to
+    durable rows, which is what keeps a value that was only true "as of" a
+    moment out of an always-injected document. Both filters optional and
+    AND-combined.
     """
     query = _active_memories_query(user_id)
-    if kind is not None:
-        query = query.where(MemoryRecord.kind == kind)
+    if shelf_life is not None:
+        query = query.where(MemoryRecord.shelf_life == shelf_life)
     if category_prefixes is not None:
         if not category_prefixes:
             return []
@@ -303,6 +317,83 @@ async def get_facts_for_consolidation(
     async with memory_session() as session:
         result = await session.execute(query.order_by(MemoryRecord.created_at.desc()).limit(limit))
         return list(result.scalars().all())
+
+
+async def get_agenda_memories(user_id: str, limit: int) -> list[MemoryRecord]:
+    """Live agenda rows, most important first then newest — what agenda.md renders."""
+    async with memory_session() as session:
+        result = await session.execute(
+            _active_memories_query(user_id)
+            .where(MemoryRecord.category_path == AGENDA_CATEGORY_PATH)
+            .order_by(MemoryRecord.importance.desc(), MemoryRecord.created_at.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+
+async def backfill_agenda_expiry() -> int:
+    """Stamp ``forget_after`` on live agenda rows that never got one; returns count.
+
+    Agenda rows written before the task shelf-life shipped were stored durable
+    with no expiry, so the sweep could never retire them — production carried
+    year-old interviews and long-closed follow-ups in the always-injected
+    agenda block. Stamping ``created_at + AGENDA_ITEM_TTL_DAYS`` gives legacy
+    rows the exact window a new agenda item gets; already-overdue ones are
+    retired by the sweep that runs right after.
+    """
+    async with memory_session() as session:
+        result = await session.execute(
+            update(MemoryRecord)
+            .where(
+                MemoryRecord.is_forgotten.is_(False),
+                MemoryRecord.category_path == AGENDA_CATEGORY_PATH,
+                MemoryRecord.forget_after.is_(None),
+            )
+            .values(forget_after=MemoryRecord.created_at + timedelta(days=AGENDA_ITEM_TTL_DAYS))
+        )
+        await session.commit()
+        return rowcount(result)
+
+
+@dataclass(frozen=True)
+class SweptMemory:
+    """One row retired by the expiry sweep: its owner and its id."""
+
+    user_id: str
+    memory_id: str
+
+
+async def sweep_expired_memories(user_id: str | None = None) -> list[SweptMemory]:
+    """Forget every row whose ``forget_after`` has passed; returns the swept rows.
+
+    Expiry was enforced only at read time, so an expired row stayed live in the
+    folder tree, the free-plan cap count, the ``/workspace/memory`` projection
+    and every rendered document forever. Each swept row comes back as
+    ``(owner, id)`` so the caller can repair exactly those users' derived state
+    and retire the same rows' Chroma flags — Postgres alone flipping
+    ``is_forgotten`` leaves the vector matchable, and reconciliation would keep
+    swallowing identical restatements as DUPLICATE. ``user_id`` scopes the
+    sweep for the repair script; the nightly task sweeps everyone.
+    """
+    filters: list[ColumnElement[bool]] = [
+        MemoryRecord.is_forgotten.is_(False),
+        MemoryRecord.forget_after.is_not(None),
+        MemoryRecord.forget_after <= datetime.now(UTC),
+    ]
+    if user_id is not None:
+        filters.append(MemoryRecord.user_id == user_id)
+    async with memory_session() as session:
+        result = await session.execute(
+            update(MemoryRecord)
+            .where(*filters)
+            .values(is_forgotten=True, forget_reason=_EXPIRY_FORGET_REASON)
+            .returning(MemoryRecord.user_id, MemoryRecord.id)
+        )
+        await session.commit()
+        return [
+            SweptMemory(user_id=owner, memory_id=str(memory_id))
+            for owner, memory_id in result.all()
+        ]
 
 
 async def get_all_live_memories(user_id: str) -> list[MemoryRecord]:

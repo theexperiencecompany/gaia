@@ -4,7 +4,6 @@ import { useCallback, useState } from "react";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import type { MemoryEntry } from "@/features/memory/api/types";
 import { useConfirmation } from "@/hooks/useConfirmation";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
 /**
@@ -34,9 +33,6 @@ export function useMemoryActions(onChanged: () => void) {
         const response = await memoryApi.deleteMemory(memory.id);
         if (response.success) {
           toast.success("Memory forgotten");
-          trackEvent(ANALYTICS_EVENTS.MEMORY_ITEM_DELETED, {
-            memory_id: memory.id,
-          });
           onChanged();
           return true;
         }

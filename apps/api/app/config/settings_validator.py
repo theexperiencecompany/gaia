@@ -292,9 +292,10 @@ class SettingsValidator:
         self.register_group(
             SettingsGroup(
                 name="Posthog Analytics",
-                keys=["POSTHOG_API_KEY"],
+                keys=["POSTHOG_PROJECT_TOKEN", "POSTHOG_HOST"],
                 description="Posthog analytics and event tracking",
                 affected_features="User behavior analytics and event tracking",
+                required_in_prod=False,
                 docs_url="https://posthog.com/docs/api",
             )
         )

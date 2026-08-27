@@ -1,16 +1,8 @@
-"""Workflow services package."""
+"""Workflow services package.
 
-from .generation_service import WorkflowGenerationService
-from .queue_service import WorkflowQueueService
-from .scheduler import WorkflowScheduler, workflow_scheduler
-from .service import WorkflowService
-from .validators import WorkflowValidator
-
-__all__ = [
-    "WorkflowGenerationService",
-    "WorkflowQueueService",
-    "WorkflowScheduler",
-    "workflow_scheduler",
-    "WorkflowService",
-    "WorkflowValidator",
-]
+Deliberately empty: re-exporting the services here forced every consumer of any
+workflow submodule to import `generation_service`, which reaches into the agent
+tool registry and closes an import cycle back through `composio_service`. Import
+the concrete module instead (`from app.services.workflow.service import
+WorkflowService`).
+"""

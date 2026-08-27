@@ -7,7 +7,7 @@ import {
   useEffect,
   useMemo,
 } from "react";
-import { InteractionManager } from "react-native";
+import { AppState, InteractionManager } from "react-native";
 import { chatDb } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chat-store";
 import type { Message } from "../api/chat-api";
@@ -32,8 +32,6 @@ export function ChatProvider({ children }: ChatProviderProps) {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    useChatStore.getState().hydrate();
-
     // Seed the conversations React Query cache from AsyncStorage so the
     // sidebar list renders instantly on launch (web parity — Zustand+IDB).
     // After seeding, invalidate so a background network sync still runs.
@@ -76,6 +74,21 @@ export function ChatProvider({ children }: ChatProviderProps) {
     return () => {
       interaction.cancel();
     };
+  }, [queryClient]);
+
+  // Foreground sync: while the app is backgrounded, messages and conversations
+  // may change on other devices (or via push). Revalidate both when the user
+  // returns — cached data stays on screen until fresh data lands.
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        queryClient.invalidateQueries({ queryKey: chatKeys.conversations() });
+        queryClient.invalidateQueries({
+          queryKey: [...chatKeys.all, "messages"],
+        });
+      }
+    });
+    return () => subscription.remove();
   }, [queryClient]);
 
   const setActiveChatId = useCallback((chatId: string | null) => {

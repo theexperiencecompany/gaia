@@ -8,7 +8,7 @@ export const entry: AlternativeData = {
   tagline: "Local-first Markdown note-taking with graph view and plugins",
   painPoints: [
     "Powerful but requires extensive plugin setup and maintenance",
-    "No proactive AI — only what community plugins add",
+    "No proactive AI, only what community plugins add",
     "Sync across devices costs extra ($4–$8/month)",
     "Steep learning curve for graph-based knowledge management",
     "Cannot manage email, calendar, or tasks natively",
@@ -33,7 +33,7 @@ export const entry: AlternativeData = {
     "self-hosted note taking",
   ],
   whyPeopleLook:
-    "Obsidian's local-first, Markdown-based approach to knowledge management has built a devoted following. Its graph view, bidirectional linking, and plugin ecosystem are genuinely powerful for personal knowledge management (PKM). But Obsidian requires constant curation — you need to write, link, and tag everything manually. There is no AI that automatically captures meeting notes, creates links between related concepts, or proactively surfaces relevant past notes. Users who want the graph-based knowledge promise without the maintenance overhead increasingly look for AI-native alternatives.",
+    "Obsidian's local-first, Markdown-based approach to knowledge management has built a devoted following. Its graph view, bidirectional linking, and plugin ecosystem are genuinely powerful for personal knowledge management (PKM). But Obsidian requires constant curation. You need to write, link, and tag everything manually. There is no AI that automatically captures meeting notes, creates links between related concepts, or proactively surfaces relevant past notes. Users who want the graph-based knowledge promise without the maintenance overhead increasingly look for AI-native alternatives.",
   gaiaFitScore: 3,
   gaiaReplaces: [
     "Graph-based memory that connects people, projects, and conversations automatically",
@@ -42,7 +42,7 @@ export const entry: AlternativeData = {
     "Context-aware information surfacing from past conversations and notes",
   ],
   gaiaAdvantages: [
-    "Memory is built automatically — no manual note-taking required",
+    "Memory is built automatically, no manual note-taking required",
     "Graph relationships are inferred by AI, not manually linked",
     "Integrated with email and calendar so context is always complete",
     "Proactive memory surfacing without needing to search manually",

@@ -618,7 +618,7 @@ class TestCreateTodoFlow:
         class CapturingFakeModel(FakeMessagesListChatModel):
             """Fake LLM that records the messages list on every invocation."""
 
-            def bind_tools(self, tools: Any, **kwargs: Any) -> "CapturingFakeModel":  # type: ignore[override]
+            def bind_tools(self, tools: Any, **kwargs: Any) -> "CapturingFakeModel":
                 return self
 
             def _generate(

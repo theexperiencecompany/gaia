@@ -1,6 +1,7 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { AlertCircleIcon } from "@icons";
+import { CONNECT_ACTION_LABEL, connectionPromptState } from "@shared/utils";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -13,7 +14,7 @@ interface IntegrationConnectionPromptProps {
 export default function IntegrationConnectionPrompt({
   integration_connection_required,
 }: IntegrationConnectionPromptProps) {
-  const { integration_id, message } = integration_connection_required;
+  const { integration_id, message, expired } = integration_connection_required;
   const { integrations, connectIntegration } = useIntegrations();
 
   const integration = integrations.find((i) => i.id === integration_id);
@@ -22,7 +23,8 @@ export default function IntegrationConnectionPrompt({
     return null;
   }
 
-  const isConnected = integration.status === "connected";
+  const state = connectionPromptState(expired, integration.status);
+  const isConnected = state === "connected";
   const isAvailable = integration.source === "custom" || integration.available;
 
   const handleConnect = async () => {
@@ -34,7 +36,7 @@ export default function IntegrationConnectionPrompt({
   };
 
   const content = (
-    <div className="w-fit max-w-lg rounded-3xl bg-zinc-800/50 p-4 text-white">
+    <div className="w-fit max-w-2xl rounded-3xl bg-zinc-800/50 p-4 text-white">
       <div className="flex flex-col gap-3">
         <div className="flex items-start gap-3">
           <div className="shrink-0 pt-0.5">
@@ -54,8 +56,12 @@ export default function IntegrationConnectionPrompt({
                   Connected
                 </Chip>
               ) : (
-                <Chip size="sm" variant="flat" color="warning">
-                  Not Connected
+                <Chip
+                  size="sm"
+                  variant="flat"
+                  color={state === "expired" ? "danger" : "warning"}
+                >
+                  {state === "expired" ? "Disconnected" : "Not Connected"}
                 </Chip>
               )}
             </div>
@@ -69,20 +75,24 @@ export default function IntegrationConnectionPrompt({
         {!isConnected && isAvailable && (
           <div className="flex gap-2 w-full">
             {!isConnected && (
-              <div className="flex gap-2 rounded-xl items-center bg-warning-100/10 p-3">
+              <div className="flex w-fit gap-2 rounded-xl items-center bg-warning-100/10 p-3">
                 <AlertCircleIcon
                   className="mt-0.5 shrink-0 text-warning-500"
                   size={16}
                 />
-                <p className="text-xs text-warning-700 dark:text-warning-400">
+                {/* The card grows to fit this line rather than wrapping it. */}
+                <p className="whitespace-nowrap text-xs text-warning-700 dark:text-warning-400">
                   {message}
                 </p>
               </div>
             )}
 
             {isAvailable && !isConnected && (
-              <Button color="primary" onPress={handleConnect}>
-                Connect
+              <Button
+                color={state === "expired" ? "warning" : "primary"}
+                onPress={handleConnect}
+              >
+                {CONNECT_ACTION_LABEL[state]}
               </Button>
             )}
           </div>
@@ -100,7 +110,9 @@ export default function IntegrationConnectionPrompt({
         showBackground: false,
       })}
       count={1}
-      label="Integration Required"
+      label={
+        state === "expired" ? "Reconnect Required" : "Integration Required"
+      }
       isCollapsible={true}
     >
       {content}

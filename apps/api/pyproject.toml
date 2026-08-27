@@ -1,6 +1,6 @@
 [project]
 name = "gaia"
-version = "0.21.0"
+version = "0.22.0"
 description = "Backend of GAIA - The personal AI assistant"
 readme = "../README.md"
 requires-python = ">=3.11"
@@ -23,7 +23,7 @@ dependencies = [
   "uuid7>=0.1.0",
   "croniter>=3.0.0",
   "rich==14.0.0",
-  "aiohttp>=3.13.4",
+  "aiohttp>=3.14.3",
   "urllib3>=2.6.0",
   "ormsgpack>=1.12.0",
   "jsonref>=1.1.0",
@@ -83,16 +83,16 @@ dev = [
   "types-python-dateutil>=2.9.0.20250708",
   "lxml-stubs>=0.5.1",
   "pandas-stubs>=2.3.0.250703",
-  "types-deprecated>=1.2.15.20250304",
+  "types-deprecated>=1.3.1.20260728",
   "types-pygments>=2.19.0.20250516",
   "types-cachetools>=6.0.0.20250525",
-  "types-cffi>=1.17.0.20250523",
+  "types-cffi>=2.0.0.20260518",
   "types-colorama>=0.4.15.20240311",
   "types-decorator>=5.2.0.20250324",
-  "types-defusedxml>=0.7.0.20250708",
+  "types-defusedxml>=0.7.0.20260504",
   "types-greenlet>=3.2.0.20250417",
   "types-jsonschema>=4.24.0.20250708",
-  "types-pexpect>=4.9.0.20250516",
+  "types-pexpect>=4.9.0.20260518",
   "types-protobuf>=6.30.2.20250703",
   "types-psutil>=7.0.0.20250601",
   "types-pyopenssl>=24.1.0.20240722",
@@ -103,9 +103,9 @@ dev = [
   "types-tqdm>=4.67.0.20250516",
   "types-ujson>=5.10.0.20250326",
   "python-dotenv>=1.0.0",
-  "types-pyyaml>=6.0.12.20250915",
+  "types-pyyaml>=6.0.12.20260724",
   "pytest>=9.0.2",
-  "pytest-asyncio>=1.3.0",
+  "pytest-asyncio>=1.4.0",
   "pytest-check>=2.6.2",
   "pytest-cov>=6.0",
   "pytest-mock>=3.14.0",
@@ -117,8 +117,9 @@ dev = [
   "pika>=1.4.1",
   "pytest-randomly>=4.1.0",
   "pytest-timeout>=2.4.0",
+  "pytest-split>=0.8.0",
   "time-machine>=3.3.1",
-  "schemathesis>=4.24.3",
+  "schemathesis>=4.25.0",
   "hypothesis>=6.165.2",
   "mutmut>=3.7.0",
 ]
@@ -135,7 +136,7 @@ backend = [
   "pymongo==4.9.2",
   "redis==5.2.1",
   "psycopg2-binary>=2.9.10",
-  "psycopg[binary,pool]>=3.2.10",
+  "psycopg[binary,pool]>=3.3.4",
   "asyncpg>=0.30.0",
   "chromadb>=0.6.3",
   "langchain-core>=1.2.28",
@@ -144,14 +145,14 @@ backend = [
   "langgraph-checkpoint-postgres>=2.0.21",
   "langgraph-bigtool>=0.0.2",
   "langchain-openai>=0.4.0",
-  "langchain-chroma>=0.2.2",
+  "langchain-chroma>=1.1.0",
   "langchain-google-genai>=2.1.2",
   "langchain-cerebras>=0.5.0",
   "openai>=1.69.0",
   "llama-cloud-services>=0.6.15",
   "pymupdf>=1.25.5",
   "markdown2>=2.5.3",
-  "pillow==12.2.0",
+  "pillow==12.3.0",
   "pandas>=2.3.0",
   "beautifulsoup4>=4.13.5,<5",
   "bs4==0.0.2",
@@ -177,7 +178,7 @@ backend = [
   "aio-pika>=9.5.5",
   "e2b-code-interpreter>=1.2.0",
   "jinja2==3.1.6",
-  "markupsafe==3.0.2",
+  "markupsafe==3.0.3",
   "hf-xet>=1.0.3",
   "tomli>=2.2.1",
   "itsdangerous>=2.2.0",
@@ -227,5 +228,19 @@ Issues = "https://github.com/theexperiencecompany/gaia/issues"
 #   other C extensions) cannot be re-imported in the same process.
 source_paths = ["app"]
 also_copy = ["app", "tests", "scripts"]
+# The diff-driven scoping in scripts/test/mutation.sh stamps
+# `# pragma: no mutate` onto every unchanged line; mutmut's AST visitor only
+# honors that comment on simple statement lines and standalone comments, so
+# interior lines of multi-line statements still got mutated. The pattern
+# matcher keys on line CONTENT, which catches every stamped line — this is
+# what actually makes the scoping work (unchanged lines produce no mutants).
+do_not_mutate_patterns = ["# pragma: no mutate"]
+# Per-mutant timeout = timeout_constant + timeout_multiplier * stats_time.
+# The default constant (1s) is sized for fast local machines; on the 2-core
+# CI runner each mutant pays ~25-30s of fresh-process startup (python + app
+# import + collection) that the stats phase does not capture, so the default
+# timeout races the startup and every mutant reads as a timeout. The constant
+# buys that startup headroom.
+timeout_constant = 60.0
 pytest_add_cli_args_test_selection = []
 pytest_add_cli_args = ["-p", "no:xdist", "-o", 'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout=300']

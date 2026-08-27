@@ -18,6 +18,7 @@ from langchain_core.messages import SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
 
+from app.agents.context.slots import EXECUTOR_STATUS_MARKER
 from app.agents.core.background.executor_queue import decode_raw_item, parse_lock_value
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.log_tags import LogTag
@@ -26,10 +27,8 @@ from app.models.agent_models import agent_configurable
 from app.override.langgraph_bigtool.utils import State
 from shared.py.wide_events import log
 
-EXECUTOR_STATUS_MARKER = "executor_status"
 
-
-async def executor_status_hook(state: State, config: RunnableConfig, store: BaseStore) -> State:
+async def executor_status_hook(state: State, config: RunnableConfig, store: BaseStore) -> State:  # noqa: ARG001 -- execute_hooks() passes state/config/store positionally
     """Append a live-executor status frame when the busy lock is held."""
     try:
         configurable = agent_configurable(config)
@@ -54,6 +53,6 @@ async def executor_status_hook(state: State, config: RunnableConfig, store: Base
         )
         messages = state.get("messages", [])
         return cast(State, {**state, "messages": [*messages, status]})
-    except Exception as e:  # noqa: BLE001 — a status frame must never break the turn
+    except Exception as e:  # a status frame must never break the turn
         log.error(f"{LogTag.AGENT} executor_status_hook failed", error_type=type(e).__name__)
         return state

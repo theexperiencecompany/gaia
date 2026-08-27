@@ -26,14 +26,17 @@ from langgraph.errors import GraphRecursionError
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
 
+from app.agents.context.assemble import assemble_context
+from app.agents.context.section_context import SectionContext
+from app.agents.context.tiers import AgentTier
 from app.agents.core.subagents.base_subagent import SubAgentFactory
-from app.agents.core.subagents.subagent_helpers import create_agent_context_message
 from app.agents.llm.client import init_llm
 from app.agents.prompts.subagent_prompts import WORKFLOW_AGENT_SYSTEM_PROMPT
 from app.agents.tools.workflow_shared_tools import SUBAGENT_WORKFLOW_TOOLS
 from app.constants.llm import WORKFLOW_SUBAGENT_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import build_agent_config
+from app.helpers.message_helpers import build_current_time_message
 from app.models.agent_models import AgentConfigurable, AgentUserContext, agent_configurable
 from app.services.workflow.knowledge import build_connected_integrations_hint
 from app.services.workflow.subagent_output import parse_subagent_response
@@ -162,7 +165,7 @@ class WorkflowSubagentRunner:
             "timezone": user_timezone,
         }
 
-        config = build_agent_config(
+        config = await build_agent_config(
             conversation_id=thread_id,
             user=user,
             thread_id=subagent_thread_id,
@@ -184,26 +187,37 @@ class WorkflowSubagentRunner:
             additional_kwargs={"visible_to": {"workflow_agent"}},
         )
 
-        context_message = await create_agent_context_message(
-            configurable=configurable,
-            user_id=user_id,
-            query=task,
-            subagent_id=None,  # No subagent_id for skill retrieval
+        assembled = await assemble_context(
+            SectionContext.from_configurable(
+                AgentTier.WORKFLOW_AUTHORING,
+                configurable,
+                query=task,
+                user_id=user_id,
+            )
         )
 
         # Compact ground truth (which integrations THIS user has connected) folded
-        # into the task. It must NOT be a separate SystemMessage: the subagent's
-        # manage_system_prompts_node keeps only the LATEST static system message,
-        # so a second one here would silently evict WORKFLOW_AGENT_SYSTEM_PROMPT and
-        # the model would lose its whole role/rules/output-format prompt.
+        # into the task. It must NOT be a separate SystemMessage: it would occupy
+        # the static slot and evict WORKFLOW_AGENT_SYSTEM_PROMPT, losing the whole
+        # role/rules/output-format prompt.
         hint = await build_connected_integrations_hint(user_id)
         human_message = HumanMessage(
             content=f"{hint}\n\n---\n\nRequest: {task}",
             additional_kwargs={"visible_to": {"workflow_agent"}},
         )
 
+        # An authoring agent that cannot tell today's date cannot resolve "every
+        # Monday" or "starting next week" — the exact things a workflow schedule
+        # is made of. This tier was the only one seeded without a clock.
+        time_message = build_current_time_message(user_timezone=user_timezone)
+
         initial_state: dict[str, Any] = {
-            "messages": [system_message, context_message, human_message],
+            "messages": [
+                system_message,
+                *assembled.messages(),
+                human_message,
+                time_message,
+            ],
             "intent": task,
             "integration_usernames": {},
         }
@@ -253,7 +267,7 @@ class WorkflowSubagentRunner:
             f"{LogTag.WORKFLOW} Completed. Response: chars",
             complete_message_count=len(complete_message),
         )
-        return complete_message if complete_message else "Task completed"
+        return complete_message or "Task completed"
 
     @staticmethod
     async def _forced_finalize(

@@ -9,13 +9,13 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
     tagline: "Smart task management that understands natural language",
     headline: "Tasks that understand plain English.",
     subheadline:
-      'Type "call Alex tomorrow @finance p1" and GAIA creates the task with the right priority, due date, and project — no dropdowns, no forms.',
+      'Type "call Alex tomorrow @finance p1" and GAIA creates the task with the right priority, due date, and project. No dropdowns, no forms.',
     benefits: [
       {
         icon: "LanguageCircleIcon",
         title: "Natural language parsing",
         description:
-          '@project, #label, p1/p2/p3, "next Monday," "in 5 days" — all parsed automatically.',
+          '@project, #label, p1/p2/p3, "next Monday," "in 5 days," all parsed automatically.',
       },
       {
         icon: "WorkflowCircleIcon",
@@ -35,7 +35,7 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
         number: "01",
         title: "Type a task in plain language",
         description:
-          "Include priority, due date, project, and labels in the same sentence — GAIA parses all of it.",
+          "Include priority, due date, project, and labels in the same sentence, and GAIA parses all of it.",
       },
       {
         number: "02",
@@ -100,7 +100,7 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
     tagline: "Schedule, reschedule, and prep for meetings with AI",
     headline: "Schedule anything without opening your calendar.",
     subheadline:
-      "Create events, find free time, prep for meetings, and set recurring schedules — all through natural language, synced with Google Calendar in real time.",
+      "Create events, find free time, prep for meetings, and set recurring schedules, all through natural language, synced with Google Calendar in real time.",
     benefits: [
       {
         icon: "Time04Icon",
@@ -138,7 +138,7 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
         number: "03",
         title: "Meeting prep is available on demand",
         description:
-          "Ask for a briefing before any event — GAIA pulls attendee context, recent emails, and open tasks.",
+          "Ask for a briefing before any event, and GAIA pulls attendee context, recent emails, and open tasks.",
       },
     ],
     faqs: [
@@ -192,7 +192,7 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
     tagline: "Triage, summarize, and compose email through AI",
     headline: "Inbox zero, with AI doing the work.",
     subheadline:
-      "GAIA reads your inbox, summarizes threads, drafts replies in your tone, and handles bulk operations — so you spend minutes on email, not hours.",
+      "GAIA reads your inbox, summarizes threads, drafts replies in your tone, and handles bulk operations, so you spend minutes on email, not hours.",
     benefits: [
       {
         icon: "FilterIcon",
@@ -224,7 +224,7 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
         number: "02",
         title: "Ask GAIA to triage, summarize, or respond",
         description:
-          "Describe what to do — 'summarize my unread emails' or 'reply to John saying I'll follow up Friday.'",
+          "Describe what to do: 'summarize my unread emails' or 'reply to John saying I'll follow up Friday.'",
       },
       {
         number: "03",
@@ -280,10 +280,10 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
     category: "Productivity",
     icon: "Target02Icon",
     title: "Goals",
-    tagline: "Set a goal — get an AI-generated roadmap to achieve it",
+    tagline: "Set a goal, get an AI-generated roadmap to achieve it",
     headline: "Turn ambitions into step-by-step roadmaps.",
     subheadline:
-      "Describe a goal in one sentence and GAIA generates a structured roadmap with milestones — then tracks your progress as you complete each step.",
+      "Describe a goal in one sentence and GAIA generates a structured roadmap with milestones, then tracks your progress as you complete each step.",
     benefits: [
       {
         icon: "ChartBarLineIcon",
@@ -309,7 +309,7 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
         number: "01",
         title: "Describe your goal in one sentence",
         description:
-          "State the outcome — GAIA generates a structured roadmap with milestones and sub-steps automatically.",
+          "State the outcome, and GAIA generates a structured roadmap with milestones and sub-steps automatically.",
       },
       {
         number: "02",
@@ -374,7 +374,7 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
     tagline: "Set recurring or one-time reminders in plain language",
     headline: "Reminders that speak your language.",
     subheadline:
-      '"Remind me every Monday at 9am to review my pipeline" — GAIA creates the recurring reminder with your timezone, no configuration needed.',
+      '"Remind me every Monday at 9am to review my pipeline." GAIA creates the recurring reminder with your timezone, no configuration needed.',
     benefits: [
       {
         icon: "RepeatIcon",
@@ -466,7 +466,7 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
     tagline: "Save and bookmark any message for later reference",
     headline: "Never lose an important insight again.",
     subheadline:
-      "Pin any message from any conversation to save it permanently — then search and browse all your pins in one place.",
+      "Pin any message from any conversation to save it permanently, then search and browse all your pins in one place.",
     benefits: [
       {
         icon: "Bookmark01Icon",
@@ -511,7 +511,7 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
       {
         question: "Can I pin tool results like charts and code outputs?",
         answer:
-          "Yes. Any message in a conversation can be pinned — including rich components, code blocks, and research summaries.",
+          "Yes. Any message in a conversation can be pinned, including rich components, code blocks, and research summaries.",
       },
       {
         question: "Are pins shared with other workspace members?",
@@ -557,7 +557,7 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
     tagline: "Unified view of todos, emails, calendar, and workflows",
     headline: "Your entire work context in one view.",
     subheadline:
-      "The GAIA dashboard shows unread emails, upcoming events, today's todos, active workflows, and recent conversations — all updated in real time.",
+      "The GAIA dashboard shows unread emails, upcoming events, today's todos, active workflows, and recent conversations, all updated in real time.",
     benefits: [
       {
         icon: "GridViewIcon",
@@ -595,7 +595,7 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
         number: "03",
         title: "Launch a new chat with full context pre-loaded",
         description:
-          "The composer on the dashboard starts a chat with your current context — inbox state, calendar, and tasks — already available.",
+          "The composer on the dashboard starts a chat with your current context (inbox state, calendar, and tasks) already available.",
       },
     ],
     faqs: [
@@ -625,7 +625,7 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
       {
         title: "Morning context check before starting work",
         description:
-          "Open GAIA and see unread emails, today's three meetings, five overdue tasks, and two active workflows — all before opening a single other app.",
+          "Open GAIA and see unread emails, today's three meetings, five overdue tasks, and two active workflows, all before opening a single other app.",
       },
       {
         title: "End-of-day review and planning",

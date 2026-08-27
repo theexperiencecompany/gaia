@@ -27,6 +27,7 @@ import { MOTION_COMPOSER_CTA } from "../../constants/motion";
 import type { UseOnboardingChatReturn } from "../../hooks/useOnboardingChat";
 import { hasGmail } from "../../state/derive";
 import type { Action, OnboardingState } from "../../state/types";
+import type { PersonalizationData } from "../../types/websocket";
 import { OnboardingCTAButton } from "../OnboardingCTAButton";
 import { OnboardingTodoCards } from "../OnboardingTodoCards";
 import { RevealIntroBubble } from "../RevealIntroBubble";
@@ -38,6 +39,9 @@ interface RevealTodosProps {
   dispatch: Dispatch<Action>;
   chat: UseOnboardingChatReturn;
 }
+
+/** Stable empty fallback so the `todos` callback dependency keeps its identity. */
+const NO_TODOS: NonNullable<PersonalizationData["onboarding_todos"]> = [];
 
 function generateConvoId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -61,7 +65,7 @@ export function RevealTodosComposer({
 }
 
 export function RevealTodos({ state, dispatch, chat }: RevealTodosProps) {
-  const todos = state.server?.onboarding_todos ?? [];
+  const todos = state.server?.onboarding_todos ?? NO_TODOS;
 
   const handleExecute = useCallback(
     (todoId: string) => {

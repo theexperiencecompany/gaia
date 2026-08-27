@@ -21,6 +21,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.hil import HIL_SUMMARY_MAX_ARG_CHARS, HIL_SUMMARY_MAX_ARGS
+from app.constants.log_tags import LogTag
+from app.models.hil_models import HILApprovalStatus
 from app.services.hil.bridge import (
     ApprovalOutcome,
     build_summary,
@@ -44,19 +46,23 @@ def bridge():
     session collector, and the out-of-band notifier."""
     session = MagicMock(tool_events=[])
     with (
-        patch(f"{MODULE}.log"),
+        patch(f"{MODULE}.log") as log,
         patch(f"{MODULE}.upsert_pending_approval", new=AsyncMock(return_value=True)) as upsert,
         patch(f"{MODULE}.stream_manager") as stream,
         patch(f"{MODULE}.get_session", return_value=session) as get_session,
         patch(f"{MODULE}.notify_approval_pending", new=AsyncMock()) as notify,
+        patch(f"{MODULE}.conversation_repository") as conversations,
     ):
         stream.publish_chunk = AsyncMock()
+        conversations.set_message_approval_status = AsyncMock()
         yield {
             "upsert": upsert,
             "stream": stream,
             "session": session,
             "get_session": get_session,
             "notify": notify,
+            "conversations": conversations,
+            "log": log,
         }
 
 
@@ -157,14 +163,16 @@ class TestTheOutcomeSettlesTheCard:
         )
 
     async def test_an_approval_settles_the_card(self, bridge: dict) -> None:
-        await self.settle(ApprovalOutcome(status="approved"))
+        await self.settle(ApprovalOutcome(status=HILApprovalStatus.APPROVED))
 
         data = published_frame(bridge)["data"]
         assert data["status"] == "approved"
         assert data["approval_id"] == "appr-1", "the settled card must replace the right one"
 
     async def test_a_denial_settles_the_card_and_shows_why(self, bridge: dict) -> None:
-        await self.settle(ApprovalOutcome(status="denied", feedback="wrong recipient"))
+        await self.settle(
+            ApprovalOutcome(status=HILApprovalStatus.DENIED, feedback="wrong recipient")
+        )
 
         data = published_frame(bridge)["data"]
         assert data["status"] == "denied"
@@ -173,11 +181,76 @@ class TestTheOutcomeSettlesTheCard:
     async def test_the_settled_card_is_persisted_as_well_as_streamed(self, bridge: dict) -> None:
         # Same dual-delivery contract as the pending card: stream-only means the card
         # reverts to "pending" on reload, which is the confusing state all over again.
-        await self.settle(ApprovalOutcome(status="approved"))
+        await self.settle(ApprovalOutcome(status=HILApprovalStatus.APPROVED))
 
         bridge["stream"].publish_chunk.assert_awaited_once()
         assert len(bridge["session"].tool_events) == 1
         assert bridge["session"].tool_events[0]["tool_data"]["data"]["status"] == "approved"
+
+
+class TestTheDecisionSettlesThePersistedFrame:
+    """``publish_decision`` also writes the decided status straight onto the stored
+    message. Final delivery reconciles too, but a run can pause again on a LATER gate
+    before it ever gets there — and a revisit in that window re-renders an Approve/Deny
+    prompt for something the user already decided, inviting them to decide it twice.
+
+    Not the same write as the settled card above: that one replaces the live frame on
+    the stream the user is watching now, this one repairs the turn they scroll back to.
+    """
+
+    async def settle(self, status: HILApprovalStatus = HILApprovalStatus.APPROVED) -> None:
+        record = make_record(
+            approval_id="appr-1",
+            tool_name=TOOL_CALL.name,
+            tool_call_id=TOOL_CALL.id,
+            args=TOOL_CALL.args,
+            summary="Send email — to: bob@example.com",
+            integration_name="Gmail",
+        )
+        await publish_decision(record, status, stream_id=STREAM_ID, feedback=None)
+
+    async def test_the_stored_card_is_settled_against_the_right_message(self, bridge: dict) -> None:
+        await self.settle(HILApprovalStatus.APPROVED)
+
+        bridge["conversations"].set_message_approval_status.assert_awaited_once_with(
+            CONVERSATION_ID,
+            user_id=USER_ID,
+            approval_id="appr-1",
+            status="approved",
+        )
+
+    async def test_a_denial_is_stored_as_a_denial(self, bridge: dict) -> None:
+        await self.settle(HILApprovalStatus.DENIED)
+
+        assert (
+            bridge["conversations"].set_message_approval_status.await_args.kwargs["status"]
+            == "denied"
+        )
+
+    async def test_a_failed_write_never_costs_the_user_their_decision(self, bridge: dict) -> None:
+        # The caller is the gate, which fails CLOSED — an escaping write error would
+        # turn a cosmetic redraw failure into a denial of what the user just chose.
+        bridge["conversations"].set_message_approval_status.side_effect = RuntimeError("mongo down")
+
+        await self.settle(HILApprovalStatus.APPROVED)
+
+        bridge["stream"].publish_chunk.assert_awaited_once()
+        assert bridge["session"].tool_events[0]["tool_data"]["data"]["status"] == "approved"
+
+    async def test_a_failed_write_is_reported_rather_than_swallowed(self, bridge: dict) -> None:
+        bridge["conversations"].set_message_approval_status.side_effect = RuntimeError("mongo down")
+
+        await self.settle(HILApprovalStatus.APPROVED)
+
+        # The whole call is the contract: log.error appends its message AND its
+        # kwargs to the wide event's errors[], and that entry is all an operator
+        # has to tell WHICH approval silently kept its pending card.
+        bridge["log"].error.assert_called_once_with(
+            f"{LogTag.HIL} Could not settle persisted approval frame; delivery will reconcile",
+            approval_id="appr-1",
+            error="mongo down",
+            error_type="RuntimeError",
+        )
 
 
 class TestDeclineMemory:

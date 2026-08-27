@@ -105,7 +105,8 @@ class ScheduleConfig(BaseModel):
     @classmethod
     def check_repeat_cron(cls, v: str | None) -> str | None:
         if v is not None:
-            from app.utils.cron_utils import validate_cron_expression
+            # Deferred import: keeps croniter out of the model-module load path; loads only when a repeat field validates
+            from app.utils.cron_utils import validate_cron_expression  # noqa: PLC0415 -- deferred
 
             if not validate_cron_expression(v):
                 raise ValueError(f"Invalid cron expression: {v}")

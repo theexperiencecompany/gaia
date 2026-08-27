@@ -14,17 +14,17 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Initialize settings and providers
 # Create actual embedding instance and register it (not lazy)
-from langchain_google_genai import GoogleGenerativeAIEmbeddings  # noqa: E402
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
-from app.config.settings import settings  # noqa: F401
+from app.config.settings import settings  # noqa: F401 -- settings init side effects
 
 # Import chromadb module so @lazy_provider decorators register all providers
-from app.db.chroma.chromadb import init_chromadb_constructor  # noqa: F401
+from app.db.chroma.chromadb import init_chromadb_constructor
 
 embedding_instance = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
 
-from app.core.lazy_loader import providers  # noqa: E402
-from app.services.gaia_knowledge_service import (  # noqa: E402
+from app.core.lazy_loader import providers
+from app.services.gaia_knowledge_service import (
     KnowledgeItem,
     gaia_knowledge_service,
 )

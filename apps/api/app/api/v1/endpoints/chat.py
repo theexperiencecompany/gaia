@@ -25,14 +25,18 @@ from app.db.redis import redis_cache
 from app.decorators import enforce_daily_cost_budget, tiered_rate_limit
 from app.models.chat_models import CancelStreamResponse, ConversationSource
 from app.models.message_models import MessageRequestWithHistory
+from app.models.stream_events import ErrorFrame
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.chat.stream import run_chat_stream_background
+from app.utils.agent_utils import format_sse_data
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import ChatContext, get_trace_id, log, log_context
 
 _USER_ID_REQUIRED = "user_id is required"
 _DUPLICATE_TURN = "duplicate turn_id: this send was already accepted"
 _SSE_MEDIA_TYPE = "text/event-stream"
+_DELIVERY_FAILED = "The connection to the server was lost before this response finished."
 _CLIENT_TYPE_HEADER = "X-Client-Type"
 
 router = APIRouter()
@@ -115,6 +119,9 @@ async def _stream_from_redis(
                 error_type=type(e).__name__,
                 error=str(e),
             )
+            # Closing silently is indistinguishable from a finished turn, so the
+            # client would render a truncated answer as complete.
+            yield format_sse_data(ErrorFrame(error=_DELIVERY_FAILED).model_dump())
 
 
 @router.post("/chat-stream")
@@ -168,6 +175,32 @@ async def chat_stream_endpoint(
         stream_id=stream_id,
         conversation_id=conversation_id,
         user_id=user_id,
+    )
+    # The ONE event for a chat message. It fires for every surface (web,
+    # desktop, and bots via endpoints/bot.py), no ad blocker can drop it, and
+    # it lands only once the request has passed the rate limit and the cost
+    # budget — so it counts messages that were actually accepted.
+    #
+    # The composer context below used to ride on a second, client-side
+    # `chat:message_sent`. Every field of it arrives in this request anyway, so
+    # that emitter was a duplicate of this one wearing a different name and has
+    # been removed; counting either name now gives the same, correct number.
+    capture_context_event(
+        AnalyticsEvents.CHAT_MESSAGE_SUBMITTED,
+        {
+            "is_new_conversation": body.conversation_id is None,
+            "message_count": len(body.messages) if body.messages else 0,
+            "has_files": bool(body.fileIds or body.fileData),
+            "file_count": len(body.fileIds or []) + len(body.fileData or []),
+            "has_selected_tool": bool(body.selectedTool),
+            "tool_name": body.selectedTool,
+            "tool_category": body.toolCategory,
+            "has_selected_workflow": bool(body.selectedWorkflow),
+            "workflow_id": body.selectedWorkflow.id if body.selectedWorkflow else None,
+            "has_selected_calendar_event": bool(body.selectedCalendarEvent),
+            "is_reply": bool(body.replyToMessage),
+            "source": _resolve_source(request),
+        },
     )
 
     spawn_background_task(
@@ -260,11 +293,16 @@ async def subscribe_executor_stream(
 
     log.set(user={"id": user_id}, chat={"stream_id": stream_id})
 
-    # Race condition: executor finished before frontend subscribed.
-    # Return [DONE] immediately so the client closes cleanly.
-    if progress.get("is_complete"):
+    # A finished stream still has a replayable event log — subscribe_stream
+    # replays it and returns at the DONE control entry, so a late attach loses
+    # nothing. (An earlier is_complete short-circuit returned a bare [DONE]
+    # here, which dropped every frame a just-paused HIL resume had published —
+    # the second approval card never reached the client.) Only when the log has
+    # already expired is there genuinely nothing to replay; answer [DONE] then,
+    # or subscribe_stream would idle on keepalives forever.
+    if progress.get("is_complete") and not await stream_manager.has_events(stream_id):
         log.info(
-            f"{LogTag.CHAT} Executor stream already complete, returning [DONE]",
+            f"{LogTag.CHAT} Executor stream complete and log expired, returning [DONE]",
             stream_id=stream_id,
         )
 

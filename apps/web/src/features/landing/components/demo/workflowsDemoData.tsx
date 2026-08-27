@@ -194,7 +194,7 @@ export const SOFTWARE_DEV_WORKFLOW_CONFIG: WorkflowsDemoConfig = {
 };
 
 export const AGENCY_WORKFLOW_CONFIG: WorkflowsDemoConfig = {
-  title: "Weekly Client Report — TechCorp",
+  title: "Weekly Client Report: TechCorp",
   schedule: "Every Friday at 4:00 PM",
   steps: [
     {

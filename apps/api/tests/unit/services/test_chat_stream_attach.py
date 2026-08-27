@@ -18,10 +18,12 @@ import pytest
 
 from app.agents.core.background import session as sess
 from app.agents.core.background.session import RunKind, create_session, get_session
+from app.models.message_models import MessageRequestWithHistory
 from app.services.chat import stream as chat_stream
 from app.services.chat.stream import (
     _attach_executor_tool_data,
     _finalize_stream,
+    _resolve_pending_approval_turn,
     _StreamState,
 )
 
@@ -179,3 +181,58 @@ class TestFinalizeStreamBackstop:
         persist.assert_not_awaited()
         repo.append_message_tool_data.assert_not_awaited()
         assert get_session("s1") is None  # cleanup still happens
+
+
+class TestResolvePendingApprovalTurnDegradesOnFailure:
+    """A bot-channel classifier lookup failing must not take chat down —
+    ``_resolve_pending_approval_turn`` must return False so the message runs
+    as a normal turn (see the docstring on the guarded except block)."""
+
+    def _bot_reply_body(self) -> MessageRequestWithHistory:
+        return MessageRequestWithHistory(
+            message="yes",
+            messages=[{"role": "user", "content": "yes"}],
+            conversation_id=None,
+        )
+
+    async def test_classifier_failure_runs_as_normal_turn(self) -> None:
+        with patch.object(
+            chat_stream,
+            "resolve_pending_from_message",
+            new=AsyncMock(side_effect=RuntimeError("classifier unreachable")),
+        ):
+            result = await _resolve_pending_approval_turn(
+                self._bot_reply_body(),
+                {"user_id": "u1"},
+                "conv-1",
+                "stream-1",
+                _StreamState(),
+                "whatsapp",  # a button-less bot channel — the only source that reaches the classifier
+            )
+
+        assert result is False
+
+    async def test_classifier_failure_does_not_publish_or_persist(self) -> None:
+        """The degraded path must skip the ack/persist steps entirely — those
+        only belong to a genuinely resolved approve/deny."""
+        with (
+            patch.object(chat_stream, "stream_manager") as sm,
+            patch.object(chat_stream, "_persist_turn", new_callable=AsyncMock) as persist,
+            patch.object(
+                chat_stream,
+                "resolve_pending_from_message",
+                new=AsyncMock(side_effect=RuntimeError("classifier unreachable")),
+            ),
+        ):
+            sm.publish_chunk = AsyncMock()
+            await _resolve_pending_approval_turn(
+                self._bot_reply_body(),
+                {"user_id": "u1"},
+                "conv-1",
+                "stream-1",
+                _StreamState(),
+                "whatsapp",
+            )
+
+        sm.publish_chunk.assert_not_awaited()
+        persist.assert_not_awaited()

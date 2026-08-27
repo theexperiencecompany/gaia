@@ -54,11 +54,15 @@ function acceleratorToKbd(accelerator: string): {
   label: string;
 } {
   const keys: KbdKey[] = [];
+  const seenModifiers = new Set<KbdKey>();
   let label = "";
   for (const token of accelerator.split("+")) {
     const modifier = MODIFIER_KBD_KEYS[token];
     if (modifier) {
-      if (!keys.includes(modifier)) keys.push(modifier);
+      if (!seenModifiers.has(modifier)) {
+        seenModifiers.add(modifier);
+        keys.push(modifier);
+      }
       continue;
     }
     const named = NAMED_KBD_KEYS[token];

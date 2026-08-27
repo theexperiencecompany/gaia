@@ -7,17 +7,27 @@ from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.settings import settings
 from app.constants.cache import PLATFORM_LINK_TOKEN_PREFIX
 from app.db.redis import redis_cache
+from app.decorators import enforce_rate_limit
 from app.models.platform_models import (
     DisconnectPlatformResponse,
     GetPlatformLinksResponse,
+    InitiatePlatformConnectRequest,
     InitiatePlatformConnectResponse,
     LinkPlatformRequest,
     LinkPlatformResponse,
 )
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.oauth.oauth_state_service import create_oauth_state
 from app.services.outbound_delivery import notify_account_linked
-from app.services.platform_link_service import Platform, PlatformLinkService
+from app.services.photon.photon_client import redirect_deep_link, register_shared_user
+from app.services.platform_link_service import (
+    IMESSAGE_REGISTRATION_FEATURE_KEY,
+    Platform,
+    PlatformLinkService,
+    register_pending_imessage_number,
+    require_platform_plan,
+)
 from app.utils.errors import create_error
 from shared.py.wide_events import log
 
@@ -75,6 +85,8 @@ async def link_platform(
     # worth seeing — still names the session that presented it.
     user_id = _require_user_id(current_user)
     log.set(user={"id": user_id}, operation="link_platform", platform=platform)
+
+    await require_platform_plan(user_id, platform)
 
     # Look up and consume the token from Redis
     redis_client = redis_cache.client
@@ -139,6 +151,10 @@ async def link_platform(
         if result.is_new_link:
             await notify_account_linked(platform, user_id)
         log.set(outcome="success")
+        capture_context_event(
+            AnalyticsEvents.INTEGRATION_CONNECTED,
+            {"integration_id": platform, "is_new_link": bool(result.is_new_link)},
+        )
         # is_new_link is an internal signal for the greeting above, not part of
         # the payload the client reads — build the response field by field.
         return LinkPlatformResponse(
@@ -198,6 +214,10 @@ async def disconnect_platform(
         provider=platform,
     )
     log.set(outcome="success")
+    capture_context_event(
+        AnalyticsEvents.INTEGRATION_DISCONNECTED,
+        {"integration_id": platform},
+    )
 
     if platform_user_id:
         cache_key = f"bot_user:{platform}:{platform_user_id}"
@@ -206,9 +226,13 @@ async def disconnect_platform(
     return result
 
 
-@router.get("/{platform}/connect")
+@router.post(
+    "/{platform}/connect",
+    responses={422: {"description": "iMessage requires an E.164 phone number in the body."}},
+)
 async def initiate_platform_connect(
     platform: str,
+    body: InitiatePlatformConnectRequest,
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> InitiatePlatformConnectResponse:
     """Initiate platform connection via OAuth or manual instructions.
@@ -225,6 +249,8 @@ async def initiate_platform_connect(
 
     user_id = _require_user_id(current_user)
     log.set(user={"id": user_id}, operation="initiate_platform_connect", platform=platform)
+
+    await require_platform_plan(user_id, platform)
 
     # Discord OAuth flow
     if platform == "discord" and settings.DISCORD_OAUTH_CLIENT_ID:
@@ -287,6 +313,33 @@ async def initiate_platform_connect(
             auth_type="manual",
             instructions="Open WhatsApp and send /auth to the GAIA WhatsApp number to link your account.",
             action_link=f"https://wa.me/{phone_number}" if phone_number else None,
+        )
+
+    # iMessage manual flow: Photon's shared pool only delivers to registered
+    # numbers, so the user's phone must be allowlisted before they can text.
+    if platform == "imessage":
+        if not body.phone:
+            raise HTTPException(
+                status_code=422,
+                detail="A phone number in E.164 format (e.g. +15551234567) is required for iMessage.",
+            )
+        await enforce_rate_limit(user_id, IMESSAGE_REGISTRATION_FEATURE_KEY)
+        photon_user = await register_shared_user(body.phone)
+        # Recorded before the user is sent off to text /auth: an unrecorded
+        # registration that is never linked holds its pool seat with nothing
+        # left pointing at it.
+        await register_pending_imessage_number(user_id, body.phone)
+        log.audit(
+            "imessage number registered for linking",
+            actor=user_id,
+            provider=platform,
+        )
+        log.set(outcome="success", auth_type="manual")  # pragma: no mutate
+        return InitiatePlatformConnectResponse(
+            auth_type="manual",
+            instructions="Text /auth to your GAIA iMessage number from the phone you just registered.",
+            action_link=redirect_deep_link(photon_user.id),
+            contact_number=photon_user.assignedPhoneNumber,
         )
 
     raise HTTPException(status_code=501, detail=f"{platform} OAuth not configured")

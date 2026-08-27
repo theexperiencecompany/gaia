@@ -23,7 +23,7 @@ from app.agents.workspace.operational_docs import (
 )
 from app.agents.workspace.skill_loader import skills_by_subagent
 
-INDEX_MD = """# /workspace — your operating environment
+INDEX_MD = """# /workspace: your operating environment
 
 This is your persistent root inside the sandbox. Everything you create
 here survives across conversations for this user.
@@ -36,10 +36,10 @@ here survives across conversations for this user.
     skills/           reusable agent skills (when present)
     todos/            the USER's own todo list (the things in their UI).
                       One folder per active user todo. (see todos/GUIDE.md)
-    gaia-tasks/       YOUR (the agent's) work threads — institutional memory
+    gaia-tasks/       YOUR (the agent's) work threads: institutional memory
                       of initiatives you've worked on. (see gaia-tasks/GUIDE.md)
     memory/           your long-term memory about the user: core documents,
-                      daily journal, facts by topic. Read-only projection —
+                      daily journal, facts by topic. Read-only projection;
                       mutate via the memory tools. (see memory/GUIDE.md)
     pinned/           cross-session files the user has pinned for reuse
 
@@ -82,7 +82,7 @@ def integration_skills_block(subagent_id: str) -> str:
     )
     for skill in skills:
         desc = (skill.description or "").strip()
-        suffix = f" — {desc}" if desc else ""
+        suffix = f": {desc}" if desc else ""
         lines.append(f"- **{skill.name}** (`{base}/{skill.slug}/skill.md`){suffix}")
     return "\n".join(lines)
 

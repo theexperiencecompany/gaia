@@ -15,7 +15,7 @@ or propagates to the caller — the result is already persisted to the conversat
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from app.constants.general import NEW_MESSAGE_BREAKER
+from app.agents.core.background.comms_narrator import record_platform_delivery
 from app.constants.log_tags import LogTag
 from app.models.chat_models import (
     BOT_CONVERSATION_SOURCES,
@@ -26,8 +26,13 @@ from app.models.chat_models import (
 from app.models.user_models import AuthenticatedUser
 from app.services.bot_service import BotService
 from app.services.conversation_service import update_messages
-from app.services.outbound_delivery import OutboundResult, publish_outbound_message
+from app.services.outbound_delivery import (
+    PLATFORM_DISPLAY_NAMES,
+    OutboundResult,
+    publish_outbound_message,
+)
 from app.services.platform_link_service import PlatformLinkService
+from app.utils.message_breaks import split_message_bubbles
 from app.utils.notification.channel_preferences import fetch_channel_preferences
 from shared.py.wide_events import log
 
@@ -37,6 +42,7 @@ async def deliver_workflow_result_to_platforms(
     user: AuthenticatedUser,
     user_id: str,
     notification_text: str,
+    origin: str,
 ) -> None:
     """Deliver a finished workflow's result into the user's preferred messaging
     platforms as real, persisted bot messages, split into natural bubbles.
@@ -55,9 +61,10 @@ async def deliver_workflow_result_to_platforms(
     if not targets:
         return
 
-    # Comms splits its reply into bubbles with the break sentinel;
-    # publish_outbound_message strips blanks and sends them as one ordered message.
-    bubbles = notification_text.split(NEW_MESSAGE_BREAKER)
+    # Comms splits its reply into bubbles with the break sentinel. The bubbles
+    # are needed here too — the langgraph provenance record below has to say what
+    # was actually delivered, not the raw text with its control tokens.
+    bubbles = split_message_bubbles(notification_text)
     for source, platform_user_id in targets:
         await _post_workflow_message(
             user=user,
@@ -66,6 +73,7 @@ async def deliver_workflow_result_to_platforms(
             platform_user_id=platform_user_id,
             response=notification_text,
             bubbles=bubbles,
+            origin=origin,
         )
 
 
@@ -104,13 +112,19 @@ async def _post_workflow_message(
     platform_user_id: str,
     response: str,
     bubbles: list[str],
+    origin: str,
 ) -> None:
     """Persist the result into the platform's session conversation and deliver it
-    as ordered bubbles. Best-effort: logs and swallows any single-platform failure."""
+    as ordered bubbles, then record it in that conversation's langgraph thread —
+    framed with the platform and origin so a later turn can backtrack to the
+    source. Best-effort: logs and swallows any single-platform failure."""
     try:
         conversation_id = await BotService.get_or_create_session(
             platform=source.value,
             platform_user_id=platform_user_id,
+            # No channel: this delivery goes to the user's DM, the only destination
+            # publish_outbound_message can resolve from the platform link. See
+            # BotService.build_session_key for how a DM keys.
             channel_id=None,
             user=user,
         )
@@ -131,15 +145,27 @@ async def _post_workflow_message(
                 platform=source.value,
                 conversation_id=conversation_id,
                 message_id=bot_message.message_id,
-                bubbles=len([b for b in bubbles if b.strip()]),
+                bubbles=len(bubbles),
             )
             return
+        if result is OutboundResult.PUBLISHED:
+            # The Mongo save above never reaches the langgraph thread this
+            # session's next turn reads its history from. Record what was
+            # actually delivered — the outbound path strips the sentinel and
+            # blank bubbles, so join the nonblank bubbles rather than the raw
+            # response (which still contains control tokens).
+            delivered_text = "\n\n".join(b.strip() for b in bubbles if b.strip())
+            display = PLATFORM_DISPLAY_NAMES.get(source, source.value.capitalize())
+            await record_platform_delivery(
+                conversation_id,
+                f"[Delivered to the user on {display} — result of {origin}]: {delivered_text}",
+            )
         log.info(
             f"{LogTag.AGENT} workflow result delivered to platform",
             platform=source.value,
             conversation_id=conversation_id,
             message_id=bot_message.message_id,
-            bubbles=len([b for b in bubbles if b.strip()]),
+            bubbles=len(bubbles),
             result=result.value,
         )
     except Exception as e:  # best-effort per platform

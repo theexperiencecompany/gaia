@@ -20,6 +20,9 @@ from langchain_core.messages import (
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command, StateSnapshot, interrupt
 
+from app.agents.context.assemble import assemble_context
+from app.agents.context.section_context import SectionContext
+from app.agents.context.tiers import AgentTier
 from app.agents.core.background.session import claim_tool_output, note_tool_output_owner
 from app.agents.core.graph_manager import (
     CompiledAgentGraph,
@@ -27,10 +30,7 @@ from app.agents.core.graph_manager import (
     GraphUnavailableError,
 )
 from app.agents.core.subagents.registry import get_subagent_by_id
-from app.agents.core.subagents.subagent_helpers import (
-    create_agent_context_message,
-)
-from app.agents.llm.plan_model import apply_dev_executor_model
+from app.agents.llm.lane import AgentRole, dev_option
 from app.agents.prompts.workflow_prompts import (
     WORKFLOW_AUTO_NOTIFY_SECTION,
     WORKFLOW_SILENT_NOTIFY_SECTION,
@@ -185,7 +185,9 @@ class SubagentExecutionContext:
 
 
 async def build_initial_messages(
+    *,
     system_message: SystemMessage,
+    tier: AgentTier,
     agent_name: str,
     configurable: AgentConfigurable,
     task: str,
@@ -193,54 +195,33 @@ async def build_initial_messages(
     subagent_id: str | None = None,
     retrieval_query: str | None = None,
     integration_id: str | None = None,
-    memories_text: str | None = None,
-    skills_text: str | None = None,
-    provider_metadata: dict[str, str] | None = None,
-    include_connected_integrations: bool = False,
 ) -> list[AnyMessage]:
-    """Build the [static_prompt, dynamic_context, human_task] triplet.
-
-    The static system prompt is byte-identical across users/channels. The
-    dynamic-context message carries user_name, memories, skills, platform
-    restrictions, and (for provider subagents) service-specific username
-    metadata. ``manage_system_prompts_node`` collapses repeats at run time.
+    """Seed a worker tier's thread, in canonical slot order.
 
     Args:
-        system_message: Pre-built STATIC system message (must not include
-            any per-user or per-time content — keeps the cache prefix stable).
-        agent_name: Name of the agent (for HumanMessage visibility metadata).
-        configurable: Config dict with user_timezone, user_name, etc.
-        task: The task/query to execute (goes into the HumanMessage).
-        user_id: Optional user ID for memory retrieval.
-        subagent_id: Optional subagent ID for skill retrieval.
-        retrieval_query: Query for memory/context retrieval. Defaults to
-            ``task`` but should be set to the original unenhanced task when
-            ``task`` contains injected hints that would pollute semantic
-            search.
-        integration_id: When invoking a provider subagent, the underlying
-            integration ID — used to fetch provider metadata (GitHub login,
-            Gmail address, etc.) for the dynamic-context message.
-        memories_text: Pre-fetched memories section. The parent can fetch in
-            parallel with its own work and pass it down here to avoid the
-            subagent running a duplicate ChromaDB lookup.
-        skills_text: Pre-fetched skills section; same rationale.
-        provider_metadata: Pre-fetched provider metadata dict; same rationale
-            (the handoff path fetches it for task sanitization already).
-        include_connected_integrations: Executor-only; appends the live
-            connected-integrations manifest to the dynamic-context message.
+        system_message: The STATIC system message. Must carry no per-user or
+            per-time content — that is what keeps the cache prefix shared
+            across every user on this tier.
+        tier: Which tier is seeding, which decides the sections it gets.
+        agent_name: Stamped on the human turn as visibility metadata.
+        task: The task text the agent acts on.
+        retrieval_query: What the volatile sections retrieve against. Defaults
+            to ``task``, but callers set it to the original unenhanced task when
+            ``task`` carries injected hints that would pollute semantic search.
+        integration_id: For a provider subagent, the underlying integration id
+            — what provider metadata and custom instructions are looked up by.
     """
     log.set(agent_prep={"agent_name": agent_name, "task_length": len(task)})
 
-    context_message = await create_agent_context_message(
-        configurable=configurable,
-        user_id=user_id,
-        query=retrieval_query if retrieval_query is not None else task,
-        subagent_id=subagent_id,
-        integration_id=integration_id,
-        memories_text=memories_text,
-        skills_text=skills_text,
-        provider_metadata=provider_metadata,
-        include_connected_integrations=include_connected_integrations,
+    assembled = await assemble_context(
+        SectionContext.from_configurable(
+            tier,
+            configurable,
+            query=retrieval_query if retrieval_query is not None else task,
+            user_id=user_id,
+            subagent_id=subagent_id,
+            integration_id=integration_id,
+        )
     )
 
     # Current time rides in a HumanMessage so the system_instruction prefix
@@ -252,12 +233,12 @@ async def build_initial_messages(
 
     return [
         system_message,
-        context_message,
-        time_message,
+        *assembled.messages(),
         HumanMessage(
             content=task,
             additional_kwargs={"visible_to": {agent_name}},
         ),
+        time_message,
     ]
 
 
@@ -324,9 +305,11 @@ def _process_messages_payload(
             complete_message += content
 
         # Stream the model's thinking interleaved with tool events, so the
-        # UI can show what it reasoned about between each step. Carries the
-        # subagent_id so the client nests it in the right step (same routing
-        # as tool_data/tool_output). Empty for non-reasoning models.
+        # UI can show what it reasoned about between each step, token by token.
+        # Carries the subagent_id so the client nests it in the right step (same
+        # routing as tool_data/tool_output). Empty for non-reasoning models.
+        # These deltas are per model chunk; the stream writer coalesces them for
+        # the persistence collector (see redis_writer), never for the publish.
         if stream_writer:
             reasoning_delta = _extract_reasoning_delta(chunk)
             if reasoning_delta:
@@ -486,7 +469,7 @@ async def execute_subagent_stream(
     if not tool_ran and not emitted_tool_calls and complete_message:
         log.warning("subagent_returned_narration_only", subagent_name=ctx.agent_name)
         final_message = (
-            f"The {ctx.agent_name} subagent ended without running any tool — it only "
+            f"The {ctx.agent_name} subagent ended without running any tool; it only "
             f'produced planning text: "{complete_message}". Re-issue the handoff with an '
             "explicit instruction to perform the action."
         )
@@ -622,7 +605,7 @@ def interrupt_payload(raw: object) -> dict[str, Any]:
     message park two tasks in the same step, and the caller stamps re-dispatch context
     onto each id this returns (``executor_runner._record_pause``). Returning only the
     first left the second with no ``resume_item`` at all, so approving it raised
-    ``ApprovalNotResumable`` and the decision could never be applied.
+    ``ApprovalNotResumableError`` and the decision could never be applied.
 
     The first payload's own fields stay at the top level, so callers that read a single
     approval (``resume_for_gate``) are unaffected; ``approval_ids`` is what the batch
@@ -655,6 +638,24 @@ def merge_approvals(payloads: list[dict[str, Any]]) -> dict[str, Any]:
     if len(ids) < 2:
         return payloads[0]
     return {**payloads[0], "approval_ids": ids}
+
+
+def compose_executor_brief(
+    task: str,
+    acceptance_criteria: list[str],
+    *,
+    verbatim_request: str | None = None,
+) -> str:
+    """Fold the definition-of-done (and verbatim request) into the executor brief."""
+    criteria = [c.strip() for c in acceptance_criteria if c and c.strip()]
+    parts: list[str] = []
+    if verbatim_request:
+        parts.append(f"Original request (verbatim):\n{verbatim_request.strip()}")
+    parts.append(task)
+    if criteria:
+        lines = "\n".join(f"- {c}" for c in criteria)
+        parts.append(f"Definition of done (every item must be true before you finish):\n{lines}")
+    return "\n\n".join(parts)
 
 
 async def prepare_executor_execution(
@@ -704,22 +705,21 @@ async def prepare_executor_execution(
     }
 
     # Build config
-    config = build_agent_config(
+    config = await build_agent_config(
         conversation_id=thread_id,
         user=user,
         thread_id=executor_thread_id,
         base_configurable=configurable,
         agent_name="executor_agent",
+        role=AgentRole.EXECUTOR,
+        # DEV-ONLY: the switcher's executor pick, stashed by comms. Present only
+        # in development; otherwise the executor inherits comms's lane.
+        dev_option=dev_option(configurable.get("dev_executor_model")),
         subagent_id="executor_agent",  # Use agent_name as the memory namespace id
         vfs_session_id=vfs_session_id,
         recursion_limit=EXECUTOR_RECURSION_LIMIT,
     )
     new_configurable = agent_configurable(config)
-
-    # DEV-ONLY: if the chat-header selector chose an executor model, pin it here —
-    # after the inherit-from-comms copy, so it overrides the comms model for the
-    # executor (and provider subagents that inherit from it). No-op in production.
-    apply_dev_executor_model(configurable, new_configurable)
 
     # Create system message (executor-specific)
     system_message = create_system_message(
@@ -782,14 +782,12 @@ async def prepare_executor_execution(
     # is not polluted by the DIRECT EXECUTION HINT injected into enhanced_task.
     messages = await build_initial_messages(
         system_message=system_message,
+        tier=AgentTier.EXECUTOR,
         agent_name="executor_agent",
         configurable=new_configurable,
         task=enhanced_task,
         user_id=user_id,
         retrieval_query=task,
-        # Executor is the agent that performs handoffs, so it gets the live
-        # connected-integrations manifest (names + handoff subagent_ids).
-        include_connected_integrations=True,
     )
 
     return SubagentExecutionContext(

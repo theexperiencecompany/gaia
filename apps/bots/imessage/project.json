@@ -1,0 +1,73 @@
+{
+  "name": "bot-imessage",
+  "$schema": "../../../../node_modules/nx/schemas/project-schema.json",
+  "root": "apps/bots/imessage",
+  "sourceRoot": "apps/bots/imessage/src",
+  "projectType": "application",
+  "tags": ["scope:typescript"],
+  "release": {
+    "docker": {
+      "repositoryName": "theexperiencecompany/gaia-bot-imessage"
+    }
+  },
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm tsup",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true
+    },
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm tsx watch src/index.ts",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm biome check src/",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "lint:fix": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm biome check --write src/",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm biome format --write src/",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "type-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm tsc --noEmit",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "docker:build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker buildx build --platform linux/amd64 --cache-from type=registry,ref=ghcr.io/theexperiencecompany/gaia-bot-imessage:buildcache --cache-to type=registry,ref=ghcr.io/theexperiencecompany/gaia-bot-imessage:buildcache,mode=max,image-manifest=true,oci-mediatypes=true,compression=zstd --build-arg BOT_NAME=imessage -f apps/bots/Dockerfile -t apps-bots-imessage:latest -t bot-imessage:latest -t ghcr.io/theexperiencecompany/gaia-bot-imessage:latest --load .",
+        "cwd": "."
+      },
+      "cache": true,
+      "inputs": ["production", "^production"],
+      "metadata": {
+        "technologies": ["docker"]
+      }
+    },
+    "nx-release-publish": {
+      "executor": "@nx/docker:release-publish"
+    }
+  }
+}

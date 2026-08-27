@@ -5,16 +5,9 @@ import type {
   ImageResult,
   SearchResults,
 } from "@gaia/shared";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Image, Linking, Pressable, ScrollView, View } from "react-native";
-import Animated, {
-  FadeInRight,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from "react-native-reanimated";
+import Animated, { FadeInRight } from "react-native-reanimated";
 import {
   AppIcon,
   Globe02Icon,
@@ -22,6 +15,7 @@ import {
   Search01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { PulsingDot } from "@/features/chat/components/streaming/pulsing";
 import {
   FaviconImage,
   getHostname,
@@ -35,36 +29,6 @@ import {
 export type { DeepResearchResults, DeepResearchSource, EnhancedWebResult };
 
 type Tab = "enhanced" | "original" | "metadata";
-
-// ---------------------------------------------------------------------------
-// PulsingDot — running-state status indicator
-// ---------------------------------------------------------------------------
-
-function PulsingDot() {
-  const opacity = useSharedValue(1);
-
-  useEffect(() => {
-    opacity.value = withRepeat(
-      withSequence(
-        withTiming(0.25, { duration: 600 }),
-        withTiming(1, { duration: 600 }),
-      ),
-      -1,
-      false,
-    );
-  }, [opacity]);
-
-  const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
-
-  return (
-    <Animated.View
-      style={[
-        animatedStyle,
-        { width: 6, height: 6, borderRadius: 3, backgroundColor: "#00bbff" },
-      ]}
-    />
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Running state
@@ -99,7 +63,7 @@ function DeepResearchRunningCard({ data }: { data: DeepResearchResults }) {
       <ToolCardHeader
         icon={Search01Icon}
         title="Deep Research"
-        trailing={<PulsingDot />}
+        trailing={<PulsingDot size={6} color="#00bbff" />}
       />
 
       {/* Current step */}

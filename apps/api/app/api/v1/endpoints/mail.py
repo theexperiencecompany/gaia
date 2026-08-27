@@ -44,6 +44,7 @@ from app.models.mail_models import (
     UnstarEmailsResponse,
     UntrashEmailsResponse,
 )
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.mail.email_importance_service import (
     get_bulk_email_importance_summaries as get_bulk_importance_summaries_service,
     get_email_importance_summaries as get_importance_summaries_service,
@@ -169,6 +170,9 @@ async def get_email_by_id(
 
 @router.get("/gmail/search", summary="Advanced search for Gmail messages")
 async def search_emails(
+    # Keyword-only: FastAPI binds query parameters by NAME, so the star costs
+    # nothing at the wire and keeps the signature honest about how it is called.
+    *,
     query: str | None = None,
     sender: str | None = None,
     recipient: str | None = None,
@@ -286,12 +290,14 @@ async def process_email(
             learned_writing_style=learned_style_block,
         )
 
-        return await ainvoke_structured(
+        result = await ainvoke_structured(
             ComposedEmailOutput,
             prompt,
             label="mail_compose",
             config=metered_config(str(user_id)),
         )
+        capture_context_event(AnalyticsEvents.EMAIL_COMPOSED)
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
@@ -343,6 +349,13 @@ async def send_email_route(
                 detail=sent_message.error or "Failed to send email",
             )
 
+        capture_context_event(
+            AnalyticsEvents.EMAIL_REPLIED if thread_id else AnalyticsEvents.EMAIL_SENT,
+            {
+                "has_attachments": bool(attachments),
+                "attachment_count": len(attachments) if attachments else 0,
+            },
+        )
         log.set(
             operation="send_email",
             thread_id=thread_id,
@@ -400,6 +413,7 @@ async def send_email_json(
                 detail=sent_message.error or "Failed to send email",
             )
 
+        capture_context_event(AnalyticsEvents.EMAIL_SENT, {"recipient_count": len(request.to)})
         log.set(
             operation="send_email",
             has_attachment=False,
@@ -1083,6 +1097,7 @@ async def send_draft_route(
 
         if sent_message.successful:
             thread_id = sent_message.thread_id or ""
+            capture_context_event(AnalyticsEvents.EMAIL_SENT)
             log.set(
                 operation="send_draft",
                 email_id=draft_id,

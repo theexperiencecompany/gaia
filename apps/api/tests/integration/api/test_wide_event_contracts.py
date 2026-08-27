@@ -34,6 +34,7 @@ from shared.py.wide_events import (
     spawn_logged_task,
     wide_task,
 )
+from tests.helpers import WideEventRecorder
 
 
 class _EmitRecorder:
@@ -112,6 +113,70 @@ def test_handler_fields_reach_the_emitted_event(emitted):
     assert event["errors"][0]["error_type"] == "Boom"
     assert event["final_level"] == "ERROR"
     assert event["status_code"] == 200
+
+
+@pytest.mark.regression
+def test_a_second_set_of_a_namespace_merges_instead_of_replacing(emitted):
+    """`log.set(ns={...})` must accumulate, exactly like `set_ns`.
+
+    The shipped bug: `set` did a flat `fields.update()`, so a later whole-dict
+    write REPLACED the namespace instead of merging into it. In production
+    complete_execution's `log.set(workflow={...})` — the last write on a run, and
+    the one that carries no trigger_type — erased that field from 34,247 of
+    34,413 workflow fires, leaving no way to tell a scheduled fire from a webhook
+    one. Every layer of a request writes the same namespace; whichever wrote last
+    silently won.
+    """
+    app = _app_with_logging()
+
+    @app.get("/t")
+    async def handler():
+        log.set(workflow={"id": "wf_1", "trigger_type": "schedule", "steps_count": 3})
+        log.set(workflow={"id": "wf_1", "status": "success", "duration_ms": 12})
+        return {"ok": True}
+
+    TestClient(app).get("/t")
+    (event,) = emitted
+    assert event["workflow"] == {
+        "id": "wf_1",
+        "trigger_type": "schedule",
+        "steps_count": 3,
+        "status": "success",
+        "duration_ms": 12,
+    }
+
+
+def test_set_and_set_ns_are_interchangeable(emitted):
+    """Both setters merge into the namespace, in either order and either mix."""
+    app = _app_with_logging()
+
+    @app.get("/t")
+    async def handler():
+        log.set(todo={"operation": "create"})
+        log.set_ns("todo", id="t_1")
+        log.set(todo={"result_count": 2})
+        return {"ok": True}
+
+    TestClient(app).get("/t")
+    (event,) = emitted
+    assert event["todo"] == {"operation": "create", "id": "t_1", "result_count": 2}
+
+
+def test_a_non_dict_value_still_replaces(emitted):
+    """Only dict-into-dict merges. A scalar (or a scalar over a dict) overwrites —
+    merging is about accumulating a namespace, not about never overwriting."""
+    app = _app_with_logging()
+
+    @app.get("/t")
+    async def handler():
+        log.set(outcome="pending", todo={"operation": "create"})
+        log.set(outcome="done", todo="replaced-by-scalar")
+        return {"ok": True}
+
+    TestClient(app).get("/t")
+    (event,) = emitted
+    assert event["outcome"] == "done"
+    assert event["todo"] == "replaced-by-scalar"
 
 
 def test_user_identity_attached_from_request_state(emitted):
@@ -392,26 +457,6 @@ async def test_interleaved_wide_tasks_stay_isolated():
     assert by_name["job_a"]["trace_id"] != by_name["job_b"]["trace_id"]
 
 
-class _EventRecorder:
-    """Captures every wide event a boundary flushes through the loguru sink."""
-
-    def __init__(self) -> None:
-        self.events: list[dict[str, Any]] = []
-
-    def bind(self, **kwargs: Any) -> "_EventRecorder":
-        self._ctx = kwargs
-        return self
-
-    def log(self, level: str, message: str) -> None:
-        self.events.append(dict(self._ctx))
-
-    def opt(self, **kwargs: Any) -> "_EventRecorder":
-        return self
-
-    def __getattr__(self, name: str) -> Any:
-        return lambda *a, **k: None
-
-
 async def test_a_nested_boundary_does_not_steal_the_outer_event():
     """An inner boundary must not consume the event the outer one owes.
 
@@ -423,7 +468,7 @@ async def test_a_nested_boundary_does_not_steal_the_outer_event():
     including anything set after the inner block. This is what makes a
     per-iteration boundary inside a long-lived listener loop usable at all.
     """
-    recorder = _EventRecorder()
+    recorder = WideEventRecorder()
 
     with patch("shared.py.wide_events._loguru", recorder):
         async with log_context("outer", outer_before=True):
@@ -453,7 +498,7 @@ async def test_adopted_trace_id_reaches_spawned_child_work():
     work landed under two different traces and could not be joined.
     """
     upstream = "cafebabedeadbeef"
-    recorder = _EventRecorder()
+    recorder = WideEventRecorder()
 
     async def child() -> None:
         log.set(child_ran=True)

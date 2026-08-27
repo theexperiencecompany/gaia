@@ -1,0 +1,5 @@
+export const IMESSAGE_SERVER_PORT = 3204;
+
+export const RECENT_MESSAGE_IDS_MAX = 500;
+
+export const WELCOME_AUTH_CHECK_TIMEOUT_MS = 2_000;

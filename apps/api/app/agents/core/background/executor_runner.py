@@ -29,13 +29,10 @@ from app.agents.core.background.executor_capture import (
     teardown_executor_capture,
 )
 from app.agents.core.background.executor_queue import (
-    LockState,
     PreparedQueuedTask,
     build_run_item,
     enqueue_collection_run,
     extend_lock_if_owned,
-    get_lock_state,
-    pop_next_queued_run,
     reclaim_stranded_task,
     release_lock_if_owned,
 )
@@ -57,6 +54,7 @@ from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS, HIL_RESUME_CONFIG_KEY
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
 from app.models.agent_models import AgentConfigurable
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.hil.approvals_store import (
     list_parked_subagents_for_conversation,
     set_resume_item,
@@ -81,7 +79,7 @@ async def run_executor_background(
     """Run (or resume) the executor agent in background and hand its result to delivery.
 
     Designed for asyncio.create_task(). Never raises — all exceptions
-    caught and routed through comms as an [EXECUTOR_ERROR] message.
+    caught and routed through comms as an ``<executor_error>`` message.
 
     Tool events stream live to the SSE consumer during execution. When
     execution finishes, _finalize_executor_run signals completion, delivers
@@ -110,6 +108,18 @@ async def run_executor_background(
         result_text = ""
         result_type = "final"
 
+        # One lifecycle event per run segment; a resumed run re-enters here.
+        executor_user_id = run.user.get("user_id", "")
+        run_props = {
+            "agent": "executor",
+            "mode": "background",
+            "conversation_id": run.conversation_id,
+        }
+        if run.task_id:
+            run_props["task_id"] = run.task_id
+        if executor_user_id:
+            capture_event(executor_user_id, AnalyticsEvents.AGENT_RUN_STARTED, run_props)
+
         try:
             result = await _execute_executor(task, configurable, run.stream_id, resume)
             result_text, result_type = result.text, result.type
@@ -128,6 +138,11 @@ async def run_executor_background(
                 task_id=run.task_id,
                 stream_id=run.stream_id,
             )
+            if executor_user_id:
+                if result_type == "final":
+                    capture_event(executor_user_id, AnalyticsEvents.AGENT_RUN_COMPLETED, run_props)
+                elif result_type == "error":
+                    capture_event(executor_user_id, AnalyticsEvents.AGENT_RUN_FAILED, run_props)
         finally:
             await _finalize_executor_run(run, task, result_text, result_type)
             if resume is not None:
@@ -155,11 +170,12 @@ async def _record_pause(
             configurable=configurable,
             conversation_id=run.conversation_id,
             user_message_id=run.user_message_id,
+            bot_message_id=run.bot_message_id,
         )
         for approval_id in approval_ids:
             await set_resume_item(approval_id, item)
         return True
-    except Exception as e:  # noqa: BLE001 — a lost pause must fail the run, not the process
+    except Exception as e:  # a lost pause must fail the run, not the process
         log.error(
             f"{LogTag.HIL} Could not record resume context; failing the paused run",
             approval_ids=list(approval_ids),
@@ -253,7 +269,7 @@ async def _finalize_executor_run(
     result_text: str,
     result_type: str,
 ) -> None:
-    """Post-run cleanup, in order: signal done → deliver → close stream → hand off lock."""
+    """Post-run cleanup, in order: signal done → deliver → free the lock → hand it on."""
     if result_type == EXECUTOR_PAUSED:
         await _finalize_paused_run(run)
         return
@@ -263,23 +279,43 @@ async def _finalize_executor_run(
     # Snapshot which native cards were returned to the frontend BEFORE signalling
     # done — for live streams the chat path drains + tears down the session in
     # parallel once done_event fires, so reading it after would race teardown.
-    returned_note = "" if was_cancelled else build_returned_to_frontend_note(run.stream_id)
+    # Only where cards actually render: on a bot or a workflow delivery the note
+    # would tell comms to withhold data that has no card to fall back on.
+    build_note = not was_cancelled and run.renders_native_cards
+    returned_note = build_returned_to_frontend_note(run.stream_id) if build_note else ""
 
     # Signal SSE consumer that tool events are done so it can drain the session
     # into the comms ack and publish [DONE]. Comms re-narration runs in parallel.
     signal_executor_done(run.stream_id)
 
-    # Delivery and stream-close are best-effort: a failure here must NOT skip the
+    # Delivery is best-effort: a failure here must NOT skip the lock release and
     # queue handoff below, or queued tasks strand and the busy lock leaks until
     # its TTL. The lock lifecycle is the load-bearing step — always run it.
     try:
         await _deliver_terminal_outcome(
             run, task, result_text, result_type, was_cancelled, returned_note
         )
-        await _close_queued_stream(run, was_cancelled)
-    except Exception as e:  # noqa: BLE001 — never let delivery failure strand the queue
+    except Exception as e:  # never let delivery failure strand the queue
         log.error(
-            f"{LogTag.AGENT} Executor finalize delivery/close failed",
+            f"{LogTag.AGENT} Executor finalize delivery failed",
+            stream_id=run.stream_id,
+            task_id=run.task_id,
+            error=str(e),
+        )
+
+    # The run is over the moment its outcome is delivered, so the busy lock goes
+    # now rather than at the end of finalize. Held any longer it outlives the
+    # result the user is already reading: comms' executor_status hook keeps
+    # reading "a background task is STILL RUNNING" off it, and anything that
+    # raises in between (a stream close, a Redis blip in the queue handoff) left
+    # it held for the whole 30-minute TTL with no run behind it.
+    # Ownership-checked, so a stale finalize never frees a newer run's lock.
+    try:
+        await release_lock_if_owned(run.conversation_id, run.stream_id, run.task_id)
+        await _close_queued_stream(run, was_cancelled)
+    except Exception as e:
+        log.error(
+            f"{LogTag.AGENT} Executor finalize lock release / stream close failed",
             stream_id=run.stream_id,
             task_id=run.task_id,
             error=str(e),
@@ -287,12 +323,18 @@ async def _finalize_executor_run(
 
     # A terminal run that leaves landed-but-uncollected subagent work (a parked
     # approval, or results the model never joined on) queues a collection turn
-    # NOW, so the very hand-off below pops and runs it. Without this, a card
+    # NOW, so the very hand-off below claims and runs it. Without this, a card
     # parked mid-turn has no live collector until some later landing wakes one —
     # and decisions on it would be refused in the meantime.
     await _queue_collection_if_uncollected(run, task)
 
-    prepared = await _hand_off_queue(run)
+    # Hand the conversation on. The lock is already free, so this is always an
+    # NX re-acquire: it runs on EVERY terminal path, cancelled included (a Stop
+    # targets the running task only — queued tasks were acknowledged with "I'll
+    # handle it right after" and must still run), and it claims nothing when a
+    # concurrent call_executor got the lock first — that run's own finalize
+    # drains the queue instead.
+    prepared = await reclaim_stranded_task(run.conversation_id)
     if prepared is not None:
         _spawn_queued_run(run, prepared)
 
@@ -316,7 +358,7 @@ async def _queue_collection_if_uncollected(run: ExecutorRun, task: str) -> None:
                     "user_timezone": run.user.get("timezone"),
                 },
             )
-    except Exception as e:  # noqa: BLE001 — a failed wake must not strand the queue handoff
+    except Exception as e:  # a failed wake must not strand the queue handoff
         log.error(
             f"{LogTag.AGENT} Post-run collection check failed",
             conversation_id=run.conversation_id,
@@ -436,40 +478,6 @@ async def _close_queued_stream(run: ExecutorRun, was_cancelled: bool) -> None:
     if not was_cancelled:
         await StreamManager.publish_chunk(run.stream_id, "data: [DONE]\n\n")
         await StreamManager.complete_stream(run.stream_id)
-
-
-async def _hand_off_queue(run: ExecutorRun) -> PreparedQueuedTask | None:
-    """Pop and prepare the next queued task for this conversation, or None.
-
-    Runs on EVERY terminal path, cancelled included: a Stop targets the running
-    task only — queued tasks were acknowledged ("I'll handle it right after") and
-    must still run. (cancel_executor with cancel-all clears the queue itself, so
-    this pops nothing in that case.)
-
-    Ownership-checked against the busy lock:
-      - FOREIGN — a newer run already owns the lock; a stale finalize must not
-        touch it or the queue (the owner's finalize drains it).
-      - OURS    — pop the next task (pop overwrites the lock before returning, so
-        a concurrent call_executor can't grab it via SET NX in a delete→re-set
-        gap); release the lock if the queue was empty.
-      - FREE    — fall through to the NX reclaim below.
-
-    The reclaim closes the strand window: a task enqueued between the empty pop
-    and the release (or left behind a cancel-freed lock) is NX-claimed and
-    returned instead of sitting in Redis until the queue TTL.
-    """
-    lock_state = await get_lock_state(run.conversation_id, run.stream_id, run.task_id)
-    if lock_state is LockState.FOREIGN:
-        return None
-
-    prepared = None
-    if lock_state is LockState.OURS:
-        prepared = await pop_next_queued_run(run.conversation_id)
-        if prepared is None:
-            await release_lock_if_owned(run.conversation_id, run.stream_id, run.task_id)
-    if prepared is None:
-        prepared = await reclaim_stranded_task(run.conversation_id)
-    return prepared
 
 
 def _spawn_queued_run(run: ExecutorRun, prepared: PreparedQueuedTask) -> None:

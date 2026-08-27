@@ -1,3 +1,4 @@
+import { CONNECT_ACTION_LABEL, integrationConnectionState } from "@gaia/shared";
 import { PressableFeedback } from "heroui-native";
 import { Pressable, View } from "react-native";
 import { Text } from "@/components/ui/text";
@@ -20,6 +21,7 @@ interface IntegrationRowProps {
  *  - 40px logo + name (medium 600) + truncated description.
  *  - Trailing action is exactly one of:
  *      • `Connected` flat success chip (when connected)
+ *      • `Disconnected` chip + `Reconnect` button (when the grant died)
  *      • `Connect` flat primary button (when available + not connected)
  *      • nothing (unavailable / pending)
  *  - Tapping the row anywhere opens the detail sheet, which is where
@@ -35,7 +37,9 @@ export function IntegrationRow({
 }: IntegrationRowProps) {
   const { fontSize, spacing } = useResponsive();
 
-  const isConnected = integration.status === "connected";
+  const state = integrationConnectionState(integration.status);
+  const isConnected = state === "connected";
+  const isExpired = state === "expired";
   const isAvailable =
     integration.source === "custom" || integration.available !== false;
 
@@ -81,19 +85,29 @@ export function IntegrationRow({
           <IntegrationStatusPill status={integration.status} isPending />
         ) : isConnected ? (
           <IntegrationStatusPill status={integration.status} />
-        ) : isAvailable && integration.status !== "created" ? (
+        ) : (isAvailable || isExpired) && state !== "pending" ? (
           <Pressable
             onPress={() => onPressConnect(integration)}
             hitSlop={6}
-            className="rounded-full bg-primary/15 px-3 py-1.5 active:bg-primary/25"
+            className={
+              isExpired
+                ? "rounded-full bg-amber-500/15 px-3 py-1.5 active:bg-amber-500/25"
+                : "rounded-full bg-primary/15 px-3 py-1.5 active:bg-primary/25"
+            }
             accessibilityRole="button"
-            accessibilityLabel={`Connect ${integration.name}`}
+            accessibilityLabel={`${CONNECT_ACTION_LABEL[state]} ${integration.name}`}
           >
-            <Text className="text-primary text-[13px] font-semibold">
-              Connect
+            <Text
+              className={
+                isExpired
+                  ? "text-amber-500 text-[13px] font-semibold"
+                  : "text-primary text-[13px] font-semibold"
+              }
+            >
+              {CONNECT_ACTION_LABEL[state]}
             </Text>
           </Pressable>
-        ) : integration.status === "created" ? (
+        ) : state === "pending" ? (
           <IntegrationStatusPill status="created" />
         ) : null}
       </View>

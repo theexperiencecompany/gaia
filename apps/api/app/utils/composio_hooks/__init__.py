@@ -12,7 +12,7 @@ Auto-registration: Simply import this module and all hooks are automatically reg
 """
 
 # Auto-import all hook modules to trigger registration
-from . import all_hooks  # noqa: F401
+from . import all_hooks
 from .registry import (
     hook_registry,
     master_after_execute_hook,

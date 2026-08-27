@@ -46,6 +46,11 @@ async def _emit_boundary_scenarios() -> None:
     """Scenarios 6-7: the canonical event, on the success and failure paths."""
     async with wide_task("conformance_success", platform="cli"):
         log.set(operation="demo", component="conformance")
+        # Two writes of one namespace, with disjoint keys: both runtimes must
+        # ACCUMULATE them. A replacing `set` drops trigger_type here, which is
+        # exactly the production bug this scenario exists to pin.
+        log.set(workflow={"id": "wf_1", "trigger_type": "schedule"})
+        log.set(workflow={"status": "success"})
         log.warning("conformance_warning", error_type="SlowResponse")
         log.error(
             "conformance_error",

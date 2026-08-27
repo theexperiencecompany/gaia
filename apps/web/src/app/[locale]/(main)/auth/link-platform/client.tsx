@@ -4,25 +4,18 @@ import { Spinner } from "@heroui/spinner";
 import { CheckmarkCircle02Icon, Link01Icon } from "@icons";
 import confetti from "canvas-confetti";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { RedirectType, redirect } from "next/navigation";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
+import {
+  BOT_PLATFORM_ICONS,
+  BOT_PLATFORM_LABELS,
+  isBotPlatform,
+} from "@/config/botPlatforms";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { apiService } from "@/lib/api/service";
 import { toast } from "@/lib/toast";
-
-const PLATFORM_CONFIG: Record<
-  string,
-  {
-    name: string;
-    iconSrc: string;
-  }
-> = {
-  discord: { name: "Discord", iconSrc: "/images/icons/macos/discord.webp" },
-  slack: { name: "Slack", iconSrc: "/images/icons/macos/slack.webp" },
-  telegram: { name: "Telegram", iconSrc: "/images/icons/macos/telegram.webp" },
-  whatsapp: { name: "WhatsApp", iconSrc: "/images/icons/macos/whatsapp.webp" },
-};
+import { useUserStore } from "@/stores/userStore";
 
 /** Shared card shell: rounded, flat, no outline, no shadow — matches GAIA surfaces. */
 function Card({ children }: { children: React.ReactNode }) {
@@ -40,11 +33,28 @@ interface LinkPlatformClientProps {
   token: string | null;
 }
 
+// The auth store rehydrates from persisted storage asynchronously (zustand
+// persist), so every auth decision must wait for hydration. Reading the status
+// with useSyncExternalStore is render-safe: no post-paint flash, and the
+// component re-renders the moment hydration finishes.
+function subscribeToUserStoreHydration(onStoreChange: () => void): () => void {
+  return useUserStore.persist.onFinishHydration(onStoreChange);
+}
+
+function getUserStoreHydrationSnapshot(): boolean {
+  return useUserStore.persist.hasHydrated();
+}
+
+// Server render has no storage — treat as unhydrated so it renders nothing,
+// matching the client's first paint.
+function getServerHydrationSnapshot(): boolean {
+  return false;
+}
+
 export default function LinkPlatformClient({
   platform,
   token,
 }: Readonly<LinkPlatformClientProps>) {
-  const router = useRouter();
   const { isAuthenticated } = useAuth();
 
   const [isLinking, setIsLinking] = useState(false);
@@ -54,28 +64,20 @@ export default function LinkPlatformClient({
     username?: string;
     displayName?: string;
   } | null>(null);
-  // Guard: only redirect after the Zustand persist store has rehydrated.
-  // Without this, the initial render always sees isAuthenticated=false
-  // (persist middleware hydrates asynchronously), sending even authenticated
-  // users to /login in an infinite loop.
-  //
-  // Using useState (not useRef) so that setting true triggers a re-render,
-  // giving the store one full cycle to rehydrate before the auth check runs.
-  const [hasMounted, setHasMounted] = useState(false);
 
-  const config = platform ? PLATFORM_CONFIG[platform] : null;
+  const hasHydrated = useSyncExternalStore(
+    subscribeToUserStoreHydration,
+    getUserStoreHydrationSnapshot,
+    getServerHydrationSnapshot,
+  );
 
-  useEffect(() => {
-    setHasMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (!hasMounted) return;
-    if (!isAuthenticated && platform && token && config) {
-      const returnUrl = `/auth/link-platform?platform=${encodeURIComponent(platform)}&token=${encodeURIComponent(token)}`;
-      router.replace(`/login?return_url=${encodeURIComponent(returnUrl)}`);
-    }
-  }, [hasMounted, isAuthenticated, platform, token, config, router]);
+  const config =
+    platform && isBotPlatform(platform)
+      ? {
+          name: BOT_PLATFORM_LABELS[platform],
+          iconSrc: BOT_PLATFORM_ICONS[platform],
+        }
+      : null;
 
   useEffect(() => {
     if (token) {
@@ -128,15 +130,19 @@ export default function LinkPlatformClient({
     );
   }
 
-  if (!hasMounted) {
+  if (!hasHydrated) {
     return null;
   }
 
+  // Unauthenticated once the store has rehydrated — go sign in and come back.
+  // Resolved during render (not in an effect) so this page never paints before
+  // navigating; `redirect` performs the same client-side navigation
+  // router.replace did.
   if (!isAuthenticated) {
-    return (
-      <Card>
-        <p className="text-sm text-zinc-400">Redirecting to sign in…</p>
-      </Card>
+    const returnUrl = `/auth/link-platform?platform=${encodeURIComponent(platform)}&token=${encodeURIComponent(token)}`;
+    redirect(
+      `/login?return_url=${encodeURIComponent(returnUrl)}`,
+      RedirectType.replace,
     );
   }
 

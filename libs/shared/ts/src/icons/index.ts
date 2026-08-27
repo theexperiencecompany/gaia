@@ -8,6 +8,7 @@ export {
 export type { ToolIconConfig } from "./tool-icon-config";
 export {
   getCategoryInitial,
+  getToolDisplayName,
   getToolIconConfig,
   iconAliases,
   normalizeCategoryName,

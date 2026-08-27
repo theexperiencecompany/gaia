@@ -39,7 +39,7 @@ async def stream_turn(graph: Any, prompt: str, thread_id: str, user_id: str) -> 
     graph reads it from ``config["configurable"]``, and only the real builder
     populates both.
     """
-    config = build_agent_config(
+    config = await build_agent_config(
         conversation_id=thread_id,
         user={"user_id": user_id, "email": f"{user_id}@test.local", "name": "Test User"},
         agent_name="comms_agent",

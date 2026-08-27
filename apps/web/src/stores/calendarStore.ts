@@ -69,35 +69,42 @@ interface CalendarActions {
 
 type CalendarStore = CalendarState & CalendarActions;
 
-const initialState: CalendarState = {
-  calendars: [],
-  selectedCalendars: [],
-  events: [],
-  loading: {
-    calendars: false,
-    events: false,
-  },
-  error: {
-    calendars: null,
-    events: null,
-  },
-  isInitialized: false,
-  createEventAction: null,
-  selectedDate: new Date(),
-  currentWeek: new Date(),
-  daysToShow: 7,
-  visibleMonth: new Date().toLocaleDateString("en-US", { month: "long" }),
-  visibleYear: new Date().getFullYear().toString(),
-  loadedDateRanges: [],
-  isLoadingPast: false,
-  isLoadingFuture: false,
+// Time-dependent defaults (today's date, current month/year) are computed
+// inside this factory instead of at module evaluation, so the values reflect
+// the moment the store is created rather than being frozen for the whole
+// process lifetime and reused across every SSR request.
+const createInitialState = (): CalendarState => {
+  const now = new Date();
+  return {
+    calendars: [],
+    selectedCalendars: [],
+    events: [],
+    loading: {
+      calendars: false,
+      events: false,
+    },
+    error: {
+      calendars: null,
+      events: null,
+    },
+    isInitialized: false,
+    createEventAction: null,
+    selectedDate: now,
+    currentWeek: now,
+    daysToShow: 7,
+    visibleMonth: now.toLocaleDateString("en-US", { month: "long" }),
+    visibleYear: now.getFullYear().toString(),
+    loadedDateRanges: [],
+    isLoadingPast: false,
+    isLoadingFuture: false,
+  };
 };
 
 export const useCalendarStore = create<CalendarStore>()(
   devtools(
     persist(
       (set, get) => ({
-        ...initialState,
+        ...createInitialState(),
 
         setCalendars: (calendars) => set({ calendars }, false, "setCalendars"),
 
@@ -377,16 +384,6 @@ export const useCalendarStore = create<CalendarStore>()(
 );
 
 // Selectors
-export const useCalendars = () => useCalendarStore((state) => state.calendars);
-export const useSelectedCalendars = () =>
-  useCalendarStore((state) => state.selectedCalendars);
-export const useCalendarEvents = () =>
-  useCalendarStore((state) => state.events);
-export const useCalendarLoading = () =>
-  useCalendarStore((state) => state.loading);
-export const useCalendarError = () => useCalendarStore((state) => state.error);
-export const useCalendarInitialized = () =>
-  useCalendarStore((state) => state.isInitialized);
 export const useSetCreateEventAction = () =>
   useCalendarStore((state) => state.setCreateEventAction);
 export const useCreateEventAction = () =>
@@ -399,17 +396,11 @@ export const useDaysToShow = () =>
   useCalendarStore((state) => state.daysToShow);
 
 // Individual action selectors for stable references
-export const useSetSelectedDate = () =>
-  useCalendarStore((state) => state.setSelectedDate);
-export const useSetCurrentWeek = () =>
-  useCalendarStore((state) => state.setCurrentWeek);
 export const useGoToPreviousDay = () =>
   useCalendarStore((state) => state.goToPreviousDay);
 export const useGoToNextDay = () =>
   useCalendarStore((state) => state.goToNextDay);
 export const useGoToToday = () => useCalendarStore((state) => state.goToToday);
-export const useHandleDateChange = () =>
-  useCalendarStore((state) => state.handleDateChange);
 export const useAddEvent = () => useCalendarStore((state) => state.addEvent);
 export const useUpdateEvent = () =>
   useCalendarStore((state) => state.updateEvent);

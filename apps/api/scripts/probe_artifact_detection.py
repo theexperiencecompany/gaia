@@ -135,7 +135,7 @@ async def _run_matrix(user_a: str, user_b: str | None) -> dict[str, Any]:
             if with_stop is not None:
                 try:
                     await handle.stop()
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
                     evidence["watcher_stop_error"] = str(e)
 
     return evidence
@@ -172,7 +172,7 @@ def _verdict(evidence: dict[str, Any]) -> dict[str, Any]:
 async def main_async(args: argparse.Namespace) -> int:
     try:
         evidence = await _run_matrix(args.user, args.user_b)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         print(json.dumps({"primary": "unknown", "error": str(e)}, indent=2))
         return 1
     print(json.dumps(_verdict(evidence), indent=2))

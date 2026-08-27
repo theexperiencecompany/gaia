@@ -26,28 +26,28 @@ if "app.services.workflow.queue_service" not in sys.modules:
     _qs_mod.WorkflowQueueService = MagicMock()
     sys.modules["app.services.workflow.queue_service"] = _qs_mod
 
-from app.models.trigger_configs import (  # noqa: E402  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
+from app.models.trigger_configs import (  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
     AsanaTaskTriggerConfig,
     GoogleDocsNewDocumentConfig,
     TodoistNewTaskCreatedConfig,
 )
 from app.models.workflow_models import (
-    TriggerConfig,  # noqa: E402  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
+    TriggerConfig,  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
 )
-from app.services.triggers.handlers.asana import (  # noqa: E402  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
+from app.services.triggers.handlers.asana import (  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
     AsanaTriggerHandler,
     asana_trigger_handler,
 )
-from app.services.triggers.handlers.google_docs import (  # noqa: E402  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
+from app.services.triggers.handlers.google_docs import (  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
     GoogleDocsTriggerHandler,
     google_docs_trigger_handler,
 )
-from app.services.triggers.handlers.todoist import (  # noqa: E402  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
+from app.services.triggers.handlers.todoist import (  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
     TodoistTriggerHandler,
     todoist_trigger_handler,
 )
 from app.utils.exceptions import (
-    TriggerRegistrationError,  # noqa: E402  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
+    TriggerRegistrationError,  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
 )
 
 TRIGGER_CONFIGS = {
@@ -70,6 +70,15 @@ TRIGGER_CONFIGS = {
         "todoist_new_task_created",
     ),
 }
+
+
+def _registrable_config(config_cls: type) -> TriggerConfig:
+    # Asana's Composio trigger requires a project GID at registration time.
+    if config_cls is AsanaTaskTriggerConfig:
+        return TriggerConfig(
+            type="integration", trigger_data=AsanaTaskTriggerConfig(project_gid="1213430481840948")
+        )
+    return TriggerConfig(type="integration", trigger_data=config_cls())
 
 
 @pytest.mark.parametrize(
@@ -124,7 +133,7 @@ class TestTriggerHandlerRegister:
     async def test_valid_registration_forwards_to_parallel_helper(
         self, handler_cls, instance, config_cls, trigger_name
     ) -> None:
-        config = TriggerConfig(type="integration", trigger_data=config_cls())
+        config = _registrable_config(config_cls)
         with patch.object(
             instance, "_register_triggers_parallel", new_callable=AsyncMock, return_value=["ok"]
         ) as mock_register:
@@ -136,6 +145,38 @@ class TestTriggerHandlerRegister:
         assert call_kwargs["user_id"] == "u-1"
         assert call_kwargs["trigger_name"] == trigger_name
         assert call_kwargs["composio_slug"] == instance.TRIGGER_TO_COMPOSIO[trigger_name]
+
+
+class TestAsanaProjectGidRequirement:
+    # Composio's ASANA_TASK_CREATED requires a project GID; these pin both
+    # the rejection branch and the exact config forwarded upstream.
+    @pytest.mark.asyncio
+    async def test_empty_project_gid_raises_registration_error(self) -> None:
+        config = TriggerConfig(
+            type="integration", trigger_data=AsanaTaskTriggerConfig(project_gid="")
+        )
+        # Exact-message assert: substring match would survive mutmut's
+        # XX-wrap / case mutations of the error string.
+        with pytest.raises(
+            TriggerRegistrationError,
+            match=r"^asana_task_trigger now requires project_gid "
+            r"\(Composio retired the unscoped ASANA_TASK_TRIGGER\)$",
+        ) as excinfo:
+            await asana_trigger_handler.register("u-1", "wf-1", "asana_task_trigger", config)
+        assert excinfo.value.trigger_name == "asana_task_trigger"
+
+    @pytest.mark.asyncio
+    async def test_registration_forwards_project_gid_config(self) -> None:
+        config = _registrable_config(AsanaTaskTriggerConfig)
+        with patch.object(
+            asana_trigger_handler,
+            "_register_triggers_parallel",
+            new_callable=AsyncMock,
+            return_value=["ok"],
+        ) as mock_register:
+            await asana_trigger_handler.register("u-1", "wf-1", "asana_task_trigger", config)
+
+        assert mock_register.await_args.kwargs["configs"] == [{"project_gid": "1213430481840948"}]
 
 
 @pytest.mark.parametrize(

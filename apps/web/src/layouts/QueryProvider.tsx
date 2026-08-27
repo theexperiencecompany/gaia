@@ -1,31 +1,9 @@
 "use client";
 
 import { QueryClient } from "@tanstack/react-query";
-import {
-  type PersistedClient,
-  type Persister,
-  PersistQueryClientProvider,
-} from "@tanstack/react-query-persist-client";
-import { del, get, set } from "idb-keyval";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { type ReactNode, useState } from "react";
-
-/**
- * Creates an Indexed DB persister
- * @see https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API
- */
-function createIDBPersister(idbValidKey: IDBValidKey = "reactQuery") {
-  return {
-    persistClient: async (client: PersistedClient) => {
-      await set(idbValidKey, client);
-    },
-    restoreClient: async () => {
-      return await get<PersistedClient>(idbValidKey);
-    },
-    removeClient: async () => {
-      await del(idbValidKey);
-    },
-  } satisfies Persister;
-}
+import { createIDBPersister } from "./queryPersister";
 
 export default function QueryProvider({ children }: { children: ReactNode }) {
   // Create a client instance
@@ -44,8 +22,10 @@ export default function QueryProvider({ children }: { children: ReactNode }) {
       }),
   );
 
-  // Setup indexedDB for storage of cached queries
-  const persister = createIDBPersister();
+  // Setup indexedDB for storage of cached queries. Created once so the
+  // persister's disabled latch survives re-renders — a fresh persister per
+  // render would reset it and retry IndexedDB after the first failure.
+  const [persister] = useState(() => createIDBPersister());
 
   return (
     <PersistQueryClientProvider

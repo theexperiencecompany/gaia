@@ -44,9 +44,9 @@ export const useWorkflowSelection = () => {
           localStorage.getItem(FEATURE_DISCOVERED_WORKFLOWS_KEY);
 
         if (!hasTrackedFeatureDiscovered) {
+          // workflow.title is user-authored free text — intentionally not sent.
           trackEvent(ANALYTICS_EVENTS.FEATURE_DISCOVERED, {
             feature: "workflows",
-            workflow_title: workflow.title,
           });
 
           if (typeof globalThis.window !== "undefined") {

@@ -30,7 +30,7 @@ def apply() -> None:
                 from functools import reduce
 
                 cast_types = [t.cast(type, ptype) for ptype in valid_types]
-                return reduce(lambda a, b: t.Union[a, b], cast_types)  # type: ignore[arg-type,return-value]
+                return reduce(lambda a, b: t.Union[a, b], cast_types)  # type: ignore[arg-type,return-value]  # composio/langchain boundary typed Any upstream
 
             return original_json_schema_to_pydantic_type(json_schema)
 

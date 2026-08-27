@@ -11,7 +11,7 @@ export default function ProductBriefCard() {
           showBackground: false,
         })}
         <span className="text-sm font-medium text-zinc-100">
-          Product Brief — Thursday, March 6
+          Product Brief: Thursday, March 6
         </span>
       </div>
 
@@ -71,13 +71,13 @@ export default function ProductBriefCard() {
         </p>
         <div className="space-y-1">
           <p className="text-xs text-zinc-400">
-            10am — Sprint planning (45 min)
+            10am: Sprint planning (45 min)
           </p>
           <p className="text-xs text-zinc-400">
-            2pm — Stakeholder review with CEO
+            2pm: Stakeholder review with CEO
           </p>
           <p className="text-xs text-zinc-400">
-            4pm — User interview (TechCorp)
+            4pm: User interview (TechCorp)
           </p>
         </div>
       </div>

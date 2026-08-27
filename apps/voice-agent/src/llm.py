@@ -8,7 +8,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
-from livekit import rtc  # type: ignore[attr-defined]
+from livekit import rtc  # type: ignore[attr-defined]  # livekit __init__ untyped upstream
 from livekit.agents.llm import LLM, ChatChunk, ChatContext, ChoiceDelta
 
 from shared.py.wide_events import VoiceContext, get_trace_id, log, log_context, wide_task
@@ -250,7 +250,7 @@ class CustomLLM(LLM):
     # this override does not use — the catch-all has to stay or those calls TypeError.
     # `object`, not Any: nothing here ever reads them.
     @asynccontextmanager
-    async def chat(  # type: ignore[override]
+    async def chat(
         self, *, chat_ctx: ChatContext, **_kwargs: object
     ) -> AsyncGenerator[AsyncGenerator[ChatChunk, None], None]:
         """Stream SSE from the backend and yield ChatChunks for TTS."""

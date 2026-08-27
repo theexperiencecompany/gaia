@@ -33,7 +33,7 @@ def _complete_content() -> IntegrationContent:
 @pytest.fixture
 def mock_llm():
     with (
-        patch(f"{_MOD}.get_default_llm", return_value=SimpleNamespace()) as m_llm,
+        patch(f"{_MOD}.get_helper_llm", return_value=SimpleNamespace()) as m_llm,
         patch(f"{_MOD}.ainvoke_llm", new_callable=AsyncMock) as m_invoke,
         patch(f"{_MOD}.ainvoke_structured", new_callable=AsyncMock) as m_structured,
     ):
@@ -80,6 +80,9 @@ class TestInferIntegrationCategory:
         prompt = mock_llm.invoke.await_args.args[1][0].content
         assert "My Tool" in prompt
         assert "x.example" in prompt  # domain extracted from server_url
+        # The label becomes ``agent_name`` on the llm_call wide event, which is
+        # how this lane's auxiliary COGS is split from the other one-shots.
+        assert mock_llm.invoke.await_args.kwargs["label"] == "integration_category"
 
     async def test_unrecognized_category_falls_back_to_other(self, mock_llm):
         mock_llm.invoke.return_value = SimpleNamespace(text="flying-spaghetti")

@@ -48,6 +48,37 @@ class UsageBudget(BaseModel):
     per_request_token_ceiling: int
 
 
+class ActivityDay(BaseModel):
+    """One UTC day of the heatmap: actions plus the tokens they burned.
+
+    Token counts are the *charged* ones only — the same spend the budget
+    percentage is measured against — so background work (memory extraction,
+    onboarding) never shows up as something the user did. Cached and reasoning
+    tokens are broken out because they explain an otherwise surprising input
+    total; ``tokens`` is input + output, matching how the per-request ceiling
+    counts them (``cost_budget.record_model_call_usage``).
+    """
+
+    date: str
+    count: int
+    tokens: int
+    input_tokens: int
+    output_tokens: int
+    cached_tokens: int
+    reasoning_tokens: int
+
+
+class UsageActivityResponse(BaseModel):
+    """Year activity grid + the user's standing, from the daily rollups."""
+
+    days: list[ActivityDay]
+    total: int
+    total_tokens: int
+    streak: int
+    percentile: float | None = None
+    tier: str | None = None
+
+
 class UsageSummary(BaseModel):
     user_id: str
     plan_type: str

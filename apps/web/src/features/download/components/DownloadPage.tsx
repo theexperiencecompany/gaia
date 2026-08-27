@@ -23,6 +23,7 @@ import {
   GITHUB_RELEASES_BASE,
   usePlatformDetection,
 } from "@/hooks/ui/usePlatformDetection";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 const DESKTOP_OSES: DesktopOS[] = ["mac", "windows", "linux"];
 
@@ -47,6 +48,12 @@ interface DownloadSectionLayoutProps {
   extraContent?: ReactNode;
 }
 
+const CONTENT_ALIGNMENT_CLASSES: Record<"left" | "right" | "center", string> = {
+  left: "md:items-start md:text-left",
+  right: "md:items-end md:text-right",
+  center: "md:items-center md:text-center",
+};
+
 function DownloadSectionLayout({
   webpSrc,
   pngSrc,
@@ -60,12 +67,6 @@ function DownloadSectionLayout({
   actions,
   extraContent,
 }: DownloadSectionLayoutProps) {
-  const contentAlignmentClasses = {
-    left: "md:items-start md:text-left",
-    right: "md:items-end md:text-right",
-    center: "md:items-center md:text-center",
-  };
-
   return (
     <section className="relative z-10 w-full max-w-5xl px-4 sm:px-6 py-16">
       <div className="grid grid-cols-1 items-center gap-8 md:grid-cols-2">
@@ -83,7 +84,7 @@ function DownloadSectionLayout({
 
         {/* Content */}
         <div
-          className={`flex flex-col items-center gap-6 text-center ${contentAlignmentClasses[contentAlignment]}`}
+          className={`flex flex-col items-center gap-6 text-center ${CONTENT_ALIGNMENT_CLASSES[contentAlignment]}`}
         >
           {chip && chip}
           <div className="flex flex-col gap-2">
@@ -129,6 +130,7 @@ function DesktopDownloadButton({
         src={meta.icon}
         alt={meta.name}
         fill
+        sizes="16px"
         className={
           invertIcon ? "object-contain filter invert" : "object-contain"
         }
@@ -155,6 +157,12 @@ function DesktopDownloadButton({
         rel="noopener noreferrer"
         variant={buttonVariant}
         startContent={icon}
+        onPress={() => {
+          trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
+            destination: "github_releases",
+            os,
+          });
+        }}
       >
         {baseLabel}
       </Button>
@@ -185,6 +193,12 @@ function DesktopDownloadButton({
       rel="noopener noreferrer"
       variant={buttonVariant}
       startContent={icon}
+      onPress={() => {
+        trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
+          destination: "download",
+          os,
+        });
+      }}
     >
       {label}
     </Button>
@@ -301,6 +315,11 @@ function MobileSection() {
             href={appConfig.site.mobileWaitlist}
             target="_blank"
             rel="noopener noreferrer"
+            onPress={() => {
+              trackEvent(ANALYTICS_EVENTS.CTA_GET_STARTED_CLICKED, {
+                button_text: "mobile_waitlist",
+              });
+            }}
           >
             Sign up for waitlist <ChevronRight width={17} height={17} />
           </Button>
@@ -314,6 +333,7 @@ function MobileSection() {
                     src="/images/icons/apple.svg"
                     alt="iOS"
                     fill
+                    sizes="16px"
                     className="object-contain"
                   />
                 </div>
@@ -330,6 +350,7 @@ function MobileSection() {
                     src="/images/icons/google_play.svg"
                     alt="Android"
                     fill
+                    sizes="16px"
                     className="object-contain"
                   />
                 </div>
@@ -383,168 +404,6 @@ function WebSection() {
         </div>
       }
     />
-  );
-}
-
-interface DownloadCardProps {
-  webpSrc: string;
-  pngSrc: string;
-  imageAlt: string;
-  imageClassName?: string;
-  chip?: ReactNode;
-  title: ReactNode;
-  description: string;
-  actions: ReactNode;
-}
-
-function DownloadCard({
-  webpSrc,
-  pngSrc,
-  imageAlt,
-  imageClassName = "object-cover object-bottom",
-  chip,
-  title,
-  description,
-  actions,
-}: DownloadCardProps) {
-  return (
-    <div className="flex flex-col overflow-hidden rounded-3xl bg-zinc-900/50 backdrop-blur-sm">
-      <div className="relative aspect-video w-full overflow-hidden">
-        <ProgressiveImage
-          webpSrc={webpSrc}
-          pngSrc={pngSrc}
-          alt={imageAlt}
-          className={imageClassName}
-        />
-      </div>
-      <div className="flex flex-1 flex-col items-start gap-4 p-6 text-left">
-        <div className="flex-1 w-full">
-          <h3 className="mb-1 text-2xl font-medium text-white flex items-center gap-2">
-            {title}
-            {chip}
-          </h3>
-          <p className="text-sm text-zinc-400">{description}</p>
-        </div>
-        <div className="flex flex-row flex-wrap gap-2 justify-end w-full">
-          {actions}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Landing page variant - 3 column grid with Desktop, Web and Mobile
-export function LandingDownloadSection() {
-  const { detectedDesktop } = usePlatformDetection();
-  const primaryOs: DesktopOS = detectedDesktop?.os ?? "mac";
-
-  return (
-    <section className="relative z-10 mx-auto w-full px-4 sm:px-6 py-16 sm:py-24">
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-        {/* Desktop Card */}
-        <DownloadCard
-          webpSrc="/images/screenshots/desktop_dock.webp"
-          pngSrc="/images/screenshots/desktop_dock.png"
-          imageAlt="GAIA Desktop App"
-          chip={
-            <Chip color="success" size="sm" variant="flat">
-              Beta
-            </Chip>
-          }
-          title="Desktop"
-          description="Experience GAIA on desktop with enhanced features"
-          actions={
-            <>
-              <Link
-                href="/download"
-                className="flex items-center gap-1 text-sm text-zinc-400 transition hover:text-zinc-300 mr-1"
-              >
-                All platforms
-                <ArrowRight02Icon className="h-3 w-3" />
-              </Link>
-              <DesktopDownloadButton os={primaryOs} isPrimary />
-            </>
-          }
-        />
-
-        {/* Web Card */}
-        <DownloadCard
-          webpSrc="/images/screenshots/website_tab.webp"
-          pngSrc="/images/screenshots/website_tab.png"
-          imageAlt="GAIA Web App"
-          imageClassName="object-cover object-top"
-          title="Web"
-          description="No download required. Use GAIA directly from your browser."
-          actions={
-            <div className="flex items-center w-full justify-center">
-              <GetStartedButton classname="px-4 text-black!" />
-            </div>
-          }
-        />
-
-        {/* Mobile Card */}
-        <DownloadCard
-          webpSrc="/images/screenshots/phone_dock.webp"
-          pngSrc="/images/screenshots/phone_dock.png"
-          imageAlt="GAIA Mobile App"
-          imageClassName="object-cover object-center"
-          chip={
-            <Chip variant="flat" color="warning" size="sm">
-              Coming Soon
-            </Chip>
-          }
-          title="Mobile"
-          description="Mobile app in development, join waitlist for early access"
-          actions={
-            <div className="w-full items-center gap-2 flex">
-              <Button
-                variant="flat"
-                isDisabled
-                fullWidth
-                startContent={
-                  <div className="relative h-4 w-4">
-                    <Image
-                      src="/images/icons/apple.svg"
-                      alt="iOS"
-                      fill
-                      className="object-contain"
-                    />
-                  </div>
-                }
-              >
-                App Store
-              </Button>
-              <Button
-                variant="flat"
-                isDisabled
-                fullWidth
-                startContent={
-                  <div className="relative h-4 w-4">
-                    <Image
-                      src="/images/icons/google_play.svg"
-                      alt="Android"
-                      fill
-                      className="object-contain"
-                    />
-                  </div>
-                }
-              >
-                Google Play
-              </Button>
-              <Button
-                as={Link}
-                href={appConfig.site.mobileWaitlist}
-                target="_blank"
-                fullWidth
-                rel="noopener noreferrer"
-              >
-                Sign Up <ChevronRight width={17} height={17} />
-              </Button>
-            </div>
-          }
-        />
-      </div>
-    </section>
   );
 }
 

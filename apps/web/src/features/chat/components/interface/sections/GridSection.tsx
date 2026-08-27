@@ -20,19 +20,31 @@ interface GridSectionProps {
   workflows?: Workflow[];
   isCalendarConnected: boolean;
   isGmailConnected: boolean;
+  /** Connect/Reconnect/Retry — the verb matching each integration's status. */
+  calendarConnectLabel: string;
+  gmailConnectLabel: string;
   emailsLoading?: boolean;
   onLoadMoreEmails?: () => void;
   hasMoreEmails?: boolean;
   emailsFetchingMore?: boolean;
 }
 
+// Module-scope defaults so memoized children compare against a stable
+// identity instead of a fresh array every render.
+const EMPTY_EVENTS: GoogleCalendarEvent[] = [];
+const EMPTY_CALENDARS: CalendarItem[] = [];
+const EMPTY_UNREAD_EMAILS: EmailData[] = [];
+const EMPTY_WORKFLOWS: Workflow[] = [];
+
 export const GridSection = ({
-  events = [],
-  calendars = [],
-  unreadEmails = [],
-  workflows = [],
+  events = EMPTY_EVENTS,
+  calendars = EMPTY_CALENDARS,
+  unreadEmails = EMPTY_UNREAD_EMAILS,
+  workflows = EMPTY_WORKFLOWS,
   isCalendarConnected,
   isGmailConnected,
+  calendarConnectLabel,
+  gmailConnectLabel,
   emailsLoading = false,
   onLoadMoreEmails,
   hasMoreEmails,
@@ -58,17 +70,21 @@ export const GridSection = ({
       <div className="mb-20 grid min-h-screen w-full grid-cols-1 grid-rows-1  sm:grid-cols-2 sm:space-y-0">
         <UnreadEmailsView
           emails={unreadEmails}
-          isConnected={isGmailConnected}
+          status={{
+            isConnected: isGmailConnected,
+            connectLabel: gmailConnectLabel,
+            isFetching: emailsLoading,
+            hasNextPage: hasMoreEmails,
+            isFetchingNextPage: emailsFetchingMore,
+          }}
           onConnect={handleConnect}
-          isFetching={emailsLoading}
           onLoadMore={onLoadMoreEmails}
-          hasNextPage={hasMoreEmails}
-          isFetchingNextPage={emailsFetchingMore}
         />
         <UpcomingEventsView
           events={events}
           calendars={calendars}
           isConnected={isCalendarConnected}
+          connectLabel={calendarConnectLabel}
           onConnect={handleConnect}
           onEventClick={(_event) => {
             router.push("/calendar");

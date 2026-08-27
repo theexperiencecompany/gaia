@@ -22,7 +22,7 @@ from app.models.google_sheets_models import (
     ShareSpreadsheetInput,
 )
 from app.models.linkedin_models import AddCommentInput, ReactToPostInput
-from app.models.notion_models import FetchDataInput, MovePageInput
+from app.models.notion_models import FetchDataInput, FetchPageAsMarkdownInput, MovePageInput
 from app.models.twitter_models import BatchFollowInput, CreateThreadInput
 
 AUTH_CREDS: dict[str, Any] = {"user_id": "user_test_123"}
@@ -150,7 +150,7 @@ def test_google_docs_share_doc_routes_through_proxy() -> None:
         result = tools["CUSTOM_SHARE_DOC"](
             ShareDocInput(
                 document_id="doc-1",
-                recipients=[ShareRecipient(email="x@y.z", role="writer")],  # type: ignore[call-arg]
+                recipients=[ShareRecipient(email="x@y.z", role="writer")],  # type: ignore[call-arg]  # docs model declares send_notification with a positional Field default invisible to dataclass_transform
             ),
             EXECUTE_REQUEST,
             AUTH_CREDS,
@@ -199,7 +199,7 @@ def test_google_sheets_share_routes_through_proxy() -> None:
         result = tools["CUSTOM_SHARE_SPREADSHEET"](
             ShareSpreadsheetInput(
                 spreadsheet_id="ss-1",
-                recipients=[SheetsRecipient(email="x@y.z")],  # type: ignore[call-arg]
+                recipients=[SheetsRecipient(email="x@y.z")],
             ),
             EXECUTE_REQUEST,
             AUTH_CREDS,
@@ -251,9 +251,177 @@ def test_notion_fetch_data_routes_through_proxy() -> None:
     assert kwargs["endpoint"].endswith("/search")
 
 
-# ---------------------------------------------------------------------------
-# Twitter
-# ---------------------------------------------------------------------------
+def _register_notion_with_blocks(markdown_blocks: list[Any], title_response: dict[str, Any]) -> Any:
+    """Register NOTION tools with execute() stubbed; returns captured tools."""
+    from app.agents.tools.integrations.notion_tool import (
+        register_notion_custom_tools,
+    )
+
+    composio = MagicMock()
+    captured: dict[str, Any] = {}
+
+    def custom_tool(**_kwargs: Any) -> Callable[[Any], Any]:
+        def decorator(fn: Any) -> Any:
+            captured[fn.__name__] = fn
+            return fn
+
+        return decorator
+
+    composio.tools.custom_tool = custom_tool
+
+    def _execute(slug: str, **_kwargs: Any) -> dict[str, Any]:
+        if slug == "NOTION_GET_PAGE_PROPERTY_ACTION":
+            return title_response
+        return {"successful": True, "data": {"results": markdown_blocks}}
+
+    composio.tools.execute = MagicMock(side_effect=_execute)
+    register_notion_custom_tools(composio)
+    return captured
+
+
+def test_notion_markdown_prepends_the_page_title() -> None:
+    """The page title is read off results[].title[].plain_text and prepended as H1."""
+    captured = _register_notion_with_blocks(
+        [],
+        {
+            "successful": True,
+            "data": {
+                "results": [
+                    {"type": "title", "title": {"plain_text": "My Page Title"}},
+                    {"type": "other", "title": {"plain_text": "ignored"}},
+                ]
+            },
+        },
+    )
+
+    result = captured["FETCH_PAGE_AS_MARKDOWN"](
+        FetchPageAsMarkdownInput(page_id="page-1"),
+        EXECUTE_REQUEST,
+        AUTH_CREDS,
+    )
+
+    assert result["markdown"] == "# My Page Title\n\n"
+
+
+def test_notion_markdown_survives_a_missing_results_key() -> None:
+    """A property response without results yields no H1, not a crash."""
+    captured = _register_notion_with_blocks([], {"successful": True, "data": {"nope": 1}})
+
+    result = captured["FETCH_PAGE_AS_MARKDOWN"](
+        FetchPageAsMarkdownInput(page_id="page-1"),
+        EXECUTE_REQUEST,
+        AUTH_CREDS,
+    )
+
+    assert result["markdown"] == ""
+    assert result["title"] == ""
+
+
+def test_notion_markdown_survives_non_dict_title_data() -> None:
+    """Real Notion payloads are not guaranteed to be dicts — the defensive
+    isinstance branch must fall back to no title."""
+    captured = _register_notion_with_blocks([], {"successful": True, "data": ["unexpected"]})
+
+    result = captured["FETCH_PAGE_AS_MARKDOWN"](
+        FetchPageAsMarkdownInput(page_id="page-1"),
+        EXECUTE_REQUEST,
+        AUTH_CREDS,
+    )
+
+    assert result["markdown"] == ""
+
+
+def test_notion_markdown_first_title_block_wins() -> None:
+    """Scanning stops at the first title block — later titles must not win."""
+    captured = _register_notion_with_blocks(
+        [],
+        {
+            "successful": True,
+            "data": {
+                "results": [
+                    {"type": "title", "title": {"plain_text": "First Title"}},
+                    {"type": "title", "title": {"plain_text": "Second Title"}},
+                ]
+            },
+        },
+    )
+
+    result = captured["FETCH_PAGE_AS_MARKDOWN"](
+        FetchPageAsMarkdownInput(page_id="page-1"),
+        EXECUTE_REQUEST,
+        AUTH_CREDS,
+    )
+
+    assert "# First Title" in result["markdown"]
+    assert "Second Title" not in result["markdown"]
+
+
+def test_notion_markdown_title_block_without_plain_text_stops_scan() -> None:
+    """A title-shaped block without plain_text yields an empty title and ends
+    the scan (break fires on the shape match, not on extracting text)."""
+    captured = _register_notion_with_blocks(
+        [],
+        {
+            "successful": True,
+            "data": {
+                "results": [
+                    {"type": "title", "title": {"id": 1}},
+                    {"type": "title", "title": {"plain_text": "Never Reached"}},
+                ]
+            },
+        },
+    )
+
+    result = captured["FETCH_PAGE_AS_MARKDOWN"](
+        FetchPageAsMarkdownInput(page_id="page-1"),
+        EXECUTE_REQUEST,
+        AUTH_CREDS,
+    )
+
+    assert result["title"] == ""
+    assert "Never Reached" not in result["markdown"]
+
+
+def test_notion_markdown_skips_items_without_type_key() -> None:
+    """Items lacking a type key are skipped; the scan continues to the real title."""
+    captured = _register_notion_with_blocks(
+        [],
+        {
+            "successful": True,
+            "data": {
+                "results": [
+                    {"title": {"plain_text": "No Type"}},
+                    {"type": "title", "title": {"plain_text": "Real Title"}},
+                ]
+            },
+        },
+    )
+
+    result = captured["FETCH_PAGE_AS_MARKDOWN"](
+        FetchPageAsMarkdownInput(page_id="page-1"),
+        EXECUTE_REQUEST,
+        AUTH_CREDS,
+    )
+
+    assert "# Real Title" in result["markdown"]
+    assert "No Type" not in result["markdown"]
+
+
+def test_notion_markdown_survives_non_list_results_value() -> None:
+    """A dict payload whose results value is not a list yields no title, not a crash."""
+    captured = _register_notion_with_blocks(
+        [],
+        {"successful": True, "data": {"results": "unexpected-string"}},
+    )
+
+    result = captured["FETCH_PAGE_AS_MARKDOWN"](
+        FetchPageAsMarkdownInput(page_id="page-1"),
+        EXECUTE_REQUEST,
+        AUTH_CREDS,
+    )
+
+    assert result["markdown"] == ""
+    assert result["title"] == ""
 
 
 def test_twitter_batch_follow_uses_proxy_via_utils() -> None:

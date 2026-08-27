@@ -8,7 +8,7 @@ export const entry: AlternativeData = {
   tagline:
     "Unified task inbox and time-blocking planner with 30+ app integrations",
   painPoints: [
-    "No free plan — only a 7-day trial before $15/month (annual) kicks in",
+    "No free plan, only a 7-day trial before $15/month (annual) kicks in",
     "Time-blocking requires manual drag-and-drop scheduling each day",
     "Consolidates tasks from other apps but does not create tasks automatically from email",
     "AI features are limited to writing assistance rather than proactive management",
@@ -42,7 +42,7 @@ export const entry: AlternativeData = {
     "Cross-tool workflow automation beyond task aggregation",
   ],
   gaiaAdvantages: [
-    "Tasks created automatically from email — no manual inbox review required",
+    "Tasks created automatically from email, with no manual inbox review required",
     "Proactive scheduling suggestions based on calendar availability",
     "Free tier available; Akiflow has no free plan",
     "Open-source and self-hostable for complete data control",

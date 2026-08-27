@@ -8,7 +8,7 @@
  * Run with: `pnpm set-commands` or `tsx src/set-commands.ts`
  */
 
-import { allCommands, createBotLogger } from "@gaia/shared";
+import { allCommands, createBotLogger } from "@gaia/shared/bots";
 import { Bot } from "grammy";
 
 const setCommandsLogger = createBotLogger("telegram", "set-commands");

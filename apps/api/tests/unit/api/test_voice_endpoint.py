@@ -14,6 +14,7 @@ import pytest
 
 from app.config.settings import settings
 from app.schemas.voice_schemas import VoiceListResponse, VoiceOption
+from app.services.analytics_service import AnalyticsEvents
 from app.utils.errors import AppError
 
 VOICE_BASE = "/api/v1"
@@ -157,10 +158,17 @@ class TestSelectVoice:
     @patch("app.api.v1.endpoints.voice.set_user_voice", new_callable=AsyncMock)
     async def test_select_voice_success(self, mock_set: AsyncMock, client: AsyncClient):
         mock_set.return_value = "voice-1"
-        resp = await client.put(f"{VOICE_BASE}/voice/voices/selected", json={"voice_id": "voice-1"})
+        with patch("app.api.v1.endpoints.voice.capture_context_event") as mock_capture:
+            resp = await client.put(
+                f"{VOICE_BASE}/voice/voices/selected", json={"voice_id": "voice-1"}
+            )
         assert resp.status_code == 200
         assert resp.json() == {"selected_voice_id": "voice-1"}
         mock_set.assert_awaited_once_with(USER_ID, "voice-1")
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
+            {"setting": "voice", "voice_id": "voice-1"},
+        )
 
     @patch("app.api.v1.endpoints.voice.set_user_voice", new_callable=AsyncMock)
     async def test_unknown_voice_is_404(self, mock_set: AsyncMock, client: AsyncClient):
@@ -201,18 +209,32 @@ class TestStarVoice:
     @patch("app.api.v1.endpoints.voice.set_voice_star", new_callable=AsyncMock)
     async def test_star_voice_success(self, mock_star: AsyncMock, client: AsyncClient):
         mock_star.return_value = ["voice-1", "voice-2"]
-        resp = await client.put(f"{VOICE_BASE}/voice/voices/voice-1/star", json={"starred": True})
+        with patch("app.api.v1.endpoints.voice.capture_context_event") as mock_capture:
+            resp = await client.put(
+                f"{VOICE_BASE}/voice/voices/voice-1/star", json={"starred": True}
+            )
         assert resp.status_code == 200
         assert resp.json() == {"starred_voice_ids": ["voice-1", "voice-2"]}
         mock_star.assert_awaited_once_with(USER_ID, "voice-1", True)
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
+            {"setting": "voice_star", "voice_id": "voice-1", "is_starred": True},
+        )
 
     @patch("app.api.v1.endpoints.voice.set_voice_star", new_callable=AsyncMock)
     async def test_unstar_voice_success(self, mock_star: AsyncMock, client: AsyncClient):
         mock_star.return_value = []
-        resp = await client.put(f"{VOICE_BASE}/voice/voices/voice-1/star", json={"starred": False})
+        with patch("app.api.v1.endpoints.voice.capture_context_event") as mock_capture:
+            resp = await client.put(
+                f"{VOICE_BASE}/voice/voices/voice-1/star", json={"starred": False}
+            )
         assert resp.status_code == 200
         assert resp.json() == {"starred_voice_ids": []}
         mock_star.assert_awaited_once_with(USER_ID, "voice-1", False)
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
+            {"setting": "voice_star", "voice_id": "voice-1", "is_starred": False},
+        )
 
     @patch("app.api.v1.endpoints.voice.set_voice_star", new_callable=AsyncMock)
     async def test_service_error_is_500(self, mock_star: AsyncMock, client: AsyncClient):

@@ -31,6 +31,7 @@ from app.models.chat_models import (
     ConversationSyncItem,
     MessageModel,
     SystemPurpose,
+    ToolDataEntry,
 )
 from app.models.conversation_models import (
     ConversationDocument,
@@ -43,6 +44,7 @@ from app.models.conversation_models import (
     _MessageProjectionRow,
     _OnboardingProbeRow,
     _SourceRow,
+    _SystemGeneratedRow,
 )
 
 _BOT_SOURCE_VALUES: list[str] = [s.value for s in BOT_CONVERSATION_SOURCES]
@@ -118,6 +120,40 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 "is_onboarding_conversation": {"$ne": True},
                 "is_onboarding_demo": {"$ne": True},
             }
+        )
+
+    async def has_activity_since(self, user_id: str, since: datetime) -> bool:
+        """Whether the user touched any conversation at or after ``since``.
+
+        The transport-agnostic usage signal. Every chat turn appends messages,
+        which stamps ``updatedAt``, whether it arrived from the web app or a bot
+        — unlike ``users.last_active_at``, which only a WorkOS web login bumps.
+        ``createdAt`` covers conversations created but never appended to.
+
+        The two are compared differently ON PURPOSE, per this module's timestamp
+        contract: ``updatedAt`` is a BSON date, ``createdAt`` an ISO string. Mongo
+        does not compare across BSON types, so a date ``$gte`` against
+        ``createdAt`` matches NOTHING — silently, which is how it read as "this
+        user has no activity". ISO-8601 sorts lexicographically in time order, so
+        the string form is a real comparison, not a workaround.
+        """
+        return (
+            await self._count(
+                {
+                    "user_id": user_id,
+                    # A workflow execution appends to its system conversation and
+                    # stamps updatedAt, so counting those would let a user's own
+                    # automation vouch for them as "active" forever — the
+                    # circularity that kept the dormancy sweep from ever pausing
+                    # an armed workflow. Only human-touched conversations count.
+                    "is_system_generated": {"$ne": True},
+                    "$or": [
+                        {"updatedAt": {"$gte": since}},
+                        {"createdAt": {"$gte": since.isoformat()}},
+                    ],
+                }
+            )
+            > 0
         )
 
     async def exists(self, conversation_id: str, *, user_id: str) -> bool:
@@ -292,6 +328,62 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
         return matched > 0
 
+    async def set_message_response(
+        self, conversation_id: str, *, user_id: str, message_id: str, response: str
+    ) -> bool:
+        """Set a message's response text in place. Does not advance ``updatedAt``
+        (matches the legacy delivery write)."""
+        matched = await self._apply_raw_update_unfetched(
+            {"conversation_id": conversation_id, "messages.message_id": message_id},
+            {"$set": {"messages.$.response": response}},
+            scope=user_id,
+            doc_id=conversation_id,
+            extra_filter={"user_id": user_id},
+        )
+        return matched > 0
+
+    async def set_message_tool_data(
+        self, conversation_id: str, *, user_id: str, message_id: str, entries: list[ToolDataEntry]
+    ) -> bool:
+        """Replace a message's tool_data wholesale. Does not advance ``updatedAt``
+        (matches the legacy delivery write)."""
+        matched = await self._apply_raw_update_unfetched(
+            {"conversation_id": conversation_id, "messages.message_id": message_id},
+            {"$set": {"messages.$.tool_data": entries}},
+            scope=user_id,
+            doc_id=conversation_id,
+            extra_filter={"user_id": user_id},
+        )
+        return matched > 0
+
+    async def set_message_approval_status(
+        self, conversation_id: str, *, user_id: str, approval_id: str, status: str
+    ) -> bool:
+        """Settle a persisted approval_request frame's status wherever it lives in
+        the messages array. Returns whether the frame was there to settle. Does not
+        advance ``updatedAt``."""
+        matched = await self._apply_raw_update_unfetched(
+            # The approval belongs in the match, not only in the array filters:
+            # those pick which element is written but never narrow `matched`, so
+            # filtering on the conversation alone reported success for any
+            # approval_id the document never held.
+            {
+                "conversation_id": conversation_id,
+                "messages.tool_data.data.approval_id": approval_id,
+            },
+            {"$set": {"messages.$[msg].tool_data.$[entry].data.status": status}},
+            scope=user_id,
+            doc_id=conversation_id,
+            extra_filter={"user_id": user_id},
+            # Filter BOTH levels: `messages.$[]` would require tool_data on every
+            # message (user messages have none) and Mongo rejects the whole update.
+            array_filters=[
+                {"msg.tool_data": {"$elemMatch": {"data.approval_id": approval_id}}},
+                {"entry.data.approval_id": approval_id},
+            ],
+        )
+        return matched > 0
+
     async def set_message_follow_up_actions(
         self, conversation_id: str, *, user_id: str, message_id: str, actions: list[str]
     ) -> bool:
@@ -334,6 +426,20 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             _SourceRow,
         )
         return None if row is None else ConversationSource.coerce(row.source)
+
+    async def is_system_generated(self, conversation_id: str) -> bool:
+        """Whether GAIA created this conversation itself (workflow/email/reminder runs).
+
+        Passive memory ingestion asks before learning from a transcript: a
+        workflow execution is GAIA talking to itself, and its "user" turn is a
+        generated instruction, not a disclosure by the person.
+        """
+        row = await self._find_one_projected(
+            {"conversation_id": conversation_id},
+            {"_id": 0, "is_system_generated": 1},
+            _SystemGeneratedRow,
+        )
+        return bool(row and row.is_system_generated)
 
     async def find_owner_of_message(
         self, user_id: str, message_id: str, *, message_type: str = "bot"

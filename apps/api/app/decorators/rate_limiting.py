@@ -27,8 +27,9 @@ from app.core.request_context import get_authenticated_user
 from app.models.payment_models import PlanType
 from app.models.usage_models import UsageInfo
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.cost_budget import get_cost, is_daily_budget_exhausted
-from app.services.limit_upsell import schedule_limit_upsell
+from app.services.limit_upsell import LimitHitOrigin, current_limit_origin, schedule_limit_upsell
 from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import log
 
@@ -37,6 +38,45 @@ user_context: ContextVar[dict[str, Any] | None] = ContextVar("user_context", def
 rate_limit_context: ContextVar[dict[str, Any] | None] = ContextVar(
     "rate_limit_context", default=None
 )
+
+
+def plan_label(user_plan: object) -> str:
+    """The plan's wire value — PlanType members carry one, anything else stringifies."""
+    return user_plan.value if hasattr(user_plan, "value") else str(user_plan)
+
+
+def build_rate_limit_card(
+    *,
+    feature: str,
+    plan_required: str | None,
+    reset_time: str | None,
+    current_plan: str,
+    message: str | None = None,
+) -> dict[str, Any]:
+    """Build the ``rate_limit_data`` stream-card payload the frontend's RateLimitCard renders.
+
+    Shared by every caller that surfaces a rate/budget/cap limit inline in chat:
+    :func:`with_rate_limiting` below, the LLM-call budget wall
+    (``app.agents.middleware.accounting._emit_budget_stop_card``), and the free
+    memory cap (``app.agents.tools.memory_tools._stream_memory_limit_card``).
+    ``message`` is omitted from the payload when not given.
+    """
+    data: dict[str, Any] = {
+        "feature": feature,
+        "plan_required": plan_required,
+        "reset_time": reset_time,
+        "current_plan": current_plan,
+    }
+    if message is not None:
+        data["message"] = message
+    return {
+        "tool_data": {
+            "tool_name": "rate_limit_data",
+            "tool_category": "system",
+            "data": data,
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
+    }
 
 
 def with_rate_limiting(
@@ -51,7 +91,7 @@ def with_rate_limiting(
         count_tokens: Whether to validate token usage after execution.
         bypass_for_system: Skip rate limiting for system/background operations.
 
-    Raises LangChainRateLimitException (agent-friendly) when limits are exceeded.
+    Raises LangChainRateLimitError (agent-friendly) when limits are exceeded.
     """
 
     def rate_limit_decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
@@ -113,11 +153,7 @@ def with_rate_limiting(
                             {
                                 "feature_key": actual_feature_key,
                                 "usage_info": usage_info,
-                                "user_plan": (
-                                    user_plan.value
-                                    if hasattr(user_plan, "value")
-                                    else str(user_plan)
-                                ),
+                                "user_plan": plan_label(user_plan),
                             }
                         )
 
@@ -136,6 +172,16 @@ def with_rate_limiting(
                             error=str(e),
                             error_type=type(e).__name__,
                         )
+                        if user_plan != PlanType.FREE:
+                            # FREE hits are already captured by the limit-upsell
+                            # seam (schedule_limit_upsell fires on every exceed for
+                            # free users); paid plans have no such side effect, so
+                            # their hits are captured here.
+                            capture_event(
+                                user_id,
+                                AnalyticsEvents.RATE_LIMIT_HIT,
+                                {"feature": actual_feature_key, "plan": plan_label(user_plan)},
+                            )
                         detail_dict = {}
                         reset_time = None
 
@@ -156,28 +202,17 @@ def with_rate_limiting(
                         try:
                             writer = get_stream_writer()
                             writer(
-                                {
-                                    "tool_data": {
-                                        "tool_name": "rate_limit_data",
-                                        "tool_category": "system",
-                                        "data": {
-                                            "feature": actual_feature_key,
-                                            "plan_required": detail_dict.get("plan_required"),
-                                            "reset_time": reset_time,
-                                            "current_plan": (
-                                                user_plan.value
-                                                if hasattr(user_plan, "value")
-                                                else str(user_plan)
-                                            ),
-                                        },
-                                        "timestamp": datetime.now(UTC).isoformat(),
-                                    }
-                                }
+                                build_rate_limit_card(
+                                    feature=actual_feature_key,
+                                    plan_required=detail_dict.get("plan_required"),
+                                    reset_time=reset_time,
+                                    current_plan=plan_label(user_plan),
+                                )
                             )
                         except Exception as stream_error:
                             # Usually just "not in a streaming context" (workflows,
                             # background tasks); the card is decoration, the
-                            # LangChainRateLimitException below is the real outcome.
+                            # LangChainRateLimitError below is the real outcome.
                             log.debug(
                                 f"{LogTag.API} Rate limit card not streamed",
                                 actual_feature_key=actual_feature_key,
@@ -185,7 +220,7 @@ def with_rate_limiting(
                                 error_type=type(stream_error).__name__,
                             )
 
-                        raise LangChainRateLimitException(
+                        raise LangChainRateLimitError(
                             feature=actual_feature_key,
                             detail=detail_dict,
                             reset_time=reset_time,
@@ -249,8 +284,44 @@ def with_rate_limiting(
     return rate_limit_decorator
 
 
+async def enforce_tiered_limit(
+    user_id: str, feature_key: str, *, origin: LimitHitOrigin | None = None
+) -> None:
+    """Charge ``feature_key`` against ``user_id``'s plan quota.
+
+    The imperative half of :func:`tiered_rate_limit`, extracted so an entry point
+    that resolves its caller in the body rather than from the auth middleware
+    still meters through the same code. The bot chat stream is the case: it
+    resolves a platform link after the decorator would already have run, so
+    before this existed it went entirely unmetered — no plan quota, and no
+    ``usage_daily`` row, since ``record_activity`` fires from the limiter.
+    """
+    origin = origin or current_limit_origin()
+    subscription = await payment_service.get_user_subscription_status(user_id)
+    user_plan = subscription.plan_type or PlanType.FREE
+    try:
+        await tiered_limiter.check_and_increment(
+            user_id=user_id,
+            feature_key=feature_key,
+            user_plan=user_plan,
+            origin=origin,
+        )
+    except RateLimitExceededException:
+        # FREE hits are captured by the limit-upsell seam; capture the
+        # paid-plan hits here so every wall produces one event.
+        if user_plan != PlanType.FREE:
+            capture_event(
+                user_id,
+                AnalyticsEvents.RATE_LIMIT_HIT,
+                {"feature": feature_key, "plan": user_plan.value},
+            )
+        raise
+
+
 def tiered_rate_limit(
     feature_key: str,
+    *,
+    origin: LimitHitOrigin | None = None,
 ) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
     """Rate limiting decorator for API endpoints."""
 
@@ -280,16 +351,8 @@ def tiered_rate_limit(
             if not user_id:
                 raise HTTPException(status_code=401, detail="User ID not found")
 
-            # Get user subscription
-            subscription = await payment_service.get_user_subscription_status(user_id)
-            user_plan = subscription.plan_type or PlanType.FREE
-
             # Check rate limits before executing function
-            await tiered_limiter.check_and_increment(
-                user_id=user_id,
-                feature_key=feature_key,
-                user_plan=user_plan,
-            )
+            await enforce_tiered_limit(user_id, feature_key, origin=origin)
 
             # Execute the original function
             result = await func(*args, **kwargs)
@@ -300,7 +363,7 @@ def tiered_rate_limit(
     return decorator
 
 
-class LangChainRateLimitException(Exception):
+class LangChainRateLimitError(Exception):
     """Agent-friendly rate limit exception with structured data."""
 
     def __init__(
@@ -318,6 +381,14 @@ class LangChainRateLimitException(Exception):
             message += f" Resets at {reset_time}."
         if detail and detail.get("plan_required"):
             message += f" Upgrade to {detail['plan_required'].upper()} for higher limits."
+        # A wall with no way past it reads as a dead end, so a free user's limit
+        # message names the tool that mints their checkout link. The agent decides
+        # whether an upsell fits the moment — no link is created unless it does.
+        if self.detail.get("current_plan") == PlanType.FREE.value:
+            message += (
+                " This user is on the free plan: offer to upgrade them and call "
+                "`create_upgrade_link` for a checkout link if they want it."
+            )
 
         super().__init__(message)
 
@@ -338,7 +409,9 @@ async def enforce_rate_limit(user_id: str, feature_key: str) -> dict[str, UsageI
     )
 
 
-async def enforce_daily_cost_budget(user_id: str, feature_key: str) -> None:
+async def enforce_daily_cost_budget(
+    user_id: str, feature_key: str, *, origin: LimitHitOrigin | None = None
+) -> None:
     """Block when the user's rolling daily USD cost budget is exhausted.
 
     The message-count limiter caps HOW MANY requests a user makes; this caps
@@ -350,6 +423,7 @@ async def enforce_daily_cost_budget(user_id: str, feature_key: str) -> None:
     ``feature_key`` names the surface being blocked (e.g. ``chat_messages``,
     ``trigger_workflow_executions``) for the 429 payload and reset copy.
     """
+    origin = origin or current_limit_origin()
     plan_type = await payment_service.get_cached_plan_type(user_id)
     # The tier this request was priced against, on the wide event — this gate is
     # the one place on the chat path that resolves the plan before any work runs.
@@ -363,7 +437,7 @@ async def enforce_daily_cost_budget(user_id: str, feature_key: str) -> None:
             spent_usd=round(spent, 6),
             feature_key=feature_key,
         )
-        schedule_limit_upsell(user_id, feature_key, plan_type)
+        schedule_limit_upsell(user_id, feature_key, plan_type, origin)
         raise CostBudgetExceededException(
             feature=feature_key,
             plan_required=PlanType.PRO.value if plan_type == PlanType.FREE else None,

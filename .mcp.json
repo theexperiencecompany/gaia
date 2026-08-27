@@ -20,6 +20,14 @@
       "args": ["code-review-graph", "serve"],
       "type": "stdio"
     },
+    "langsmith": {
+      "command": "uvx",
+      "args": ["langsmith-mcp-server"],
+      "type": "stdio",
+      "env": {
+        "LANGSMITH_API_KEY": "${LANGSMITH_API_KEY:-}"
+      }
+    },
     "chrome-devtools": {
       "command": "npx",
       "args": ["-y", "chrome-devtools-mcp@latest", "--autoConnect"],

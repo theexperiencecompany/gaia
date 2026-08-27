@@ -26,6 +26,9 @@ export interface OptimisticMessage {
   selectedCalendarEvent?: SelectedCalendarEventData | null;
   replyToMessage?: ReplyToMessageData | null;
   metadata?: Record<string, unknown>;
+  // The send never reached the backend. For a new conversation this bubble is
+  // the only record of the message, so it is marked rather than cleared.
+  failed?: boolean;
 }
 
 interface ChatState {
@@ -66,6 +69,8 @@ interface ChatState {
   // Optimistic message management for new conversations (single message only)
   setOptimisticMessage: (message: OptimisticMessage | null) => void;
   clearOptimisticMessage: () => void;
+  /** Flag the optimistic message as undelivered, keeping it on screen. */
+  markOptimisticMessageFailed: () => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -217,16 +222,19 @@ export const useChatStore = create<ChatState>((set) => ({
   // field. Stamp it back on as session_id so every map entry is a complete
   // ArtifactData (fetch URLs are built from session_id).
   setConversationArtifacts: (conversationId, artifacts) =>
-    set((state) => ({
-      artifactsByConversation: {
-        ...state.artifactsByConversation,
-        [conversationId]: Object.fromEntries(
-          artifacts
-            .filter((a) => a?.path)
-            .map((a) => [a.path, { ...a, session_id: conversationId }]),
-        ),
-      },
-    })),
+    set((state) => {
+      const registry: Record<string, ArtifactData> = {};
+      for (const artifact of artifacts) {
+        if (!artifact?.path) continue;
+        registry[artifact.path] = { ...artifact, session_id: conversationId };
+      }
+      return {
+        artifactsByConversation: {
+          ...state.artifactsByConversation,
+          [conversationId]: registry,
+        },
+      };
+    }),
 
   setActiveConversationId: (id) => set({ activeConversationId: id }),
 
@@ -238,6 +246,13 @@ export const useChatStore = create<ChatState>((set) => ({
 
   // Clear the optimistic message (set to null)
   clearOptimisticMessage: () => set({ optimisticMessage: null }),
+
+  markOptimisticMessageFailed: () =>
+    set((state) => ({
+      optimisticMessage: state.optimisticMessage
+        ? { ...state.optimisticMessage, failed: true }
+        : null,
+    })),
 }));
 
 // Hydrate immediately on module load (before any React renders)

@@ -183,7 +183,7 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
               size="sm"
               color="primary"
               variant={isUpgradeRequired ? "solid" : "flat"}
-              onPress={openPricingModal}
+              onPress={() => openPricingModal()}
               className="w-full rounded-xl font-medium"
             >
               {isUpgradeRequired ? `Upgrade to ${planName}` : "View Plans"}

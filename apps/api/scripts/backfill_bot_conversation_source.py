@@ -23,8 +23,8 @@ import sys
 # Ensure app is on path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.db.mongodb.collections import get_async_collection  # noqa: E402
-from app.models.chat_models import ConversationSource  # noqa: E402
+from app.db.mongodb.collections import get_async_collection
+from app.models.chat_models import ConversationSource
 
 bot_sessions_collection = get_async_collection("bot_sessions")
 conversations_collection = get_async_collection("conversations")

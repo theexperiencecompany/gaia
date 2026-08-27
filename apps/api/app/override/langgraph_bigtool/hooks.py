@@ -7,7 +7,7 @@ Provides sync and async hook execution for pre_model, end_graph, etc.
 import asyncio
 from collections.abc import Awaitable, Callable
 import inspect
-from typing import Union
+from typing import Union, cast
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
@@ -43,10 +43,26 @@ async def execute_hooks(
     for hook in hooks:
         result = hook(state, config, store)
         if inspect.iscoroutine(result):
-            state = await result  # type: ignore[misc]
+            state = await result
         else:
-            state = result  # type: ignore[assignment]
+            state = result  # type: ignore[assignment]  # inspect.iscoroutine() can't narrow HookType union; sync branch yields State
     return state
+
+
+def changed_hook_keys(before: State, after: State) -> State:
+    """Keys the hook chain changed (by identity) — echoing unchanged channels
+    re-serializes the full message list into the checkpoint on every run."""
+    if after is before:
+        return cast("State", {})
+    before_dict = cast("dict[str, object]", before)
+    return cast(
+        "State",
+        {
+            key: value
+            for key, value in after.items()
+            if key not in before_dict or before_dict[key] is not value
+        },
+    )
 
 
 def sync_execute_hooks(

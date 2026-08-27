@@ -318,6 +318,49 @@ describe("extractMedia", () => {
     expect(extractMedia(event)).toBeNull();
   });
 
+  it("maps the Kapso snake_case byte_size onto sizeBytes", () => {
+    const event = buildEvent({
+      type: "document",
+      text: undefined,
+      document: { id: "media-doc-1", mime_type: "application/pdf" },
+      kapso: {
+        direction: "in",
+        status: "received",
+        processing_status: "processed",
+        origin: "whatsapp",
+        has_media: true,
+        media_data: { byte_size: 12_582_912 },
+      },
+    });
+    expect(extractMedia(event)!.sizeBytes).toBe(12_582_912);
+  });
+
+  it("maps the Kapso camelCase byteSize onto sizeBytes", () => {
+    const event = buildEvent({
+      type: "image",
+      text: undefined,
+      image: { id: "media-img-3", mime_type: "image/jpeg" },
+      kapso: {
+        direction: "in",
+        status: "received",
+        processing_status: "processed",
+        origin: "whatsapp",
+        has_media: true,
+        mediaData: { byteSize: 4096 },
+      },
+    });
+    expect(extractMedia(event)!.sizeBytes).toBe(4096);
+  });
+
+  it("leaves sizeBytes undefined when Kapso reports no media size", () => {
+    const event = buildEvent({
+      type: "image",
+      text: undefined,
+      image: { id: "media-img-4", mime_type: "image/jpeg" },
+    });
+    expect(extractMedia(event)!.sizeBytes).toBeUndefined();
+  });
+
   it("picks up the Kapso pre-resolved media URL when present", () => {
     const event = buildEvent({
       type: "image",

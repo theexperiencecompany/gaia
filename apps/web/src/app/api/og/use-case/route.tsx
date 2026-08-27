@@ -1,5 +1,11 @@
 import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
+import { getIconPaths } from "@/config/iconPaths.generated";
+import {
+  getCategoryInitial,
+  getOgIconPath,
+  getToolIconConfig,
+} from "@/config/toolIconConfig";
 import {
   colors,
   createErrorResponse,
@@ -8,18 +14,14 @@ import {
   formatCount,
   getApiBaseUrl,
   getBaseUrl,
-  getCategoryInitial,
   getGaiaTeamLogoUrl,
-  getIconPaths,
   getOgCompatibleAvatarUrl,
-  getOgIconPath,
-  getToolIconConfig,
   isGaiaTeam,
   loadFonts,
   OG_HEIGHT,
   OG_WIDTH,
   truncateText,
-} from "../shared";
+} from "../lib";
 
 export const runtime = "edge";
 

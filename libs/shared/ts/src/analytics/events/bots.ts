@@ -12,6 +12,10 @@ export const BOT_EVENTS = {
   CHAT_COMPLETED: "bot:chat_completed",
   AUTH_INITIATED: "bot:auth_initiated",
   ERROR: "bot:error",
+  /** Inbound attachment the user sent to the bot (image, document, voice note). */
+  FILE_UPLOADED: "bot:file_uploaded",
+  /** Outbound artifact the bot tried to hand back, successfully or not. */
+  FILE_DELIVERED: "bot:file_delivered",
 } as const;
 
 export type BotEventName = (typeof BOT_EVENTS)[keyof typeof BOT_EVENTS];
