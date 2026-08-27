@@ -41,6 +41,8 @@ Do not lean on the playbook this run. Call read_playbook first so you can see th
 
 If the recorded reason is that a call returned nothing, do not accept that emptiness on the replay's terms. Before you call write_playbook with the same sequence, establish that the source genuinely has nothing by probing more broadly than the frozen call: a longer window, the filter dropped, a check that the integration actually answers at all. Say in the result what you checked. Only a broader probe that also comes back empty justifies rewriting the same sequence. If the broader probe finds items the frozen call missed, the args are wrong, and the rewrite must use the args that found them.
 
+The decision is about the playbook only. Do not pause, deactivate, edit or delete the workflow itself, and do not change its schedule: a source that has nothing today is not a reason to stop a workflow the user set up, and that call is theirs to make.
+
 When the work is finished (and only then), end this run by calling exactly one of write_playbook or disable_playbook. That holds even if you make no further calls because the steps that already ran answer the task: the decision is part of the work, not something that happens only after tool calls. Call write_playbook with the corrected sequence, or with the same sequence if it turns out to have been right after all and the recorded reason was a one-off. Call disable_playbook with the reason if the sequence cannot hold, because the order of calls depends on what each run finds. Staying silent is not a decision, and a run that was asked and called neither is a lapse, not a no.
 
 Keep all of this out of what you return. The result you hand back is the workflow's own output, the thing the user asked for, and nothing else. Do not narrate the check, do not mention playbooks or this decision at all. Whether you called the tool is the entire record of it.
@@ -143,4 +145,4 @@ PLAYBOOK_SUSPECT_FALLBACK_TEMPLATE = """The playbook for this workflow was repla
 These steps ALREADY RAN in this same execution, with these results, and their effects are real:
 {completed}
 
-Do not repeat them. Do the work properly yourself, checking each step against that reason, and end this run by rewriting the playbook or disabling it, even if you make no further calls because these results already answer the task."""
+Do not repeat them. Do the work properly yourself, checking each step against that reason, and end this run by rewriting the playbook or disabling it, even if you make no further calls because these results already answer the task. Leave the workflow itself alone: do not pause, deactivate or edit it."""
