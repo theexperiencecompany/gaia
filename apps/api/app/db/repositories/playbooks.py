@@ -55,13 +55,16 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
             workflow_hash=playbook.workflow_hash,
             last_run_status=PlaybookRunStatus.NOT_RUN,
             last_run_reason=None,
-            suspect_streak=0,
         ).model_dump(exclude_unset=True)
+        # The streak survives a rewrite on purpose: a rewrite is how a heal run
+        # answers a suspect replay, and a playbook that keeps coming back suspect
+        # must still reach the limit. Only a trusted replay clears it.
         update = {
             "$set": body,
             "$setOnInsert": {
                 "playbook_id": playbook.playbook_id,
                 "created_at": playbook.created_at,
+                "suspect_streak": 0,
             },
         }
         key = {"workflow_id": playbook.workflow_id, "user_id": playbook.user_id}

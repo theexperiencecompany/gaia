@@ -76,7 +76,11 @@ class TestUpsertForWorkflow:
         filter_, update = collection.find_one_and_update.await_args.args
         assert filter_ == {"workflow_id": WORKFLOW_ID, "user_id": USER_ID}
         assert collection.find_one_and_update.await_args.kwargs["upsert"] is True
-        assert update["$setOnInsert"] == {"playbook_id": "pb_first", "created_at": NOW}
+        assert update["$setOnInsert"] == {
+            "playbook_id": "pb_first",
+            "created_at": NOW,
+            "suspect_streak": 0,
+        }
         assert stored.playbook_id == "pb_first"
 
     async def test_a_rewrite_replaces_the_body_and_resets_the_outcome(
@@ -90,7 +94,11 @@ class TestUpsertForWorkflow:
         assert set_fields["workflow_hash"] == "hash-2"
         assert set_fields["last_run_status"] is PlaybookRunStatus.NOT_RUN
         assert set_fields["last_run_reason"] is None
-        assert set_fields["suspect_streak"] == 0
+        # A rewrite is how a heal run answers a suspect replay, so the streak
+        # survives it: a playbook that keeps coming back suspect is flapping,
+        # and the limit must still be reachable.
+        assert "suspect_streak" not in set_fields
+        assert update["$setOnInsert"]["suspect_streak"] == 0
         assert set_fields["steps"][0]["tool"] == "list_events"
         # The identity is never part of the rewrite: a replay in flight keeps its id.
         assert "playbook_id" not in set_fields

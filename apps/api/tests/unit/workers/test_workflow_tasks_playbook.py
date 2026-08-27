@@ -186,6 +186,28 @@ async def test_the_agent_runs_when_the_workflow_has_no_playbook() -> None:
     harness.chat.assert_awaited_once()
 
 
+@pytest.mark.parametrize("status", [PlaybookRunStatus.SUSPECT, PlaybookRunStatus.FAILED])
+async def test_a_distrusted_playbook_sends_the_fire_to_the_agent_to_heal(
+    status: PlaybookRunStatus,
+) -> None:
+    """Seen live: a suspect playbook was replayed again on the next fire, went
+    suspect again, and was deleted by the streak limit before the heal brief
+    ever reached an agent. A playbook the last run did not trust is not
+    replayed; the fire runs agentically, and the check brief carries the reason."""
+    workflow = _workflow()
+    harness = _Harness(workflow)
+    harness.get_for_workflow = AsyncMock(
+        return_value=_playbook(workflow).model_copy(
+            update={"last_run_status": status, "last_run_reason": "fetch returned nothing"}
+        )
+    )
+
+    await _fire(harness)
+
+    harness.playbook_run.assert_not_awaited()
+    harness.chat.assert_awaited_once()
+
+
 async def test_a_playbook_lookup_failure_still_runs_the_workflow() -> None:
     """A playbooks-collection outage must cost the replay, never the user's run.
 

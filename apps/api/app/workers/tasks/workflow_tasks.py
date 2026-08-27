@@ -577,6 +577,22 @@ async def _run_workflow(
         )
         return await execute_workflow_as_chat(workflow, user, context)
 
+    # A playbook the last run did not trust is not replayed again: the agent
+    # runs this fire with the heal brief carrying the recorded reason, and ends
+    # by rewriting the playbook or disabling it. Replaying it a second time
+    # only repeats the same wrong result, and the streak limit then deletes
+    # the playbook before any agent has seen why.
+    if playbook.last_run_status in (PlaybookRunStatus.FAILED, PlaybookRunStatus.SUSPECT):
+        log.set_ns(
+            "playbook",
+            mode="agent",
+            reason="heal",
+            playbook_id=playbook.playbook_id,
+            last_run_status=playbook.last_run_status.value,
+            llm_calls=0,
+        )
+        return await execute_workflow_as_chat(workflow, user, context)
+
     conversation_id, result = await execute_workflow_as_playbook(workflow, user, context, playbook)
     # From here on the replay's calls are history that happened. Whatever ends
     # this fire — a result, a queued hand-off, or a failure — carries them, or

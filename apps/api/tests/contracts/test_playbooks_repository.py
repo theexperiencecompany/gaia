@@ -74,7 +74,7 @@ class TestPlaybooksRepository:
         assert second.workflow_hash == "hash-2"
         assert await raw_collection.count_documents({"workflow_id": WORKFLOW_ID}) == 1
 
-    async def test_upsert_resets_the_last_run_outcome(self, repo) -> None:
+    async def test_upsert_resets_the_outcome_but_keeps_the_suspect_streak(self, repo) -> None:
         await repo.upsert_for_workflow(make_doc())
         await repo.record_run_outcome(
             WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUSPECT, reason="empty where it had items"
@@ -82,7 +82,8 @@ class TestPlaybooksRepository:
         replaced = await repo.upsert_for_workflow(make_doc(description="second"))
         assert replaced.last_run_status is PlaybookRunStatus.NOT_RUN
         assert replaced.last_run_reason is None
-        assert replaced.suspect_streak == 0
+        # The rewrite is the heal run's answer; only a trusted replay clears the streak.
+        assert replaced.suspect_streak == 1
 
     async def test_suspect_runs_grow_the_streak_until_a_success_resets_it(self, repo) -> None:
         await repo.create(make_doc())
