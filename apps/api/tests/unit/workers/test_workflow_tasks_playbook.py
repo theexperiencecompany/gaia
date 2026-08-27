@@ -87,6 +87,18 @@ class _Harness:
         self.playbook_run = AsyncMock()
         self.get_for_workflow = AsyncMock(return_value=None)
         self.record_run_outcome = AsyncMock()
+        self.log = MagicMock()
+
+    def playbook_event(self) -> dict[str, object]:
+        """The ``playbook`` wide-event namespace this fire stamped.
+
+        The namespace is the only way to tell from production why a run took the
+        path it did, so it is asserted as a contract, not as incidental logging.
+        """
+        for call in self.log.set_ns.call_args_list:
+            if call.args and call.args[0] == "playbook":
+                return dict(call.kwargs)
+        return {}
 
     def patches(self) -> list:
         return [
@@ -104,6 +116,7 @@ class _Harness:
                 f"{MODULE}.playbook_repository.record_run_outcome",
                 self.record_run_outcome,
             ),
+            patch(f"{MODULE}.log", self.log),
         ]
 
 
@@ -264,3 +277,77 @@ async def test_the_fallback_keeps_the_replays_calls_on_the_execution_record() ->
 
     trace = harness.complete_execution.call_args.kwargs["trace"]
     assert [call.tool_name for call in trace] == ["list_events", "agent_tool"]
+
+
+@pytest.mark.asyncio
+class TestPlaybookWideEvent:
+    """What each path stamps on the run's wide event.
+
+    ``mode``, ``reason`` and ``llm_calls`` are how anyone answers "why did this
+    workflow not replay?" from production, and how the cost saving is measured
+    at all. Wrong or missing values are invisible in review and in the UI, so
+    they are pinned here rather than left as incidental logging.
+    """
+
+    async def test_a_workflow_with_no_playbook_says_so(self) -> None:
+        harness = _Harness(_workflow())
+
+        await _fire(harness)
+
+        assert harness.playbook_event() == {
+            "mode": "agent",
+            "reason": "no_playbook",
+            "llm_calls": 0,
+        }
+
+    async def test_an_edited_workflow_names_the_stale_hash(self) -> None:
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        playbook = _playbook(workflow, stale=True)
+        harness.get_for_workflow = AsyncMock(return_value=playbook)
+
+        await _fire(harness)
+
+        event = harness.playbook_event()
+        assert event["mode"] == "agent"
+        assert event["reason"] == "stale_workflow_hash"
+        assert event["llm_calls"] == 0
+        assert event["playbook_id"] == playbook.playbook_id
+
+    async def test_a_failed_lookup_is_distinguishable_from_having_no_playbook(self) -> None:
+        """Both fall back to the agent, so only the reason tells them apart."""
+        harness = _Harness(_workflow())
+        harness.get_for_workflow = AsyncMock(side_effect=RuntimeError("mongo down"))
+
+        await _fire(harness)
+
+        assert harness.playbook_event() == {
+            "mode": "agent",
+            "reason": "lookup_failed",
+            "llm_calls": 0,
+        }
+
+    async def test_a_clean_replay_reports_the_model_calls_it_actually_spent(self) -> None:
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        playbook = _playbook(workflow)
+        harness.get_for_workflow = AsyncMock(return_value=playbook)
+        harness.playbook_run = AsyncMock(
+            return_value=(
+                "conv_1",
+                PlaybookRunResult(
+                    ok=True,
+                    text="done",
+                    trace=[RecordedCall(tool_name="list_todos")],
+                    llm_calls=1,
+                ),
+            )
+        )
+
+        await _fire(harness)
+
+        event = harness.playbook_event()
+        assert event["mode"] == "replay"
+        assert event["reason"] == "workflow_hash_match"
+        assert event["llm_calls"] == 1
+        assert event["playbook_id"] == playbook.playbook_id

@@ -315,3 +315,96 @@ class TestDisablePlaybook:
 
         assert result["success"] is True
         assert result["data"] == {"disabled": False}
+
+
+@pytest.mark.unit
+class TestPlaybookToolContract:
+    """The exact envelope each tool returns, because the model reads it.
+
+    A tool's error code and message are not logging: they are the only thing the
+    authoring agent has to decide whether to retry, fix its arguments, or stop.
+    A code that silently changes shape turns a recoverable rejection into an
+    unrecoverable one, and nothing in review would show it.
+    """
+
+    async def test_writing_against_an_unknown_workflow_names_the_reason(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        workflows = MagicMock()
+        workflows.get_for_user = AsyncMock(return_value=None)
+
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+        ):
+            result = await write_playbook.ainvoke(NEW_ARGS, config=_config())
+
+        assert result["success"] is False
+        assert result["error"] == "workflow_not_found"
+        assert WORKFLOW_ID in result["message"]
+        assert store.documents == {}, "a refused write must leave nothing behind"
+
+    async def test_a_successful_write_reports_what_was_stored(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
+        ):
+            result = await write_playbook.ainvoke(NEW_ARGS, config=_config())
+
+        assert result["success"] is True
+        stored = store.documents[(WORKFLOW_ID, USER_ID)]
+        assert result["data"] == {
+            "playbook_id": stored.playbook_id,
+            "steps": len(stored.steps),
+        }
+
+    async def test_an_unexpected_write_failure_is_reported_not_swallowed(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        """The agent must learn the write did not happen, or it moves on believing it did."""
+        store.upsert_for_workflow = AsyncMock(side_effect=RuntimeError("mongo down"))
+
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
+        ):
+            result = await write_playbook.ainvoke(NEW_ARGS, config=_config())
+
+        assert result["success"] is False
+        assert result["error"] == "write_failed"
+        assert "mongo down" in result["message"]
+
+    async def test_reading_a_workflow_without_a_playbook_says_so_without_failing(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        with patch(f"{TOOLS_MODULE}.playbook_repository", store):
+            result = await read_playbook.ainvoke({"workflow_id": WORKFLOW_ID}, config=_config())
+
+        assert result["success"] is True
+        assert result["data"] == {"exists": False}
+
+    async def test_a_read_failure_is_reported_as_a_failure(self, store: _FakePlaybookStore) -> None:
+        store.get_for_workflow = AsyncMock(side_effect=RuntimeError("mongo down"))
+
+        with patch(f"{TOOLS_MODULE}.playbook_repository", store):
+            result = await read_playbook.ainvoke({"workflow_id": WORKFLOW_ID}, config=_config())
+
+        assert result["success"] is False
+        assert result["error"] == "read_failed"
+
+    async def test_a_disable_failure_is_reported_as_a_failure(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        store.delete_for_workflow = AsyncMock(side_effect=RuntimeError("mongo down"))
+
+        with patch(f"{TOOLS_MODULE}.playbook_repository", store):
+            result = await disable_playbook.ainvoke(
+                {"workflow_id": WORKFLOW_ID, "reason": "r"}, config=_config()
+            )
+
+        assert result["success"] is False
+        assert result["error"] == "disable_failed"
