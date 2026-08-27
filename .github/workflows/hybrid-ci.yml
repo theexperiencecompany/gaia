@@ -181,6 +181,10 @@ jobs:
           echo "nx=$NX" >> "$GITHUB_OUTPUT"
           echo "NX parallel=$NX on $(nproc) vCPUs"
       - name: Build (timed, 16c-optimized)
+        # Explicit shell = `bash -eo pipefail`. The default `run:` shell is bash -e
+        # WITHOUT pipefail, so `cmd | tee` swallowed the flake gate's exit code and
+        # a lane with 'FLAKY TESTS DETECTED' reported success.
+        shell: bash
         env:
           AFFECTED_TS_PROJECTS: ${{ needs.detect.outputs.typescript_projects }}
           NX_PARALLEL: ${{ steps.par.outputs.nx }}
@@ -234,6 +238,10 @@ jobs:
           echo "py=$PY" >> "$GITHUB_OUTPUT"
           echo "pytest xdist n=$PY on $(nproc) vCPUs ($(free -g | awk '/^Mem:/{print $7}')G available)"
       - name: Run Python tests (${{ matrix.slice.name }})
+        # Explicit shell = `bash -eo pipefail`. The default `run:` shell is bash -e
+        # WITHOUT pipefail, so `cmd | tee` swallowed the flake gate's exit code and
+        # a lane with 'FLAKY TESTS DETECTED' reported success.
+        shell: bash
         working-directory: apps/api
         env:
           COVERAGE_CORE: sysmon
@@ -309,6 +317,10 @@ jobs:
         id: par
         run: echo "nx=$(bash scripts/ci/detect-parallel.sh --nx)" >> "$GITHUB_OUTPUT"
       - name: Run TS tests (timed, adaptive)
+        # Explicit shell = `bash -eo pipefail`. The default `run:` shell is bash -e
+        # WITHOUT pipefail, so `cmd | tee` swallowed the flake gate's exit code and
+        # a lane with 'FLAKY TESTS DETECTED' reported success.
+        shell: bash
         env:
           AFFECTED_TS_PROJECTS: ${{ needs.detect.outputs.typescript_projects }}
         run: |
@@ -346,6 +358,10 @@ jobs:
       - name: Playwright pin matches uv.lock
         run: bash scripts/ci/check-playwright-pin.sh
       - name: Build api image (timed, not pushed)
+        # Explicit shell = `bash -eo pipefail`. The default `run:` shell is bash -e
+        # WITHOUT pipefail, so `cmd | tee` swallowed the flake gate's exit code and
+        # a lane with 'FLAKY TESTS DETECTED' reported success.
+        shell: bash
         run: |
           set -euo pipefail
           echo "runner=${{ needs.select-runner.outputs.runner_label }} builder=$(docker buildx inspect --bootstrap 2>/dev/null | head -1 | awk '{print $2}')"
@@ -402,6 +418,10 @@ jobs:
       - name: Sync Python deps
         run: uv sync --frozen --package gaia --group backend --group dev
       - name: Run benchmark slice (pinned to ${{ matrix.cpus }}c)
+        # Explicit shell = `bash -eo pipefail`. The default `run:` shell is bash -e
+        # WITHOUT pipefail, so `cmd | tee` swallowed the flake gate's exit code and
+        # a lane with 'FLAKY TESTS DETECTED' reported success.
+        shell: bash
         env:
           WORKLOAD: ${{ matrix.workload }}
           CPUS: ${{ matrix.cpus }}
