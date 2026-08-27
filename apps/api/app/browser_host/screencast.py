@@ -31,25 +31,25 @@ if TYPE_CHECKING:
 
     from app.browser_host.chromium import ChromiumHost, HostSession
 
-# JPEG, not PNG: a live view is judged on smoothness, and a 1920-wide PNG frame is
-# ~8-10x larger than JPEG (and slower to encode in Chromium + decode in the browser),
+# JPEG, not PNG: a live view is judged on smoothness, and a PNG frame is ~8-10x
+# larger than JPEG (and slower to encode in Chromium + decode in the browser),
 # which is what makes the stream lag. ``_SCREENCAST_QUALITY`` applies only to "jpeg".
 _SCREENCAST_FORMAT = "jpeg"
 _SCREENCAST_QUALITY = 72
-# Downscale the stream to what the live view actually displays (a chat card ~460px
-# wide, ~1150px full-screen) rather than the full 1920px viewport. A repainting page
-# (scroll, video, animation) emits 70+ fps, and the browser JSON+base64-decodes and
-# image-decodes every frame on its main thread; full-res frames (~29 KB, ~2 MB/s)
-# overwhelm it and jank the stream, while 1280-wide q72 frames (~7 KB, ~0.5 MB/s)
-# stay smooth and stay crisp at the display size. The step screenshots streamed to
-# the recap are a separate, full-resolution path — this cap does not touch them.
+# The stream cap equals the agent viewport (constants/browser.py), so frames are
+# 1:1 with the page — pixel-crisp with no downscale blur, and takeover input maps
+# exactly. A repainting page (scroll, video, animation) emits 70+ fps and the
+# browser decodes every frame on its main thread; 1280-wide q72 frames (~7 KB,
+# ~0.5 MB/s) stay smooth. Every frame also carries the page's CSS size (from the
+# screencast metadata) so viewers translate pointer events into page coordinates
+# instead of assuming frame pixels == CSS pixels.
 _DEFAULT_MAX_WIDTH = 1280
 _DEFAULT_MAX_HEIGHT = 800
 # Bounded so a slow viewer applies backpressure by dropping stale frames, not by
 # stalling Chromium (we ack every frame regardless).
 _FRAME_QUEUE_SIZE = 2
 
-_MOUSE_FIELDS = ("x", "y", "button", "buttons", "clickCount", "deltaX", "deltaY")
+_MOUSE_FIELDS = ("x", "y", "button", "buttons", "clickCount", "deltaX", "deltaY", "modifiers")
 _KEY_FIELDS = (
     "key",
     "code",
@@ -70,6 +70,17 @@ class _PageMeta:
     def __init__(self) -> None:
         self.url: str | None = None
         self.title: str | None = None
+
+
+class _Frame:
+    """One screencast frame plus the page-CSS size it was captured at."""
+
+    __slots__ = ("css_height", "css_width", "data")
+
+    def __init__(self, data: str, css_width: int | None, css_height: int | None) -> None:
+        self.data = data
+        self.css_width = css_width
+        self.css_height = css_height
 
 
 async def run_live_view(host: ChromiumHost, session: HostSession, client_ws: WebSocket) -> None:
@@ -94,7 +105,7 @@ async def run_live_view(host: ChromiumHost, session: HostSession, client_ws: Web
 
         meta = _PageMeta()
         await _refresh_meta(cdp, target_id, meta)
-        frames: asyncio.Queue[str] = asyncio.Queue(maxsize=_FRAME_QUEUE_SIZE)
+        frames: asyncio.Queue[_Frame] = asyncio.Queue(maxsize=_FRAME_QUEUE_SIZE)
 
         _register_frame_handler(cdp, page_session, frames, background)
         _register_nav_handler(cdp, target_id, meta, background)
@@ -123,7 +134,7 @@ async def run_live_view(host: ChromiumHost, session: HostSession, client_ws: Web
 def _register_frame_handler(
     cdp: CDPClient,
     page_session: str,
-    frames: asyncio.Queue[str],
+    frames: asyncio.Queue[_Frame],
     background: set[asyncio.Task[Any]],
 ) -> None:
     def on_frame(params: dict[str, Any], _session_id: str | None) -> None:
@@ -137,10 +148,19 @@ def _register_frame_handler(
         )
         background.add(ack)
         ack.add_done_callback(background.discard)
+        # deviceWidth/Height are the page's CSS pixel size — the coordinate space
+        # Input.dispatchMouseEvent expects — which differs from the (possibly
+        # downscaled) frame bitmap. Viewers scale their pointer math with these.
+        frame_meta: dict[str, Any] = params.get("metadata") or {}
+        frame = _Frame(
+            params["data"],
+            frame_meta.get("deviceWidth"),
+            frame_meta.get("deviceHeight"),
+        )
         # Drop the frame when the viewer is behind — we still ack Chromium above,
         # so the stream keeps flowing and the viewer catches the next frame.
         with contextlib.suppress(asyncio.QueueFull):
-            frames.put_nowait(params["data"])
+            frames.put_nowait(frame)
 
     cdp._event_registry.register("Page.screencastFrame", on_frame)
 
@@ -181,17 +201,21 @@ async def _start_screencast(
     await cdp_call(cdp, "Page.startScreencast", params, session_id=page_session)
 
 
-async def _send_frames(client_ws: WebSocket, frames: asyncio.Queue[str], meta: _PageMeta) -> None:
+async def _send_frames(
+    client_ws: WebSocket, frames: asyncio.Queue[_Frame], meta: _PageMeta
+) -> None:
     while True:
-        data = await frames.get()
+        frame = await frames.get()
         await client_ws.send_text(
             json.dumps(
                 {
                     "type": "frame",
-                    "data": data,
+                    "data": frame.data,
                     "format": _SCREENCAST_FORMAT,
                     "url": meta.url,
                     "title": meta.title,
+                    "cssWidth": frame.css_width,
+                    "cssHeight": frame.css_height,
                 }
             )
         )

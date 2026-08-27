@@ -86,6 +86,9 @@ BROWSER_HANDOFF_KEY_PREFIX = "browser:handoff:"
 BROWSER_HANDOFF_CONV_KEY_PREFIX = "browser:handoff:conv:"
 HANDOFF_POLL_INTERVAL_SECONDS = 1.0
 HANDOFF_KEY_TTL_SECONDS = 3600
+# How often the paused run touches the host session so the idle reaper (default
+# 300s TTL) never disposes a browser the user was asked to come back to.
+BROWSER_HANDOFF_KEEPALIVE_SECONDS = 60
 
 # A short capability code for the bot's live-view link (browser.heygaia.io/{code}):
 # the code IS the secret and maps to the session + owner in Redis, so the link
@@ -130,9 +133,11 @@ BROWSER_TAKEOVER_PREAMBLE = (
 # Desktop viewport for the browser agent so pages render at a normal laptop
 # resolution instead of the ~800x600 CDP default (which collapses sites to their
 # mobile layout and makes screenshots look broken).
-# A large, real 16:9 desktop viewport (matches most screens, so the live view fills
-# the window without wide letterboxing). The screencast frame is captured at the CSS
-# viewport resolution (device_scale_factor does NOT add frame pixels), so a bigger
-# viewport is what makes the live view and step images high-resolution / retina-crisp.
-BROWSER_VIEWPORT_WIDTH = 1920
-BROWSER_VIEWPORT_HEIGHT = 1080
+# Sized to MATCH the screencast cap (screencast.py) exactly: the live view streams
+# at most 1280px wide, so a larger viewport is never seen at full size — it only
+# buys a downscaled (blurry) stream, a coordinate mismatch for takeover input, and
+# bigger step screenshots for the vision model to chew on. At 1:1 the stream is
+# pixel-crisp, takeover clicks land exactly where the user aims, and vision
+# payloads stay small. 1280 is still comfortably desktop-layout territory.
+BROWSER_VIEWPORT_WIDTH = 1280
+BROWSER_VIEWPORT_HEIGHT = 800

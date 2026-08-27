@@ -105,51 +105,75 @@ _VIEWER_TEMPLATE = """<!doctype html>
   var statusEl = document.getElementById("status");
   var statusLabel = document.getElementById("statusLabel");
   function setStatus(state, label) { statusEl.className = "status " + state; statusLabel.textContent = label; }
-  var frameW = 1280, frameH = 800;
+  // cssW/H: the page's CSS pixel size (per-frame metadata) \u2014 the space CDP input
+  // expects. The frame bitmap may be a downscaled rendering of it, so pointer
+  // math uses THIS, never the bitmap size, or clicks land short of the target.
+  var cssW = 1280, cssH = 800;
   var ws = new WebSocket(location.href.replace(/^http/, "ws"));
   ws.onopen = function () { setStatus("live", "Live \u2014 you're in control"); canvas.focus(); };
   ws.onclose = function () { setStatus("ended", "Session ended"); };
   ws.onerror = function () { setStatus("ended", "Connection error"); };
   var img = new Image();
   img.onload = function () {
-    frameW = img.naturalWidth || frameW; frameH = img.naturalHeight || frameH;
-    if (canvas.width !== frameW || canvas.height !== frameH) { canvas.width = frameW; canvas.height = frameH; }
-    ctx.drawImage(img, 0, 0, frameW, frameH);
+    var w = img.naturalWidth, h = img.naturalHeight;
+    if (!w || !h) return;
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+    ctx.drawImage(img, 0, 0, w, h);
   };
   ws.onmessage = function (ev) {
     var msg;
     try { msg = JSON.parse(ev.data); } catch (e) { return; }
-    if (msg.type === "frame") { img.src = "data:image/" + (msg.format || "jpeg") + ";base64," + msg.data; }
+    if (msg.type !== "frame") return;
+    if (msg.cssWidth && msg.cssHeight) { cssW = msg.cssWidth; cssH = msg.cssHeight; }
+    img.src = "data:image/" + (msg.format || "jpeg") + ";base64," + msg.data;
   };
   function send(obj) { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj)); }
-  function toFramePoint(e) {
+  function toPagePoint(e) {
     var r = canvas.getBoundingClientRect();
     return {
-      x: Math.round((e.clientX - r.left) * (frameW / r.width)),
-      y: Math.round((e.clientY - r.top) * (frameH / r.height))
+      x: Math.round((e.clientX - r.left) * (cssW / r.width)),
+      y: Math.round((e.clientY - r.top) * (cssH / r.height))
     };
   }
+  // CDP modifier bitmask (Alt=1, Ctrl=2, Meta=4, Shift=8) \u2014 without it,
+  // Shift-selection and Cmd/Ctrl shortcuts silently no-op.
+  function toModifiers(e) {
+    return (e.altKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.metaKey ? 4 : 0) | (e.shiftKey ? 8 : 0);
+  }
   var BUTTONS = ["left", "middle", "right"];
+  // Coalesce mousemove to one message per animation frame so press/release
+  // events never queue behind a flood of stale moves.
+  var pendingMove = null, moveRaf = 0;
+  function flushMove() {
+    moveRaf = 0;
+    if (pendingMove) { send(pendingMove); pendingMove = null; }
+  }
   canvas.addEventListener("mousemove", function (e) {
-    var p = toFramePoint(e); send({ type: "mouse", event: "mouseMoved", x: p.x, y: p.y, buttons: e.buttons });
+    var p = toPagePoint(e);
+    pendingMove = { type: "mouse", event: "mouseMoved", x: p.x, y: p.y, buttons: e.buttons, modifiers: toModifiers(e) };
+    if (!moveRaf) moveRaf = requestAnimationFrame(flushMove);
   });
   canvas.addEventListener("mousedown", function (e) {
-    e.preventDefault(); canvas.focus(); var p = toFramePoint(e);
-    send({ type: "mouse", event: "mousePressed", x: p.x, y: p.y, button: BUTTONS[e.button] || "left", buttons: e.buttons, clickCount: e.detail || 1 });
+    e.preventDefault(); canvas.focus(); flushMove(); var p = toPagePoint(e);
+    send({ type: "mouse", event: "mousePressed", x: p.x, y: p.y, button: BUTTONS[e.button] || "left", buttons: e.buttons, clickCount: e.detail || 1, modifiers: toModifiers(e) });
   });
   canvas.addEventListener("mouseup", function (e) {
-    e.preventDefault(); var p = toFramePoint(e);
-    send({ type: "mouse", event: "mouseReleased", x: p.x, y: p.y, button: BUTTONS[e.button] || "left", buttons: e.buttons, clickCount: e.detail || 1 });
+    e.preventDefault(); flushMove(); var p = toPagePoint(e);
+    send({ type: "mouse", event: "mouseReleased", x: p.x, y: p.y, button: BUTTONS[e.button] || "left", buttons: e.buttons, clickCount: e.detail || 1, modifiers: toModifiers(e) });
   });
   canvas.addEventListener("contextmenu", function (e) { e.preventDefault(); });
   canvas.addEventListener("wheel", function (e) {
-    e.preventDefault(); var p = toFramePoint(e);
-    send({ type: "mouse", event: "mouseWheel", x: p.x, y: p.y, deltaX: e.deltaX, deltaY: e.deltaY });
+    e.preventDefault(); var p = toPagePoint(e);
+    send({ type: "mouse", event: "mouseWheel", x: p.x, y: p.y, deltaX: e.deltaX, deltaY: e.deltaY, modifiers: toModifiers(e) });
   }, { passive: false });
   function keyEvent(kind, e) {
-    var printable = e.key && e.key.length === 1;
-    var msg = { type: "key", event: kind, key: e.key, code: e.code, windowsVirtualKeyCode: e.keyCode, nativeVirtualKeyCode: e.keyCode };
+    // CDP fires a key's default action (submit a form, insert a newline) only
+    // when `text` is set: printables send themselves, Enter must send "\r".
+    // A char typed with Ctrl/Meta held is a shortcut, not text.
+    var printable = e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey;
+    var msg = { type: "key", event: kind, key: e.key, code: e.code, windowsVirtualKeyCode: e.keyCode, nativeVirtualKeyCode: e.keyCode, modifiers: toModifiers(e) };
     if (kind === "keyDown" && printable) msg.text = e.key;
+    if (kind === "keyDown" && e.key === "Enter") msg.text = "\\r";
     send(msg);
   }
   canvas.addEventListener("keydown", function (e) { e.preventDefault(); keyEvent("keyDown", e); });

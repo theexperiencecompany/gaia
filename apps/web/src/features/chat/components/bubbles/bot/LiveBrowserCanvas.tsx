@@ -22,12 +22,10 @@ export function LiveBrowserCanvas({
       />
       {status !== "live" && (
         <div className="flex items-center gap-2 px-3 py-2 text-[11px] text-zinc-400">
-          <Spinner size="sm" color="current" />
-          {status === "error"
-            ? "Connection error"
-            : status === "closed"
-              ? "Session ended"
-              : "Connecting…"}
+          {status === "connecting" && <Spinner size="sm" color="current" />}
+          {status === "closed"
+            ? "This browser session has ended"
+            : "Connecting…"}
         </div>
       )}
     </div>

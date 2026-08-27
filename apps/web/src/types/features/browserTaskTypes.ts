@@ -41,6 +41,8 @@ export interface BrowserStepSnapshot {
   url?: string | null;
   title?: string | null;
   screenshot?: string | null;
+  /** Wall-clock spent reaching this step (LLM think + actions), from the API. */
+  elapsed_ms?: number | null;
 }
 
 export interface BrowserHandoffSnapshot {
@@ -80,6 +82,10 @@ export interface BrowserFrameMessage {
   data: string; // base64-encoded JPEG
   url?: string | null;
   title?: string | null;
+  /** Page CSS size the frame was captured at — the coordinate space CDP input
+   * expects. The frame bitmap may be downscaled relative to this. */
+  cssWidth?: number | null;
+  cssHeight?: number | null;
 }
 
 export type BrowserMouseEvent =
@@ -98,6 +104,8 @@ export interface BrowserMouseMessage {
   clickCount?: number;
   deltaX?: number;
   deltaY?: number;
+  /** CDP modifier bitmask: Alt=1, Ctrl=2, Meta=4, Shift=8. */
+  modifiers?: number;
 }
 
 export interface BrowserKeyMessage {
@@ -108,6 +116,8 @@ export interface BrowserKeyMessage {
   text?: string;
   windowsVirtualKeyCode?: number;
   nativeVirtualKeyCode?: number;
+  /** CDP modifier bitmask: Alt=1, Ctrl=2, Meta=4, Shift=8. */
+  modifiers?: number;
 }
 
 export type BrowserLiveInputMessage = BrowserMouseMessage | BrowserKeyMessage;
