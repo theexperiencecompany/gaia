@@ -30,6 +30,9 @@ import tokenize
 
 APP_DIR = Path("apps/api/app")
 TESTS_DIR = Path("apps/api/tests")
+# The repo has one base branch (CLAUDE.md); local runs diff against it so a
+# local mutation run scopes exactly like the PR lane does.
+LOCAL_BASE_BRANCH = "master"
 
 
 def _merge_base() -> str:
@@ -43,26 +46,34 @@ def _merge_base() -> str:
     the branch point and could misjudge a genuine PR change as comment-only
     (or vice versa).
 
-    Returns "" when GITHUB_BASE_REF is unset (local runs — both callers treat
-    that as "diff not applicable here"). In CI, GITHUB_BASE_REF is always
-    set, so a resolution failure there is a real infra problem, not an
-    absent diff — fails loud rather than silently disabling both checks.
+    Outside CI, GITHUB_BASE_REF is unset and we fall back to the repo's single
+    base branch. That fallback is load-bearing, not a convenience: an empty
+    merge-base yields empty line ranges, and empty ranges classify EVERY
+    survivor as out-of-scope, so the run reports "no survivors" and exits 0
+    while CI fails the same module. A local gate that cannot fail is worse
+    than no local gate, so local resolves a real base like CI does.
+
+    Returns "" only when no base can be resolved at all (a clone with no
+    origin and no local master). Callers must treat "" as "scope unknown" and
+    refuse to run — never as "nothing changed".
     """
-    base = os.environ.get("GITHUB_BASE_REF", "")
-    if not base:
-        return ""
-    try:
-        return subprocess.check_output(
-            ["git", "merge-base", f"origin/{base}", "HEAD"],
-            text=True,
-            stderr=subprocess.DEVNULL,
-        ).strip()
-    except subprocess.CalledProcessError as exc:
+    base = os.environ.get("GITHUB_BASE_REF", "") or LOCAL_BASE_BRANCH
+    for ref in (f"origin/{base}", base):
+        try:
+            return subprocess.check_output(
+                ["git", "merge-base", ref, "HEAD"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            ).strip()
+        except subprocess.CalledProcessError:
+            continue
+    if os.environ.get("GITHUB_BASE_REF"):
         print(
-            f"::error::mutation gate: could not resolve merge-base with origin/{base}: {exc}",
+            f"::error::mutation gate: could not resolve merge-base with origin/{base}",
             file=sys.stderr,
         )
-        raise SystemExit(1) from exc
+        raise SystemExit(1)
+    return ""
 
 
 def _tokens_without_comments(source: str) -> list[tuple[int, str]] | None:
@@ -286,7 +297,41 @@ def with_unit_mirror(
     return ordered
 
 
+def scope(module_rel: str) -> int:
+    """Print the compact JSON line scope for ONE module, for mutation.sh.
+
+    This is the same computation the matrix does per module, exposed as a CLI
+    so the local runner and the CI lane cannot drift into two different ideas
+    of "changed". A module with no diff against the base scopes to the WHOLE
+    file: running the gate on untouched code is a legitimate thing to ask for,
+    and answering it with an empty scope would be the silent pass this exists
+    to prevent.
+    """
+    path = f"apps/api/{module_rel}"
+    merge_base = _merge_base()
+    if not merge_base:
+        print(
+            "::error::mutation gate: no base commit to diff against — cannot "
+            "determine which lines this change owns",
+            file=sys.stderr,
+        )
+        return 1
+    ranges = _changed_line_ranges(path, merge_base)
+    if not ranges:
+        line_count = len(Path(path).read_text(encoding="utf-8").splitlines())
+        print(
+            f"mutation: {module_rel} has no diff vs {merge_base[:12]} — "
+            f"scoping the whole file ({line_count} lines)",
+            file=sys.stderr,
+        )
+        ranges = [[1, max(line_count, 1)]]
+    print(json.dumps(ranges, separators=(",", ":")))
+    return 0
+
+
 def main() -> int:
+    if len(sys.argv) > 2 and sys.argv[1] == "--scope":
+        return scope(sys.argv[2].removeprefix("apps/api/"))
     changed = [line.strip() for line in sys.stdin if line.strip()]
     merge_base = _merge_base()
     matrix: list[dict[str, object]] = []

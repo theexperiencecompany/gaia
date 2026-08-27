@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import cast
 
 from app.constants.account import ACCOUNT_DIR, ACCOUNT_LINKED_ACCOUNTS_DIRNAME
 from app.constants.log_tags import LogTag
@@ -161,7 +160,7 @@ async def _subscription_body(user_id: str) -> str:
         if not plan.get("amount")
         else f"{plan.get('currency', '')} {plan['amount']} / {plan.get('duration', 'period')}".strip(),
         status=subscription.get("status"),
-        cancel_scheduled=bool(subscription.get("cancel_at_next_billing_date", False)),
+        cancel_scheduled=bool(subscription.get("cancel_at_next_billing_date")),
     )
     return projection.model_dump_json(indent=2) + "\n"
 
@@ -186,18 +185,22 @@ async def _notifications_body(user_id: str) -> str:
 async def _preferences_body(user_id: str) -> str:
     preferences = await _onboarding_preferences(user_id)
     user = await user_repository.get(user_id)
-    projection = PreferencesProjection(
-        # Raw Mongo blob values — Pydantic validates the cast at construction.
-        response_style=cast("str | None", preferences.get("response_style")),
-        timezone=user.timezone if user else None,
+    # model_validate, not the constructor: these are raw Mongo blob values and
+    # Pydantic is what actually narrows them. A cast() here would only assert
+    # the type to mypy while doing nothing at runtime.
+    projection = PreferencesProjection.model_validate(
+        {
+            "response_style": preferences.get("response_style"),
+            "timezone": user.timezone if user else None,
+        }
     )
     return projection.model_dump_json(indent=2) + "\n"
 
 
 async def _custom_instructions_body(user_id: str) -> str:
     preferences = await _onboarding_preferences(user_id)
-    projection = CustomInstructionsProjection(
-        instructions=cast("str | None", preferences.get("custom_instructions"))
+    projection = CustomInstructionsProjection.model_validate(
+        {"instructions": preferences.get("custom_instructions")}
     )
     return projection.model_dump_json(indent=2) + "\n"
 
