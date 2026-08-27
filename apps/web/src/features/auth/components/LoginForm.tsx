@@ -4,7 +4,7 @@ import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Link } from "@heroui/link";
 import { Modal, ModalBody, ModalContent, ModalHeader } from "@heroui/modal";
-import { Alert01Icon } from "@icons";
+import { Alert01Icon, ArrowRight02Icon } from "@icons";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 
@@ -13,9 +13,9 @@ import { authApi, getLocalAuthError } from "@/features/auth/api/authApi";
 const INVALID_CREDENTIALS_COPY = "Invalid email or password.";
 const GENERIC_ERROR_COPY = "Could not sign you in right now. Please try again.";
 const RESET_CMD =
-  "docker exec gaia-backend python -m app.scripts.reset_admin_password";
+  "docker compose -p gaia-selfhost exec gaia-backend python -m app.scripts.reset_admin_password";
 const RESET_MONGO_CMD =
-  "docker exec mongo mongosh --eval 'db.getSiblingDB(\"GAIA\").auth_credentials.deleteMany({})'";
+  "docker compose -p gaia-selfhost exec mongo mongosh --eval 'db.getSiblingDB(\"gaia\").auth_credentials.deleteMany({})'";
 
 interface LoginFormProps {
   /**
@@ -78,13 +78,16 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
       />
       {/* Self-host has one admin and no email recovery — surface the CLI reset path. This form only renders on local-auth instances (see login/page.tsx). */}
       <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => setShowResetHelp(true)}
-          className="text-xs text-zinc-400 underline-offset-4 hover:text-zinc-200 hover:underline"
+        <Button
+          variant="light"
+          size="sm"
+          radius="full"
+          endContent={<ArrowRight02Icon size={14} />}
+          onPress={() => setShowResetHelp(true)}
+          className="text-xs text-zinc-400"
         >
-          Forgot password? →
-        </button>
+          Forgot password?
+        </Button>
       </div>
 
       {error && (

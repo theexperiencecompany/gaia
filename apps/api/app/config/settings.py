@@ -154,14 +154,19 @@ class CommonSettings(BaseAppSettings):
         return v.rstrip("/") if isinstance(v, str) else v
 
     # Capability flag, not configuration: does THIS deployment bill users?
-    # ENV=selfhost has no payment provider by design (the Free plan auto-seeds),
-    # so every budget/plan gate reads this instead of re-deriving the answer by
-    # string-comparing ENV — one place to change if a deployment profile ever
-    # gains or loses billing.
+    # Only the hosted production tier bills. Development, selfhost, and any
+    # future non-production profile (staging, preview, ci) have no payment
+    # provider by design, so every budget/plan gate reads this instead of
+    # re-deriving the answer by string-comparing ENV.
     @property
     def billing_enabled(self) -> bool:
-        """Whether billing gates are active (False under ENV=selfhost)."""
-        return self.ENV != "selfhost"
+        """Whether billing gates are active (True only under ENV=production)."""
+        return self.ENV == "production"
+
+    @property
+    def is_selfhost(self) -> bool:
+        """Whether this deployment is the self-hosted single-admin tier."""
+        return self.ENV == "selfhost"
 
     # ----------------------------------------------
     # Outbound Email

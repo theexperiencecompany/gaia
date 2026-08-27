@@ -138,6 +138,10 @@ async def upsert(
         has_api_key=api_key is not None,
     )
     await invalidate(provider)
+    # Warm the local cache so the credential is live before the HTTP 200 returns.
+    # Without this, a chat arriving next tick would see the cleared snapshot and
+    # fall through to env fallback (NO_PROVIDER_CONFIGURED) despite the DB row.
+    await resolve(provider)
 
 
 async def delete(provider: str) -> None:
@@ -146,6 +150,9 @@ async def delete(provider: str) -> None:
     await provider_credentials_repository.delete(provider)
     log.info(f"{LogTag.API} Provider credential removed", provider=provider)
     await invalidate(provider)
+    # Warm the snapshot (env fallback) so remote invalidation via the warmed
+    # resolve is reflected locally before the caller resumes.
+    await resolve(provider)
 
 
 def invalidate_locally(provider: str) -> None:

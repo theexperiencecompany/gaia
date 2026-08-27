@@ -22,11 +22,12 @@ fallback for deployments that prefer it.
 from typing import Annotated, Any, Literal
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 import httpx
 from pydantic import BaseModel, Field
 
 from app.api.v1.dependencies.instance_admin import require_instance_admin
+from app.api.v1.middleware.rate_limiter import limiter
 from app.config.settings import settings
 from app.constants.llm import OPENROUTER_MODELS_URL
 from app.constants.providers import CREDENTIAL_PROVIDERS, PRESETS
@@ -190,7 +191,9 @@ async def list_providers(
 
 
 @router.put("/providers/{provider}")
+@limiter.limit("20/minute")
 async def put_provider(
+    request: Request,  # noqa: ARG001 -- slowapi's @limiter.limit requires request in the handler signature
     provider: str,
     body: ProviderCredentialBody,
     user: Annotated[AuthenticatedUser, Depends(require_instance_admin)],
@@ -204,24 +207,47 @@ async def put_provider(
     """
     log.set(user={"id": user["user_id"]})
     _ensure_known_provider(provider)
-    base_url, model = _apply_preset(body.preset, body.base_url, body.model)
+    if (
+        body.preset is None
+        and body.api_key is None
+        and body.base_url is None
+        and body.model is None
+    ):
+        raise HTTPException(status_code=422, detail="No fields to update")
+    stored = await resolve_provider_config(provider)
+    # Merge omitted fields with stored config — a partial PUT (e.g. base_url
+    # only) must not erase the existing api_key. None means "not provided",
+    # not "clear".
+    api_key = (
+        body.api_key if body.api_key is not None else (stored.get("api_key") if stored else None)
+    )
+    base_url_raw, model_raw = _apply_preset(body.preset, body.base_url, body.model)
+    if base_url_raw is None and stored is not None:
+        base_url_raw = stored.get("base_url")
+    if model_raw is None and stored is not None:
+        model_raw = stored.get("model")
+    preset = body.preset if body.preset is not None else (stored.get("preset") if stored else None)
+    base_url = base_url_raw
+    model = model_raw
     if provider in _BASE_URL_PROVIDERS:
         # Only these providers' endpoints drive outbound traffic; openrouter and
         # gemini dial canonical URLs and ignore whatever is stored.
         await _assert_url_safe(base_url, allow_private=provider == "ollama")
     await upsert_provider_config(
         provider,
-        api_key=body.api_key,
+        api_key=api_key,
         base_url=base_url,
         model=model,
-        preset=body.preset,
+        preset=preset,
     )
     await invalidate_provider_cache(provider)
     return {"ok": True}
 
 
 @router.delete("/providers/{provider}")
+@limiter.limit("20/minute")
 async def remove_provider(
+    request: Request,  # noqa: ARG001 -- slowapi's @limiter.limit requires request in the handler signature
     provider: str,
     user: Annotated[AuthenticatedUser, Depends(require_instance_admin)],
 ) -> dict[str, bool]:
@@ -234,7 +260,9 @@ async def remove_provider(
 
 
 @router.post("/providers/{provider}/test")
+@limiter.limit("5/minute")
 async def test_provider(
+    request: Request,  # noqa: ARG001 -- slowapi's @limiter.limit requires request in the handler signature
     provider: str,
     body: ProviderCredentialBody,
     user: Annotated[AuthenticatedUser, Depends(require_instance_admin)],
@@ -400,7 +428,9 @@ async def _probe_ollama(
 
 
 @router.post("/complete")
+@limiter.limit("20/minute")
 async def complete_setup_step(
+    request: Request,  # noqa: ARG001 -- slowapi's @limiter.limit requires request in the handler signature
     body: SetupCompleteBody,
     user: Annotated[AuthenticatedUser, Depends(require_instance_admin)],
 ) -> dict[str, bool]:

@@ -161,9 +161,16 @@ export async function runBackup(
     );
   }
 
-  await fs.promises.mkdir(outDir, { recursive: true });
+  await fs.promises.mkdir(outDir, { recursive: true, mode: 0o700 });
+  try {
+    fs.chmodSync(outDir, 0o700);
+  } catch {
+    // Best-effort — the directory is already created; a chmod failure
+    // (e.g. on a read-only mount) must not abort the backup.
+  }
 
-  // Mongo dump: stream stdout to host file.
+  // Mongo dump: stream stdout to host file (0600 — dump contains
+  // instance_secret and all provider ciphertext).
   try {
     const mongoProc = execa(
       "docker",
@@ -181,20 +188,30 @@ export async function runBackup(
       { cwd: dockerDir, stdout: "pipe", stderr: "pipe" },
     );
     if (!mongoProc.stdout) throw new Error("Failed to pipe mongo dump");
-    const out = fs.createWriteStream(mongoFile);
+    const out = fs.createWriteStream(mongoFile, { mode: 0o600 });
     mongoProc.stdout.pipe(out);
     await mongoProc;
     await new Promise<void>((resolve, reject) => {
       out.on("finish", resolve);
       out.on("error", reject);
     });
+    try {
+      fs.chmodSync(mongoFile, 0o600);
+    } catch {
+      // See above — best-effort hardening if chmod is unavailable.
+    }
   } catch (e) {
+    try {
+      fs.unlinkSync(mongoFile);
+    } catch {
+      // No partial file to clean up, or FS is already gone.
+    }
     throw new Error(
       `MongoDB backup failed: ${(e as Error).message}\nManual command: ${commands[1]}`,
     );
   }
 
-  // Postgres dump
+  // Postgres dump (same 0600 hardening as Mongo).
   try {
     const pgProc = execa(
       "docker",
@@ -214,14 +231,24 @@ export async function runBackup(
       { cwd: dockerDir, stdout: "pipe", stderr: "pipe" },
     );
     if (!pgProc.stdout) throw new Error("Failed to pipe postgres dump");
-    const out = fs.createWriteStream(postgresFile);
+    const out = fs.createWriteStream(postgresFile, { mode: 0o600 });
     pgProc.stdout.pipe(out);
     await pgProc;
     await new Promise<void>((resolve, reject) => {
       out.on("finish", resolve);
       out.on("error", reject);
     });
+    try {
+      fs.chmodSync(postgresFile, 0o600);
+    } catch {
+      // Best-effort.
+    }
   } catch (e) {
+    try {
+      fs.unlinkSync(postgresFile);
+    } catch {
+      // No partial file.
+    }
     throw new Error(
       `PostgreSQL backup failed: ${(e as Error).message}\nManual command: ${commands[2]}`,
     );
@@ -261,8 +288,18 @@ export async function runBackup(
         ],
         { cwd: dockerDir },
       );
+      try {
+        fs.chmodSync(file, 0o600);
+      } catch {
+        // Best-effort hardening.
+      }
       extraFiles.push(file);
     } catch (e) {
+      try {
+        fs.unlinkSync(file);
+      } catch {
+        // No partial file or already cleaned.
+      }
       warnings.push(`${v.label} backup failed: ${(e as Error).message}`);
     }
   }

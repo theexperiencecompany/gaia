@@ -149,6 +149,23 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                 "/api/v1/setup/status",
                 "/api/v1/setup/catalog",
             ]
+        # Exact-match exclusions — ``startswith`` on these would make
+        # ``/api/v1/setup/status/evil`` bypass auth. Only the literal path is
+        # public; any suffix must be authenticated.
+        _exact_candidates: set[str] = {
+            "/api/v1/auth/signup",
+            "/api/v1/auth/login",
+            "/api/v1/setup/status",
+            "/api/v1/setup/catalog",
+        }
+        self._exclude_exact: set[str] = _exact_candidates.intersection(self.exclude_paths)
+        # Everything else in ``exclude_paths`` is an intentional prefix (e.g.
+        # ``/docs`` → ``/docs`` + ``/docs/...``).  Matching uses
+        # ``path == p or path.startswith(p.rstrip("/") + "/")`` so
+        # ``/docs`` does not match ``/docsfoo``.
+        self._exclude_prefix: list[str] = [
+            p for p in self.exclude_paths if p not in self._exclude_exact
+        ]
         # Routes that also accept an "Authorization: Bearer <agent JWT>" in
         # addition to a WorkOS session cookie.
         self.agent_only_paths = ["/api/v1/chat-stream"]
@@ -164,11 +181,17 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                 dev_bypass_email=self.dev_bypass_email,
             )
 
+    def _is_excluded(self, path: str) -> bool:
+        """Whether ``path`` is excluded from authentication."""
+        if path in self._exclude_exact:
+            return True
+        return any(path == p or path.startswith(p.rstrip("/") + "/") for p in self._exclude_prefix)
+
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         """Authenticate, then invoke the next handler. Refresh cookies on the way out."""
-        if any(request.url.path.startswith(path) for path in self.exclude_paths):
+        if self._is_excluded(request.url.path):
             self._publish_user(request)
             return await call_next(request)
 

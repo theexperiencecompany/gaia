@@ -834,9 +834,9 @@ class TestChangePassword:
     async def test_update_receives_typed_rotation_model(
         self, admin, credential_store, _instance_secret, monkeypatch
     ):
-        """The repository seam gets a LocalCredentialUpdate carrying ONLY the
-        new hash — identity fields (user_id/slot/created_at) can never drift
-        through a password change."""
+        """The repository seam gets a LocalCredentialUpdate carrying the new hash
+        and bumped token_version — identity fields (user_id/slot/created_at)
+        can never drift through a password change."""
         import app.api.v1.endpoints.auth_local as auth_local_module
 
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
@@ -864,7 +864,11 @@ class TestChangePassword:
         credential_store.update.assert_awaited_once()
         update_arg = credential_store.update.await_args.args[1]
         assert isinstance(update_arg, LocalCredentialUpdate)
-        assert update_arg.model_dump(exclude_unset=True).keys() == {"password_hash"}
+        assert set(update_arg.model_dump(exclude_unset=True).keys()) == {
+            "password_hash",
+            "token_version",
+        }
+        assert update_arg.token_version == 1  # bumped from 0 → 1
 
 
 # ---------------------------------------------------------------------------

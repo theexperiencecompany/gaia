@@ -30,14 +30,17 @@ async def require_instance_admin(
 
     Two gates, both fail-closed:
 
-    - ``settings.ENV == "selfhost"`` — under hosted auth these endpoints are
-      unmounted; anything reaching them elsewhere is refused defensively.
+    - ``settings.ENV == "selfhost"`` and ``settings.AUTH_MODE == "local"`` —
+      under hosted auth these endpoints are unmounted; anything reaching them
+      elsewhere is refused defensively. The hybrid ``ENV=selfhost`` +
+      ``AUTH_MODE=workos`` (explicit override) is also denied so the admin
+      surface is only reachable under the canonical self-host auth stack.
     - the caller must own the single local credential row. No row for the
       caller — including the pre-first-signup instance — means no admin.
 
     Returns the authenticated user so handlers keep their ``user`` parameter.
     """
-    if settings.ENV != "selfhost":
+    if not settings.is_selfhost or settings.AUTH_MODE != "local":
         raise HTTPException(status_code=403, detail=_NOT_INSTANCE_ADMIN)
     credential = await local_credentials_repository.get_by_user_id(user["user_id"])
     if credential is None:

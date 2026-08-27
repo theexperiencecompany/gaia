@@ -94,12 +94,28 @@ def _set_session_cookie(
     )
 
 
-def _clear_session_cookie(response: JSONResponse) -> None:
+def _clear_session_cookie(
+    response: JSONResponse, request: Request | None = None
+) -> None:
+    """Delete the session cookie with the same ``Secure`` logic as ``_set``.
+
+    Mirrors ``_set_session_cookie``: when a ``Request`` is available the
+    ``Secure`` flag follows the request's actual transport
+    (``X-Forwarded-Proto`` / ``scheme``) so a self-host instance behind a TLS
+    proxy deletes the same cookie it set. Without a request the fallback is
+    ``ENV == "production"`` (LAN default ``Secure=False``).
+    """
+    secure = False
+    if request is not None:
+        forwarded = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
+        secure = forwarded == "https" or request.url.scheme == "https"
+    else:
+        secure = settings.ENV == "production"
     response.delete_cookie(
         key=LOCAL_SESSION_COOKIE,
         httponly=True,
         path="/",
-        secure=settings.ENV == "production",
+        secure=secure,
         samesite="lax",
     )
 
@@ -232,7 +248,9 @@ async def signup(request: Request, body: SignupRequest) -> JSONResponse:
         await _delete_user_best_effort(user.id)
         _registration_closed(email)
 
-    token = await issue_session_token(user.id)
+    token = await issue_session_token(
+        user.id, int(getattr(credential, "token_version", 0) or 0)
+    )
     log.audit("account created", actor=user.id, mode="local")
 
     response = JSONResponse(status_code=201, content={"user": _user_payload(user)})
@@ -285,7 +303,9 @@ async def login(request: Request, body: LoginRequest) -> JSONResponse:
             },
         )
 
-    token = await issue_session_token(user.id)
+    token = await issue_session_token(
+        user.id, int(getattr(credential, "token_version", 0) or 0)
+    )
     log.audit("logged in", actor=user.id, mode="local")
 
     response = JSONResponse(content={"user": _user_payload(user)})
@@ -316,6 +336,13 @@ async def change_password(
     401 (the client renders it inline next to that field), while an over-cap
     or too-short NEW password is rejected on the wire as a 422 before any
     verification runs.
+
+    On success the credential's ``token_version`` is bumped and a fresh JWT
+    (``ver`` = new version) is returned as a ``Set-Cookie`` so the caller's
+    current session survives while every other previously issued JWT — whose
+    ``ver`` no longer matches — is revoked. Previous sessions remain valid for
+    up to 30 days only if password rotation never happened; after a rotation
+    they are rejected on the next request.
     """
     log.set(operation="local_change_password", client_ip=_client_ip(request))
 
@@ -355,8 +382,10 @@ async def change_password(
             detail={"message": "Password must be at most 72 bytes (UTF-8 encoded)"},
         ) from exc
 
+    new_version = int(getattr(credential, "token_version", 0) or 0) + 1
     updated = await local_credentials_repository.update(
-        credential.id, LocalCredentialUpdate(password_hash=password_hash)
+        credential.id,
+        LocalCredentialUpdate(password_hash=password_hash, token_version=new_version),
     )
     if updated is None:
         # Unreachable in practice (single admin holding a live session), but a
@@ -367,17 +396,21 @@ async def change_password(
         )
 
     log.audit("password changed", actor=user_id)
+    # Rotate the caller's session so they stay logged in while every other
+    # session (old ``ver``) is revoked.
+    new_token = await issue_session_token(user_id, new_version)
     response = JSONResponse(status_code=200, content={"status": "ok"})
+    _set_session_cookie(response, new_token, request=request)
     log.set(outcome="success")
     return response
 
 
 @router.post("/logout")
-async def logout() -> JSONResponse:
+async def logout(request: Request) -> JSONResponse:
     """Clear the session cookie. Idempotent — clearing an absent cookie still
     reports local mode so clients can branch uniformly."""
     log.set(operation="local_logout")
     response = JSONResponse(content={"mode": "local"})
-    _clear_session_cookie(response)
+    _clear_session_cookie(response, request)
     log.set(outcome="success")
     return response

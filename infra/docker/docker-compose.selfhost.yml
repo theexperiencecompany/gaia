@@ -321,6 +321,7 @@ services:
 
 volumes:
   chroma_data:
+    name: gaia-selfhost_chroma_data
   pgdata:
   redis_data:
   mongo_data:

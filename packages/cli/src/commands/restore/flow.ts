@@ -71,15 +71,19 @@ export function getRestoreCommands(
   if (chromaFile) {
     const dir = path.dirname(chromaFile);
     const base = path.basename(chromaFile);
+    // Atomic restore: extract to temp first, only wipe /data after tar succeeds.
+    // The previous `rm -rf /data/* && tar xzf` left the volume empty if tar failed
+    // or the process was interrupted. The temp-dir dance keeps the existing data
+    // intact until the new archive is verified.
     cmds.push(
-      `docker run --rm -v gaia-selfhost_chroma_data:/data -v ${dir}:/backups alpine sh -c "rm -rf /data/* && tar xzf /backups/${base} -C /data"`,
+      `docker run --rm -v gaia-selfhost_chroma_data:/data -v ${dir}:/backups alpine sh -c "mkdir -p /tmp/restore && tar xzf /backups/${base} -C /tmp/restore && { rm -rf /data/* 2>/dev/null; rm -rf /data/.[!.]* 2>/dev/null || true; } && cp -a /tmp/restore/. /data/ && rm -rf /tmp/restore"`,
     );
   }
   if (sandboxFile) {
     const dir = path.dirname(sandboxFile);
     const base = path.basename(sandboxFile);
     cmds.push(
-      `docker run --rm -v gaia-sandbox-workspace:/data -v ${dir}:/backups alpine sh -c "rm -rf /data/* && tar xzf /backups/${base} -C /data"`,
+      `docker run --rm -v gaia-sandbox-workspace:/data -v ${dir}:/backups alpine sh -c "mkdir -p /tmp/restore && tar xzf /backups/${base} -C /tmp/restore && { rm -rf /data/* 2>/dev/null; rm -rf /data/.[!.]* 2>/dev/null || true; } && cp -a /tmp/restore/. /data/ && rm -rf /tmp/restore"`,
     );
   }
   return cmds;
@@ -259,7 +263,7 @@ export async function runRestore(options: RestoreOptions = {}): Promise<{
           "alpine",
           "sh",
           "-c",
-          `rm -rf /data/* && tar xzf /backups/${path.basename(file)} -C /data`,
+          `mkdir -p /tmp/restore && tar xzf /backups/${path.basename(file)} -C /tmp/restore && { rm -rf /data/* 2>/dev/null; rm -rf /data/.[!.]* 2>/dev/null || true; } && cp -a /tmp/restore/. /data/ && rm -rf /tmp/restore`,
         ],
         { cwd: dockerDir },
       );

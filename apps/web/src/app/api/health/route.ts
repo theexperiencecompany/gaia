@@ -10,8 +10,13 @@ const HEALTH_TIMEOUT_MS = 5000;
  *
  * Caddy/Nginx can poll `GET /api/health` (no auth, 5s timeout):
  * - API unreachable            → 503 {status:"api_down"}
- * - API healthy + needs_setup   → 503 {status:"setup_required"}
+ * - API healthy + needs_setup   → 200 {status:"setup_required"} (liveness OK, wizard is expected)
  * - API healthy + ready         → 200 {status:"ok"}
+ *
+ * Health is liveness (is the process up?), setup is readiness (is first-run
+ * complete?). Returning 503 for setup_required would keep `depends_on:
+ * service_healthy` / LB checks unhealthy during the first-run wizard and
+ * trigger restarts mid-setup — so only api_down is 503.
  *
  * The check hits the internal API's `GET /health` (or `/api/v1/health` via
  * the base URL) and then `GET /setup/status` to decide readiness.
@@ -78,7 +83,7 @@ export async function GET() {
       }
       const data = (await res.json()) as { needs_setup?: boolean };
       if (data.needs_setup) {
-        return NextResponse.json({ status: "setup_required" }, { status: 503 });
+        return NextResponse.json({ status: "setup_required" }, { status: 200 });
       }
       return NextResponse.json({ status: "ok" }, { status: 200 });
     } finally {

@@ -23,6 +23,7 @@ import * as m from "motion/react-m";
 import nextDynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect } from "react";
 import {
   providerFaviconUrl,
@@ -83,6 +84,7 @@ export function DoneStep({ status }: DoneStepProps) {
       });
   }, []);
 
+  const router = useRouter();
   const appendToInput = useAppendToInput();
 
   const connectedLlmCards = LLM_PROVIDER_CARDS.filter((card) =>
@@ -228,12 +230,11 @@ export function DoneStep({ status }: DoneStepProps) {
                 You skipped provider setup
               </p>
               <p className="mt-1 text-sm leading-relaxed text-zinc-400">
-                GAIA will use local fallbacks where available. Add a key in{" "}
+                Chat requires a provider to work. Add a key in{" "}
                 <span className="font-medium text-zinc-300">
                   Settings → AI Providers
                 </span>{" "}
-                to unlock full power — one key is all it takes to start
-                chatting.
+                to start chatting — one key is all it takes.
               </p>
               <Button
                 as={Link}
@@ -287,7 +288,10 @@ export function DoneStep({ status }: DoneStepProps) {
                   fullWidth
                   variant="light"
                   size="sm"
-                  onPress={() => appendToInput(prompt)}
+                  onPress={() => {
+                    appendToInput(prompt);
+                    router.push("/c");
+                  }}
                   className="h-11 justify-start gap-3 rounded-xl bg-zinc-900 px-3 text-sm font-normal text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100"
                   startContent={
                     <Icon size={18} className="shrink-0 text-zinc-500" />
@@ -366,17 +370,46 @@ export function DoneStep({ status }: DoneStepProps) {
         }}
         transition={{ duration: 0.4, ease: [0.19, 1, 0.22, 1] }}
       >
-        <Button
-          as={Link}
-          href="/c"
-          color="primary"
-          fullWidth
-          size="lg"
-          className="font-medium"
-          endContent={<ArrowRight02Icon size={18} />}
-        >
-          Start chatting
-        </Button>
+        {hasLlm ? (
+          <Button
+            as={Link}
+            href="/c"
+            color="primary"
+            fullWidth
+            size="lg"
+            className="font-medium"
+            endContent={<ArrowRight02Icon size={18} />}
+          >
+            Start chatting
+          </Button>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <p className="text-center text-xs leading-relaxed text-amber-400">
+              Chat requires a provider — add one to start chatting.
+            </p>
+            <Button
+              as={Link}
+              href="/settings/providers"
+              color="primary"
+              fullWidth
+              size="lg"
+              className="font-medium"
+              endContent={<ArrowRight02Icon size={18} />}
+            >
+              Go to AI Providers
+            </Button>
+            <Button
+              as={Link}
+              href="/c"
+              variant="light"
+              fullWidth
+              size="sm"
+              className="text-zinc-400"
+            >
+              Continue to chat anyway
+            </Button>
+          </div>
+        )}
       </m.div>
       {!searchConfigured && (
         <m.p

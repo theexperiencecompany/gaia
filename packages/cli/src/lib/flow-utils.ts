@@ -111,7 +111,7 @@ export async function runPortChecks(
   store: CLIStore,
 ): Promise<Record<number, number> | null> {
   store.setStatus("Checking Ports...");
-  const requiredPorts = [8000, 5432, 6379, 27017, 5672, 3000, 8080, 8083];
+  const requiredPorts = [8000, 5432, 6379, 27017, 5672, 15672, 3000, 8080, 8083];
   const portResults = await prereqs.checkPortsWithFallback(requiredPorts);
   const portOverrides: Record<number, number> = {};
   const conflicts = portResults.filter((r) => !r.available);

@@ -147,7 +147,7 @@ export async function checkPortConflicts(
     };
   }
 
-  const requiredPorts = [3000, 8000, 5432, 6379, 27017, 5672, 8080, 8083];
+  const requiredPorts = [3000, 8000, 5432, 6379, 27017, 5672, 15672, 8080, 8083];
   const effectivePorts = requiredPorts.map((p) => overrides[p] ?? p);
 
   let results: Awaited<ReturnType<typeof checkPortsWithFallback>>;

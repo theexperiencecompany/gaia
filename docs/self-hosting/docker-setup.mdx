@@ -46,7 +46,9 @@ Before you follow the steps below on a fresh machine (e.g. an Ubuntu VM), confir
     Alternative without the installer — clone first (requires `git`):
 
     ```bash
-    git clone https://github.com/theexperiencecompany/gaia.git && cd gaia && gaia up
+    git clone https://github.com/theexperiencecompany/gaia.git && cd gaia
+    npm install -g @heygaia/cli # or: curl -fsSL https://heygaia.io/install.sh | sh
+    gaia up                      # or: npx @heygaia/cli up (no global install)
     ```
   </Step>
 
@@ -56,8 +58,8 @@ Before you follow the steps below on a fresh machine (e.g. an Ubuntu VM), confir
 
   <Step title="Monitor">
     ```bash
-    docker compose -f docker-compose.selfhost.yml ps          # container status + health
-    docker compose -f docker-compose.selfhost.yml logs -f     # stream all logs
+    docker compose -f infra/docker/docker-compose.selfhost.yml ps          # container status + health
+    docker compose -f infra/docker/docker-compose.selfhost.yml logs -f     # stream all logs
     ```
   </Step>
 </Steps>

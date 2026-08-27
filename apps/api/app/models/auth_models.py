@@ -70,18 +70,24 @@ class LocalCredentialDocument(MongoDocument):
     # app/db/mongodb/indexes.py. Never set to anything else while self-host
     # remains single-admin.
     slot: str = ADMIN_CREDENTIAL_SLOT
+    # Monotonic session revocation counter. Embedded as ``ver`` in the JWT;
+    # bumping it (e.g. on password change) invalidates all previously issued
+    # tokens whose ``ver`` no longer matches.
+    token_version: int = 0
     created_at: datetime | None = None
 
 
 class LocalCredentialUpdate(BaseModel):
-    """Typed update payload for credential writes. The bcrypt hash is the ONLY
-    mutable field (the password-change endpoint rotates it); ``user_id``,
-    ``slot`` and ``created_at`` are write-once identity. ``extra="forbid"``
-    keeps any accidental extra-field update loud."""
+    """Typed update payload for credential writes. ``password_hash`` and
+    ``token_version`` are the only mutable fields (password rotation bumps both
+    so existing JWTs are revoked). ``user_id``, ``slot`` and ``created_at`` are
+    write-once identity. ``extra="forbid"`` keeps any accidental extra-field
+    update loud."""
 
     model_config = ConfigDict(extra="forbid")
 
-    password_hash: str
+    password_hash: str | None = None
+    token_version: int | None = None
 
 
 class SignupRequest(BaseModel):

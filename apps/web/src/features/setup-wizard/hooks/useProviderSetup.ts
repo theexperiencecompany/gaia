@@ -4,7 +4,8 @@ import { useCallback, useMemo, useState } from "react";
 import {
   CUSTOM_PRESETS,
   type CustomPreset,
-  PROVIDER_KEY_URLS,
+  extractProviderError,
+  getProviderErrorHint,
   type ProviderConfigBody,
   providersApi,
 } from "@/features/settings/api/providersApi";
@@ -121,7 +122,9 @@ export function useProviderSetup(
       setApiKey("");
       onSaved();
     } catch (err) {
-      setError(extractProviderError(err));
+      setError(
+        extractProviderError(err) ?? "Something went wrong while saving.",
+      );
     } finally {
       setPhase(null);
     }
@@ -152,59 +155,4 @@ export function useProviderSetup(
     outcomeHint,
     connect,
   };
-}
-
-/**
- * Map a raw provider error detail to an actionable recovery hint. Returns
- * null when the detail already contains its own guidance (private URL) or
- * when no specific hint applies — caller should show the original detail
- * plus this hint below it.
- */
-export function getProviderErrorHint(
-  detail: string,
-  providerKey?: string,
-): string | null {
-  const lower = detail.toLowerCase();
-  // Private / unreachable already carries _PRIVATE_URL_HINT — keep that as-is.
-  if (lower.includes("private") || lower.includes("unreachable")) return null;
-  if (
-    lower.includes("401") ||
-    lower.includes("invalid") ||
-    lower.includes("unauthorized")
-  ) {
-    const url = providerKey
-      ? (PROVIDER_KEY_URLS as Record<string, string>)[providerKey]
-      : undefined;
-    if (url) {
-      return `Check your API key at ${url} — it may be expired or missing permissions.`;
-    }
-    return "Check your API key — it may be expired or missing permissions.";
-  }
-  if (lower.includes("429") || lower.includes("rate")) {
-    return "Rate limited — wait a minute and try again, or check your plan limits.";
-  }
-  if (lower.includes("timeout") || lower.includes("timed out")) {
-    return "Provider didn't respond — check your network or try again.";
-  }
-  return null;
-}
-
-/** Pull a human-readable message out of an axios/backend error. */
-function extractProviderError(err: unknown): string {
-  if (typeof err === "object" && err !== null) {
-    const data = (err as { response?: { data?: unknown } }).response?.data;
-    if (typeof data === "object" && data !== null) {
-      const record = data as Record<string, unknown>;
-      if (typeof record.detail === "string") return record.detail;
-      if (
-        typeof record.detail === "object" &&
-        record.detail !== null &&
-        typeof (record.detail as Record<string, unknown>).message === "string"
-      ) {
-        return (record.detail as Record<string, unknown>).message as string;
-      }
-    }
-    if (err instanceof Error && err.message) return err.message;
-  }
-  return "Something went wrong while saving.";
 }

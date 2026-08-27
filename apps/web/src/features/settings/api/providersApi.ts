@@ -171,3 +171,59 @@ export const providersApi = new ProvidersApiService();
 /** Mirrors FAVICON_URL_TEMPLATE in app/constants/providers.py. */
 export const providerFaviconUrl = (domain: string) =>
   `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+
+/**
+ * Map a raw provider error detail to an actionable recovery hint. Returns
+ * null when the detail already contains its own guidance (private URL) or
+ * when no specific hint applies — caller should show the original detail
+ * plus this hint below it.
+ */
+export function getProviderErrorHint(
+  detail: string,
+  providerKey?: CredentialProvider,
+): string | null {
+  const lower = detail.toLowerCase();
+  // Private / unreachable already carries _PRIVATE_URL_HINT — keep that as-is.
+  if (lower.includes("private") || lower.includes("unreachable")) return null;
+  if (
+    lower.includes("401") ||
+    lower.includes("invalid") ||
+    lower.includes("unauthorized")
+  ) {
+    const url = providerKey
+      ? (PROVIDER_KEY_URLS as Record<string, string>)[providerKey]
+      : undefined;
+    if (url) {
+      return `Check your API key at ${url} — it may be expired or missing permissions.`;
+    }
+    return "Check your API key — it may be expired or missing permissions.";
+  }
+  if (lower.includes("429") || lower.includes("rate")) {
+    return "Rate limited — wait a minute and try again, or check your plan limits.";
+  }
+  if (lower.includes("timeout") || lower.includes("timed out")) {
+    return "Provider didn't respond — check your network or try again.";
+  }
+  return null;
+}
+
+/** Pull a human-readable message out of an axios/backend error. */
+export function extractProviderError(err: unknown): string | undefined {
+  if (typeof err === "object" && err !== null) {
+    const data = (err as { response?: { data?: unknown } }).response?.data;
+    if (typeof data === "object" && data !== null) {
+      const record = data as Record<string, unknown>;
+      if (typeof record.detail === "string") return record.detail;
+      if (
+        typeof record.detail === "object" &&
+        record.detail !== null &&
+        typeof (record.detail as Record<string, unknown>).message === "string"
+      ) {
+        return (record.detail as Record<string, unknown>).message as string;
+      }
+      if (typeof record.message === "string") return record.message;
+    }
+    if (err instanceof Error && err.message) return err.message;
+  }
+  return undefined;
+}

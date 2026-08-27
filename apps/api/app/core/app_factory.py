@@ -44,9 +44,12 @@ def create_app() -> FastAPI:
     Returns:
         FastAPI: Configured FastAPI application
     """
-    # In production, disable the OpenAPI schema entirely so /openapi.json,
-    # /docs, and /redoc all 404 — no endpoint listing or model shapes leak.
-    is_prod = settings.ENV == "production"
+    # OpenAPI docs are developer-only: selfhost and production both hide the
+    # schema and interactive docs so endpoint/model listings don't leak.
+    # Metrics follows the same split — only development gets an unauthenticated
+    # /metrics; selfhost and production require METRICS_TOKEN (see below) and
+    # otherwise expose nothing.
+    is_dev = settings.ENV == "development"
     app = FastAPI(
         lifespan=lifespan,
         title="GAIA API",
@@ -56,9 +59,9 @@ def create_app() -> FastAPI:
             "url": "http://heygaia.io",
             "email": "hi@heygaia.io",
         },
-        openapi_url=None if is_prod else "/openapi.json",
-        docs_url=None if is_prod else "/docs",
-        redoc_url=None if is_prod else "/redoc",
+        openapi_url="/openapi.json" if is_dev else None,
+        docs_url="/docs" if is_dev else None,
+        redoc_url="/redoc" if is_dev else None,
         default_response_class=UJSONResponse,
     )
 
@@ -87,8 +90,8 @@ def create_app() -> FastAPI:
         instrumentator.expose(
             app, include_in_schema=False, dependencies=[Depends(_verify_metrics_token)]
         )
-    # No token configured — only expose in non-production environments.
-    elif settings.ENV != "production":
+    # No token configured — only expose unauthenticated metrics in development.
+    elif is_dev:
         instrumentator.expose(app, include_in_schema=False)
 
     @app.exception_handler(AppError)

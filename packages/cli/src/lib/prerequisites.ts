@@ -33,6 +33,7 @@ const PORT_SERVICE_MAP: Record<number, string> = {
   6379: "Redis",
   27017: "MongoDB",
   5672: "RabbitMQ",
+  15672: "RabbitMQ Management",
   3000: "Web Frontend",
   8080: "ChromaDB",
   8083: "Mongo Express",

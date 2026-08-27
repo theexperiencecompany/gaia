@@ -157,7 +157,7 @@ class TieredRateLimiter:
         # Self-hosted instances track usage but never enforce it (billing is
         # disabled): every raise below is skipped while counters, snapshots and
         # activity rollups continue exactly as on SaaS.
-        enforce = settings.ENV != "selfhost"
+        enforce = settings.billing_enabled
 
         current_limits = get_limits_for_plan(feature_key, user_plan)
         usage_info = {}

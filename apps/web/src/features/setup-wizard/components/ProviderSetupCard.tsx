@@ -22,15 +22,14 @@ import {
 import Image from "next/image";
 import { useState } from "react";
 import {
+  extractProviderError,
+  getProviderErrorHint,
   PROVIDER_KEY_URLS,
   providerFaviconUrl,
   providersApi,
 } from "@/features/settings/api/providersApi";
 import { OLLAMA_ONE_CLICK, type ProviderCardConfig } from "../constants";
-import {
-  getProviderErrorHint,
-  useProviderSetup,
-} from "../hooks/useProviderSetup";
+import { useProviderSetup } from "../hooks/useProviderSetup";
 
 interface ProviderSetupCardProps {
   config: ProviderCardConfig;
@@ -235,13 +234,20 @@ function OllamaOneClick({
       setOllamaOutcome({ ok: true, detail: "Saved", modelCount: 0 });
       onSaved();
     } catch (err) {
-      setOllamaError(extractOllamaError(err));
+      setOllamaError(
+        extractProviderError(err) ?? "Something went wrong while saving.",
+      );
     } finally {
       setOllamaBusy(false);
     }
   };
 
-  const hint = getOllamaHint(ollamaOutcome, ollamaError);
+  const hint = (() => {
+    if (ollamaError) return getProviderErrorHint(ollamaError, "ollama");
+    if (ollamaOutcome && !ollamaOutcome.ok)
+      return getProviderErrorHint(ollamaOutcome.detail, "ollama");
+    return null;
+  })();
 
   return (
     <div className="mb-3 rounded-xl bg-zinc-900 p-3">
@@ -293,35 +299,6 @@ function OllamaOneClick({
       )}
     </div>
   );
-}
-
-function getOllamaHint(
-  outcome: ReturnType<typeof useProviderSetup>["outcome"],
-  error: string | null,
-): string | null {
-  if (error) return getProviderErrorHint(error, "ollama");
-  if (outcome && !outcome.ok)
-    return getProviderErrorHint(outcome.detail, "ollama");
-  return null;
-}
-
-function extractOllamaError(err: unknown): string {
-  if (typeof err === "object" && err !== null) {
-    const data = (err as { response?: { data?: unknown } }).response?.data;
-    if (typeof data === "object" && data !== null) {
-      const record = data as Record<string, unknown>;
-      if (typeof record.detail === "string") return record.detail;
-      if (
-        typeof record.detail === "object" &&
-        record.detail !== null &&
-        typeof (record.detail as Record<string, unknown>).message === "string"
-      ) {
-        return (record.detail as Record<string, unknown>).message as string;
-      }
-    }
-    if (err instanceof Error && err.message) return err.message;
-  }
-  return "Something went wrong while saving.";
 }
 
 function OutcomeLine({
