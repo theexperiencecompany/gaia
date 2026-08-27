@@ -32,6 +32,7 @@ from app.override.langgraph_bigtool.agent_config import (
     ToolRetrievalConfig,
 )
 from app.override.langgraph_bigtool.create_agent import (
+    REJECT_UNBOUND_TOOLS_NODE,
     _after_model_result,
     _agent_sticky_key,
     _AgentDeps,
@@ -702,6 +703,18 @@ class TestShouldContinue:
 
 
 class TestRejectUnboundTools:
+    def test_the_node_is_registered_under_the_name_every_route_binds_to(self) -> None:
+        """Registration derives the node name from the callable while the router
+        and both edges use REJECT_UNBOUND_TOOLS_NODE — this is what holds the
+        two in step, and a rename that broke it would fail here first."""
+        builder = create_agent(
+            _make_llm(),
+            _make_tool_registry(),
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+        )
+
+        assert REJECT_UNBOUND_TOOLS_NODE in builder.nodes
+
     def test_reject_unbound_tools_returns_error_messages(self) -> None:
         llm = _make_llm()
         registry = _make_tool_registry()
@@ -965,6 +978,29 @@ class TestBindSessionId:
         )
 
         assert bound.bind.call_args.kwargs["session_id"] == "conv-1-comms_agent"
+
+    def test_the_sync_model_path_binds_the_assembled_tools(self) -> None:
+        """The sync node assembles the tool list and hands it to bind_tools. If
+        that list never arrives the model is simply called with no tools — every
+        turn comes back as plain text and nothing raises."""
+        llm = _make_llm()
+        registry = _make_tool_registry(dummy_tool_a, dummy_tool_b)
+        builder = create_agent(
+            llm,
+            registry,
+            tools_config=ToolRetrievalConfig(
+                disable_retrieve_tools=True, initial_tool_ids=["dummy_tool_a", "dummy_tool_b"]
+            ),
+        )
+
+        _agent_runnable(builder).func(
+            _make_state(messages=[HumanMessage(content="hi")]),
+            _make_config(),
+            store=MagicMock(),
+        )
+
+        (bound_tools,) = llm.with_config.return_value.bind_tools.call_args.args
+        assert [t.name for t in bound_tools] == ["dummy_tool_a", "dummy_tool_b"]
 
     def test_each_agent_class_gets_its_own_key_on_the_same_conversation(self) -> None:
         """The fix this parameter exists for. comms, the executor and each
@@ -1252,7 +1288,10 @@ class TestMaybeInjectWrapupDirect:
 
         result = _maybe_inject_wrapup(state)
 
-        assert isinstance(result["messages"][-1], HumanMessage)
+        # The state already ends in a HumanMessage, so "last message is human"
+        # holds either way — the notice's own text is the only real assertion.
+        assert len(result["messages"]) == len(state["messages"]) + 1
+        assert "almost out of steps" in result["messages"][-1].content
 
     def test_the_notice_text_is_pinned_verbatim(self) -> None:
         state = _make_state(remaining_steps=2)

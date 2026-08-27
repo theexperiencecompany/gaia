@@ -100,6 +100,12 @@ from app.utils.mcp_utils import canonical_tool_name_map
 from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
 
+#: Graph node that answers a tool call the model made without binding the tool.
+#: Named here because the router, both edges and the registration must agree —
+#: langgraph derives the same name from ``reject_unbound_tools`` itself, so the
+#: registration below deliberately does not repeat it.
+REJECT_UNBOUND_TOOLS_NODE = "reject_unbound_tools"
+
 
 @dataclasses.dataclass(frozen=True)
 class _AgentDeps:
@@ -736,7 +742,7 @@ def _should_continue(deps: _AgentDeps) -> Callable[..., str | Send | list[Send]]
         destinations.extend(_dispatch_tools(deps, state))
 
         if unbound_calls:
-            destinations.append(Send("reject_unbound_tools", unbound_calls))
+            destinations.append(Send(REJECT_UNBOUND_TOOLS_NODE, unbound_calls))
 
         return destinations
 
@@ -763,7 +769,7 @@ def _tool_node(deps: _AgentDeps) -> DynamicToolNode:
 def _wire_edges(builder: StateGraph, deps: _AgentDeps) -> None:
     retrieve_enabled = deps.retrieve_tools is not None
 
-    path_map = ["tools", FINISH_TASK_NAME, "reject_unbound_tools", END]
+    path_map = ["tools", FINISH_TASK_NAME, REJECT_UNBOUND_TOOLS_NODE, END]
     if retrieve_enabled:
         path_map.insert(0, "select_tools")
     if deps.require_finish_to_end:
@@ -792,7 +798,7 @@ def _wire_edges(builder: StateGraph, deps: _AgentDeps) -> None:
         FINISH_TASK_NAME,
         "end_graph_hooks" if deps.end_graph_hooks else END,
     )
-    builder.add_edge("reject_unbound_tools", "agent")
+    builder.add_edge(REJECT_UNBOUND_TOOLS_NODE, "agent")
     if retrieve_enabled:
         builder.add_edge("select_tools", "agent")
 
@@ -873,10 +879,10 @@ def create_agent(
         FINISH_TASK_NAME,
         RunnableCallable(finish_task_node, afinish_task_node),
     )
-    builder.add_node(
-        "reject_unbound_tools",
-        RunnableCallable(reject_unbound_tools, areject_unbound_tools),
-    )
+    # No explicit name: langgraph takes it from the callable, which is already
+    # REJECT_UNBOUND_TOOLS_NODE. Passing it again would be the same string in a
+    # fifth place with nothing keeping the copies in step.
+    builder.add_node(RunnableCallable(reject_unbound_tools, areject_unbound_tools))
 
     _wire_edges(builder, deps)
 
