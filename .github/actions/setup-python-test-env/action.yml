@@ -13,7 +13,28 @@ runs:
     - name: Setup Node.js + pnpm
       uses: ./.github/actions/setup-node-pnpm
 
-    - name: Setup uv
+    # The self-hosted box keeps its NVMe between runs, so uv's cache lives
+    # there directly. Pushing it through the GH cache would cost a WAN
+    # round-trip over a residential uplink for data that never left the disk.
+    - name: Point uv at the persistent local cache (self-hosted)
+      if: runner.environment == 'self-hosted'
+      shell: bash
+      run: |
+        set -euo pipefail
+        UV_DIR="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/uv"
+        mkdir -p "$UV_DIR"
+        echo "UV_CACHE_DIR=$UV_DIR" >> "$GITHUB_ENV"
+        echo "uv cache (persistent, no GH cache): $UV_DIR"
+
+    - name: Setup uv (self-hosted — persistent local cache)
+      if: runner.environment == 'self-hosted'
+      uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      with:
+        version: "0.8.17"
+        enable-cache: false
+
+    - name: Setup uv (GitHub-hosted — cache via actions/cache)
+      if: runner.environment != 'self-hosted'
       uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       with:
         version: "0.8.17"
@@ -35,23 +56,30 @@ runs:
       shell: bash
       run: bash scripts/ci/start-test-services.sh
 
-    # Single source of truth for the suite's service env — consuming jobs
-    # (test-python, coverage) inherit these instead of duplicating them.
-    - name: Export test-suite service environment
+    # The service URLs (and their per-runner port offsets) are written to
+    # $GITHUB_ENV by start-test-services.sh above — it owns the port
+    # arithmetic, so repeating the endpoints here would silently override
+    # them with the canonical ports and break every parallel lane.
+    - name: Export test-suite environment
       shell: bash
       run: |
+        # ~1.3 GB of ONNX weights. On an ephemeral GitHub runner they have to
+        # come through actions/cache every run; on the self-hosted box they
+        # persist on local disk, so the transfer is skipped entirely.
+        if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ]; then
+          MODEL_CACHE_DIR="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/fastembed"
+        else
+          MODEL_CACHE_DIR=/tmp/fastembed_cache
+        fi
+        mkdir -p "$MODEL_CACHE_DIR"
         {
           echo "ENV=test"
           echo "USE_REAL_SERVICES=1"
-          echo "DATABASE_URL=postgresql://gaia:gaia@localhost:5432/gaia_test" # pragma: allowlist secret
-          echo "POSTGRES_URL=postgresql://gaia:gaia@localhost:5432/gaia_test" # pragma: allowlist secret
-          echo "REDIS_URL=redis://localhost:6379/0"
-          echo "MONGODB_URL=mongodb://gaia:gaia@localhost:27017/gaia_test?authSource=admin" # pragma: allowlist secret
-          echo "MONGO_DB=mongodb://gaia:gaia@localhost:27017/gaia_test?authSource=admin" # pragma: allowlist secret
-          echo "CHROMADB_HOST=localhost"
-          echo "CHROMADB_PORT=8000"
-          echo "RABBITMQ_URL=amqp://guest:guest@localhost/"
-          echo "MEMORY_MODEL_CACHE_DIR=/tmp/fastembed_cache"
+          echo "MODEL_CACHE_DIR=$MODEL_CACHE_DIR"
+          echo "MEMORY_MODEL_CACHE_DIR=$MODEL_CACHE_DIR"
+          # .pyc files buy nothing in a throwaway CI checkout and cost writes
+          # on every one of the 16 xdist workers.
+          echo "PYTHONDONTWRITEBYTECODE=1"
         } >> "$GITHUB_ENV"
 
     # The memory suite loads ~1.3 GB of ONNX weights (mxbai-embed-large plus the
@@ -64,11 +92,14 @@ runs:
     # happens once per key rather than on every run.
     - name: Restore embedding models
       id: model-cache
+      if: runner.environment != 'self-hosted'
       uses: actions/cache/restore@v6
       with:
-        path: /tmp/fastembed_cache
+        path: ${{ env.MODEL_CACHE_DIR }}
         key: fastembed-${{ runner.os }}-${{ hashFiles('apps/api/app/constants/memory.py', 'uv.lock') }}
 
+    # On self-hosted this is a no-op after the first run: the models are
+    # already on disk and the loaders return immediately.
     - name: Prefetch embedding models
       if: steps.model-cache.outputs.cache-hit != 'true'
       shell: bash
@@ -101,8 +132,8 @@ runs:
     # Only reached when the prefetch above succeeded, so a poisoned partial
     # download is never what gets cached for every later run.
     - name: Save embedding models
-      if: steps.model-cache.outputs.cache-hit != 'true'
+      if: runner.environment != 'self-hosted' && steps.model-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v6
       with:
-        path: /tmp/fastembed_cache
+        path: ${{ env.MODEL_CACHE_DIR }}
         key: fastembed-${{ runner.os }}-${{ hashFiles('apps/api/app/constants/memory.py', 'uv.lock') }}

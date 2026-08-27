@@ -127,21 +127,43 @@ if [[ "$api_ok" != "true" ]]; then
 fi
 
 # Parse runners JSON. Prefer jq, fallback to python3.
+#
+# The home box runs several runner instances, all carrying the same label, so
+# "is home usable?" is a question about the POOL, not about one instance:
+# pick the first instance that is online AND idle. Selecting on the first
+# matching instance regardless of state would fall back to GitHub whenever
+# instance 1 happened to be busy, even with three others sitting idle.
+#
+# Emits: "<name>|<status>|<busy>|<os>|<labels>|<online_count>|<idle_count>|<total>"
 parse_runner() {
   local json="$1" label="$2"
   if command -v jq >/dev/null 2>&1; then
     echo "$json" | jq -r --arg L "$label" '
-      .runners[]? | select(.labels[]? | .name == $L) | "\(.name)|\(.status)|\(.busy)|\(.os)|\(.labels | map(.name) | join(","))"
-    ' | head -n1
+      [.runners[]? | select(any(.labels[]?; .name == $L))] as $all
+      | ($all | map(select(.status == "online"))) as $online
+      | ($online | map(select(.busy == false))) as $idle
+      | if ($all | length) == 0 then empty
+        else
+          (($idle | first) // ($online | first) // ($all | first)) as $pick
+          | "\($pick.name)|\($pick.status)|\($pick.busy)|\($pick.os)|\($pick.labels | map(.name) | join(","))|\($online | length)|\($idle | length)|\($all | length)"
+        end
+    '
   else
     echo "$json" | python3 -c "
 import json,sys
 label=sys.argv[1]
 d=json.load(sys.stdin)
-for r in d.get('runners',[]):
-    if any(l.get('name')==label for l in r.get('labels',[])):
-        print(f\"{r.get('name')}|{r.get('status')}|{r.get('busy')}|{r.get('os')}|{','.join(l.get('name') for l in r.get('labels',[]))}\")
-        break
+all_=[r for r in d.get('runners',[]) if any(l.get('name')==label for l in r.get('labels',[]))]
+if not all_:
+    sys.exit(0)
+online=[r for r in all_ if r.get('status')=='online']
+idle=[r for r in online if r.get('busy') is False]
+pick=(idle or online or all_)[0]
+print('|'.join([
+    str(pick.get('name')), str(pick.get('status')), str(pick.get('busy')).lower(),
+    str(pick.get('os')), ','.join(l.get('name') for l in pick.get('labels', [])),
+    str(len(online)), str(len(idle)), str(len(all_)),
+]))
 " "$label"
   fi
 }
@@ -164,8 +186,8 @@ if [[ -z "$RUNNER_LINE" ]]; then
   exit 0
 fi
 
-IFS='|' read -r R_NAME R_STATUS R_BUSY R_OS R_LABELS <<< "$RUNNER_LINE"
-log "Found runner: name=$R_NAME status=$R_STATUS busy=$R_BUSY os=$R_OS labels=$R_LABELS"
+IFS='|' read -r R_NAME R_STATUS R_BUSY R_OS R_LABELS R_ONLINE R_IDLE R_TOTAL <<< "$RUNNER_LINE"
+log "Home pool '$LABEL': ${R_IDLE} idle / ${R_ONLINE} online / ${R_TOTAL} registered — picked $R_NAME (status=$R_STATUS busy=$R_BUSY os=$R_OS)"
 
 if [[ "$R_STATUS" == "online" && "$R_BUSY" == "false" ]]; then
   SELF_JSON='["self-hosted","'"$LABEL"'"]'
@@ -174,6 +196,7 @@ if [[ "$R_STATUS" == "online" && "$R_BUSY" == "false" ]]; then
   summary "### Runner selection — home (fast path)
 
 - **Selected:** \`$SELF_JSON\` — 🟢 \`$R_NAME\` is **online** and **idle**
+- **Home pool:** ${R_IDLE} idle / ${R_ONLINE} online / ${R_TOTAL} registered
 - **Fallback would have been:** \`$FALLBACK\`
 - **Specs:** 16 vCPU (i7-10700K) / 46 GiB / NVMe — expect 3-6× vs 2 vCPU GH
 - **Reason:** probe succeeded in <${TIMEOUT_SECS}s
@@ -183,9 +206,9 @@ fi
 
 # Runner exists but not usable right now
 if [[ "$R_STATUS" != "online" ]]; then
-  REASON="offline (status=$R_STATUS)"
+  REASON="offline (${R_ONLINE}/${R_TOTAL} online)"
 else
-  REASON="busy (status=$R_STATUS busy=$R_BUSY)"
+  REASON="all ${R_ONLINE} online instance(s) busy"
 fi
 
 log "Home runner not schedulable: $REASON. Falling back to $FALLBACK."
@@ -197,7 +220,7 @@ emit "$FALLBACK" "$(echo "$FALLBACK" | tr -d '[]" ' | cut -d',' -f1)" "false" "$
 summary "### Runner selection — fallback (home not schedulable)
 
 - **Selected:** \`$FALLBACK\`
-- **Home runner:** \`$R_NAME\` — **$REASON**
+- **Home pool:** ${R_IDLE} idle / ${R_ONLINE} online / ${R_TOTAL} registered — **$REASON**
 - **Home labels:** \`$R_LABELS\`
 - **Fallback type:** \`$FLAVOUR\` (standard=\`[\"ubuntu-latest\"]\`, docker=\`[\"blacksmith-2vcpu-ubuntu-2404\"]\`)
 "

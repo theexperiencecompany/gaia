@@ -1,13 +1,36 @@
 name: Restore Next.js build cache
 description: >
   Persist apps/web/.next/cache across runs so `next build` compiles warm.
-  Single source of truth for the cache key — used by main.yml (build) and
-  desktop-pr-build.yml (prepare).
+  Single source of truth for the cache key — used by main.yml (build),
+  hybrid-ci.yml and desktop-pr-build.yml (prepare).
+
+  Two strategies, picked by runner kind. GitHub-hosted runners are ephemeral,
+  so the cache has to travel through actions/cache. The self-hosted home
+  runner keeps its disk, so the cache just lives there: we symlink
+  apps/web/.next/cache at a persistent directory and the WAN round-trip
+  (measured 3m45s restore) disappears. The directory is keyed by RUNNER_NAME
+  so the parallel runner instances on one box never write the same cache
+  concurrently — Next.js's cache is not built for that.
 
 runs:
   using: composite
   steps:
+    - name: Link persistent Next.js cache (self-hosted)
+      if: runner.environment == 'self-hosted'
+      shell: bash
+      run: |
+        set -euo pipefail
+        DIR="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/${RUNNER_NAME:-default}/nextjs"
+        mkdir -p "$DIR" apps/web/.next
+        # checkout's `git clean -ffdx` removes the previous link, but be
+        # explicit so a stale real directory can never shadow the symlink.
+        rm -rf apps/web/.next/cache
+        ln -s "$DIR" apps/web/.next/cache
+        echo "Next.js cache (persistent, no GH cache): $DIR"
+        du -sh "$DIR" 2>/dev/null || true
+
     - uses: actions/cache@v6
+      if: runner.environment != 'self-hosted'
       with:
         path: apps/web/.next/cache
         key: nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/src/**/*.js', 'apps/web/src/**/*.jsx', 'apps/web/src/**/*.ts', 'apps/web/src/**/*.tsx') }}

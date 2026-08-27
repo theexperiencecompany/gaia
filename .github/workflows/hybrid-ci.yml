@@ -220,6 +220,14 @@ jobs:
             --junitxml=test-results/pytest.xml --durations=50 2>&1 | tee /tmp/pytest.time
           echo "Python tests: OK (xdist=${{ steps.par.outputs.py }})"
 
+      # Self-hosted runners are reused, so a container left running holds its
+      # host port and the NEXT job on this box dies with
+      # "bind: address already in use" (exit 125). Observed on run
+      # 33101684877, where a leaked chroma on :8000 failed the lane.
+      - name: Tear down service containers
+        if: always()
+        run: bash scripts/ci/stop-test-services.sh
+
   # ── Test TypeScript — Nx parallel scales with cores ----------------------
   test-typescript:
     needs: [select-runner, detect]

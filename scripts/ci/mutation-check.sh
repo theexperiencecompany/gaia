@@ -35,15 +35,62 @@ if [ ! -s /tmp/mutation-modules.txt ]; then
   exit 0
 fi
 
-# 4. Run one mutation check per module with bounded parallelism. A plain
+# 4. Size the run to the machine. Two levels of parallelism multiply here:
+#    modules run concurrently, and mutmut forks --max-children mutant workers
+#    inside each. Handing both `nproc` would oversubscribe 16 cores by an
+#    order of magnitude and thrash. Split one budget between them instead.
+#
+#    Leave 2 cores for the runner agent, docker, and the OS. Most PRs touch
+#    one or two modules, so weighting toward mutmut's children (rather than
+#    module fan-out) is what actually keeps the cores busy.
+NPROC="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)"
+BUDGET="${MUTATION_CPU_BUDGET:-$(( NPROC > 3 ? NPROC - 2 : 1 ))}"
+MODULE_COUNT="$(wc -l < /tmp/mutation-modules.txt | tr -d ' ')"
+
+MODULE_PAR="$MODULE_COUNT"
+[ "$MODULE_PAR" -gt 4 ] && MODULE_PAR=4
+[ "$MODULE_PAR" -lt 1 ] && MODULE_PAR=1
+[ "$MODULE_PAR" -gt "$BUDGET" ] && MODULE_PAR="$BUDGET"
+
+CHILDREN=$(( BUDGET / MODULE_PAR ))
+[ "$CHILDREN" -lt 1 ] && CHILDREN=1
+export MUTMUT_MAX_CHILDREN="${MUTMUT_MAX_CHILDREN:-$CHILDREN}"
+
+echo "mutation: ${MODULE_COUNT} module(s) on ${NPROC} vCPUs — budget ${BUDGET}," \
+     "${MODULE_PAR} module(s) in parallel x ${MUTMUT_MAX_CHILDREN} mutant worker(s)"
+
+# 5. Run one mutation check per module with bounded parallelism. A plain
 #    read loop (not xargs) so a module with an empty changed-lines JSON
 #    (`[]`) can never shift the fields between invocations.
-FAILED=0
+#
+#    Each child records its own exit status in a file rather than relying on
+#    `wait`: a bare `wait` returns 0 no matter how its children exited, so
+#    the previous `wait || FAILED=1` silently passed the lane whenever a
+#    surviving mutant was found by any module still running at the end.
+STATUS_DIR="$(mktemp -d)"
+trap 'rm -rf "$STATUS_DIR"' EXIT
+
+idx=0
 while read -r module testfile ranges; do
-  bash scripts/test/mutation.sh "$module" "$testfile" "${ranges:-[]}" &
-  if [ "$(jobs -r -p | wc -l)" -ge 4 ]; then
-    wait -n || FAILED=1
-  fi
+  idx=$((idx + 1))
+  (
+    if bash scripts/test/mutation.sh "$module" "$testfile" "${ranges:-[]}"; then
+      echo 0 > "$STATUS_DIR/$idx"
+    else
+      echo "$?" > "$STATUS_DIR/$idx"
+    fi
+  ) &
+  while [ "$(jobs -r -p | wc -l)" -ge "$MODULE_PAR" ]; do
+    wait -n 2>/dev/null || true
+  done
 done < /tmp/mutation-modules.txt
-wait || FAILED=1
+wait
+
+FAILED=0
+for status_file in "$STATUS_DIR"/*; do
+  [ -e "$status_file" ] || continue
+  if [ "$(cat "$status_file")" != "0" ]; then
+    FAILED=1
+  fi
+done
 exit "$FAILED"

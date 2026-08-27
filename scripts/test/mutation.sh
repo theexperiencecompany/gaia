@@ -76,11 +76,34 @@ fi
 # Per-invocation workdir: parallel-safe isolation for the config swap, the
 # mutants/ dir, and the pytest run. Absolute path: the trap runs after
 # `cd "$WORKDIR"`, so a relative path would delete the wrong directory.
-# Real copies, not symlinks: a symlinked workdir/app resolves to the SAME
-# inode as apps/api/app — if both ever land on sys.path, CPython raises
-# "cannot load module more than once per process" when the same file is
-# imported under two paths (observed in CI for app.db.chroma).
-WORKDIR="$(pwd)/.mutation-$$"
+#
+# Placed on tmpfs when the machine offers one. Each invocation copies ~65 MB
+# of app + tests + scripts and then has mutmut write a whole mutants/ tree
+# beside it; with several modules in flight those writes, not the mutation
+# work, set the pace. /dev/shm keeps all of it in RAM. Falls back to the
+# working directory on machines without tmpfs (macOS) or when it is nearly
+# full, so a constrained box degrades in speed rather than failing.
+#
+# Real copies, not hardlinks (`cp -al`): the changed-line scoping below
+# rewrites $MODULE in place, and a hardlink shares its inode with the file in
+# the developer's checkout — the pragma stamping would edit the real source.
+# Not symlinks either: a symlinked workdir/app resolves to the SAME inode as
+# apps/api/app — if both ever land on sys.path, CPython raises "cannot load
+# module more than once per process" when the same file is imported under two
+# paths (observed in CI for app.db.chroma).
+WORKDIR_BASE="${MUTMUT_WORKDIR_BASE:-}"
+if [ -z "$WORKDIR_BASE" ]; then
+  WORKDIR_BASE="$(pwd)"
+  if [ -d /dev/shm ] && [ -w /dev/shm ]; then
+    # Need room for the copy plus mutmut's mutants/ tree; 1 GiB is a
+    # comfortable ceiling for a single module.
+    SHM_FREE_KB="$(df -Pk /dev/shm 2>/dev/null | awk 'NR==2{print $4}')"
+    if [ -n "${SHM_FREE_KB:-}" ] && [ "$SHM_FREE_KB" -gt 1048576 ]; then
+      WORKDIR_BASE=/dev/shm
+    fi
+  fi
+fi
+WORKDIR="$WORKDIR_BASE/gaia-mutation-$$"
 trap '[ -z "${MUTMUT_KEEP_WORKDIR:-}" ] && rm -rf "$WORKDIR"' EXIT
 mkdir -p "$WORKDIR"
 cp -r app "$WORKDIR/app"

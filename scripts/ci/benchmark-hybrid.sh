@@ -144,7 +144,7 @@ for workload in "${WL_ARR[@]}"; do
       CMD="uv run --frozen pytest -n CPUS_PLACEHOLDER -m 'not composio and not model_onboarding and not schemathesis' --tb=line -q --override-ini=addopts=--strict-markers --timeout=300 2>&1 | tail -n 30"
       ;;
     pytest-live)
-      CMD="bash scripts/ci/start-test-services.sh >/tmp/bench-services.log 2>&1 && uv run --frozen pytest -n CPUS_PLACEHOLDER -m 'not composio and not model_onboarding and not schemathesis' --tb=line -q --override-ini=addopts=--strict-markers --timeout=300 --durations=10 2>&1 | tail -n 30; docker rm -f gaia-test-postgres gaia-test-redis gaia-test-mongo gaia-test-chroma gaia-test-rabbitmq 2>/dev/null | true"
+      CMD="bash scripts/ci/start-test-services.sh >/tmp/bench-services.log 2>&1 && set -a && . \"/tmp/gaia-test-services-\${RUNNER_INDEX:-0}.env\" && set +a && uv run --frozen pytest -n CPUS_PLACEHOLDER -m 'not composio and not model_onboarding and not schemathesis' --tb=line -q --override-ini=addopts=--strict-markers --timeout=300 --durations=10 2>&1 | tail -n 30; bash scripts/ci/stop-test-services.sh"
       if ! have docker; then echo "[bench] skip pytest-live — docker not found"; continue; fi
       ;;
     xenon|interrogate|biome)
@@ -172,7 +172,7 @@ for workload in "${WL_ARR[@]}"; do
       ruff) CMD="uvx --no-build ruff@0.14.13 check . 2>&1 | tail -n 20" ;;
       mypy) CMD="uv run --project apps/api --frozen --group backend --group dev mypy apps/api/app apps/voice-agent/src libs/shared/py --ignore-missing-imports 2>&1 | tail -n 30" ;;
       pytest-hermetic) CMD="uv run --frozen pytest -n CPUS_PLACEHOLDER -m 'not composio and not model_onboarding and not schemathesis' --tb=line -q --override-ini=addopts=--strict-markers --timeout=300 2>&1 | tail -n 30" ;;
-      pytest-live) CMD="bash scripts/ci/start-test-services.sh >/tmp/bench-services.log 2>&1 && uv run --frozen pytest -n CPUS_PLACEHOLDER -m 'not composio and not model_onboarding and not schemathesis' --tb=line -q --override-ini=addopts=--strict-markers --timeout=300 --durations=10 2>&1 | tail -n 30; docker rm -f gaia-test-postgres gaia-test-redis gaia-test-mongo gaia-test-chroma gaia-test-rabbitmq 2>/dev/null | true" ;;
+      pytest-live) CMD="bash scripts/ci/start-test-services.sh >/tmp/bench-services.log 2>&1 && set -a && . \"/tmp/gaia-test-services-\${RUNNER_INDEX:-0}.env\" && set +a && uv run --frozen pytest -n CPUS_PLACEHOLDER -m 'not composio and not model_onboarding and not schemathesis' --tb=line -q --override-ini=addopts=--strict-markers --timeout=300 --durations=10 2>&1 | tail -n 30; bash scripts/ci/stop-test-services.sh" ;;
     esac
   done
   echo ""

@@ -12,7 +12,36 @@
 # Plain `docker run` (not GitHub `services:`) because Redis needs a command
 # override (`--databases 32` for pytest-xdist worker isolation) and service
 # containers cannot pass container commands.
+#
+# Per-runner isolation: the home box runs several runner instances that can
+# execute test lanes concurrently, and fixed host ports would make the second
+# lane fail on "port is already allocated". Each instance carries RUNNER_INDEX
+# in its .env (see infra/self-hosted-runner/setup.sh); it offsets every host
+# port by index*100 and suffixes every container name. GitHub-hosted runners
+# have no RUNNER_INDEX, so they default to 0 and keep the canonical ports.
+#
+# This script is the single source of truth for the suite's service URLs: it
+# writes them to $GITHUB_ENV so consumers never duplicate (and drift from) the
+# port arithmetic.
 set -euo pipefail
+
+RUNNER_INDEX="${RUNNER_INDEX:-0}"
+PORT_OFFSET=$((RUNNER_INDEX * 100))
+SUFFIX="${RUNNER_INDEX}"
+
+POSTGRES_PORT=$((5432 + PORT_OFFSET))
+REDIS_PORT=$((6379 + PORT_OFFSET))
+MONGO_PORT=$((27017 + PORT_OFFSET))
+CHROMA_PORT=$((8000 + PORT_OFFSET))
+RABBITMQ_PORT=$((5672 + PORT_OFFSET))
+
+PG_NAME="gaia-test-postgres-${SUFFIX}"
+REDIS_NAME="gaia-test-redis-${SUFFIX}"
+MONGO_NAME="gaia-test-mongo-${SUFFIX}"
+CHROMA_NAME="gaia-test-chroma-${SUFFIX}"
+RABBITMQ_NAME="gaia-test-rabbitmq-${SUFFIX}"
+
+echo "Runner index ${RUNNER_INDEX} → ports pg=${POSTGRES_PORT} redis=${REDIS_PORT} mongo=${MONGO_PORT} chroma=${CHROMA_PORT} rabbit=${RABBITMQ_PORT}"
 
 # Digest-pinned (tag kept for readability; the digest is what's pulled) so
 # every run boots identical bits and a flake can't be image drift. Bump
@@ -31,32 +60,42 @@ READY_TIMEOUT_SECS=90
 PULL_ATTEMPTS=5
 PULL_BACKOFF_SECS=5
 
+# Data directories on tmpfs: every one of these containers is thrown away at
+# the end of the job, so durability buys nothing and fsync costs real time.
+# Postgres in particular is commit-latency bound under a 16-way xdist run.
 start_postgres() {
-  docker run -d --name gaia-test-postgres \
+  docker run -d --name "$PG_NAME" \
     -e POSTGRES_USER=gaia -e POSTGRES_PASSWORD=gaia -e POSTGRES_DB=gaia_test \
-    -p 5432:5432 "$POSTGRES_IMAGE"
+    -e PGDATA=/var/lib/postgresql/data/pgdata \
+    --tmpfs /var/lib/postgresql/data:rw,noexec,nosuid,size=2g \
+    -p "${POSTGRES_PORT}:5432" "$POSTGRES_IMAGE" \
+    -c fsync=off -c synchronous_commit=off -c full_page_writes=off
 }
 
 # 32 logical databases so each pytest-xdist worker gets an isolated Redis DB.
+# --save "" disables RDB snapshotting: the dataset is discarded with the
+# container, and the fork-to-disk pauses only add latency.
 start_redis() {
-  docker run -d --name gaia-test-redis \
-    -p 6379:6379 "$REDIS_IMAGE" redis-server --databases 32
+  docker run -d --name "$REDIS_NAME" \
+    -p "${REDIS_PORT}:6379" "$REDIS_IMAGE" \
+    redis-server --databases 32 --save "" --appendonly no
 }
 
 start_mongo() {
-  docker run -d --name gaia-test-mongo \
+  docker run -d --name "$MONGO_NAME" \
     -e MONGO_INITDB_ROOT_USERNAME=gaia -e MONGO_INITDB_ROOT_PASSWORD=gaia \
-    -p 27017:27017 "$MONGO_IMAGE"
+    --tmpfs /data/db:rw,noexec,nosuid,size=2g \
+    -p "${MONGO_PORT}:27017" "$MONGO_IMAGE"
 }
 
 start_chroma() {
-  docker run -d --name gaia-test-chroma \
-    -p 8000:8000 "$CHROMA_IMAGE"
+  docker run -d --name "$CHROMA_NAME" \
+    -p "${CHROMA_PORT}:8000" "$CHROMA_IMAGE"
 }
 
 start_rabbitmq() {
-  docker run -d --name gaia-test-rabbitmq \
-    -p 5672:5672 "$RABBITMQ_IMAGE"
+  docker run -d --name "$RABBITMQ_NAME" \
+    -p "${RABBITMQ_PORT}:5672" "$RABBITMQ_IMAGE"
 }
 
 # Retry a single image pull with a fixed backoff, failing loud if it never
@@ -90,6 +129,12 @@ if ((pull_failed)); then
   echo "::error::One or more service images could not be pulled"
   exit 1
 fi
+echo "::endgroup::"
+
+# Self-hosted runners are reused, so a container left behind by an
+# interrupted job would make `docker run` fail on a duplicate name.
+echo "::group::Remove stale containers from a previous run"
+docker rm -f "$PG_NAME" "$REDIS_NAME" "$MONGO_NAME" "$CHROMA_NAME" "$RABBITMQ_NAME" 2>/dev/null || true
 echo "::endgroup::"
 
 echo "::group::Start service containers"
@@ -138,24 +183,48 @@ wait_ready() {
 }
 
 echo "::group::Wait for readiness"
-wait_ready "PostgreSQL" gaia-test-postgres start_postgres \
-  docker exec gaia-test-postgres pg_isready -U gaia -d gaia_test
-wait_ready "Redis" gaia-test-redis start_redis \
-  docker exec gaia-test-redis redis-cli ping
-wait_ready "MongoDB" gaia-test-mongo start_mongo \
-  docker exec gaia-test-mongo mongosh --quiet --eval "db.runCommand({ping:1}).ok"
+wait_ready "PostgreSQL" "$PG_NAME" start_postgres \
+  docker exec "$PG_NAME" pg_isready -U gaia -d gaia_test
+wait_ready "Redis" "$REDIS_NAME" start_redis \
+  docker exec "$REDIS_NAME" redis-cli ping
+wait_ready "MongoDB" "$MONGO_NAME" start_mongo \
+  docker exec "$MONGO_NAME" mongosh --quiet --eval "db.runCommand({ping:1}).ok"
 # -u rabbitmq is load-bearing: the image has no USER directive, so a plain
 # exec runs as root with HOME=/var/lib/rabbitmq — during boot, a root
 # `rabbitmq-diagnostics` creates .erlang.cookie owned by root and the server
 # (running as rabbitmq) then crashes with eacces
 # (docker-library/rabbitmq#318, rabbitmq-server discussion #11856).
-wait_ready "RabbitMQ" gaia-test-rabbitmq start_rabbitmq \
-  docker exec -u rabbitmq gaia-test-rabbitmq rabbitmq-diagnostics -q ping
+wait_ready "RabbitMQ" "$RABBITMQ_NAME" start_rabbitmq \
+  docker exec -u rabbitmq "$RABBITMQ_NAME" rabbitmq-diagnostics -q ping
 # Chroma's heartbeat path moved between API v1 and v2; probe both so an image
 # bump across that boundary can't silently break readiness.
 chroma_heartbeat() {
-  curl -sf http://localhost:8000/api/v2/heartbeat \
-    || curl -sf http://localhost:8000/api/v1/heartbeat
+  curl -sf "http://localhost:${CHROMA_PORT}/api/v2/heartbeat" \
+    || curl -sf "http://localhost:${CHROMA_PORT}/api/v1/heartbeat"
 }
-wait_ready "ChromaDB" gaia-test-chroma start_chroma chroma_heartbeat
+wait_ready "ChromaDB" "$CHROMA_NAME" start_chroma chroma_heartbeat
 echo "::endgroup::"
+
+# Publish the resolved endpoints so no consumer has to recompute the offsets.
+# Written to a sourceable file always (local runs, the benchmark harness) and
+# to $GITHUB_ENV when running inside Actions.
+SERVICES_ENV_FILE="${GAIA_TEST_SERVICES_ENV:-/tmp/gaia-test-services-${RUNNER_INDEX}.env}"
+cat > "$SERVICES_ENV_FILE" <<ENVEOF
+DATABASE_URL=postgresql://gaia:gaia@localhost:${POSTGRES_PORT}/gaia_test
+POSTGRES_URL=postgresql://gaia:gaia@localhost:${POSTGRES_PORT}/gaia_test
+REDIS_URL=redis://localhost:${REDIS_PORT}/0
+MONGODB_URL=mongodb://gaia:gaia@localhost:${MONGO_PORT}/gaia_test?authSource=admin
+MONGO_DB=mongodb://gaia:gaia@localhost:${MONGO_PORT}/gaia_test?authSource=admin
+CHROMADB_HOST=localhost
+CHROMADB_PORT=${CHROMA_PORT}
+RABBITMQ_URL=amqp://guest:guest@localhost:${RABBITMQ_PORT}/
+GAIA_TEST_CONTAINERS=${PG_NAME} ${REDIS_NAME} ${MONGO_NAME} ${CHROMA_NAME} ${RABBITMQ_NAME}
+ENVEOF
+echo "Service endpoints written to $SERVICES_ENV_FILE"
+
+if [ -n "${GITHUB_ENV:-}" ]; then
+  # GAIA_TEST_CONTAINERS is a bookkeeping list for teardown, not suite config
+  # — keep it out of the job environment.
+  grep -v "^GAIA_TEST_CONTAINERS=" "$SERVICES_ENV_FILE" >> "$GITHUB_ENV"
+  echo "Published service URLs to GITHUB_ENV (runner index ${RUNNER_INDEX})"
+fi
